@@ -859,7 +859,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @nested_func
+    // CHECK-SAME: func private @nested_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
@@ -908,7 +908,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func
+    // CHECK-SAME: func private @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: "tf_device.launch"
@@ -1007,7 +1007,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-COUNT-2: call @referenced_func
-    // CHECK-COUNT-1: func @referenced_func
+    // CHECK-COUNT-1: func private @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: "tf_device.launch"
@@ -1161,13 +1161,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func3
+    // CHECK-SAME: func private @referenced_func3
     // CHECK-SAME: tf.I
-    // CHECK-SAME: func @referenced_func2
+    // CHECK-SAME: func private @referenced_func2
     // CHECK-SAME: tf.H
-    // CHECK-SAME: func @referenced_func1
+    // CHECK-SAME: func private @referenced_func1
     // CHECK-SAME: tf.G
-    // CHECK-SAME: func @referenced_func0
+    // CHECK-SAME: func private @referenced_func0
     // CHECK-SAME: tf.F
     // CHECK: "tf_device.launch"
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
@@ -1262,15 +1262,15 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
       // CHECK-NOT:"tf._TPUCompileMlirPlaceholderProgramKey"
       // CHECK:    "tf.E"(%[[COMPILE_OUTPUT]]#1
       %3 = "tf_device.parallel_execute"() ( {
-         %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<?x!tf.string>
-        "tf.D"(%program) : (tensor<?x!tf.string>) -> ()
+         %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf.string>
+        "tf.D"(%program) : (tensor<2x!tf.string>) -> ()
         tf_device.return
       }, {
         %4 = "tf_device.cluster_func"(%ri_0) {_tpu_replicate = "cluster0", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = false} : (tensor<?xi32>) -> tensor<?xi32>
         tf_device.return %4 : tensor<?xi32>
       }, {
-        %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<?x!tf.string>
-        "tf.E"(%program) : (tensor<?x!tf.string>) -> ()
+        %program = "tf._TPUCompileMlirPlaceholderProgramKey"() : () -> tensor<2x!tf.string>
+        "tf.E"(%program) : (tensor<2x!tf.string>) -> ()
         tf_device.return
       }) : () -> (tensor<?xi32>)
       tf_device.return %3 : tensor<?xi32>

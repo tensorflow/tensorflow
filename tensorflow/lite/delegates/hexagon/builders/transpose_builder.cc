@@ -29,15 +29,7 @@ TfLiteStatus TransposeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   const auto& input_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   // permutation tensor.
-  tensor_id = inputs->data[1];
-  const auto& control_tensor = context->tensors[tensor_id];
-  if (control_tensor.allocation_type == kTfLiteMmapRo) {
-    auto* const_control_tensor_node =
-        graph_builder_->AddConstNodeWithData(tensor_id, control_tensor);
-    AddInput(TensorID(const_control_tensor_node->GetID(), 0));
-  } else {
-    AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  }
+  AddInput(graph_builder_->GetHexagonTensorId(inputs->data[1]));
 
   TF_LITE_ENSURE_STATUS(ComputeAndAddMinAndMax(context, input_tensor));
 

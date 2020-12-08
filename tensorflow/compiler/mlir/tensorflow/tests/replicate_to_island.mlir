@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-replicate-to-island | FileCheck %s
+// RUN: tf-opt -split-input-file -verify-diagnostics %s -tf-replicate-to-island | FileCheck %s
 
 // Tests per replica island has same control operands as island holding
 // replicate.
@@ -194,7 +194,7 @@ func @replicate_with_packed_input(%arg0: tensor<i1>, %arg1: tensor<i1>) {
 // CHECK-LABEL: func @replica_id_attr_added
 func @replica_id_attr_added(%arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>) {
   tf_executor.graph {
-    tf_executor.island {
+    %0 = tf_executor.island {
       tf_device.replicate([%arg0, %arg1] as %arg2: tensor<!tf.string>) {n = 2 : i32} {
         "tf.EnqueueTPUEmbeddingSparseTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf.string>) -> ()
         "tf.EnqueueTPUEmbeddingRaggedTensorBatch"(%arg2){table_ids = [1, 2]} : (tensor<!tf.string>) -> ()
@@ -225,19 +225,17 @@ func @replica_id_attr_added(%arg0: tensor<!tf.string>, %arg1: tensor<!tf.string>
 // CHECK:      tf_executor.fetch
 
 
-// Tests device ordinals are added to `tf._XlaSendFromHost`/`tf._XlaRecvAtHost`
-// based on the first TPU core device id.
+// Tests tf._TPUDeviceOrdinalPlaceholder ops are replaced with explicit device
+// ordinal constant values based on the first TPU core device id.
 // CHECK-LABEL: func @device_ordinals
-func @device_ordinals(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
+func @device_ordinals() {
   tf_executor.graph {
-    tf_executor.island {
-      tf_device.replicate([%arg0, %arg0] as %arg2: tensor<f32>) {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
-        %0 = "tf._XlaRecvAtHost"(%arg1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_send_0"} : (tensor<2x!tf.string>) -> tensor<f32>
-        "tf._XlaSendFromHost"(%0, %arg1) {_xla_has_host_transfer = true, device_ordinal = 0 : i64, key = "host_compute_channel_recv_0"} : (tensor<f32>, tensor<2x!tf.string>) -> ()
-        "tf.NoOp"() : () -> ()
-        tf_device.return
+    %0:3 = tf_executor.island {
+      %1:2 = tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        tf_device.return %2 : tensor<i64>
       }
-      tf_executor.yield
+      tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>
     }
     tf_executor.fetch
   }
@@ -245,14 +243,30 @@ func @device_ordinals(%arg0: tensor<f32>, %arg1: tensor<2x!tf.string>) {
 }
 
 // CHECK:      tf_executor.island
-// CHECK:      "tf._XlaRecvAtHost"
-// CHECK-SAME:   device_ordinal = 1
-// CHECK:      "tf._XlaSendFromHost"
-// CHECK-SAME:   device_ordinal = 1
-// CHECK:      "tf.NoOp"
+// CHECK:      [[CONST_0:%.+]] = "tf.Const"
+// CHECK-SAME: value = dense<1> : tensor<i64>
+// CHECK:      tf_executor.yield [[CONST_0]]
 // CHECK:      tf_executor.island
-// CHECK:      "tf._XlaRecvAtHost"
-// CHECK-SAME:   device_ordinal = 2
-// CHECK:      "tf._XlaSendFromHost"
-// CHECK-SAME:   device_ordinal = 2
-// CHECK:      "tf.NoOp"
+// CHECK:      [[CONST_1:%.+]] = "tf.Const"
+// CHECK-SAME: value = dense<2> : tensor<i64>
+// CHECK:      tf_executor.yield [[CONST_1]]
+
+// -----
+
+// Tests tf._TPUDeviceOrdinalPlaceholder cannot be updated when device ordinal
+// is missing.
+
+func @missing_device_ordinals() {
+  tf_executor.graph {
+    %0:3 = tf_executor.island {
+      %1:2 = tf_device.replicate {n = 2 : i32, devices = {TPU_REPLICATED_CORE_1 = ["/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2"]}} {
+        // expected-error@below {{requires device ordinal from device TPU_REPLICATED_CORE_0 to be present in 'tf.device.replicate' op}}
+        %2 = "tf._TPUDeviceOrdinalPlaceholder"() : () -> tensor<i64>
+        tf_device.return %2 : tensor<i64>
+      }
+      tf_executor.yield %1#0, %1#1 : tensor<i64>, tensor<i64>
+    }
+    tf_executor.fetch
+  }
+  return
+}

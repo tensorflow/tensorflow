@@ -97,8 +97,6 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
       filter_depth_size;
   GetDims(&filter_batch_size, &filter_height_size, &filter_width_size,
           &filter_depth_size, weights_tensor.dims);
-  weight_shape_ = {filter_batch_size, filter_height_size, filter_width_size,
-                   filter_depth_size};
   // Weights tensor could be int8 even for per-tensor quantization.
   // Therefore, we look at the number of scale values to check if it is
   // per-channel quantized.
@@ -106,25 +104,7 @@ TfLiteStatus TransposeConv2dOpBuilder::PopulateSubGraph(
       reinterpret_cast<TfLiteAffineQuantization*>(
           weights_tensor.quantization.params);
   const bool is_per_channel_quant = weights_quant_params->scale->size > 1;
-
-  OpBuilder* const_weights_node;
-  if (weights_tensor.type == kTfLiteInt8) {
-    std::vector<uint8_t> weights_data(NumElements(&weights_tensor));
-    const int8_t* original_data = weights_tensor.data.int8;
-    // Flip bits on the weight values so that the int8 values are treated
-    // as uint8.
-    for (int i = 0; i < NumElements(&weights_tensor); ++i) {
-      weights_data[i] = original_data[i] ^ k8BitSignFlipConstant;
-    }
-    const_weights_node = graph_builder_->AddConstNodeWithData(
-        weight_shape_.data(), reinterpret_cast<char*>(weights_data.data()),
-        weights_data.size() * sizeof(weights_data[0]));
-  } else {
-    const_weights_node = graph_builder_->AddConstNodeWithData(
-        weight_shape_.data(), weights_tensor.data.raw, weights_tensor.bytes);
-  }
-  graph_builder_->AddTensorWithID(tensor_id, const_weights_node->GetID(), 0);
-  AddInput(TensorID(const_weights_node->GetID(), 0));
+  AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
 
   // Handle weights quantization.
   float weights_min = 0;

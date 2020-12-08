@@ -37,4 +37,5 @@ class IntegerLookup(integer_lookup.IntegerLookup, index_lookup_v1.IndexLookup):
                **kwargs):
     super(IntegerLookup, self).__init__(max_values, num_oov_indices, mask_value,
                                         oov_value, vocabulary, invert, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V1").set("IntegerLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        "IntegerLookup_V1").set(True)

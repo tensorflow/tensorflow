@@ -45,7 +45,7 @@ are handled correctly.
 The following types of functions are not converted:
 
 *   functions already converted
-*   functions defined in in a allowlisted module (see autograph/core/config.py)
+*   functions defined in a allowlisted module (see autograph/core/config.py)
 *   non-Python functions (such as native bindings)
 *   `print`, `pdb.set_trace`, `ipdb.set_trace`
 *   most built-in functions (exceptions are listed in

@@ -75,23 +75,30 @@ constexpr char kTFDataResourceTag[] = "tfdata";
 class DatasetBase;
 class SerializationContext;
 
+inline bool IsTFDataFunction(const FunctionDef& func) {
+  auto iter = func.attr().find(data::kTFDataFunction);
+  return (iter != func.attr().end() && iter->second.b());
+}
+
 // Interface for reading values from a key-value store.
 // Used for restoring iterator state. This class is thread safe.
 // Please see comment on IteratorStateWriter for guidance around using the
 // Read*(key, val) vs Read*(name, key, val).
 class IteratorStateReader {
  public:
-  virtual Status ReadScalar(StringPiece key, int64* val) = 0;
-  virtual Status ReadScalar(StringPiece key, tstring* val) = 0;
-  virtual Status ReadTensor(StringPiece key, Tensor* val) = 0;
+  virtual Status ReadScalar(StringPiece key, int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece key, tstring* val) const = 0;
+  virtual Status ReadTensor(StringPiece key, Tensor* val) const = 0;
 
-  virtual Status ReadScalar(StringPiece name, StringPiece key, int64* val) = 0;
   virtual Status ReadScalar(StringPiece name, StringPiece key,
-                            tstring* val) = 0;
-  virtual Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) = 0;
+                            int64* val) const = 0;
+  virtual Status ReadScalar(StringPiece name, StringPiece key,
+                            tstring* val) const = 0;
+  virtual Status ReadTensor(StringPiece name, StringPiece key,
+                            Tensor* val) const = 0;
 
-  virtual bool Contains(StringPiece key) = 0;
-  virtual bool Contains(StringPiece name, StringPiece key) = 0;
+  virtual bool Contains(StringPiece key) const = 0;
+  virtual bool Contains(StringPiece name, StringPiece key) const = 0;
 
   virtual ~IteratorStateReader() {}
 };
@@ -120,6 +127,10 @@ class IteratorStateWriter {
 
   virtual ~IteratorStateWriter() {}
 };
+
+// Generates a full name key for iterator checkpointing. All keys generated for
+// iterator checkpoints should go through this function.
+std::string FullName(const std::string& prefix, const std::string& name);
 
 // Wrapper around GraphDefBuilder. Used to serialize Dataset graph.
 class GraphDefBuilderWrapper {
@@ -295,6 +306,24 @@ class Runner {
   static Runner* get();
 };
 
+// A class which provides a sequence of splits. Iterators created with a split
+// provider will iterate over only the splits provided by the split provider.
+class SplitProvider {
+ public:
+  virtual ~SplitProvider() {}
+  // Stores the next split in `*split`, setting `*end_of_splits` to indicate
+  // whether there were any splits left.
+  virtual Status GetNext(Tensor* split, bool* end_of_splits) = 0;
+  // Resets the split provider to its beginning.
+  virtual Status Reset() = 0;
+  // Saves the state of this split provider.
+  virtual Status Save(std::function<std::string(std::string)> full_name,
+                      IteratorStateWriter* writer) = 0;
+  // Saves the state of this split provider.
+  virtual Status Restore(std::function<std::string(std::string)> full_name,
+                         IteratorStateReader* reader) = 0;
+};
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -319,6 +348,7 @@ class IteratorContext {
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
+          split_provider(ctx->split_provider()),
           stats_aggregator(ctx->stats_aggregator()),
           thread_factory(ctx->thread_factory()),
           thread_pool(ctx->thread_pool()) {}
@@ -386,6 +416,9 @@ class IteratorContext {
     // Number of threads used for executing user-defined functions.
     int32 runner_threadpool_size = 0;
 
+    // An optional split provider indicating which splits to process.
+    std::shared_ptr<SplitProvider> split_provider = nullptr;
+
     // The `StatsAggregator` object to record statistics about the iterator.
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
 
@@ -431,6 +464,10 @@ class IteratorContext {
   }
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
+
+  std::shared_ptr<SplitProvider> split_provider() {
+    return params_.split_provider;
+  }
 
   std::shared_ptr<StatsAggregator> stats_aggregator() {
     return params_.stats_aggregator;
@@ -594,6 +631,16 @@ class IteratorBase {
                  bool* end_of_sequence) {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
+
+  // Skips the next `num_to_skip` outputs from the range that this iterator
+  // is traversing.
+  //
+  // If there are not enough outputs to skip, it will set
+  // `*end_of_sequence = true` and return `Status::OK()`. `*num_skipped` will
+  // store the number of outputs that are skipped. When `*end_of_sequence` is
+  // `false`, `*num_skipped` should equal to `num_to_skip`.
+  virtual Status Skip(IteratorContext* ctx, int num_to_skip,
+                      bool* end_of_sequence, int* num_skipped) = 0;
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -792,6 +839,12 @@ class DatasetBase : public core::RefCounted {
     return MakeIteratorFromCheckpoint(&ctx, output_prefix, reader, iterator);
   }
 
+  // Returns a split provider which partitions the dataset's data into splits
+  // and provides them in a sequence. The split provider is stored in
+  // `*split_provider`.
+  virtual Status MakeSplitProvider(
+      std::unique_ptr<SplitProvider>* split_provider) const;
+
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
   // dataset.
@@ -813,6 +866,14 @@ class DatasetBase : public core::RefCounted {
 
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
+
+  // Stores the dataset's input datasets in `*inputs`. The pointers stored in
+  // `*inputs` are borrowed. The only valid non-ok return status is
+  // UNIMPLEMENTED in case `InputDatasets` is not implemented by a dataset
+  // subclass. Implementing `InputDatasets` enables `DatasetBase` to provide a
+  // default implementation of `MakeSplitProvider` when there is a single input
+  // dataset.
+  virtual Status InputDatasets(std::vector<const DatasetBase*>* inputs) const;
 
   // Indicates whether the dataset depends on any external state which would
   // prevent it from being serializable. If so, the method returns
@@ -904,6 +965,9 @@ class DatasetBaseIterator : public IteratorBase {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  Status Skip(IteratorContext* ctx, int num_to_skip, bool* end_of_sequence,
+              int* num_skipped) final;
+
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     return IteratorBase::Save(ctx, writer);
   }
@@ -914,13 +978,12 @@ class DatasetBaseIterator : public IteratorBase {
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;
 
-  string full_name(const string& name) const {
-    if (str_util::StrContains(name, kColon)) {
-      LOG(ERROR) << name << " should not contain " << kColon;
-    }
+  // Internal implementation of Skip that is wrapped in tracing logic
+  virtual Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                              bool* end_of_sequence, int* num_skipped);
 
-    return strings::StrCat(kFullNameRandomHex, kPipe, params_.prefix, kColon,
-                           name);
+  string full_name(const string& name) const {
+    return FullName(params_.prefix, name);
   }
 
   // Returns a map of key-value pairs to included in the TraceMe string.
@@ -1171,20 +1234,6 @@ class DatasetOpRegistrar {
       registrar__body__##ctr##__object(op_name)
 
 }  // namespace data
-
-// TODO(b/114112161): Remove these aliases when all users have moved over to the
-// `tensorflow::data` namespace.
-using data::DatasetBase;
-using data::DatasetContext;
-using data::DatasetIterator;
-using data::DatasetOpKernel;
-using data::IteratorBase;
-using data::IteratorContext;
-using data::IteratorStateReader;
-using data::IteratorStateWriter;
-using data::SerializationContext;
-using data::UnaryDatasetOpKernel;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_H_

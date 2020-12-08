@@ -24,28 +24,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/compiler_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class CompilerOptions {
-  // ADRENO_FULL_SIMD_LINE:
-  //   Adreno can have 2 sizes for SIMD size.
-  //   On Adreno 4xx/5xx it is 32/64, on Adreno6xx it is 64/128.
-  //   Some our algorithms actually rely on exact size, for example on full
-  //   SIMD size, so we need this define.
-  //   This define is actually -qcom-accelerate-16-bit, but it controls SIMD
-  //   size.
-  ADRENO_FULL_SIMD_LINE,
-  ADRENO_MORE_WAVES,
-  POWERVR_FP16,
-  CL_OPT_DISABLE,
-  CL_2_0
-};
-
 std::string CompilerOptionsToString(
-    const CLDevice& device,
+    const GpuInfo& gpu_info,
     const std::vector<CompilerOptions>& compiler_options);
 
 class CLProgram {

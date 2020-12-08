@@ -178,7 +178,8 @@ class Scope(object):
     self.isolated_names.update(other.isolated_names)
     self.read.update(other.read)
     self.modified.update(other.modified)
-    self.bound.update(other.deleted)
+    self.bound.update(other.bound)
+    self.deleted.update(other.deleted)
     self.annotations.update(other.annotations)
     self.params.update(other.params)
 

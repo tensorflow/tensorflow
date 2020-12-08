@@ -28,7 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -57,9 +57,13 @@ const char kXlaHostTransferOriginalTypeAttr[] =
 // tokens (for ordering), and rewrite their respective functions and control
 // flow ops when necessary.
 // Note, this currently does not handle nested modules/functions or region based
-// ops other than certain control flow ops (`mhlo.if`).
+// ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
     : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mhlo::MhloDialect>();
+  }
+
  public:
   void runOnOperation() override;
 };
@@ -71,7 +75,7 @@ bool IsCommunicationOp(Operation* op) {
 }
 
 // Checks if an op is a supported HLO control flow op.
-bool IsControlFlowOp(Operation* op) { return isa<IfOp>(op); }
+bool IsControlFlowOp(Operation* op) { return isa<IfOp, WhileOp>(op); }
 
 // Collects control flow op ancestors of a given op, up until FuncOp. If any
 // ancestor is not a control flow op or a FuncOp, or of a single block region,
@@ -197,7 +201,7 @@ LogicalResult GetFunctionsToRewrite(
     if (func.getSecond().original.isPublic() &&
         !func.getSecond().original.symbolKnownUseEmpty(module)) {
       auto clone = func.getSecond().original.clone();
-      clone.setVisibility(SymbolTable::Visibility::Private);
+      clone.setPrivate();
       symbol_table.insert(clone);
       func.getSecond().clone = clone;
     }
@@ -215,11 +219,17 @@ void SetOpSharding(Operation* op, int64_t tpu_core) {
 }
 
 // Assigns frontend attributes holding information about data type and
-// TensorFlow rendezvous channel name.
-void SetFrontendAttributes(Operation* op, StringRef key, Type type) {
+// TensorFlow rendezvous channel name. The TensorFlow rendezvous channel name is
+// handled differently as individual names are used per data send and receive.
+void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
+                           Type type, bool device_to_host) {
   MLIRContext* context = op->getContext();
 
-  auto rendezvous_name = StringAttr::get(key, context);
+  std::string formatted_key =
+      device_to_host ? llvm::formatv("{0}_dtoh_{1}", key, index).str()
+                     : llvm::formatv("{0}_htod_{1}", key, index).str();
+
+  auto rendezvous_name = StringAttr::get(formatted_key, context);
   auto rendezvous_name_attr = NamedAttribute(
       Identifier::get(kXlaHostTransferRendezvousNameAttr, context),
       rendezvous_name);
@@ -239,24 +249,10 @@ void SetFrontendAttributes(Operation* op, StringRef key, Type type) {
   op->setAttr(kFrontendAttributesAttr, frontend_attributes);
 }
 
-// Assigns frontend attributes holding information about data type and
-// TensorFlow rendezvous channel name specific to `tf._XlaHostComputeMlir`.
-// TensorFlow rendezvous channel name is handled differently as individual names
-// are used per data send and receive.
-void SetFrontendAttributes(Operation* op, int32_t index, StringRef key,
-                           Type type, bool device_to_host) {
-  std::string formatted_key =
-      device_to_host ? llvm::formatv("{0}_dtoh_{1}", key, index).str()
-                     : llvm::formatv("{0}_htod_{1}", key, index).str();
-
-  return SetFrontendAttributes(op, formatted_key, type);
-}
-
-// Creates a `mhlo.send` op for sending value `operand`. If `index` is set,
-// `key` will be rewritten with a suffix and index. If `tpu_core` is set, op
-// sharding for the respective device will be set.
+// Creates a `mhlo.send` op for sending value `operand`. If `tpu_core` is set,
+// op sharding for the respective device will be set.
 Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value operand, StringRef key, const Optional<size_t>& index,
+                   Value operand, StringRef key, size_t index,
                    const Optional<int64_t>& tpu_core, Value token) {
   // type 2 == DEVICE_TO_HOST
   auto channel_handle = ChannelHandle::get(
@@ -266,23 +262,18 @@ Value CreateSendOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       loc, token.getType(), operand, token, channel_handle,
       /*is_host_transfer=*/builder.getBoolAttr(true));
 
-  if (index) {
-    SetFrontendAttributes(send, *index, key, operand.getType(),
-                          /*device_to_host=*/true);
-  } else {
-    SetFrontendAttributes(send, key, operand.getType());
-  }
+  SetFrontendAttributes(send, index, key, operand.getType(),
+                        /*device_to_host=*/true);
 
   if (tpu_core) SetOpSharding(send, *tpu_core);
 
   return send.getResult();
 }
 
-// Creates a `mhlo.recv` op for receiving a value. If `index` is set, `key` will
-// be rewritten with a suffix and index. If `tpu_core` is set, op sharding for
-// the respective device will be set.
+// Creates a `mhlo.recv` op for receiving a value. If `tpu_core` is set, op
+// sharding for the respective device will be set.
 Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
-                   Value result, StringRef key, const Optional<size_t>& index,
+                   Value result, StringRef key, size_t index,
                    const Optional<int64_t>& tpu_core, Value token) {
   // type 3 == HOST_TO_DEVICE
   auto channel_handle = ChannelHandle::get(
@@ -294,12 +285,10 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
   auto recv =
       builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
-  if (index) {
-    SetFrontendAttributes(recv, *index, key, result_type,
-                          /*device_to_host=*/false);
-  } else {
-    SetFrontendAttributes(recv, key, result.getType());
-  }
+
+  SetFrontendAttributes(recv, index, key, result_type,
+                        /*device_to_host=*/false);
+
   if (tpu_core) SetOpSharding(recv, *tpu_core);
 
   auto get_tuple_element =
@@ -369,7 +358,7 @@ Value RewriteSendToHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(send_to_host);
   token = CreateSendOp(builder, channel_id, send_to_host.getLoc(),
                        send_to_host.input(), send_to_host.key(),
-                       /*index=*/llvm::None, /*tpu_core=*/llvm::None, token);
+                       /*index=*/0, /*tpu_core=*/llvm::None, token);
 
   send_to_host.erase();
   return token;
@@ -381,7 +370,7 @@ Value RewriteRecvFromHostOp(OpBuilder& builder, int64_t& channel_id,
   builder.setInsertionPoint(recv_from_host);
   token = CreateRecvOp(builder, channel_id, recv_from_host.getLoc(),
                        recv_from_host.output(), recv_from_host.key(),
-                       /*index=*/llvm::None, /*tpu_core=*/llvm::None, token);
+                       /*index=*/0, /*tpu_core=*/llvm::None, token);
 
   recv_from_host.erase();
   return token;
@@ -541,6 +530,10 @@ void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
                                   Value token) {
   assert(terminator->getNumOperands() == 1);
   assert(terminator->getBlock()->getNumArguments() == 1);
+  // `mhlo.while` cond terminator does not need to be rewritten as it always
+  // returns a tensor<i1> predicate value.
+  if (auto while_parent = dyn_cast_or_null<WhileOp>(terminator->getParentOp()))
+    if (terminator->getParentRegion() == &while_parent.cond()) return;
 
   builder.setInsertionPoint(terminator);
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
@@ -554,25 +547,24 @@ void RewriteControlFlowTerminator(OpBuilder& builder, Operation* terminator,
 void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
                        SmallVectorImpl<OpVisitorState>& ops_to_visit,
                        Value token) {
-  SmallVector<Value, 2> new_branch_operands;
   llvm::SmallDenseMap<Value, Value> rewritten_operands;
-  auto old_branch_operands = llvm::drop_begin(region_if.getOperands(), 1);
 
   // Rewrite all region operands to have an extra operand `token`.
-  for (Value operand : old_branch_operands)
-    new_branch_operands.push_back(
-        GetValueWithToken(builder, operand, token, rewritten_operands));
+  Value new_true_operand = GetValueWithToken(builder, region_if.true_arg(),
+                                             token, rewritten_operands);
+  Value new_false_operand = GetValueWithToken(builder, region_if.false_arg(),
+                                              token, rewritten_operands);
 
   auto new_result_type = GetTypeWithToken(builder, region_if.getType());
 
   // Create new `mhlo.if` op with extra token operands and result.
   auto new_if = builder.create<IfOp>(region_if.getLoc(), new_result_type,
-                                     region_if.pred(), new_branch_operands[0],
-                                     new_branch_operands[1]);
+                                     region_if.pred(), new_true_operand,
+                                     new_false_operand);
 
   // Move all regions from the old `mhlo.if` op to its replacement.
-  for (auto& region_and_idx : llvm::enumerate(region_if.getRegions()))
-    new_if.getRegion(region_and_idx.index()).takeBody(*region_and_idx.value());
+  new_if.true_branch().takeBody(region_if.true_branch());
+  new_if.false_branch().takeBody(region_if.false_branch());
 
   // Forward result from old `mhlo.if` with replacement, and unpack result when
   // necessary.
@@ -594,21 +586,22 @@ void RewriteRegionIfOp(OpBuilder& builder, IfOp region_if,
   ops_to_visit.push_back({/*region_idx=*/0, new_token, new_if});
 }
 
-// Rewrites a `mhlo.if` region to receive and forward a `mhlo.token`. The block
-// argument is updated to have an extra `mhlo.token` element. If the region
-// block is to be rewritten, the next op to visit is set to the first op in the
-// block. Otherwise the terminator is updated to forward `token`.
-void RewriteRegionIfRegion(
-    OpBuilder& builder, IfOp region_if, unsigned region_idx,
-    SmallVectorImpl<OpVisitorState>& ops_to_visit,
+// Rewrites a `mhlo.if`/`mhlo.while` region to receive and forward a
+// `mhlo.token`. The block argument is updated to have an extra `mhlo.token`
+// element. If the region block is to be rewritten, the next op to visit is set
+// to the first op in the block. Otherwise the terminator is updated to forward
+// `token`.
+void RewriteControlFlowOpRegion(
+    OpBuilder& builder, Operation* region_op, unsigned region_idx,
+    Type block_arg_type, SmallVectorImpl<OpVisitorState>& ops_to_visit,
     const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token) {
-  ops_to_visit.push_back({region_idx + 1, token, region_if});
+  ops_to_visit.push_back({region_idx + 1, token, region_op});
 
-  Region& region = region_if.getRegion(region_idx);
+  Region& region = region_op->getRegion(region_idx);
   assert(llvm::hasSingleElement(region));
 
-  auto block_token = UpdateControlFlowBlockArgWithToken(
-      builder, region.front(), region_if.getOperand(region_idx + 1).getType());
+  auto block_token = UpdateControlFlowBlockArgWithToken(builder, region.front(),
+                                                        block_arg_type);
 
   if (control_flow_blocks.contains(&region.front())) {
     ops_to_visit.push_back({/*region_idx=*/llvm::None, block_token,
@@ -621,9 +614,9 @@ void RewriteRegionIfRegion(
 }
 
 // Rewrites an `mhlo.if` op or its region. If `region_idx` is not set, the op
-// operands and results rewritten. If `region_idx` is set, region `region_idx`
-// is rewritten to take in and return an additional token. Returns true if op
-// is still being rewritten.
+// operands and results are rewritten. If `region_idx` is set, region
+// `region_idx` is rewritten to take in and return an additional token. Returns
+// true if the op or its region was rewritten.
 bool ProcessRegionIfOp(OpBuilder& builder, IfOp region_if,
                        Optional<unsigned> region_idx,
                        SmallVectorImpl<OpVisitorState>& ops_to_visit,
@@ -637,8 +630,76 @@ bool ProcessRegionIfOp(OpBuilder& builder, IfOp region_if,
   }
 
   if (*region_idx < region_if.getNumRegions()) {
-    RewriteRegionIfRegion(builder, region_if, *region_idx, ops_to_visit,
-                          control_flow_blocks, token);
+    RewriteControlFlowOpRegion(builder, region_if, *region_idx,
+                               region_if.getOperand(*region_idx + 1).getType(),
+                               ops_to_visit, control_flow_blocks, token);
+    return true;
+  }
+
+  return false;
+}
+
+// Rewrites a `mhlo.while` op to receive and forward a `mhlo.token`. Operands to
+// the op for all of its regions are extended to have an extra operand `token`.
+void RewriteRegionWhileOp(OpBuilder& builder, WhileOp region_while,
+                          SmallVectorImpl<OpVisitorState>& ops_to_visit,
+                          Value token) {
+  llvm::SmallDenseMap<Value, Value> rewritten_operands;
+
+  // Rewrite region operand to have an extra operand `token`.
+  Value new_val_operand =
+      GetValueWithToken(builder, region_while.val(), token, rewritten_operands);
+
+  auto new_result_type = GetTypeWithToken(builder, region_while.getType());
+
+  // Create new `mhlo.while` op with extra token operand and result.
+  auto new_while = builder.create<WhileOp>(region_while.getLoc(),
+                                           new_result_type, new_val_operand);
+
+  // Move all regions from the old `mhlo.while` op to its replacement.
+  new_while.cond().takeBody(region_while.cond());
+  new_while.body().takeBody(region_while.body());
+
+  // Forward result from old `mhlo.while` with replacement, and unpack result
+  // when necessary.
+  ReplaceWithTupleResult(builder, region_while.getResult(),
+                         new_while.getResult());
+
+  auto new_token = builder.create<GetTupleElementOp>(
+      new_while.getLoc(), new_while.getResult(),
+      new_while.getResult().getType().cast<TupleType>().size() - 1);
+
+  region_while.erase();
+
+  // Remove leftover operands to old `mhlo.while` if they have no uses.
+  for (auto& rewritten_operand : rewritten_operands)
+    if (auto tuple_op = rewritten_operand.getFirst().getDefiningOp<TupleOp>())
+      if (tuple_op.use_empty()) tuple_op.erase();
+
+  // Next op to visit. The replacement is visited but at its first region. The
+  // token result of the new region if is propagated.
+  ops_to_visit.push_back({/*region_idx=*/0, new_token, new_while});
+}
+
+// Rewrites an `mhlo.while` op or its region. If `region_idx` is not set, the op
+// operands and results are rewritten. If `region_idx` is set, region
+// `region_idx` is rewritten to take in and return an additional token. Returns
+// true if the op or its region was rewritten.
+bool ProcessRegionWhileOp(
+    OpBuilder& builder, WhileOp region_while, Optional<unsigned> region_idx,
+    SmallVectorImpl<OpVisitorState>& ops_to_visit,
+    const llvm::SmallPtrSetImpl<Block*>& control_flow_blocks, Value token) {
+  builder.setInsertionPoint(region_while);
+
+  if (!region_idx) {
+    RewriteRegionWhileOp(builder, region_while, ops_to_visit, token);
+    return true;
+  }
+
+  if (*region_idx < region_while.getNumRegions()) {
+    RewriteControlFlowOpRegion(builder, region_while, *region_idx,
+                               region_while.val().getType(), ops_to_visit,
+                               control_flow_blocks, token);
     return true;
   }
 
@@ -729,6 +790,11 @@ LogicalResult RewriteFunction(
       if (op_to_visit.region_idx || control_flow_ops.contains(region_if))
         if (ProcessRegionIfOp(builder, region_if, op_to_visit.region_idx,
                               ops_to_visit, control_flow_blocks, token))
+          continue;
+    } else if (auto region_while = dyn_cast<WhileOp>(curr_op)) {
+      if (op_to_visit.region_idx || control_flow_ops.contains(region_while))
+        if (ProcessRegionWhileOp(builder, region_while, op_to_visit.region_idx,
+                                 ops_to_visit, control_flow_blocks, token))
           continue;
     } else if (auto region_terminator = dyn_cast<mhlo::ReturnOp>(curr_op)) {
       RewriteControlFlowTerminator(builder, region_terminator, token);

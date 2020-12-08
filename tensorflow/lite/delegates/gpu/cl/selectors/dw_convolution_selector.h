@@ -18,18 +18,17 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectDWConvolution(
+    const DepthwiseConvolution2DAttributes& attr, const GpuInfo& gpu_info,
+    const OperationDef& op_def);
 
 }  // namespace cl
 }  // namespace gpu

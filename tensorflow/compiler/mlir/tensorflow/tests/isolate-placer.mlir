@@ -33,4 +33,4 @@ func @foo(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
 // CHECK: "tf.Identity"([[CALL_RESULT_REG]])
 
 // Match the function name
-// CHECK: func @[[FUNCTION]]
+// CHECK: func private @[[FUNCTION]]

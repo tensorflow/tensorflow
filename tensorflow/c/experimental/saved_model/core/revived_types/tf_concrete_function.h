@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
-#include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/flat_tensor_function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 
@@ -58,26 +58,22 @@ class TFConcreteFunction : public ConcreteFunction {
                        std::unique_ptr<TFConcreteFunction>* out);
 
   // This method returns the "Call" Op used to execute the function.
-  Status GetCallOp(absl::Span<AbstractTensorHandle* const> inputs,
-                   ImmediateOpPtr* out) override;
+  Status MakeCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                    ImmediateOpPtr* out) const override;
 
   const FunctionMetadata& GetFunctionMetadata() const override;
 
-  ~TFConcreteFunction() override;
+  ~TFConcreteFunction() override = default;
 
  private:
-  TFConcreteFunction(const std::string& name,
-                     std::vector<ImmediateExecutionTensorHandle*> captures,
-                     FunctionMetadata metadata, ImmediateExecutionContext* ctx);
+  TFConcreteFunction(std::unique_ptr<FlatTensorFunction> func,
+                     FunctionMetadata metadata);
 
   TFConcreteFunction(const TFConcreteFunction&) = delete;
   TFConcreteFunction& operator=(const TFConcreteFunction&) = delete;
 
-  // Name of the FunctionDef corresponding to this TFConcreteFunction
-  std::string name_;
-  std::vector<ImmediateExecutionTensorHandle*> captures_;
+  std::unique_ptr<FlatTensorFunction> func_;
   FunctionMetadata metadata_;
-  ImmediateExecutionContext* ctx_;
 };
 
 }  // namespace tensorflow

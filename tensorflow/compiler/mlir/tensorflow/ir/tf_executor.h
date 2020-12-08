@@ -45,44 +45,23 @@ class TensorFlowExecutorDialect : public Dialect {
   void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
-namespace TFTypes {
-enum Kind {
-  Control = Type::FIRST_TENSORFLOW_EXECUTOR_TYPE,
-  Token,
-};
-}  // namespace TFTypes
-
 // The Control type is a token-like value that models control dependencies from
 // TensorFlow graphs.
 class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
  public:
   using Base::Base;
-
-  static ControlType get(MLIRContext *context) {
-    return Base::get(context, TFTypes::Control);
-  }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == TFTypes::Control; }
 };
 
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
-
-  static TokenType get(MLIRContext *context) {
-    return Base::get(context, TFTypes::Token);
-  }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == TFTypes::Token; }
 };
+
+}  // namespace tf_executor
+}  // namespace mlir
 
 // Declares the operations for this dialect using the generated header.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h.inc"
-
-}  // namespace tf_executor
-}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_EXECUTOR_H_

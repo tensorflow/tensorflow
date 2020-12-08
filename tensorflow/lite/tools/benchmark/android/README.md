@@ -1,12 +1,12 @@
-# TFLite Android Model Benchmark Tool
+# TFLite Model Benchmark Tool with Android Apk
 
 ## Description
 
 This Android benchmark app is a simple wrapper around the TensorFlow Lite
 [command-line benchmark utility](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark).
 
-Pushing and executing binaries directly on Android is a valid approach to
-benchmarking, but it can result in subtle (but observable) differences in
+Pushing and executing binaries directly on an Android device is a valid approach
+to benchmarking, but it can result in subtle (but observable) differences in
 performance relative to execution within an actual Android app. In particular,
 Android's scheduler tailors behavior based on thread and process priorities,
 which differ between a foreground Activity/Application and a regular background
@@ -96,7 +96,13 @@ page for more detailed information.
 (0)-(3) Follow the steps (0)-(3) of [build/install/run](#to-buildinstallrun)
 section.
 
-(4) Set up Quick Settings tile for System Tracing app on your device. Follow the
+(4) Enable platform tracing.
+
+```
+adb shell setprop debug.tflite.trace 1
+```
+
+(5) Set up Quick Settings tile for System Tracing app on your device. Follow the
 [instruction](https://developer.android.com/topic/performance/tracing/on-device#set-up-tile).
 The System Tracing tile will be added to the Quick Settings panel.
 
@@ -105,20 +111,20 @@ Refer to the
 [guide](https://developer.android.com/topic/performance/tracing/on-device#app-menu)
 for more information.
 
-(5) Tap the System Tracing tile, which has the label "Record trace". The tile
+(6) Tap the System Tracing tile, which has the label "Record trace". The tile
 becomes enabled, and a persistent notification appears to notify you that the
 system is now recording a trace.
 
-(6) Run the benchmark with platform tracing enabled.
+(7) Run the benchmark with platform tracing enabled.
 
 ```
 adb shell am start -S \
   -n org.tensorflow.lite.benchmark/.BenchmarkModelActivity \
   --es args '"--graph=/data/local/tmp/mobilenet_quant_v1_224.tflite \
-  --num_threads=4 --enable_op_profiling=true --enable_platform_tracing=true"'
+  --num_threads=4"'
 ```
 
-(7) Wait until the benchmark finishes. It can be checked from Android log
+(8) Wait until the benchmark finishes. It can be checked from Android log
 messages, e.g.,
 
 ```
@@ -127,14 +133,14 @@ adb logcat | grep "Average inference"
 ... tflite  : Average inference timings in us: Warmup: 91471, Init: 4108, Inference: 80660.1
 ```
 
-(8) Stop tracing by tapping either the System Tracing tile in the Quick Settings
+(9) Stop tracing by tapping either the System Tracing tile in the Quick Settings
 panel or on the System Tracing notification. The system displays a new
 notification that contains the message "Saving trace". When saving is complete,
 the system dismisses the notification and displays a third notification "Trace
 saved", confirming that your trace has been saved and that you're ready to share
 the system trace.
 
-(9)
+(10)
 [Share](https://developer.android.com/topic/performance/tracing/on-device#share-trace)
 a trace file,
 [convert](https://developer.android.com/topic/performance/tracing/on-device#converting_between_trace_formats)
@@ -143,3 +149,9 @@ between tracing formats and
 an HTML report. Note that, the captured tracing file format is either in
 Perfetto format or in Systrace format depending on the Android version of your
 device. Select the appropriate method to handle the generated file.
+
+(11) Disable platform tracing.
+
+```
+adb shell setprop debug.tflite.trace 0
+```

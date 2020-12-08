@@ -101,7 +101,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
     super(Adadelta, self)._prepare_local(var_device, var_dtype, apply_state)
     apply_state[(var_device, var_dtype)].update(
         dict(
-            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            epsilon=ops.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype),
             rho=array_ops.identity(self._get_hyper('rho', var_dtype))))
 
   def set_weights(self, weights):
@@ -152,7 +153,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
     config = super(Adadelta, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'rho': self._serialize_hyperparameter('rho'),
         'epsilon': self.epsilon,
     })

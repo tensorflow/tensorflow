@@ -33,12 +33,15 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TfLiteIntArray* input_dims = input->dims;
   int input_dims_size = input_dims->size;
   TF_LITE_ENSURE(context, input_dims_size >= 2);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(input_dims_size);
   for (int i = 0; i < input_dims_size; i++) {
@@ -126,9 +129,14 @@ void FillDiagHelper(const TfLiteTensor* input, const TfLiteTensor* diag,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  const TfLiteTensor* diag = GetInput(context, node, kDiagonalTensor);
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  const TfLiteTensor* diag;
+  TF_LITE_ENSURE_OK(context,
+                    GetInputSafe(context, node, kDiagonalTensor, &diag));
   FillDiagHelper(input, diag, output);
   return kTfLiteOk;
 }

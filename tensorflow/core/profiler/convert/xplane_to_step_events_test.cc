@@ -79,7 +79,7 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&device_plane_builder, &stream, "matmul", 50, 40,
                {{StatType::kCorrelationId, kFirstCorrelationId}});
 
-  GroupTfEvents(&space, nullptr);
+  GroupTfEvents(&space);
   StepEvents device_step_events =
       ConvertDeviceTraceXPlaneToStepEvents(*device_plane);
   EXPECT_EQ(device_step_events.size(), 1);

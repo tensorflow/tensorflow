@@ -35,18 +35,18 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Export optional variables for running pip.sh
-export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36'
+export TF_TEST_FILTER_TAGS='gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36,-no_cuda11'
 export TF_BUILD_FLAGS="--config=release_gpu_linux "
 export TF_TEST_FLAGS="--test_tag_filters=${TF_TEST_FILTER_TAGS} --build_tag_filters=${TF_TEST_FILTER_TAGS} \
 --distinct_host_configuration=false \
---action_env=TF_CUDA_VERSION=10 --action_env=TF_CUDNN_VERSION=7 --test_env=TF2_BEHAVIOR=1 \
+--action_env=TF_CUDA_VERSION=11 --action_env=TF_CUDNN_VERSION=8 --test_env=TF2_BEHAVIOR=1 \
 --config=cuda --test_output=errors --local_test_jobs=4 --test_lang_filters=py \
 --verbose_failures=true --keep_going --define=no_tensorflow_py_deps=true \
 --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute "
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"
 #export IS_NIGHTLY=0 # Not nightly; uncomment if building from tf repo.
-export TF_PROJECT_NAME=="tensorflow_gpu"
+export TF_PROJECT_NAME="tensorflow"  # single pip package!
 export TF_PIP_TEST_ROOT="pip_test"
 
 # To build both tensorflow and tensorflow-gpu pip packages

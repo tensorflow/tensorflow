@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 
-#include <cstdlib>
+#include <stddef.h>
+#include <stdint.h>
 
-#include <gmock/gmock.h>
+#include <cstdlib>
+#include <utility>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
 namespace gpu {
@@ -135,12 +141,28 @@ class DelegatedInterpreter {
   }
 
   // Get the TfLiteContext to be mocked for swapping out functions that have to
-  // be called inside delegate (i.e. in delegat kernel mode).
+  // be called inside delegate (i.e. in delegate kernel mode).
   TfLiteContext* context() { return interpreter_.primary_subgraph().context(); }
 
-  std::vector<std::pair<TfLiteNode, TfLiteRegistration>>&
-  nodes_and_registration() {
-    return interpreter_.primary_subgraph().nodes_and_registration();
+  // node(int) and registration(int) are used to implement
+  // GetNodeAndRegistration.  We can't implement those using
+  //   TfLiteContext *context = interpreter_.primary_subgraph().context();
+  //   context->GetNodeAndRegistration(context, &node, &registration);
+  // here, because calling GetNodeAndRegistration from within it's own
+  // implementation would lead to an infinite loop.
+  // Instead, we just call node_and_registration and use a const_cast.
+  // These const_casts are a bit ugly, but I think less ugly than exposing
+  // the private GetNodeAndRegistration method in Subgraph as public,
+  // or making this class a friend of Subgraph.
+  TfLiteNode* node(int index) {
+    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration =
+        interpreter_.primary_subgraph().node_and_registration(index);
+    return const_cast<TfLiteNode*>(&node_and_registration->first);
+  }
+  TfLiteRegistration* registration(int index) {
+    const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration =
+        interpreter_.primary_subgraph().node_and_registration(index);
+    return const_cast<TfLiteRegistration*>(&node_and_registration->second);
   }
 
   TfLiteIntArray* exec_plan() const { return exec_plan_; }
@@ -274,10 +296,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceAcceptsFp16DequantizeNodes) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_fp16_add_op->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_fp16_add_op->node(node_index);
+    *registration = interpreter_fp16_add_op->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -340,10 +360,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceRejectsFp16DequantizeNodes) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_fp16_gt_op->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_fp16_gt_op->node(node_index);
+    *registration = interpreter_fp16_gt_op->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -456,9 +474,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceDoesNotPruneUint8) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg = interpreter_fp32->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_fp32->node(node_index);
+    *registration = interpreter_fp32->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -624,10 +641,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceMultiplePartitions) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter2_fp32->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter2_fp32->node(node_index);
+    *registration = interpreter2_fp32->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -839,9 +854,8 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectFp16Nodes_SinglePartition) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg = interpreter_mn->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_mn->node(node_index);
+    *registration = interpreter_mn->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =
@@ -911,9 +925,8 @@ TEST(ModelBuilderTest,
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg = interpreter_mn2->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_mn2->node(node_index);
+    *registration = interpreter_mn2->registration(node_index);
     return kTfLiteOk;
   };
 
@@ -1115,10 +1128,8 @@ TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
   context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
                                        TfLiteNode** node,
                                        TfLiteRegistration** registration) {
-    auto& node_and_reg =
-        interpreter_quant->nodes_and_registration()[node_index];
-    *node = &node_and_reg.first;
-    *registration = &node_and_reg.second;
+    *node = interpreter_quant->node(node_index);
+    *registration = interpreter_quant->registration(node_index);
     return kTfLiteOk;
   };
   context->PreviewDelegatePartitioning =

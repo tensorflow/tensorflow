@@ -20,10 +20,10 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -42,13 +42,13 @@ class XlaBuilderTest : public ::testing::Test {
  protected:
   XlaBuilderTest()
       : name_(SetupTest()),
-        context_(),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(&context_))),
         builder_(&module_->getBodyRegion()),
-        xla_builder_(name_, builder_, module_->getLoc()) {}
+        xla_builder_(name_, builder_, module_->getLoc()) {
+    context_.loadDialect<mlir::mhlo::MhloDialect>();
+  }
 
   string SetupTest() {
-    mlir::registerDialect<mlir::mhlo::MhloDialect>();
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

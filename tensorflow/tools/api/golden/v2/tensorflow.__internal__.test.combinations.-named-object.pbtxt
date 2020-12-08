@@ -1,0 +1,9 @@
+path: "tensorflow.__internal__.test.combinations.NamedObject"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.test_combinations.NamedObject\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'name\', \'obj\'], varargs=None, keywords=None, defaults=None"
+  }
+}

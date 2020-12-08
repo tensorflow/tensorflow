@@ -17,10 +17,11 @@ limitations under the License.
 #define MLIR_HLO_DIALECT_MHLO_IR_REGISTER_H_
 
 namespace mlir {
+class DialectRegistry;
 namespace mhlo {
 
-void registerAllDialects();
-
+// Add chlo, mhlo, lmhlo dialects to the provided registry.
+void registerAllMhloDialects(DialectRegistry &registry);
 }
 }  // namespace mlir
 

@@ -89,8 +89,9 @@ class CSRSparseMatrixComponentsOp : public OpKernel {
       slice_int(d,
                 /*output*/ row_ptrs,
                 /*input*/ csr_sparse_matrix->row_pointers().vec<int32>(),
-                /*slice_indices*/ EVec{index * (rows + 1)},
-                /*slice_sizes*/ EVec{rows + 1});
+                /*slice_indices*/
+                EVec{static_cast<Eigen::DenseIndex>(index * (rows + 1))},
+                /*slice_sizes*/ EVec{static_cast<Eigen::DenseIndex>(rows + 1)});
       slice_int(d,
                 /*output*/ col_inds,
                 /*input*/ csr_sparse_matrix->col_indices().vec<int32>(),

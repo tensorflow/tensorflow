@@ -116,6 +116,10 @@ class HloToIrBindings {
   llvm::Value* temp_buffer_base_ = nullptr;
 };
 
+// Converts `ir_value` with type i8* to a typed LLVM Value* based on `shape`.
+llvm::Value* CastToTypedValue(const Shape& shape, llvm::Value* ir_value,
+                              llvm::IRBuilder<>* b);
+
 }  // namespace gpu
 }  // namespace xla
 

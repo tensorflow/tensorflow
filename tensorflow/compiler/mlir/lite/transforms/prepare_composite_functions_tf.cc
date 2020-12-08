@@ -26,11 +26,10 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -59,6 +59,7 @@ namespace {
 
 constexpr char kTFAPIImplements[] = "tf.api_implements";
 constexpr char kTFTextAPIPrefix[] = "tftext:";
+constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
 
 using mlir::TF::FuncAttr;
@@ -99,59 +100,6 @@ class ConvertEmbeddedLookupFunc {
   FuncOp func_;
 };
 
-// Abstracts the conversion of the padded NMS composite function.
-class ConvertNMSPaddedFunc {
- public:
-  explicit ConvertNMSPaddedFunc(FuncOp func) : func_(func) {}
-
-  void RewriteFunc() {
-    func_.setAttr(kTFImplements,
-                  StringAttr::get(kTfNMSPadded, func_.getContext()));
-    Value boxes = func_.getArgument(0);
-    Value scores = func_.getArgument(1);
-    Value max_output_size = func_.getArgument(2);
-    Value iou_threshold = func_.getArgument(3);
-    Value score_threshold = func_.getArgument(4);
-    auto output_type0 = func_.getType().getResult(0);
-    auto output_type1 = func_.getType().getResult(1);
-
-    OpBuilder builder(func_.getBody());
-    auto op = builder.create<mlir::TFL::NonMaxSuppressionV4Op>(
-        func_.getLoc(), output_type0, output_type1, boxes, scores,
-        max_output_size, iou_threshold, score_threshold);
-
-    builder.create<mlir::ReturnOp>(func_.getLoc(), op.getResults());
-  }
-
-  LogicalResult VerifySignature() {
-    // Verify high-level function signature.
-    // Relevant argument characteristics are checked by the TFL op definition.
-    if (func_.getNumArguments() < 5) {
-      return func_.emitError()
-             << "Invalid number of arguments to "
-                "non_max_suppression_padded_v2 (need atleast 5): "
-             << func_.getNumArguments();
-    }
-    if (func_.getType().getNumResults() != 2) {
-      return func_.emitError() << "Invalid number of results from "
-                                  "non_max_suppression_padded_v2 (need 2): "
-                               << func_.getType().getNumResults();
-    }
-    // The TFLite fused op does not support batching yet.
-    // TODO(b/158709815): Add support for batches with padded NMS.
-    auto boxes_type =
-        func_.getArgument(0).getType().dyn_cast<RankedTensorType>();
-    if (!boxes_type.hasRank() || boxes_type.getRank() != 2) {
-      return func_.emitError() << "TFLite does not support batched input for "
-                                  "non_max_suppression_padded";
-    }
-    return success();
-  }
-
- private:
-  FuncOp func_;
-};
-
 // This pass uses mechanisms listed in RFC:
 // https://github.com/tensorflow/community/pull/113
 // It prepares composite functions that are attributed to indicate
@@ -161,6 +109,10 @@ class ConvertNMSPaddedFunc {
 class PrepareCompositeFunctionsPass
     : public PassWrapper<PrepareCompositeFunctionsPass,
                          OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect>();
+  }
+
  public:
   explicit PrepareCompositeFunctionsPass() {}
 
@@ -172,54 +124,34 @@ class PrepareCompositeFunctionsPass
   void runOnOperation() override;
 };
 
-void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
-                                                        StringAttr attr) {
-  if (attr.getValue() == "embedding_matmul") {
-    func.eraseBody();
-    func.addEntryBlock();
-    // Convert the composite embedding_matmul function body to a
-    // TFLite fused embedding_lookup op.
-    ConvertEmbeddedLookupFunc convert_embedded_lookup(func);
-    if (failed(convert_embedded_lookup.VerifySignature())) {
-      return signalPassFailure();
+LogicalResult CheckFusableLayerNormalizedLstmCellSimple(FuncOp lstm_func) {
+  for (int i = 0; i < 5; ++i) {
+    auto input = lstm_func.getArgument(i);
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type) {
+      lstm_func.emitWarning(
+          "we cannot fuse this lstm func because all the inputs have not "
+          "ranked tensor type.");
+      return failure();
     }
-    convert_embedded_lookup.RewriteFunc();
-  } else if (attr.getValue() == mlir::TFL::kLstmCellSimple) {
-    func.eraseBody();
-    func.addEntryBlock();
-    ConvertLSTMCellSimpleToFusedLSTM convert_lstm_cell_simple(func);
-    if (failed(convert_lstm_cell_simple.RewriteFunc())) {
-      return signalPassFailure();
-    }
-  } else if (attr.getValue() == mlir::TFL::kLayerNormalizedLstmCellSimple) {
-    func.eraseBody();
-    func.addEntryBlock();
-    ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
-        convert_layer_norm_lstm_cell_simple(func);
-    if (failed(convert_layer_norm_lstm_cell_simple.RewriteFunc())) {
-      return signalPassFailure();
-    }
-  } else if (attr.getValue() == kTfNMSPadded) {
-    func.eraseBody();
-    func.addEntryBlock();
-    ConvertNMSPaddedFunc convert_nms_padded(func);
-    if (failed(convert_nms_padded.VerifySignature())) {
-      return signalPassFailure();
-    }
-    convert_nms_padded.RewriteFunc();
   }
+
+  return success();
 }
 
-void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
-    FuncOp func, FuncAttr attr) {
-  auto api_name = attr.GetName().getLeafReference();
-  bool enable_fuse_tftext =
-      fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
-  if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
-    if (failed(ConvertTFTextAPI(func, api_name, attr))) {
-      return signalPassFailure();
+LogicalResult CheckFusableLstmCellSimple(FuncOp lstm_func) {
+  for (int i = 0; i < 4; ++i) {
+    auto input = lstm_func.getArgument(i);
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type) {
+      lstm_func.emitWarning(
+          "we cannot fuse this lstm func because all the inputs have not "
+          "ranked tensor type.");
+      return failure();
     }
   }
+
+  return success();
 }
 
 LogicalResult CheckOutputConsumer(
@@ -256,15 +188,113 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
   }
 
   // We should know the batch size in advance for the lstm fusion.
-  // A good indicator of batch size is both cell state and input state have
-  // fixed shape. (indices 1 & 2).
-  for (int i = 1; i < 3; ++i) {
+  // A good indicator of batch size is both cell state and input state (indices
+  // 1 & 2) have fixed shape and other input tenors should have ranked tensor
+  // types.
+  for (int i = 0; i < 6; ++i) {
     auto input = lstm_func.getArgument(i);
     auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
-    if (!input_type || !input_type.hasStaticShape()) return failure();
+    if (!input_type) {
+      lstm_func.emitWarning(
+          "we cannot fuse this lstm func because all the inputs have not "
+          "ranked tensor type.");
+      return failure();
+    }
+    switch (i) {
+      case 1:  // output_init_state
+      case 2:  // hidden_init_state
+        if (!input_type.hasStaticShape()) {
+          lstm_func.emitWarning(
+              "we cannot fuse this lstm func because the batch size is not "
+              "fixed, please consider setting fixed batch size like "
+              "https://github.com/tensorflow/tensorflow/blob/master/tensorflow/"
+              "lite/examples/experimental_new_converter/"
+              "Keras_LSTM_fusion_Codelab.ipynb");
+          return failure();
+        }
+        break;
+      case 3:  // wiehgt
+      case 4:  // recurrent_kernel
+      case 5:  // bias
+        if (!input_type.hasStaticShape()) {
+          lstm_func.emitWarning(
+              "we cannot fuse this lstm func because the weight & bias are not "
+              "fixed, please consider setting fixed batch size like "
+              "https://github.com/tensorflow/tensorflow/blob/master/tensorflow/"
+              "lite/examples/experimental_new_converter/"
+              "Keras_LSTM_fusion_Codelab.ipynb");
+          return failure();
+        }
+        break;
+      default:
+        // No op.
+        break;
+    }
   }
 
   return success();
+}
+
+void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
+                                                        StringAttr attr) {
+  if (attr.getValue() == "embedding_matmul") {
+    func.eraseBody();
+    func.addEntryBlock();
+    // Convert the composite embedding_matmul function body to a
+    // TFLite fused embedding_lookup op.
+    ConvertEmbeddedLookupFunc convert_embedded_lookup(func);
+    if (failed(convert_embedded_lookup.VerifySignature())) {
+      return signalPassFailure();
+    }
+    convert_embedded_lookup.RewriteFunc();
+  } else if (attr.getValue() == mlir::TFL::kLstmCellSimple) {
+    // Check if the lstm cell simple can be fused, if not, we just don't do
+    // anything.
+    if (failed(CheckFusableLstmCellSimple(func))) return;
+    func.eraseBody();
+    func.addEntryBlock();
+    ConvertLSTMCellSimpleToFusedLSTM convert_lstm_cell_simple(func);
+    if (failed(convert_lstm_cell_simple.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else if (attr.getValue() == mlir::TFL::kLayerNormalizedLstmCellSimple) {
+    // Check if the layer normalized lstm cell simple can be fused, if not, we
+    // just don't do anything.
+    if (failed(CheckFusableLayerNormalizedLstmCellSimple(func))) return;
+    func.eraseBody();
+    func.addEntryBlock();
+    ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
+        convert_layer_norm_lstm_cell_simple(func);
+    if (failed(convert_layer_norm_lstm_cell_simple.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else if (attr.getValue() == kTfNMSPadded) {
+    func.eraseBody();
+    func.addEntryBlock();
+    ConvertNMSPaddedFunc convert_nms_padded(func);
+    if (failed(convert_nms_padded.VerifySignature())) {
+      return signalPassFailure();
+    }
+    convert_nms_padded.RewriteFunc();
+  }
+}
+
+void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
+    FuncOp func, FuncAttr attr) {
+  auto api_name = attr.GetName().getLeafReference();
+  bool enable_fuse_tftext =
+      fuse_tftext_flag || IsTFTextRegistered(tensorflow::OpRegistry::Global());
+  if (api_name.startswith(kTFTextAPIPrefix) && enable_fuse_tftext) {
+    if (failed(ConvertTFTextAPI(func, api_name, attr))) {
+      return signalPassFailure();
+    }
+  } else if (api_name == kCustomSSDPostprocessing) {
+    ConvertSSDPostProcessFunc convert_ssd_postprocess(func, attr);
+    if (failed(convert_ssd_postprocess.VerifySignature()) ||
+        failed(convert_ssd_postprocess.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  }
 }
 
 void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,

@@ -23,7 +23,7 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -258,25 +258,30 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllCloseAccordingToType(
             [[3.0], [4.0 - 3.0 * 0.01 - 2.0 * 0.01]], self.evaluate(var1))
 
-  def testCapturingInDefunWhileExecutingEagerly(self):
-    with context.eager_mode():
-      optimizer = gradient_descent.SGD(1.0)
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testCapturingInFunctionWhileExecutingEagerly(self):
+    optimizer = gradient_descent.SGD(1.0)
 
-      def step():
-        self.v = variables.Variable(1.0)
-        with backprop.GradientTape() as tape:
-          loss = self.v**2
-        grad = tape.gradient(loss, self.v)
-        optimizer.apply_gradients([(grad, self.v)])
-        return self.v.read_value()
+    var_holder = {}
+    def step():
+      if not var_holder:
+        var_holder["var"] = variables.Variable(1.0)
+      else:
+        var_holder["var"].assign(1.0)
 
-      compiled_step = function.defun(step)
+      with backprop.GradientTape() as tape:
+        loss = var_holder["var"]**2
+      grad = tape.gradient(loss, var_holder["var"])
+      optimizer.apply_gradients([(grad, var_holder["var"])])
+      return var_holder["var"].read_value()
 
-      self.assertEqual(float(step()), -1.0)
-      self.assertEqual(float(compiled_step()), -1.0)
-      # This shouldn't fail; in particular, the learning rate tensor should
-      # be an EagerTensor once again, not a graph Tensor.
-      self.assertEqual(float(step()), -1.0)
+    compiled_step = def_function.function(step)
+
+    self.assertEqual(float(step()), -1.0)
+    self.assertEqual(float(compiled_step()), -1.0)
+    # This shouldn't fail; in particular, the learning rate tensor should
+    # be an EagerTensor once again, not a graph Tensor.
+    self.assertEqual(float(step()), -1.0)
 
   def testConstructSGDWithLR(self):
     opt = gradient_descent.SGD(lr=1.0)

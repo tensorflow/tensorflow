@@ -50,7 +50,7 @@ def timeseries_dataset_from_array(
       containing consecutive data points (timesteps).
       Axis 0 is expected to be the time dimension.
     targets: Targets corresponding to timesteps in `data`.
-      It should have same length as `data`. `targets[i]` should be the target
+      `targets[i]` should be the target
       corresponding to the window that starts at index `i`
       (see example 2 below).
       Pass None if you don't have target data (in this case the dataset will
@@ -104,10 +104,11 @@ def timeseries_dataset_from_array(
   timesteps to predict the next timestep, you would use:
 
   ```python
-  input_data = data[:-10]
-  targets = data[10:]
+  input_data = data
+  offset = 10
+  targets = data[offset:]
   dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
-      input_data, targets, sequence_length=10)
+      input_data, targets, sequence_length=offset)
   for batch in dataset:
     inputs, targets = batch
     assert np.array_equal(inputs[0], data[:10])  # First sequence: steps [0-9]
@@ -115,12 +116,6 @@ def timeseries_dataset_from_array(
     break
   ```
   """
-  # Validate the shape of data and targets
-  if targets is not None and len(targets) != len(data):
-    raise ValueError('Expected data and targets to have the same number of '
-                     'time steps (axis 0) but got '
-                     'shape(data) = %s; shape(targets) = %s.' %
-                     (data.shape, targets.shape))
   if start_index and (start_index < 0 or start_index >= len(data)):
     raise ValueError('start_index must be higher than 0 and lower than the '
                      'length of the data. Got: start_index=%s '
@@ -156,6 +151,8 @@ def timeseries_dataset_from_array(
 
   # Determine the lowest dtype to store start positions (to lower memory usage).
   num_seqs = end_index - start_index - (sequence_length * sampling_rate) + 1
+  if targets is not None:
+    num_seqs = min(num_seqs, len(targets))
   if num_seqs < 2147483647:
     index_dtype = 'int32'
   else:

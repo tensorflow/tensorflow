@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -136,8 +136,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteConcatenationParams* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
 
-  TfLiteType input_type = GetInput(context, node, 0)->type;
-  TfLiteType output_type = GetOutput(context, node, kOutputTensor)->type;
+  const TfLiteTensor* input_tensor = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input_tensor != nullptr);
+  TfLiteType input_type = input_tensor->type;
+  const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output_tensor != nullptr);
+  TfLiteType output_type = output_tensor->type;
 
   // Check activation and input type
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
@@ -156,6 +160,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Shapes with dimensions >4 are not yet supported with static allocation.
   for (int i = 0; i < num_inputs; ++i) {
     const TfLiteTensor* input = GetInput(context, node, i);
+    TF_LITE_ENSURE(context, input != nullptr);
     int num_dimensions = NumDimensions(input);
 
     if (num_dimensions > 4) {
@@ -173,6 +178,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = static_cast<OpData*>(node->user_data);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   switch (output_type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
@@ -199,6 +205,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       // Store input scale and zero point values in OpParams:
       for (int i = 0; i < node->inputs->size; ++i) {
         const TfLiteTensor* t = GetInput(context, node, i);
+        TF_LITE_ENSURE(context, t != nullptr);
         input_scales[i] = t->params.scale;
         input_zero_points[i] = t->params.zero_point;
       }
@@ -220,7 +227,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteType output_type = GetOutput(context, node, kOutputTensor)->type;
+  const TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output_tensor != nullptr);
+  TfLiteType output_type = output_tensor->type;
 
   switch (output_type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:

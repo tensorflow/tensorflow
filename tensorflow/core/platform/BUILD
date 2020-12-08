@@ -52,10 +52,18 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -68,6 +76,7 @@ exports_files(
         "cpu_info.cc",
         "cpu_info.h",
         "cuda_libdevice_path.h",
+        "bfloat16.h",
         "demangle.h",
         "env.cc",
         "env.h",
@@ -124,6 +133,16 @@ cc_library(
 )
 
 cc_library(
+    name = "bfloat16",
+    hdrs = ["bfloat16.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":byte_order",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
     deps = [
@@ -135,6 +154,7 @@ cc_library(
 cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -158,8 +178,10 @@ cc_library(
 cc_library(
     name = "cord",
     hdrs = ["cord.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
+        "@com_google_absl//absl/strings:cord",
     ] + tf_platform_deps("cord"),
 )
 
@@ -186,6 +208,7 @@ cc_library(
 cc_library(
     name = "cuda",
     hdrs = ["cuda.h"],
+    compatible_with = [],
     deps = [
         ":platform",
         "//tensorflow/stream_executor/cuda:cuda_activation_header",
@@ -228,6 +251,11 @@ cc_library(
         "threadpool.h",
     ],
     deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
 cc_library(
@@ -360,9 +388,8 @@ filegroup(
 
 cc_library(
     name = "mutex",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
-    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -423,6 +450,7 @@ cc_library(
         ":strcat",
         ":stringpiece",
         ":types",
+        "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
 )
@@ -430,6 +458,7 @@ cc_library(
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -600,10 +629,6 @@ filegroup(
     srcs = [
         "stacktrace_handler.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
 )
 
 cc_library(
@@ -679,12 +704,12 @@ cc_library(
 
 cc_library(
     name = "strong_hash",
-    hdrs = ["strong_hash.h"],
-    visibility = ["//visibility:public"],
+    textual_hdrs = ["strong_hash.h"],
     deps = [
         ":platform",
         ":types",
-    ] + tf_platform_deps("strong_hash"),
+        "@highwayhash//:sip_hash",
+    ],
 )
 
 cc_library(
@@ -762,6 +787,7 @@ cc_library(
         "ctstring_internal.h",
         "tstring.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":cord",
         "@com_google_absl//absl/strings",
@@ -779,13 +805,10 @@ filegroup(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
-    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow_text:__subpackages__",
-    ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
+        ":bfloat16",
         ":tstring",
     ] + tf_platform_deps("types"),
 )
@@ -915,7 +938,6 @@ tf_cuda_library(
         "stream_executor.h",
     ],
     features = ["-parse_headers"],
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor",
     ],
@@ -930,7 +952,6 @@ cc_library(
         "stream_executor_no_cuda.h",
     ],
     features = ["-parse_headers"],
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
     ],
@@ -945,7 +966,6 @@ cc_library(
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
     }),
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         ":platform",
         ":stacktrace_handler",
@@ -958,9 +978,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tf32_utils",
-    srcs = ["tf32_utils.cc"],
-    hdrs = ["tf32_utils.h"],
+    name = "tensor_float_32_utils",
+    srcs = ["tensor_float_32_utils.cc"],
+    hdrs = ["tensor_float_32_utils.h"],
     copts = tf_copts(),
     alwayslink = 1,
 )
@@ -986,8 +1006,9 @@ cc_library(
 )
 
 filegroup(
-    name = "tf32_hdr",
-    srcs = ["tf32_utils.h"],
+    name = "tensor_float_32_hdr",
+    srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tf_cc_tests(
@@ -1268,7 +1289,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
     srcs = ["rocm_rocdl_path_test.cc"],
@@ -1279,7 +1300,9 @@ tf_cc_test_gpu(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 # --------------------------------------------------------------------------
@@ -1322,6 +1345,7 @@ filegroup(
     srcs = [
         "abi.h",
         "base64.h",
+        "bfloat16.h",
         "casts.h",
         "coding.h",
         "context.h",
@@ -1408,6 +1432,7 @@ filegroup(
 filegroup(
     name = "framework_lite_hdrs",
     srcs = [
+        "bfloat16.h",
         "byte_order.h",
         "cpu_info.h",
         "ctstring.h",
@@ -1428,6 +1453,7 @@ filegroup(
 filegroup(
     name = "lib_internal_private_hdrs",
     srcs = [
+        "bfloat16.h",
         "raw_coding.h",
         "scanner.h",
         "str_util.h",
@@ -1459,7 +1485,10 @@ filegroup(
     srcs = [
         "jpeg.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1467,12 +1496,13 @@ filegroup(
     srcs = [
         "gif.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/lib/gif:__pkg__"],
 )
 
 filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
+        "bfloat16.h",
         "ctstring.h",
         "ctstring_internal.h",
         "logging.h",
@@ -1481,12 +1511,16 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
+        "bfloat16.h",
         "ctstring.h",
         "ctstring_internal.h",
         "dynamic_annotations.h",
@@ -1498,12 +1532,16 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
     name = "gif_internal_hdrs",
     srcs = [
+        "bfloat16.h",
         "ctstring.h",
         "ctstring_internal.h",
         "dynamic_annotations.h",
@@ -1514,7 +1552,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -1523,6 +1564,7 @@ filegroup(
     srcs = [
         "abi.cc",
         "abi.h",
+        "bfloat16.h",
         "blocking_counter.h",
         "byte_order.h",
         "casts.h",
@@ -1682,6 +1724,13 @@ bzl_library(
     srcs = [
         "build_config_root.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
+    visibility = [
+        "//learning/brain/google/xla/tests:__pkg__",
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//nlp/deleuze:__pkg__",
+        "//nlp/projects/minmt:__pkg__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 bzl_library(

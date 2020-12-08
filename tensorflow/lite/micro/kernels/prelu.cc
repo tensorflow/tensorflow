@@ -95,8 +95,11 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   PreluParams* params = static_cast<PreluParams*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
+  TF_LITE_ENSURE(context, alpha != nullptr);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   return CalculatePreluParams(input, alpha, output, params);
 }

@@ -16,7 +16,6 @@ limitations under the License.
 // This file combines patterns for lowering shape dialect to standard ops,
 // structured control flow and descriptors.
 
-#include "mlir/Conversion/ShapeToSCF/ShapeToSCF.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -24,7 +23,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
@@ -38,6 +36,10 @@ namespace {
 
 struct ShapeToDescriptorsPass
     : public ShapeToDescriptorsPassBase<ShapeToDescriptorsPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<scf::SCFDialect>();
+  }
+
  public:
   void runOnOperation() override {
     MLIRContext &ctx = getContext();
@@ -47,16 +49,19 @@ struct ShapeToDescriptorsPass
     target.addIllegalDialect<shape::ShapeDialect>();
     target.addLegalDialect<scf::SCFDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    // Don't mark the primary Cstr/Assuming ops as illegal, so they can be
+    // lowered at a later time to assertions.
+    target.addLegalOp<shape::AssumingOp, shape::AssumingYieldOp,
+                      shape::CstrRequireOp>();
 
     // Setup conversion patterns.
     OwningRewritePatternList patterns;
     populateShapeRewritePatterns(&ctx, patterns);
     populateShapeToStandardConversionPatterns(patterns, &ctx);
-    populateShapeToSCFConversionPatterns(patterns, &ctx);
 
     // Apply conversion.
     auto module = getOperation();
-    if (failed(applyPartialConversion(module, target, patterns)))
+    if (failed(applyPartialConversion(module, target, std::move(patterns))))
       signalPassFailure();
   }
 };

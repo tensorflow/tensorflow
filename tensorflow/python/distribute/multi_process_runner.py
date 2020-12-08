@@ -28,6 +28,7 @@ import sys
 import threading
 import time
 import unittest
+import weakref
 
 from absl import logging
 import six
@@ -37,6 +38,7 @@ from tensorflow.python import tf2
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import multi_process_lib
 from tensorflow.python.eager import context
+from tensorflow.python.util.tf_export import tf_export
 
 multiprocessing = multi_process_lib.multiprocessing
 
@@ -121,49 +123,51 @@ class MultiProcessRunner(object):
   """
 
   def __init__(self,
-               proc_func,
+               fn,
                cluster_spec,
                rpc_layer=None,
                max_run_time=None,
                grpc_fail_fast=None,
-               stream_stdout=True,
-               list_stdout=False,
+               stream_output=True,
+               return_output=False,
                use_dill_for_args=True,
                daemon=False,
                dependence_on_chief=True,
                auto_restart=False,
                args=None,
                kwargs=None):
-    """Creates a multi-process runner.
+    """Instantiation of a `MultiProcessRunner`.
 
     Args:
-      proc_func: Function to be run on child processes. This will be run on
-        processes for all task types.
-      cluster_spec: Dict for cluster spec. The following is an example of
-        cluster with three workers and two ps's.
+      fn: Function to be run on child processes. This will be run on processes
+        for all task types.
+      cluster_spec: Dict for cluster spec. The utility function
+        `tf.__internal__.distribute.multi_process_runner.create_cluster_spec`
+        can be conveniently used to create such dict. The following is an
+        example of cluster with three workers and two ps's.
         {"worker": ["worker0.example.com:2222",
                     "worker1.example.com:2222",
                     "worker2.example.com:2222"],
          "ps": ["ps0.example.com:2222",
                 "ps1.example.com:2222"]}
       rpc_layer: RPC layer to use. Default value is 'grpc'.
-      max_run_time: If set, child processes is forced to exit at approximately
-        this many seconds after `start` is called. We achieve this through
-        `signal.alarm()` api. Note that this is best effort at Python level
-        since Python signal handler does not get executed when it runs lower
-        level C/C++ code. So it can be delayed for arbitrarily long time.
-        If any of the child process is still running when `max_run_time` is up,
-        they will be force-terminated and a `UnexpectedSubprocessExitError`
-        may be raised at `join()`.
+      max_run_time: `None` or integer. If not `None`, child processes are forced
+        to exit at approximately this many seconds after this utility is called.
+        We achieve this through `signal.alarm()` api. Note that this is best
+        effort at Python level since Python signal handler does not get executed
+        when it runs lower level C/C++ code. So it can be delayed for
+        arbitrarily long time. If any of the child process is still running when
+        `max_run_time` is up, they will be force-terminated and an
+        `UnexpectedSubprocessExitError` may be raised. If `None`, child
+        processes are not forced to exit.
       grpc_fail_fast: Whether GRPC connection between processes should fail
         without retrying. Defaults to None, in which case the environment
         variable is not explicitly set.
-      stream_stdout: True if the output/error from the subprocesses should be
+      stream_output: True if the output/error from the subprocesses should be
         streamed to be printed in parent process' log. Defaults to True.
-      list_stdout: True if the output/error from the subprocesses should be
-        collected to be attached to the resulting `MultiProcessRunnerResult`
-        returned from `MultiProcessRunner.join()`. If True, the list of stdout
-        can be retrieved via `MultiProcessRunnerResult.stdout` attribute.
+      return_output: If True, the output/error from the subprocesses should be
+        collected to be attached to the resulting namedtuple returned from
+        `join()`. The list of output can be retrieved via `stdout` attribute.
         Defaults to False.
       use_dill_for_args: Whether to use dill to pickle `args` and `kwargs`. dill
         can pickle more objects, but doesn't work with types in
@@ -174,35 +178,37 @@ class MultiProcessRunner(object):
         exits with a zero exit code.
       auto_restart: Whether to automatically restart processes that exit with
         non-zero exit code.
-      args: Positional arguments to be sent to functions run on processes.
-      kwargs: Keyword arguments to be sent to functions run on processes.
+      args: Positional arguments to be sent to `fn` run on subprocesses.
+      kwargs: Keyword arguments to be sent to `fn` run on subprocesses.
 
     Raises:
       RuntimeError: if `multi_process_runner.test_main()` is not called.
       ValueError: if there are more than one chief in the `cluster_spec`.
     """
+
     assert cluster_spec is not None
     if 'chief' in cluster_spec and len(cluster_spec['chief']) > 1:
       raise ValueError('If chief exists in the cluster, there must be at most '
                        'one chief. Current `cluster_spec` has {} chiefs.'
                        .format(len(cluster_spec['chief'])))
     if not multi_process_lib.initialized():
-      raise RuntimeError('`multi_process_runner` is not initialized. '
-                         'Please call `multi_process_runner.test_main()` '
-                         'within `if __name__ == \'__main__\':` block '
-                         'in your python module to properly initialize '
-                         '`multi_process_runner`.')
-    if not callable(proc_func):
-      raise ValueError('proc_func is not a callable')
+      raise NotInitializedError(
+          '`multi_process_runner` is not initialized. '
+          'Please call `tf.__internal__.distribute.multi_process_runner.'
+          'test_main()` within `if __name__ == \'__main__\':` block '
+          'in your python module to properly initialize '
+          '`multi_process_runner`.')
+    if not callable(fn):
+      raise ValueError('fn is not a callable')
 
-    self._proc_func = proc_func
+    self._fn = fn
     self._cluster_spec = cluster_spec
     self._rpc_layer = rpc_layer or 'grpc'
     self._max_run_time = max_run_time
     self._grpc_fail_fast = grpc_fail_fast
-    self._stream_stdout = stream_stdout
-    # TODO(rchao): Revisit list_stdout argument to consider other solution.
-    self._list_stdout = list_stdout
+    self._stream_output = stream_output
+    # TODO(rchao): Revisit return_output argument to consider other solution.
+    self._return_output = return_output
     self._dependence_on_chief = dependence_on_chief
     self._use_dill_for_args = use_dill_for_args
     self._daemon = daemon
@@ -248,18 +254,18 @@ class MultiProcessRunner(object):
       for line in reader:
         task_string = '[{}-{}]:'.format(task_type, task_id)
         formatted_line = '{} {}'.format(task_string.ljust(14), line)
-        if self._stream_stdout:
+        if self._stream_output:
           # TODO(rchao): Use a lock here to ensure the printed lines are not
           # broken.
           print(formatted_line, end='', flush=True)
-        if self._list_stdout:
+        if self._return_output:
           self._streaming_queue.put(formatted_line)
 
   def _start_subprocess_and_reading_thread(self,
                                            task_type,
                                            task_id,
                                            cluster_spec=None,
-                                           proc_func=None,
+                                           fn=None,
                                            args=None,
                                            kwargs=None):
     """Start a subprocess and a thread the reads lines from the subprocess."""
@@ -284,11 +290,11 @@ class MultiProcessRunner(object):
         streaming_pipe_w=pipe_w,
         barrier=self._barrier,
     )
-    if proc_func is None:
-      proc_func, args, kwargs = self._proc_func, self._args, self._kwargs
-    # Always use dill to pickle proc_func so that we support more callable
+    if fn is None:
+      fn, args, kwargs = self._fn, self._args, self._kwargs
+    # Always use dill to pickle fn so that we support more callable
     # types, e.g. lambda.
-    proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
+    fn = dill.dumps(fn, dill.HIGHEST_PROTOCOL)
     if self._use_dill_for_args:
       args = dill.dumps(args, dill.HIGHEST_PROTOCOL)
       kwargs = dill.dumps(kwargs, dill.HIGHEST_PROTOCOL)
@@ -296,8 +302,7 @@ class MultiProcessRunner(object):
     p = _Process(
         test_env=test_env,
         target=_ProcFunc(),
-        args=(resources, test_env, proc_func, args, kwargs,
-              self._use_dill_for_args),
+        args=(resources, test_env, fn, args, kwargs, self._use_dill_for_args),
         daemon=self._daemon)
     p.start()
     self._processes[(task_type, task_id)] = p
@@ -354,7 +359,7 @@ class MultiProcessRunner(object):
     called:
 
     ```python
-    def proc_func():
+    def fn():
       # user code to be run
       import pdb; pdb.set_trace()
 
@@ -365,7 +370,7 @@ class MultiProcessRunner(object):
           task_id=0)
 
     mpr = multi_process_runner.MultiProcessRunner(
-        proc_func,
+        fn,
         multi_worker_test_base.create_cluster_spec(
             has_chief=True, num_workers=1))
     threading.Thread(target=follow_ups).start()
@@ -373,7 +378,7 @@ class MultiProcessRunner(object):
     mpr.join()
     ```
 
-    Note that if `list_stdout=True`, the logs/stdout by task
+    Note that if `return_output=True`, the logs/stdout by task
     run by the main process is not available in result.stdout.
 
     Args:
@@ -393,19 +398,19 @@ class MultiProcessRunner(object):
 
     _set_tf_config(as_task_type, as_task_id, self._cluster_spec,
                    self._rpc_layer)
-    self._proc_func(*self._args, **self._kwargs)
+    self._fn(*self._args, **self._kwargs)
 
   def start_single_process(self,
                            task_type,
                            task_id,
                            cluster_spec=None,
-                           proc_func=None,
+                           fn=None,
                            args=None,
                            kwargs=None):
     """Starts a single process.
 
     This starts a process in the cluster with the task type, task id, and the
-    process function (`proc_func`). If process function is `None`, the function
+    process function (`fn`). If process function is `None`, the function
     provided at `__init__` will be used. If `cluster_spec` is `None`, the
     cluster spec provided at `__init__` will be used.
 
@@ -419,11 +424,11 @@ class MultiProcessRunner(object):
       cluster_spec: The cluster spec to be used on the newly started
         process. If `None`, the cluster spec provided at `__init__` will be
         used.
-      proc_func: The process function to be run on the newly started
+      fn: The process function to be run on the newly started
         process. If specified, specify `args` and `kwargs` as well. If `None`,
         the function provided at `__init__` will be used.
-      args: Optional positional arguments to be supplied in `proc_func`.
-      kwargs: Optional keyword arguments to be supplied in `proc_func`.
+      args: Optional positional arguments to be supplied in `fn`.
+      kwargs: Optional keyword arguments to be supplied in `fn`.
     """
     with self._process_lock:
       if self._joined:
@@ -433,7 +438,7 @@ class MultiProcessRunner(object):
           task_type,
           task_id,
           cluster_spec=cluster_spec,
-          proc_func=proc_func,
+          fn=fn,
           args=args or (),
           kwargs=kwargs or {})
 
@@ -561,15 +566,17 @@ class MultiProcessRunner(object):
     race is removed.
 
     Args:
-      timeout: if set and not all processes report status within roughly
-        `timeout` seconds, a `SubprocessTimeoutError` exception will be raised.
+      timeout: optional integer or `None`. If provided as an integer, and not
+      all processes report status within roughly `timeout` seconds, a
+      `SubprocessTimeoutError` exception will be raised. If `None`, `join` never
+      times out.
 
     Returns:
-      A MultiProcessRunnerResult object, which has two attributes,
-      `return_value` and `stdout`. `return_value` always contains the return
-      values from the subprocesses. If `list_stdout` argument is True at
-      `__init__`, `stdout` is available that contains a list of all messages
-      from subprocesses' stdout and stderr.
+      A `MultiProcessRunnerResult` object, which has two attributes,
+      `return_value` and `stdout`. `return_value` always contains a list of
+      return values from the subprocesses, although the order is not meaningful.
+      If `return_output` argument is True at `__init__`, `stdout` is available
+      that contains a list of all messages from subprocesses' stdout and stderr.
 
     Raises:
       SubprocessTimeoutError: if not all processes report status approximately
@@ -590,6 +597,8 @@ class MultiProcessRunner(object):
         `UnexpectedSubprocessExitError`'s mpr_result attribute, which has the
         same structure as above 'Returns' section describes.
     """
+    if timeout and not isinstance(timeout, int):
+      raise ValueError('`timeout` must be an integer or `None`.')
     with self._process_lock:
       if self._joined:
         raise ValueError("MultiProcessRunner can't be joined twice.")
@@ -612,8 +621,12 @@ class MultiProcessRunner(object):
         self._watchdog_thread.join()
       process_statuses = self._get_process_statuses()
       self._reraise_if_subprocess_error(process_statuses)
-      raise SubprocessTimeoutError('one or more subprocesses timed out.',
-                                   self._get_mpr_result(process_statuses))
+      raise SubprocessTimeoutError(
+          'One or more subprocesses timed out, where timeout was set to {}s. '
+          'Please change the `timeout` argument for '
+          '`MultiProcessRunner.join()` or `multi_process_runner.run()` '
+          'if it should be adjusted.'.format(timeout),
+          self._get_mpr_result(process_statuses))
 
     for (task_type, task_id), p in self._processes.items():
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
@@ -685,6 +698,8 @@ class MultiProcessRunner(object):
     sig = sig or getattr(signal, 'SIGKILL', signal.SIGTERM)
     for (task_type, task_id), p in self._processes.items():
       if p.exitcode is not None:
+        logging.info('%s-%d has already exited. Not terminating.', task_type,
+                     task_id)
         continue
       try:
         os.kill(p.pid, sig)
@@ -777,15 +792,14 @@ class _ProcFunc(object):
     sys.stderr.close()
     self._resources.streaming_pipe_w.close()
 
-  def __call__(self, resources, test_env, proc_func, args, kwargs,
-               use_dill_for_args):
+  def __call__(self, resources, test_env, fn, args, kwargs, use_dill_for_args):
     """The wrapper function that actually gets run in child process(es)."""
 
     global _barrier
 
     self._resources = resources
     _barrier = self._resources.barrier
-    proc_func = dill.loads(proc_func)
+    fn = dill.loads(fn)
     if use_dill_for_args:
       args = dill.loads(args)
       kwargs = dill.loads(kwargs)
@@ -819,8 +833,8 @@ class _ProcFunc(object):
       v2_compat.enable_v2_behavior()
 
     with self._runtime_mode(test_env.executing_eagerly):
-      info = _run_contained(test_env.task_type, test_env.task_id, proc_func,
-                            args, kwargs)
+      info = _run_contained(test_env.task_type, test_env.task_id, fn, args,
+                            kwargs)
       self._resources.process_status_queue.put(info)
 
       # Re-raise the exception in addition to reporting it to the parent
@@ -837,6 +851,22 @@ class _ProcFunc(object):
 
     # Exit with code 0 as it's considered successful exit at this point.
     sys.exit(0)
+
+
+# Active MultiProcessPoolRunner. We need to shut them down when the program
+# exits, and this is by setting the `tearDownModule` of the module containing
+# `__main__`. Note this it set in both the parent process and the subprocesses.
+_active_pool_runners = weakref.WeakSet()
+
+
+def _shutdown_all_pool_runners():
+  for pool in _active_pool_runners:
+    pool.shutdown()
+
+
+def is_oss():
+  """Returns whether the test is run under OSS."""
+  return len(sys.argv) >= 1 and 'bazel' in sys.argv[0]
 
 
 class MultiProcessPoolRunner(object):
@@ -861,6 +891,7 @@ class MultiProcessPoolRunner(object):
       RuntimeError: if `multi_process_runner.test_main()` is not called.
       ValueError: if there are more than one chief in the `cluster_spec`.
     """
+    _active_pool_runners.add(self)
     self._cluster_spec = cluster_spec
     self._initializer = initializer
     self._conn = {}
@@ -875,28 +906,27 @@ class MultiProcessPoolRunner(object):
       conn.close()
     self._conn = {}
     if self._runner is not None:
-      self._runner.join()
+      try:
+        self._runner.join()
+      except Exception as e:  # pylint: disable=broad-except
+        logging.error(
+            'Ignoring exception when shutting down MultiProcessPoolRunner: %s',
+            e)
       self._runner = None
 
   def _start(self):
     """Starts the worker pool."""
     # We need different arguments for different processes so we're passing a
-    # no-op proc_func here and use start_single_process instead.
-    #
-    # We also need to start the process pool as daemon, so that they don't block
-    # the program from exiting. Note that __del__ may not get called when
-    # there's an exception. The user may also store a pool runner in a global
-    # object to share across test cases
+    # no-op fn here and use start_single_process instead.
 
     if dill is None:
       raise unittest.SkipTest(
           'TODO(b/150264776): Resolve dependency issue in CI')
 
     self._runner = MultiProcessRunner(
-        proc_func=lambda: None,
+        fn=lambda: None,
         cluster_spec=self._cluster_spec,
-        use_dill_for_args=False,
-        daemon=True)
+        use_dill_for_args=False)
     if self._initializer:
       initializer = dill.dumps(self._initializer, dill.HIGHEST_PROTOCOL)
     else:
@@ -908,16 +938,16 @@ class MultiProcessPoolRunner(object):
         self._runner.start_single_process(
             task_type,
             task_id,
-            proc_func=_pool_runner_worker,
+            fn=_pool_runner_worker,
             args=(task_type, task_id, initializer, conn2))
 
-  def run(self, proc_func, args=None, kwargs=None):
-    """Runs `proc_func` with `args` and `kwargs` on all jobs.
+  def run(self, fn, args=None, kwargs=None):
+    """Runs `fn` with `args` and `kwargs` on all jobs.
 
     Args:
-      proc_func: The function to be run.
-      args: Optional positional arguments to be supplied in `proc_func`.
-      kwargs: Optional keyword arguments to be supplied in `proc_func`.
+      fn: The function to be run.
+      args: Optional positional arguments to be supplied in `fn`.
+      kwargs: Optional keyword arguments to be supplied in `fn`.
 
     Returns:
       A list of return values.
@@ -927,9 +957,9 @@ class MultiProcessPoolRunner(object):
     if self._runner is None:
       self._start()
 
-    proc_func = dill.dumps(proc_func, dill.HIGHEST_PROTOCOL)
+    fn = dill.dumps(fn, dill.HIGHEST_PROTOCOL)
     for conn in self._conn.values():
-      conn.send((proc_func, args or [], kwargs or {}))
+      conn.send((fn, args or [], kwargs or {}))
 
     process_statuses = []
     for (task_type, task_id), conn in self._conn.items():
@@ -937,7 +967,7 @@ class MultiProcessPoolRunner(object):
       try:
         process_statuses.append(conn.recv())
       except EOFError:
-        # This shouldn't happen due to exceptions in proc_func. This usually
+        # This shouldn't happen due to exceptions in fn. This usually
         # means bugs in the runner.
         self.shutdown()
         raise RuntimeError('Unexpected EOF. Worker process may have died. '
@@ -973,18 +1003,18 @@ def _pool_runner_worker(task_type, task_id, initializer, conn):
     initializer()
   while True:
     try:
-      proc_func, args, kwargs = conn.recv()
+      fn, args, kwargs = conn.recv()
     except EOFError:
       break
-    proc_func = dill.loads(proc_func)
-    info = _run_contained(task_type, task_id, proc_func, args, kwargs)
+    fn = dill.loads(fn)
+    info = _run_contained(task_type, task_id, fn, args, kwargs)
     sys.stdout.flush()
     sys.stderr.flush()
     conn.send(info)
 
 
-def _run_contained(task_type, task_id, proc_func, args, kwargs):
-  """Runs `proc_func` with `args` and `kwargs`.
+def _run_contained(task_type, task_id, fn, args, kwargs):
+  """Runs `fn` with `args` and `kwargs`.
 
   The function returns _ProcessStatusInfo which captures the return value and
   the exception.
@@ -992,9 +1022,9 @@ def _run_contained(task_type, task_id, proc_func, args, kwargs):
   Args:
     task_type: the task type.
     task_id: the task index.
-    proc_func: the function to be run.
-    args: optional positional arguments to be supplied in `proc_func`.
-    kwargs: optional keyword arguments to be supplied in `proc_func`.
+    fn: the function to be run.
+    args: optional positional arguments to be supplied in `fn`.
+    kwargs: optional keyword arguments to be supplied in `fn`.
 
   Returns:
     a _ProcessStatusInfo.
@@ -1004,7 +1034,7 @@ def _run_contained(task_type, task_id, proc_func, args, kwargs):
   return_value = None
   exc_info = None
   try:
-    return_value = proc_func(*args, **kwargs)
+    return_value = fn(*args, **kwargs)
     is_successful = True
     return _ProcessStatusInfo(
         task_type=task_type,
@@ -1013,7 +1043,7 @@ def _run_contained(task_type, task_id, proc_func, args, kwargs):
         exc_info=exc_info,
         return_value=return_value)
 
-  # If `proc_func` ends up exiting with `sys.exit()`, the `SystemExit` is not
+  # If `fn` ends up exiting with `sys.exit()`, the `SystemExit` is not
   # handled here.
   except Exception:  # pylint: disable=broad-except
     exc_info = sys.exc_info()
@@ -1025,12 +1055,17 @@ def _run_contained(task_type, task_id, proc_func, args, kwargs):
         return_value=return_value)
 
 
+@tf_export('__internal__.distribute.multi_process_runner'
+           '.SubprocessTimeoutError',
+           v1=[])
 class SubprocessTimeoutError(RuntimeError):
   """An error that indicates there is at least one subprocess timing out.
 
-  When this is raised, a `MultiProcessRunnerResult` object can be retrieved by
-  `SubprocessTimeoutError`'s mpr_result attribute. See
-  `MultiProcessRunner.join()` for more information.
+  When this is raised, a namedtuple object representing the multi-process run
+  result can be retrieved by
+  `tf.__internal__.distribute.multi_process_runner.SubprocessTimeoutError`'s
+  `mpr_result` attribute. See
+  `tf.__internal__.distribute.multi_process_runner.run` for more information.
   """
 
   def __init__(self, msg, mpr_result):
@@ -1038,17 +1073,36 @@ class SubprocessTimeoutError(RuntimeError):
     self.mpr_result = mpr_result
 
 
+@tf_export('__internal__.distribute.multi_process_runner'
+           '.UnexpectedSubprocessExitError',
+           v1=[])
 class UnexpectedSubprocessExitError(RuntimeError):
   """An error indicating there is at least one subprocess with unexpected exit.
 
-  When this is raised, a `MultiProcessRunnerResult` object can be retrieved by
-  `UnexpectedSubprocessExitError`'s mpr_result attribute. See
-  `MultiProcessRunner.join()` for more information.
+  When this is raised, a namedtuple object representing the multi-process run
+  result can be retrieved by
+  `tf.__internal__.distribute.multi_process_runner
+  .UnexpectedSubprocessExitError`'s
+  `mpr_result` attribute. See
+  `tf.__internal__.distribute.multi_process_runner.run` for more information.
   """
 
   def __init__(self, msg, mpr_result):
     super(UnexpectedSubprocessExitError, self).__init__(msg)
     self.mpr_result = mpr_result
+
+
+@tf_export(
+    '__internal__.distribute.multi_process_runner.NotInitializedError', v1=[])
+class NotInitializedError(RuntimeError):
+  """An error indicating `multi_process_runner.run` is used without init.
+
+  When this is raised, user is supposed to call
+  `tf.__internal__.distribute.multi_process_runner.test_main()` within
+  `if __name__ == '__main__':` block to properly initialize
+  `multi_process_runner.run`.
+  """
+  pass
 
 
 def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):
@@ -1065,33 +1119,177 @@ def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):
   os.environ['TF_CONFIG'] = json.dumps(tf_config_dict)
 
 
-def run(proc_func,
+@tf_export('__internal__.distribute.multi_process_runner.run', v1=[])
+def run(fn,
         cluster_spec,
         rpc_layer=None,
         max_run_time=None,
-        grpc_fail_fast=None,
-        stream_stdout=True,
-        list_stdout=False,
+        return_output=False,
         timeout=_DEFAULT_TIMEOUT_SEC,
         args=None,
-        kwargs=None):  # pylint: disable=g-doc-args
-  """Runs functions in local child processes.
+        kwargs=None):
+  """Run `fn` in multiple processes according to `cluster_spec`.
 
-  It is a convenience method that creates a `MultiProcessRunner` object and
-  invokes `start` and `join` method. Please see these methods for detailed
-  documentations.
+  Given a callable `fn`, `tf.__internal__.distribute.multi_process_runner.run`
+  launches multiple processes, each of which runs `fn`. These processes are
+  referred to as "subprocesses" or "child processes". Each of those subprocesses
+  will have their `TF_CONFIG` environment variable set, according to
+  `cluster_spec` and their task types. The stdout of the subprocesses are
+  streamed to the main process' and thus available in logs (if `stream_output`
+  is True), with [type-id] prefix.
+
+  `tf.__internal__.distribute.multi_process_runner.run` will block until all
+  subprocesses have successfully exited, and return a namedtuple object that
+  represents the run result. This object has a `return_value` attribute, which
+  is a list that contains subprocesses `fn`'s return values, for those
+  subprocesses that successfully returned from `fn`. The order of `return_value`
+  list is not meaningful. If an optional arg `return_output` (default to False)
+  is set to True, the namedtuple object will have an additional attribute
+  `stdout`, which is a list containing the stdout of the subprocesses. If any
+  subprocess' `fn` ends up raising an error, that error will be reraised from
+  `tf.__internal__.distribute.multi_process_runner.run`, and the aforementioned
+  namedtuple object will be available through the exception's
+  `mpr_result` attribute.
+
+  This utility is used for simulating running TensorFlow programs across
+  multiple task types, and each of the task type may contain more than one task
+  (except for "chief" where more than one task is prohibited). Test coverage of
+  multi-worker training is the main application of this utility, where code
+  written for multi-worker training can be realistically covered in unit tests.
+
+  Any test module that uses
+  `tf.__internal__.distribute.multi_process_runner.run()` must call
+  `tf.__internal__.distribute.multi_process_runner.test_main()` instead of
+  regular `test.main()` inside `if __name__ == '__main__':` block for proper
+  initialization.
+
+  Args:
+    fn: Function to be run on child processes. This will be run on processes for
+      all task types.
+    cluster_spec: Dict for cluster spec. The utility function
+      `tf.__internal__.distribute.multi_process_runner.create_cluster_spec` can
+      be conveniently used to create such dict. The following is an example of
+      cluster with three workers and two ps's.
+      {"worker": ["worker0.example.com:2222",
+                  "worker1.example.com:2222",
+                  "worker2.example.com:2222"],
+       "ps": ["ps0.example.com:2222",
+              "ps1.example.com:2222"]}
+    rpc_layer: RPC layer to use. Default value is 'grpc'.
+    max_run_time: `None` or integer. If not `None`, child processes are forced
+      to exit at approximately this many seconds after this utility is called.
+      We achieve this through `signal.alarm()` api. Note that this is best
+      effort at Python level since Python signal handler does not get executed
+      when it runs lower level C/C++ code. So it can be delayed for arbitrarily
+      long time. If any of the child process is still running when
+      `max_run_time` is up, they will be force-terminated and an
+      `tf.__internal__.distribute.multi_process_runner
+      .UnexpectedSubprocessExitError`
+      may be raised. If `None`, child processes are not forced to exit.
+    return_output: If True, the output/error from the subprocesses should be
+      collected to be attached to the resulting namedtuple returned from this
+      utility. The list of output can be retrieved via `stdout` attribute.
+      Defaults to False.
+    timeout: optional integer or `None`. If provided as an integer, and not all
+      processes report status within roughly `timeout` seconds, a
+      `tf.__internal__.distribute.multi_process_runner.SubprocessTimeoutError`
+      exception will be raised. If `None`,
+      `tf.__internal__.distribute.multi_process_runner.run` never times out.
+      Defaults to the constant `_DEFAULT_TIMEOUT_SEC` defined in
+      `multi_process_runner` module.
+    args: Positional arguments to be sent to `fn` run on subprocesses.
+    kwargs: Keyword arguments to be sent to `fn` run on subprocesses.
 
   Returns:
-    A MultiProcessRunnerResult object returned from `MultiProcessRunner.join()`.
+      A namedtuple object, which has two attributes,
+      `return_value` and `stdout`. `return_value` always contains a list of
+      returnvalues from the subprocesses, although the order is not meaningful.
+      If `return_output` argument is True, `stdout` is available that contains a
+      list of all messages from subprocesses' stdout and stderr, and the order
+      is mostly chronological.
+
+  Raises:
+    RuntimeError: if
+    `tf.__internal__.distribute.multi_process_runner.test_main()` is
+      not called in test's `if __name__ == '__main__':` block.
+    ValueError: if there are more than one chief in the `cluster_spec`.
+    tf.__internal__.distribute.multi_process_runner.SubprocessTimeoutError: if
+      not all processes report status approximately
+      within `timeout` seconds. When this is raised, a
+      namedtuple object can be retrieved by
+      `tf.__internal__.distribute.multi_process_runner.SubprocessTimeoutError`'s
+      `mpr_result` attribute, which has the same
+      structure as above 'Returns' section describes.
+    tf.__internal__.distribute.multi_process_runner
+    .UnexpectedSubprocessExitError:
+      If any of the subprocesses did not exit
+      properly (for example, they exit on SIGTERM or SIGKILL signal). When
+      this is raised, a namedtuple object can be retrieved by
+      `tf.__internal__.distribute.multi_process_runner
+      .UnexpectedSubprocessExitError`'s
+      `mpr_result` attribute, which has the
+      same structure as above 'Returns' section describes. If `max_run_time`
+      is not `None`, it is expected that some subprocesses may be
+      force-killed when `max_run_time` is up, and this is raised in those
+      cases.
+    Exception: if there is an Exception propagated from any subprocess. When
+      this is raised, a namedtuple object can be retrieved by
+      `tf.__internal__.distribute.multi_process_runner
+      .UnexpectedSubprocessExitError`
+      `mpr_result` attribute, which has the
+      same structure as above 'Returns' section describes.
+
+  Examples:
+
+  ```python
+  class SimpleMultiProcessTest(tf.test.TestCase):
+
+    def test_simple_printing_and_return(self):
+
+      def fn():
+        resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
+
+        # This will print "[chief-0]:     Task type: chief , task id: 0"
+        # for chief, for example.
+        logging.info('Task type: %s, task id: %d',
+                     resolver.task_type, resolver.task_id)
+
+        return resolver.task_type
+
+      result = tf.__internal__.distribute.multi_process_runner.run(
+          fn=fn,
+          cluster_spec=(
+              tf.__internal__
+              .distribute.multi_process_runner.create_cluster_spec(
+                  has_chief=True, num_workers=2)))
+      assert sorted(result.return_value) == ['chief', 'worker', 'worker']
+
+    def test_error_from_fn(self):
+
+      def fn():
+        resolver = tf.distribute.cluster_resolver.TFConfigClusterResolver()
+        raise ValueError('Task type {}, task id {} is errors out'.format(
+            resolver.task_type, resolver.task_id))
+
+      with self.assertRaisesRegexp(ValueError,
+                                   'Task type worker, task id 0 is errors out'):
+        cluster_spec = (
+            tf.__internal__.distribute.multi_process_runner.create_cluster_spec(
+                num_workers=1))
+        tf.__internal__.distribute.multi_process_runner.run(
+            fn=fn, cluster_spec=cluster_spec)
+
+
+  if __name__ == '__main__':
+    tf.__internal__.distribute.multi_process_runner.test_main()
+  ```
   """
   runner = MultiProcessRunner(
-      proc_func,
+      fn,
       cluster_spec,
       rpc_layer,
       max_run_time=max_run_time,
-      grpc_fail_fast=grpc_fail_fast,
-      stream_stdout=stream_stdout,
-      list_stdout=list_stdout,
+      return_output=return_output,
       args=args,
       kwargs=kwargs)
   runner.start()
@@ -1102,11 +1300,49 @@ def run(proc_func,
 _barrier = None
 
 
-def barrier():
+@tf_export('__internal__.distribute.multi_process_runner.get_barrier', v1=[])
+def get_barrier():
+  """Returns a `multiprocessing.Barrier` for `multi_process_runner.run`.
+
+  `tf.__internal__.distribute.multi_process_runner.get_barrier()` returns
+  a `multiprocessing.Barrier` object which can be used within `fn` of
+  `tf.__internal__.distribute.multi_process_runner` to wait with
+  `barrier.wait()` call until all other tasks have also reached the
+  `barrier.wait()` call, before they can proceed individually.
+
+  Note that all tasks (subprocesses) have to reach `barrier.wait()` call to
+  proceed. Currently it is not supported to block on only a subset of tasks
+  in the cluster.
+
+  Example:
+  ```python
+
+  def fn():
+    some_work_to_be_done_by_all_tasks()
+
+    tf.__internal__.distribute.multi_process_runner.get_barrier().wait()
+
+    # The barrier guarantees that at this point, all tasks have finished
+    # `some_work_to_be_done_by_all_tasks()`
+    some_other_work_to_be_done_by_all_tasks()
+
+  result = tf.__internal__.distribute.multi_process_runner.run(
+      fn=fn,
+      cluster_spec=(
+          tf.__internal__
+          .distribute.multi_process_runner.create_cluster_spec(
+              num_workers=2)))
+  ```
+
+
+  Returns:
+    A `multiprocessing.Barrier` for `multi_process_runner.run`.
+  """
   if _barrier is None:
     raise ValueError(
-        'barrier is not defined. It is likely because you are calling barrier()'
-        'in the main process. barrier() can only be called in the subprocesses.'
+        'barrier is not defined. It is likely because you are calling '
+        'get_barrier() in the main process. get_barrier() can only be called '
+        'in the subprocesses.'
     )
   return _barrier
 
@@ -1125,7 +1361,7 @@ def manager():
   ```python
   manager = multi_process_runner.manager()
   some_event_happening_in_subprocess = manager.Event()
-  mpr = multi_process_runner.MultiProcessRunner(proc_func, cluster_spec,
+  mpr = multi_process_runner.MultiProcessRunner(fn, cluster_spec,
       args=(some_event_happening_in_subprocess,))
   mpr.start()
   some_event_happening_in_subprocess.wait()
@@ -1146,6 +1382,40 @@ def manager():
     return _manager
 
 
+@tf_export('__internal__.distribute.multi_process_runner.test_main', v1=[])
 def test_main():
-  """Main function to be called within `__main__` of a test file."""
+  """Main function to be called within `__main__` of a test file.
+
+  Any test module that uses
+  `tf.__internal__.distribute.multi_process_runner.run()`
+  must call this instead of regular `test.main()` inside
+  `if __name__ == '__main__':` block, or an error will be raised when
+  `tf.__internal__.distribute.multi_process_runner.run()` is used. This method
+  takes
+  care of needed initialization for launching multiple subprocesses.
+
+  Example:
+  ```python
+  class MyTestClass(tf.test.TestCase):
+    def testSomething(self):
+      # Testing code making use of
+      # `tf.__internal__.distribute.multi_process_runner.run()`.
+
+  if __name__ == '__main__':
+    tf.__internal__.distribute.multi_process_runner.test_main()
+  ```
+  """
+  # Inject tearDownModule() to shut down all pool runners. Active pool runners
+  # will block the program from exiting. This is necessary for global pool
+  # runners. We tried atexit in the past, and it doesn't work in some
+  # deployment.
+  old_tear_down_module = getattr(sys.modules['__main__'], 'tearDownModule',
+                                 None)
+
+  def tear_down_module():
+    _shutdown_all_pool_runners()
+    if old_tear_down_module is not None:
+      old_tear_down_module()
+
+  setattr(sys.modules['__main__'], 'tearDownModule', tear_down_module)
   multi_process_lib.test_main()

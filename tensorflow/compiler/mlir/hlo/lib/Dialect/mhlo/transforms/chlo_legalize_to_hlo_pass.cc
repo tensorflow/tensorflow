@@ -27,16 +27,21 @@ namespace mhlo {
 
 namespace {
 
-struct TestChloLegalizeToHloPass
-    : public PassWrapper<TestChloLegalizeToHloPass, FunctionPass> {
+struct ChloLegalizeToHloPass
+    : public PassWrapper<ChloLegalizeToHloPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;
-
     conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
+
     // Consider the mhlo dialect legal for tests.
     conversionTarget.addLegalDialect<mhlo::MhloDialect>();
-    // The conversion uses helpers from the Standard dialect.
+
+    // The conversion uses helpers from the standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
     conversionTarget.addLegalDialect<mlir::shape::ShapeDialect>();
     conversionTarget.addLegalDialect<mlir::scf::SCFDialect>();
@@ -44,7 +49,7 @@ struct TestChloLegalizeToHloPass
     chlo::PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
+                                      std::move(conversionPatterns)))) {
       return signalPassFailure();
     }
   }
@@ -52,8 +57,8 @@ struct TestChloLegalizeToHloPass
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createTestChloLegalizeToHloPass() {
-  return std::make_unique<TestChloLegalizeToHloPass>();
+std::unique_ptr<FunctionPass> createChloLegalizeToHloPass() {
+  return std::make_unique<ChloLegalizeToHloPass>();
 }
 
 }  // namespace mhlo

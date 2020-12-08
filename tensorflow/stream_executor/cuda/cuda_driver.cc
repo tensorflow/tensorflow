@@ -200,6 +200,21 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
 
   auto* tls = &tls_data.get();
+
+  // If this is an outermost scope, we must not assume that the CUDA context has
+  // been left in the same state we left it. Other code may have run on this
+  // thread and altered the context.
+  if (tls->depth == 0) {
+    VLOG(3) << "ScopedActivateContext switching to " << cuda_context->id();
+    FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
+                           "Failed setting context");
+    tls->depth = 1;
+    tls->id = cuda_context->id();
+    tls->context = cuda_context;
+    to_restore_ = nullptr;
+    return;
+  }
+
   tls->depth++;
   if (tls->id == cuda_context->id()) {
     if (kVerifyGpuContext) {
@@ -212,8 +227,7 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   VLOG(3) << "ScopedActivateContext switching context from " << tls->id
           << " to " << cuda_context->id();
 
-  to_restore_ = (tls->depth == 1 ? nullptr : tls->context);
-
+  to_restore_ = tls->context;
   // Set the context and update thread local.
   FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
                          "Failed setting context");

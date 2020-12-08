@@ -50,9 +50,7 @@ void ConsumeTfMetricsDbData(TfMetricsDbData src, OpMetricsDbCombiner* dst);
 
 OpMetricsDb ConvertHostThreadsXPlaneToOpMetricsDb(const XPlane& host_trace);
 
-OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
-    const XPlane& device_trace, double peak_tera_flops_per_second,
-    double peak_hbm_bw_giga_bytes_per_second);
+OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(const XPlane& device_trace);
 
 }  // namespace profiler
 }  // namespace tensorflow

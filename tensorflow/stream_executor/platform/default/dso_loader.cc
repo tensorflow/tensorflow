@@ -31,6 +31,7 @@ namespace internal {
 
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
+string GetCudaRtVersion() { return TF_CUDART_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 string GetCublasVersion() { return TF_CUBLAS_VERSION; }
 string GetCusolverVersion() { return TF_CUSOLVER_VERSION; }
@@ -77,11 +78,15 @@ port::StatusOr<void*> GetCudaDriverDsoHandle() {
 }
 
 port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
-  return GetDsoHandle("cudart", GetCudaVersion());
+  return GetDsoHandle("cudart", GetCudaRtVersion());
 }
 
 port::StatusOr<void*> GetCublasDsoHandle() {
   return GetDsoHandle("cublas", GetCublasVersion());
+}
+
+port::StatusOr<void*> GetCublasLtDsoHandle() {
+  return GetDsoHandle("cublasLt", GetCublasVersion());
 }
 
 port::StatusOr<void*> GetCufftDsoHandle() {
@@ -136,7 +141,11 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
 }
 
-port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("hip_hcc", ""); }
+port::StatusOr<void*> GetHipsparseDsoHandle() {
+  return GetDsoHandle("hipsparse", "");
+}
+
+port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("amdhip64", ""); }
 
 }  // namespace DsoLoader
 
@@ -153,6 +162,11 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
 
 port::StatusOr<void*> GetCublasDsoHandle() {
   static auto result = new auto(DsoLoader::GetCublasDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetCublasLtDsoHandle() {
+  static auto result = new auto(DsoLoader::GetCublasLtDsoHandle());
   return *result;
 }
 
@@ -203,6 +217,11 @@ port::StatusOr<void*> GetRocfftDsoHandle() {
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetHipsparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
   return *result;
 }
 

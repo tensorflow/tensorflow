@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import copy
 import os
 import six
@@ -24,6 +25,7 @@ import six
 from tensorflow.python.eager import def_function
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils import generic_utils
@@ -31,7 +33,6 @@ from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 
 
 def extract_model_metrics(model):
@@ -121,8 +122,7 @@ def trace_model_call(model, input_signature=None):
   if input_signature is None:
     raise_model_input_error(model)
 
-  # TODO(mdan): Should the model's call be autographed by default?
-  @def_function.function(input_signature=input_signature, autograph=False)
+  @def_function.function(input_signature=input_signature)
   def _wrapped_model(*args):
     """A concrete tf.function that wraps the model's call function."""
     # When given a single input, Keras models will call the model on the tensor
@@ -161,7 +161,7 @@ def model_metadata(model, include_optimizer=True, require_config=True):
       backend=K.backend(),
       model_config=model_config)
   if model.optimizer and include_optimizer:
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
+    if isinstance(model.optimizer, optimizer_v1.TFOptimizer):
       logging.warning(
           'TensorFlow optimizers do not '
           'make it possible to access '
@@ -173,7 +173,7 @@ def model_metadata(model, include_optimizer=True, require_config=True):
           'Prefer using a Keras optimizer instead '
           '(see keras.io/optimizers).')
     elif model._compile_was_called:  # pylint: disable=protected-access
-      training_config = model._get_compile_args()  # pylint: disable=protected-access
+      training_config = model._get_compile_args(user_metrics=False)  # pylint: disable=protected-access
       training_config.pop('optimizer', None)  # Handled separately.
       metadata['training_config'] = _serialize_nested_config(training_config)
       if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):

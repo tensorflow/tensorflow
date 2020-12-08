@@ -25,13 +25,21 @@ limitations under the License.
 
 extern "C" {
 
+// Maximum number of array elements to inline into structs for performance.
+#define TPU_C_API_MAX_INLINED 6
+
 enum TpuCoreTypeEnum {
   kTensorCore,
   kEmbeddingV1,
   kEmbeddingV2,
 };
 
-typedef struct SE_Status SE_Status;
+enum TpuVersionEnum {
+  kUnknownTpuVersion,
+  kTpuV2,
+  kTpuV3,
+  kTpuV4,
+};
 
 typedef struct SE_Platform SE_Platform;
 typedef struct SE_StreamExecutor SE_StreamExecutor;
@@ -49,7 +57,7 @@ typedef struct SE_PlatformId {
 } SE_PlatformId;
 typedef struct SE_StreamExecutorConfig SE_StreamExecutorConfig;
 typedef struct SE_DeviceOptions SE_DeviceOptions;
-typedef SE_Status* (*SE_StatusCallbackFn)(void*);
+typedef TF_Status* (*SE_StatusCallbackFn)(void*);
 
 typedef struct SE_DeviceMemoryBase {
   void* opaque;
@@ -85,10 +93,10 @@ typedef struct SE_AllocatorStats {
 // direction and request memory via a callback.
 typedef void (*SE_AllocateFn)(void* ctx, int device_ordinal, uint64_t size,
                               bool retry_on_failure, int64_t memory_space,
-                              SE_ScopedDeviceMemory* result, SE_Status* status);
+                              SE_ScopedDeviceMemory* result, TF_Status* status);
 
 typedef void (*SE_DeallocateFn)(void* ctx, SE_DeviceMemoryBase* base,
-                                int device_ordinal, SE_Status* status);
+                                int device_ordinal, TF_Status* status);
 
 typedef struct SE_DeviceMemoryAllocator {
   SE_Platform* platform;
@@ -161,16 +169,54 @@ typedef struct SE_MaybeOwningDeviceMemory {
   SE_DeviceMemoryAllocator allocator;
 } SE_MaybeOwningDeviceMemory;
 
+struct Int64List {
+  union {
+    int64_t* heap;  // owned
+    int64_t inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
+struct BoolList {
+  union {
+    bool* heap;  // owned
+    bool inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
+typedef struct XLA_Tile {
+  Int64List dimensions;
+} XLA_Tile;
+
+struct TileList {
+  union {
+    XLA_Tile* heap;  // owned
+    XLA_Tile inlined[TPU_C_API_MAX_INLINED];
+  };
+  int64_t size;
+};
+
+typedef struct XLA_Layout {
+  int format;
+  Int64List minor_to_major;
+  TileList tiles;
+  int64_t element_size_in_bits;
+  int64_t memory_space;
+} XLA_Layout;
+
 // Represents an XLA shape tree.
-// Shapes are flattened in default traversal order.
 typedef struct XLA_Shape {
-  char* bytes;
-  size_t size;
+  int element_type;
+  Int64List dimensions;
+  BoolList dynamic_dimensions;
+  XLA_Shape* tuple_shapes;  // owned
+  int ntuple_shapes;
+  XLA_Layout layout;
 } XLA_Shape;
 
 // Represents a leaf node for a XLA shaped buffer.
 typedef struct XLA_ShapedBuffer {
-  XLA_Shape on_host_shape;
   XLA_Shape on_device_shape;
   int device_ordinal;
 
@@ -201,7 +247,6 @@ typedef struct SE_ExecutionInput {
   XLA_ShapeIndex* unowned_indices;
   int unowned_indices_size;
   XLA_Shape dynamic_shape;
-  XLA_Shape host_shape;
 } SE_ExecutionInput;
 
 typedef struct SE_ExecutionOutput {
@@ -252,7 +297,11 @@ typedef struct XLA_TransferManager XLA_TransferManager;
 typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
 
 typedef void (*XLA_CallbackFn)(void*);
-typedef void (*XLA_StatusCallbackFn)(void*, SE_Status*);
+typedef void (*XLA_StatusCallbackFn)(void*, TF_Status*);
+
+typedef struct SE_TpuTopology SE_TpuTopology;
+typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
+typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
 }
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_C_API_DECL_H_

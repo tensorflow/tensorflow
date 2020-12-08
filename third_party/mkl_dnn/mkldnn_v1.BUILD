@@ -1,9 +1,12 @@
 exports_files(["LICENSE"])
 
 load(
+    "@org_tensorflow//tensorflow:tensorflow.bzl",
+    "tf_openmp_copts",
+)
+load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
-    "if_mkl_v1",
     "if_mkldnn_threadpool",
 )
 load(
@@ -13,14 +16,6 @@ load(
 load(
     "@org_tensorflow//third_party:common.bzl",
     "template_rule",
-)
-
-config_setting(
-    name = "clang_linux_x86_64",
-    values = {
-        "cpu": "k8",
-        "define": "using_clang=true",
-    },
 )
 
 _DNNL_RUNTIME_OMP = {
@@ -59,8 +54,8 @@ template_rule(
     out = "include/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "1",
-        "@DNNL_VERSION_MINOR@": "4",
-        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_MINOR@": "6",
+        "@DNNL_VERSION_PATCH@": "4",
         "@DNNL_VERSION_HASH@": "N/A",
     },
 )
@@ -75,35 +70,20 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
-        "src/cpu/jit_utils/jitprofiling/*.c",
-        "src/cpu/jit_utils/jitprofiling/*.h",
+        "src/cpu/x64/jit_utils/jitprofiling/*.c",
+        "src/cpu/x64/jit_utils/jitprofiling/*.h",
     ]) + [
         ":dnnl_config_h",
         ":dnnl_version_h",
     ],
     hdrs = glob(["include/*"]),
-    copts = [
-        "-fexceptions",
-        "-DUSE_MKL",
-        "-DUSE_CBLAS",
-    ] + if_mkl_open_source_only([
+    copts = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "//conditions:default": ["-fexceptions"],
+    }) + [
         "-UUSE_MKL",
         "-UUSE_CBLAS",
-    ]) + if_mkl_v1([
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-    ]) + if_mkldnn_threadpool([
-        "-UUSE_MKL",
-        "-UUSE_CBLAS",
-    ]) + select({
-        "@org_tensorflow//tensorflow:linux_x86_64": [
-            "-fopenmp",  # only works with gcc
-        ],
-        # TODO(ibiryukov): enable openmp with clang by including libomp as a
-        # dependency.
-        ":clang_linux_x86_64": [],
-        "//conditions:default": [],
-    }),
+    ] + tf_openmp_copts(),
     includes = [
         "include",
         "src",
@@ -143,5 +123,38 @@ cc_library(
         "src/cpu/gemm",
         "src/cpu/xbyak",
     ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "mkl_dnn_aarch64",
+    srcs = glob([
+        "src/common/*.cpp",
+        "src/common/*.hpp",
+        "src/cpu/*.cpp",
+        "src/cpu/*.hpp",
+        "src/cpu/rnn/*.cpp",
+        "src/cpu/rnn/*.hpp",
+        "src/cpu/matmul/*.cpp",
+        "src/cpu/matmul/*.hpp",
+        "src/cpu/gemm/**/*",
+    ]) + [
+        ":dnnl_config_h",
+        ":dnnl_version_h",
+    ],
+    hdrs = glob(["include/*"]),
+    copts = [
+        "-fexceptions",
+        "-UUSE_MKL",
+        "-UUSE_CBLAS",
+    ],
+    includes = [
+        "include",
+        "src",
+        "src/common",
+        "src/cpu",
+        "src/cpu/gemm",
+    ],
+    linkopts = ["-lgomp"],
     visibility = ["//visibility:public"],
 )

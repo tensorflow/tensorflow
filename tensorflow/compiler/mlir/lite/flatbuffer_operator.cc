@@ -95,50 +95,44 @@ static tflite::MirrorPadMode ConvertTFL_MirrorPaddingAttrForOptionWriter(
 
 static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
     mlir::Type type, flatbuffers::FlatBufferBuilder* builder) {
-  switch (type.getKind()) {
-    case mlir::StandardTypes::F16:
-      return tflite::TensorType_FLOAT16;
-    case mlir::StandardTypes::F32:
-      return tflite::TensorType_FLOAT32;
-    case mlir::TF::TensorFlowTypes::STRING:
-      return tflite::TensorType_STRING;
-    case mlir::StandardTypes::Complex: {
-      auto etype = type.cast<mlir::ComplexType>().getElementType();
-      if (etype.isF32()) {
-        return tflite::TensorType_COMPLEX64;
-      }
-      llvm_unreachable("invalid complex Type in conversion");
+  if (type.isF16()) {
+    return tflite::TensorType_FLOAT16;
+  } else if (type.isF32()) {
+    return tflite::TensorType_FLOAT32;
+  } else if (type.isa<mlir::TF::StringType>()) {
+    return tflite::TensorType_STRING;
+  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    if (complex_type.getElementType().isF32()) {
+      return tflite::TensorType_COMPLEX64;
     }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 1:
-          return tflite::TensorType_BOOL;
-        case 8:
-          return tflite::TensorType_INT8;
-        case 16:
-          return tflite::TensorType_INT16;
-        case 32:
-          return tflite::TensorType_INT32;
-        case 64:
-          return tflite::TensorType_INT64;
-        default:
-          llvm_unreachable("invalid integer Type in conversion");
-      }
+    llvm_unreachable("invalid complex Type in conversion");
+  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 1:
+        return tflite::TensorType_BOOL;
+      case 8:
+        return tflite::TensorType_INT8;
+      case 16:
+        return tflite::TensorType_INT16;
+      case 32:
+        return tflite::TensorType_INT32;
+      case 64:
+        return tflite::TensorType_INT64;
+      default:
+        llvm_unreachable("invalid integer Type in conversion");
     }
-    default:
-      llvm_unreachable("invalid Type in conversion");
   }
+  llvm_unreachable("invalid Type in conversion");
 }
 
 // I32Attr already returns an int as required by flatbuffer builders.
 static int ConvertI32AttrForOptionWriter(
-    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
-  return i.getSExtValue();
+    int i, flatbuffers::FlatBufferBuilder* builder) {
+  return i;
 }
 
 static int ConvertPositiveI32AttrForOptionWriter(
-    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
+    int i, flatbuffers::FlatBufferBuilder* builder) {
   return ConvertI32AttrForOptionWriter(i, builder);
 }
 
@@ -255,7 +249,7 @@ Status mlir::CustomOptionsToAttributes(
       {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
   attributes->emplace_back(builder.getNamedAttr(
       "custom_option",
-      OpaqueElementsAttr::get(builder.getContext()->getRegisteredDialect("tfl"),
+      OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
                               type, content)));
 
   return Status::OK();

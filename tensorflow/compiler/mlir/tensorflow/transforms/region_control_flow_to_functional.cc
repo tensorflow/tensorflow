@@ -23,8 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -36,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
 
@@ -150,7 +149,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   builder.create<ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
 
-  outlined_func.setVisibility(FuncOp::Visibility::Private);
+  outlined_func.setPrivate();
 
   // Add the outlined function to the worklist in case its body has
   // IfRegion or WhileRegion ops that need to converted.
@@ -158,9 +157,11 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
 }
 
 // Returns call for region with single call whose result feeds into the
-// terminator of the region. Returns none if the region doesn't contain just
-// call and non-truncting casts ops.
-llvm::Optional<CallOp> IsSingleCallRegion(Region& region) {
+// terminator of the region. if `allow_to_bool` is true, also allows a single
+// ToBoolOp between the region yield and the call. Returns none if the region
+// does not conform to this pattern.
+llvm::Optional<CallOp> IsSingleCallRegion(Region& region,
+                                          bool allow_to_bool = false) {
   if (!llvm::hasSingleElement(region)) return llvm::None;
 
   Block& block = region.front();
@@ -169,9 +170,28 @@ llvm::Optional<CallOp> IsSingleCallRegion(Region& region) {
 
   if (it == block.rend()) return llvm::None;
 
+  // Operation which is expected to consume all the call results.
+  Operation* call_consumer = yield;
+
+  // Allow a single ToBoolOp between the call and the yield (valid only
+  // when the yield has a single operand)
+  if (allow_to_bool && yield.getNumOperands() == 1 && isa<ToBoolOp>(*it)) {
+    if (it->getResult(0) != yield.getOperand(0)) return llvm::None;
+    call_consumer = cast<ToBoolOp>(*it);
+    it++;
+  }
+
   // Check if there is a Call before the Yield.
   CallOp call = dyn_cast<CallOp>(*it++);
   if (!call) return llvm::None;
+
+  // All call results should feed into expected consumer
+  // All results of the call should feed into the yield.
+  if (call.getNumResults() != call_consumer->getNumOperands())
+    return llvm::None;
+
+  for (auto res_it : llvm::zip(call.getResults(), call_consumer->getOperands()))
+    if (std::get<0>(res_it) != std::get<1>(res_it)) return llvm::None;
 
   // There can only be non-truncating cast op's prior to the call.
   for (; it != block.rend(); ++it) {
@@ -179,21 +199,15 @@ llvm::Optional<CallOp> IsSingleCallRegion(Region& region) {
     if (!cast || cast.Truncate()) return llvm::None;
   }
 
-  // All results of the call should feed into the yield.
-  if (call.getNumResults() != yield.getNumOperands()) return llvm::None;
-
-  for (auto res_it : llvm::zip(call.getResults(), yield.getOperands()))
-    if (std::get<0>(res_it) != std::get<1>(res_it)) return llvm::None;
-
   return call;
 }
 
-using MatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
+using ArgMatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 
 // Returns whether the arguments of the given 2 calls are match (after looking
 // through cast ops). `matcher` is the predicate used to check if two arguments
 // match.
-bool MatchCallArgs(CallOp first, CallOp second, MatcherFn matcher) {
+bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   if (first.getNumOperands() != second.getNumOperands()) return false;
 
   Region& first_region = *first.getParentRegion();
@@ -225,30 +239,29 @@ struct TrivialTransformInfo {
   // List of callee names (one for each region).
   llvm::SmallVector<StringRef, 2> callee_names;
 
-  // Constructor will analyze the 2 regions.
-  TrivialTransformInfo(Region& first, Region& second, MatcherFn matcher);
+  // Analyzes the given calls (from regions attached to the same parent op) to
+  // check if the parent op be transformed to functional form trivially (i.e.,
+  // reusing existing functions and without outlining). This is possible when
+  // all the regions are single call regions (checked using matchers outside
+  // this class) and the all the calls match using the given argument matcher.
+  //
+  // If such a trivial transformation is possible, stash the relevant
+  // information needed for the transformation, else indicate that a trivial
+  // transformation is not possible by setting `can_transform` to false.
+  TrivialTransformInfo(llvm::Optional<CallOp> first_call,
+                       llvm::Optional<CallOp> second_call,
+                       ArgMatcherFn arg_matcher) {
+    if (!first_call || !second_call) return;
+
+    if (!MatchCallArgs(first_call.getValue(), second_call.getValue(),
+                       arg_matcher))
+      return;
+
+    can_transform = true;
+    callee_names = {first_call.getValue().getCallee(),
+                    second_call.getValue().getCallee()};
+  }
 };
-
-// Analyzes the given set of regions (attached to the same parent op) to check
-// if the parent op be transformed to functional form trivially (i.e., reusing
-// existing functions and without outlining). This is possible when all the
-// regions are single call regions and the all the calls have the same
-// arguments.
-//
-// If such a trivial transformation is possible, stash the relevant information
-// needed for the transformation, else indicate that a trivial transformation is
-// not possible by setting `can_transform` to false.
-TrivialTransformInfo::TrivialTransformInfo(Region& first, Region& second,
-                                           MatcherFn matcher) {
-  auto call0 = IsSingleCallRegion(first);
-  auto call1 = IsSingleCallRegion(second);
-  if (!call0 || !call1) return;
-
-  if (!MatchCallArgs(call0.getValue(), call1.getValue(), matcher)) return;
-
-  can_transform = true;
-  callee_names = {call0.getValue().getCallee(), call1.getValue().getCallee()};
-}
 
 // Transform IfRegionOp to IfOp.
 LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
@@ -256,7 +269,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
 
   // For IfOp, arguments of calls in the then and else regions match if they
   // are the same value.
-  auto if_matcher = [&](Value first, Region&, Value second, Region&) {
+  auto if_arg_matcher = [&](Value first, Region&, Value second, Region&) {
     if (first != second) return false;
 
     // collect the call arguments post lookup through cast Op's
@@ -264,8 +277,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
     return true;
   };
 
-  const TrivialTransformInfo tti(if_region.then_branch(),
-                                 if_region.else_branch(), if_matcher);
+  const TrivialTransformInfo tti(IsSingleCallRegion(if_region.then_branch()),
+                                 IsSingleCallRegion(if_region.else_branch()),
+                                 if_arg_matcher);
 
   std::string then_name, else_name;
 
@@ -293,16 +307,23 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
                              worklist, /*extern_values_passthrough=*/false);
   }
 
+  // Look through ToBool operations for the condition.
+  Value cond = if_region.cond();
+  auto to_bool = dyn_cast_or_null<ToBoolOp>(cond.getDefiningOp());
+  if (to_bool) cond = to_bool.getOperand();
+
   // Once we have the `then` and `else` functions ready (either outlined or
   // existing ones), replace the region based op with a functional control flow
   // op.
   OpBuilder builder(if_region);
   auto if_op = builder.create<IfOp>(
-      if_region.getLoc(), if_region.getResultTypes(), if_region.cond(),
-      extern_values, then_name, else_name, if_region.is_stateless());
-  CopyUnderscoredAttributes(if_region, if_op);
+      if_region.getLoc(), if_region.getResultTypes(), cond, extern_values,
+      then_name, else_name, if_region.is_stateless());
+  CopyDeviceAndUnderscoredAttributes(if_region, if_op);
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
+
+  if (to_bool && to_bool.use_empty()) to_bool.erase();
   return success();
 }
 
@@ -311,12 +332,12 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
     WhileRegionOp while_region) {
   // For While, the arguments of the calls in the body and cond regions match
   // if they are region arguments with the same region argument numbers. If the
-  // 2 calls have the same value (an extern value) used an an argument, we
+  // 2 calls have the same value (an extern value) used as an argument, we
   // cannot do a trivial transformation because post transform, we will need to
   // pass this extern value as an argument to the function, so we cannot use the
   // existing function as is.
-  auto while_matcher = [](Value first, Region& first_region, Value second,
-                          Region& second_region) {
+  auto while_arg_matcher = [](Value first, Region& first_region, Value second,
+                              Region& second_region) {
     if (!first.isa<BlockArgument>() || !second.isa<BlockArgument>())
       return false;
     BlockArgument first_block_arg = first.cast<BlockArgument>();
@@ -329,8 +350,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
            second_block_arg.getParentBlock() == &second_region.front();
   };
 
-  const TrivialTransformInfo tti(while_region.cond(), while_region.body(),
-                                 while_matcher);
+  const TrivialTransformInfo tti(
+      IsSingleCallRegion(while_region.cond(), /*allow_to_bool=*/true),
+      IsSingleCallRegion(while_region.body()), while_arg_matcher);
 
   // All existing inputs to while region are inputs to the functional while.
   auto new_inputs = llvm::to_vector<4>(while_region.getOperands());
@@ -375,8 +397,9 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
   OpBuilder builder(while_region);
   auto while_op = builder.create<WhileOp>(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
-      while_region.parallel_iterations(), while_region.is_stateless());
-  CopyUnderscoredAttributes(while_region, while_op);
+      while_region.parallel_iterations(), while_region.is_stateless(),
+      while_region.shape_invariant());
+  CopyDeviceAndUnderscoredAttributes(while_region, while_op);
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(

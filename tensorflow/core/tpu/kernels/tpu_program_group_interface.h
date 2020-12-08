@@ -61,7 +61,11 @@ class TpuProgramGroupInterface {
 
   // Boolean array to indicate if the modification of variables are
   // allowed.
-  virtual const std::vector<bool>& may_modify_variables() const = 0;
+  virtual const std::vector<bool>& may_modify_variables_list() const = 0;
+
+  // Gets may modify variables value of the TPU program for the given core
+  // `index`.
+  virtual bool may_modify_variables(int index) const = 0;
 };
 
 }  // namespace tpu

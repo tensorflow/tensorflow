@@ -25,7 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -47,6 +47,7 @@ namespace {
 
 constexpr char kNgrams[] = "tftext:Ngrams";
 constexpr char kWhitespaceTokenizer[] = "tftext:WhitespaceTokenizer";
+constexpr char kCustomSgnnProjection[] = "tftext:custom:SgnnProjection";
 constexpr char kTFImplements[] = "tf._implements";
 
 using mlir::TF::FuncAttr;
@@ -56,9 +57,9 @@ inline OpaqueElementsAttr CustomOption(OpBuilder* builder,
                                        const std::string& content) {
   ShapedType type = RankedTensorType::get(
       {static_cast<int64_t>(content.size())}, builder->getIntegerType(8));
-  return OpaqueElementsAttr::get(
-      builder->getContext()->getRegisteredDialect("tfl"), type,
-      StringRef(content.data(), content.size()));
+  return OpaqueElementsAttr::get(builder->getContext()->getLoadedDialect("tfl"),
+                                 type,
+                                 StringRef(content.data(), content.size()));
 }
 
 inline TensorType GetInputType(FuncOp func, int idx) {
@@ -269,6 +270,85 @@ LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
   return success();
 }
 
+LogicalResult VerifySgnnProjection(FuncOp func, FuncAttr attr) {
+  if (func.getType().getNumInputs() != 2 ||
+      func.getType().getNumResults() != 1) {
+    return func.emitError() << "Mismatched number of inputs and outputs.";
+  }
+  auto values_type = GetInputType(func, 0);
+  if (!values_type || !values_type.getElementType().isa<StringType>()) {
+    return func.emitError() << "First input should be a string tensor";
+  }
+  auto row_splits_type = GetInputType(func, 1);
+  if (!row_splits_type ||
+      !row_splits_type.getElementType().isa<IntegerType>()) {
+    return func.emitError() << "Second input should be an integer tensor";
+  }
+
+  auto hash_seed =
+      attr.GetAttrs().get("hash_seed").dyn_cast_or_null<ArrayAttr>();
+  if (!hash_seed) {
+    return func.emitError()
+           << "'hash_seed' attribute is not set or not an array";
+  }
+  auto output_type = GetResultType(func, 0);
+  if (!output_type || !output_type.getElementType().isa<FloatType>() ||
+      !RankEquals(output_type, 2)) {
+    return func.emitError() << "Output should be a 2D float tensor.";
+  }
+  if (output_type.getDimSize(1) != hash_seed.size()) {
+    return func.emitError()
+           << "Output 2nd dimension should be the num of hash seeds.";
+  }
+
+  auto buckets = attr.GetAttrs().get("buckets").dyn_cast_or_null<IntegerAttr>();
+  if (!buckets) {
+    return func.emitError() << "'buckets' attribute is not set or not int";
+  }
+
+  return success();
+}
+
+LogicalResult CreateSgnnProjectionCustomOption(
+    FuncOp func, DictionaryAttr attrs, std::string& custom_option_buffer) {
+  flexbuffers::Builder fbb;
+  size_t start_map = fbb.StartMap();
+
+  auto hash_seed = attrs.get("hash_seed").dyn_cast_or_null<ArrayAttr>();
+  auto vector_start = fbb.StartVector("hash_seed");
+  for (int i = 0; i < hash_seed.size(); i++) {
+    fbb.Add(static_cast<int32_t>(
+        (hash_seed.getValue().data() + i)->dyn_cast<IntegerAttr>().getInt()));
+  }
+  fbb.EndVector(vector_start, /*typed=*/true, /*fixed=*/false);
+
+  auto buckets = attrs.get("buckets").dyn_cast_or_null<IntegerAttr>();
+  fbb.Int("buckets", buckets.getInt());
+
+  fbb.EndMap(start_map);
+  fbb.Finish();
+  custom_option_buffer.assign(fbb.GetBuffer().begin(), fbb.GetBuffer().end());
+  return success();
+}
+
+LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
+                                    FuncAttr attr) {
+  // See more details in tensorflow_models/sequence_projection/sgnn/sgnn.py
+  func.eraseBody();
+  func.addEntryBlock();
+  func.setAttr(kTFImplements, attr);
+  OpBuilder builder(func.getBody());
+  std::string custom_option_buffer;
+  if (failed(CreateSgnnProjectionCustomOption(func, attr.GetAttrs(),
+                                              custom_option_buffer))) {
+    return failure();
+  }
+  auto op = builder.create<CustomOp>(
+      func.getLoc(), func.getType().getResults(), func.getArguments(), api,
+      CustomOption(&builder, custom_option_buffer));
+  builder.create<ReturnOp>(func.getLoc(), op.getResults());
+  return success();
+}
 }  // namespace
 
 LogicalResult ConvertTFTextAPI(FuncOp func, llvm::StringRef api,
@@ -280,6 +360,10 @@ LogicalResult ConvertTFTextAPI(FuncOp func, llvm::StringRef api,
   } else if (api.str() == kNgrams) {
     if (succeeded(VerifyNgrams(func))) {
       return ConvertNgrams(func, api, attr);
+    }
+  } else if (api.str() == kCustomSgnnProjection) {
+    if (succeeded(VerifySgnnProjection(func, attr))) {
+      return ConvertSgnnProjection(func, api, attr);
     }
   }
   return failure();

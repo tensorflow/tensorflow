@@ -767,6 +767,14 @@ class MinMaxOpTest(test.TestCase):
         self._compare(x.astype(t), y.astype(t), use_gpu=False)
         self._compare(x.astype(t), y.astype(t), use_gpu=True)
 
+  def testNaNPropagation(self):
+    x = np.array([1., np.nan, 1., np.nan], dtype=np.float64)
+    y = np.array([1., 1., np.nan, np.nan], dtype=np.float64)
+    for t in [np.float16, np.float32, np.float64]:
+      with self.subTest(t=t):
+        self._compare(x.astype(t), y.astype(t), use_gpu=False)
+        self._compare(x.astype(t), y.astype(t), use_gpu=True)
+
   def testDifferentShapes(self):
     x = np.random.rand(1, 3, 2) * 100.
     y = np.random.rand(2) * 100.  # should broadcast
@@ -840,14 +848,16 @@ class MathOpsOverloadTest(test.TestCase):
       return self.evaluate(z)
 
   def _compareBinary(self, x, y, dtype, np_func, tf_func):
-    np_ans = np_func(x, y).astype(dtype.as_numpy_dtype)
-    if dtype == dtypes_lib.bfloat16:
-      # assertAllClose does not properly handle bfloat16 values
-      np_ans = np_ans.astype(np.float32)
+    # astype and assertAllClose do not properly handle bfloat16 values
+    np_ans = np_func(x, y).astype(np.float32 if dtype == dtypes_lib.bfloat16
+                                  else dtype.as_numpy_dtype)
+    rtol = 1e-2 if dtype == dtypes_lib.bfloat16 else 1e-6
     self.assertAllClose(np_ans,
-                        self._computeTensorAndLiteral(x, y, dtype, tf_func))
+                        self._computeTensorAndLiteral(x, y, dtype, tf_func),
+                        rtol=rtol)
     self.assertAllClose(np_ans,
-                        self._computeLiteralAndTensor(x, y, dtype, tf_func))
+                        self._computeLiteralAndTensor(x, y, dtype, tf_func),
+                        rtol=rtol)
 
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
@@ -1030,12 +1040,10 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testTypes(self):
-    # TODO(b/131162241): Enable test for GPU
-    with ops.device("/CPU:0"):
-      for dtype in [np.float16, np.float32, np.float64,
-                    dtypes_lib.bfloat16.as_numpy_dtype]:
-        with self.subTest(dtype=dtype):
-          self._testDtype(dtype)
+    for dtype in [np.float16, np.float32, np.float64,
+                  dtypes_lib.bfloat16.as_numpy_dtype]:
+      with self.subTest(dtype=dtype):
+        self._testDtype(dtype)
 
 
 class ComplexMakeRealImagTest(test.TestCase):

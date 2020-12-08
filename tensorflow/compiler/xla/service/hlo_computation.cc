@@ -93,10 +93,13 @@ HloComputation::HloComputation(
 }
 
 HloInstruction* HloComputation::AddInstruction(
-    std::unique_ptr<HloInstruction> instruction) {
+    std::unique_ptr<HloInstruction> instruction, const std::string& new_name) {
   CHECK(instruction->opcode() != HloOpcode::kParameter)
       << "Parameter instructions cannot be added to a computation after "
       << "it has been built";
+  if (!new_name.empty()) {
+    instruction->SetAndSanitizeName(new_name);
+  }
   return AddInstructionInternal(std::move(instruction));
 }
 
@@ -315,6 +318,8 @@ Status HloComputation::RemoveInstructionImpl(HloInstruction* instruction,
   (*inst_it->second)->set_parent(nullptr);
   to_be_deleted_.emplace_back(inst_it->second->release());
   to_be_deleted_.back()->DetachFromOperandsAndUsers();
+  // Clear all operands to avoid Null operands.
+  to_be_deleted_.back()->RemoveAllOperands();
   to_be_deleted_.back()->MarkAsDead();
   instructions_.erase(inst_it->second);
   instruction_iterators_.erase(inst_it);
@@ -380,6 +385,9 @@ void HloComputation::ComputeInstructionPostOrder(
   dfs_stack.push_back(root);
   while (!dfs_stack.empty()) {
     const auto current = dfs_stack.back();
+    CHECK_EQ(current->parent(), this)
+        << "Instruction " << current->name()
+        << " is not in the current computation (" << name() << ").";
     auto it = visited->find(current);
     if (it != visited->end()) {
       if (it->second == kVisited) {
@@ -545,7 +553,7 @@ string HloComputation::ToString(
     if (options.print_percent()) {
       s << "%";
     }
-    if (options.print_ids() || !IsEntryComputation()) {
+    if (options.print_ids()) {
       // Exclude entry computation's name because it includes and leads to
       // non-deterministic fingerprint.
       s << PrintName(name(), options.print_ids()) << " ";
@@ -836,8 +844,9 @@ ProgramShape HloComputation::ComputeProgramShape(bool include_ids) const {
   return program_shape;
 }
 
-bool HloComputation::Equal(const HloComputation& other,
-                           bool is_layout_sensitive) const {
+bool HloComputation::EqualInternal(const HloComputation& other,
+                                   bool is_layout_sensitive,
+                                   bool ignore_channel_id_values) const {
   if (this == &other) {
     return true;
   }
@@ -855,15 +864,21 @@ bool HloComputation::Equal(const HloComputation& other,
       continue;
     }
     visited.emplace(pair);
-    // TODO(b/123082518): Avoid recursively invoking == because it may
+    // TODO(b/123082518): Avoid recursively invoking Equal because it may
     // cause a stack overflow with deeply nested subcomputations.
-    bool identical_ignoring_operands = pair.first->Identical(
-        *pair.second,
-        [](const HloInstruction*, const HloInstruction*) { return true; },
-        [](const HloComputation* a, const HloComputation* b) {
-          return *a == *b;
-        },
-        is_layout_sensitive);
+    auto operands_eq = [](const HloInstruction*, const HloInstruction*) {
+      return true;
+    };
+    auto comp_eq = [&](const HloComputation* a, const HloComputation* b) {
+      return a->EqualInternal(*b, is_layout_sensitive,
+                              ignore_channel_id_values);
+    };
+    bool identical_ignoring_operands =
+        ignore_channel_id_values
+            ? pair.first->IdenticalIgnoringChannelIdValues(
+                  *pair.second, operands_eq, comp_eq, is_layout_sensitive)
+            : pair.first->Identical(*pair.second, operands_eq, comp_eq,
+                                    is_layout_sensitive);
     if (!identical_ignoring_operands) {
       return false;
     }

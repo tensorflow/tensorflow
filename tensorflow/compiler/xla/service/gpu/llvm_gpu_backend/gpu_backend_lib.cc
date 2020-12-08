@@ -62,8 +62,14 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
+
+#if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
+#include "rocm/rocm_config.h"
+#endif
 
 namespace xla {
 namespace gpu {
@@ -86,14 +92,21 @@ static string GetSmName(std::pair<int, int> compute_capability) {
   int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35, 32, 30}) {
+  int supported_versions[] = {75, 72, 70, 62, 61, 60, 53,
+                              52, 50, 37, 35, 32, 30};
+  for (int v : supported_versions) {
     if (v <= compute_capability_version) {
       sm_version = v;
       break;
     }
   }
 
-  if (sm_version != compute_capability_version) {
+  // If the current CC isn't supported by LLVM and it is newer then
+  // the max supported LLVM version, do not warn about it. The end
+  // user can't do anything about this. PTX compiled for SM75 will
+  // run on SM80 too.
+  if (sm_version != compute_capability_version &&
+      compute_capability_version < supported_versions[0]) {
     LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to telling LLVM that we're compiling for sm_"
@@ -140,7 +153,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
 
   // Set the verbose assembly options.
   target_options.MCOptions.AsmVerbose = false;
@@ -216,7 +229,7 @@ void EmitBitcodeToFile(const llvm::Module& module, absl::string_view filename) {
 // for the NVPTX target.
 string EmitModuleToPTX(llvm::Module* module,
                        llvm::TargetMachine* target_machine) {
-  std::string ptx;  // need a std::string instead of a ::string.
+  std::string ptx;
   {
     llvm::raw_string_ostream stream(ptx);
     llvm::buffer_ostream pstream(stream);
@@ -281,6 +294,9 @@ Status LinkWithBitcodeVector(llvm::Module* module,
 
     std::unique_ptr<llvm::Module> bitcode_module =
         LoadIRModule(bitcode_path, &module->getContext());
+    // Ignore the data layout of the module we're importing. This avoids a
+    // warning from the linker.
+    bitcode_module->setDataLayout(module->getDataLayout());
     if (linker.linkInModule(
             std::move(bitcode_module), llvm::Linker::Flags::LinkOnlyNeeded,
             [](llvm::Module& M, const llvm::StringSet<>& GVS) {
@@ -551,11 +567,18 @@ namespace {
 static std::vector<string> GetROCDLPaths(int amdgpu_version,
                                          const string& rocdl_dir_path) {
   // AMDGPU version-neutral bitcodes.
+#if TF_ROCM_VERSION >= 30900
+  static std::vector<string>* rocdl_filenames = new std::vector<string>(
+      {"hc.bc", "opencl.bc", "ocml.bc", "ockl.bc", "oclc_finite_only_off.bc",
+       "oclc_daz_opt_off.bc", "oclc_correctly_rounded_sqrt_on.bc",
+       "oclc_unsafe_math_off.bc", "oclc_wavefrontsize64_on.bc"});
+#else
   static std::vector<string>* rocdl_filenames = new std::vector<string>(
       {"hc.amdgcn.bc", "opencl.amdgcn.bc", "ocml.amdgcn.bc", "ockl.amdgcn.bc",
        "oclc_finite_only_off.amdgcn.bc", "oclc_daz_opt_off.amdgcn.bc",
        "oclc_correctly_rounded_sqrt_on.amdgcn.bc",
        "oclc_unsafe_math_off.amdgcn.bc", "oclc_wavefrontsize64_on.amdgcn.bc"});
+#endif
 
   // Construct full path to ROCDL bitcode libraries.
   std::vector<string> result;
@@ -566,8 +589,66 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
   // Add AMDGPU version-specific bitcodes.
   result.push_back(tensorflow::io::JoinPath(
       rocdl_dir_path,
+#if TF_ROCM_VERSION >= 30900
+      absl::StrCat("oclc_isa_version_", amdgpu_version, ".bc")));
+#else
       absl::StrCat("oclc_isa_version_", amdgpu_version, ".amdgcn.bc")));
+#endif
   return result;
+}
+
+struct HsacoCacheEntry {
+  uint64 hash;
+  std::string ir;
+  int gfx;
+  std::vector<uint8> hsaco;
+};
+
+struct HsacoCache {
+ protected:
+  std::vector<HsacoCacheEntry> cache;
+  std::mutex m_mutex;
+  int request_count = 0;
+  int hit_count = 0;
+
+ public:
+  static bool Find(const std::string& ir, uint64_t& hash, int gfx,
+                   std::vector<uint8>& hsaco);
+  static void Add(const std::string& ir, uint64_t hash, int gfx,
+                  const std::vector<uint8>& hsaco);
+};
+
+static HsacoCache g_hsacoCache;
+
+bool HsacoCache::Find(const std::string& ir, uint64_t& hash, int gfx,
+                      std::vector<uint8>& hsaco) {
+  std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
+  hash = std::hash<std::string>{}(ir);
+  bool hit = false;
+  for (auto& x : g_hsacoCache.cache) {
+    if (x.hash != hash) continue;
+    if (x.gfx != gfx) continue;
+    if (x.ir != ir) continue;
+    hsaco = x.hsaco;
+    hit = true;
+    break;
+  }
+  g_hsacoCache.request_count++;
+  if (hit) g_hsacoCache.hit_count++;
+  if (!(g_hsacoCache.request_count % 50))
+    VLOG(1) << "HSACO cache: " << g_hsacoCache.request_count << " requests, "
+            << g_hsacoCache.hit_count << " hits";
+  return hit;
+}
+
+void HsacoCache::Add(const std::string& ir, uint64_t hash, int gfx,
+                     const std::vector<uint8>& hsaco) {
+  std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
+  g_hsacoCache.cache.resize(g_hsacoCache.cache.size() + 1);
+  g_hsacoCache.cache.back().ir = ir;
+  g_hsacoCache.cache.back().hash = hash;
+  g_hsacoCache.cache.back().gfx = gfx;
+  g_hsacoCache.cache.back().hsaco = hsaco;
 }
 
 // Emits the given module to HSA Code Object. target_machine is an initialized
@@ -584,18 +665,29 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::string tempdir_name = tempdir_vector.front();
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
+  bool keep_tempfiles = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
+                                             /*default_val=*/false,
+                                             &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
-  std::string ir_filename = absl::StrCat(module->getModuleIdentifier(), ".ll");
+  std::string random_number = std::to_string(tensorflow::random::New64());
+  std::string ir_filename =
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
   std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
 
+  std::string ir_opt_filename =
+      absl::StrCat(module->getModuleIdentifier(), random_number + "_opt.ll");
+  std::string ir_opt_path =
+      tensorflow::io::JoinPath(tempdir_name, ir_opt_filename);
+
   std::string isabin_filename =
-      absl::StrCat(module->getModuleIdentifier(), ".o");
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".o");
   std::string isabin_path =
       tensorflow::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename =
-      absl::StrCat(module->getModuleIdentifier(), ".hsaco");
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".hsaco");
   std::string hsaco_path =
       tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
 
@@ -613,7 +705,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::string module_id = module->getModuleIdentifier();
   IrDumpingPassManager codegen_passes(
       ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
-                               "-amdgpu.dummy"),
+                               random_number + "-amdgpu.dummy"),
       "", false);
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
@@ -627,6 +719,12 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   codegen_passes.run(*module);
   isabin_fs->flush();
 
+  if (keep_tempfiles) {
+    std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
+        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::F_None));
+    module->print(*ir_fs, nullptr);
+    ir_fs->flush();
+  }
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
@@ -652,9 +750,9 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   int lld_result =
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
                                 llvm::None, {}, 0, 0, &error_message);
-
   if (lld_result) {
-    return xla::InternalError("ld.lld execute fail: %s", error_message);
+    return xla::InternalError("ld.lld execute fail: %s, error code %d",
+                              error_message, lld_result);
   }
 
   // Read HSACO.
@@ -664,6 +762,12 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::vector<uint8> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
+  hsaco_file.close();
+  if (!keep_tempfiles) {
+    remove(ir_path.c_str());
+    remove(isabin_path.c_str());
+    remove(hsaco_path.c_str());
+  }
   return hsaco;
 }
 
@@ -728,6 +832,20 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
   std::vector<uint8> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
+  std::string str;
+  llvm::raw_string_ostream stream(str);
+  stream << *module;
+  // Delete the first two lines, since they usually vary even when the rest of
+  // the code is the same (but verify that they are what we expect).
+  if (str.size() >= 13 && str.substr(0, 13) == "; ModuleID = ") {
+    auto pos = str.find("\n");
+    if (pos != std::string::npos) str = str.substr(pos + 1);
+  }
+  if (str.size() >= 18 && str.substr(0, 18) == "source_filename = ") {
+    auto pos = str.find("\n");
+    if (pos != std::string::npos) str = str.substr(pos + 1);
+  }
+  str += hlo_module_config.compilation_cache_key();
   {
     tensorflow::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
@@ -738,6 +856,21 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     if (!amdgpu_version) {
       return xla::InternalError(
           "Incompatible AMD GCN ISA version was specified.");
+    }
+    uint64_t hash;
+    if (HsacoCache::Find(str, hash, *amdgpu_version, hsaco)) {
+      VLOG(1) << "HSACO cache hit";
+      return hsaco;
+    }
+    VLOG(1) << "HSACO cache miss";
+    bool dump_lls = false;
+    if (dump_lls) {
+      static int hsaco_count = 0;
+      std::string name = "/tmp/" + std::to_string(hsaco_count) + ".ll";
+      hsaco_count++;
+      std::ofstream ofs(name);
+      ofs << str;
+      ofs.close();
     }
 
     llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
@@ -754,6 +887,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
+    HsacoCache::Add(str, hash, *amdgpu_version, hsaco);
   }
   return hsaco;
 }

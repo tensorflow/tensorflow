@@ -706,6 +706,10 @@ class TPUClusterResolverTest(test.TestCase):
     with self.assertRaises(RuntimeError):
       cluster_resolver.num_accelerators()
 
+  def testLocalTpuResolver(self):
+    cr = resolver.TPUClusterResolver(tpu='local')
+    self.assertEqual(cr.get_master(), '')
+
 
 if __name__ == '__main__':
   test.main()

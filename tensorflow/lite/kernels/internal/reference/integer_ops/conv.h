@@ -63,45 +63,47 @@ inline void ConvPerChannel(
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
+      const int in_y_origin = (out_y * stride_height) - pad_height;
       for (int out_x = 0; out_x < output_width; ++out_x) {
+        const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
           int32_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            const int in_y = in_y_origin + dilation_height_factor * filter_y;
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int in_x = in_x_origin + dilation_width_factor * filter_x;
+
+              // Zero padding by omitting the areas outside the image.
+              const bool is_point_inside_image =
+                  (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                  (in_y < input_height);
+
+              if (!is_point_inside_image) {
+                continue;
+              }
+
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // Zero padding by omitting the areas outside the image.
-                const bool is_point_inside_image =
-                    (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height);
-                if (is_point_inside_image) {
-                  int32_t input_val = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
-                  int32_t filter_val =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  // Accumulate with 32 bits accumulator.
-                  // In the nudging process during model quantization, we force
-                  // real value of 0.0 be represented by a quantized value. This
-                  // guarantees that the input_offset is a int8_t, even though
-                  // it is represented using int32_t. int32_t += int8_t *
-                  // (int8_t - int8_t) so the highest value we can get from each
-                  // accumulation is [-127, 127] * ([-128, 127] -
-                  // [-128, 127]), which is [-32512, 32512]. log2(32512)
-                  // = 14.98, which means we can accumulate at least 2^16
-                  // multiplications without overflow. The accumulator is
-                  // applied to a filter so the accumulation logic will hold as
-                  // long as the filter size (filter_y * filter_x * in_channel)
-                  // does not exceed 2^16, which is the case in all the models
-                  // we have seen so far.
-                  // TODO(jianlijianli): Add a check to make sure the
-                  // accumulator depth is smaller than 2^16.
-                  acc += filter_val * (input_val + input_offset);
-                }
+                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
+                                                      in_x, in_channel)];
+                int32_t filter_val = filter_data[Offset(
+                    filter_shape, out_channel, filter_y, filter_x, in_channel)];
+                // Accumulate with 32 bits accumulator.
+                // In the nudging process during model quantization, we force
+                // real value of 0.0 be represented by a quantized value. This
+                // guarantees that the input_offset is a int8_t, even though
+                // it is represented using int32_t. int32_t += int8_t *
+                // (int8_t - int8_t) so the highest value we can get from each
+                // accumulation is [-127, 127] * ([-128, 127] -
+                // [-128, 127]), which is [-32512, 32512]. log2(32512)
+                // = 14.98, which means we can accumulate at least 2^16
+                // multiplications without overflow. The accumulator is
+                // applied to a filter so the accumulation logic will hold as
+                // long as the filter size (filter_y * filter_x * in_channel)
+                // does not exceed 2^16, which is the case in all the models
+                // we have seen so far.
+                // TODO(b/174275578): Add a check to make sure the
+                // accumulator depth is smaller than 2^16.
+                acc += filter_val * (input_val + input_offset);
               }
             }
           }
@@ -164,35 +166,37 @@ inline void ConvPerChannel(
   const int output_width = output_shape.Dims(2);
   for (int batch = 0; batch < batches; ++batch) {
     for (int out_y = 0; out_y < output_height; ++out_y) {
+      const int in_y_origin = (out_y * stride_height) - pad_height;
       for (int out_x = 0; out_x < output_width; ++out_x) {
+        const int in_x_origin = (out_x * stride_width) - pad_width;
         for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          const int in_x_origin = (out_x * stride_width) - pad_width;
-          const int in_y_origin = (out_y * stride_height) - pad_height;
           std::int64_t acc = 0;
           for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+            const int in_y = in_y_origin + dilation_height_factor * filter_y;
             for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
+              const int in_x = in_x_origin + dilation_width_factor * filter_x;
+
+              // Zero padding by omitting the areas outside the image.
+              const bool is_point_inside_image =
+                  (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                  (in_y < input_height);
+
+              if (!is_point_inside_image) {
+                continue;
+              }
+
               for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-                const int in_x = in_x_origin + dilation_width_factor * filter_x;
-                const int in_y =
-                    in_y_origin + dilation_height_factor * filter_y;
-                // Zero padding by omitting the areas outside the image.
-                const bool is_point_inside_image =
-                    (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                    (in_y < input_height);
-                if (is_point_inside_image) {
-                  int32_t input_val = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
-                  int32_t filter_val =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  // Accumulate with 64 bits accumulator.
-                  // int64_t += int8_t * int16_t so the highest value we can
-                  // get from each accumulation is [-127, 127] * ([-32768,
-                  // 32767] -
-                  // [-32768, 32767]), which is [-8322945, 8322945].
-                  // log2(8322945) = 22.99.
-                  acc += filter_val * input_val;
-                }
+                int32_t input_val = input_data[Offset(input_shape, batch, in_y,
+                                                      in_x, in_channel)];
+                int32_t filter_val = filter_data[Offset(
+                    filter_shape, out_channel, filter_y, filter_x, in_channel)];
+                // Accumulate with 64 bits accumulator.
+                // int64_t += int8_t * int16_t so the highest value we can
+                // get from each accumulation is [-127, 127] * ([-32768,
+                // 32767] -
+                // [-32768, 32767]), which is [-8322945, 8322945].
+                // log2(8322945) = 22.99.
+                acc += filter_val * input_val;
               }
             }
           }

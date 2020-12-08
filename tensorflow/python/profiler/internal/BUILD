@@ -1,8 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
@@ -80,6 +80,7 @@ cuda_py_test(
 tf_python_pybind_extension(
     name = "_pywrap_traceme",
     srcs = ["traceme_wrapper.cc"],
+    copts = tf_profiler_copts(),
     module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
@@ -94,13 +95,13 @@ tf_python_pybind_extension(
 cc_library(
     name = "traceme_wrapper",
     hdrs = ["traceme_wrapper.h"],
-    features = ["-layering_check"],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme_headers",
+        "//tensorflow/core/profiler/lib:traceme_for_pybind",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -110,7 +111,7 @@ cc_library(
 tf_python_pybind_extension(
     name = "_pywrap_profiler",
     srcs = ["profiler_wrapper.cc"],
-    features = ["-layering_check"],
+    copts = tf_profiler_copts(),
     module_name = "_pywrap_profiler",
     visibility = [
         "//tensorflow/python/eager:__pkg__",
@@ -118,18 +119,18 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/convert:op_stats_to_tf_stats",
-        "//tensorflow/core/profiler/convert:xplane_to_op_stats",
-        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/convert:xplane_to_trace_events",
-        "//tensorflow/core/profiler/lib:profiler_session_headers",
-        "//tensorflow/core/profiler/rpc:profiler_server_headers",
+        "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/python:pybind11_status",
-        "@com_github_grpc_grpc//:grpc++_public_hdrs",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "@pybind11",
     ],
 )
@@ -138,12 +139,17 @@ cc_library(
     name = "python_hooks",
     srcs = ["python_hooks.cc"],
     hdrs = ["python_hooks.h"],
-    copts = ["-fexceptions"],
+    compatible_with = get_compatible_with_cloud(),
+    copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@pybind11",

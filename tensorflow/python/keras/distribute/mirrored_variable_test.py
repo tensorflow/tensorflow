@@ -20,14 +20,15 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import config
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.layers import core
+from tensorflow.python.platform import test
 
 
 def _mimic_two_cpus():
@@ -39,11 +40,11 @@ def _mimic_two_cpus():
   ])
 
 
-@combinations.generate(
+@ds_combinations.generate(
     combinations.combine(
         distribution=[
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-            combinations.NamedDistribution(
+            ds_combinations.NamedDistribution(
                 "Collective2CPUs",
                 # pylint: disable=g-long-lambda
                 lambda: collective_all_reduce_strategy.

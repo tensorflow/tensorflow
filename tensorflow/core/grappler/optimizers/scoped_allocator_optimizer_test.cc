@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -241,8 +242,9 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   // Constructs the following graph.
   //
   // c1 and c2 are Const ops.  a1 and a2 are Abs ops.
-  // We expect the optimizer to fail, because Const ops do not allocate their
-  // output on every Compute, and hence are not compatible with ScopedAllocator.
+  // We expect the optimizer to succeed and insert Identity between ci and ai.
+  // This will ensure that we will still be able use ScopedAllocator with Const
+  // inputs.
   /*
           c1   c2
           |    |
@@ -419,8 +421,7 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryExecute) {
   SetShapes(&graph_def);
   std::vector<Tensor> outputs;
   ExecuteGraph(graph_def,
-               /*output_names=*/{"r1:0", "r2:0", "scoped_allocator_1_2_Abs:0"},
-               &outputs);
+               /*output_names=*/{"r1:0", "r2:0"}, &outputs);
   // a + b == 2, -2, 3, 3
   // b + c == -4, -4, 3, 2
   ValidateValues(outputs, /*expected=*/{{2, 2, 3, 3}, {4, 4, 3, 2}});
@@ -559,7 +560,8 @@ TEST_F(ScopedAllocatorOptimizerTest, ControlEdgeRewire) {
   EXPECT_EQ(NumControlInputs(&node_map, "ctl4"), 1);
 }
 
-// Test that the optimization fails when any input is a Const op.
+// Test that the optimization succeeds when any input is a Const op, and that it
+// inserts Identity op between Const and Abs.
 TEST_F(ScopedAllocatorOptimizerTest, ConstInput) {
   GrapplerItem item;
   BuildConstGraph(&item.graph, false);
@@ -572,10 +574,26 @@ TEST_F(ScopedAllocatorOptimizerTest, ConstInput) {
   ons.insert("Abs");
 
   GraphDef optimized_graph;
-  auto status = sao.Optimize(nullptr /*cluster*/, item, &optimized_graph);
-  EXPECT_EQ(status.code(), tensorflow::error::ABORTED);
-  EXPECT_TRUE(str_util::StrContains(status.error_message(),
-                                    "does not use AllocatorAttributes"));
+  TF_ASSERT_OK(sao.Optimize(nullptr /*cluster*/, item, &optimized_graph));
+
+  // Examine the resulting graphdef.
+  const NodeDef* sa_node = nullptr;
+  for (const NodeDef& node : optimized_graph.node()) {
+    if (node.op() == "_ScopedAllocator") {
+      sa_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(sa_node, nullptr);
+  int num_identity_ops = 0;
+  NodeMap node_map(&optimized_graph);
+  for (NodeDef* sa_output : node_map.GetOutputs(sa_node->name())) {
+    EXPECT_FALSE(IsConstant(*sa_output));
+    if (IsIdentity(*sa_output)) {
+      ++num_identity_ops;
+    }
+  }
+  EXPECT_EQ(num_identity_ops, 2);
 }
 
 }  // namespace

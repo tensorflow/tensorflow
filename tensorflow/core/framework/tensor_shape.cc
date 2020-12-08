@@ -169,8 +169,6 @@ static inline bool Set16(bool partial, uint16* dst, int dim, int64 val) {
       dst[dim] = std::numeric_limits<uint16>::max();
       return true;
     }
-  } else {
-    CHECK_GE(val, 0);
   }
   dst[dim] = val;
   return false;
@@ -190,6 +188,14 @@ void TensorShapeBase<Shape>::InitDims(gtl::ArraySlice<int64> dim_sizes) {
     if (s > kMaxSmall) {
       large_size = true;
       break;
+    }
+  }
+
+  // TODO(mihaimaruseac): Remove this CHECK as the refactoring continues
+  // Temporaryly moving the CHECK from Set16 here
+  if (!kIsPartial && !large_size) {
+    for (auto s : dim_sizes) {
+      CHECK_GE(s, 0);
     }
   }
 
@@ -276,7 +282,6 @@ void TensorShapeRep::SlowCopyFrom(const TensorShapeRep& b) {
     //   set_ndims_byte(b.ndims_byte());
     //   set_data_type(b.data_type());
   } else {
-    DCHECK_EQ(b.tag(), REP_OUT_OF_LINE);
     set_ndims_byte(b.ndims_byte());
     set_data_type(b.data_type());
     if (tag() == REP_OUT_OF_LINE) {
@@ -323,10 +328,10 @@ void TensorShapeRep::ClearAllButDataType() {
 }
 
 template <class Shape>
-void TensorShapeBase<Shape>::RecomputeNumElements() {
+Status TensorShapeBase<Shape>::RecomputeNumElements() {
   if (unknown_rank()) {
     set_num_elements(-1);
-    return;
+    return Status::OK();
   }
   int64 n = 1;
   for (auto dim : *this) {
@@ -335,9 +340,14 @@ void TensorShapeBase<Shape>::RecomputeNumElements() {
       break;
     }
     n = MultiplyWithoutOverflow(n, dim.size);
-    CHECK_LE(0, n);
+    if (TF_PREDICT_FALSE(n < 0)) {
+      return errors::InvalidArgument(
+          "Shape ", this->DebugString(),
+          " results in overflow when computing number of elements");
+    }
   }
   set_num_elements(n);
+  return Status::OK();
 }
 
 template <class Shape>
@@ -452,7 +462,7 @@ void TensorShapeBase<Shape>::set_dim(int d, int64 size) {
       AddDim(dval);
     }
   }
-  RecomputeNumElements();
+  TF_CHECK_OK(RecomputeNumElements());
 }
 
 template <class Shape>
@@ -472,7 +482,7 @@ void TensorShapeBase<Shape>::RemoveDimRange(int begin, int end) {
   for (auto dval : vals) {
     AddDim(dval);
   }
-  RecomputeNumElements();
+  TF_CHECK_OK(RecomputeNumElements());
 }
 
 bool TensorShape::IsSameSize(const TensorShape& b) const {
@@ -502,8 +512,8 @@ TensorShapeIter<Shape> TensorShapeBase<Shape>::begin() const {
 
 template <class Shape>
 TensorShapeIter<Shape> TensorShapeBase<Shape>::end() const {
-  CHECK(!unknown_rank());
-  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), dims());
+  const int max_dim = unknown_rank() ? -1 : dims();
+  return TensorShapeIter<Shape>(static_cast<const Shape*>(this), max_dim);
 }
 
 string TensorShapeRep::DebugString() const {

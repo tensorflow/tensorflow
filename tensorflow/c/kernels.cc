@@ -24,7 +24,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+// Required for IS_MOBILE_PLATFORM definition
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/stream_executor/stream.h"
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
@@ -168,6 +174,35 @@ void TF_RegisterKernelBuilder(const char* name, TF_KernelBuilder* builder,
   TF_SetStatus(status, TF_OK, "");
 }
 
+// This function is only for pluggable device.
+// It will return nullptr in all other cases.
+// This function is experimental and subject to change.
+SP_Stream TF_GetStream(TF_OpKernelContext* ctx, TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  status->status = tensorflow::errors::Unimplemented(
+      "Accessing device stream is not supported on mobile. File a bug at "
+      "https://github.com/tensorflow/tensorflow/issues if this feature is "
+      "important to you");
+  return nullptr;
+#else
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+  if (cc_ctx->op_device_context() == nullptr) {  // CPU Device
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Accessing device stream is not supported for a CPU device.");
+    return nullptr;
+  } else if (!cc_ctx->op_device_context()->IsPluggableDevice()) {
+    status->status = tensorflow::errors::FailedPrecondition(
+        "Accessing device stream is only supported for pluggable devices.");
+    return nullptr;
+  } else {  // Is a PluggableDevice
+    TF_SetStatus(status, TF_OK, "");
+    auto c_stream = static_cast<stream_executor::CStream*>(
+        cc_ctx->op_device_context()->stream()->implementation());
+    return c_stream->Handle();
+  }
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+}
+
 int TF_NumInputs(TF_OpKernelContext* ctx) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   return cc_ctx->num_inputs();
@@ -261,7 +296,6 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-
   static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
@@ -274,6 +308,75 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
     return nullptr;
   }
   TF_Tensor* tf_tensor = TF_TensorFromTensor(*tensor, &s);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;
+  }
+  return tf_tensor;
+}
+
+TF_Tensor* TF_ForwardInputOrAllocateOutput(
+    TF_OpKernelContext* context, int* candidate_input_indices,
+    int num_candidate_input_indices, int output_index, int64_t* output_dims,
+    int output_num_dims, int* forwarded_input, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
+  tensorflow::gtl::ArraySlice<int> input_indices_array(
+      candidate_input_indices, num_candidate_input_indices);
+  tensorflow::gtl::ArraySlice<tensorflow::int64> output_dimarray(
+      reinterpret_cast<tensorflow::int64*>(output_dims), output_num_dims);
+  tensorflow::Tensor* output_tensor_pointer;
+  tensorflow::Status s = cc_ctx->forward_input_or_allocate_output(
+      input_indices_array, output_index,
+      tensorflow::TensorShape(output_dimarray), &output_tensor_pointer,
+      forwarded_input);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;
+  }
+  TF_Tensor* tf_tensor_output = TF_TensorFromTensor(*output_tensor_pointer, &s);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;
+  }
+  return tf_tensor_output;
+}
+
+TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
+                           int64_t* dims, int num_dims,
+                           TF_AllocatorAttributes* attributes,
+                           TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
+  TF_SetStatus(status, TF_OK, "");
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
+  tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
+      reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  if (attributes && !attributes->struct_size) {
+    TF_SetStatus(
+        status, TF_INVALID_ARGUMENT,
+        "TF_AllocatorAttributes struct "
+        "size member must be set to TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE");
+    return nullptr;
+  }
+  tensorflow::AllocatorAttributes allocator_attr;
+  if (attributes && attributes->on_host) {
+    allocator_attr.set_on_host(true);
+  }
+  tensorflow::Status s;
+  tensorflow::Tensor tensor;
+  s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype),
+                            tensorflow::TensorShape(dimarray), &tensor,
+                            allocator_attr);
+  if (!s.ok()) {
+    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    return nullptr;
+  }
+  TF_Tensor* tf_tensor;
+  tf_tensor = TF_TensorFromTensor(tensor, &s);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;

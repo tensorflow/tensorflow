@@ -22,19 +22,30 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 
+using tensorflow::Status;
 using tensorflow::string;
+using tensorflow::TF_StatusPtr;
 
 namespace tensorflow {
 namespace {
 
+// The tests are parameterized on:
+// - a string representing the tracing implementation: "mlir" or "graphdef".
+// - a boolean that when true enables TFRT as the execution engine.
 class UnifiedCAPI
     : public ::testing::TestWithParam<std::tuple<const char*, bool>> {
  protected:
   void SetUp() override {
-    TF_SetTracingImplementation(std::get<0>(GetParam()));
+    TF_StatusPtr status(TF_NewStatus());
+    TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
+    Status s = StatusFromTF_Status(status.get());
+    CHECK_EQ(errors::OK, s.code()) << s.error_message();
   }
 };
 
@@ -348,7 +359,7 @@ TEST_P(UnifiedCAPI, TestBasicGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   auto* placeholder_t =
-      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -439,7 +450,7 @@ TEST_P(UnifiedCAPI, TestBasicGraphMatMul) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   auto* placeholder_t =
-      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -542,9 +553,9 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a first "Add" computing `arg0 + arg1`.
@@ -554,7 +565,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add1", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg0, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -576,7 +587,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add2", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg1, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -698,9 +709,9 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg0 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, s);
+  auto* arg1 = TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
   // Create a first "Add" computing `arg0 + arg1`.
@@ -964,7 +975,7 @@ TEST_P(UnifiedCAPI, TF_AbstractTensorGetEagerTensorOnGraphTensorRaises) {
 
   // Add a placeholder to the graph.
   auto placeholder_t =
-      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, status.get());
+      TF_AddFunctionParameter(graph_ctx, TF_FLOAT, {-1, nullptr}, status.get());
   TF_AbstractTensorGetEagerTensor(placeholder_t, status.get());
   ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(status.get()));
 
@@ -983,6 +994,10 @@ TEST_P(UnifiedCAPI, TF_ExecutionContextGetTFEContextFromFunctionContextRaises) {
 
   TF_DeleteExecutionContext(graph_ctx);
 }
+
+// The above tests are run for a combination of:
+// - graphdef and MLIR tracing engine
+// - Using TFRT as an execution runtime (true == enable TFRT)
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI,
                          ::testing::Combine(::testing::Values("graphdef",

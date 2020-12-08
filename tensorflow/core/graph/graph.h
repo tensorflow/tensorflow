@@ -70,6 +70,13 @@ class WhileContext;
 class NeighborIter;     // Declared below
 class NodeIter;         // Declared below
 
+// Indicates where the graph instance is originated from.
+enum class ConstructionContext {
+  kNotTracked,     // Not tracked.
+  kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
+  kFunctionDef,    // From `FunctionDef`, @tf.function.
+};
+
 class Node {
  public:
   std::string DebugString() const;
@@ -233,9 +240,24 @@ class Node {
 
   std::shared_ptr<NodeProperties> properties() const { return props_; }
 
+  // Sets the stack trace for the node. Assumes that getting and setting the
+  // stack trace for a given node will not race.
+  void SetStackTrace(const std::shared_ptr<AbstractStackTrace>& stack_trace) {
+    stack_trace_ = stack_trace;
+  }
+
+  // Get the stack trace for when the node was instantiated.
+  const std::shared_ptr<AbstractStackTrace>& GetStackTrace() const {
+    return stack_trace_;
+  }
+
  private:
   friend class Graph;
   Node();
+
+  // Stack trace for the user code for node instantiation. Can be shared across
+  // multiple nodes (e.g. when inlining).
+  std::shared_ptr<AbstractStackTrace> stack_trace_;
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
@@ -617,9 +639,9 @@ class Graph {
   int num_edge_ids() const { return edges_.size(); }
 
   // Returns the Edge associated with an id, or nullptr if no edge
-  // with that id (the node with that id was removed and the id has
+  // with that id (the edge with that id was removed and the id has
   // not yet been re-used). *this owns the returned instance.
-  // REQUIRES: 0 <= id < num_node_ids().
+  // REQUIRES: 0 <= id < num_edge_ids().
   const Edge* FindEdgeId(int id) const { return edges_[id]; }
 
   // Access to the set of all edges.  Example usage:
@@ -680,6 +702,19 @@ class Graph {
 
   absl::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
     return const_arg_indices_cache_;
+  }
+
+  // TODO(kkb): Add to the constructor when it becomes managable.
+  // Sets the graph construction context.
+  void SetConstructionContext(ConstructionContext construction_context) {
+    construction_context_ = construction_context;
+  }
+
+  // TODO(kkb): Rename to `GetConstructionContext` once we're comfortable
+  // making this stable and make it available widely.
+  // Returns the graph construction context. It's `kUnknown` if not set.
+  ConstructionContext GetConstructionContextInternal() const {
+    return construction_context_;
   }
 
   // TODO(josh11b): uint64 hash() const;
@@ -758,6 +793,9 @@ class Graph {
   // Cache of the indices of the arguments which need to be constant for the XLA
   // compilation.
   mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
+
+  // Indicates the context that this Graph instance is constructed.
+  ConstructionContext construction_context_ = ConstructionContext::kNotTracked;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };

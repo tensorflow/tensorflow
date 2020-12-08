@@ -19,6 +19,8 @@ limitations under the License.
 #define TF_DEVICE_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/ControlFlowInterfaces.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow Device Dialect definitions
@@ -36,7 +38,7 @@ def TfDevice_Dialect : Dialect {
     XlaRun.
 }];
 
-  let cppNamespace = "tf_device";
+  let cppNamespace = "::mlir::tf_device";
 }
 
 //===----------------------------------------------------------------------===//
@@ -74,20 +76,18 @@ This op captures all needed live-in values.
   }];
 
   let builders = [
-    OpBuilder<[{OpBuilder &builder, OperationState &result,
-                StringAttr device, ArrayRef<Type> result_types}],
-      [{
-        result.addAttribute("device", device);
-        result.addTypes(result_types);
-        result.addRegion();
-      }]
-    >
+    OpBuilderDAG<(ins "StringAttr":$device, "ArrayRef<Type>":$result_types),
+    [{
+        $_state.addAttribute("device", device);
+        $_state.addTypes(result_types);
+        $_state.addRegion();
+      }]>
   ];
 
   let hasCanonicalizer = 1;
 }
 
-def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
+def TfDevice_ReturnOp : TfDevice_Op<"return", [NoSideEffect, ReturnLike, Terminator]> {
   let summary = [{
 The `tf_device.return` operation terminates and returns values from a
 `tf_device` dialect operation.
@@ -97,15 +97,14 @@ The `tf_device.return` operation terminates and returns values from a
     Variadic<AnyType>:$results
   );
 
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result",
+  let builders = [
+    OpBuilderDAG<(ins),
     [{
-      build(builder, result, {});
+      build($_builder, $_state, {});
     }]>
    ];
 
-  let parser = [{ return Parse$cppClass(&parser, &result); }];
-  let printer = [{ return Print(*this, &p); }];
+  let assemblyFormat = "attr-dict ($results^ `:` type($results))?";
 }
 
 def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
@@ -170,8 +169,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& state, int num_regions,"
-              "llvm::ArrayRef<Type> output_types">,
+    OpBuilderDAG<(ins "int":$num_regions, "llvm::ArrayRef<Type>":$output_types)>,
   ];
 
   let verifier = [{ return Verify(*this); }];
@@ -294,16 +292,10 @@ For example:
   }];
 
   let builders = [
-    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
-              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
-              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs, "
-              "llvm::ArrayRef<Value> packed_inputs, "
-              "llvm::ArrayRef<Type> replica_output_types">,
-    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
-              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
-              "llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs, "
-              "llvm::ArrayRef<Value> packed_inputs, "
-              "Operation::result_type_range replica_output_types">
+    OpBuilderDAG<(ins "int":$n,
+      "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
+      "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
+      "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
 
   let parser = [{ return Parse$cppClass(&parser, &result); }];
@@ -358,6 +350,32 @@ This op is used for outlining a cluster.
     FuncOp getFunc() {
       return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, func());
     }
+  }];
+}
+
+def TfDevice_RemoteRunOp : TfDevice_Op<"remote_run",
+    [SingleBlockImplicitTerminator<"ReturnOp">]> {
+  let summary = [{
+The `tf_device.remote_run` op launches the containing operations on a specific
+host.
+  }];
+
+  let description = [{
+This op captures all needed live-in values.
+  }];
+
+  let arguments = (ins
+    StrAttr:$host,
+    FlatSymbolRefAttr:$callee,
+    Variadic<AnyType>:$callee_args
+  );
+
+  let results = (outs
+    Variadic<AnyType>:$results
+  );
+
+  let assemblyFormat = [{
+      $host $callee `(` $callee_args `)` attr-dict `:` functional-type ( $callee_args , $results )
   }];
 }
 

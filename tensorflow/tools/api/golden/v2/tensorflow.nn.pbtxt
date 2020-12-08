@@ -177,6 +177,10 @@ tf_module {
     argspec: "args=[\'targets\', \'predictions\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "isotonic_regression"
+    argspec: "args=[\'inputs\', \'decreasing\', \'axis\'], varargs=None, keywords=None, defaults=[\'True\', \'-1\'], "
+  }
+  member_method {
     name: "l2_loss"
     argspec: "args=[\'t\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

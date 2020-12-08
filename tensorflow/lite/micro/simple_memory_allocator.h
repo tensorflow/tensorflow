@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,13 +43,13 @@ class SimpleMemoryAllocator {
                                        uint8_t* buffer_head,
                                        size_t buffer_size);
 
-  // Ensure that the head (lowest address and moving upwards) memory allocation
-  // is at least a given size. This function will only increase the head size if
-  // the passed in value is larger than the current head size. Calls to this
-  // method will also invalidate all temporary allocation values. This call will
-  // fail if a chain of allocations through AllocateTemp() have not been cleaned
-  // up with a call to ResetTempAllocations().
-  virtual TfLiteStatus EnsureHeadSize(size_t size, size_t alignment);
+  // Adjusts the head (lowest address and moving upwards) memory allocation to a
+  // given size. Calls to this method will also invalidate all temporary
+  // allocation values (it sets the location of temp space at the end of the
+  // head section). This call will fail if a chain of allocations through
+  // AllocateTemp() have not been cleaned up with a call to
+  // ResetTempAllocations().
+  virtual TfLiteStatus SetHeadBufferSize(size_t size, size_t alignment);
 
   // Allocates memory starting at the tail of the arena (highest address and
   // moving downwards).
@@ -69,17 +69,30 @@ class SimpleMemoryAllocator {
   // arena (lowest address).
   virtual void ResetTempAllocations();
 
-  uint8_t* GetHead() const;
-  uint8_t* GetBufferHead() const;
-  uint8_t* GetTail() const;
+  // Returns a pointer to the buffer currently assigned to the head section.
+  // This buffer is set by calling SetHeadSize().
+  uint8_t* GetHeadBuffer() const;
 
+  // Returns the size of the head section in bytes.
   size_t GetHeadUsedBytes() const;
+
+  // Returns the size of all allocations in the tail section in bytes.
   size_t GetTailUsedBytes() const;
 
-  // Returns the number of bytes available with a given alignment.
+  // Returns the number of bytes available with a given alignment. This number
+  // takes in account any temporary allocations.
   size_t GetAvailableMemory(size_t alignment) const;
 
+  // Returns the number of used bytes in the allocator. This number takes in
+  // account any temporary allocations.
   size_t GetUsedBytes() const;
+
+ protected:
+  // Returns a pointer to the current end of the head buffer.
+  uint8_t* head() const;
+
+  // Returns a pointer to the current end of the tail buffer.
+  uint8_t* tail() const;
 
  private:
   size_t GetBufferSize() const;

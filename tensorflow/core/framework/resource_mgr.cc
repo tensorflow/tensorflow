@@ -329,13 +329,4 @@ Status DeleteResource(OpKernelContext* ctx, const ResourceHandle& p) {
   return ctx->resource_manager()->Delete(p);
 }
 
-Status ResourceHandlesShape(shape_inference::InferenceContext* c) {
-  int n;
-  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
-  for (int i = 0; i < n; ++i) {
-    c->set_output(i, c->Scalar());
-  }
-  return Status::OK();
-}
-
 }  //  end namespace tensorflow

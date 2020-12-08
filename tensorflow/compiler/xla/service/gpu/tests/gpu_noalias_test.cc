@@ -50,11 +50,10 @@ TEST_F(GpuNoAliasTest, Concat) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
-  CompileAndVerifyIr(std::move(hlo_module),
-                     R"(CHECK-LABEL: define void @fusion
-                        CHECK-SAME: i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %[[OUTPUT_ALLOC:[a-z0-9]*]]
-                        CHECK: %fusion.raw = {{.*}} %[[OUTPUT_ALLOC]])",
-                     /*match_optimized_ir=*/false);
+  CompileAndVerifyIr(
+      std::move(hlo_module),
+      R"(CHECK: define{{.*}}void @fusion(i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}, i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %{{.*}}))",
+      /*match_optimized_ir=*/false);
 }
 
 }  // namespace gpu

@@ -18,6 +18,14 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
+def HLO_Dialect : Dialect {
+  let name = "mhlo";
+  let cppNamespace = "::mlir::mhlo";
+}
+
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.td"
+include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_structs.td"
+
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // TODO(hinsu): Use signed integers instead of signless integer which is being
@@ -45,9 +53,7 @@ def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
 // Any integer tensor type with rank 0 (i.e. representing a single integer).
-def HLO_ScalarIntTensor : ShapedContainerType<
-  [HLO_Int], And<[IsTensorTypePred, HasAnyRankOfPred<[0]>]>,
-  "a 0-dim integer tensor">;
+def HLO_ScalarIntTensor : 0DTensorOf<[HLO_Int]>;
 
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
@@ -67,10 +73,7 @@ def HLO_TensorOrTokenOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Token, HLO_Tuple]>;
 def HLO_DimensionValue : AnyTypeOf<[Index, HLO_Pred, HLO_Int]>;
 
 // Dynamic representation of a shape vector as a tensor.
-def HLO_DimensionTensor : ShapedContainerType<
-    [HLO_DimensionValue],
-    And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
+def HLO_DimensionTensor : 1DTensorOf<[HLO_DimensionValue]>;
 
 // In general, static shaped tensor constraints should be avoided unless
 // it is for a legacy op which is only correct with static shapes.
@@ -126,6 +129,17 @@ class BASE_HLO_AbsOp {
 
   string description = [{
     Returns `abs(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_CbrtOp {
+  string summary = "Cubic root operator";
+
+  string description = [{
+    Returns element-wise cubic root of the operand.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -313,6 +327,19 @@ class BASE_HLO_RealOp {
 
   string description = [{
     Returns `Real(operand)` element-wise.
+  }];
+}
+
+class BASE_HLO_RngBitGeneratorOp {
+  string summary = "Uniform random number generator operator";
+
+  string description = [{
+    Returns an output with a given shape filled with uniform random bits using
+    the specified algorithm (or backend default) and returns an updated state
+    (with the same shape as initial state) and the generated random data.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
   }];
 }
 
@@ -595,15 +622,6 @@ class BASE_HLO_CaseOp {
 // XLA parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 
-// Represents a unique identifier for each Send/Recv instruction pair or
-// optionally for collective instructions (AllReduce, CollectivePermute,
-// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
-class ChannelHandle<Dialect dialect> : StructAttr<"ChannelHandle", dialect, [
-                StructFieldAttr<"handle", I64Attr>,
-                StructFieldAttr<"type", I64Attr>]> {
-  let description = "two 64-bit integers 'handle' and 'type'";
-}
-
 class BASE_HLO_ReplicaIdOp {
   string summary = "ReplicaId operator";
 
@@ -675,67 +693,17 @@ class BASE_HLO_TupleOp {
    }];
 }
 
-//===----------------------------------------------------------------------===//
-// Precision Config enum definitions.
-//===----------------------------------------------------------------------===//
 
-// These mirror the XLA PrecisionConfig proto enum.
-def HLO_PRECISION_DEFAULT : StrEnumAttrCase<"DEFAULT">;
-def HLO_PRECISION_HIGH    : StrEnumAttrCase<"HIGH">;
-def HLO_PRECISION_HIGHEST : StrEnumAttrCase<"HIGHEST">;
 
-def HLO_PrecisionAttr : StrEnumAttr<"Precision",
-    "XLA precision for an operand. Has backend specific meaning.",
-    [HLO_PRECISION_DEFAULT,  HLO_PRECISION_HIGH, HLO_PRECISION_HIGHEST]>;
-
-// TODO(b/129153247) See if it's possible to also validate the size.
-def HLO_PrecisionConfigAttr:
-    OptionalAttr<
-          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
-
-//===----------------------------------------------------------------------===//
-// Fast Fourier Transform Type enum definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA FftType proto enum.
-def HLO_FFT_TYPE_FFT : StrEnumAttrCase<"FFT">;
-def HLO_FFT_TYPE_IFFT : StrEnumAttrCase<"IFFT">;
-def HLO_FFT_TYPE_RFFT : StrEnumAttrCase<"RFFT">;
-def HLO_FFT_TYPE_IRFFT : StrEnumAttrCase<"IRFFT">;
-
-def HLO_FftTypeAttr : StrEnumAttr<"FftType",
-    "XLA fast fourier transform type.",
-    [HLO_FFT_TYPE_FFT, HLO_FFT_TYPE_IFFT,
-     HLO_FFT_TYPE_RFFT, HLO_FFT_TYPE_IRFFT]>;
-
-//===----------------------------------------------------------------------===//
-// Comparison op definitions.
-//===----------------------------------------------------------------------===//
-
-// These mirror the XLA ComparisonDirection enum.
-def HLO_COMPARISON_DIRECTION_EQ : StrEnumAttrCase<"EQ">;
-def HLO_COMPARISON_DIRECTION_NE : StrEnumAttrCase<"NE">;
-def HLO_COMPARISON_DIRECTION_GE : StrEnumAttrCase<"GE">;
-def HLO_COMPARISON_DIRECTION_GT : StrEnumAttrCase<"GT">;
-def HLO_COMPARISON_DIRECTION_LE : StrEnumAttrCase<"LE">;
-def HLO_COMPARISON_DIRECTION_LT : StrEnumAttrCase<"LT">;
-
-def HLO_ComparisonDirectionAttr : StrEnumAttr<"ComparisonDirection",
-    "Which comparison operation to perform.",
-    [
-      HLO_COMPARISON_DIRECTION_EQ,
-      HLO_COMPARISON_DIRECTION_NE,
-      HLO_COMPARISON_DIRECTION_GE,
-      HLO_COMPARISON_DIRECTION_GT,
-      HLO_COMPARISON_DIRECTION_LE,
-      HLO_COMPARISON_DIRECTION_LT
-    ]>;
 
 class BASE_HLO_CompareOp {
   string summary = "Comparison operator";
 
   string description = [{
-    Compares `lhs` and `rhs` elementwise according to `comparison_direction`.
+    Compares `lhs` and `rhs` elementwise according to `comparison_direction`
+    and `compare_type`. If unspecified, `compare_type` is FLOAT for float element
+    types, SIGNED for signed element types and UNSIGNED for unsigned element
+    types.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
@@ -745,13 +713,6 @@ class BASE_HLO_CompareOp {
 //===----------------------------------------------------------------------===//
 // Quantize op definitions.
 //===----------------------------------------------------------------------===//
-
-// These mirror the XLA ComparisonDirection enum.
-def HLO_MIN_COMBINED : StrEnumAttrCase<"MIN_COMBINED">;
-
-def HLO_DequantizeModeAttr : StrEnumAttr<"DequantizeMode",
-  "Dequantization mode. Only MIN_COMBINED is supported.",
-  [HLO_MIN_COMBINED]>;
 
 class BASE_HLO_DequantizeOp {
   string summary = "Dequantize operator";
@@ -988,6 +949,32 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+//===----------------------------------------------------------------------===//
+// Common convolution attributes
+//===----------------------------------------------------------------------===//
+
+// TODO(b/129153247) See if it's possible to also validate the size.
+def HLO_PrecisionConfigAttr:
+    OptionalAttr<
+          TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
+
+def ConvolutionAttributes {
+  dag attributes = (ins
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    // Default value: zero for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$padding,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$lhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    ConvDimensionNumbers:$dimension_numbers,
+    I64Attr:$feature_group_count,
+    I64Attr:$batch_group_count,
+    HLO_PrecisionConfigAttr:$precision_config
+  );
+}
+
 class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
@@ -1109,15 +1096,6 @@ class BASE_HLO_ReshapeOp {
   }];
 }
 
-class ScatterDimensionNumbers<Dialect dialect> : StructAttr<
-    "ScatterDimensionNumbers", dialect, [
-      StructFieldAttr<"update_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
-      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
-      StructFieldAttr<"index_vector_dim", I64Attr>]> {
-  let description = "Structure of dimension information for scatter";
-}
-
 class BASE_HLO_ScatterOp {
   string summary = "Scatter operator";
 
@@ -1221,21 +1199,6 @@ class BASE_HLO_TransposeOp {
   }];
 }
 
-// These mirror the XLA Transpose enum in Triangular Solve options.
-def HLO_TRANSPOSE_INVALID : StrEnumAttrCase<"TRANSPOSE_INVALID">;
-def HLO_NO_TRANSPOSE : StrEnumAttrCase<"NO_TRANSPOSE">;
-def HLO_TRANSPOSE : StrEnumAttrCase<"TRANSPOSE">;
-def HLO_ADJOINT : StrEnumAttrCase<"ADJOINT">;
-
-def HLO_TransposeAttr : StrEnumAttr<"Transpose",
-    "Transpose options",
-    [
-      HLO_TRANSPOSE_INVALID,
-      HLO_NO_TRANSPOSE,
-      HLO_TRANSPOSE,
-      HLO_ADJOINT
-    ]>;
-
 class BASE_HLO_TriangularSolveOp {
   string summary = "TriangularSolve operator";
 
@@ -1325,6 +1288,19 @@ class BASE_HLO_WhileOp {
     true.
 
     See https://www.tensorflow.org/xla/operation_semantics#while.
+  }];
+}
+
+class BASE_HLO_BitcastOp {
+  string summary = "Bitcast operator";
+
+  string description = [{
+    This op changes the shape of the input in the way that the physical
+    arrangement of elements are unchanged.
+
+    However, the op needs layout information to make sense of "physical
+    arrangement of elements". Layout support in MHLO is currently under
+    exploration.
   }];
 }
 

@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -53,6 +53,11 @@ namespace {
 
 constexpr char kDeviceAttr[] = "device";
 typedef std::pair<TF::Conv2DOp, int64_t> Conv2DWithBlockSize;
+
+struct BlockArgumentInfo {
+  unsigned arg_num;
+  unsigned num_users;
+};
 
 // A pass that applies automatic space to depth transform for the first or
 // frontier convolutions consume host inputs on TPU.
@@ -108,7 +113,48 @@ struct TPUSpaceToDepthPass
   void runOnOperation() override;
 };
 
-// Handle padding before convolution for space to depth transform.
+// Updates func argument type to have the updated input shape.
+void UpdateFuncType(FuncOp func) {
+  auto arg_types = func.front().getArgumentTypes();
+  auto result_types = func.front().getTerminator()->getOperandTypes();
+  func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
+}
+
+void HandleFuncOp(Operation* op) {
+  auto func = llvm::cast<FuncOp>(op);
+  UpdateFuncType(func);
+}
+
+// Handles cast op between the first convolution and the block argument.
+LogicalResult HandleCast(TF::CastOp cast_op, ArrayRef<int64_t> new_shape) {
+  auto cast_input = cast_op.x();
+  // Update input type.
+  auto transform_result_type =
+      RankedTensorType::get(new_shape, getElementTypeOrSelf(cast_input));
+  cast_input.setType(transform_result_type);
+  auto block_arg = cast_input.dyn_cast<mlir::BlockArgument>();
+  auto cast_op_input = dyn_cast_or_null<TF::CastOp>(cast_input.getDefiningOp());
+  while (block_arg || cast_op_input) {
+    if (block_arg) {
+      // Change on device function type/shape.
+      HandleFuncOp(block_arg.getOwner()->getParentOp());
+      block_arg = nullptr;
+      cast_op_input = nullptr;
+    } else {
+      auto cast_input = cast_op_input.x();
+      // Update input type.
+      auto transform_result_type =
+          RankedTensorType::get(new_shape, getElementTypeOrSelf(cast_input));
+      cast_input.setType(transform_result_type);
+      // Update block arg and cast_op_input.
+      block_arg = cast_input.dyn_cast<mlir::BlockArgument>();
+      cast_op_input = dyn_cast_or_null<TF::CastOp>(cast_input.getDefiningOp());
+    }
+  }
+  return success();
+}
+
+// Handles padding before convolution for space to depth transform.
 LogicalResult HandlePad(TF::PadOp op, int32_t kernel_size, int32_t block_size) {
   auto ranked_type = op.input().getType().dyn_cast<RankedTensorType>();
   if (!ranked_type) return failure();
@@ -134,6 +180,10 @@ LogicalResult HandlePad(TF::PadOp op, int32_t kernel_size, int32_t block_size) {
       pad_input_shape[0], pad_input_shape[1] / block_size,
       pad_input_shape[2] / block_size,
       pad_input_shape[3] * block_size * block_size};
+  // Input of the pad op could be a cast op.
+  if (auto cast_op = dyn_cast_or_null<TF::CastOp>(input.getDefiningOp()))
+    if (failed(HandleCast(cast_op, transform_shape))) return failure();
+
   auto transform_result_type =
       RankedTensorType::get(transform_shape, getElementTypeOrSelf(input));
   input.setType(transform_result_type);
@@ -141,7 +191,7 @@ LogicalResult HandlePad(TF::PadOp op, int32_t kernel_size, int32_t block_size) {
   return success();
 }
 
-// Handle stride for the first convolution for the transform.
+// Handles stride for the first convolution for the transform.
 void HandleConv2DStride(TF::Conv2DOp conv2d) {
   MLIRContext* context = conv2d.getContext();
   SmallVector<int64_t, 4> values = {1, 1, 1, 1};
@@ -153,7 +203,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
   conv2d.setAttr("strides", strides);
 }
 
-// Transform input shape for the first convolution.
+// Transforms input shape for the first convolution.
 void HandleConv2DInput(TF::Conv2DOp conv2d, int64_t block_size) {
   auto input = conv2d.input();
   auto input_shape = input.getType().cast<RankedTensorType>().getShape();
@@ -165,7 +215,7 @@ void HandleConv2DInput(TF::Conv2DOp conv2d, int64_t block_size) {
   input.setType(transform_result_type);
 }
 
-// Add padding for convolution filter for space to depth transform.
+// Adds padding for convolution filter for space to depth transform.
 TF::PadOp GetPadOpForConv2DFilter(ArrayRef<int64_t> filter_shape, Value filter,
                                   OpBuilder* builder, int32_t pad_h,
                                   int32_t pad_w) {
@@ -185,7 +235,7 @@ TF::PadOp GetPadOpForConv2DFilter(ArrayRef<int64_t> filter_shape, Value filter,
                                     paddings_value);
 }
 
-// Create reshape op for space to depth transform.
+// Creates reshape op for space to depth transform.
 TF::ReshapeOp GetReshapeOpForConv2DFilter(ArrayRef<int64_t> new_shape,
                                           Value input, OpBuilder* builder) {
   auto reshape_result_type =
@@ -199,7 +249,7 @@ TF::ReshapeOp GetReshapeOpForConv2DFilter(ArrayRef<int64_t> new_shape,
                                         input, reshape_value);
 }
 
-// Create transpose op for shape to depth transform.
+// Creates transpose op for shape to depth transform.
 TF::TransposeOp GetTransposeOpForConv2DFilter(OpBuilder* builder, Value input) {
   SmallVector<int32_t, 6> permutation = {0, 2, 1, 3, 4, 5};
   auto permute_type = RankedTensorType::get({6}, builder->getIntegerType(32));
@@ -259,7 +309,7 @@ void HandleConv2DFilter(TF::Conv2DOp conv2d, int64_t block_size) {
   conv2d.setOperand(1, final_reshape_op);
 }
 
-// Create slice op for filter in back prop pass.
+// Creates slice op for filter in back prop pass.
 TF::SliceOp GetSliceOpForConv2DBackPropFilter(
     ArrayRef<int32_t> old_filter_shape, Value input, OpBuilder* builder) {
   SmallVector<int64_t, 4> slice_size(old_filter_shape.begin(),
@@ -281,7 +331,7 @@ TF::SliceOp GetSliceOpForConv2DBackPropFilter(
                                       start_position, slice_size_op);
 }
 
-// Transform Conv2DBackPropFilter for space to depth.
+// Transforms Conv2DBackPropFilter for space to depth.
 void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
                                 ArrayRef<int32_t> old_filter_shape,
                                 ArrayRef<int32_t> new_filter_shape,
@@ -354,22 +404,6 @@ void HandleConv2DBackPropFilter(TF::Conv2DBackpropFilterOp backprop,
   backprop.replaceAllUsesWith(slice_op.getResult());
 }
 
-// Update func arugument type to have the updated input shape.
-void UpdateFuncType(FuncOp func) {
-  llvm::SmallVector<Type, 8> arg_types;
-  arg_types.reserve(func.getNumArguments());
-  for (auto arg : func.getArguments()) arg_types.emplace_back(arg.getType());
-  auto terminator = func.front().getTerminator();
-  SmallVector<Type, 4> result_types(terminator->operand_type_begin(),
-                                    terminator->operand_type_end());
-  func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
-}
-
-void HandleFuncOp(Operation* op) {
-  auto func = llvm::cast<FuncOp>(op);
-  UpdateFuncType(func);
-}
-
 // Checks if the input producer op is supported in this transform. Right now, we
 // only check if it is a host tf.IteratorGetNext.
 bool IsSupportedHostInputOp(Operation* op) {
@@ -397,9 +431,8 @@ TF::SpaceToDepthOp BuildSpaceToDepth(tf_device::ClusterFuncOp cluster_func,
       input_shape[3] * block_size * block_size};
   auto transform_result_type =
       RankedTensorType::get(transform_shape, getElementTypeOrSelf(input));
-  return builder.create<TF::SpaceToDepthOp>(cluster_func.getLoc(),
-                                            transform_result_type, input,
-                                            APInt(64, block_size));
+  return builder.create<TF::SpaceToDepthOp>(
+      cluster_func.getLoc(), transform_result_type, input, block_size);
 }
 
 // Performs transformation for a non-replicated input.
@@ -417,12 +450,13 @@ TF::SpaceToDepthOp HandleHostInput(Value input, int64_t index,
 // supported case (thus transform happened).
 bool HandleHostReplicatedInputs(int64_t index,
                                 tf_device::ClusterFuncOp cluster_func,
-                                int64_t replicate_arg_index,
+                                BlockArgument block_arg,
                                 tf_device::ReplicateOp replicate,
                                 int32_t block_size) {
+  int64_t replicate_arg_index = block_arg.getArgNumber();
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n().getZExtValue();
+  int64_t num_replicas = replicate.n();
   // Gets inputs at replicate_arg_index for each replica.
   auto inputs = replicate.getOperands()
                     .drop_front(replicate_arg_index * num_replicas)
@@ -439,6 +473,7 @@ bool HandleHostReplicatedInputs(int64_t index,
         BuildSpaceToDepth(cluster_func, entry.value(), block_size, input_shape);
     replicate.setOperand(num_replicas * replicate_arg_index + entry.index(),
                          space_to_depth);
+    block_arg.setType(space_to_depth.getType());
   }
   return true;
 }
@@ -457,9 +492,8 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
       // For a block argument, consider transforms only when it is a replicated
       // input (defining ops will be outside the replicate node).
       if (maybe_replicate == block_arg.getParentRegion()->getParentOp()) {
-        HandleHostReplicatedInputs(input.index(), cluster_func,
-                                   block_arg.getArgNumber(), maybe_replicate,
-                                   block_size);
+        HandleHostReplicatedInputs(input.index(), cluster_func, block_arg,
+                                   maybe_replicate, block_size);
       }
     } else {
       // For an op output, consider transforms only when 1) there is no
@@ -482,7 +516,7 @@ void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
   }
 }
 
-// Check if input shape of convolution is good for space to depth transform.
+// Checks if input shape of convolution is good for space to depth transform.
 bool Conv2DInputShapeCanTransform(Value input) {
   auto ranked_type = input.getType().dyn_cast<RankedTensorType>();
   if (!ranked_type) return false;
@@ -495,35 +529,59 @@ bool Conv2DInputShapeCanTransform(Value input) {
   return true;
 }
 
-// Checks if a convoluton can apply SpaceToDepth transform.
-// Only the first convolution in the graph whose batch size smaller than 8
-// and its input feature size smaller than 8 can be transformed.
-Optional<std::pair<unsigned, int>> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
-  if (conv2d.data_format() != "NHWC" || conv2d.strides().size() != 4) {
-    return None;
-  }
-  auto conv2d_input = conv2d.input();
-  if (auto block_arg = conv2d_input.dyn_cast<mlir::BlockArgument>()) {
-    if (!Conv2DInputShapeCanTransform(conv2d_input)) return None;
-    int num_users =
+// Get block argument id and number of users for the input arg.
+Optional<BlockArgumentInfo> GetBlockArgNum(Value arg) {
+  if (auto block_arg = arg.dyn_cast<mlir::BlockArgument>()) {
+    if (!Conv2DInputShapeCanTransform(arg)) return None;
+    unsigned num_users =
         std::distance(block_arg.getUsers().begin(), block_arg.getUsers().end());
-    return std::make_pair(block_arg.getArgNumber(), num_users);
+    BlockArgumentInfo block_arg_info = {block_arg.getArgNumber(), num_users};
+    return block_arg_info;
   }
+  return None;
+}
 
-  if (auto pad_op = llvm::dyn_cast<TF::PadOp>(conv2d_input.getDefiningOp())) {
-    auto pad_input = pad_op.input();
-    if (auto block_arg = pad_input.dyn_cast<mlir::BlockArgument>()) {
-      if (!Conv2DInputShapeCanTransform(pad_input)) return None;
-      int num_users = std::distance(block_arg.getUsers().begin(),
-                                    block_arg.getUsers().end());
-      return std::make_pair(block_arg.getArgNumber(), num_users);
+// Gets input block argument id and number of users for the input recursively.
+// Current supported ops between convolution input and the block arguments are
+// PadOp and CastOp.
+Optional<BlockArgumentInfo> GetInputBlockArgNum(Value input) {
+  auto block_arg_num = GetBlockArgNum(input);
+  if (block_arg_num.hasValue()) return block_arg_num;
+
+  Value next_input = input;
+  auto pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
+  auto cast_op = dyn_cast_or_null<TF::CastOp>(next_input.getDefiningOp());
+
+  while (pad_op || cast_op) {
+    if (pad_op) {
+      auto block_arg_num = GetBlockArgNum(pad_op.input());
+      if (block_arg_num.hasValue()) return block_arg_num;
+      next_input = pad_op.input();
+    } else {
+      auto block_arg_num = GetBlockArgNum(cast_op.x());
+      if (block_arg_num.hasValue()) return block_arg_num;
+      next_input = cast_op.x();
     }
+    pad_op = dyn_cast_or_null<TF::PadOp>(next_input.getDefiningOp());
+    cast_op = dyn_cast_or_null<TF::CastOp>(next_input.getDefiningOp());
   }
 
   return None;
 }
 
-// Apply space to depth transform for the first convolution on TPU device.
+// Checks if a convoluton can apply SpaceToDepth transform.
+// Only the first convolution in the graph whose batch size smaller than 8
+// and its input feature size smaller than 8 can be transformed.
+Optional<BlockArgumentInfo> GetConv2DInputArgNum(TF::Conv2DOp conv2d) {
+  if (conv2d.data_format() != "NHWC" || conv2d.strides().size() != 4) {
+    return None;
+  }
+  // Current supported ops between convolution input and the block arguments are
+  // PadOp and CastOp.
+  return GetInputBlockArgNum(conv2d.input());
+}
+
+// Applies space to depth transform for the first convolution on TPU device.
 void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
   // Check if input and filter type are RankedTensorType.
   auto input_tensor_type =
@@ -563,8 +621,9 @@ void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
   SmallVector<int32_t, 4> new_filter_shape(filter_shape.begin(),
                                            filter_shape.end());
 
-  // Rewrite Conv2DBackPropFilter after the first convolution.
-  for (Operation* user : conv2d.getOperation()->getUsers()) {
+  // Rewrite Conv2DBackPropFilter that is the user of first convolution's input.
+  if (!conv2d_input.getDefiningOp()) return;
+  for (Operation* user : conv2d_input.getDefiningOp()->getUsers()) {
     if (auto backprop = dyn_cast<TF::Conv2DBackpropFilterOp>(user)) {
       HandleConv2DBackPropFilter(backprop, old_filter_shape, new_filter_shape,
                                  block_size);
@@ -572,7 +631,7 @@ void HandleFirstConvolution(TF::Conv2DOp conv2d, int64_t block_size) {
   }
 }
 
-// Get block size that is equal to stride from spatial dimension
+// Gets block size that is equal to stride from spatial dimension
 // from convolution.
 // Space to depth transform won't be triggered if block size <= 1.
 int32_t GetConv2DBlockSize(TF::Conv2DOp conv2d) {
@@ -608,7 +667,6 @@ void TPUSpaceToDepthPass::runOnOperation() {
   if (!device_func) return;
 
   TF::Conv2DOp first_conv;
-  Optional<ArrayRef<int64_t>> input_shape;
   // A map maps block argument id to the convolutions consumes them.
   llvm::SmallDenseMap<unsigned, std::vector<Conv2DWithBlockSize>>
       argnum_and_convolutions;
@@ -617,13 +675,13 @@ void TPUSpaceToDepthPass::runOnOperation() {
 
   // Find out the qualified convolutions and its block argument ids.
   auto conv2d_result = device_func.walk([&](TF::Conv2DOp conv2d) {
-    Optional<std::pair<unsigned, int>> arg_num_and_num_users =
+    Optional<BlockArgumentInfo> arg_num_and_num_users =
         GetConv2DInputArgNum(conv2d);
     if (arg_num_and_num_users.hasValue()) {
       // Get block size for the first convolution.
       int64_t block_size = GetConv2DBlockSize(conv2d);
-      auto arg_num = arg_num_and_num_users.getValue().first;
-      auto num_users = arg_num_and_num_users.getValue().second;
+      auto arg_num = arg_num_and_num_users.getValue().arg_num;
+      auto num_users = arg_num_and_num_users.getValue().num_users;
       argnum_and_convolutions[arg_num].emplace_back(conv2d, block_size);
       argnum_num_users[arg_num] = num_users;
       return WalkResult::interrupt();

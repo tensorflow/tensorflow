@@ -77,7 +77,14 @@ struct Parameter {
   Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
             double max)
       : name(name),
-        value(state->value),
+        // Sometimes non-autotune nodes (with `autotune_=false`) may contain
+        // parameters (for example inputs of parallel interleave dataset which
+        // are not in the current cycle). To avoid unrealistic situation
+        // (say `buffer_size=-1` or `parallelism=-1`) in the optimization
+        // computation, if the state value is `kAutotune=-1` (just to indicate
+        // the `SharedState` is tunable), we initialize the parameter value to
+        // be the minimal value of the state.
+        value(state->value == kAutotune ? min : state->value),
         min(min),
         max(max),
         state(std::move(state)) {}
@@ -243,6 +250,12 @@ class Node {
 
   // Returns the node output.
   Node* output() const { return output_; }
+
+  // Returns the parameter value.
+  double parameter_value(const string& name) const TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return parameters_.at(name)->state->value;
+  }
 
   // Returns the aggregate processing time.
   int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
@@ -478,8 +491,12 @@ class Node {
 
   // Returns a vector of nodes of the subtree rooted in this node. The nodes are
   // either in breadth-first search or reverse breadth-first search order
-  // depending on the `order` argument. The root node itself is not collected.
-  NodeVector CollectNodes(TraversalOrder order) const
+  // depending on the `order` argument. The nodes are collected based on the
+  // results of the `collect_node` predicate: if the predicate returns `false`
+  // for a given node, then the subtree rooted in this node is excluded. The
+  // root node itself is not collected.
+  NodeVector CollectNodes(TraversalOrder order,
+                          bool collect_node(const std::shared_ptr<Node>)) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Collect tunable parameters for the node.
@@ -505,6 +522,12 @@ class Node {
   void TotalMaximumBufferedBytesHelper(
       absl::flat_hash_map<string, double>* total_bytes) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
+
+  // Compute and return the maximum buffered bytes on the node itself. By
+  // default non-tunable nodes are assumed not to buffer any bytes, so the
+  // tunable nodes as subclasses are expected to override this method to ensure
+  // that the optimization algorithm respects the memory budget.
+  virtual double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Stores the time passed to the last call to `Node::record_start()` on the
   // current thread.
@@ -681,8 +704,8 @@ class Model {
   // (e.g. CPU, memory). The logic for collecting this information assumes that
   // the collection is not repeatedly disabled and enabled. As a consequence,
   // the implementation starts collecting resource usage when it encounters a
-  // tunable parameter (because the information is used for for tuning the value
-  // of the parameter) and never stops.
+  // tunable parameter (because the information is used for tuning the value of
+  // the parameter) and never stops.
   std::atomic<bool> collect_resource_usage_;
 };
 

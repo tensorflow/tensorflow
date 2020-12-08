@@ -20,6 +20,7 @@ tf_python_pybind_extension(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
+        "@llvm-project//llvm:FileCheckLib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -36,6 +37,7 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
+        "@llvm-project//llvm:FileCheckLib",
         "@llvm-project//llvm:Support",
         "@pybind11",
     ],

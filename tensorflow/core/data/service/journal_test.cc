@@ -28,12 +28,12 @@ namespace data {
 namespace {
 using ::testing::HasSubstr;
 
-bool NewJournalDir(std::string* journal_dir) {
+bool NewJournalDir(std::string& journal_dir) {
   std::string filename = testing::TmpDir();
   if (!Env::Default()->CreateUniqueFileName(&filename, "journal_dir")) {
     return false;
   }
-  *journal_dir = filename;
+  journal_dir = filename;
   return true;
 }
 
@@ -67,7 +67,7 @@ Status CheckJournalContent(StringPiece journal_dir,
   for (const auto& update : expected) {
     Update result;
     bool end_of_journal = true;
-    TF_RETURN_IF_ERROR(reader.Read(&result, &end_of_journal));
+    TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
     EXPECT_FALSE(end_of_journal);
     // We can't use the testing::EqualsProto matcher because it is not available
     // in OSS.
@@ -75,7 +75,7 @@ Status CheckJournalContent(StringPiece journal_dir,
   }
   Update result;
   bool end_of_journal = false;
-  TF_RETURN_IF_ERROR(reader.Read(&result, &end_of_journal));
+  TF_RETURN_IF_ERROR(reader.Read(result, end_of_journal));
   EXPECT_TRUE(end_of_journal);
   return Status::OK();
 }
@@ -83,7 +83,7 @@ Status CheckJournalContent(StringPiece journal_dir,
 
 TEST(Journal, RoundTripMultiple) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishTaskUpdate()};
@@ -95,9 +95,9 @@ TEST(Journal, RoundTripMultiple) {
   TF_EXPECT_OK(CheckJournalContent(journal_dir, updates));
 }
 
-TEST(Journal, AppendExistingFile) {
+TEST(Journal, AppendExistingJournal) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
                                  MakeFinishTaskUpdate()};
@@ -111,43 +111,43 @@ TEST(Journal, AppendExistingFile) {
 
 TEST(Journal, MissingFile) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
   FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
-  Status s = reader.Read(&result, &end_of_journal);
+  Status s = reader.Read(result, end_of_journal);
   EXPECT_TRUE(errors::IsNotFound(s));
 }
 
 TEST(Journal, NonRecordData) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
 
   TF_ASSERT_OK(Env::Default()->RecursivelyCreateDir(journal_dir));
   {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
-        DataServiceJournalFile(journal_dir), &file));
+        DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     TF_ASSERT_OK(file->Append("not record data"));
   }
 
   FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
-  Status s = reader.Read(&result, &end_of_journal);
+  Status s = reader.Read(result, end_of_journal);
   EXPECT_THAT(s.error_message(), HasSubstr("corrupted record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }
 
 TEST(Journal, InvalidRecordData) {
   std::string journal_dir;
-  EXPECT_TRUE(NewJournalDir(&journal_dir));
+  EXPECT_TRUE(NewJournalDir(journal_dir));
 
   TF_ASSERT_OK(Env::Default()->RecursivelyCreateDir(journal_dir));
   {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
-        DataServiceJournalFile(journal_dir), &file));
+        DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
     TF_ASSERT_OK(writer->WriteRecord("not serializd proto"));
   }
@@ -155,7 +155,7 @@ TEST(Journal, InvalidRecordData) {
   FileJournalReader reader(Env::Default(), journal_dir);
   Update result;
   bool end_of_journal = true;
-  Status s = reader.Read(&result, &end_of_journal);
+  Status s = reader.Read(result, end_of_journal);
   EXPECT_THAT(s.error_message(), HasSubstr("Failed to parse journal record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }

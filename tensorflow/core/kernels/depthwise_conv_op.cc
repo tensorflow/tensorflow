@@ -298,8 +298,6 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 
-    // For in_depth == 1 and grouped convolutions.
-    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
     dtype_ = DataTypeToEnum<T>::value;
 #if CUDNN_VERSION >= 8000
@@ -407,13 +405,13 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // TODO(csigg): Have autotune decide if native is faster than cuDNN.
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn =
-        use_cudnn_ && (in_depth == 1 ||
-                       (use_cudnn_grouped_conv_ &&
-                        IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
-                                                   /*filter_cols=*/filter_cols,
-                                                   /*in_depth=*/in_depth,
-                                                   /*out_depth=*/out_depth)));
+    bool use_cudnn = std::is_same<Device, GPUDevice>::value &&
+                     (in_depth == 1 ||
+                      (use_cudnn_grouped_conv_ &&
+                       IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                                  /*filter_cols=*/filter_cols,
+                                                  /*in_depth=*/in_depth,
+                                                  /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNative: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -443,7 +441,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
               "Failed to reshape filter tensor for grouped convolution."));
       // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
       // conv is supported.
-      launcher_(context, use_cudnn_, cudnn_use_autotune_, input,
+      launcher_(context, /*use_cudnn=*/true, cudnn_use_autotune_, input,
                 reshaped_filter, /*row_dilation=*/1, /*col_dilation=*/1,
                 stride_, stride_, padding_, explicit_paddings_, output,
                 data_format_);
@@ -485,7 +483,6 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
   // For in_depth == 1 and grouped convolutions.
   LaunchConv2DOp<Device, T> launcher_;
-  bool use_cudnn_;
   bool cudnn_use_autotune_;
   DataType dtype_;
 

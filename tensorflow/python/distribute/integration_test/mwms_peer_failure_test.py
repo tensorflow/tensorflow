@@ -26,10 +26,19 @@ import os
 
 import tensorflow as tf
 
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import collective_all_reduce_strategy as mwms_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import test_util
 from tensorflow.python.eager import test
+
+
+# Put it in top level so it executes in the child processes as well.
+mwms_lib.CollectiveAllReduceExtended._enable_check_health = True
+mwms_lib.CollectiveAllReduceExtended._check_health_interval = 3
+mwms_lib.CollectiveAllReduceExtended._check_health_initial_timeout = 0
+# This is needed for OSS, which issues all RPCs with fail_fast=false by default.
+mwms_lib.CollectiveAllReduceExtended._check_health_timeout = 1
 
 
 def get_attempt(strategy, attempts):
@@ -62,10 +71,69 @@ class PeerFailureTest(test.TestCase):
   # events in real world. E.g. some tests make a worker fail on the first
   # attempt only, and asserts that it should recovery.
 
-  def test_creating_variable_broken(self):
+  def test_creating_variable(self):
     # This test simulates the case when a worker fails before or during creating
     # a variable. Creating variables involve broadcasting the initial value from
     # the first replica to all replicas.
+
+    def worker_fn():
+      strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+      with strategy.scope():
+        tf.Variable(1.)
+        # worker-1 dies here.
+        if strategy.cluster_resolver.task_id == 1:
+          quick_exit(1)
+        v = tf.Variable(tf.random.uniform(()))
+        return v.read_value().numpy()
+
+    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
+    mpr = multi_process_runner.MultiProcessRunner(worker_fn, cluster_spec)
+    mpr.start()
+    # TODO(b/151232436): Always raise UnavailableError when a peer fails.
+    with self.assertRaises(
+        (tf.errors.UnavailableError, tf.errors.DeadlineExceededError)):
+      mpr.join(timeout=30)
+
+  def test_reduce_small_tensor(self):
+    # This test simulates the case when a worker fails before or during reducing
+    # a small tensors, e.g. reading a metric.
+    #
+    # Note that this is written for a specific corner case that used to happen
+    # only when all of the following conditions are met:
+    #   - There're two workers.
+    #   - They're reducing a small tensor. The definition of small varies
+    #     per platform.
+    #   - They're reducing a single tensor. Batched all-reduce are not affected.
+    #   - It must be worker-1 that fails.
+    # Under this case, the all-reduce is effectively two send/recv operation,
+    # the first one from worker-0 to worker-1, and the second one vice versa.
+    # The first one blocks the second one. In send/recv, the sending party is
+    # not aware of the failures of the receiving party.
+
+    def worker_fn():
+      strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+      value = tf.identity([1.])
+      strategy.reduce("sum", value, axis=None)
+      # worker-1 dies here.
+      if strategy.cluster_resolver.task_id == 1:
+        quick_exit(1)
+      strategy.reduce("sum", value, axis=None)
+
+    cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
+    mpr = multi_process_runner.MultiProcessRunner(worker_fn, cluster_spec)
+    mpr.start()
+    # TODO(b/151232436): Always raise UnavailableError when a peer fails.
+    with self.assertRaises(
+        (tf.errors.UnavailableError, tf.errors.DeadlineExceededError)):
+      mpr.join(timeout=30)
+
+
+class PeerFailureRecoverTest(test.TestCase):
+  # Similar to PeerFailureTest but simulates the situation where there's some
+  # external system that automatically restarts failed workers.
+
+  def test_creating_variable(self):
+    # See PeerFailureTest.test_creating_variable
 
     def worker_fn(attempts):
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
@@ -83,23 +151,11 @@ class PeerFailureTest(test.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         worker_fn, cluster_spec, args=(attempts,), auto_restart=True)
     mpr.start()
-    # TODO(b/151232436): worker-0 should raises Unavailable instead of hanging.
-    # Now after worker-1 fails, worker-0 waits on the second variable creation;
-    # after worker-1 recovers, worker-1 waits on the first variable creation.
-    with self.assertRaises(multi_process_runner.SubprocessTimeoutError):
-      mpr.join(timeout=30)
+    results = mpr.join(timeout=90).return_value
+    self.assertEqual(results[0], results[1])
 
-  def test_reduce_small_tensor_broken(self):
-    # This test simulates the case when a worker fails before or during reducing
-    # a small tensors, e.g. reading a metric.
-    #
-    # Note that this is a rather corner case and only happens when all of the
-    # following conditions are met:
-    #   - There're two workers.
-    #   - They're reducing a small tensor. The definition of small varies
-    #     per platform.
-    #   - They're reducing a single tensor. Batched all-reduce are not affected.
-    #   - It must be worker-1 that fails.
+  def test_reduce_small_tensor(self):
+    # See PeerFailureTest.test_reduce_small_tensor
 
     def worker_fn(attempts):
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
@@ -109,18 +165,15 @@ class PeerFailureTest(test.TestCase):
       # worker-1 dies here.
       if attempt == 1 and task_id == 1:
         quick_exit(1)
-      strategy.reduce("sum", value, axis=None)
+      return strategy.reduce("sum", value, axis=None).numpy()
 
     cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
     attempts = multi_process_runner.manager().dict()
     mpr = multi_process_runner.MultiProcessRunner(
         worker_fn, cluster_spec, args=(attempts,), auto_restart=True)
     mpr.start()
-    # TODO(b/151232436): worker-0 should raises Unavailable instead of hanging.
-    # Now after worker-1 fails, worker-0 waits on the second reduce; after
-    # worker-1 recovers, worker-1 waits on the first reduce.
-    with self.assertRaises(multi_process_runner.SubprocessTimeoutError):
-      mpr.join(timeout=30)
+    results = mpr.join(timeout=90).return_value
+    self.assertAllEqual(results, [[2.], [2.]])
 
   def test_quick_recover(self):
     # This test simulates the case when a worker fails but recovers quickly
@@ -131,11 +184,13 @@ class PeerFailureTest(test.TestCase):
     # failed workers.
 
     def worker_fn(attempts):
+      # Set a long check alive interval to better simulate the case when a
+      # worker fails and recovers during a check alive interval.
+      mwms_lib.CollectiveAllReduceExtended._check_alive_interval = 30
+      mwms_lib.CollectiveAllReduceExtended._check_alive_initial_timeout = 30
+
       strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
       task_id, attempt = get_attempt(strategy, attempts)
-
-      if attempt == 2 and task_id == 1:
-        multi_process_runner.barrier().wait()
 
       @tf.function
       def replica_fn():
@@ -149,10 +204,6 @@ class PeerFailureTest(test.TestCase):
       # worker-1 dies here.
       if attempt == 1 and task_id == 1:
         quick_exit(1)
-      # Make worker-0 waits for worker-1 to restart before entering the next
-      # collective to simulate a quick recovery of worker-1.
-      if attempt == 1 and task_id == 0:
-        multi_process_runner.barrier().wait()
       strategy.run(replica_fn)
 
     cluster_spec = multi_worker_test_base.create_cluster_spec(num_workers=2)
@@ -164,4 +215,4 @@ class PeerFailureTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

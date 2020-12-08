@@ -23,22 +23,22 @@ import six
 import tensorflow as tf
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager.context import get_executor
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.platform import benchmark
-from tensorflow.python.util import tf_inspect
 
 
 def _run_benchmark(func, num_iters, execution_mode=None):
-  ctx = context.context()
   with context.execution_mode(execution_mode):
     # call func to warm up
     func()
     if execution_mode == context.ASYNC:
-      ctx.executor.wait()
+      get_executor().wait()
     start = time.time()
     for _ in range(num_iters):
       func()
     if execution_mode == context.ASYNC:
-      ctx.executor.wait()
+      get_executor().wait()
     end = time.time()
 
     return end - start

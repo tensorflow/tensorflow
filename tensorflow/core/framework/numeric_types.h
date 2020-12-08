@@ -24,7 +24,6 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
 // clang-format on
 
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {

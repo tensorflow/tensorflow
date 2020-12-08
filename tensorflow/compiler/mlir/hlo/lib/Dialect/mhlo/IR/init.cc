@@ -15,19 +15,15 @@ limitations under the License.
 
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 
-// Static initialization for *HLO dialects registration.
-
-void mlir::mhlo::registerAllDialects() {
-  static bool init_once = []() {
-    registerDialect<mlir::chlo::HloClientDialect>();
-    registerDialect<mlir::lmhlo::LmhloDialect>();
-    registerDialect<mlir::mhlo::MhloDialect>();
-    return true;
-  }();
-  (void)init_once;
-
-  // Dependent dialects
+void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
+  // clang-format off
+  registry.insert<mlir::chlo::HloClientDialect,
+                  mlir::mhlo::MhloDialect,
+                  mlir::lmhlo::LmhloDialect,
+                  mlir::lmhlo_gpu::LmhloGpuDialect>();
+  // clang-format on
 }

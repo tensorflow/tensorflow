@@ -30,7 +30,7 @@ class MultiProcessRunnerNoInitTest(test.TestCase):
     def simple_func():
       return 'foobar'
 
-    with self.assertRaisesRegex(RuntimeError,
+    with self.assertRaisesRegex(multi_process_runner.NotInitializedError,
                                 '`multi_process_runner` is not initialized.'):
       multi_process_runner.run(
           simple_func,

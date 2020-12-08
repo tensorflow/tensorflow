@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATIONS_H_
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,6 +37,7 @@ enum class OperationType {
   ADD,
   BATCH_TO_SPACE,
   BATCH_NORMALIZATION,
+  BATCHED_MATMUL,
   CONCAT,
   CONST,
   CONVOLUTION_2D,
@@ -45,9 +47,14 @@ enum class OperationType {
   DEPTHWISE_CONVOLUTION,
   DIV,
   ELU,
+  EQUAL,
   EXP,
   FULLY_CONNECTED,
+  GREATER,
+  GREATER_EQUAL,
   HARD_SWISH,
+  LESS,
+  LESS_EQUAL,
   LOG,
   LSTM,
   MAXIMUM,
@@ -56,12 +63,18 @@ enum class OperationType {
   MEAN_STDDEV_NORMALIZATION,
   MINIMUM,
   MUL,
+  NEG,
+  NOT_EQUAL,
   PAD,
   POOLING_2D,
   POW,
   PRELU,
   // Used to accurately run inference on quantized models.
   QUANTIZE_AND_DEQUANTIZE,
+  REDUCE_MAXIMUM,
+  REDUCE_MINIMUM,
+  REDUCE_PRODUCT,
+  REDUCE_SUM,
   RELU,
   RESHAPE,
   RESIZE,
@@ -358,6 +371,10 @@ struct PReLUAttributes {
       alpha;
 };
 
+struct ReduceAttributes {
+  std::set<Axis> dims;
+};
+
 struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
@@ -487,6 +504,9 @@ BHWC CalculateOutputShape(const BHWC& input,
 
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
+
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
 
 struct ElementwiseAttributes {
   TensorOrScalar param;

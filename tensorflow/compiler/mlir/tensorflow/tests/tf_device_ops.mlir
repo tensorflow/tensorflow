@@ -40,6 +40,19 @@ func @empty_replicate() {
 // CHECK-NEXT:   tf_device.return
 }
 
+// CHECK-LABEL: func @no_operand_replicate
+func @no_operand_replicate() {
+  tf_device.replicate {n = 2 : i32} {
+    %0 = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+    %1 = "tf.Const"() { value = dense<1> : tensor<i64> } : () -> tensor<i64>
+    tf_device.return %0, %1 : tensor<i64>, tensor<i64>
+  }
+  return
+  // CHECK:      tf_device.replicate
+  // CHECK-SAME: n = 2
+  // CHECK:   tf_device.return
+}
+
 // CHECK-LABEL: func @replicate_with_multiple_operands
 func @replicate_with_multiple_operands() {
   %0 = "tf.opA"() : () -> tensor<*xi1>

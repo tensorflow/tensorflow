@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -81,11 +82,15 @@ class FakeEagerClient : public EagerClient {
 
   CLIENT_METHOD(CreateContext);
   CLIENT_METHOD(UpdateContext);
-  CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
+
+  void EnqueueAsync(CallOptions* call_opts, const EnqueueRequest* request,
+                    EnqueueResponse* response, StatusCallback done) override {
+    done(impl_->Enqueue(call_opts, request, response));
+  }
 
   void RunComponentFunctionAsync(CallOptions* call_opts,
                                  const RunComponentFunctionRequest* request,
@@ -94,10 +99,11 @@ class FakeEagerClient : public EagerClient {
     impl_->RunComponentFunction(call_opts, request, response, std::move(done));
   }
 
-  void StreamingEnqueueAsync(const EnqueueRequest* request,
+  void StreamingEnqueueAsync(CallOptions* call_opts,
+                             const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
-    done(impl_->Enqueue(request, response));
+    done(impl_->Enqueue(nullptr, request, response));
   }
 
   bool allow_multiple_pending_requests() const override { return false; }
@@ -218,10 +224,11 @@ void AddOperationToRunComponentFunctionRequest(
     const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
-    RunComponentFunctionRequest* request) {
+    const int output_num, RunComponentFunctionRequest* request) {
   auto* operation = request->mutable_operation();
   operation->set_is_function(true);
   operation->set_is_component_function(true);
+  request->add_output_num(output_num);
   BuildOperation(operation, id, name, inputs, attrs, device);
 }
 
@@ -421,7 +428,7 @@ TEST_F(EagerServiceImplTest, BasicTest) {
       2, "MatMul", {std::make_pair(1, 0), std::make_pair(1, 0)}, attrs,
       "/job:localhost/replica:0/task:0/device:CPU:0", &remote_enqueue_request);
 
-  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+  TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                           &remote_enqueue_response));
 
   auto& matmul_result_shape =
@@ -462,7 +469,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
   // Creates a context and attempts to execute a function.
   void TestFunction(const RegisterFunctionOp& register_op,
                     const string& function_name,
-                    const bool local_inputs = false) {
+                    const bool local_inputs = false,
+                    const bool test_cancel = false) {
     TestEagerServiceImpl eager_service_impl(&worker_env_);
 
     uint64 context_id = random::New64();
@@ -480,8 +488,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     *enqueue_request.add_queue()->mutable_register_function() = register_op;
     EnqueueResponse enqueue_response;
 
-    TF_ASSERT_OK(
-        eager_service_impl.Enqueue(&enqueue_request, &enqueue_response));
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &enqueue_request,
+                                            &enqueue_response));
 
     EnqueueRequest remote_enqueue_request;
     remote_enqueue_request.set_context_id(context_id);
@@ -517,22 +525,38 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
           &remote_enqueue_request);
     }
 
-    TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
-                                            &remote_enqueue_response));
+    CallOptions call_opts;
+    Status status;
+    Notification n;
+    Env::Default()->SchedClosure([&] {
+      status = eager_service_impl.Enqueue(&call_opts, &remote_enqueue_request,
+                                          &remote_enqueue_response);
+      n.Notify();
+    });
 
-    const tensorflow::Tensor* t = nullptr;
-    tensorflow::TensorHandle* tensor_handle;
-    TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-        context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
-    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+    if (test_cancel) {
+      // Wait to let the Enqueue thread starts running
+      Env::Default()->SleepForMicroseconds(500000);
+      call_opts.StartCancel();
+      n.WaitForNotification();
+      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+    } else {
+      n.WaitForNotification();
+      TF_ASSERT_OK(status);
+      const tensorflow::Tensor* t = nullptr;
+      tensorflow::TensorHandle* tensor_handle;
+      TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
+          context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+      TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
-    auto actual = t->flat<float>();
-    EXPECT_EQ(4, actual.size());
+      auto actual = t->flat<float>();
+      EXPECT_EQ(4, actual.size());
 
-    EXPECT_EQ(7, actual(0));
-    EXPECT_EQ(10, actual(1));
-    EXPECT_EQ(15, actual(2));
-    EXPECT_EQ(22, actual(3));
+      EXPECT_EQ(7, actual(0));
+      EXPECT_EQ(10, actual(1));
+      EXPECT_EQ(15, actual(2));
+      EXPECT_EQ(22, actual(3));
+    }
 
     CloseContextRequest close_context_request;
     close_context_request.set_context_id(context_id);
@@ -562,8 +586,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     enqueue_request.set_context_id(context_id);
     *enqueue_request.add_queue()->mutable_register_function() = register_op;
     EnqueueResponse enqueue_response;
-    TF_ASSERT_OK(
-        eager_service_impl.Enqueue(&enqueue_request, &enqueue_response));
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &enqueue_request,
+                                            &enqueue_response));
 
     // First run an op to generate input for function.
     EnqueueRequest remote_enqueue_request;
@@ -580,17 +604,19 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     AddOperationToEnqueueRequest(1, "Const", {}, const_attrs,
                                  "/job:localhost/replica:0/task:0/device:CPU:0",
                                  &remote_enqueue_request);
-    TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+    TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                             &remote_enqueue_response));
 
     // Run function with input from the previous op.
     RunComponentFunctionRequest run_comp_func_request;
     run_comp_func_request.set_context_id(context_id);
     RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
     AddOperationToRunComponentFunctionRequest(
         2, function_name, {std::make_pair(1, 0)},
         std::unordered_map<string, AttrValue>(),
-        "/job:localhost/replica:0/task:0/device:CPU:0", &run_comp_func_request);
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
 
     CallOptions call_opts;
     Notification n;
@@ -613,7 +639,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       const tensorflow::Tensor* t = nullptr;
       tensorflow::TensorHandle* tensor_handle;
       TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-          context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+          context_id, RemoteTensorHandleInternal(2, output_num),
+          &tensor_handle));
       TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
       auto actual = t->flat<float>();
@@ -651,6 +678,13 @@ TEST_F(EagerServiceImplFunctionTest, NestedFunctionTest) {
   *register_op.mutable_function_def() = MatMulNestedFunction();
   *register_op.mutable_library()->add_function() = MatMulFunction();
   TestFunction(register_op, "MatMulNestedFunction");
+}
+
+TEST_F(EagerServiceImplFunctionTest, FunctionCancellationTest) {
+  RegisterFunctionOp register_op;
+  *register_op.mutable_function_def() = SingleRecvNodeFunction();
+  TestFunction(register_op, "SingleRecvNodeFunction", /*local_inputs=*/false,
+               /*test_cancel=*/true);
 }
 
 TEST_F(EagerServiceImplFunctionTest, ComponentFunctionTest) {
@@ -735,7 +769,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     const_attrs.insert({"value", val});
     AddOperationToEnqueueRequest(1, "Const", {}, const_attrs, local_device_,
                                  &remote_enqueue_request);
-    TF_EXPECT_OK(eager_service_impl_.Enqueue(&remote_enqueue_request,
+    TF_EXPECT_OK(eager_service_impl_.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response));
     eager_cluster_flr_ = absl::make_unique<EagerClusterFunctionLibraryRuntime>(
         context_id_, ctx, device_mgr_.get());
@@ -746,7 +780,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get(),
-        /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+        /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64 step_id,
                                    const DeviceMgr* device_mgr,
                                    Rendezvous** r) {
@@ -771,12 +805,17 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                                   &close_context_response));
   }
 
-  void CheckOutputsAndClose(const int64 op_id) {
+  void CheckOutputsAndClose(const std::vector<FunctionRet>& outputs,
+                            const int64 op_id) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* tensor_handle;
     TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
         context_id_, RemoteTensorHandleInternal(2, 0), &tensor_handle));
     TF_ASSERT_OK(tensor_handle->Tensor(&t));
+    EXPECT_EQ(outputs.size(), 1);
+    EXPECT_EQ(outputs.at(0).index(), 1);
+    const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
+    EXPECT_EQ(shape, t->shape());
     CheckOutputTensorAndClose(*t);
   }
 
@@ -845,11 +884,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
                    });
   done.WaitForNotification();
   TF_ASSERT_OK(status);
-  EXPECT_EQ(outputs.size(), 1);
-  EXPECT_EQ(outputs.at(0).index(), 1);
-  const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
-  EXPECT_EQ(shape, TensorShape({2, 2}));
-  CheckOutputsAndClose(op_id);
+  CheckOutputsAndClose(outputs, op_id);
 }
 
 // Test executes a remote function with local input and output tensors.
@@ -919,6 +954,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      /*outputs_on_op_device=*/false,
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
 
@@ -940,13 +976,13 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
         *handle = remote_handles.at(index);
         return Status::OK();
       });
-  std::vector<Tensor> outputs;
+  std::vector<FunctionRet> outputs;
 
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt));
 
-  CheckOutputsAndClose(op_id);
+  CheckOutputsAndClose(outputs, op_id);
 }
 
 // Test executes a remote function through KernelAndDeviceFunc::RunAsync.
@@ -966,6 +1002,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*composite_devices=*/{}, /*input_resource_dtypes_and_shapes=*/{},
       /*runner=*/nullptr,
       /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      /*outputs_on_op_device=*/false,
       [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
       [=]() { return op_id; }));
 
@@ -987,7 +1024,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
         *handle = remote_handles.at(index);
         return Status::OK();
       });
-  std::vector<Tensor> outputs;
+  std::vector<FunctionRet> outputs;
 
   Status status;
   Notification n;
@@ -1000,7 +1037,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
                    });
   n.WaitForNotification();
   TF_ASSERT_OK(status);
-  CheckOutputsAndClose(op_id);
+  CheckOutputsAndClose(outputs, op_id);
 }
 
 // Test creates a context and attempts to send a tensor (using the RPC), and
@@ -1040,7 +1077,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
       2, "MatMul", {std::make_pair(1, 0), std::make_pair(1, 0)}, attrs,
       "/job:localhost/replica:0/task:0/device:CPU:0", &remote_enqueue_request);
 
-  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+  TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                           &remote_enqueue_response));
 
   const tensorflow::Tensor* t = nullptr;
@@ -1122,7 +1159,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   remote_handle->set_op_device(device2);
   remote_handle->set_device(device2);
 
-  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+  TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                           &remote_enqueue_response));
 
   tensorflow::TensorHandle* packed_handle;
@@ -1183,9 +1220,9 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, /*async=*/false,
+      /*async=*/false,
       /*lazy_copy_function_remote_inputs=*/false, device_mgr_.get(), false,
-      rendezvous, GetDefaultCustomKernelCreator());
+      rendezvous);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.
@@ -1209,9 +1246,9 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   SetTensorProto(send_tensor->add_tensors());
 
   // Unable to handle the request since there is no eager context.
-  Status status = eager_service_impl.Enqueue(&remote_enqueue_request,
+  Status status = eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                              &remote_enqueue_response);
-  EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
+  EXPECT_EQ(error::UNAVAILABLE, status.code());
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "Unable to find a context_id matching the specified one"));
@@ -1219,7 +1256,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   // The request can be handled after adding the master eager context to
   // service.
   TF_ASSERT_OK(eager_service_impl.CreateMasterContext(context_id, ctx));
-  TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
+  TF_ASSERT_OK(eager_service_impl.Enqueue(nullptr, &remote_enqueue_request,
                                           &remote_enqueue_response));
   ctx->Unref();
 }
@@ -1248,7 +1285,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
   Status status =
       eager_service_impl.KeepAlive(&keep_alive_request, &keep_alive_response);
 
-  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.code(), error::UNAVAILABLE);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
                       status.error_message());
 

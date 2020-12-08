@@ -101,14 +101,14 @@ uint32_t constexpr kOutfeedCidShutdown = 0;
 // Encapsulates data received from a device outfeed.
 class OutfeedData {
  public:
-  OutfeedData(Device* device, uint32_t consumer_id, Shape shape)
+  OutfeedData(PjRtDevice* device, uint32_t consumer_id, Shape shape)
       : device_(device),
         consumer_id_(consumer_id),
         shape_(shape),
         literal_(nullptr),
         literal_size_bytes_(0) {}
 
-  Device* device() { return device_; }
+  PjRtDevice* device() { return device_; }
   uint32_t consumer_id() const { return consumer_id_; }
   Shape shape() const { return shape_; }
   std::unique_ptr<Literal> literal() {
@@ -123,7 +123,7 @@ class OutfeedData {
   std::string DebugString() const;
 
  private:
-  Device* device_;
+  PjRtDevice* device_;
   uint32_t consumer_id_;
   Shape shape_;
   std::unique_ptr<Literal> literal_;
@@ -187,8 +187,8 @@ class OutfeedReceiverImpl {
   Status SendShutdownOutfeedHeader(int device_idx);
 
   // Receives a raw Literal from a device outfeed.
-  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(const Device* device,
-                                                           const Shape& shape);
+  StatusOr<std::unique_ptr<Literal>> ReceiveRawFromOutfeed(
+      const PjRtDevice* device, const Shape& shape);
 
   // Enqueues received data in the callbaback queue.
   void EnqueueReceivedData(std::unique_ptr<OutfeedData> received)
@@ -200,7 +200,7 @@ class OutfeedReceiverImpl {
 
   OutfeedReceiver::Callback callback_;
   // The devices on which we are listening.
-  std::vector<Device*> devices_;
+  std::vector<PjRtDevice*> devices_;
   // Maximum bytes capacity of the callback queue.
   uint64_t max_callback_queue_size_bytes_;
 
@@ -283,7 +283,7 @@ void OutfeedReceiverImpl::DeviceListenerThreadLoop(int device_idx) {
     absl::MutexLock lock(&mu_);
     ++num_listening_threads_;
   }
-  Device* device = devices_[device_idx];
+  PjRtDevice* device = devices_[device_idx];
   while (true) {
     Shape header_shape = ShapeUtil::MakeShape(U32, {kOutfeedHeaderWords});
     std::unique_ptr<Literal> header =
@@ -339,14 +339,10 @@ void OutfeedReceiverImpl::EnqueueReceivedData(
 }
 
 StatusOr<std::unique_ptr<Literal>> OutfeedReceiverImpl::ReceiveRawFromOutfeed(
-    const Device* device, const Shape& shape) {
+    const PjRtDevice* device, const Shape& shape) {
   std::shared_ptr<Literal> literal_shared;
 
-  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
-                      device->GetLocalDeviceState());
-  TF_ASSIGN_OR_RETURN(Literal literal,
-                      local_device->client()->TransferFromOutfeedLocal(
-                          shape, local_device->device_ordinal()));
+  TF_ASSIGN_OR_RETURN(Literal literal, device->TransferFromOutfeed(shape));
 
   return absl::make_unique<Literal>(std::move(literal));
 }
@@ -390,7 +386,7 @@ void OutfeedReceiverImpl::CallbackThreadLoop() {
 }
 
 Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
-  const Device* device = devices_[device_idx];
+  const PjRtDevice* device = devices_[device_idx];
   constexpr int consumer_id = kOutfeedCidShutdown;
   VLOG(2) << "[" << device->DebugString()
           << "] SendSpecialHeader cons=" << consumer_id;
@@ -409,13 +405,13 @@ Status OutfeedReceiverImpl::SendShutdownOutfeedHeader(int device_idx) {
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<PjRtExecutable> executable,
-      PjRtExecutable::Compile(computation, devices_[device_idx]->client(),
-                              std::move(compile_options)));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
+                      devices_[device_idx]->client()->Compile(
+                          computation, std::move(compile_options)));
   ExecuteOptions execute_options;
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable->Execute({}, execute_options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
+      executable->Execute({{}}, execute_options));
   return Status::OK();
 }
 

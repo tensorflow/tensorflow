@@ -35,7 +35,7 @@ from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
@@ -237,7 +237,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testComputeGradientsWithTensors(self):
     with testing_utils.use_gpu():
-      x = ops.convert_to_tensor_v2(1.0)
+      x = ops.convert_to_tensor_v2_with_dispatch(1.0)
 
       def f():
         return x * x
@@ -357,9 +357,35 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose([0.], self.evaluate(var))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testGradGlobalClipNorm(self):
+    with testing_utils.use_gpu():
+      # l2 norm is 5.0
+      var1 = variables.Variable([1.0])
+      var2 = variables.Variable([2.0])
+      loss = lambda: 3 * var1 + 4 * var2
+      opt = gradient_descent.SGD(learning_rate=1.0, global_clipnorm=2.0)
+      opt_op = opt.minimize(loss, [var1, var2])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+      # grad1 = 3.0 * 2.0 / 5.0 = 1.2
+      self.assertAllClose([-.2], self.evaluate(var1))
+      # grad2 = 4.0 * 2.0 / 5.0 = 1.6
+      self.assertAllClose([.4], self.evaluate(var2))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidClipNorm(self):
     with self.assertRaisesRegex(ValueError, '>= 0'):
       gradient_descent.SGD(learning_rate=1.0, clipnorm=-1.0)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=['graph', 'eager'],
+          clip_type=['clipnorm', 'global_clipnorm', 'clipvalue']))
+  def testConfigWithCliping(self, clip_type):
+    opt = gradient_descent.SGD(learning_rate=1.0, **{clip_type: 2.0})
+    config = opt.get_config()
+    opt = gradient_descent.SGD.from_config(config)
+    self.assertEqual(getattr(opt, clip_type), 2.0)
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidKwargs(self):
@@ -458,6 +484,16 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       self.evaluate(opt.lr.assign(4.0))
       lr = self.evaluate(opt.lr)
       self.assertEqual(4.0, lr)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testDir(self):
+    opt = gradient_descent.SGD(learning_rate=1.0, momentum=0.1)
+    dir_result = set(dir(opt))
+    self.assertIn('learning_rate', dir_result)  # Hyperparameter
+    self.assertIn('lr', dir_result)  # Hyperparameter
+    self.assertIn('momentum', dir_result)  # Hyperparameter
+    self.assertIn('nesterov', dir_result)  # Attribute
+    self.assertIn('minimize', dir_result)  # Attribute
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testOptimizerWithKerasModel(self):
@@ -713,42 +749,42 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
                           rtol=1e-5, atol=1e-5)
 
   def testAdadeltaCompatibility(self):
-    opt_v1 = optimizers.Adadelta(lr=0.01)
+    opt_v1 = optimizer_v1.Adadelta(lr=0.01)
     opt_v2 = adadelta.Adadelta(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testAdagradCompatibility(self):
-    opt_v1 = optimizers.Adagrad(lr=0.01)
+    opt_v1 = optimizer_v1.Adagrad(lr=0.01)
     opt_v2 = adagrad.Adagrad(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testAdamCompatibility(self):
-    opt_v1 = optimizers.Adam()
+    opt_v1 = optimizer_v1.Adam()
     opt_v2 = adam.Adam()
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testAdamaxCompatibility(self):
-    opt_v1 = optimizers.Adamax(lr=0.01)
+    opt_v1 = optimizer_v1.Adamax(lr=0.01)
     opt_v2 = adamax.Adamax(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testNadamCompatibility(self):
-    opt_v1 = optimizers.Nadam(lr=0.001)
+    opt_v1 = optimizer_v1.Nadam(lr=0.001)
     opt_v2 = nadam.Nadam(learning_rate=0.001)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testMomentumCompatibility(self):
-    opt_v1 = optimizers.SGD(lr=0.01, momentum=0.9)
+    opt_v1 = optimizer_v1.SGD(lr=0.01, momentum=0.9)
     opt_v2 = gradient_descent.SGD(learning_rate=0.01, momentum=0.9)
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testRMSpropCompatibility(self):
-    opt_v1 = optimizers.RMSprop()
+    opt_v1 = optimizer_v1.RMSprop()
     opt_v2 = rmsprop.RMSprop()
     self._testOptimizersCompatibility(opt_v1, opt_v2)
 
   def testSGDCompatibility(self):
-    opt_v1 = optimizers.SGD(lr=0.01)
+    opt_v1 = optimizer_v1.SGD(lr=0.01)
     opt_v2 = gradient_descent.SGD(learning_rate=0.01)
     self._testOptimizersCompatibility(opt_v1, opt_v2, False)
 
@@ -778,7 +814,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_tf.set_weights(model_k_v2.get_weights())
 
-      opt_k_v1 = optimizers.SGD(momentum=0.9, nesterov=True)
+      opt_k_v1 = optimizer_v1.SGD(momentum=0.9, nesterov=True)
       opt_k_v2 = gradient_descent.SGD(momentum=0.9, nesterov=True)
       opt_tf = momentum.MomentumOptimizer(
           learning_rate=0.01, momentum=0.9, use_nesterov=True)
@@ -832,7 +868,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           num_hidden=num_hidden, num_classes=num_classes, input_dim=input_dim)
       model_k_v2.set_weights(model_k_v1.get_weights())
 
-      opt_k_v1 = optimizers.Adam(amsgrad=True)
+      opt_k_v1 = optimizer_v1.Adam(amsgrad=True)
       opt_k_v2 = adam.Adam(amsgrad=True)
 
       model_k_v1.compile(
@@ -856,62 +892,73 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
 
 # Note: These tests are kept in a separate class to avoid bugs in some
 # distributions of Python that break AutoGraph which is used by tf.function.
-class OptimizerWithFunctionTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['eager']))
+class OptimizerWithFunctionTest(test.TestCase, parameterized.TestCase):
 
   def testBasic(self):
-    with context.eager_mode():
-      var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
-      loss = lambda: 3 * var
-      opt = adam.Adam(learning_rate=1.0)
+    var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt = adam.Adam(learning_rate=1.0)
 
-      @def_function.function
-      def fn():
-        opt.minimize(loss, [var])
-        return var
+    @def_function.function
+    def fn():
+      opt.minimize(loss, [var])
+      return var
 
-      self.assertAllClose([0., 1.], fn(), atol=1e-4)
-      self.assertAllClose([-1, 0.], fn(), atol=1e-4)
+    self.assertAllClose([0., 1.], fn(), atol=1e-4)
+    self.assertAllClose([-1, 0.], fn(), atol=1e-4)
+
+  def testBasicWithConstantDecay(self):
+    var = variables.Variable([1.0, 2.0], dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt = adam.Adam(learning_rate=1.0)
+
+    @def_function.function
+    def fn():
+      opt.minimize(loss, [var])
+      return var
+
+    self.assertAllClose([0., 1.], fn(), atol=1e-4)
+    self.assertAllClose([-1, 0.], fn(), atol=1e-4)
 
   def testVarKeyWithVarCreatedInEager(self):
-    with context.eager_mode():
-      a = variables.Variable([1., 2.], name='var')
-      b = variables.Variable([1.], name='var')
+    a = variables.Variable([1., 2.], name='var')
+    b = variables.Variable([1.], name='var')
 
-      @test_util.also_run_as_tf_function
-      def var_key_test():
-        self.assertFalse(a._in_graph_mode)
-        self.assertFalse(b._in_graph_mode)
-        var_key_a = optimizer_v2._var_key(a)
-        self.assertStartsWith(var_key_a, 'var_')
-        var_key_b = optimizer_v2._var_key(b)
-        self.assertStartsWith(var_key_b, 'var_')
-        self.assertNotEquals(var_key_a, var_key_b)
+    @test_util.also_run_as_tf_function
+    def var_key_test():
+      self.assertFalse(a._in_graph_mode)
+      self.assertFalse(b._in_graph_mode)
+      var_key_a = optimizer_v2._var_key(a)
+      self.assertStartsWith(var_key_a, 'var_')
+      var_key_b = optimizer_v2._var_key(b)
+      self.assertStartsWith(var_key_b, 'var_')
+      self.assertNotEqual(var_key_a, var_key_b)
 
-      var_key_test()
+    var_key_test()
 
   def testLearningRateDecayUsedInTwoFunctions(self):
-    with context.eager_mode():
-      a = variables.Variable([1., 2.], name='var')
-      b = variables.Variable([1.], name='var')
+    a = variables.Variable([1., 2.], name='var')
+    b = variables.Variable([1.], name='var')
 
-      learning_rate_decay = learning_rate_schedule.InverseTimeDecay(
-          0.5, decay_steps=1.0, decay_rate=0.5)
-      opt = adam.Adam(learning_rate=learning_rate_decay)
-      loss_a = lambda: 3 * a
-      loss_b = lambda: 2 * b
+    learning_rate_decay = learning_rate_schedule.InverseTimeDecay(
+        0.5, decay_steps=1.0, decay_rate=0.5)
+    opt = adam.Adam(learning_rate=learning_rate_decay)
+    loss_a = lambda: 3 * a
+    loss_b = lambda: 2 * b
 
-      @def_function.function
-      def fn_a():
-        opt.minimize(loss_a, [a])
-        return a
+    @def_function.function
+    def fn_a():
+      opt.minimize(loss_a, [a])
+      return a
 
-      @def_function.function
-      def fn_b():
-        opt.minimize(loss_b, [b])
-        return b
+    @def_function.function
+    def fn_b():
+      opt.minimize(loss_b, [b])
+      return b
 
-      fn_a()
-      fn_b()
+    fn_a()
+    fn_b()
 
 
 _NUM_LEARNERS = 50

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
+namespace profiler {
 
 class ProfilerServer {
  public:
@@ -34,6 +35,7 @@ class ProfilerServer {
   std::unique_ptr<::grpc::Server> server_;
 };
 
+}  // namespace profiler
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVER_H_

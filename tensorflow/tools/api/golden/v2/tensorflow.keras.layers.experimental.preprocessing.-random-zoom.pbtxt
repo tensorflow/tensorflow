@@ -13,7 +13,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -109,6 +117,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "variable_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
@@ -118,7 +130,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'height_factor\', \'width_factor\', \'fill_mode\', \'interpolation\', \'seed\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'reflect\', \'bilinear\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'height_factor\', \'width_factor\', \'fill_mode\', \'interpolation\', \'seed\', \'name\', \'fill_value\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'reflect\', \'bilinear\', \'None\', \'None\', \'0.0\'], "
   }
   member_method {
     name: "adapt"

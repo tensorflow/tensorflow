@@ -245,17 +245,6 @@ Service::ResolveAndValidateArguments(
     CHECK_EQ(options_.number_of_replicas(), replicated_buffers.size());
     for (int replica = 0; replica < options_.number_of_replicas(); ++replica) {
       const ShapedBuffer* shaped_buffer = replicated_buffers[replica];
-      int replica_device_ordinal = stream_executors[replica]->device_ordinal();
-      // Verify allocation is same platform and device as the execution.
-      if (shaped_buffer->platform() != execute_backend_->platform() ||
-          shaped_buffer->device_ordinal() != replica_device_ordinal) {
-        return InvalidArgument(
-            "argument %lu is on device %s:%d but computation will be executed "
-            "on device %s",
-            i, shaped_buffer->platform()->Name(),
-            shaped_buffer->device_ordinal(),
-            execute_backend_->device_name(replica_device_ordinal));
-      }
       replicated_arguments[replica].push_back(shaped_buffer);
     }
   }
@@ -368,7 +357,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const std::vector<const HloModuleProto*>& module_protos,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend, std::vector<std::vector<se::StreamExecutor*>> executors,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const Compiler::CompileOptions& options, bool run_backend_only) {
   VLOG(1) << StrFormat("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
@@ -390,15 +379,26 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
   for (int64 i = 0, end = module_protos.size(); i < end; ++i) {
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
-    TF_ASSIGN_OR_RETURN(auto module, CreateModuleFromProto(*proto, config));
+    TF_ASSIGN_OR_RETURN(
+        auto module, CreateModuleFromProto(*proto, config, run_backend_only));
     DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
     module_group->push_back(std::move(module));
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(module_group),
-                                   std::move(executors), device_allocator));
+  std::vector<std::unique_ptr<Executable>> executables;
+  if (!run_backend_only) {
+    TF_ASSIGN_OR_RETURN(executables, backend->compiler()->Compile(
+                                         std::move(module_group),
+                                         std::move(executors), options));
+  } else {
+    auto modules = module_group->ConsumeModules();
+    for (std::unique_ptr<HloModule>& module : modules) {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                          backend->compiler()->RunBackend(
+                              std::move(module), executors[0][0], options));
+      executables.push_back(std::move(executable));
+    }
+  }
 
   for (size_t i = 0; i < module_protos.size(); ++i) {
     const auto& debug_opts = module_configs[i]->debug_options();
@@ -708,7 +708,7 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
                       BuildExecutables(module_protos, std::move(module_configs),
                                        execute_backend_.get(), all_executors,
-                                       /*device_allocator=*/nullptr));
+                                       {/*device_allocator=*/nullptr}));
   std::vector<Executable*> executable_ptrs;
   executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
@@ -808,22 +808,25 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const HloModuleProto& module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
-    se::StreamExecutor* executor, se::DeviceMemoryAllocator* device_allocator) {
+    se::StreamExecutor* executor, const Compiler::CompileOptions& options,
+    bool run_backend_only) {
   VLOG(1) << StrFormat(
       "BuildExecutable on service %p with serialized module proto: %s", this,
       module_proto.name());
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      CreateModuleFromProto(module_proto, *module_config));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      CreateModuleFromProto(module_proto, *module_config, run_backend_only));
   DumpHloModuleIfEnabled(*module, kBeforeOptimizationsDumpName);
 
-  TF_ASSIGN_OR_RETURN(
-      module, backend->compiler()->RunHloPasses(std::move(module), executor,
-                                                device_allocator));
+  if (!run_backend_only) {
+    TF_ASSIGN_OR_RETURN(module, backend->compiler()->RunHloPasses(
+                                    std::move(module), executor, options));
+  }
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      backend->compiler()->RunBackend(
-                          std::move(module), executor, device_allocator));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      backend->compiler()->RunBackend(std::move(module), executor, options));
 
   const auto& debug_opts = module_config->debug_options();
   if (DumpingEnabledForHloModule(module_proto.name(), debug_opts) &&
@@ -869,7 +872,7 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
       BuildExecutable(arg->computation(), std::move(module_config),
                       execute_backend_.get(),
                       execute_backend_->default_stream_executor(),
-                      /*device_allocator=*/nullptr));
+                      {/*device_allocator=*/nullptr}));
 
   *result->mutable_handle() = compilation_cache_.Insert(std::move(executable));
 

@@ -32,7 +32,6 @@ constexpr int kSizeTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-#if defined(DEBUG)
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -53,7 +52,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_KERNEL_LOG(context, "Dynamic tensors are unsupported in tfmicro.");
     return kTfLiteError;
   }
-#endif
   return kTfLiteOk;
 }
 

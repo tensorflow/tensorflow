@@ -20,16 +20,9 @@ limitations under the License.
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/util/ragged_to_dense_util_common.h"
 
 namespace tensorflow {
-enum class RowPartitionType {
-  FIRST_DIM_SIZE,
-  VALUE_ROWIDS,
-  ROW_LENGTHS,
-  ROW_SPLITS,
-  ROW_LIMITS,
-  ROW_STARTS
-};
 
 string RowPartitionTypeToString(RowPartitionType row_partition_type);
 
@@ -47,6 +40,10 @@ Status GetRowPartitionTypes(
   return GetRowPartitionTypesHelper(row_partition_type_strings,
                                     row_partition_types);
 }
+
+Status GetRowPartitionTypesHelper(
+    const std::vector<string>& row_partition_type_strings,
+    std::vector<RowPartitionType>* row_partition_types);
 
 Status CombineRaggedTensorToTensorShapes(int ragged_rank,
                                          const TensorShapeProto& shape,

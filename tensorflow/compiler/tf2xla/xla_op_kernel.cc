@@ -243,6 +243,74 @@ Status XlaOpKernelContext::ConstantInputAsFloatScalar(int index, double* out) {
   return LiteralToFloat64Scalar(literal, out);
 }
 
+static Status LiteralToPredVector(const xla::LiteralSlice& literal,
+                                  std::vector<bool>* out) {
+  if (literal.shape().rank() != 1) {
+    return errors::InvalidArgument("value is not 1D, rank: ",
+                                   literal.shape().rank());
+  }
+  int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
+  if (literal.shape().element_type() != xla::PRED) {
+    return errors::InvalidArgument("value is not PRED");
+  }
+  for (int64 i = 0; i < size; ++i) {
+    out->push_back(literal.Get<bool>({i}));
+  }
+  return Status::OK();
+}
+
+Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
+  xla::Literal literal;
+  XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
+  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  if (!dynamism_or_status.ok()) {
+    Status status = dynamism_or_status.status();
+    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
+                            " of ", context_->op_kernel().type_string());
+    return status;
+  }
+  Tensor dynamism = dynamism_or_status.ValueOrDie();
+
+  Tensor temp(dynamism.dtype());
+  TensorShape tensor_shape({});
+  if (!temp.CopyFrom(dynamism, tensor_shape)) {
+    return errors::InvalidArgument(
+        context_->op_kernel().name(), " input ", index, " has shape ",
+        dynamism.shape().DebugString(), " which is not a R0 ", tensor_shape);
+  }
+
+  TF_ASSIGN_OR_RETURN(literal, HostTensorToLiteral(temp));
+  *out = literal.Get<bool>({});
+  return Status::OK();
+}
+
+Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
+    int index, std::vector<bool>* out) {
+  xla::Literal literal;
+  XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
+  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  if (!dynamism_or_status.ok()) {
+    Status status = dynamism_or_status.status();
+    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
+                            " of ", context_->op_kernel().type_string());
+    return status;
+  }
+  Tensor dynamism = dynamism_or_status.ValueOrDie();
+
+  Tensor temp(dynamism.dtype());
+  TensorShape tensor_shape({InputShape(index).num_elements()});
+  if (!temp.CopyFrom(dynamism, tensor_shape)) {
+    return errors::InvalidArgument(
+        context_->op_kernel().name(), " input ", index, " has shape ",
+        dynamism.shape().DebugString(), " which is not a R1 ", tensor_shape);
+  }
+
+  TF_ASSIGN_OR_RETURN(literal, HostTensorToLiteral(temp));
+  return LiteralToPredVector(literal, out);
+}
+
 // Converts an int32 or int64 1D literal to an int64 vector.
 static Status LiteralToInt64Vector(const xla::LiteralSlice& literal,
                                    std::vector<int64>* out) {
@@ -407,6 +475,13 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
   }
   if (shape) {
     *shape = variable->shape();
+  }
+
+  if (!variable->IsOverwritten() && expression->constant_value()) {
+    TF_ASSIGN_OR_RETURN(xla::Literal literal,
+                        HostTensorToLiteral(*expression->constant_value()));
+    *value = xla::ConstantLiteral(ctx->builder(), literal);
+    return Status::OK();
   }
 
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,

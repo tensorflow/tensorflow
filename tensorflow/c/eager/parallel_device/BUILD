@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -74,9 +76,26 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+tf_cc_test(
+    name = "parallel_device_lib_test",
+    srcs = ["parallel_device_lib_test.cc"],
+    deps = [
+        ":parallel_device_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -87,7 +106,6 @@ cc_library(
     hdrs = ["parallel_device_testlib.h"],
     deps = [
         ":parallel_device",
-        ":parallel_device_ops",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c/eager:c_api",
@@ -102,7 +120,6 @@ tf_cc_test(
     srcs = ["parallel_device_test.cc"],
     deps = [
         ":parallel_device",
-        ":parallel_device_ops",
         ":parallel_device_testlib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -122,7 +139,6 @@ tf_cc_test(
     args = ["--heap_check=local"],
     deps = [
         ":parallel_device",
-        ":parallel_device_ops",
         ":parallel_device_testlib",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
@@ -133,20 +149,4 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
-)
-
-# Note: ParallelDevice-specific ops are experimental and not currently linked in
-# to TensorFlow by default, just used in a few tests.
-filegroup(
-    name = "parallel_device_ops_srcs",
-    srcs = ["parallel_device_ops.cc"],
-    visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
-)
-
-cc_library(
-    name = "parallel_device_ops",
-    srcs = [":parallel_device_ops_srcs"],
-    visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/core:framework"],
-    alwayslink = 1,
 )

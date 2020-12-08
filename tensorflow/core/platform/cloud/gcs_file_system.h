@@ -101,6 +101,11 @@ class GcsStatsInterface {
   virtual ~GcsStatsInterface() = default;
 };
 
+struct UploadSessionHandle {
+  std::string session_uri;
+  bool resumable;
+};
+
 /// Google Cloud Storage implementation of a file system.
 ///
 /// The clients should use RetryingGcsFileSystem defined below,
@@ -281,7 +286,7 @@ class GcsFileSystem : public FileSystem {
                                         const std::string& bucket,
                                         uint64 file_size,
                                         const std::string& gcs_path,
-                                        std::string* session_uri);
+                                        UploadSessionHandle* session_handle);
 
   // Uploads object data to session.
   virtual Status UploadToSession(const std::string& session_uri,
@@ -317,6 +322,9 @@ class GcsFileSystem : public FileSystem {
 
   // Used by a subclass.
   TimeoutConfig timeouts_;
+
+  /// The retry configuration used for retrying failed calls.
+  RetryConfig retry_config_;
 
  private:
   // GCS file statistics.
@@ -415,9 +423,6 @@ class GcsFileSystem : public FileSystem {
   bool compose_append_;
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
-
-  /// The initial delay for exponential backoffs when retrying failed calls.
-  RetryConfig retry_config_;
 
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;

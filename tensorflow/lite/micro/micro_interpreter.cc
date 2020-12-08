@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -59,13 +59,13 @@ TfLiteStatus ContextHelper::RequestScratchBufferInArena(TfLiteContext* ctx,
                                                         size_t bytes,
                                                         int* buffer_idx) {
   ContextHelper* helper = reinterpret_cast<ContextHelper*>(ctx->impl_);
-  return helper->allocator_->RequestScratchBufferInArena(
-      helper->current_node_idx_, bytes, buffer_idx);
+  return helper->allocator_->RequestScratchBufferInArena(bytes, buffer_idx);
 }
 
 void* ContextHelper::GetScratchBuffer(TfLiteContext* ctx, int buffer_idx) {
-  return reinterpret_cast<ContextHelper*>(ctx->impl_)
-      ->allocator_->GetScratchBuffer(buffer_idx);
+  ContextHelper* helper = reinterpret_cast<ContextHelper*>(ctx->impl_);
+  ScratchBufferHandle* handle = helper->scratch_buffer_handles_ + buffer_idx;
+  return handle->data;
 }
 
 void ContextHelper::ReportOpError(struct TfLiteContext* context,
@@ -92,10 +92,13 @@ TfLiteEvalTensor* ContextHelper::GetEvalTensor(
   return &helper->eval_tensors_[tensor_idx];
 }
 
-void ContextHelper::SetNodeIndex(int idx) { current_node_idx_ = idx; }
-
 void ContextHelper::SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors) {
   eval_tensors_ = eval_tensors;
+}
+
+void ContextHelper::SetScratchBufferHandles(
+    ScratchBufferHandle* scratch_buffer_handles) {
+  scratch_buffer_handles_ = scratch_buffer_handles;
 }
 
 }  // namespace internal
@@ -189,6 +192,9 @@ void MicroInterpreter::CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr) {
     case TfLiteType::kTfLiteInt64:
       CorrectTensorDataEndianness(tensorCorr->data.i64, tensorSize);
       break;
+    case TfLiteType::kTfLiteUInt64:
+      CorrectTensorDataEndianness(tensorCorr->data.u64, tensorSize);
+      break;
     case TfLiteType::kTfLiteInt32:
       CorrectTensorDataEndianness(tensorCorr->data.i32, tensorSize);
       break;
@@ -229,6 +235,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   // TODO(b/16157777): This call would not be needed if ContextHelper rolled
   // into the interpreter.
   context_helper_.SetTfLiteEvalTensors(eval_tensors_);
+  context_.tensors_size = subgraph_->tensors()->size();
 
   // If the system is big endian then convert weights from the flatbuffer from
   // little to big endian on startup so that it does not need to be done during
@@ -258,7 +265,6 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   context_.GetScratchBuffer = nullptr;
 
   for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
-    context_helper_.SetNodeIndex(i);
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
     size_t init_data_size;
@@ -275,15 +281,12 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
           registration->init(&context_, init_data, init_data_size);
     }
   }
-  context_helper_.SetNodeIndex(-1);
 
   // Both AllocatePersistentBuffer and RequestScratchBufferInArena is
   // available in Prepare stage.
   context_.RequestScratchBufferInArena =
       context_helper_.RequestScratchBufferInArena;
   for (size_t i = 0; i < subgraph_->operators()->size(); ++i) {
-    // Set node idx to annotate the lifetime for scratch buffers.
-    context_helper_.SetNodeIndex(i);
     auto* node = &(node_and_registrations_[i].node);
     auto* registration = node_and_registrations_[i].registration;
     if (registration->prepare) {
@@ -296,9 +299,8 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
         return kTfLiteError;
       }
     }
-    allocator_.ResetTempAllocations();
+    allocator_.FinishPrepareNodeAllocations(/*node_id=*/i);
   }
-  context_helper_.SetNodeIndex(-1);
 
   // Prepare is done, we're ready for Invoke. Memory allocation is no longer
   // allowed. Kernels can only fetch scratch buffers via GetScratchBuffer.
@@ -307,7 +309,11 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   context_.GetScratchBuffer = context_helper_.GetScratchBuffer;
 
   TF_LITE_ENSURE_OK(&context_,
-                    allocator_.FinishModelAllocation(model_, eval_tensors_));
+                    allocator_.FinishModelAllocation(model_, eval_tensors_,
+                                                     &scratch_buffer_handles_));
+  // TODO(b/16157777): Remove this when ContextHelper is rolled into this class.
+  context_helper_.SetScratchBufferHandles(scratch_buffer_handles_);
+
   TF_LITE_ENSURE_STATUS(ResetVariableTensors());
 
   tensors_allocated_ = true;
@@ -405,8 +411,8 @@ TfLiteTensor* MicroInterpreter::output(size_t index) {
                                                      outputs().Get(index));
   }
   if (output_tensor_ == nullptr) {
-    // TODO(b/160894903): This API will allocate TfLiteTensor structs from
-    // persistent (tail) memory and cache on this pointer.
+    // TODO(b/162311891): Drop these allocations when the interpreter supports
+    // handling buffers from TfLiteEvalTensor.
     output_tensor_ = allocator_.AllocatePersistentTfLiteTensor(
         model_, eval_tensors_, outputs().Get(index));
   }

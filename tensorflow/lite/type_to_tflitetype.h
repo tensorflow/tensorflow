@@ -15,56 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_
 #define TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_
 
-// Arduino build defines abs as a macro here. That is invalid C++, and breaks
-// libc++'s <complex> header, undefine it.
-#ifdef abs
-#undef abs
-#endif
-
-#include <complex>
 #include <string>
 
 #include "tensorflow/lite/c/common.h"
 
+// Most of the definitions have been moved to this subheader so that Micro
+// can include it without relying on <string>, which isn't available on all
+// platforms.
+#include "tensorflow/lite/portable_type_to_tflitetype.h"
+
 namespace tflite {
 
-// Map statically from a C++ type to a TfLiteType. Used in interpreter for
-// safe casts.
-// Example:
-//  typeToTfLiteType<bool>() -> kTfLiteBool
-template <typename T>
-constexpr TfLiteType typeToTfLiteType() {
-  return kTfLiteNoType;
-}
-// Map from TfLiteType to the corresponding C++ type.
-// Example:
-//   TfLiteTypeToType<kTfLiteBool>::Type -> bool
-template <TfLiteType TFLITE_TYPE_ENUM>
-struct TfLiteTypeToType {};  // Specializations below
-
-// Template specialization for both typeToTfLiteType and TfLiteTypeToType.
-#define MATCH_TYPE_AND_TFLITE_TYPE(CPP_TYPE, TFLITE_TYPE_ENUM) \
-  template <>                                                  \
-  constexpr TfLiteType typeToTfLiteType<CPP_TYPE>() {          \
-    return TFLITE_TYPE_ENUM;                                   \
-  }                                                            \
-  template <>                                                  \
-  struct TfLiteTypeToType<TFLITE_TYPE_ENUM> {                  \
-    using Type = CPP_TYPE;                                     \
-  }
-
-MATCH_TYPE_AND_TFLITE_TYPE(int, kTfLiteInt32);
-MATCH_TYPE_AND_TFLITE_TYPE(int16_t, kTfLiteInt16);
-MATCH_TYPE_AND_TFLITE_TYPE(int64_t, kTfLiteInt64);
-MATCH_TYPE_AND_TFLITE_TYPE(float, kTfLiteFloat32);
-MATCH_TYPE_AND_TFLITE_TYPE(unsigned char, kTfLiteUInt8);
-MATCH_TYPE_AND_TFLITE_TYPE(int8_t, kTfLiteInt8);
-MATCH_TYPE_AND_TFLITE_TYPE(bool, kTfLiteBool);
-MATCH_TYPE_AND_TFLITE_TYPE(std::complex<float>, kTfLiteComplex64);
-MATCH_TYPE_AND_TFLITE_TYPE(std::complex<double>, kTfLiteComplex128);
+// TODO(b/163167649): This string conversion means that only the first entry
+// in a string tensor will be returned as a std::string, so it's deprecated.
 MATCH_TYPE_AND_TFLITE_TYPE(std::string, kTfLiteString);
-MATCH_TYPE_AND_TFLITE_TYPE(TfLiteFloat16, kTfLiteFloat16);
-MATCH_TYPE_AND_TFLITE_TYPE(double, kTfLiteFloat64);
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_TYPE_TO_TFLITETYPE_H_

@@ -241,6 +241,10 @@ tf_module {
     argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "stateless_random_crop"
+    argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "stateless_random_flip_left_right"
     argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=None"
   }
@@ -259,6 +263,10 @@ tf_module {
   member_method {
     name: "stateless_random_saturation"
     argspec: "args=[\'image\', \'lower\', \'upper\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "stateless_sample_distorted_bounding_box"
+    argspec: "args=[\'image_size\', \'bounding_boxes\', \'seed\', \'min_object_covered\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'0.1\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "total_variation"

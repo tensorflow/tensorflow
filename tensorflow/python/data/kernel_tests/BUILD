@@ -91,25 +91,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "data_service_ops_test",
-    size = "medium",
-    srcs = ["data_service_ops_test.py"],
-    tags = ["notap"],  # "b/163085430"
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/ops:testing",
-        "//tensorflow/python/data/experimental/service:server_lib",
-        "//tensorflow/python/data/kernel_tests:test_base",
-    ],
-)
-
-tf_py_test(
     name = "dataset_test",
     size = "small",
     srcs = ["dataset_test.py"],
@@ -575,6 +556,26 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "placement_test",
+    size = "small",
+    srcs = ["placement_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:test_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:def_function",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "prefetch_test",
     size = "small",
@@ -607,6 +608,9 @@ cuda_py_test(
     name = "reduce_test",
     size = "small",
     srcs = ["reduce_test.py"],
+    tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         ":test_base",
         "//tensorflow/python:array_ops",

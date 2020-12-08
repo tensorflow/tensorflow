@@ -277,11 +277,6 @@ Status EagerOperation::AddInputList(
   return InferInputListAttrs(inputs.size());
 }
 
-Status EagerOperation::SetUseXla(bool enable) {
-  use_xla_ = enable;
-  return Status::OK();
-}
-
 Status EagerOperation::Reset(
     const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
@@ -313,7 +308,6 @@ Status EagerOperation::Reset(
         "registered in the binary running in this process.");
   }
   attrs_.Reset(op);
-  use_xla_ = false;
   stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;
@@ -384,6 +378,12 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   } else if (!input_def.type_attr().empty() &&
              !input_def.number_attr().empty()) {
     InferSingleTypeInputListAttrs(input_def, inputs_[start]->dtype, num_inputs);
+  } else if (!input_def.number_attr().empty()) {
+    if (inference_attrs_.find(input_def.number_attr()) ==
+        inference_attrs_.end()) {
+      MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+      inference_attrs_.insert(input_def.number_attr());
+    }
   } else {
     return errors::InvalidArgument("Invalid input list definition");
   }

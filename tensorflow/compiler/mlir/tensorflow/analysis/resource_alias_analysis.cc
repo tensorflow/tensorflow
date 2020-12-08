@@ -18,35 +18,34 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
-#include "absl/strings/str_cat.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
+#include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/tf2xla/resource_operation_table.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace mlir {
 namespace TF {
+namespace detail {
 
-namespace {
 //===----------------------------------------------------------------------===//
 // BacktrackAnalysisInfo
 //===----------------------------------------------------------------------===//
@@ -86,9 +85,6 @@ class BacktrackAnalysisInfo {
   // Backtracked values indexed by the result number.
   llvm::SmallVector<Value, 4> backtracked_values_;
 };
-}  // namespace
-
-namespace detail {
 
 //===----------------------------------------------------------------------===//
 // BacktrackAnalysis
@@ -137,12 +133,46 @@ class BacktrackAnalysis {
     return GetAnalysisForRegion(region);
   }
 
+  // Returns the backtrack analysis for the given region if it exists.
+  // If the region has not yet been analyzed, returns llvm::None.
+  Optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
+    auto it = info_map_.find(&region);
+    if (it == info_map_.end()) return llvm::None;
+    return &it->second;
+  }
+
+  Optional<const InfoT*> GetAnalysisIfExists(FuncOp func) const {
+    return GetAnalysisIfExists(func.getBody());
+  }
+
  private:
   llvm::SmallDenseMap<Region*, InfoT> info_map_;
 };
 
 // Analyzes all regions attached to all operations in the module.
 BacktrackAnalysis::BacktrackAnalysis(ModuleOp module) {
+  const CallGraph call_graph(module);
+
+  // Visit functions bottom up when doing the analysis. Note that SCC iterator
+  // has the property that if there is an edge from SCC1->SCC2, SCC1 is visited
+  // after SCC2, i.e., the graph is traversed bottom up just the way we want.
+  auto scc_begin = llvm::scc_begin(&call_graph);
+  auto scc_end = llvm::scc_end(&call_graph);
+  for (auto& scc : make_range(scc_begin, scc_end)) {
+    // Each SCC node is a collection of callgraph nodes that form a cycle. We
+    // will visit these nodes in an arbitrary order. If a node being visited
+    // calls a function that has not yet been analyzed, we will not be able to
+    // backtrack through that function call (our analysis will be correct but
+    // pessimistic).
+    for (CallGraphNode* node : scc) {
+      if (node->isExternal()) continue;
+      Region* region = node->getCallableRegion();
+      GetOrCreateAnalysis(*region);
+    }
+  }
+
+  // This above call graph analysis will cover all regions attached to functions
+  // but we also need to analyze regions attached to other ops.
   module.walk([this](Operation* op) {
     for (Region& region : op->getRegions()) GetOrCreateAnalysis(region);
   });
@@ -161,17 +191,26 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       // in the Island body.
       if (value == island.control()) break;
       value = island.GetYield().getOperand(res_index);
-    } else if (isa<TF::IdentityNOp, TF::IdentityOp>(op)) {
+    } else if (isa<IdentityNOp, IdentityOp>(op)) {
       value = op->getOperand(res_index);
+    } else if (auto call = dyn_cast<CallOpInterface>(op)) {
+      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      if (!func) break;
+      // Check if the function being called has been analyzed. if not,
+      // we cannot backtrack the value further.
+      Optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
+      if (!callee_info) break;
+      Optional<int> passthrough_arg = callee_info.getValue()->GetArg(res_index);
+      if (!passthrough_arg) break;
+      value = call.getArgOperands()[passthrough_arg.getValue()];
+    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
+      value = op->getRegion(0).front().getTerminator()->getOperand(res_index);
     } else {
       break;
     }
   }
   return value;
 }
-}  // namespace detail
-
-namespace {
 
 // Analyze the region.
 BacktrackAnalysisInfo::BacktrackAnalysisInfo(
@@ -189,166 +228,270 @@ BacktrackAnalysisInfo::BacktrackAnalysisInfo(
 }
 
 //===----------------------------------------------------------------------===//
-// ResourceAliasAnalysisInfo helper functions.
-//===----------------------------------------------------------------------===//
-
-constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
-
-// Returns if a VarHandleOp is anonymous, which means it always creates a new
-// variable.
-bool IsResourceHandleAnonymous(TF::VarHandleOp handle) {
-  return handle.shared_name() == tensorflow::ResourceHandle::ANONYMOUS_NAME;
-}
-
-// Returns a string unique identifier for a non-anonymous VarHandleOp.
-std::string GetVarHandleStringId(TF::VarHandleOp handle) {
-  auto device = handle.getAttrOfType<StringAttr>("device");
-  return absl::StrCat(handle.container().str(), "/", handle.shared_name().str(),
-                      "/", device ? device.getValue().str() : std::string(""));
-}
-
-// Finds a unique ID for a VarHandleOp's output. If it is anonymous, always
-// creates a new ID; otherwise, tries to reuse the existing ID for the
-// referenced variable if it exists, or creates a new one if not.
-int64_t GetOrCreateIdForVarHandle(TF::VarHandleOp handle, int64_t* next_id,
-                                  llvm::StringMap<int64_t>* name_id_map) {
-  // Always create a new ID for anonymous handle.
-  if (IsResourceHandleAnonymous(handle)) return (*next_id)++;
-
-  auto name = GetVarHandleStringId(handle);
-  auto emplace_res = name_id_map->try_emplace(name, *next_id);
-  // New ID created, increment next_id.
-  if (emplace_res.second) ++(*next_id);
-  return emplace_res.first->second;
-}
-
-}  // namespace
-
-namespace detail {
-//===----------------------------------------------------------------------===//
 // ResourceAliasAnalysisInfo
 //===----------------------------------------------------------------------===//
 
+namespace {
+
+constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
+
+}  // namespace
+
+constexpr int64_t ResourceAliasAnalysisInfo::kUnknownResourceId;
+
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
-    FuncOp func_op, const detail::BacktrackAnalysis& backtrack_analysis) {
+    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
+
+  int64_t next_unique_id = 0;
+
+  // Helper to assign new unique id for all resources in the given list of
+  // values.
+  auto assign_unique_id_to_all = [&](ValueRange values) {
+    for (Value value : filter_resources(values)) {
+      AddValueUniqueIDMapping(value, next_unique_id++);
+    }
+  };
+
+  // Helper to assign new unknown id for all resources in the given list of
+  // values.
+  auto assign_unknown_id_to_all = [&](ValueRange values) {
+    for (Value value : filter_resources(values)) {
+      AddValueUniqueIDMapping(value, kUnknownResourceId);
+    }
+  };
 
   // If the "tf.resource_arg_unique_id" argument attributes are present for
   // resource-type arguments, respect them when choosing IDs; otherwise, they
   // must not alias.
-  int64_t next_unique_id = 0;
   const bool has_arg_unique_id_attrs =
       llvm::any_of(func_op.getArguments(), [&](const BlockArgument& arg) {
         return func_op.getArgAttr(arg.getArgNumber(), kResourceArgUniqueIdAttr);
       });
   // Maps the kResourceArgUniqueIdAttr attribute value to the internal integer
   // ID used by this pass.
-  llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
-  for (auto arg : func_op.getArguments()) {
-    if (!mlir::getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>())
-      continue;
-    if (has_arg_unique_id_attrs) {
+  if (has_arg_unique_id_attrs) {
+    llvm::SmallDenseMap<int64_t, int64_t> attr_id_to_internal_id;
+    for (auto arg : filter_resources(func_op.getArguments())) {
       auto id_attr = func_op.getArgAttrOfType<IntegerAttr>(
           arg.getArgNumber(), kResourceArgUniqueIdAttr);
       assert(id_attr &&
-             "tf.resource_arg_unique_id attribute should exist on either none "
-             "or all arguments.");
+             "tf.resource_arg_unique_id attribute should exist on either "
+             "none or all arguments.");
       auto emplace_res = attr_id_to_internal_id.try_emplace(id_attr.getInt(),
                                                             next_unique_id++);
       AddValueUniqueIDMapping(arg, emplace_res.first->getSecond());
-    } else {
-      AddValueUniqueIDMapping(arg, next_unique_id++);
     }
+  } else {
+    assign_unique_id_to_all(func_op.getArguments());
   }
-  llvm::StringMap<int64_t> var_handle_name_id_map;
-  auto forward_input_to_output = [&](const Value& operand,
-                                     const Value& result) {
-    if (!mlir::getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>())
-      return;
-    auto& result_ids = resource_value_to_ids_[result];
-    auto operand_it = resource_value_to_ids_.find(operand);
-    assert(operand_it != resource_value_to_ids_.end() &&
-           "A resource-type output does not have the corresponding "
-           "resource-type input.");
-    result_ids.insert(operand_it->getSecond().begin(),
-                      operand_it->getSecond().end());
-  };
 
+  // Since this analysis is neither inter-procedural nor inter-regional,
+  // each region attached to Op's within a function is analyzed independently.
+  // Seed this analysis for each such region by mapping all resource arguments
+  // for such regions to a new unique-id. This is required because walk() walks
+  // the attached regions first before visiting the op, so there is no
+  // opportunity during the walk to seed region arguments. Also note that walk
+  // eventually also visits the Op on which the walk() is called, so make sure
+  // we do not overwrite the function argument mapping here.
   func_op.walk([&](Operation* op) {
-    if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
-      AddValueUniqueIDMapping(
-          var_handle.resource(),
-          GetOrCreateIdForVarHandle(var_handle, &next_unique_id,
-                                    &var_handle_name_id_map));
-    } else if (llvm::isa<TF::IdentityNOp, TF::IdentityOp>(op)) {
-      for (auto operand_and_result :
-           llvm::zip(op->getOperands(), op->getResults())) {
-        forward_input_to_output(std::get<0>(operand_and_result),
-                                std::get<1>(operand_and_result));
+    if (op == func_op) return;
+    for (Region& region : op->getRegions()) {
+      assign_unique_id_to_all(region.getArguments());
+    }
+  });
+
+  llvm::SmallDenseMap<ResourceHandle, int64_t> resource_handle_id_map;
+  func_op.walk([&](Operation* op) {
+    if (auto resource_alloc = dyn_cast<ResourceHandleAllocatorInterface>(op)) {
+      ResourceHandleValueAndId resource =
+          resource_alloc.GetResourceHandleValueAndId(resource_handle_id_map,
+                                                     next_unique_id);
+      AddValueUniqueIDMapping(resource.value, resource.id);
+    } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
+      for (auto result : filter_resources(op->getResults()))
+        PropagateInputToOutput(op->getOperand(result.getResultNumber()),
+                               result);
+    } else if (auto while_op = dyn_cast<WhileOp>(op)) {
+      AnalyzeWhileLoop(while_op, backtrack_analysis.GetAnalysisForFunc(
+                                     while_op.body_function()));
+    } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
+      AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
+                                         while_region.body()));
+    } else if (auto case_op = dyn_cast<CaseOp>(op)) {
+      llvm::SmallVector<FuncOp, 4> functions;
+      case_op.get_branch_functions(functions);
+      AnalyzeFunctionalCaseOrIfOp(case_op, functions, backtrack_analysis);
+    } else if (auto if_op = dyn_cast<IfOp>(op)) {
+      AnalyzeFunctionalCaseOrIfOp(
+          if_op, {if_op.then_function(), if_op.else_function()},
+          backtrack_analysis);
+    } else if (llvm::isa<CaseRegionOp, IfRegionOp>(op)) {
+      AnalyzeRegionCaseOrIfOp(op, backtrack_analysis);
+    } else if (auto call = dyn_cast<CallOpInterface>(op)) {
+      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      if (!func) {
+        assign_unknown_id_to_all(op->getResults());
+        return WalkResult::advance();
       }
-    } else if (auto replicate = llvm::dyn_cast<tf_device::ReplicateOp>(op)) {
-      // The nested block for ReplicateOp is handled separately in side-effect
-      // analysis. Inside that block, we can still treat its block arguments as
-      // different resources.
-      for (auto arg : replicate.GetBody().getArguments()) {
-        if (mlir::getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
-          AddValueUniqueIDMapping(arg, next_unique_id++);
-        }
-      }
-    } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
-      const auto& body_info =
-          backtrack_analysis.GetAnalysisForFunc(while_op.body_func());
-      // If a result is a passthrough of the body input, use the corresponding
-      // operand's resource IDs.
-      for (auto result : llvm::enumerate(while_op.getResults())) {
-        if (!mlir::getElementTypeOrSelf(result.value().getType())
-                 .isa<TF::ResourceType>()) {
-          continue;
-        }
-        auto passthrough_arg = body_info.GetArg(result.index());
+      const auto& func_info = backtrack_analysis.GetAnalysisForFunc(func);
+      for (auto result : filter_resources(op->getResults())) {
+        auto passthrough_arg = func_info.GetArg(result.getResultNumber());
         if (passthrough_arg) {
-          forward_input_to_output(
-              while_op.getOperand(passthrough_arg.getValue()), result.value());
+          PropagateInputToOutput(
+              call.getArgOperands()[passthrough_arg.getValue()], result);
         } else {
-          AddValueUniqueIDMapping(result.value(), kUnknownResourceId);
+          AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
       }
-    } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
-      const auto& then_info =
-          backtrack_analysis.GetAnalysisForFunc(if_op.then_func());
-      const auto& else_info =
-          backtrack_analysis.GetAnalysisForFunc(if_op.else_func());
-      // If a result is a passthrough of both branches' inputs, merge the
-      // resource IDs of corresponding operands for the two inputs.
-      for (auto result : llvm::enumerate(if_op.getResults())) {
-        if (!mlir::getElementTypeOrSelf(result.value().getType())
-                 .isa<TF::ResourceType>()) {
-          continue;
-        }
-        auto passthrough_then_arg = then_info.GetArg(result.index());
-        auto passthrough_else_arg = else_info.GetArg(result.index());
-        if (passthrough_then_arg && passthrough_else_arg) {
-          Value then_operand = if_op.input()[passthrough_then_arg.getValue()];
-          Value else_operand = if_op.input()[passthrough_else_arg.getValue()];
-          forward_input_to_output(then_operand, result.value());
-          forward_input_to_output(else_operand, result.value());
-        } else {
-          AddValueUniqueIDMapping(result.value(), kUnknownResourceId);
-        }
+    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
+      Region& region = op->getRegion(0);
+      const auto& body_info = backtrack_analysis.GetAnalysisForRegion(region);
+      for (auto result : filter_resources(op->getResults())) {
+        Value body_result = body_info.GetValue(result.getResultNumber());
+        PropagateInputToOutput(body_result, result);
       }
     } else {
-      for (auto result : op->getResults()) {
-        if (!mlir::getElementTypeOrSelf(result.getType())
-                 .isa<TF::ResourceType>())
-          continue;
-        AddValueUniqueIDMapping(result, kUnknownResourceId);
-      }
+      assign_unknown_id_to_all(op->getResults());
     }
+    return WalkResult::advance();
   });
 }
 
-bool ResourceAliasAnalysisInfo::IsUnknownResource(const Value resource) const {
+// Propagates the resource ID's from an input operand to a result. Returns true
+// if the mapping changed.
+bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
+                                                       const OpResult& result) {
+  auto operand_it = resource_value_to_ids_.find(operand);
+  assert(operand_it != resource_value_to_ids_.end() &&
+         "A resource-type output does not have the corresponding "
+         "resource-type input.");
+  bool change = false;
+  for (int64_t id : operand_it->second)
+    change = AddValueUniqueIDMapping(result, id) || change;
+  return change;
+}
+
+// Analyzes while loops to compute resourceIDs for the loop results.
+//
+// (1) The base case for the analysis is that if the loop body does not execute
+//     at all, the resource IDs for each result is the same as the resource IDs
+//     of the corresponding input.
+// (2) If the loop does execute one or more times, then we need to account for
+//     data flow through the body of the while loop. If result #r is the same
+//     as arg #a of the loop body (pass through argument), then we can reason
+//     further, else if the result is not a passthrough, we mark it as unknown.
+// (3) For passthrough results, if result #r is the same as arg #a of the loop
+//     body, after one iteration, result #r = arg #a, so we need to also
+//     propagate arg #a to result #r. After another iteration, arg #a of the
+//     loop body will be result #a of the previous iteration. So then we need
+//     propagate from result #a to result #r. Generalizing, the resource ID
+//     propagation (for results which are passthrough) looks like:
+//
+//     for r in (0, num_results) : result[r] = arg[r];
+//     repeat till no change {
+//       a = passthrough arg for result #r;
+//       result[r] += result[a];
+//     }
+//
+void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
+    Operation* while_op, const BacktrackAnalysisInfo& body_info) {
+  // Seed the resource ID's for the results using either the resource ID of the
+  // passthrough arg, or unknown. We need to perform further analysis if we
+  // find a passthrough arg which is not the same as corresponding the result #.
+  llvm::SmallVector<Optional<int>, 4> passthrough_args(
+      while_op->getNumResults());
+  bool need_analysis = false;
+  for (auto result : filter_resources(while_op->getResults())) {
+    int result_index = result.getResultNumber();
+    passthrough_args[result_index] = body_info.GetArg(result_index);
+    if (passthrough_args[result_index]) {
+      int passthru_index = passthrough_args[result_index].getValue();
+      PropagateInputToOutput(while_op->getOperand(passthru_index), result);
+      need_analysis |=
+          !IsUnknownResource(result) && passthru_index != result_index;
+    } else {
+      AddValueUniqueIDMapping(result, kUnknownResourceId);
+    }
+  }
+
+  if (!need_analysis) return;
+
+  // We found a result that is not unknown and whose passthrough operand index
+  // is not the same as the result index, which means there is "crosstalk"
+  // between 2 or more operands. In that case, we do an iterative propagation
+  // of resource ID's till the results converge.
+  bool change = true;
+  while (change) {
+    change = false;
+    for (auto result : filter_resources(while_op->getResults())) {
+      if (IsUnknownResource(result)) continue;
+      // If this result has a valid passthrough arg, propagate resource ID's
+      // from the result of the passthrough arg
+      int result_index = result.getResultNumber();
+      int passthru_index = passthrough_args[result_index].getValue();
+      change =
+          PropagateInputToOutput(while_op->getResult(passthru_index), result) ||
+          change;
+    }
+  }
+}
+
+template <class CaseOrIfOp>
+void ResourceAliasAnalysisInfo::AnalyzeFunctionalCaseOrIfOp(
+    CaseOrIfOp case_or_if_op, llvm::ArrayRef<FuncOp> functions,
+    const BacktrackAnalysis& backtrack_analysis) {
+  llvm::SmallVector<const BacktrackAnalysisInfo*, 2> infos;
+  infos.reserve(functions.size());
+  for (FuncOp func : functions)
+    infos.push_back(&backtrack_analysis.GetAnalysisForFunc(func));
+
+  // If a result is a passthrough of all branches' inputs, merge the resource
+  // IDs of corresponding operands for all the inputs.
+  for (auto result : filter_resources(case_or_if_op.getResults())) {
+    llvm::SmallVector<llvm::Optional<int>, 2> passthrough_args;
+    passthrough_args.reserve(functions.size());
+    for (const auto* info : infos)
+      passthrough_args.emplace_back(info->GetArg(result.getResultNumber()));
+
+    const bool all_passthrough_args_known = llvm::all_of(
+        passthrough_args, [](const llvm::Optional<int>& passthrough_arg) {
+          return passthrough_arg.hasValue();
+        });
+    if (all_passthrough_args_known) {
+      for (const auto& passthrough_arg : passthrough_args) {
+        Value operand = case_or_if_op.input()[passthrough_arg.getValue()];
+        PropagateInputToOutput(operand, result);
+      }
+    } else {
+      AddValueUniqueIDMapping(result, kUnknownResourceId);
+    }
+  }
+}
+
+void ResourceAliasAnalysisInfo::AnalyzeRegionCaseOrIfOp(
+    Operation* case_or_if_op, const BacktrackAnalysis& backtrack_analysis) {
+  llvm::SmallVector<const BacktrackAnalysisInfo*, 2> infos;
+  infos.reserve(case_or_if_op->getNumRegions());
+  for (Region& region : case_or_if_op->getRegions())
+    infos.push_back(&backtrack_analysis.GetAnalysisForRegion(region));
+
+  // For region Case/If, the walk would have visited all branch regions before
+  // visiting the Case/If op. Backtracking of each region results will either
+  // give a value computed within these regions, or a region capture. If it is a
+  // region capture computed before this Case/If, it will have been visited
+  // earlier and a mapping would exist for that value. If it is computed within
+  // the region, then again a mapping would exist.
+  for (auto result : filter_resources(case_or_if_op->getResults())) {
+    for (const auto* info : infos) {
+      Value region_result = info->GetValue(result.getResultNumber());
+      PropagateInputToOutput(region_result, result);
+    }
+  }
+}
+
+bool ResourceAliasAnalysisInfo::IsUnknownResource(Value resource) const {
   auto it = resource_value_to_ids_.find(resource);
   assert(it != resource_value_to_ids_.end() && !it->getSecond().empty());
   // The set is sorted so we only need to check the first element since
@@ -360,6 +503,7 @@ bool ResourceAliasAnalysisInfo::IsUnknownResource(const Value resource) const {
 
 const llvm::SmallSet<int64_t, 8>&
 ResourceAliasAnalysisInfo::GetResourceUniqueIds(Value resource) const {
+  assert(!IsUnknownResource(resource));
   auto it = resource_value_to_ids_.find(resource);
   assert(it != resource_value_to_ids_.end() && "Unseen resource was queried");
   return it->getSecond();
@@ -373,14 +517,19 @@ ResourceAliasAnalysisInfo::GetUniqueIdResources(const int64_t id) const {
 }
 
 llvm::SmallSetVector<Value, 8> ResourceAliasAnalysisInfo::GetResourceAliases(
-    const Value resource) const {
-  assert(!IsUnknownResource(resource) && "Unseen resource was queried");
+    Value resource) const {
+  assert(!IsUnknownResource(resource) && "Unknown resource was queried");
   llvm::SmallSetVector<Value, 8> aliases;
   for (int64_t id : GetResourceUniqueIds(resource)) {
     const llvm::SmallSetVector<Value, 8>& resources_aliasing_id =
         GetUniqueIdResources(id);
     aliases.insert(resources_aliasing_id.begin(), resources_aliasing_id.end());
   }
+  // If there are resources that were marked as unknown, they alias with all
+  // other resources.
+  auto it = id_to_resource_values_.find(kUnknownResourceId);
+  if (it != id_to_resource_values_.end())
+    aliases.insert(it->getSecond().begin(), it->getSecond().end());
   return aliases;
 }
 
@@ -390,10 +539,7 @@ llvm::SmallSetVector<Value, 8> ResourceAliasAnalysisInfo::GetResourceAliases(
 // ResourceAliasAnalysis
 //===----------------------------------------------------------------------===//
 
-ResourceAliasAnalysis::ResourceAliasAnalysis(Operation* op) {
-  auto module = dyn_cast<ModuleOp>(op);
-  assert(module);
-
+ResourceAliasAnalysis::ResourceAliasAnalysis(ModuleOp module) {
   // Analyze all regions for backtracking info.
   detail::BacktrackAnalysis backtrack_analysis(module);
 

@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -120,13 +120,11 @@ class EagerOperation : public ImmediateExecutionOperation {
   Status InputLength(const char* input_name, int* length) override;
   Status OutputLength(const char* output_name, int* length) override;
 
-  Status SetUseXla(bool enable) override;
-
-  void SetStackTrace(AbstractStackTrace stack_trace) override {
+  void SetStackTrace(ManagedStackTrace stack_trace) override {
     stack_trace_ = stack_trace;
   }
 
-  absl::optional<AbstractStackTrace> GetStackTrace() override {
+  absl::optional<ManagedStackTrace> GetStackTrace() override {
     return stack_trace_;
   }
 
@@ -227,8 +225,7 @@ class EagerOperation : public ImmediateExecutionOperation {
   // updated accordingly.
   VariantDevice device_;
 
-  bool use_xla_ = false;
-  absl::optional<AbstractStackTrace> stack_trace_;
+  absl::optional<ManagedStackTrace> stack_trace_;
   bool is_function_;  // Conceptually const, but can't be because of Reset
   bool colocation_exempt_;
   CancellationManager* cancellation_manager_ = nullptr;  // Not owned.
@@ -255,6 +252,11 @@ inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
 inline EagerOperation* OperationFromInterface(
     ImmediateExecutionOperation* operation) {
   return down_cast<EagerOperation*>(operation);
+}
+
+inline const EagerOperation* OperationFromInterface(
+    const ImmediateExecutionOperation* operation) {
+  return down_cast<const EagerOperation*>(operation);
 }
 
 }  // namespace tensorflow

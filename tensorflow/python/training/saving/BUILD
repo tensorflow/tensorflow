@@ -39,6 +39,10 @@ cuda_py_test(
     srcs = [
         "functional_saver_test.py",
     ],
+    tags = [
+        "no_tfrt",  # TODO(b/171765113)
+        "no_windows",  # TODO(b/171350346)
+    ],
     deps = [
         ":checkpoint_options",
         ":functional_saver",

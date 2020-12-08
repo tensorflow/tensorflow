@@ -32,6 +32,7 @@ namespace {
 
 const absl::string_view kIterator = "Iterator";
 const absl::string_view kSeparator = "::";
+constexpr char kNameScopeSeparator = '/';
 
 }  // namespace
 
@@ -51,8 +52,15 @@ bool IsTfOpType(absl::string_view op_type) {
 }
 
 bool IsJaxOpType(absl::string_view op_type) {
-  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_]*"};
+  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_][a-z_]*"};
   return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
+}
+
+bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type) {
+  if (op_name.empty() || !IsJaxOpType(op_type)) return false;
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(op_name, kNameScopeSeparator);
+  return absl::StrContains(split_result.back(), op_type);
 }
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
@@ -80,12 +88,15 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
     tf_op = {Category::kTensorFlow, parts[0], parts[1]};
   } else if (IsJaxOpType(parts[1])) {
     tf_op = {Category::kJax, parts[0], parts[1]};
+  } else if (parts[1].empty()) {
+    tf_op.name = parts[0];  // remove trailing ':'
   }
   return tf_op;
 }
 
 std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op) {
-  std::vector<absl::string_view> name_scopes = absl::StrSplit(tf_op.name, '/');
+  std::vector<absl::string_view> name_scopes =
+      absl::StrSplit(tf_op.name, kNameScopeSeparator);
   // The last element is an op name not TF name scope.
   if (!name_scopes.empty()) name_scopes.pop_back();
   return name_scopes;

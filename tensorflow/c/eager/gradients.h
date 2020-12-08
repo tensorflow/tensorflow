@@ -33,10 +33,11 @@ namespace gradients {
 //  public:
 //   Status Compute(Context* ctx,
 //                  absl::Span<AbstractTensorHandle* const> grad_inputs,
-//                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
-//     grad_outputs->resize(2);
-//     (*grad_outputs)[0] = grad_inputs[0];
-//     (*grad_outputs)[1] = grad_inputs[0];
+//                  absl::Span<AbstractTensorHandle*> grad_outputs) override {
+//     grad_outputs[0] = grad_inputs[0];
+//     grad_outputs[1] = grad_inputs[0];
+//     grad_outputs[0]->Ref();
+//     grad_outputs[1]->Ref();
 //     return Status::OK();
 //   }
 //   ~AddGradientFunction() override {}
@@ -51,17 +52,11 @@ namespace gradients {
 // Status RegisterGradients(GradientRegistry* registry) {
 //   return registry->Register("Add", AddRegisterer);
 // }
-struct Context {
- public:
-  AbstractContext* ctx;
-};
 class GradientFunction {
  public:
-  // TODO(srbs): How we support CompositeTensors e.g. IndexedSlices in
-  // `grad_inputs`.
-  virtual Status Compute(Context* ctx,
-                         absl::Span<AbstractTensorHandle* const> grad_inputs,
-                         std::vector<AbstractTensorHandle*>* grad_outputs) = 0;
+  virtual Status Compute(AbstractContext* ctx,
+                         absl::Span<AbstractTensorHandle* const> grad_outputs,
+                         absl::Span<AbstractTensorHandle*> grad_inputs) = 0;
   virtual ~GradientFunction() {}
 };
 
@@ -72,8 +67,8 @@ struct ForwardOperation {
   string op_name;
   std::vector<AbstractTensorHandle*> inputs;
   std::vector<AbstractTensorHandle*> outputs;
+  std::vector<int64> skip_input_indices;
   AttrBuilder attrs;
-  AbstractContext* ctx;
 };
 
 using GradientFunctionFactory =
@@ -82,18 +77,16 @@ using GradientFunctionFactory =
 // Map from op name to a `GradientFunctionFactory`.
 class GradientRegistry {
  public:
-  Status Register(const string& op, GradientFunctionFactory factory);
+  Status Register(const string& op,
+                  GradientFunctionFactory gradient_function_factory);
   Status Lookup(const ForwardOperation& op,
-                std::unique_ptr<GradientFunction>* grad_fn) const;
+                std::unique_ptr<GradientFunction>* gradient_function) const;
 
  private:
   absl::flat_hash_map<string, GradientFunctionFactory> registry_;
 };
 
-// Returns a unique id for the tensor which is used by the tape to build
-// the gradient graph. See documentation of `TapeTensor` for more details.
-int64 ToId(AbstractTensorHandle* t);
-
+// TODO(srbs): Figure out if we can avoid declaring this in the public header.
 // Wrapper for a tensor output of an operation executing under a tape.
 //
 // `GetID` returns a unique id for the wrapped tensor which is used to maintain
@@ -106,70 +99,76 @@ int64 ToId(AbstractTensorHandle* t);
 // allow us to trace the data dependencies between operations and hence compute
 // gradients.
 //
-// This also implements `ZerosLike` and `OnesLike` to create the default
-// incoming gradients for tensors which do not already have an incoming
-// gradient.
+// `ZerosLike` is not expected to be called and returns a nullptr. The creation
+// of default zeros grads is handled by the `DefaultGradientFunction` registered
+// for each op.
+// TODO(srbs): We need to define `ZerosLike` here to keep the compiler happy.
+// Figure out a way to avoid this.
+// TODO(srbs): Should ZerosLike check-fail instead of returning nullptr?
 class TapeTensor {
  public:
-  TapeTensor(AbstractTensorHandle* handle, AbstractContext* ctx);
+  explicit TapeTensor(AbstractTensorHandle* handle);
   TapeTensor(const TapeTensor& other);
   ~TapeTensor();
 
   tensorflow::int64 GetID() const;
   tensorflow::DataType GetDType() const;
 
-  AbstractTensorHandle* OnesLike() const;
   AbstractTensorHandle* ZerosLike() const;
+
+  AbstractTensorHandle* GetHandle() const;
 
  private:
   AbstractTensorHandle* handle_;
-  // The context where OnesLike and ZerosLike ops are to be created.
-  AbstractContext* ctx_;
-};
-
-// Vector space for actually computing gradients. Implements methods for calling
-// the backward function with incoming gradients and returning the outgoing
-// gradient and for performing gradient aggregation.
-// See `tensorflow::eager::VSpace` for more details.
-class TapeVSpace
-    : public eager::VSpace<AbstractTensorHandle, GradientFunction, TapeTensor> {
- public:
-  explicit TapeVSpace(AbstractContext* ctx) : ctx_(ctx) {}
-  ~TapeVSpace() override {}
-
-  // Returns the number of elements in the gradient tensor.
-  int64 NumElements(AbstractTensorHandle* tensor) const override;
-
-  // Consumes references to the tensors in the gradient_tensors list and returns
-  // a tensor with the result.
-  AbstractTensorHandle* AggregateGradients(
-      gtl::ArraySlice<AbstractTensorHandle*> gradient_tensors) const override;
-
-  // Calls the passed-in backward function.
-  Status CallBackwardFunction(
-      GradientFunction* backward_function,
-      const std::vector<int64>& unneeded_gradients,
-      gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
-      std::vector<AbstractTensorHandle*>* result) const override;
-
-  // Looks up the ID of a Gradient.
-  int64 TensorId(AbstractTensorHandle* tensor) const override;
-
-  // Converts a Gradient to a TapeTensor.
-  TapeTensor TapeTensorFromGradient(AbstractTensorHandle* g) const override;
-
-  void MarkAsResult(AbstractTensorHandle* gradient) const override;
-
-  void DeleteGradient(AbstractTensorHandle* gradient) const override;
-
- private:
-  // The context where the aggregation op `Add` is to be created.
-  AbstractContext* ctx_;
 };
 
 // A tracing/immediate-execution agnostic tape.
-using Tape = tensorflow::eager::GradientTape<AbstractTensorHandle,
-                                             GradientFunction, TapeTensor>;
+//
+// Gradient functions defined for this tape must support handling null incoming
+// gradients.
+class Tape : protected eager::GradientTape<AbstractTensorHandle,
+                                           GradientFunction, TapeTensor> {
+ public:
+  using GradientTape<AbstractTensorHandle, GradientFunction,
+                     TapeTensor>::GradientTape;
+  // Returns whether the tape is persistent, i.e., whether the tape will hold
+  // onto its internal state after a call to `ComputeGradient`.
+  using GradientTape<AbstractTensorHandle, GradientFunction,
+                     TapeTensor>::IsPersistent;
+
+  // Adds this tensor to the list of watched tensors.
+  //
+  // This is a no-op if the tensor is already being watched either from an
+  // earlier call to `GradientTape::Watch` or being an output of an op with
+  // watched inputs.
+  void Watch(const AbstractTensorHandle*);
+  // Records an operation with given inputs and outputs
+  // on the tape and marks all its outputs as watched if at
+  // least one input of the op is watched and has a trainable dtype.
+  // op_name is optional and is used for debugging only.
+  void RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle* const> outputs,
+                       GradientFunction* gradient_function,
+                       const string& op_name = "");
+  // Returns whether any tensor in a list of tensors is being watched and has
+  // a trainable dtype.
+  bool ShouldRecord(
+      absl::Span<const AbstractTensorHandle* const> tensors) const;
+  // Unwatches this tensor on the tape. Mainly used for cleanup when deleting
+  // eager tensors.
+  void DeleteTrace(const AbstractTensorHandle*);
+
+  // Consumes the internal state of the tape (so cannot be called more than
+  // once unless the tape is persistent) and produces the gradient of the target
+  // tensors with respect to the source tensors. The output gradients are used
+  // if not empty and not null. The result is populated with one tensor per
+  // target element.
+  Status ComputeGradient(
+      AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> targets,
+      absl::Span<AbstractTensorHandle* const> sources,
+      absl::Span<AbstractTensorHandle* const> output_gradients,
+      absl::Span<AbstractTensorHandle*> result);
+};
 
 }  // namespace gradients
 }  // namespace tensorflow

@@ -52,6 +52,7 @@ InterpreterExecutable::InterpreterExecutable(
 }
 
 StatusOr<Literal> InterpreterExecutable::Evaluate(
+    const ServiceExecutableRunOptions* run_options,
     const HloComputation& computation, absl::Span<const Literal> arg_literals) {
   // Execute the graph using the HloEvaluator.
   tensorflow::mutex_lock lock(evaluator_lock_);

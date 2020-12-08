@@ -1,9 +1,9 @@
 // RUN: tf-opt %s -tf-region-control-flow-to-functional -split-input-file | FileCheck %s
 
 // Simple IfRegion
-// CHECK: func @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Neg"
-// CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func private @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
 // CHECK-NEXT:   "tf.Abs"
 func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"
@@ -24,9 +24,9 @@ func @testSimple(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Use if condition inside the regions
-// CHECK: func @tf.IfRegion_else(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32>
+// CHECK: func private @tf.IfRegion_else(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32>
 // CHECK-NEXT: "tf.Select"(%arg0, %arg2, %arg3)
-// CHECK: func @tf.IfRegion_then(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32>
+// CHECK: func private @tf.IfRegion_then(%arg0: tensor<i1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>, %arg3: tensor<2xf32>) -> tensor<2xf32>
 // CHECK-NEXT: "tf.Select"(%arg0, %arg1, %arg2)
 func @testIfCondition(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   %0 = "tf.Add"(%arg1, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
@@ -48,9 +48,9 @@ func @testIfCondition(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> 
 
 // Constant sinking for IfRegion
 
-// CHECK: func @tf.IfRegion_else() -> tensor<2xf32>
+// CHECK: func private @tf.IfRegion_else() -> tensor<2xf32>
 // CHECK-NEXT: constant dense<1.0
-// CHECK: func @tf.IfRegion_then() -> tensor<2xf32>
+// CHECK: func private @tf.IfRegion_then() -> tensor<2xf32>
 // CHECK-NEXT: constant dense<0.0
 func @testIfConstant(%arg0: tensor<i1>) -> tensor<2xf32> {
   %cst_zero = constant dense<0.0> : tensor<2xf32>
@@ -67,18 +67,18 @@ func @testIfConstant(%arg0: tensor<i1>) -> tensor<2xf32> {
 // -----
 
 // Nested IfRegions
-// CHECK: func @tf.IfRegion1_else
+// CHECK: func private @tf.IfRegion1_else
 // CHECK-NEXT: "tf.Acos"
 // CHECK-NEXT: "tf.Abs"
 
-// CHECK: func @tf.IfRegion1_then
+// CHECK: func private @tf.IfRegion1_then
 // CHECK-NEXT: "tf.LogicalNot"
 // CHECK-NEXT: "tf.Asin"
 // CHECK-NEXT: "tf.If"({{.+}}) {else_branch = @tf.IfRegion_else, {{.+}} then_branch = @tf.IfRegion_then}
 
-// CHECK: func @tf.IfRegion_else
+// CHECK: func private @tf.IfRegion_else
 // CHECK-NEXT: "tf.Neg"
-// CHECK: func @tf.IfRegion_then
+// CHECK: func private @tf.IfRegion_then
 // CHECK-NEXT: "tf.Abs"
 
 func @testNested(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -110,8 +110,8 @@ func @testNested(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Match existing function->Region pattern (simple) for IfRegion
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.If"({{.+}}) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ( {
@@ -128,8 +128,8 @@ func @testIf1Result(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 
 // Match existing function->Region pattern (with casts) for IfRegion
 
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: "tf.If"({{.+}}) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ( {
@@ -148,8 +148,8 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 
 // Match existing function->Region pattern (with multiple casts) for IfRegion
 
-func @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
-func @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Then(tensor<*xf32>) -> tensor<*xf32>
+func private @testIf1Else(tensor<*xf32>) -> tensor<*xf32>
 func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK: "tf.If"({{.+}}) {else_branch = @testIf1Else, {{.+}} then_branch = @testIf1Then}
   %0 = "tf.IfRegion"(%arg0) ( {
@@ -169,10 +169,10 @@ func @testIf2Result(%arg0: tensor<i1>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
 // -----
 
 // No inputs, some outputs for IfRegion
-// CHECK: func @tf.IfRegion_else() -> tensor<2xf32>
+// CHECK: func private @tf.IfRegion_else() -> tensor<2xf32>
 // CHECK-NEXT:    constant dense<1.000000e+00>
 // CHECK-NEXT:   "tf.Neg"
-// CHECK: func @tf.IfRegion_then() -> tensor<2xf32>
+// CHECK: func private @tf.IfRegion_then() -> tensor<2xf32>
 // CHECK-NEXT:   constant dense<0.000000e+00>
 // CHECK-NEXT:   "tf.Abs"
 func @testSimple(%arg0: tensor<i1>) -> tensor<2xf32> {
@@ -193,11 +193,11 @@ func @testSimple(%arg0: tensor<i1>) -> tensor<2xf32> {
 
 // No outputs, some inputs for IfRegion
 //
-// CHECK: func @tf.IfRegion_else(%arg0: tensor<*xf32>)
+// CHECK: func private @tf.IfRegion_else(%arg0: tensor<*xf32>)
 // CHECK-NEXT:   "tf.Neg"
-// CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>)
+// CHECK: func private @tf.IfRegion_then(%arg0: tensor<*xf32>)
 // CHECK-NEXT:   "tf.Abs"
-func @printer(tensor<*xf32>) -> ()
+func private @printer(tensor<*xf32>) -> ()
 func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
   // CHECK: "tf.If"{{.+}}else_branch = @tf.IfRegion_else{{.+}}then_branch = @tf.IfRegion_then
   "tf.IfRegion"(%arg0) ({
@@ -213,13 +213,35 @@ func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
 }
 
 // -----
+// Check ToBool folding for IfRegion
+// CHECK: func private @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   "tf.Neg"
+// CHECK: func private @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   "tf.Abs"
+// CHECK-LABEL: @testToBoolFold
+func @testToBoolFold(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK-NEXT: "tf.If"(%arg0, %arg1)
+  // CHECK-SAME: else_branch = @tf.IfRegion_else
+  // CHECK-SAME: then_branch = @tf.IfRegion_then
+  %tobool = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<i1>
+  %0 = "tf.IfRegion"(%tobool) ({
+    %1 = "tf.Abs"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }, {
+    %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+    }) {is_stateless = true} :  (tensor<i1>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
 
 // Simple WhileRegion
-// CHECK: func @tf.WhileRegion_body{{.+}}{sym_visibility = "private"}
+// CHECK: func private @tf.WhileRegion_body{{.+}}
 // CHECK: "tf.Add"
 // CHECK: constant dense<1>
 // CHECK: "tf.Sub"
-// CHECK:func @tf.WhileRegion_cond{{.+}}{sym_visibility = "private"}
+// CHECK:func private @tf.WhileRegion_cond{{.+}}
 // CHECK: constant dense<0>
 // CHECK: "tf.NotEqual"
 // CHECK-LABEL: testValidWhileRegion
@@ -253,11 +275,11 @@ func @testValidWhileRegion(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor
 // -----
 
 // WhileRegion with type mismatch
-// CHECK: func @tf.WhileRegion_body{{.+}}{sym_visibility = "private"}
+// CHECK: func private @tf.WhileRegion_body{{.+}}
 // CHECK: "tf.Add"
 // CHECK: constant dense<1>
 // CHECK: "tf.Sub"
-// CHECK:func @tf.WhileRegion_cond{{.+}}{sym_visibility = "private"}
+// CHECK:func private @tf.WhileRegion_cond{{.+}}
 // CHECK: constant dense<0>
 // CHECK: "tf.NotEqual"
 // CHECK-LABEL: testWhileRegionTypeMismatch
@@ -287,11 +309,11 @@ func @testWhileRegionTypeMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
 // -----
 
 // WhileRegion with constant sinking
-// CHECK: func @tf.WhileRegion_body{{.+}}{sym_visibility = "private"}
+// CHECK: func private @tf.WhileRegion_body{{.+}}
 // CHECK: constant dense<1>
 // CHECK: "tf.Add"
 // CHECK: "tf.Sub"
-// CHECK:func @tf.WhileRegion_cond{{.+}}{sym_visibility = "private"}
+// CHECK:func private @tf.WhileRegion_cond{{.+}}
 // CHECK: constant dense<0>
 // CHECK: "tf.NotEqual"
 // CHECK-LABEL: testWhileRegionConstantSink
@@ -320,12 +342,12 @@ func @testWhileRegionConstantSink(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
 // -----
 
 // WhileRegion with implicitly captured extern value in cond
-// CHECK: func @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK: "tf.Add"
 // CHECK: constant dense<1>
 // CHECK: "tf.Sub"
 // CHECK: return %{{.+}}, %{{.+}}, %arg2 : tensor<*xf32>, tensor<i32>, tensor<i32>
-// CHECK: func @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK: "tf.NotEqual"(%arg1, %arg2)
 // CHECK-LABEL: testWhileRegionExternInCond
 func @testWhileRegionExternInCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
@@ -354,12 +376,12 @@ func @testWhileRegionExternInCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
 // -----
 
 // WhileRegion with implicitly captured extern value in body
-// CHECK: func @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK: %0 = "tf.Add"(%arg0, %arg0)
 // CHECK: %1 = "tf.Sub"(%arg1, %arg2)
 // CHECK: return %0, %1, %arg2
 
-// CHECK: func @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK: constant dense<0>
 // CHECK: "tf.NotEqual"
 
@@ -390,9 +412,9 @@ func @testWhileRegionExternInBody(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %a
 // -----
 
 // WhileRegion with implicitly captured extern value in cond and body
-// CHECK: func @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>)
 // CHECK: return %{{.+}}, %{{.+}}, %arg2, %arg3
-// CHECK: func @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>, %arg3: tensor<i32>)
 // CHECK-LABEL: testWhileRegionExternInBodyAndCond
 func @testWhileRegionExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
   %cst = constant dense<4> : tensor<i32>
@@ -421,9 +443,9 @@ func @testWhileRegionExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i
 // -----
 
 // WhileRegion with same value implicitly captured in cond and body
-// CHECK: func @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_body(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK: return %{{.+}}, %{{.+}}, %arg2
-// CHECK: func @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
+// CHECK: func private @tf.WhileRegion_cond(%arg0: tensor<*xf32>, %arg1: tensor<i32>, %arg2: tensor<i32>)
 // CHECK-LABEL: testWhileRegionSameExternInBodyAndCond
 func @testWhileRegionSameExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<i32>) -> tensor<*xf32> {
   %cst = constant dense<4> : tensor<i32>
@@ -450,11 +472,11 @@ func @testWhileRegionSameExternInBodyAndCond(%arg0 : tensor<*xf32>, %arg1 : tens
 // -----
 
 // Simple trivially transformable while
-// CHECK: func @while_cond
-// CHECK: func @while_body
+// CHECK: func private @while_cond
+// CHECK: func private @while_body
 // CHECK-LABEL: testWhileRegionTrivial
-func @while_cond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<i1>
-func @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+func private @while_cond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<i1>
+func private @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
 func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
   // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @while_body, cond = @while_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -477,11 +499,11 @@ func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tens
 // -----
 
 // Trivially transformable with casts
-// CHECK: func @while_cond
-// CHECK: func @while_body
+// CHECK: func private @while_cond
+// CHECK: func private @while_body
 // CHECK-LABEL: testWhileRegionTrivialCasts
-func @while_cond(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<i1>
-func @while_body(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
+func private @while_cond(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<i1>
+func private @while_body(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
 func @testWhileRegionTrivialCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
   // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @while_body, cond = @while_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -506,11 +528,11 @@ func @testWhileRegionTrivialCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) ->
 // -----
 
 // Trivially transformable with multiple casts
-// CHECK: func @while_cond
-// CHECK: func @while_body
+// CHECK: func private @while_cond
+// CHECK: func private @while_body
 // CHECK-LABEL: testWhileRegionTrivialMultipleCasts
-func @while_cond(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<i1>
-func @while_body(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
+func private @while_cond(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> tensor<i1>
+func private @while_body(%arg0 : tensor<4xf32>, %arg1 : tensor<i32>) -> (tensor<4xf32>, tensor<i32>)
 func @testWhileRegionTrivialMultipleCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
   // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @while_body, cond = @while_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -537,13 +559,13 @@ func @testWhileRegionTrivialMultipleCasts(%arg0 : tensor<*xf32>, %arg1 : tensor<
 // -----
 
 // Almost trivially transformable with extern values
-// CHECK: func @tf.WhileRegion_body
+// CHECK: func private @tf.WhileRegion_body
 // CHECK: call @while_body
-// CHECK: @tf.WhileRegion_cond
+// CHECK: func private @tf.WhileRegion_cond
 // CHECK: call @while_cond
 // CHECK-LABEL: testWhileRegionExtern
-func @while_cond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<i1>
-func @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>)
+func private @while_cond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<i1>
+func private @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %arg2 : tensor<*xf32>) -> (tensor<*xf32>, tensor<i32>)
 func @testWhileRegionExtern(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
   %ext = "tf.Neg"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   // CHECK: [[Result:%.*]]:3 = "tf.While"(%arg0, %arg1, %{{.+}}) {body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
@@ -567,13 +589,13 @@ func @testWhileRegionExtern(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tenso
 // -----
 
 // Almost trivially transformable, mismatching block arguments
-// CHECK: func @tf.WhileRegion_body
+// CHECK: func private @tf.WhileRegion_body
 // CHECK: call @while_body
-// CHECK: @tf.WhileRegion_cond
+// CHECK: func private @tf.WhileRegion_cond
 // CHECK: call @while_cond
 // CHECK-LABEL: testWhileRegionBlockArgMismatch
-func @while_cond(%arg0 : tensor<i32>, %arg1 : tensor<*xf32>) -> tensor<i1>
-func @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+func private @while_cond(%arg0 : tensor<i32>, %arg1 : tensor<*xf32>) -> tensor<i1>
+func private @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
 func @testWhileRegionBlockArgMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
   // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @tf.WhileRegion_body, cond = @tf.WhileRegion_cond
   %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
@@ -591,4 +613,65 @@ func @testWhileRegionBlockArgMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
   return %0#0 : tensor<*xf32>
+}
+
+// -----
+
+// Simple trivially transformable while with ToBool
+// CHECK: func private @while_cond
+// CHECK: func private @while_body
+// CHECK-LABEL: testWhileRegionTrivial
+func private @while_cond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<i32>
+func private @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @while_body, cond = @while_cond
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+        %cond_i32 = call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i32>
+        %cond = "tf.ToBool"(%cond_i32) : (tensor<i32>) -> tensor<i1>
+        "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+        %bdy:2 = call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+        "tf.Yield"(%bdy#0, %bdy#1) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return [[Result]]#0
+  return %0#0 : tensor<*xf32>
+}
+
+// -----
+
+// Test tf.IfRegion device is preserved.
+// CHECK-LABEL: func @testIfRegionDevice
+func @testIfRegionDevice(%arg0: tensor<i1>) {
+  "tf.IfRegion"(%arg0) ({
+    "tf.Yield"() : () -> ()
+  }, {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false, device = "/device:CPU:0"} : (tensor<i1>) -> ()
+
+  // CHECK: "tf.If"
+  // CHECK-SAME: device = "/device:CPU:0"
+  return
+}
+
+// -----
+
+// Test tf.WhileRegion device is preserved.
+// CHECK-LABEL: func @testWhileRegionDevice
+func @testWhileRegionDevice() {
+  "tf.WhileRegion"() ( {
+    %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    "tf.Yield"(%0) : (tensor<i1>) -> ()
+  }, {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false, device = "/device:CPU:0"} : () -> ()
+
+  // CHECK: "tf.While"
+  // CHECK-SAME: device = "/device:CPU:0"
+  return
 }

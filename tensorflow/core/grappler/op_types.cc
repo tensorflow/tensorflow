@@ -113,6 +113,8 @@ bool IsBiasAdd(const NodeDef& node) {
   return node.op() == "BiasAdd" || node.op() == "BiasAddV1";
 }
 
+bool IsBiasAddV2(const NodeDef& node) { return node.op() == "BiasAdd"; }
+
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
@@ -333,6 +335,12 @@ bool IsImmutableConst(const NodeDef& node) {
 }
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
+
+bool IsLeakyRelu(const NodeDef& node) { return node.op() == "LeakyRelu"; }
+
+bool IsLeakyReluGrad(const NodeDef& node) {
+  return node.op() == "LeakyReluGrad";
+}
 
 bool IsLess(const NodeDef& node) { return node.op() == "Less"; }
 
@@ -574,6 +582,8 @@ bool IsSwitch(const NodeDef& node) {
 bool IsSymbolicGradient(const NodeDef& node) {
   return node.op() == "SymbolicGradient";
 }
+
+bool IsTanh(const NodeDef& node) { return node.op() == "Tanh"; }
 
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
 

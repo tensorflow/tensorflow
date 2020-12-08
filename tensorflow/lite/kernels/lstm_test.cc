@@ -101,8 +101,8 @@ class LSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    AddInput({TensorType_FLOAT32, {n_batch, n_output}}, true);
-    AddInput({TensorType_FLOAT32, {n_batch, n_cell}}, true);
+    AddVariableInput({TensorType_FLOAT32, {n_batch, n_output}});
+    AddVariableInput({TensorType_FLOAT32, {n_batch, n_cell}});
 
     // Layer norm weights.
     if (!model_has_legacy_20_inputs) {
@@ -1412,16 +1412,14 @@ class LSTMIntegerOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    AddInput({TensorType_INT16,
-              {n_batch, n_output},
-              ranges[18].first,
-              ranges[18].second},
-             true);
-    AddInput({TensorType_INT16,
-              {n_batch, n_cell},
-              ranges[19].first,
-              ranges[19].second},
-             true);
+    AddVariableInput({TensorType_INT16,
+                      {n_batch, n_output},
+                      ranges[18].first,
+                      ranges[18].second});
+    AddVariableInput({TensorType_INT16,
+                      {n_batch, n_cell},
+                      ranges[19].first,
+                      ranges[19].second});
 
     // Layer norm weights.
     if (use_layer_norm) {
@@ -1460,8 +1458,12 @@ class LSTMIntegerOpModel : public SingleOpModel {
         BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
         CreateLSTMOptions(builder_, ActivationFunctionType_TANH).Union());
 
-    BuildInterpreter({});  // Input sizes are already set
+    BuildInterpreter(/*input_shapes=*/{}, /*num_threads=*/-1,
+                     /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true, /*allocate_and_delegate=*/false);
   }
+
+  void PerformAllocateAndDelegate() { AllocateAndDelegate(true); }
 
   void SetInputToInputWeights(const std::vector<float>& f) {
     QuantizeAndPopulate<int8_t>(input_to_input_weights_, f);
@@ -1694,6 +1696,8 @@ TEST(IntegerLstmOpTest, NoCifg_NoPeephole_Projection_LayerNorm) {
                           /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/false, ranges,
                           intermediates);
+  // Do allocate.
+  lstm.PerformAllocateAndDelegate();
 
   // Set weights.
   lstm.SetInputToInputWeights(input_to_input_weights);
@@ -1860,6 +1864,9 @@ TEST(IntegerLstmOpTest, NoCifg_Peephole_Projection_LayerNorm) {
                           /*use_layer_norm=*/true,
                           /*use_8x8_8_implementation=*/false, ranges,
                           intermediates);
+
+  // Do allocate.
+  lstm.PerformAllocateAndDelegate();
 
   // Set weights.
   lstm.SetInputToInputWeights(input_to_input_weights);
@@ -2028,6 +2035,9 @@ TEST(IntegerLstmOpTest, Cifg_NoPeephole_Projection_LayerNorm_8x8_8) {
                           /*use_8x8_8_implementation=*/true, ranges,
                           intermediates);
 
+  // Do allocate.
+  lstm.PerformAllocateAndDelegate();
+
   // Set weights.
   // lstm.SetInputToInputWeights(input_to_input_weights);
   lstm.SetInputToCellWeights(input_to_cell_weights);
@@ -2114,11 +2124,623 @@ TEST(LstmOpTest, InvalidTypes) {
 }
 #endif
 
+class HybridSparseLSTMOpModel : public ::tflite::SingleOpModel {
+ public:
+  HybridSparseLSTMOpModel(
+      int n_batch, int n_input, int n_cell, int n_output, bool use_cifg,
+      bool use_peephole, bool use_projection_weights, bool use_projection_bias,
+      float cell_clip, float proj_clip,
+      const std::vector<std::vector<int>>& input_shapes,
+      const TensorData& input_weights_td,
+      const std::vector<float>& input_to_input_weights,
+      const std::vector<float>& input_to_forget_weights,
+      const std::vector<float>& input_to_cell_weights,
+      const std::vector<float>& input_to_output_weights,
+      const TensorData& recurrent_weights_td,
+      const std::vector<float>& recurrent_to_input_weights,
+      const std::vector<float>& recurrent_to_forget_weights,
+      const std::vector<float>& recurrent_to_cell_weights,
+      const std::vector<float>& recurrent_to_output_weights,
+      const ::tflite::TensorType& weight_type = ::tflite::TensorType_INT8)
+      : n_batch_(n_batch),
+        n_input_(n_input),
+        n_cell_(n_cell),
+        n_output_(n_output) {
+    input_ = AddInput(::tflite::TensorType_FLOAT32);
+
+    if (use_cifg) {
+      input_to_input_weights_ = AddNullInput();
+    } else {
+      input_to_input_weights_ =
+          AddConstSparseInput(input_weights_td, input_to_input_weights, true);
+    }
+
+    input_to_forget_weights_ =
+        AddConstSparseInput(input_weights_td, input_to_forget_weights, true);
+
+    input_to_cell_weights_ =
+        AddConstSparseInput(input_weights_td, input_to_cell_weights, true);
+
+    input_to_output_weights_ =
+        AddConstSparseInput(input_weights_td, input_to_output_weights, true);
+
+    if (use_cifg) {
+      recurrent_to_input_weights_ = AddNullInput();
+    } else {
+      recurrent_to_input_weights_ = AddConstSparseInput(
+          recurrent_weights_td, recurrent_to_input_weights, true);
+    }
+
+    recurrent_to_forget_weights_ = AddConstSparseInput(
+        recurrent_weights_td, recurrent_to_forget_weights, true);
+    recurrent_to_cell_weights_ = AddConstSparseInput(
+        recurrent_weights_td, recurrent_to_cell_weights, true);
+    recurrent_to_output_weights_ = AddConstSparseInput(
+        recurrent_weights_td, recurrent_to_output_weights, true);
+
+    if (use_peephole) {
+      if (use_cifg) {
+        cell_to_input_weights_ = AddNullInput();
+      } else {
+        cell_to_input_weights_ = AddInput(weight_type);
+      }
+      cell_to_forget_weights_ = AddInput(weight_type);
+      cell_to_output_weights_ = AddInput(weight_type);
+    } else {
+      cell_to_input_weights_ = AddNullInput();
+      cell_to_forget_weights_ = AddNullInput();
+      cell_to_output_weights_ = AddNullInput();
+    }
+
+    if (use_cifg) {
+      input_gate_bias_ = AddNullInput();
+    } else {
+      input_gate_bias_ = AddInput(::tflite::TensorType_FLOAT32);
+    }
+    forget_gate_bias_ = AddInput(::tflite::TensorType_FLOAT32);
+    cell_bias_ = AddInput(::tflite::TensorType_FLOAT32);
+    output_gate_bias_ = AddInput(::tflite::TensorType_FLOAT32);
+
+    if (use_projection_weights) {
+      projection_weights_ = AddInput(weight_type);
+      if (use_projection_bias) {
+        projection_bias_ = AddInput(::tflite::TensorType_FLOAT32);
+      } else {
+        projection_bias_ = AddNullInput();
+      }
+    } else {
+      projection_weights_ = AddNullInput();
+      projection_bias_ = AddNullInput();
+    }
+
+    // Adding the 2 state tensors.
+    output_state_ = AddVariableInput(::tflite::TensorData{
+        ::tflite::TensorType_FLOAT32, {n_output_ * n_batch_}});
+    cell_state_ = AddVariableInput(::tflite::TensorData{
+        ::tflite::TensorType_FLOAT32, {n_cell_ * n_batch_}});
+
+    if (use_cifg) {
+      input_layer_norm_weights_ = AddNullInput();
+    } else {
+      input_layer_norm_weights_ = AddInput(::tflite::TensorType_FLOAT32);
+    }
+    forget_layer_norm_weights_ = AddInput(::tflite::TensorType_FLOAT32);
+    cell_layer_norm_weights_ = AddInput(::tflite::TensorType_FLOAT32);
+    output_layer_norm_weights_ = AddInput(::tflite::TensorType_FLOAT32);
+
+    output_ = AddOutput(::tflite::TensorType_FLOAT32);
+
+    SetBuiltinOp(
+        BuiltinOperator_LSTM, BuiltinOptions_LSTMOptions,
+        CreateLSTMOptions(builder_, ActivationFunctionType_TANH, cell_clip,
+                          proj_clip, LSTMKernelType_FULL, false)
+            .Union());
+    BuildInterpreter(input_shapes);
+  }
+
+  void SetCellToInputWeights(std::vector<float> f) {
+    SignedSymmetricQuantizeAndPopulate(cell_to_input_weights_, f);
+  }
+
+  void SetCellToForgetWeights(std::vector<float> f) {
+    SignedSymmetricQuantizeAndPopulate(cell_to_forget_weights_, f);
+  }
+
+  void SetCellToOutputWeights(std::vector<float> f) {
+    SignedSymmetricQuantizeAndPopulate(cell_to_output_weights_, f);
+  }
+
+  void SetInputLayerNormWeights(std::vector<float> f) {
+    PopulateTensor(input_layer_norm_weights_, f);
+  }
+
+  void SetForgetLayerNormWeights(std::vector<float> f) {
+    PopulateTensor(forget_layer_norm_weights_, f);
+  }
+
+  void SetCellLayerNormWeights(std::vector<float> f) {
+    PopulateTensor(cell_layer_norm_weights_, f);
+  }
+
+  void SetOutputLayerNormWeights(std::vector<float> f) {
+    PopulateTensor(output_layer_norm_weights_, f);
+  }
+
+  void SetInputGateBias(std::vector<float> f) {
+    PopulateTensor(input_gate_bias_, f);
+  }
+
+  void SetForgetGateBias(std::vector<float> f) {
+    PopulateTensor(forget_gate_bias_, f);
+  }
+
+  void SetCellBias(std::vector<float> f) { PopulateTensor(cell_bias_, f); }
+
+  void SetOutputGateBias(std::vector<float> f) {
+    PopulateTensor(output_gate_bias_, f);
+  }
+
+  void SetProjectionWeights(std::vector<float> f) {
+    SignedSymmetricQuantizeAndPopulate(projection_weights_, f);
+  }
+
+  void SetProjectionBias(std::vector<float> f) {
+    PopulateTensor(projection_bias_, f);
+  }
+
+  void SetInput(int offset, const float* begin, const float* end) {
+    PopulateTensor(input_, offset, const_cast<float*>(begin),
+                   const_cast<float*>(end));
+  }
+
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+
+  int num_inputs() { return n_input_; }
+  int num_outputs() { return n_output_; }
+  int num_cells() { return n_cell_; }
+  int num_batches() { return n_batch_; }
+
+ protected:
+  int input_;
+  int input_to_input_weights_;
+  int input_to_forget_weights_;
+  int input_to_cell_weights_;
+  int input_to_output_weights_;
+
+  int recurrent_to_input_weights_;
+  int recurrent_to_forget_weights_;
+  int recurrent_to_cell_weights_;
+  int recurrent_to_output_weights_;
+
+  int cell_to_input_weights_;
+  int cell_to_forget_weights_;
+  int cell_to_output_weights_;
+
+  int input_layer_norm_weights_;
+  int forget_layer_norm_weights_;
+  int cell_layer_norm_weights_;
+  int output_layer_norm_weights_;
+
+  int input_gate_bias_;
+  int forget_gate_bias_;
+  int cell_bias_;
+  int output_gate_bias_;
+
+  int projection_weights_;
+  int projection_bias_;
+
+  int output_state_;
+  int cell_state_;
+
+  int output_;
+
+  int n_batch_;
+  int n_input_;
+  int n_cell_;
+  int n_output_;
+};
+
+class BaseSparseLstmTest : public ::testing::Test {
+ protected:
+  // Weights of the Sparse Layer Norm LSTM model. Some are optional.
+  std::vector<float> input_to_input_weights_;
+  std::vector<float> input_to_cell_weights_;
+  std::vector<float> input_to_forget_weights_;
+  std::vector<float> input_to_output_weights_;
+  std::vector<float> input_gate_bias_;
+  std::vector<float> cell_gate_bias_;
+  std::vector<float> forget_gate_bias_;
+  std::vector<float> output_gate_bias_;
+  std::vector<float> recurrent_to_input_weights_;
+  std::vector<float> recurrent_to_cell_weights_;
+  std::vector<float> recurrent_to_forget_weights_;
+  std::vector<float> recurrent_to_output_weights_;
+  std::vector<float> cell_to_input_weights_;
+  std::vector<float> cell_to_forget_weights_;
+  std::vector<float> cell_to_output_weights_;
+  std::vector<float> input_layer_norm_weights_;
+  std::vector<float> forget_layer_norm_weights_;
+  std::vector<float> cell_layer_norm_weights_;
+  std::vector<float> output_layer_norm_weights_;
+  std::vector<float> projection_weights_;
+
+  std::vector<int> input_to_input_weights_size_;
+  std::vector<int> input_to_cell_weights_size_;
+  std::vector<int> input_to_forget_weights_size_;
+  std::vector<int> input_to_output_weights_size_;
+  std::vector<int> recurrent_to_input_weights_size_;
+  std::vector<int> recurrent_to_cell_weights_size_;
+  std::vector<int> recurrent_to_forget_weights_size_;
+  std::vector<int> recurrent_to_output_weights_size_;
+
+  int n_batch_;
+  int n_input_;
+  int n_cell_;
+  int n_output_;
+  float cell_clip_;
+  float proj_clip_;
+
+  // Layer Norm LSTM input is stored as num_batch x num_inputs vector.
+  std::vector<std::vector<float>> sparse_layer_norm_lstm_input_;
+
+  // Compares output up to tolerance to the result of the layer_norm_lstm given
+  // the input.
+  void VerifyGoldens(const std::vector<std::vector<float>>& input,
+                     const std::vector<std::vector<float>>& output,
+                     HybridSparseLSTMOpModel* sparse_layer_norm_lstm,
+                     float tolerance = 1e-5) {
+    const int num_batches = input.size();
+    EXPECT_GT(num_batches, 0);
+    const int num_inputs = sparse_layer_norm_lstm->num_inputs();
+    EXPECT_GT(num_inputs, 0);
+    const int input_sequence_size = input[0].size() / num_inputs;
+    EXPECT_GT(input_sequence_size, 0);
+    for (int i = 0; i < input_sequence_size; ++i) {
+      for (int b = 0; b < num_batches; ++b) {
+        const float* batch_start = input[b].data() + i * num_inputs;
+        const float* batch_end = batch_start + num_inputs;
+
+        sparse_layer_norm_lstm->SetInput(
+            b * sparse_layer_norm_lstm->num_inputs(), batch_start, batch_end);
+      }
+
+      sparse_layer_norm_lstm->Invoke();
+
+      const int num_outputs = sparse_layer_norm_lstm->num_outputs();
+      std::vector<float> expected;
+      for (int b = 0; b < num_batches; ++b) {
+        const float* golden_start_batch = output[b].data() + i * num_outputs;
+        const float* golden_end_batch = golden_start_batch + num_outputs;
+        expected.insert(expected.end(), golden_start_batch, golden_end_batch);
+      }
+      EXPECT_THAT(
+          sparse_layer_norm_lstm->GetOutput(),
+          ElementsAreArray(::tflite::ArrayFloatNear(expected, tolerance)));
+    }
+  }
+};
+
+class NoCifgPeepholeProjectionNoClippingSparseLstmTest
+    : public BaseSparseLstmTest {
+  void SetUp() override {
+    n_batch_ = 2;
+    n_input_ = 48;
+    n_cell_ = 4;
+    n_output_ = 16;
+    cell_clip_ = 0.0;
+    proj_clip_ = 0.0;
+
+    /* clang-format off */
+    input_to_input_weights_ = {
+      /* 1st row */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 33.33, 34.34, 35.35, 36.36, 37.37, 38.38,
+      39.39, 40.40, 41.41, 42.42, 43.43, 44.44, 0.0, 0.0, 0.0, 0.0,
+      /* 2nd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, -17.17, -18.18, -19.19, -20.2, -21.21, -22.22, -23.23, -24.24,
+      -25.25, -26.26, -27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 3rd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22, 23.23, -24.24, 25.25,
+      -26.26, 27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 4th row */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -33.33, 34.34, -35.35, 36.36, -37.37,
+      38.38, -39.39, 40.40, -41.41, 42.42, -43.43, 44.44, 0.0, 0.0, 0.0, 0};
+    input_to_input_weights_size_ = {4, 48};
+
+    input_to_forget_weights_ = {
+      /* 1st row */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 33.33, 34.34, 35.35, 36.36, 37.37, 38.38,
+      39.39, 40.40, 41.41, 42.42, 43.43, 44.44, 0.0, 0.0, 0.0, 0.0,
+      /* 2nd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, -17.17, -18.18, -19.19, -20.2, -21.21, -22.22, -23.23, -24.24,
+      -25.25, -26.26, -27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 3rd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22, 23.23, -24.24, 25.25,
+      -26.26, 27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 4th row */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -33.33, 34.34, -35.35, 36.36, -37.37,
+      38.38, -39.39, 40.40, -41.41, 42.42, -43.43, 44.44, 0.0, 0.0, 0.0, 0};
+    input_to_forget_weights_size_ = {4, 48};
+
+    input_to_cell_weights_ = {
+      /* 1st row */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 33.33, 34.34, 35.35, 36.36, 37.37, 38.38,
+      39.39, 40.40, 41.41, 42.42, 43.43, 44.44, 0.0, 0.0, 0.0, 0.0,
+      /* 2nd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, -17.17, -18.18, -19.19, -20.2, -21.21, -22.22, -23.23, -24.24,
+      -25.25, -26.26, -27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 3rd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22, 23.23, -24.24, 25.25,
+      -26.26, 27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 4th row */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -33.33, 34.34, -35.35, 36.36, -37.37,
+      38.38, -39.39, 40.40, -41.41, 42.42, -43.43, 44.44, 0.0, 0.0, 0.0, 0};
+    input_to_cell_weights_size_ = {4, 48};
+
+    input_to_output_weights_ = {
+      /* 1st row */
+      1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9, 10.1, 11.11, 12.12, 13.13,
+      14.14, 15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 33.33, 34.34, 35.35, 36.36, 37.37, 38.38,
+      39.39, 40.40, 41.41, 42.42, 43.43, 44.44, 0.0, 0.0, 0.0, 0.0,
+      /* 2nd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, -17.17, -18.18, -19.19, -20.2, -21.21, -22.22, -23.23, -24.24,
+      -25.25, -26.26, -27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 3rd row */
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 17.17, -18.18, 19.19, -20.2, 21.21, -22.22, 23.23, -24.24, 25.25,
+      -26.26, 27.27, -28.28, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      /* 4th row */
+      -1.1, 2.2, -3.3, 4.4, -5.5, 6.6, -7.7, 8.8, -9.9, 10.1, -11.11, 12.12,
+      -13.13, 14.14, -15.15, 16.16, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -33.33, 34.34, -35.35, 36.36, -37.37,
+      38.38, -39.39, 40.40, -41.41, 42.42, -43.43, 44.44, 0.0, 0.0, 0.0, 0};
+    input_to_output_weights_size_ = {4, 48};
+
+    input_gate_bias_ = {0.03, 0.15, 0.22, 0.38};
+
+    forget_gate_bias_ = {0.1, -0.3, -0.2, 0.1};
+
+    cell_gate_bias_ = {-0.05, 0.72, 0.25, 0.08};
+
+    output_gate_bias_ = {0.05, -0.01, 0.2, 0.1};
+
+    recurrent_to_input_weights_ = {
+      -0.2, -0.3, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,   // 1st row
+      0.1,  -0.5, 0.9, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,   // 2nd row
+      -0.2, -0.3, -0.7, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 3rd row
+      0.05, -0.2, -0.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 4th row
+    };
+    recurrent_to_input_weights_size_ = {4, 16};
+
+    recurrent_to_cell_weights_ = {
+      -0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,     // 1st row
+      -0.3, 0.8,  -0.08, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 2nd row
+      -0.2, 0.3, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,     // 3rd row
+      -0.6, -0.1, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,    // 4th row
+    };
+    recurrent_to_cell_weights_size_ = {4, 16};
+
+    recurrent_to_forget_weights_ = {
+      -0.5, -0.3, -0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 1st row
+      -0.2, 0.6, 0.4, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 2nd row
+      0.9,  0.3,  -0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 3rd row
+      0.2, 0.5, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,    // 4th row
+    };
+    recurrent_to_forget_weights_size_ = {4, 16};
+
+    recurrent_to_output_weights_ = {
+      0.3,  -0.1, 0.1,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 1st row
+      -0.2, -0.5, -0.7,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 2nd row
+      -0.2, -0.6, -0.1,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 3rd row
+      -0.4, -0.7, -0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0,  // 4th row
+    };
+    recurrent_to_output_weights_size_ = {4, 16};
+
+    cell_to_input_weights_ = {0.05, 0.1, 0.25, 0.15};
+
+    cell_to_forget_weights_ = {-0.02, -0.15, -0.25, -0.03};
+
+    cell_to_output_weights_ = {0.1, -0.1, -0.5, 0.05};
+
+    input_layer_norm_weights_ = {0.1, 0.2, 0.3, 0.5};
+    forget_layer_norm_weights_ = {0.2, 0.2, 0.4, 0.3};
+    cell_layer_norm_weights_ = {0.7, 0.2, 0.3, 0.8};
+    output_layer_norm_weights_ = {0.6, 0.2, 0.2, 0.5};
+
+    projection_weights_ = {
+      -0.1, 0.2, 0.01, -0.2,  // 1st row
+      0.1, 0.5, 0.3, 0.08,    // 2nd row
+      0.07, 0.2, -0.4, 0.2,   // 3rd row
+      0.0, 0.0, 0.0, 0.0,     // 4th row
+      0.0, 0.0, 0.0, 0.0,     // 5th row
+      0.0, 0.0, 0.0, 0.0,     // 6th row
+      0.0, 0.0, 0.0, 0.0,     // 7th row
+      0.0, 0.0, 0.0, 0.0,     // 8th row
+      0.0, 0.0, 0.0, 0.0,     // 9th row
+      0.0, 0.0, 0.0, 0.0,     // 10th row
+      0.0, 0.0, 0.0, 0.0,     // 11th row
+      0.0, 0.0, 0.0, 0.0,     // 12th row
+      0.0, 0.0, 0.0, 0.0,     // 13th row
+      0.0, 0.0, 0.0, 0.0,     // 14th row
+      0.0, 0.0, 0.0, 0.0,     // 15th row
+      0.0, 0.0, 0.0, 0.0,     // 16th row
+      0.0, 0.0, 0.0, 0.0,     // 17th row
+      0.0, 0.0, 0.0, 0.0,     // 18th row
+    };
+
+    sparse_layer_norm_lstm_input_ = {
+      // Batch0: 2 (input_sequence_size) * 45 (n_input_)
+      {
+        1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+        -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+        1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+        -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,  // seq 0
+        2.5, 0.0, -2.1, 0.0, 3.0, 0.0, -1.3, 0.0, 1.3, 0.0, -1.1, 0.0, 2.0, 0.0,
+        -1.7, 0.0, 1.9, 0.0, -1.5, 0.0, 0.5, 0.0, -0.7, 0.0, 0.8, 0.0, -0.3,
+        0.0, 2.8, 0.0, -2.8, 0.0, 1.1, -2.3, 1.9, -1.9, 2.1, -0.5, 2.4, -0.1,
+        1.0, -2.5, 0.7, -1.9, 0.2,  0.1, 0.2, 0.3,  // seq 1
+      },
+      // Batch1: 2 (input_sequence_size) * 45 (n_input_)
+      {
+        1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+        -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,
+        1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0,
+        -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, -1.0,  // seq 0
+        2.5, 0.0, -2.1, 0.0, 3.0, 0.0, -1.3, 0.0, 1.3, 0.0, -1.1, 0.0, 2.0, 0.0,
+        -1.7, 0.0, 1.9, 0.0, -1.5, 0.0, 0.5, 0.0, -0.7, 0.0, 0.8, 0.0, -0.3,
+        0.0, 2.8, 0.0, -2.8, 0.0, 1.1, -2.3, 1.9, -1.9, 2.1, -0.5, 2.4, -0.1,
+        1.0, -2.5, 0.7, -1.9, 0.2, -1.0, 1.0, -1.0,   // seq 1
+      },
+    };
+    /* clang-format on */
+  }
+};
+
+TEST_F(NoCifgPeepholeProjectionNoClippingSparseLstmTest,
+       HybridSparseLstmBlackBoxTest) {
+  TensorData input_weight = {};
+  input_weight.type = TensorType_FLOAT32;
+  input_weight.shape = {4, 48};
+  input_weight.traversal_order = {0, 1, 2};
+  input_weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  input_weight.block_map = {1};
+  input_weight.block_size = {16};
+  TensorData recurrent_weight = {};
+  recurrent_weight.type = TensorType_FLOAT32;
+  recurrent_weight.shape = {4, 16};
+  recurrent_weight.traversal_order = {0, 1, 2};
+  recurrent_weight.format = {kTfLiteDimDense, kTfLiteDimSparseCSR};
+  recurrent_weight.block_map = {1};
+  recurrent_weight.block_size = {16};
+  HybridSparseLSTMOpModel sparse_layer_norm_lstm(
+      n_batch_, n_input_, n_cell_, n_output_,
+      /*use_cifg=*/false, /*use_peephole=*/true,
+      /*use_projection_weights=*/true,
+      /*use_projection_bias=*/false, cell_clip_, proj_clip_,
+      {
+          {n_batch_, n_input_},  // input tensor
+
+          {input_to_input_weights_size_},
+          {input_to_forget_weights_size_},
+          {input_to_cell_weights_size_},
+          {input_to_output_weights_size_},
+
+          {recurrent_to_input_weights_size_},
+          {recurrent_to_forget_weights_size_},
+          {recurrent_to_cell_weights_size_},
+          {recurrent_to_output_weights_size_},
+
+          {n_cell_},  // cell_to_input_weight tensor
+          {n_cell_},  // cell_to_forget_weight tensor
+          {n_cell_},  // cell_to_output_weight tensor
+
+          {n_cell_},  // input_gate_bias tensor
+          {n_cell_},  // forget_gate_bias tensor
+          {n_cell_},  // cell_bias tensor
+          {n_cell_},  // output_gate_bias tensor
+
+          {n_output_, n_cell_},  // projection_weight tensor
+          {0},                   // projection_bias tensor
+
+          {n_output_ * n_batch_},  // output_state tensor
+          {n_cell_ * n_batch_},    // cell_state tensor
+
+          {n_cell_},  // input_layer_norm_weight tensor
+          {n_cell_},  // forget_layer_norm_weight tensor
+          {n_cell_},  // cell_layer_norm_weight tensor
+          {n_cell_},  // output_layer_norm_weight tensor
+      },
+      input_weight, input_to_input_weights_, input_to_forget_weights_,
+      input_to_cell_weights_, input_to_output_weights_, recurrent_weight,
+      recurrent_to_input_weights_, recurrent_to_forget_weights_,
+      recurrent_to_cell_weights_, recurrent_to_output_weights_);
+
+  sparse_layer_norm_lstm.SetInputGateBias(input_gate_bias_);
+  sparse_layer_norm_lstm.SetCellBias(cell_gate_bias_);
+  sparse_layer_norm_lstm.SetForgetGateBias(forget_gate_bias_);
+  sparse_layer_norm_lstm.SetOutputGateBias(output_gate_bias_);
+
+  sparse_layer_norm_lstm.SetCellToInputWeights(cell_to_input_weights_);
+  sparse_layer_norm_lstm.SetCellToForgetWeights(cell_to_forget_weights_);
+  sparse_layer_norm_lstm.SetCellToOutputWeights(cell_to_output_weights_);
+
+  sparse_layer_norm_lstm.SetInputLayerNormWeights(input_layer_norm_weights_);
+  sparse_layer_norm_lstm.SetForgetLayerNormWeights(forget_layer_norm_weights_);
+  sparse_layer_norm_lstm.SetCellLayerNormWeights(cell_layer_norm_weights_);
+  sparse_layer_norm_lstm.SetOutputLayerNormWeights(output_layer_norm_weights_);
+
+  sparse_layer_norm_lstm.SetProjectionWeights(projection_weights_);
+
+  /* clang-format off */
+  const std::vector<std::vector<float>> sparse_layer_norm_lstm_golden_output = {
+    {
+      // Batch0: 2 (input_sequence_size) * 3 (n_output_)
+      0.0550758, 0.138464, -0.0628034, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0,
+      0.069672, 0.195428, -0.0605584, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0,
+    },
+    {
+      // Batch1: 3 (input_sequence_size) * 3 (n_output_)
+      0.0550758, 0.138464, -0.0628034, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0,
+      0.069672, 0.195428, -0.0605584, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+      0.0, 0.0, 0.0, 0.0, 0.0,
+    }};
+  /* clang-format on */
+
+  VerifyGoldens(sparse_layer_norm_lstm_input_,
+                sparse_layer_norm_lstm_golden_output, &sparse_layer_norm_lstm);
+}
+
 // Test parameter controls asymmetric_quantize_inputs in LSTMOpModel.
 INSTANTIATE_TEST_SUITE_P(
     Parameterized, LstmOpTest,
     ::testing::Combine(::testing::Values(TensorType_FLOAT32, TensorType_UINT8,
-                                         TensorType_UINT8),
+                                         TensorType_INT8),
                        ::testing::Bool(), ::testing::Bool()));
 
 }  // namespace

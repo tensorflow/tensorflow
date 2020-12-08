@@ -57,6 +57,8 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
       return mlir::ComplexType::get(builder.getF64Type());
     case tflite::TensorType_INT8:
       return builder.getIntegerType(8);
+    case tflite::TensorType_UINT64:
+      return builder.getIntegerType(64, /*isSigned=*/false);
   }
 }
 
@@ -86,6 +88,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_STRING;
     case tflite::TensorType_UINT8:
       return tensorflow::DT_UINT8;
+    case tflite::TensorType_UINT64:
+      return tensorflow::DT_UINT64;
   }
 }
 
@@ -132,7 +136,7 @@ bool NotFromQuantOpOrSameQuantType(mlir::Value val, mlir::TypeAttr qtype_attr) {
       llvm::dyn_cast_or_null<mlir::TFL::QuantizeOp>(val_defn_op);
   if (!q_op) return true;
 
-  // Ignore shape details - weŕe really only trying to
+  // Ignore shape details - we're really only trying to
   // check if quantization is the same.
   auto stripped_src_qtype = GetShapeStrippedType(q_op.qtypeAttr());
   auto stripped_qtype = GetShapeStrippedType(qtype_attr);

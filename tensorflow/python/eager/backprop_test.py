@@ -42,6 +42,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
+from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -1593,6 +1595,35 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(num_sin_ops_found, 2)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecomputeGradWithDifferentShape(self):
+
+    @custom_gradient.recompute_grad
+    def outer(x):
+      return [x[0] + 1, x[1] + 1]
+
+    x = [
+        variables.Variable([1.0, 2.0], name='a'),
+        variables.Variable(1.0, name='b')
+    ]
+    with backprop.GradientTape():
+      y = outer(x)
+      self.assertAllEqual(y[0], [2.0, 3.0])
+      self.assertAllEqual(y[1], 2.0)
+
+    @custom_gradient.recompute_grad
+    def outer_dict(x):
+      for key in x.keys():
+        x[key] = x[key] + 1
+      return x
+
+    x = {x[0].ref(): x[0], x[1].ref(): x[1]}
+    with backprop.GradientTape():
+      y = outer_dict(x)
+      y = list(y.values())
+      self.assertAllEqual(y[0], [2.0, 3.0])
+      self.assertAllEqual(y[1], 2.0)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
   def testRecomputeGradWithNestedFunctionAndWhileLoop(self):
 
     @custom_gradient.recompute_grad
@@ -1712,6 +1743,60 @@ class JacobianTest(test.TestCase):
     dy_xx_answer = [[[2., 0], [0, 2.]]] * 10
     self.assertAllClose(dy_xx_answer, self.evaluate(dy_xx))
 
+  def test_nested_batch_jacobian_foldl(self):
+    def _grad(f):
+      def _grad_function(primal):
+        with backprop.GradientTape() as tape:
+          tape.watch(primal)
+          primal_out = f(primal)
+        return tape.batch_jacobian(primal_out, primal)
+      return _grad_function
+
+    def _func(x):
+      return array_ops.reshape(
+          functional_ops.foldl_v2(lambda a, b: math_ops.cos(a + b),
+                                  array_ops.transpose(x)),
+          [1, 1])
+
+    f = _func
+    x = constant_op.constant([[1., 2.]])
+    for _ in range(2):
+      theoretical, numerical = gradient_checker_v2.compute_gradient(f, [x])
+      self.assertAllClose(theoretical, numerical, rtol=1e-3)
+      f = _grad(f)
+      expected_flat = array_ops.reshape(numerical, [-1])
+      self.assertAllClose(expected_flat,
+                          array_ops.reshape(f(x), [-1]),
+                          rtol=1e-3)
+      self.assertAllClose(expected_flat,
+                          array_ops.reshape(def_function.function(f)(x), [-1]),
+                          rtol=1e-3)
+
+  def test_grad_jacobian_conv(self):
+    def _inner(x):
+      kernel = array_ops.ones([3, 3, 1, 9])
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = nn_ops.conv2d(x, kernel, strides=(1, 1), padding='SAME',
+                          data_format='NHWC')
+        reduced = math_ops.reduce_sum(y ** 2., axis=[2, 3])
+      return math_ops.reduce_sum(tape.batch_jacobian(reduced, x))
+
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        def_function.function(_inner), [array_ops.ones([10, 4, 4, 1])])
+    self.assertAllClose(numerical, theoretical, rtol=1e-1)
+
+    @def_function.function
+    def _outer():
+      with backprop.GradientTape() as tape:
+        x = array_ops.ones([10, 4, 4, 1])
+        tape.watch(x)
+        y = _inner(x)
+      return tape.gradient(y, x)
+
+    self.assertAllClose(array_ops.reshape(numerical, [-1]),
+                        array_ops.reshape(_outer(), [-1]), rtol=1e-1)
+
   @test_util.run_in_graph_and_eager_modes
   def test_indexed_slices(self):
     with backprop.GradientTape(persistent=True) as g:
@@ -1721,6 +1806,61 @@ class JacobianTest(test.TestCase):
     self.assertAllClose(
         g.jacobian(output, inp, experimental_use_pfor=True),
         g.jacobian(output, inp, experimental_use_pfor=False))
+
+  def test_foldl_partial_function(self):
+    x = array_ops.zeros([3])
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(x)
+      result = def_function.function(
+          functools.partial(functional_ops.foldl_v2, lambda a, b: a + b))(
+              x)
+    self.assertAllClose([1., 1., 1.],
+                        tape.jacobian(result, x, experimental_use_pfor=True))
+    self.assertAllClose([1., 1., 1.],
+                        tape.jacobian(result, x, experimental_use_pfor=False))
+
+    # Non-persistent tapes take a different function gradient path, but also
+    # work with pfor=True.
+    x = array_ops.zeros([3])
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      result = def_function.function(
+          functools.partial(functional_ops.foldl_v2, lambda a, b: a + b))(
+              x)
+    self.assertAllClose([1., 1., 1.],
+                        tape.jacobian(result, x, experimental_use_pfor=True))
+
+  def test_foldl_pure_function(self):
+
+    @def_function.function
+    def compute_jacobian(use_pfor):
+      x = array_ops.zeros([3])
+      with backprop.GradientTape(persistent=True) as tape:
+        tape.watch(x)
+        result = functools.partial(functional_ops.foldl_v2, lambda a, b: a + b)(
+            x)
+      return tape.jacobian(result, x, experimental_use_pfor=use_pfor)
+
+    self.assertAllClose(compute_jacobian(use_pfor=True),
+                        compute_jacobian(use_pfor=False))
+
+  def test_cond_func_grad_jacobian(self):
+
+    @def_function.function
+    def f(x):
+      y = control_flow_ops.cond(x > 0., lambda: x**3., lambda: x**2.)
+      return y
+
+    with backprop.GradientTape(persistent=True) as tape:
+      x = constant_op.constant(1.)
+      tape.watch(x)
+      y = f(x)
+      grad = tape.gradient(y, x)
+    self.assertAllClose(3., grad)
+    jacobian = tape.jacobian(grad, x, experimental_use_pfor=False)
+    self.assertAllClose(6., jacobian)
+    jacobian_pfor = tape.jacobian(grad, x, experimental_use_pfor=True)
+    self.assertAllClose(6., jacobian_pfor)
 
 
 @test_util.run_all_in_graph_and_eager_modes

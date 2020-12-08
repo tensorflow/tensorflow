@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/net.h"
@@ -558,6 +559,21 @@ TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto collective_executor_handle = context->GetCollectiveExecutorHandle();
   collective_executor_handle->get()->StartAbort(status->status);
+}
+
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  auto collective_executor_handle = context->GetCollectiveExecutorHandle();
+  tensorflow::Notification done;
+  collective_executor_handle->get()->remote_access()->CheckPeerHealth(
+      task, timeout_in_ms, [&done, status](const Status& s) {
+        status->status = s;
+        done.Notify();
+      });
+  done.WaitForNotification();
 }
 
 TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {

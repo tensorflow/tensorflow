@@ -41,6 +41,8 @@ FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('runtime_oom_exit', True,
                   'Exit the script when the TPU runtime is OOM.')
+flags.DEFINE_bool('hbm_oom_exit', True,
+                  'Exit the script when the TPU HBM is OOM.')
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 _ENDPOINTS_SEPARATOR = ','
@@ -171,9 +173,8 @@ class Client(object):
     """Return the structured Symptom message."""
     return 'Symptom: ' + msg
 
-  def _oom_event(self):
+  def _oom_event(self, symptoms):
     """Check if a runtime OOM event is reported."""
-    symptoms = self.symptoms()
     if not symptoms:
       return False
     for symptom in reversed(symptoms):
@@ -189,6 +190,27 @@ class Client(object):
             'script will terminate automatically. To prevent future OOM '
             'events, please consider reducing the model size. To disable this '
             'behavior, set flag --runtime_oom_exit=false when starting the '
+            'script.'.format(time_diff.seconds)))
+        return True
+    return False
+
+  def _hbm_oom_event(self, symptoms):
+    """Check if a HBM OOM event is reported."""
+    if not symptoms:
+      return False
+    for symptom in reversed(symptoms):
+      if symptom['symptomType'] != 'HBM_OUT_OF_MEMORY':
+        continue
+      oom_datetime_str = symptom['createTime'].split('.')[0]
+      oom_datetime = datetime.datetime.strptime(oom_datetime_str,
+                                                '%Y-%m-%dT%H:%M:%S')
+      time_diff = _utcnow() - oom_datetime
+      if time_diff < datetime.timedelta(seconds=_OOM_EVENT_COOL_TIME_SEC):
+        logging.warning(self._symptom_msg(
+            'a recent HBM OOM has occured ~{} seconds ago. The model '
+            'script will terminate automatically. To prevent future HBM OOM '
+            'events, please consider reducing the model size. To disable this '
+            'behavior, set flag --hbm_oom_exit=false when starting the '
             'script.'.format(time_diff.seconds)))
         return True
     return False
@@ -264,9 +286,12 @@ class Client(object):
     If false the TPU is in a unrecoverable state and should be recreated.
     """
     state = self.state()
+    symptoms = self.symptoms()
     if state and state in ['TERMINATED', 'PREEMPTED']:
       return False
-    elif FLAGS.runtime_oom_exit and self._oom_event():
+    elif FLAGS.runtime_oom_exit and self._oom_event(symptoms):
+      return False
+    elif FLAGS.hbm_oom_exit and self._hbm_oom_event(symptoms):
       return False
     return True
 

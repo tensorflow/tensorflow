@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -47,10 +48,11 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kReplicaIdAttr[] = "_xla_replica_id";
 constexpr char kDeviceOrdinalAttr[] = "device_ordinal";
+constexpr char kTPUCore0[] = "TPU_REPLICATED_CORE_0";
 
 struct ReplicateToIslandPass
-    : public PassWrapper<ReplicateToIslandPass, OperationPass<ModuleOp>> {
-  void runOnOperation() override;
+    : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
+  void runOnFunction() override;
 };
 
 // Returns whether op requires `_xla_replica_id` attribute.
@@ -59,9 +61,25 @@ bool RequiresReplicaIDAttribute(Operation* op) {
                    TF::EnqueueTPUEmbeddingRaggedTensorBatchOp>(op);
 }
 
-bool RequiresDeviceOrdinalAttribute(Operation* op) {
-  return llvm::isa<TF::_XlaSendFromHostOp>(op) ||
-         llvm::isa<TF::_XlaRecvAtHostOp>(op);
+// Collects TPU device ordinal for outside compilation communication ops. This
+// currently assumes outside compilation only uses `TPU_REPLICATED_CORE_0`
+// aliased device for the device computation.
+llvm::Optional<int64_t> GetDeviceOrdinal(
+    const llvm::Optional<DictionaryAttr>& devices, Location loc,
+    unsigned replica_id) {
+  int64_t device_ordinal = 0;
+  if (devices.hasValue()) {
+    if (auto tpu_replica_0 = devices.getValue().get(kTPUCore0)) {
+      llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
+                                       .cast<StringAttr>()
+                                       .getValue();
+      if (succeeded(tensorflow::GetDeviceOrdinalFromDeviceString(
+              loc, tpu_device, &device_ordinal))) {
+        return llvm::Optional<int64_t>(device_ordinal);
+      }
+    }
+  }
+  return llvm::None;
 }
 
 // Updates replica variant ops in a region based on replica `replica_id`.
@@ -73,26 +91,32 @@ bool RequiresDeviceOrdinalAttribute(Operation* op) {
 LogicalResult UpdateRegionReplicateVariantOps(
     OpBuilder& builder, Location loc, Region& region, int replica_id,
     const llvm::Optional<DictionaryAttr>& devices) {
-  int64_t device_ordinal = -1;
-  const bool has_devices = devices.hasValue();
-  if (has_devices) {
-    if (auto tpu_replica_0 = devices.getValue().get("TPU_REPLICATED_CORE_0")) {
-      llvm::StringRef tpu_device = tpu_replica_0.cast<ArrayAttr>()[replica_id]
-                                       .cast<StringAttr>()
-                                       .getValue();
-      if (failed(tensorflow::GetDeviceOrdinalFromDeviceString(
-              loc, tpu_device, &device_ordinal))) {
-        return failure();
-      }
+  llvm::Optional<int64_t> device_ordinal =
+      GetDeviceOrdinal(devices, loc, replica_id);
+
+  auto result = region.walk([&](Operation* op) -> WalkResult {
+    if (RequiresReplicaIDAttribute(op)) {
+      op->setAttr(kReplicaIdAttr, builder.getI64IntegerAttr(replica_id));
+      return WalkResult::advance();
     }
-  }
 
-  region.walk([&](Operation* op) {
-    // Add replica id.
-    if (RequiresReplicaIDAttribute(op))
-      op->setAttr(kReplicaIdAttr, builder.getI32IntegerAttr(replica_id));
+    if (isa<TF::_TPUDeviceOrdinalPlaceholderOp>(op)) {
+      if (!device_ordinal.hasValue())
+        return op->emitOpError()
+               << "requires device ordinal from device " << kTPUCore0
+               << " to be present in 'tf.device.replicate' op";
 
-    if (!has_devices) return;
+      OpBuilder builder(op);
+      auto const_op = builder.create<TF::ConstOp>(
+          op->getLoc(), DenseIntElementsAttr::get(
+                            RankedTensorType::get({}, builder.getI64Type()),
+                            {device_ordinal.getValue()}));
+      op->replaceAllUsesWith(const_op);
+      op->erase();
+      return WalkResult::advance();
+    }
+
+    if (!devices.hasValue()) return WalkResult::advance();
 
     // Map aliased devices to explicit devices based on replica.
     if (auto launch = dyn_cast<tf_device::LaunchOp>(op))
@@ -101,13 +125,10 @@ LogicalResult UpdateRegionReplicateVariantOps(
             kDeviceAttr,
             device_by_replica.cast<ArrayAttr>()[replica_id].cast<StringAttr>());
 
-    // Add device ordinal.
-    if (device_ordinal >= 0 && RequiresDeviceOrdinalAttribute(op))
-      op->setAttr(kDeviceOrdinalAttr,
-                  builder.getI64IntegerAttr(device_ordinal));
+    return WalkResult::advance();
   });
 
-  return success();
+  return failure(result.wasInterrupted());
 }
 
 // Creates islands per replica from `tf_device.replicate` region. If for a
@@ -150,8 +171,8 @@ LogicalResult ExpandReplicateIntoReplicas(
     replicate_op.body().cloneInto(&replica.body(), mapping);
 
     if (failed(UpdateRegionReplicateVariantOps(builder, replicate_op.getLoc(),
-                                               replica.body(), /*replica_id=*/i,
-                                               devices)))
+                                               replica.body(),
+                                               /*replica_id=*/i, devices)))
       return failure();
 
     replicas.push_back(replica);
@@ -215,7 +236,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
-  const int num_replicas = replicate_op.n().getLimitedValue();
+  const int num_replicas = replicate_op.n();
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;
@@ -275,18 +296,17 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   return success();
 }
 
-void ReplicateToIslandPass::runOnOperation() {
-  auto module = getOperation();
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+void ReplicateToIslandPass::runOnFunction() {
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
-    module.emitError() << "'tf' dialect is not registered";
+    getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
 
   // Find islands with a single `tf_device.replicate` and create individual
   // islands per replica of the replicate.
   llvm::SmallVector<tf_executor::IslandOp, 4> replicate_op_islands;
-  module.walk([&](tf_executor::GraphOp graph_op) {
+  getOperation().walk([&](tf_executor::GraphOp graph_op) {
     for (auto island_op : graph_op.getOps<tf_executor::IslandOp>()) {
       if (!island_op.WrapsSingleOp()) continue;
 
@@ -306,7 +326,7 @@ void ReplicateToIslandPass::runOnOperation() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateReplicateToIslandPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 

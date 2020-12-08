@@ -35,6 +35,7 @@ from tensorflow.python.autograph.utils import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -44,6 +45,20 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
+
+
+def _unranked_item(value):
+  rand_rank = random_ops.random_uniform(
+      shape=(), minval=3, maxval=4, dtype=dtypes.int32)
+  rand_shape = array_ops.ones([rand_rank], dtype=dtypes.int32)
+  return array_ops.fill(rand_shape, value)
+
+
+def _partial_shaped_bools():
+  rand_vect = math_ops.range(
+      random_ops.random_uniform(
+          shape=(), minval=2, maxval=3, dtype=dtypes.int32))
+  return array_ops.expand_dims_v2(rand_vect, 0) < 0
 
 
 class ForLoopTest(testing.AutoGraphTestCase):
@@ -626,6 +641,34 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     # Node naming is inconsistent between V1 and V2.
     self.assertGraphContains(r'(while/)?pow$', 1)
 
+  def test_tensor_creating_complex_variable(self):
+
+    def body():
+      nonlocal i, s
+      i = {'a': constant_op.constant(2), 'b': {'c': constant_op.constant(1)}}
+      s = i['a'] ** 5
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=lambda: math_ops.equal(s, 0),
+        body=body,
+        get_state=lambda: (i, s),
+        set_state=set_state,
+        symbol_names=('i', 's'),
+        opts={})
+
+    self.assertDictEqual(i, {'a': 2, 'b': {'c': 1}})
+    self.assertEqual(s, 32)
+    self.assertOpCreated('StatelessWhile')
+    # Check that the temporary staging of the body did not create extra ops.
+    # Node naming is inconsistent between V1 and V2.
+    self.assertGraphContains(r'(while/)?pow$', 1)
+
   def test_tensor_with_side_effecting_condition(self):
     v = self.variable('v', 0, dtypes.int32)
 
@@ -843,6 +886,60 @@ class WhileLoopTest(testing.AutoGraphTestCase):
     with self.assertRaisesRegex(ValueError, r"'s'.* shape \(1,\) after"):
       self._basic_loop(0, lambda i, s: np.array([1], dtype=np.int32))
 
+  def _fixed_while_loop(self, cond_fn):
+    def test_():
+      return cond_fn(s)
+
+    def body():
+      nonlocal s
+      s += 1
+
+    def set_state(loop_vars):
+      nonlocal s
+      s, = loop_vars
+
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=test_,
+        body=body,
+        get_state=lambda: (s,),
+        set_state=set_state,
+        symbol_names=('s',),
+        opts={})
+    return s
+
+  def _assertFixedLoopResult(self, cond, expected):
+    def test_fn():
+      return self._fixed_while_loop(cond)
+    self.assertEqual(test_fn(), expected)
+
+  def test_tensor_legal_cond_scalar(self):
+    self._assertFixedLoopResult(lambda s: constant_op.constant(False), 0)
+    self._assertFixedLoopResult(lambda s: s < 2, 2)
+
+  def test_tensor_legal_cond_single_element_nd(self):
+    self._assertFixedLoopResult(lambda s: constant_op.constant([[False]]), 0)
+    self._assertFixedLoopResult(lambda s: _unranked_item(False), 0)
+
+  def _assertCondCheckFails(self, cond):
+    with self.assertRaisesRegex(
+        ValueError, 'condition of while loop expected to be `tf.bool`'):
+      self._fixed_while_loop(cond)
+
+  def test_tensor_illegal_cond_not_bool(self):
+    self._assertCondCheckFails(lambda s: constant_op.constant(1))
+    self._assertCondCheckFails(lambda s: s)
+
+  def test_tensor_illegal_cond_not_single_element(self):
+    self._assertCondCheckFails(lambda s: constant_op.constant([1, 2, 3]))
+    self._assertCondCheckFails(lambda s: constant_op.constant([True, False]))
+
+  def test_tensor_illegal_cond_not_single_element_dynamic_shape(self):
+    self._fixed_while_loop(lambda s: _partial_shaped_bools())
+    # TODO(mdan): This error is quite bad. Measure the cost of an assertion.
+    self.assertRaisesRuntime(
+        errors_impl.InvalidArgumentError, 'requested shape has 1')
+
 
 class IfStmtTest(testing.AutoGraphTestCase):
 
@@ -1037,6 +1134,62 @@ class IfStmtTest(testing.AutoGraphTestCase):
         TypeError, "'x' has dtype int32.*but.*float32"):
       self._basic_cond(lambda: 1, lambda: 1.0)
 
+  def _fixed_cond(self, cond_val):
+    def body():
+      nonlocal x
+      x = 1
+
+    def orelse():
+      nonlocal x
+      x = -1
+
+    def set_state(cond_vars):
+      nonlocal x
+      x, = cond_vars
+
+    x = 0
+    control_flow.if_stmt(
+        cond=cond_val,
+        body=body,
+        orelse=orelse,
+        get_state=lambda: (x,),
+        set_state=set_state,
+        symbol_names=('x',),
+        nouts=1)
+    return x
+
+  def _assertFixedCondResult(self, cond, expected):
+    def test_fn():
+      return self._fixed_cond(cond)
+    self.assertEqual(test_fn(), expected)
+
+  def test_tensor_legal_cond_scalar(self):
+    self._assertFixedCondResult(constant_op.constant(True), 1)
+    self._assertFixedCondResult(constant_op.constant(False), -1)
+
+  def test_tensor_legal_cond_single_element_nd(self):
+    self._assertFixedCondResult(constant_op.constant([[True]]), 1)
+    self._assertFixedCondResult(constant_op.constant([[False]]), -1)
+    self._assertFixedCondResult(_unranked_item(True), 1)
+    self._assertFixedCondResult(_unranked_item(False), -1)
+
+  def _assertCondCheckFails(self, cond):
+    with self.assertRaisesRegex(
+        ValueError, 'condition of if statement expected to be `tf.bool`'):
+      self._fixed_cond(cond)
+
+  def test_tensor_illegal_cond_not_bool(self):
+    self._assertCondCheckFails(constant_op.constant(1))
+
+  def test_tensor_illegal_cond_not_single_element(self):
+    self._assertCondCheckFails(constant_op.constant([1, 2, 3]))
+    self._assertCondCheckFails(constant_op.constant([True, False]))
+
+  def test_tensor_illegal_cond_not_single_element_dynamic_shape(self):
+    self._fixed_cond(_partial_shaped_bools())
+    # TODO(mdan): This error is quite bad. Measure the cost of an assertion.
+    self.assertRaisesRuntime(
+        errors_impl.InvalidArgumentError, 'requested shape has 1')
 
 if __name__ == '__main__':
   test.main()

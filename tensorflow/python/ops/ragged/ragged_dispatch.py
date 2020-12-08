@@ -389,6 +389,8 @@ _BINARY_ELEMENTWISE_OPS = [
     math_ops.realdiv,
     math_ops.squared_difference,
     math_ops.subtract,
+    math_ops.tensor_equals,
+    math_ops.tensor_not_equals,
     math_ops.truediv,
     math_ops.truncatediv,
     math_ops.truncatemod,
@@ -497,6 +499,7 @@ _RAGGED_DISPATCH_OPS = [
     (array_ops.stack, ragged_concat_ops.stack, ['[values]']),
     (array_ops.tile, ragged_array_ops.tile, ['input']),
     (array_ops.where, ragged_where_op.where, ['condition', 'x', 'y']),
+    (array_ops.where_v2, ragged_where_op.where_v2, ['condition', 'x', 'y']),
     (data_flow_ops.dynamic_partition, _ragged_dynamic_partition,
      ['data', 'partitions']),
     (math_ops.unsorted_segment_sum, ragged_math_ops.segment_sum,
@@ -535,8 +538,9 @@ def register_dispatchers():
     _, undecorated_op = tf_decorator.unwrap(op)
     if not hasattr(undecorated_op,
                    tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names):
-      raise AssertionError('Expected %s to be an exported symbol '
-                           '(while adding a RaggedTensor dispatcher)')
+      raise AssertionError('Expected %r to be an exported symbol '
+                           '(while adding a RaggedTensor dispatcher)'
+                           % (undecorated_op,))
 
   for op in _UNARY_ELEMENTWISE_OPS:
     UnaryRaggedElementwiseDispatcher(op).register(op)

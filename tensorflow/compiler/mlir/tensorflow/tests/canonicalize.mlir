@@ -16,6 +16,20 @@ func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
   return
 }
 
+// CHECK-LABEL: testBatchMatMulToV2
+func @testBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<2x5x7xf32>) -> tensor<2x3x7xf32> {
+  // CHECK: tf.BatchMatMulV2
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3x5xf32>, tensor<2x5x7xf32>) -> tensor<2x3x7xf32>
+  return %0: tensor<2x3x7xf32>
+}
+
+// CHECK-LABEL: testDynamicBatchMatMulToV2
+func @testDynamicBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<?x5x7xf32>) -> tensor<2x3x7xf32> {
+  // CHECK: tf.BatchMatMul
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3x5xf32>, tensor<?x5x7xf32>) -> tensor<2x3x7xf32>
+  return %0: tensor<2x3x7xf32>
+}
+
 // CHECK-LABEL: testBatchMatMulToMatMul
 func @testBatchMatMulToMatMul(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32>) -> tensor<2x2xf32> {
   %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
@@ -444,6 +458,14 @@ func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x
   return %0 : tensor<2x4xf32>
 }
 
+// CHECK-LABEL: func @testBroadcastToNoOp
+func @testBroadcastToNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x4xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2xi32>) -> tensor<2x4xf32>
+
+  // CHECK: return %arg0
+  return %0 : tensor<2x4xf32>
+}
+
 // CHECK-LABEL: func @testPackShapeComputation
 func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>, %arg2: tensor<*xf32>) -> (tensor<2xi32>, tensor<3xi32>, tensor<3xi32>,  tensor<3xi32>, tensor<3xi32>, tensor<*xi32>) {
   // Test dimensions sizes.
@@ -560,6 +582,14 @@ func @testSelectElseUnranked(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2:
   return %0: tensor<*xf16>
 }
 
+// CHECK-LABEL: testTileMultiplesAllOnes
+func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense <[1, 1]> : tensor<2xi32>
+  // CHECK: return %arg0
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
@@ -618,6 +648,15 @@ func @testLogicalNotOfLessEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>
 
 // CHECK: %0 = "tf.Greater"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
 // CHECK: return %0
+}
+
+// CHECK-LABEL: testSizeFolding
+func @testSizeFolding(%arg0: tensor<3x5x7xf32>) -> tensor<i32> {
+  %0 = "tf.Size"(%arg0) : (tensor<3x5x7xf32>) -> tensor<i32>
+  return %0: tensor<i32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<105> : tensor<i32>} : () -> tensor<i32>
+// CHECK: return %0 : tensor<i32>
 }
 
 // CHECK-LABEL: testDivWithSqrtDivisor
@@ -685,6 +724,15 @@ func @identityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
   // CHECK: return %arg0
 }
 
+// CHECK-LABEL: @identityTransposeConst
+func @identityTransposeConst(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
+  %0 = constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
+  %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x5x6xf32>
+
+  return %1 : tensor<2x3x4x5x6xf32>
+  // CHECK: return %arg0
+}
+
 // CHECK-LABEL: @nonIdentityTranspose
 func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32> {
   %0 = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
@@ -700,6 +748,17 @@ func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32
 func @cancellableTranspose(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
   %0 = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
   %1 = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+  %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
+
+  return %3 : tensor<1x4x4x8xf32>
+  // CHECK: return %arg0
+}
+
+// CHECK-LABEL: @cancellableTransposeConst
+func @cancellableTransposeConst(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
+  %0 = constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  %1 = constant dense<[0, 2, 3, 1]> : tensor<4xi32>
   %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
   %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
 
@@ -725,10 +784,69 @@ func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
-// CHECK-LABEL: func @ToBool_0DScalar
-func @ToBool_0DScalar(%arg0: tensor<i1>) -> tensor<i1> {
+// CHECK-LABEL: func @ToBool_0DScalarI1
+func @ToBool_0DScalarI1(%arg0: tensor<i1>) -> tensor<i1> {
   // CHECK: return %arg0
   %0 = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalarInt
+func @ToBool_0DScalarInt(%arg0: tensor<i32>) -> tensor<i1> {
+  // CHECK: [[Zero:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]])
+  // CHECK: return [[NE]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalarFloat
+func @ToBool_0DScalarFloat(%arg0: tensor<f32>) -> tensor<i1> {
+  // CHECK: [[Zero:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]])
+  // CHECK: return [[NE]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<f32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalarString
+func @ToBool_0DScalarString(%arg0: tensor<!tf.string>) -> tensor<i1> {
+  // CHECK: [[EmptyStr:%.*]] = "tf.Const"() {value = dense<""> : tensor<!tf.string>} : () -> tensor<!tf.string>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = false} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
+  // CHECK: return [[NE]] : tensor<i1>
+  %0 = "tf.ToBool"(%arg0) : (tensor<!tf.string>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_1DTensor
+func @ToBool_1DTensor(%arg0: tensor<1xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<1xf32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_1DTensorZeroDim
+func @ToBool_1DTensorZeroDim(%arg0: tensor<0xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<0xf32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_2DTensor
+func @ToBool_2DTensor(%arg0: tensor<1x5xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<1x5xf32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_2DTensorZeroDim
+func @ToBool_2DTensorZeroDim(%arg0: tensor<1x0xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<1x0xf32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 
@@ -786,6 +904,20 @@ func @testRankOfRankedTensor(%arg0 : tensor<4x3x2xf32>) -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: testRankOfRankedTensorUnrankedOutput
+func @testRankOfRankedTensorUnrankedOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<*xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// CHECK-LABEL: testRankOfRankedTensorDynamicShapeOutput
+func @testRankOfRankedTensorDynamicShapeOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<?xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
 // CHECK-LABEL: @foldFill
 func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   %0 = "tf.Const"() {value = dense<[3, 2, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -826,6 +958,110 @@ func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tens
   return %4 : tensor<f32>
 }
 
+// CHECK-LABEL: foldIfRegion
+func @foldIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>, tensor<f32>) {
+  %false = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  %0 = "tf.IfRegion"(%true) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%true_value) : (tensor<f32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%false_value) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+
+  // CHECK: [[Val1:%.*]] = "tf.Sub"(%arg0, %arg1)
+  %1 = "tf.IfRegion"(%false) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%true_value) : (tensor<f32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%false_value) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+
+  // CHECK: return [[Val0]], [[Val1]]
+  return %0, %1 : tensor<f32>, tensor<f32>
+}
+
+// CHECK-LABEL: foldIfRegionMismatchedTypes
+func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %arg2: tensor<i1>) -> tensor<1xf32> {
+  %false = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  // CHECK-NEXT: [[Cast:%.*]] = "tf.Cast"([[Val0]])
+  // CHECK-NEXT: return [[Cast]]
+  %0 = "tf.IfRegion"(%true) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      "tf.Yield"(%true_value) : (tensor<?xf32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      "tf.Yield"(%false_value) : (tensor<?xf32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<1xf32>
+  return %0 : tensor<1xf32>
+}
+
+// CHECK-LABEL: func @eliminatePassThroughIfRegion(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<!tf.resource>
+func @eliminatePassThroughIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf.resource>) -> (tensor<f32>) {
+  // CHECK: %[[PRED:.*]] = "tf._SomeOp"() : () -> tensor<i1>
+  %pred = "tf._SomeOp"() : () -> tensor<i1>
+  // CHECK: %[[IF_OUTPUT:.*]] = "tf.IfRegion"(%[[PRED]]) ( {
+  // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
+  // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
+  // CHECK:  },  {
+  // CHECK:    %[[SUB:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]])
+  // CHECK:    "tf.Yield"(%[[SUB]]) : (tensor<f32>)
+  // CHECK:  }) {is_stateless = true} : (tensor<i1>) -> tensor<f32>
+  %0:4 = "tf.IfRegion"(%pred) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %arg2, %true_value, %arg2) : (tensor<f32>, tensor<!tf.resource>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %arg2, %false_value, %arg2) : (tensor<f32>, tensor<!tf.resource>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> (tensor<f32>, tensor<!tf.resource>, tensor<f32>, tensor<!tf.resource>)
+  // CHECK: "tf._SomeOp"(%[[ARG2]], %[[ARG1]]) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  "tf._SomeOp"(%0#1, %0#0) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  // CHECK: "tf._SomeOp"(%[[ARG2]], %[[IF_OUTPUT]]) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  "tf._SomeOp"(%0#3, %0#2) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  // CHECK: return %[[IF_OUTPUT]] : tensor<f32>
+  return %0#2 : tensor<f32>
+}
+
+// CHECK-LABEL: func @eliminatePassThroughCaseRegion(
+// CHECK-SAME:    %[[ARG0:.*]]: tensor<f32>, %[[ARG1:.*]]: tensor<f32>, %[[ARG2:.*]]: tensor<!tf.resource>
+func @eliminatePassThroughCaseRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<!tf.resource>) -> (tensor<f32>) {
+  // CHECK: %[[INDEX:.*]] = "tf._SomeOp"() : () -> tensor<i32>
+  %index = "tf._SomeOp"() : () -> tensor<i32>
+  // CHECK: %[[CASE_OUTPUT:.*]] = "tf.CaseRegion"(%[[INDEX]]) ( {
+  // CHECK:   %[[MUL:.*]] = "tf.Mul"(%[[ARG0]], %[[ARG1]])
+  // CHECK:   "tf.Yield"(%[[MUL]]) : (tensor<f32>)
+  // CHECK:  },  {
+  // CHECK:    %[[SUB:.*]] = "tf.Sub"(%[[ARG0]], %[[ARG1]])
+  // CHECK:    "tf.Yield"(%[[SUB]]) : (tensor<f32>)
+  // CHECK:  },  {
+  // CHECK:    %[[ADD:.*]] = "tf.AddV2"(%[[ARG0]], %[[ARG1]])
+  // CHECK:    "tf.Yield"(%[[ADD]]) : (tensor<f32>)
+  // CHECK:  }) {is_stateless = true} : (tensor<i32>) -> tensor<f32>
+  %0:3 = "tf.CaseRegion"(%index) ({
+      %mul = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %mul, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }, {
+      %sub = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %sub, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }, {
+      %add = "tf.AddV2"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%arg1, %add, %arg2) : (tensor<f32>, tensor<f32>, tensor<!tf.resource>) -> ()
+    }) { is_stateless = true}: (tensor<i32>) -> (tensor<f32>, tensor<f32>, tensor<!tf.resource>)
+  // CHECK: "tf._SomeOp"(%[[ARG2]], %[[ARG1]]) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  "tf._SomeOp"(%0#2, %0#0) : (tensor<!tf.resource>, tensor<f32>) -> ()
+  // CHECK: return %[[CASE_OUTPUT]] : tensor<f32>
+  return %0#1 : tensor<f32>
+}
+
+
 // CHECK-LABEL: foldCase
 func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %2 = constant dense<1> : tensor<i32>
@@ -834,11 +1070,11 @@ func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   // CHECK: PartitionedCall
   // CHECK-SAME: device = "noodle"
   // CHECK-SAME: f = @add
-  %4 = "tf.Case"(%2, %arg0, %arg1) {branches = [@sub, @add], output_shapes = [#tf.shape<>], device = "noodle"} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %4 = "tf.Case"(%2, %arg0, %arg1) {branches = [@sub, @add], output_shapes = [#tf.shape<>], device = "noodle", is_stateless = false} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   // CHECK: PartitionedCall
   // CHECK-SAME: _cluster_launch = "not_ready"
   // CHECK-SAME: f = @sub
-  %5 = "tf.Case"(%3, %4, %arg1) {branches = [@sub, @add], output_shapes = [#tf.shape<>], _cluster_launch = "not_ready"} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  %5 = "tf.Case"(%3, %4, %arg1) {branches = [@sub, @add], output_shapes = [#tf.shape<>], _cluster_launch = "not_ready", is_stateless = false} : (tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<f32>
   return %5 : tensor<f32>
 }
 
@@ -1037,8 +1273,8 @@ func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %ar
 }
 
 // Check that output_shapes attribute is removed for tf.If
-func @testIfThen(tensor<*xf32>) -> tensor<*xf32>
-func @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func private @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 // CHECK-LABEL: func @testIfDropOutputShapes
 func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
@@ -1051,20 +1287,57 @@ func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
   return %1 : tensor<2xf32>
 }
 
-// Check that output_shapes attribute is removed for tf.Whileß
-func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
-func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
-// CHECK-LABEL: func @testWhileDropOutputShapes
-func @testWhileDropOutputShapes(tensor<*xf32>) -> (tensor<*xf32>) {
-^bb0(%arg0: tensor<*xf32>):
-  // CHECK: "tf.While"
-  // CHECK-NOT: output_shapes
-  %1 = "tf.While"(%arg0) {
-    cond = @testWhileCond,
-    body = @testWhileBody,
-    is_stateless = false,
-    output_shapes = [#tf.shape<>]
-  } : (tensor<*xf32>) -> (tensor<*xf32>)
-
-  return %1 : tensor<*xf32>
+// CHECK-LABEL: testNMSV3ToNMSV4
+func @testNMSV3ToNMSV4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<2xi32> {
+  %max_size = constant dense<2> : tensor<i32>
+  // CHECK: "tf.NonMaxSuppressionV4"
+  %0 = "tf.NonMaxSuppressionV3"(%arg0, %arg1, %max_size, %arg2, %arg3): (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>)
+  return %0 : tensor<2xi32>
 }
+
+// CHECK-LABEL: testFusedBatchNormToBatchNormV3
+func @testFusedBatchNormToBatchNormV3(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
+  // CHECK: "tf.FusedBatchNormV3"
+  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4): (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32> )
+  return %0#0  : tensor<8x8x8x8xf32>
+}
+
+// CHECK-LABEL: func @testSumFoldBypass
+func @testSumFoldBypass(%arg0: tensor<4x?xf16>, %arg1: tensor<*xi64>) -> tensor<4x?xf16> {
+    // CHECK: return %arg0
+  %0 = "tf.Sum"(%arg0, %arg1) { keep_dims = false }: (tensor<4x?xf16>, tensor<*xi64>) -> tensor<4x?xf16>
+  return %0 : tensor<4x?xf16>
+}
+
+// CHECK-LABEL: @testMatrixSetDiag
+func @testMatrixSetDiag(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>) -> tensor<3x3xi64> {
+  %0 = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi64>, tensor<3xi64>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+
+  // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV3"(%arg0, %arg1, %[[ZERO]])
+  // CHECK-SAME: {align = "RIGHT_LEFT"}
+  // CHECK-SAME: (tensor<3x3xi64>, tensor<3xi64>, tensor<i32>) -> tensor<3x3xi64>
+}
+
+// CHECK-LABEL: @testMatrixSetDiagV2
+func @testMatrixSetDiagV2(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>, %arg2: tensor<i32>) -> tensor<3x3xi64> {
+  %0 = "tf.MatrixSetDiagV2"(%arg0, %arg1, %arg2) : (tensor<3x3xi64>, tensor<3xi64>, tensor<i32>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+
+  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV3"(%arg0, %arg1, %arg2)
+  // CHECK-SAME: {align = "LEFT_LEFT"}
+}
+
+// CHECK-LABEL: @testVariableToVariableV2
+func @testVariableToVariableV2() {
+  // CHECK-NOT: "tf.Variable"
+
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: "tf.VariableV2"
+  %1 = "tf.Variable"() {container = "", dtype = i32, shared_name = "var", shape = #tf.shape<>} : () -> tensor<!tf.int32ref>
+  %2 = "tf.Assign"(%1, %0) : (tensor<!tf.int32ref>, tensor<i32>) -> (tensor<!tf.int32ref>)
+
+  return
+}
+

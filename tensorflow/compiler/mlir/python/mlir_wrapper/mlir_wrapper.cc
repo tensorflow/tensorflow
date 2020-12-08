@@ -22,22 +22,25 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 
 PYBIND11_MODULE(mlir_wrapper, m) {
-  m.def("registerDialects", []() {
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::StandardOpsDialect>();
+  m.def("preloadTensorFlowDialects", [](mlir::MLIRContext &context) {
+    mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
+    context.getDialectRegistry().loadAll(&context);
   });
+
   m.def("verify", [](std::string input) {
     llvm::SourceMgr SM = llvm::SourceMgr();
     SM.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                           llvm::SMLoc());
     mlir::MLIRContext ctx;
+    mlir::RegisterAllTensorFlowDialects(ctx.getDialectRegistry());
+    ctx.getDialectRegistry().loadAll(&ctx);
     auto module = mlir::parseSourceFile(SM, &ctx);
     if (!module) {
       return false;

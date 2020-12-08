@@ -22,14 +22,14 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/ControlFlowInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/LoopLikeInterface.h"  // from @llvm-project
@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.h"
 
 namespace mlir {
 namespace TF {
@@ -62,6 +63,12 @@ class TensorFlowDialect : public Dialect {
   // This attribute marks if a function is stateful.
   // Returns the string description of stateful attribute.
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
+
+  // Returns true if the op can be duplicated during transformations.
+  static bool CanDuplicate(Operation *op);
+
+  // Returns true if the op can have side effects.
+  static bool CanHaveSideEffects(Operation *op);
 
   Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
 
@@ -97,7 +104,7 @@ class TensorFlowDialect : public Dialect {
   // operations to the dialect. Hooks will only apply to subsequent
   // instantations of the Dialect/MLIRContext.
   static void RegisterAdditionalOperationHook(AdditionalOpFunction fn) {
-    additional_operation_hooks_->push_back(std::move(fn));
+    GetAdditionalOperationHooks()->push_back(std::move(fn));
   }
 
   // Re-define publicly the protected addOperations() method from the Dialect
@@ -106,14 +113,38 @@ class TensorFlowDialect : public Dialect {
   // same interface.
   template <typename... Args>
   void addOperations() {
-    (void)std::initializer_list<int>{
-        0, (addOperation(AbstractOperation::get<Args>(*this)), 0)...};
+    Dialect::addOperations<Args...>();
+  }
+
+  using ConstantFoldHook = LogicalResult (*)(Operation *, ArrayRef<Attribute>,
+                                             SmallVectorImpl<OpFoldResult> &);
+  static void RegisterConstantFoldHook(ConstantFoldHook fn) {
+    constant_fold_hook_ = std::move(fn);
+  }
+
+  static LogicalResult constantFold(Operation *op, ArrayRef<Attribute> operands,
+                                    SmallVectorImpl<OpFoldResult> &results) {
+    if (constant_fold_hook_) return constant_fold_hook_(op, operands, results);
+    return failure();
+  }
+
+  using DecodeConstantHook = LogicalResult (*)(OpaqueElementsAttr input,
+                                               ElementsAttr &output);
+  static void RegisterDecodeConstantHook(DecodeConstantHook fn) {
+    decode_constant_hook_ = std::move(fn);
+  }
+  static LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) {
+    if (decode_constant_hook_) return decode_constant_hook_(input, output);
+    return failure();
   }
 
  private:
   // Hook functions which may add additional operations to the dialect.
   // These are invoked at construction time.
-  static std::vector<AdditionalOpFunction> *additional_operation_hooks_;
+  static std::vector<AdditionalOpFunction> *GetAdditionalOperationHooks();
+
+  static ConstantFoldHook constant_fold_hook_;
+  static DecodeConstantHook decode_constant_hook_;
 };
 
 }  // namespace TF

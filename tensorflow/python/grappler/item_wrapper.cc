@@ -129,7 +129,7 @@ PYBIND11_MODULE(_pywrap_tf_item, m) {
         [](const py::bytes& serialized_metagraph, bool ignore_colocation,
            bool ignore_user_placement) -> tensorflow::grappler::GrapplerItem* {
           tensorflow::MetaGraphDef metagraph;
-          if (!metagraph.ParseFromString(serialized_metagraph)) {
+          if (!metagraph.ParseFromString(std::string(serialized_metagraph))) {
             throw std::invalid_argument(
                 "The MetaGraphDef could not be parsed as a valid protocol "
                 "buffer");

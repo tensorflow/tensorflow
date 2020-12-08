@@ -1,4 +1,4 @@
-# TFLite Model Benchmark Tool
+# TFLite Model Benchmark Tool with C++ Binary
 
 ## Description
 
@@ -34,20 +34,14 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
-*   `use_legacy_nnapi`: `bool` (default=false) \
-    Whether to use the legacy
-    [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)
-    TFLite path, which requires the graph to be fully compatible with NNAPI.
-    This is available on recent Android devices. Note that some Android P
-    devices will fail to use NNAPI for models in `/data/local/tmp/` and this
-    benchmark tool will not correctly use NNAPI.
+*   `run_frequency`: `float` (default=-1.0) \
+    The frequency of running a benchmark run as the number of prorated runs per
+    second. If the targeted rate per second cannot be reached, the benchmark
+    would start the next run immediately, trying its best to catch up. If set,
+    this will override the `run_delay` parameter. A non-positive value means
+    there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
-*   `enable_platform_tracing`: `bool` (default=false) \
-    Whether to enable platform-wide tracing. Needs to be combined with
-    'enable_op_profiling'. Note, the platform-wide tracing might not work if the
-    tool runs as a commandline native binary. For example, on Android, the
-    ATrace-based tracing only works when the tool is launched as an APK.
 *   `profiling_output_csv_file`: `str` (default="") \
     File path to export profile data to as CSV. The results are printed to
     `stdout` if option is not set. Requires `enable_op_profiling` to be `true`
@@ -65,8 +59,7 @@ The following simply lists the names of these parameters and additional notes
 where applicable. For details about each parameter, please refer to
 [this page](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/README.md#tflite-delegate-registrar).
 #### Common parameters
-* `max_delegated_partitions`: `int` (default=0) \
-Note when `use_legacy_nnapi` is selected, this parameter won't work.
+* `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
 
 #### GPU delegate
@@ -81,7 +74,9 @@ Note when `use_legacy_nnapi` is selected, this parameter won't work.
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
-*   `nnapi_execution_preference`: `str` (default="")
+*   `nnapi_execution_preference`: `str` (default="") \
+    Should be one of: `fast_single_answer`, `sustained_speed`, `low_power`,
+    `undefined`.
 *   `nnapi_execution_priority`: `str` (default="") \
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \

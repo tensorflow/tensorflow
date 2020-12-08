@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.eager import def_function
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -33,6 +33,8 @@ from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
@@ -78,6 +80,17 @@ class MapFnTest(test.TestCase):
       self.assertAllEqual(result.indices, st.indices)
       self.assertAllEqual(result.values, st.values)
       self.assertAllEqual(result.dense_shape, st.dense_shape)
+
+  def testMapRaggedTensor(self):
+    # Note: there are additional tests in ragged/ragged_map_fn_op_test.py
+    with self.cached_session():
+      rt = ragged_factory_ops.constant([[1, 2], [3]])
+      result = map_fn.map_fn(
+          lambda x: x + 1,
+          rt,
+          fn_output_signature=ragged_tensor.RaggedTensorSpec([None], rt.dtype))
+      self.assertAllEqual([[2, 3], [4]], result)
+      self.assertEqual([2, None], result.shape.as_list())
 
   @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):

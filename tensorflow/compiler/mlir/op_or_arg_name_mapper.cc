@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return absl::string_view(ref.data(), ref.size());
@@ -103,62 +104,16 @@ int OpOrArgNameMapper::InitOpName(OpOrVal op_or_val, llvm::StringRef name) {
 
 bool OpOrArgNameMapper::IsUnique(llvm::StringRef name) { return true; }
 
-namespace {
-// Derives name from location.
-std::string GetNameFromLoc(mlir::Location loc) {
-  llvm::SmallVector<llvm::StringRef, 8> loc_names;
-  llvm::SmallVector<mlir::Location, 8> locs;
-  locs.push_back(loc);
-  bool names_is_nonempty = false;
-
-  while (!locs.empty()) {
-    mlir::Location curr_loc = locs.pop_back_val();
-
-    if (auto name_loc = curr_loc.dyn_cast<mlir::NameLoc>()) {
-      // Add name in NameLoc. For NameLoc we also account for names due to ops
-      // in functions where the op's name is first.
-      auto name = name_loc.getName().strref().split('@').first;
-      loc_names.push_back(name);
-      if (!name.empty()) names_is_nonempty = true;
-      continue;
-    } else if (auto call_loc = curr_loc.dyn_cast<mlir::CallSiteLoc>()) {
-      // Add name if CallSiteLoc's callee has a NameLoc (as should be the
-      // case if imported with DebugInfo).
-      if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>()) {
-        auto name = name_loc.getName().strref().split('@').first;
-        loc_names.push_back(name);
-        if (!name.empty()) names_is_nonempty = true;
-        continue;
-      }
-    } else if (auto fused_loc = curr_loc.dyn_cast<mlir::FusedLoc>()) {
-      // Push all locations in FusedLoc in reverse order, so locations are
-      // visited based on order in FusedLoc.
-      auto reversed_fused_locs = llvm::reverse(fused_loc.getLocations());
-      locs.append(reversed_fused_locs.begin(), reversed_fused_locs.end());
-      continue;
-    }
-
-    // Location is not a supported, so an empty StringRef is added.
-    loc_names.push_back(llvm::StringRef());
-  }
-
-  if (names_is_nonempty)
-    return llvm::join(loc_names.begin(), loc_names.end(), ";");
-
-  return "";
-}
-}  // anonymous namespace
-
 std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
   if (auto* op = op_or_val.dyn_cast<mlir::Operation*>()) {
-    auto name_from_loc = GetNameFromLoc(op->getLoc());
+    auto name_from_loc = mlir::GetNameFromLoc(op->getLoc());
     if (!name_from_loc.empty()) return name_from_loc;
     // If the location is none of the expected types, then simply use name
     // generated using the op type.
     return std::string(op->getName().getStringRef());
   }
   auto val = op_or_val.dyn_cast<mlir::Value>();
-  auto name_from_loc = GetNameFromLoc(val.getLoc());
+  auto name_from_loc = mlir::GetNameFromLoc(val.getLoc());
   if (!name_from_loc.empty()) return name_from_loc;
   // If the location is none of the expected types, then simply use name
   // generated using the op type. Follow TF convention and append the result
@@ -170,7 +125,7 @@ std::string OpOrArgLocNameMapper::GetName(OpOrVal op_or_val) {
                            result.getResultNumber());
     return std::string(result.getOwner()->getName().getStringRef());
   }
-  // Use the ASM syntax for BloackArgument
+  // Use the ASM syntax for BlockArgument
   if (auto arg = val.dyn_cast<mlir::BlockArgument>()) {
     return "arg" + std::to_string(arg.getArgNumber());
   }

@@ -23,12 +23,12 @@ limitations under the License.
 
 namespace xla {
 
-class CpuDevice : public Device {
+class CpuDevice : public PjRtStreamExecutorDevice {
  public:
   CpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state);
 };
 
-StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous);
+StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous);
 
 }  // namespace xla
 

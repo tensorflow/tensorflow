@@ -16,13 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_BFLOAT16_BFLOAT16_H_
 #define TENSORFLOW_CORE_LIB_BFLOAT16_BFLOAT16_H_
 
-// clang-format off
-#include "tensorflow/core/platform/byte_order.h"
-#include "third_party/eigen3/Eigen/Core"
-// clang-format on
-
-namespace tensorflow {
-typedef Eigen::bfloat16 bfloat16;
-}  // end namespace tensorflow
+#include "tensorflow/core/platform/bfloat16.h"
 
 #endif  // TENSORFLOW_CORE_LIB_BFLOAT16_BFLOAT16_H_

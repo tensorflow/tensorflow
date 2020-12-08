@@ -42,7 +42,14 @@ class HloSharding {
  public:
   // Creates a trivial sharding that replicates a maximal tile across all
   // devices.
-  static HloSharding Replicate() { return HloSharding(); }
+  static HloSharding Replicate() {
+    return HloSharding(/*manual=*/false, /*replicated=*/true);
+  }
+
+  // Creates a sharding that represents the op is manually partitioned.
+  static HloSharding Manual() {
+    return HloSharding(/*manual=*/true, /*replicated=*/false);
+  }
 
   // Creates a sharding that emulates device placement; a tile shape equal to
   // the input shape (one tile) assigned to a single device.
@@ -56,14 +63,14 @@ class HloSharding {
 
   // Creates a new sharding where data is replicated within each replication
   // group, and sharded across replication groups according to
-  // group_tile_assignment.
+  // group_tile_assignment. Replication group members will be sorted.
   static HloSharding PartialTile(
       const Array<int64>& group_tile_assignment,
       absl::Span<const absl::Span<const int64>> replication_groups);
 
   // Creates a partially replicated tiled sharding with device-level tile
   // assignment, where the last dimension is the additional replication
-  // dimension.
+  // dimension. Replication group members will be sorted.
   static HloSharding PartialTile(
       const Array<int64>& tile_assignment_last_dim_replicate);
 
@@ -126,6 +133,15 @@ class HloSharding {
     return absl::c_all_of(tuple_elements_, [](const HloSharding& s) {
       return s.IsTileMaximal();
     });
+  }
+
+  // Returns whether the sharding represents manual partitioning.
+  bool IsManual() const {
+    if (!IsTuple()) {
+      return manual_;
+    }
+    return absl::c_all_of(tuple_elements_,
+                          [](const HloSharding& s) { return s.IsManual(); });
   }
 
   // Returns if the sharding has partial replication and partial sharding. If
@@ -209,6 +225,7 @@ class HloSharding {
 
   bool operator==(const HloSharding& other) const {
     return replicated_ == other.replicated_ && maximal_ == other.maximal_ &&
+           manual_ == other.manual_ &&
            tile_assignment_ == other.tile_assignment_ &&
            tuple_elements_ == other.tuple_elements_ &&
            replicate_on_last_tile_dim_ == other.replicate_on_last_tile_dim_;
@@ -248,10 +265,11 @@ class HloSharding {
   int64 NumTiles() const;
 
  private:
-  HloSharding()
-      : replicated_(true),
-        maximal_(true),
+  explicit HloSharding(bool manual, bool replicated)
+      : replicated_(replicated),
+        maximal_(replicated),
         tuple_(false),
+        manual_(manual),
         tile_assignment_({0}),
         replicate_on_last_tile_dim_(false) {}
   // device_id values:
@@ -264,6 +282,7 @@ class HloSharding {
       : replicated_(false),
         maximal_(true),
         tuple_(false),
+        manual_(false),
         tile_assignment_({1}, device_id),
         replicate_on_last_tile_dim_(false) {}
   explicit HloSharding(const Array<int64>& tile_assignment,
@@ -271,12 +290,14 @@ class HloSharding {
       : replicated_(false),
         maximal_(false),
         tuple_(false),
+        manual_(false),
         tile_assignment_(tile_assignment),
         replicate_on_last_tile_dim_(replicate_on_last_tile_dim) {}
   explicit HloSharding(const std::vector<HloSharding>& tuple_shardings)
       : replicated_(false),
         maximal_(false),
         tuple_(true),
+        manual_(false),
         tile_assignment_({0}),
         tuple_elements_(tuple_shardings),
         replicate_on_last_tile_dim_(false) {}
@@ -297,6 +318,7 @@ class HloSharding {
   bool replicated_;
   bool maximal_;
   bool tuple_;
+  bool manual_;
   // This field is only used if replicated_ is false. If maximal_ is true, then
   // the field contains a rank 1 array with a single element, which is the
   // device the HLO is assigned to. If maximal_ is false, the field contains an

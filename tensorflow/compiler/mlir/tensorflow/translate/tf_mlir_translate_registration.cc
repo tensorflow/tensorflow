@@ -21,8 +21,9 @@ limitations under the License.
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -86,6 +87,9 @@ static LogicalResult MlirToGraphdefTranslateFunction(
 }
 
 static TranslateFromMLIRRegistration mlir_to_graphdef_translate(
-    "mlir-to-graphdef", MlirToGraphdefTranslateFunction);
+    "mlir-to-graphdef", MlirToGraphdefTranslateFunction,
+    [](DialectRegistry& registry) {
+      mlir::RegisterAllTensorFlowDialects(registry);
+    });
 
 }  // namespace mlir

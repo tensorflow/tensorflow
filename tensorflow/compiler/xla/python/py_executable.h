@@ -43,11 +43,12 @@ class PyExecutable {
 
   std::shared_ptr<PyClient> client() const { return client_; }
 
-  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
-    return executable_->local_logical_device_ids();
+  absl::Span<const PjRtExecutable::LogicalDeviceIds>
+  addressable_device_logical_ids() const {
+    return executable_->addressable_device_logical_ids();
   }
 
-  std::vector<ClientAndPtr<Device>> LocalDevices() const;
+  std::vector<ClientAndPtr<PjRtDevice>> AddressableDevices() const;
 
   int64 SizeOfGeneratedCodeInBytes() const {
     return executable_->SizeOfGeneratedCodeInBytes();
@@ -58,12 +59,18 @@ class PyExecutable {
   StatusOr<std::vector<std::unique_ptr<PyBuffer>>> Execute(
       absl::Span<PyBuffer* const> args);
 
+  // Same as above, but take as inputs `PjRtBuffer*`. Only targets C++ code.
+  StatusOr<std::vector<std::unique_ptr<PyBuffer>>> PjRtExecute(
+      const std::vector<PjRtBuffer*>& args);
+
   StatusOr<std::vector<std::vector<std::unique_ptr<PyBuffer>>>>
   ExecuteOnLocalDevices(absl::Span<const std::vector<PyBuffer*>> args);
 
   StatusOr<std::vector<std::shared_ptr<HloModule>>> HloModules() const;
 
   Traceback* traceback() { return traceback_.get(); }
+
+  const PjRtExecutable& pjrt_executable() const { return *executable_; }
 
  private:
   friend class PyClient;
@@ -76,6 +83,9 @@ class PyExecutable {
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   absl::optional<std::string> fingerprint_;
+
+  // The options to pass to `executable_.Execute`.
+  ExecuteOptions options_;
 
   // Doubly-linked list of all executables known to the client. Protected by the
   // GIL.

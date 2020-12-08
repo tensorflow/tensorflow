@@ -24,10 +24,10 @@ namespace data {
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 
-GrpcWorkerImpl::GrpcWorkerImpl(ServerBuilder* server_builder,
-                               const experimental::WorkerConfig& config)
+GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
+                               ServerBuilder& server_builder)
     : impl_(config) {
-  server_builder->RegisterService(this);
+  server_builder.RegisterService(this);
   VLOG(1) << "Registered data service worker";
 }
 
@@ -35,14 +35,15 @@ Status GrpcWorkerImpl::Start(const std::string& worker_address) {
   return impl_.Start(worker_address);
 }
 
-#define HANDLER(method)                                               \
-  grpc::Status GrpcWorkerImpl::method(ServerContext* context,         \
-                                      const method##Request* request, \
-                                      method##Response* response) {   \
-    return ToGrpcStatus(impl_.method(request, response));             \
+#define HANDLER(method)                                                 \
+  ::grpc::Status GrpcWorkerImpl::method(ServerContext* context,         \
+                                        const method##Request* request, \
+                                        method##Response* response) {   \
+    return ToGrpcStatus(impl_.method(request, response));               \
   }
 HANDLER(ProcessTask);
 HANDLER(GetElement);
+HANDLER(GetWorkerTasks);
 #undef HANDLER
 
 }  // namespace data

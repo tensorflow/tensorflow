@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 
 from absl.testing import parameterized
+import wrapt
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_utils
@@ -211,6 +212,15 @@ class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
                          distribute_utils.select_replica(
                              device_id, merged_estimator_spec))
 
+  def testWrappedNamedTuple(self):
+    Point = collections.namedtuple("Point", ["x", "y"])
+    point1 = Point(x=0, y=2)
+    point2 = Point(x=1, y=3)
+    wrapped1 = wrapt.ObjectProxy(point1)
+    wrapped2 = wrapt.ObjectProxy(point2)
+    result = distribute_utils.regroup([wrapped1, wrapped2])
+    self.assertEqual(result.x.values, (0, 1))
+    self.assertEqual(result.y.values, (2, 3))
 
 if __name__ == "__main__":
   test.main()

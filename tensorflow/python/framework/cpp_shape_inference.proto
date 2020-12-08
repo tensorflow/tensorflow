@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 option cc_enable_arenas = true;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/python/framework/cpp_shape_inference_go_proto";
 
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
@@ -10,6 +11,10 @@ message CppShapeInferenceResult {
   message HandleShapeAndType {
     TensorShapeProto shape = 1;
     DataType dtype = 2;
+    // For dtype==DT_VARIANT, specialized_type may indicate a more specific
+    // type. For other dtypes or when the information is unavailable it is set
+    // to ST_INVALID.
+    SpecializedType specialized_type = 3;
   }
   message HandleData {
     bool is_set = 1;

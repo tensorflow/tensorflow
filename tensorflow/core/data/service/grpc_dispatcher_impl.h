@@ -19,36 +19,32 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_impl.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 // This class is a wrapper that handles communication for gRPC.
-//
-// Example usage:
-//
-// ::grpc::ServerBuilder builder;
-// // configure builder
-// GrpcDispatcherImpl data_service(&builder);
-// builder.BuildAndStart()
-//
 class GrpcDispatcherImpl : public DispatcherService::Service {
  public:
-  explicit GrpcDispatcherImpl(grpc::ServerBuilder* server_builder,
-                              const experimental::DispatcherConfig& config);
+  // Constructs a GrpcDispatcherImpl with the given config, and registers it
+  // with `server_builder`.
+  explicit GrpcDispatcherImpl(const experimental::DispatcherConfig& config,
+                              ::grpc::ServerBuilder& server_builder);
   ~GrpcDispatcherImpl() override {}
 
   Status Start();
 
-#define HANDLER(method)                               \
-  grpc::Status method(grpc::ServerContext* context,   \
-                      const method##Request* request, \
-                      method##Response* response) override;
-  HANDLER(RegisterWorker);
+#define HANDLER(method)                                 \
+  ::grpc::Status method(::grpc::ServerContext* context, \
+                        const method##Request* request, \
+                        method##Response* response) override;
+  HANDLER(WorkerHeartbeat);
   HANDLER(WorkerUpdate);
+  HANDLER(GetDatasetDef);
+  HANDLER(GetSplit);
   HANDLER(GetOrRegisterDataset);
-  HANDLER(CreateJob);
+  HANDLER(ReleaseJobClient);
   HANDLER(GetOrCreateJob);
   HANDLER(GetTasks);
   HANDLER(GetWorkers);

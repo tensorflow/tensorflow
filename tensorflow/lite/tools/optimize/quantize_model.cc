@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
@@ -59,7 +60,7 @@ operator_property::OperatorProperty GetOperatorProperty(
   const SubGraphT* subgraph = model->subgraphs[subgraph_index].get();
   const OperatorT* op = subgraph->operators[op_idx].get();
   const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (activations_type == TensorType_INT16 && !property.quantizable_int16) {
     property.quantizable = false;
   }
@@ -521,7 +522,7 @@ TfLiteStatus QuantizeOpInput(
   SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
   OperatorT* op = subgraph->operators[*op_idx].get();
   const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (input_idx >= op->inputs.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
@@ -716,7 +717,7 @@ TfLiteStatus QuantizeOpOutput(
   SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
   OperatorT* op = subgraph->operators[op_idx].get();
   const BuiltinOperator op_code =
-      model->operator_codes[op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[op->opcode_index].get());
   if (output_idx >= op->outputs.size()) {
     TF_LITE_REPORT_ERROR(
         error_reporter,
@@ -812,7 +813,7 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
       if (!property.intermediates.empty()) {
         OperatorT* op = subgraph->operators[op_idx].get();
         const BuiltinOperator op_code =
-            model->operator_codes[op->opcode_index]->builtin_code;
+            GetBuiltinCode(model->operator_codes[op->opcode_index].get());
         for (const std::pair<int, operator_property::TensorProperty>& input :
              property.intermediates) {
           const int index_local = input.first;
@@ -824,16 +825,20 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
           if (input.second.number_of_bits == 8 &&
               input.second.symmetric == false) {
             TensorT* tensor = subgraph->tensors[index_global].get();
+            if (tensor->quantization == nullptr) {
+              continue;
+            }
             if (utils::HasMinMax(tensor)) {
               utils::QuantizeActivation(tensor, activations_type,
                                         error_reporter);
             } else {
-              TF_LITE_REPORT_ERROR(
-                  error_reporter,
-                  "Unable to find min/max value for output %d in %s in "
-                  "subgraph %d, node: %d",
-                  tensor, EnumNameBuiltinOperator(op_code), subgraph_idx,
-                  op_idx);
+              TF_LITE_REPORT_ERROR(error_reporter,
+                                   "Unable to find min/max value for "
+                                   "intermediate tensor %d in %s in "
+                                   "subgraph %d, node: %d",
+                                   index_local,
+                                   EnumNameBuiltinOperator(op_code),
+                                   subgraph_idx, op_idx);
               return kTfLiteError;
             }
           } else if (input.second.number_of_bits == 16 &&
@@ -885,7 +890,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
             continue;
           }
           // Currently only support pair of twos.
-          // TODO(jianlijianli): extend to arbitrary number of tensors.
+          // TODO(b/174534943): extend to arbitrary number of tensors.
           if (input.size() != 2) {
             return kTfLiteError;
           }
@@ -941,7 +946,7 @@ TfLiteStatus QuantizeWeightsInputOutput(
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -1001,7 +1006,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       const string operator_name = subgraph->tensors[op->outputs[0]]->name;
       operator_property::OperatorProperty property =
           GetOperatorProperty(operator_names, model, subgraph_idx, op_idx,
@@ -1039,6 +1044,18 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                 model, input_tensor, weight_tensor, bias_tensor,
                 weight_property.per_axis, weight_property.per_axis_index,
                 activations_type, error_reporter));
+          }
+        } else {
+          // If bias is already quantized, make sure it is quantized to 32 bit.
+          if (bias_tensor->type != TensorType_INT32) {
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
+                "Bias (\"%s\" at global index %d) of op \"%s\" at op_index %d "
+                "in subgraph %d is expected to be quantized to INT32 but it is "
+                "already quantized to %s.\n",
+                bias_tensor->name.c_str(), op->inputs[bias_idx],
+                operator_name.c_str(), op_idx, subgraph_idx,
+                EnumNameTensorType(bias_tensor->type));
           }
         }
       }

@@ -1229,10 +1229,10 @@ TEST_P(HloDataflowAnalysisTest, CopyStartAndCopyDone) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto copy_start = builder.AddInstruction(HloInstruction::CreateUnary(
+  auto copy_start = builder.AddInstruction(HloInstruction::CreateCopyStart(
       ShapeUtil::MakeTupleShape({constant->shape(), constant->shape(),
                                  ShapeUtil::MakeShape(U32, {})}),
-      HloOpcode::kCopyStart, constant));
+      constant));
   auto copy_done = builder.AddInstruction(HloInstruction::CreateUnary(
       constant->shape(), HloOpcode::kCopyDone, copy_start));
   module_->AddEntryComputation(builder.Build());
@@ -2321,36 +2321,6 @@ TEST_F(CanShareOperandBufferWithUserTest,
   RunAnalysis();
 
   EXPECT_TRUE(
-      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
-}
-
-TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithDifferentIndices) {
-  const char* kModule = R"(
-    HloModule test
-
-    fused_computation {
-      p0 = f32[10,20,30] parameter(0)
-      p1 = s32[] parameter(1)
-      p2 = s32[] parameter(2)
-      p3 = s32[] parameter(3)
-      slice = f32[1,1,30] dynamic-slice(p0, p1, p2, p3), dynamic_slice_sizes={1,1,30}
-      ROOT dus = f32[10,20,30] dynamic-update-slice(p0, slice, p1, p3, p2)
-    }
-
-    ENTRY test {
-      p0 = f32[10,20,30] parameter(0)
-      p1 = s32[] parameter(1)
-      p2 = s32[] parameter(2)
-      p3 = s32[] parameter(3)
-      ROOT fusion = f32[10,20,30] fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
-  auto* fusion = module_->entry_computation()->root_instruction();
-  auto* param = module_->entry_computation()->parameter_instruction(0);
-
-  RunAnalysis();
-  EXPECT_FALSE(
       dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
 }
 

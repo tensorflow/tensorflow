@@ -6,7 +6,6 @@ load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:build_config_root.bzl", "tf_additional_license_deps")
-load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
 
 package(default_visibility = ["//visibility:private"])
 
@@ -32,10 +31,14 @@ transitive_hdrs(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/cc/saved_model:loader",
         "//tensorflow/cc/saved_model:reader",
         "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/c/experimental/filesystem:filesystem_interface",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
+        "//tensorflow/c:kernels_hdrs",
+        "//tensorflow/c:ops_hdrs",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -97,10 +100,10 @@ COMMON_PIP_DEPS = [
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core:protos_all_proto_srcs",
-    "//tensorflow/examples/saved_model/integration_tests:mnist_util",
     "//tensorflow/lite/python/testdata:interpreter_test_data",
     "//tensorflow/lite/python:tflite_convert",
     "//tensorflow/lite/toco/python:toco_from_protos",
+    "//tensorflow/lite/tools:visualize",
     "//tensorflow/python/autograph/core:test_lib",
     "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
     "//tensorflow/python/autograph/pyct/testing",
@@ -109,17 +112,19 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python/distribute:distribute_test_lib_pip",
-    "//tensorflow/python:loss_scale",
-    "//tensorflow/python:loss_scale_optimizer",
+    "//tensorflow/python/training/experimental:loss_scale",
+    "//tensorflow/python/training/experimental:loss_scale_optimizer",
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests:data_service_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/experimental/service:server_lib",
+    "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
@@ -128,7 +133,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
-    "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/keras/mixed_precision:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
     "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
@@ -142,17 +147,16 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python/tpu",
+    "//tensorflow/python:image_grad_test_base",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",
     "//tensorflow/tools/common:test_module1",
-    "//tensorflow/tools/docs:doc_generator_visitor",
-    "//tensorflow/tools/docs:generate_lib",
-    "//tensorflow/tools/docs:parser",
-    "//tensorflow/tools/docs:py_guide_parser",
-    "//tensorflow/python/distribute/client:client",
-    "//tensorflow/python/distribute/client:parameter_server_client",
-    "//tensorflow/python/distribute/client:metric_utils",
+    "//tensorflow/tools/common:traverse",
+    "//tensorflow/python/distribute:parameter_server_strategy_v2",
+    "//tensorflow/python/distribute/coordinator:cluster_coordinator",
+    "//tensorflow/python/distribute/coordinator:remote_eager_lib",
+    "//tensorflow/python/distribute/coordinator:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -179,7 +183,6 @@ filegroup(
         "@ruy//:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astunparse_archive//:LICENSE",
-        "@astor_archive//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_google_absl//:LICENSE",
         "@com_google_protobuf//:LICENSE",
@@ -204,7 +207,6 @@ filegroup(
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
-        "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
@@ -217,6 +219,7 @@ filegroup(
         "@sobol_data//:LICENSE",
         "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
+        "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
         "@clog//:LICENSE",
         "@cpuinfo//:LICENSE",
@@ -272,12 +275,7 @@ filegroup(
             "@com_github_grpc_grpc//:LICENSE",
             "@com_github_grpc_grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_ngraph([
-        "@ngraph//:LICENSE",
-        "@ngraph_tf//:LICENSE",
-        "@nlohmann_json_lib//:LICENSE.MIT",
-        "@tbb//:LICENSE",
-    ]) + tf_additional_license_deps(),
+    ) + tf_additional_license_deps(),
 )
 
 sh_binary(

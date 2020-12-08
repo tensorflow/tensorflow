@@ -32,7 +32,7 @@ from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
 
 
 def _maybe_serialized(lr_decay, serialize_and_deserialize):
@@ -43,9 +43,6 @@ def _maybe_serialized(lr_decay, serialize_and_deserialize):
     return lr_decay
 
 
-# @parameterized.named_parameters(
-#     ("NotSerialized", False),
-#     ("Serialized", True))
 @combinations.generate(combinations.combine(serialize=[False, True],
                                             mode=["graph", "eager"]))
 class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -123,24 +120,26 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(decayed_lr(x)), 0.001, 1e-6)
 
   def testPiecewiseFunction(self, serialize):
+    if not context.executing_eagerly():
+      self.skipTest("Run on eager mode only.")
+
     del serialize
-    with context.eager_mode():
-      v = variables.Variable(1.)
-      def loss_fn():
-        return v * v
-      learning_rate = learning_rate_schedule.PiecewiseConstantDecay(
-          [1.], [1., 0.1])
-      opt = gradient_descent.SGD(learning_rate=learning_rate)
+    v = variables.Variable(1.)
+    def loss_fn():
+      return v * v
+    learning_rate = learning_rate_schedule.PiecewiseConstantDecay(
+        [1.], [1., 0.1])
+    opt = gradient_descent.SGD(learning_rate=learning_rate)
 
-      @def_function.function
-      def minimize():
-        with backprop.GradientTape() as tape:
-          loss = loss_fn()
-        g = tape.gradient(loss, [v])
-        opt.apply_gradients(list(zip(g, [v])))
+    @def_function.function
+    def minimize():
+      with backprop.GradientTape() as tape:
+        loss = loss_fn()
+      g = tape.gradient(loss, [v])
+      opt.apply_gradients(list(zip(g, [v])))
 
-      minimize()
-      self.assertAllEqual(v.read_value(), -1.0)
+    minimize()
+    self.assertAllEqual(v.read_value(), -1.0)
 
   def testPiecewiseConstantEdgeCases(self, serialize):
     # Test casting boundaries from int32 to int64.
@@ -511,4 +510,4 @@ class NoisyLinearCosineDecayTestV2(test_util.TensorFlowTestCase,
       self.evaluate(decayed_lr(step))
 
 if __name__ == "__main__":
-  googletest.main()
+  test.main()

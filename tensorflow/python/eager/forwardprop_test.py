@@ -473,7 +473,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testFusedBatchNormGradsInference(self):
 
     if test.is_built_with_rocm():
-      # This test was addeded recently and has been failing on the ROCm
+      # This test was added recently and has been failing on the ROCm
       # platform, since it was added.
       # TODO(rocm): do root cause analysis of test failure and fix it.
       self.skipTest("Test fails on ROCm platform, needs further analysis")
@@ -760,7 +760,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       [("ForwardPropFirst", True),
        ("TapeFirst", False)])
   def testForwardOverBackwardMemoryEfficiency(self, forward_prop_first):
-    # Watching depends depends on nesting, not creation order
+    # Watching depends on nesting, not creation order
     c = constant_op.constant(1.)
     if forward_prop_first:
       forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
@@ -793,7 +793,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
        ("TapeFirst", False)])
   def testBackwardOverForward(self, forward_prop_first):
     c = constant_op.constant(1.)
-    # Watching depends depends on nesting, not creation order
+    # Watching depends on nesting, not creation order
     if forward_prop_first:
       forward_accumulator = forwardprop.ForwardAccumulator(c, .1)
       gradient_tape = backprop.GradientTape()
@@ -889,6 +889,24 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose([.1, -.2, .3], v_jvp)
     self.assertAllClose([.2, -.4, .6], x_jvp)
     self.assertAllClose([.1, -.2, .3], x2_jvp)
+
+  def testIndexSlicesGrad(self):
+    x = constant_op.constant([1.])
+
+    with forwardprop.ForwardAccumulator(x, constant_op.constant([3.])) as acc:
+      y = array_ops.gather(x, 0)
+    self.assertAllClose(3., acc.jvp(y))
+
+  def testIndexSlicesGradInFunction(self):
+    @def_function.function
+    def f(a):
+      return array_ops.gather(a, 0)
+
+    x = constant_op.constant([1.])
+
+    with forwardprop.ForwardAccumulator(x, constant_op.constant([3.])) as acc:
+      y = f(x)
+    self.assertAllClose(3., acc.jvp(y))
 
   # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
   # test... could be something wrong with the test decorator, or some sort of
@@ -1040,6 +1058,27 @@ class BatchTests(test.TestCase, parameterized.TestCase):
                                                            tangents) as acc:
       z = x * y
     self.assertAllClose(acc.jvp(z), constant_op.constant([5.0, 2.0, 7.0]))
+
+  @parameterized.named_parameters([("ForwardPropFirst", True),
+                                   ("TapeFirst", False)])
+  def testBatchBackwardOverForward(self, forward_prop_first):
+    x = constant_op.constant(1.)
+    tangents = random_ops.random_normal(shape=[10], seed=1)
+    expected = [-t * math_ops.cos(1.) for t in tangents]
+    if forward_prop_first:
+      batch_acc = forwardprop.ForwardAccumulator._batch_accumulator(x, tangents)
+      gradient_tape = backprop.GradientTape(persistent=True)
+    else:
+      gradient_tape = backprop.GradientTape(persistent=True)
+      batch_acc = forwardprop.ForwardAccumulator._batch_accumulator(x, tangents)
+    with gradient_tape as tape:
+      with batch_acc as acc:
+        tape.watch(x)
+        y = math_ops.cos(x)
+        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(y),)))
+        jvps = acc.jvp(y)
+      d2y_dx2 = [tape.gradient(dy_dx, x) for dy_dx in jvps]
+    self.assertAllClose(expected, d2y_dx2)
 
 
 if __name__ == "__main__":

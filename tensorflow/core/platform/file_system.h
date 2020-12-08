@@ -68,7 +68,7 @@ class FileSystem {
   /// The ownership of the returned RandomAccessFile is passed to the caller
   /// and the object should be deleted when is not used.
   virtual tensorflow::Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) {
+      const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
     return NewRandomAccessFile(fname, nullptr, result);
   };
 
@@ -93,7 +93,7 @@ class FileSystem {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used.
   virtual tensorflow::Status NewWritableFile(
-      const string& fname, std::unique_ptr<WritableFile>* result) {
+      const std::string& fname, std::unique_ptr<WritableFile>* result) {
     return NewWritableFile(fname, nullptr, result);
   };
 
@@ -115,7 +115,7 @@ class FileSystem {
   /// The ownership of the returned WritableFile is passed to the caller
   /// and the object should be deleted when is not used.
   virtual tensorflow::Status NewAppendableFile(
-      const string& fname, std::unique_ptr<WritableFile>* result) {
+      const std::string& fname, std::unique_ptr<WritableFile>* result) {
     return NewAppendableFile(fname, nullptr, result);
   };
 
@@ -136,7 +136,7 @@ class FileSystem {
   /// The ownership of the returned ReadOnlyMemoryRegion is passed to the caller
   /// and the object should be deleted when is not used.
   virtual tensorflow::Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+      const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
     return NewReadOnlyMemoryRegionFromFile(fname, nullptr, result);
   }
 
@@ -147,7 +147,7 @@ class FileSystem {
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  virtual tensorflow::Status FileExists(const string& fname) {
+  virtual tensorflow::Status FileExists(const std::string& fname) {
     return FileExists(fname, nullptr);
   };
 
@@ -222,7 +222,8 @@ class FileSystem {
   virtual bool Match(const std::string& filename, const std::string& pattern);
 
   /// \brief Obtains statistics for the given path.
-  virtual tensorflow::Status Stat(const string& fname, FileStatistics* stat) {
+  virtual tensorflow::Status Stat(const std::string& fname,
+                                  FileStatistics* stat) {
     return Stat(fname, nullptr, stat);
   }
 
@@ -233,7 +234,7 @@ class FileSystem {
   }
 
   /// \brief Deletes the named file.
-  virtual tensorflow::Status DeleteFile(const string& fname) {
+  virtual tensorflow::Status DeleteFile(const std::string& fname) {
     return DeleteFile(fname, nullptr);
   }
 
@@ -247,7 +248,7 @@ class FileSystem {
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory with name dirname already exists.
   ///  * PERMISSION_DENIED - dirname is not writable.
-  virtual tensorflow::Status CreateDir(const string& dirname) {
+  virtual tensorflow::Status CreateDir(const std::string& dirname) {
     return CreateDir(dirname, nullptr);
   }
 
@@ -262,7 +263,7 @@ class FileSystem {
   ///  * OK - successfully created the directory and sub directories, even if
   ///         they were already created.
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
-  virtual tensorflow::Status RecursivelyCreateDir(const string& dirname) {
+  virtual tensorflow::Status RecursivelyCreateDir(const std::string& dirname) {
     return RecursivelyCreateDir(dirname, nullptr);
   }
 
@@ -270,7 +271,7 @@ class FileSystem {
                                                   TransactionToken* token);
 
   /// \brief Deletes the specified directory.
-  virtual tensorflow::Status DeleteDir(const string& dirname) {
+  virtual tensorflow::Status DeleteDir(const std::string& dirname) {
     return DeleteDir(dirname, nullptr);
   };
 
@@ -309,7 +310,7 @@ class FileSystem {
     return DeleteRecursively(dirname, nullptr, undeleted_files, undeleted_dirs);
   }
 
-  virtual tensorflow::Status DeleteRecursively(const string& dirname,
+  virtual tensorflow::Status DeleteRecursively(const std::string& dirname,
                                                TransactionToken* token,
                                                int64* undeleted_files,
                                                int64* undeleted_dirs);
@@ -327,8 +328,8 @@ class FileSystem {
   }
 
   /// \brief Overwrites the target if it exists.
-  virtual tensorflow::Status RenameFile(const string& src,
-                                        const string& target) {
+  virtual tensorflow::Status RenameFile(const std::string& src,
+                                        const std::string& target) {
     return RenameFile(src, target, nullptr);
   }
 
@@ -339,7 +340,8 @@ class FileSystem {
   }
 
   /// \brief Copy the src to target.
-  virtual tensorflow::Status CopyFile(const string& src, const string& target) {
+  virtual tensorflow::Status CopyFile(const std::string& src,
+                                      const std::string& target) {
     return CopyFile(src, target, nullptr);
   }
 
@@ -365,7 +367,7 @@ class FileSystem {
   ///  * NOT_FOUND - The path entry does not exist.
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
-  virtual tensorflow::Status IsDirectory(const string& fname) {
+  virtual tensorflow::Status IsDirectory(const std::string& fname) {
     return IsDirectory(fname, nullptr);
   }
 
@@ -499,7 +501,7 @@ class FileSystem {
   /// \brief Get token for `path` or start a new transaction and add `path` to
   /// it.
   virtual tensorflow::Status GetTokenOrStartTransaction(
-      const string& path, TransactionToken** token) {
+      const std::string& path, TransactionToken** token) {
     *token = nullptr;
     return Status::OK();
   }
@@ -631,7 +633,7 @@ class WrappedFileSystem : public FileSystem {
     return fs_->DeleteDir(dirname, (token ? token : token_));
   }
 
-  tensorflow::Status DeleteRecursively(const string& dirname,
+  tensorflow::Status DeleteRecursively(const std::string& dirname,
                                        TransactionToken* token,
                                        int64* undeleted_files,
                                        int64* undeleted_dirs) override {
@@ -749,8 +751,7 @@ class RandomAccessFile {
   virtual tensorflow::Status Read(uint64 offset, size_t n, StringPiece* result,
                                   char* scratch) const = 0;
 
-  // TODO(ebrevdo): Remove this ifdef when absl is updated.
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
   virtual tensorflow::Status Read(uint64 offset, size_t n,
                                   absl::Cord* cord) const {
@@ -776,8 +777,7 @@ class WritableFile {
   /// \brief Append 'data' to the file.
   virtual tensorflow::Status Append(StringPiece data) = 0;
 
-  // TODO(ebrevdo): Remove this ifdef when absl is updated.
-#if defined(PLATFORM_GOOGLE)
+#if defined(TF_CORD_SUPPORT)
   // \brief Append 'data' to the file.
   virtual tensorflow::Status Append(const absl::Cord& cord) {
     return errors::Unimplemented("Append(absl::Cord) is not implemented");

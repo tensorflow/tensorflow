@@ -20,11 +20,11 @@ the ideas above. For more sophisticated examples, refer to [Flex delegate](https
 
 ## Testing & Tooling
 
-There are currently **two optionss** to plug in a newly created TFLite delegate
-to reuse existing TFLite kernel tests and and tooling:
+There are currently **two options** to plug in a newly created TFLite delegate
+to reuse existing TFLite kernel tests and tooling:
 
 - Utilize the **[delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates)**
-mechansim
+mechanism
 - Utilize the
 **[external delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/external)**
 mechanism.
@@ -126,13 +126,13 @@ In this **alternative approach to reuse existing Tensorflow Lite kernel testing
 and tooling**, we first create an external delegate adaptor like the [`external_delegate_adaptor.cc`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/utils/dummy_delegate/external_delegate_adaptor.cc) here, and create the corresponding BUILD target
 to build a dynamic library.
 
-Afterwards, one could build binaries or use pre-built ones that are linked with
-the
+Afterwards, one could build binaries or use pre-built ones to run with the
+dummy delegate as long as the binary is linked with the
 [`external_delegate_provider`](https://github.com/tensorflow/tensorflow/blob/8c6f2d55762f3fc94f98fdd8b3c5d59ee1276dba/tensorflow/lite/tools/delegates/BUILD#L145-L159)
 library which supports command-line flags as described
 [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates#external-delegate-provider).
-Note this delegate provider has already been linked to existing testing and
-tooling binaries.
+Note this external delegate provider has already been linked to existing testing
+and tooling binaries.
 
 For example, the following illustrates how to benchmark the dummy delegate here
 via this external-delegate approach. We could use similar commands for testing

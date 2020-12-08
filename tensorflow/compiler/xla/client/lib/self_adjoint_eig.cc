@@ -228,7 +228,7 @@ StatusOr<std::vector<XlaOp>> WhileLoopFn(
     auto max_sweeps = ScalarLike(k, max_sweep_updates);
     auto sweep_update_cond = Gt(max_sweeps, k);
 
-    auto norms = ComputeFrobeniusNorms(values[2]).ValueOrDie();
+    TF_ASSIGN_OR_RETURN(auto norms, ComputeFrobeniusNorms(values[2]));
     auto tol = norms.total_norm * values[3];
     auto tol_cond = ReduceAll(Lt(tol, norms.off_diagonal_norm),
                               xla::ConstantR0<bool>(cond_builder, false),
@@ -400,7 +400,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
     return result;
   };
   auto shape_with_status = builder->GetShape(a);
-  if (!shape_with_status.status().ok()) {
+  if (!shape_with_status.ok()) {
     return return_error(shape_with_status.status());
   }
   Shape a_shape = shape_with_status.ValueOrDie();
@@ -450,7 +450,7 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
       S32,                     //
       "CyclicJacobi",          //
       builder);
-  if (!output_with_status.status().ok()) {
+  if (!output_with_status.ok()) {
     return return_error(output_with_status.status());
   }
 
@@ -460,7 +460,11 @@ SelfAdjointEigResult SelfAdjointEig(XlaOp a, bool lower, int64 max_iter,
   result.v = output[1];
   result.w = GetMatrixDiagonal(output[2]);
 
-  return SortByEigenvalues(result).ValueOrDie();
+  auto result_or = SortByEigenvalues(result);
+  if (!result_or.ok()) {
+    return return_error(result_or.status());
+  }
+  return result_or.ValueOrDie();
 }
 
 }  // namespace xla

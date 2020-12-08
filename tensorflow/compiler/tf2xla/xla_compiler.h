@@ -129,8 +129,6 @@ class XlaCompiler {
 
     // Resource updates are converted into input / output of xla. The two
     // buffers are aliased with other if this option is true.
-    //
-    // Currently only supports TPU.
     bool alias_resource_update = false;
   };
 
@@ -199,6 +197,9 @@ class XlaCompiler {
     // Alias input and output buffers for parameters that are passed-through XLA
     // modules without being changed.
     bool alias_passthrough_params = false;
+
+    // Enable detailed logging of compilation metadata.
+    bool detailed_logging = true;
   };
 
   explicit XlaCompiler(Options options);
@@ -290,7 +291,8 @@ class XlaCompiler {
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
-                          const FunctionBody** fbody);
+                          const FunctionBody** fbody,
+                          const ConfigProto** config_proto = nullptr);
 
  private:
   // Returns the optimized graph object in this function body.

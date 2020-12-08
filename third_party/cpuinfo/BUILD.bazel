@@ -102,6 +102,8 @@ cc_library(
         ":linux_armv7a": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
         ":linux_armeabi": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
         ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
+        ":linux_mips64": COMMON_SRCS + LINUX_SRCS,
+        ":linux_s390x": COMMON_SRCS + LINUX_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":windows_x86_64": COMMON_SRCS + X86_SRCS + WINDOWS_X86_SRCS,
         ":android_armv7": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS + ANDROID_ARM_SRCS,
@@ -206,6 +208,16 @@ config_setting(
 config_setting(
     name = "linux_aarch64",
     values = {"cpu": "aarch64"},
+)
+
+config_setting(
+    name = "linux_mips64",
+    values = {"cpu": "mips64"},
+)
+
+config_setting(
+    name = "linux_s390x",
+    values = {"cpu": "s390x"},
 )
 
 config_setting(

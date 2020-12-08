@@ -35,9 +35,12 @@ exports_files([
     name = "zip_test_%s" % test_name,
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
-    additional_test_args = {
-        # TODO(b/162696268): uncomment once the bug is fixed.
-        # "xnnpack": ["--use_xnnpack=true"],
+    additional_test_tags_args = {
+        "xnnpack": (
+            # TODO(b/162696268): remove 'notap' once the bug is fixed.
+            ["notap"],
+            ["--use_xnnpack=true"],
+        ),
     },
     conversion_mode = conversion_mode,
     data = [
@@ -309,7 +312,7 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:error_reporter",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core/api",
     ],
@@ -588,7 +591,7 @@ pybind_extension(
 tflite_portable_test_suite()
 
 tflite_custom_android_library(
-    name = "customtized_tflite_for_add_ops",
+    name = "customized_tflite_for_add_ops",
     models = ["//tensorflow/lite:testdata/add.bin"],
     visibility = ["//visibility:public"],
 )

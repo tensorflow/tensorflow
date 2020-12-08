@@ -89,6 +89,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return count_ * n;
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     return input_->CheckExternalState();
   }
@@ -158,6 +163,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         ++i_;
+        if (ctx->split_provider()) {
+          TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+        }
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       }
@@ -226,7 +234,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         DCHECK(!*end_of_sequence || out_tensors->empty());
-        if (first_call_ && *end_of_sequence) {
+        if (first_call_ && *end_of_sequence && !ctx->split_provider()) {
           // If the first call to GetNext() fails because the end
           // of sequence has been reached, we terminate the
           // iteration immediately. (Otherwise, this iterator
@@ -238,6 +246,9 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         if (!*end_of_sequence) {
           return s;
         } else {
+          if (ctx->split_provider()) {
+            TF_RETURN_IF_ERROR(ctx->split_provider()->Reset());
+          }
           input_impl_.reset();
           first_call_ = true;
         }

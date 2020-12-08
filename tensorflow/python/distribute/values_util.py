@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -28,6 +29,104 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
+from tensorflow.python.training.saving import saveable_object
+
+
+def write_object_proto(var, proto, options):
+  """Update a SavedObject proto for the caller.
+
+  If a DistributedVariable object supports this method, it will be called when
+  saving with a pre-built `SavedObject` proto representing the object, plus an
+  instance of `SaveOptions`. This method is then free to modify that proto
+  instance.
+
+  `DistributedVariable` with `AUTO` or `ON_WRITE` synchronization optionally
+   write out information about their components to the
+   `experimental_distributed_variable_components` field of a
+   `SavedVariable` (depending on the `SaveOptions` variable policy).
+
+  Args:
+    var: The DistributedVariable object.
+    proto: A pre-built `SavedObject` proto for this object. It is assumed this
+      will be a `SavedVariable` instance.
+    options: A `SaveOptions` instance.
+  """
+  if options.experimental_variable_policy._expand_distributed_variables(  # pylint: disable=protected-access
+  ):
+    for var in var.values:
+      var_proto = (
+          proto.variable.experimental_distributed_variable_components.add())
+      var_proto.name = var.name.split(":")[0]
+      var_proto.device = var.device
+
+
+def get_on_write_saveable(var, primary_var, name):
+  """Return saveable spec for AUTO and ON_WRITE variables."""
+  # We use a callable so that we don't have to evaluate this expression
+  # in the case where we are trying to restore instead of save.
+  def tensor():
+    if context.executing_eagerly() and not primary_var.is_initialized():
+      # A SaveSpec tensor value of `None` indicates that the variable is
+      # uninitialized.
+      return None
+    strategy = var.distribute_strategy
+    return strategy.extended.read_var(var)
+
+  spec = saveable_object.SaveSpec(
+      tensor=tensor,
+      slice_spec="",
+      name=name,
+      dtype=var.dtype,
+      device=primary_var.device)
+
+  return tensor, [spec]
+
+
+def get_on_write_restore_ops(var, tensor):
+  """Return restore ops for AUTO and ON_WRITE variables."""
+  packed_var = var._packed_variable  # pylint: disable=protected-access
+  if packed_var is not None:
+    return control_flow_ops.group(
+        tuple(
+            assign_on_device(d, packed_var, tensor)
+            for d in packed_var.devices))
+  return control_flow_ops.group(
+      tuple(
+          assign_on_device(v.device, v, tensor)
+          for v in var.values))
+
+
+def get_on_read_saveable(var, primary_var, name):
+  """Return saveables for ON_READ variable."""
+
+  # We use a callable so that we don't have to evaluate this expression
+  # in the case where we are trying to restore instead of save.
+  def tensor():
+    return var._get_cross_replica()  # pylint: disable=protected-access
+
+  spec = saveable_object.SaveSpec(
+      tensor=tensor,
+      slice_spec="",
+      name=name,
+      dtype=var.dtype,
+      device=primary_var.device)
+
+  return tensor, [spec]
+
+
+def get_on_read_restore_ops(var, tensor, aggregation):
+  """Return restore ops for ON_READ variables."""
+  # To preserve the sum across save and restore, we have to divide the
+  # total across all devices when restoring a variable that was summed
+  # when saving.
+  if aggregation == vs.VariableAggregation.SUM:
+    strategy = var.distribute_strategy
+    tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
+                           var.dtype)
+  return control_flow_ops.group(
+      tuple(
+          assign_on_device(v.device, v, tensor)
+          for v in var.values))
 
 
 # Utility function that indicates if you are in an UpdateContext when running
@@ -190,7 +289,7 @@ def get_current_replica_id_as_int():
   """Returns the current replica ID as an integer, or `None`."""
   replica_context = ds_context.get_replica_context()
   if replica_context:
-    replica_id = replica_context.replica_id_in_sync_group
+    replica_id = replica_context._replica_id  # pylint: disable=protected-access
     if not isinstance(replica_id, int):
       replica_id = tensor_util.constant_value(replica_id)
   else:
@@ -272,3 +371,23 @@ def is_saving_non_distributed():
   options = save_context.get_save_options()
   return (options.experimental_variable_policy !=
           save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)
+
+
+def mark_as_unsaveable():
+  """Marks the function as unsaveable if not inside save context."""
+  if ops.inside_function() and not save_context.in_save_context():
+    ops.get_default_graph().mark_as_unsaveable("""
+ConcreteFunction that uses distributed variables in certain way cannot be saved.
+If you're saving with
+
+tf.saved_model.save(..., signatures=f.get_concrete_function())
+
+do
+
+@tf.function(input_signature=...)
+def f_with_input_signature():
+  ...
+
+tf.saved_model.save(..., signatures=f_with_input_signature)`
+
+instead.""")

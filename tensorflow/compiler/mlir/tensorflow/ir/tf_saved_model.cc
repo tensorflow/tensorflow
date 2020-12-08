@@ -24,9 +24,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -82,38 +81,53 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
   mlir::SymbolTable symbol_table(
       session_initializer.getParentOfType<ModuleOp>());
 
-  auto init_func_op =
-      symbol_table.lookup<mlir::FuncOp>(session_initializer.initializer());
-  if (!init_func_op)
-    return session_initializer.emitOpError()
-           << "the initializer function does not exist";
+  for (auto sym_ref : session_initializer.initializers()) {
+    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+        sym_ref.cast<FlatSymbolRefAttr>().getValue());
 
-  if (!init_func_op.getType().getResults().empty())
-    return session_initializer.emitOpError()
-           << "the initializer function should have no output";
+    if (!init_func_op)
+      return session_initializer.emitOpError()
+             << "the initializer function does not exist";
 
-  auto exported_names = GetExportedNames(init_func_op);
+    if (!init_func_op.getType().getResults().empty())
+      return session_initializer.emitOpError()
+             << "the initializer function should have no output";
 
-  if (exported_names.empty())
-    return session_initializer.emitOpError()
-           << "the initializer function should be exported";
+    auto exported_names = GetExportedNames(init_func_op);
 
-  if (exported_names.size() != 1)
-    return session_initializer.emitOpError()
-           << "the initializer function should have only one exported names";
+    if (exported_names.empty())
+      return session_initializer.emitOpError()
+             << "the initializer function should be exported";
+
+    if (exported_names.size() != 1)
+      return session_initializer.emitOpError()
+             << "the initializer function should have only one exported names";
+  }
 
   return success();
 }
 
+}  // namespace tf_saved_model
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
+
+namespace mlir {
+namespace tf_saved_model {
 
 //===----------------------------------------------------------------------===//
 // TensorFlowSavedModelDialect Dialect
 //===----------------------------------------------------------------------===//
 
 TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_saved_model", context) {
+    : Dialect(/*name=*/"tf_saved_model", context,
+              TypeID::get<TensorFlowSavedModelDialect>()) {
+  // The TensorFlow Dialect is needed in the verifier and other routines
+  // associated to this dialect. It makes little sense anyway to use the
+  // SavedModel dialect without the TensorFlow Dialect.
+  context->loadDialect<TF::TensorFlowDialect>();
+
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
@@ -279,7 +293,11 @@ static LogicalResult VerifySavedModelModule(
 
   auto is_init = [&session_initializers](mlir::FuncOp func) {
     if (session_initializers.empty()) return false;
-    return (*session_initializers.begin()).initializer() == func.getName();
+    auto init_syms = (*session_initializers.begin()).initializers();
+    return std::any_of(
+        init_syms.begin(), init_syms.end(), [&](Attribute sym_ref) {
+          return sym_ref.cast<FlatSymbolRefAttr>().getValue() == func.getName();
+        });
   };
 
   SymbolTable symbol_table(module);
@@ -438,22 +456,36 @@ class OptimizeSessionInitializerPattern
   LogicalResult matchAndRewrite(SessionInitializerOp op,
                                 PatternRewriter &rewriter) const override {
     SymbolTable symbol_table(op.getParentOfType<ModuleOp>());
-    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(op.initializer());
 
-    // The init function can only be referenced from the SessionInitializerOp.
-    // And there is at most one SessionInitializerOp in the module. So if both
-    // ops have no other uses or have one NoOp only, they can be simply erased.
-    auto &operations = init_func_op.front().getOperations();
-    if ((operations.size() == 1 && operations.front().isKnownTerminator()) ||
-        (operations.size() == 2 &&
-         dyn_cast<mlir::TF::NoOp>(operations.front()) &&
-         operations.back().isKnownTerminator())) {
-      rewriter.eraseOp(init_func_op);
-      rewriter.eraseOp(op);
-      return success();
+    SmallVector<FuncOp, 2> to_remove;
+    SmallVector<mlir::Attribute, 2> to_keep;
+    for (auto sym_ref : op.initializers()) {
+      auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+          sym_ref.cast<FlatSymbolRefAttr>().getValue());
+
+      // The init function can only be referenced from the SessionInitializerOp.
+      // And there is at most one SessionInitializerOp in the module. So if both
+      // ops have no other uses or have one NoOp only, they can be simply
+      // erased.
+      auto &operations = init_func_op.front().getOperations();
+      if ((operations.size() == 1 && operations.front().isKnownTerminator()) ||
+          (operations.size() == 2 &&
+           dyn_cast<mlir::TF::NoOp>(operations.front()) &&
+           operations.back().isKnownTerminator())) {
+        to_remove.push_back(init_func_op);
+      } else {
+        to_keep.push_back(sym_ref);
+      }
     }
 
-    return failure();
+    for (auto func_op : to_remove) rewriter.eraseOp(func_op);
+
+    if (to_keep.empty())
+      rewriter.eraseOp(op);
+    else
+      op.setAttr("initializers", rewriter.getArrayAttr(to_keep));
+
+    return success();
   }
 };
 
@@ -462,15 +494,22 @@ void SessionInitializerOp::getCanonicalizationPatterns(
   results.insert<OptimizeSessionInitializerPattern>(context);
 }
 
-llvm::Optional<StringRef> GetSessionInitializerExportedName(ModuleOp op) {
+SmallVector<StringRef, 2> GetSessionInitializerExportedName(ModuleOp op) {
   auto session_initializer_op = GetSessionInitializerOp(op);
-  if (!session_initializer_op) return llvm::None;
+  if (!session_initializer_op) return {};
 
   SymbolTable symbol_table(op);
-  auto init_func_op =
-      symbol_table.lookup<mlir::FuncOp>(session_initializer_op.initializer());
-  auto exported_names = GetExportedNames(init_func_op);
-  return exported_names[0];
+
+  SmallVector<StringRef, 2> results;
+  for (auto sym_ref : session_initializer_op.initializers()) {
+    auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
+        sym_ref.cast<FlatSymbolRefAttr>().getValue());
+    auto exported_names = GetExportedNames(init_func_op);
+    assert(exported_names.size() == 1);
+    results.push_back(exported_names[0]);
+  }
+
+  return results;
 }
 
 }  // namespace tf_saved_model

@@ -18,8 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+
+from tensorflow.python.framework import dtypes
 from tensorflow.python.util.lazy_loader import LazyLoader
-from tensorflow.lite.python import lite_constants
 
 # Lazy load since some of the performance benchmark skylark rules
 # break dependencies. Must use double quotes to match code internal rewrite
@@ -28,6 +29,11 @@ _calibration_wrapper = LazyLoader(
     "_calibration_wrapper", globals(),
     "tensorflow.lite.python.optimize."
     "_pywrap_tensorflow_lite_calibration_wrapper")
+
+
+def add_intermediate_tensors(model_content):
+  """Adds intermediate tensors to fused op if needed."""
+  return _calibration_wrapper.AddIntermediateTensors(model_content)
 
 
 class Calibrator(object):
@@ -60,7 +66,7 @@ class Calibrator(object):
                              input_type,
                              output_type,
                              allow_float,
-                             activations_type=lite_constants.INT8,
+                             activations_type=dtypes.int8,
                              resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
 

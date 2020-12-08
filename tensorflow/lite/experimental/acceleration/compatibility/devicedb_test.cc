@@ -115,7 +115,7 @@ TEST_F(DeviceDbTest, StatusLookupWithDevice) {
   variables[kDeviceModel] = "sm_j810m";
   variables[kDeviceName] = "j8y18lte";
   UpdateVariablesFromDatabase(&variables, *device_db_);
-  EXPECT_EQ(variables[gpu::kOpenCLStatus], gpu::kStatusSupported);
+  EXPECT_EQ(variables[gpu::kStatus], gpu::kStatusSupported);
 }
 
 TEST_F(DeviceDbTest, StatusLookupBasedOnDerivedProperties) {

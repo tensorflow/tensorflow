@@ -72,7 +72,7 @@ type GraphImportOptions struct {
 }
 
 // AddInputMapping adds a mapping between an Output in the imported graph
-// and an Ouput in the destination graph that it should be replaced with,
+// and an Output in the destination graph that it should be replaced with,
 // where src:srcIndex is the name of the Operation and Output index to
 // replace and dst is the output to replace it with.
 func (o *GraphImportOptions) AddInputMapping(src string, srcIndex int, dst Output) {
@@ -494,4 +494,35 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 		return fmt.Errorf("attribute %q has a type (%T) which is not valid for operation attributes", name, value)
 	}
 	return nil
+}
+
+type LibraryHandler struct {
+	cptr *C.TF_Library
+}
+
+// Load library content into current context, useful to load ops implementation into non-monolithic TF build. Returns LibraryHandler or nil and error
+func LoadLibrary(path string) (*LibraryHandler, error) {
+	status := newStatus()
+
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	cptr := C.TF_LoadLibrary(cpath, status.c)
+	if cptr == nil || status.Code() != C.TF_OK {
+		return nil, fmt.Errorf("could not load library %s: code: %d, error: %s", path, status.Code(), status.String())
+	}
+
+	lh := &LibraryHandler{
+		cptr: cptr,
+	}
+
+	runtime.SetFinalizer(lh, (*LibraryHandler).free)
+	return lh, nil
+}
+
+func (lh *LibraryHandler) free() {
+	if lh == nil || lh.cptr == nil {
+		return
+	}
+
+	C.TF_DeleteLibraryHandle(lh.cptr)
 }

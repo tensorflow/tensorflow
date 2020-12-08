@@ -19,34 +19,29 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker_impl.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
 
 // This class is a wrapper that handles communication for gRPC.
-//
-// Example usage:
-//
-// ::grpc::ServerBuilder builder;
-// // configure builder
-// GrpcWorkerImpl data_service(&builder);
-// builder.BuildAndStart()
-//
 class GrpcWorkerImpl : public WorkerService::Service {
  public:
-  explicit GrpcWorkerImpl(grpc::ServerBuilder* server_builder,
-                          const experimental::WorkerConfig& config);
+  // Constructs a GrpcWorkerImpl with the given config, and registers it with
+  // `server_builder`.
+  explicit GrpcWorkerImpl(const experimental::WorkerConfig& config,
+                          ::grpc::ServerBuilder& server_builder);
   ~GrpcWorkerImpl() override {}
 
   Status Start(const std::string& worker_address);
 
-#define HANDLER(method)                               \
-  grpc::Status method(grpc::ServerContext* context,   \
-                      const method##Request* request, \
-                      method##Response* response) override;
+#define HANDLER(method)                                 \
+  ::grpc::Status method(::grpc::ServerContext* context, \
+                        const method##Request* request, \
+                        method##Response* response) override;
   HANDLER(ProcessTask);
   HANDLER(GetElement);
+  HANDLER(GetWorkerTasks);
 #undef HANDLER
 
  private:

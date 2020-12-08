@@ -29,12 +29,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -79,6 +82,9 @@ HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b) {
   }
   auto zero = b->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(shape.element_type())));
+  if (shape.rank() == 0) {
+    return zero;
+  }
   return b->AddInstruction(HloInstruction::CreateBroadcast(shape, zero, {}));
 }
 
@@ -200,13 +206,17 @@ std::vector<HloInstruction*> MakePartitionOffsets(
     absl::Span<const int64> dims) {
   CHECK(!shape.IsTuple());
 
-  Array2D<int32> offset_array(
-      {sharding.tile_assignment().num_elements(), shape.rank()});
-  offset_array.Each([&](int64 i, int64 j, int32* value) {
-    *value = sharding.TileOffsetForDevice(shape, i)[j];
-  });
-  auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2FromArray2D(offset_array)));
+  std::vector<std::vector<int32>> offset_arrays(shape.rank());
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    offset_arrays[i].resize(sharding.tile_assignment().num_elements());
+  }
+  auto shard_shape = MakePartitionedShape(shape, sharding);
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        for (int64 i = 0; i < shape.rank(); ++i) {
+          offset_arrays[i][device] = indices[i] * shard_shape.dimensions(i);
+        }
+      });
   std::vector<HloInstruction*> offsets;
   for (int64 i = 0; i < shape.rank(); ++i) {
     if (sharding.tile_assignment().dim(i) == 1 ||
@@ -214,11 +224,10 @@ std::vector<HloInstruction*> MakePartitionOffsets(
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
+      auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<int32>(offset_arrays[i])));
       auto index = b->AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeShape(S32, {1, 1}), offset_table,
-          {partition_id, b->AddInstruction(HloInstruction::CreateConstant(
-                             LiteralUtil::CreateR0<uint32>(i)))},
-          {1, 1}));
+          ShapeUtil::MakeShape(S32, {1}), offset_table, {partition_id}, {1}));
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), index)));
     }
@@ -229,8 +238,11 @@ std::vector<HloInstruction*> MakePartitionOffsets(
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
     const HloSharding& sharding, HloInstruction* partition_id, SpmdBuilder* b) {
   CHECK(!sharding.IsTileMaximal());
-  auto table_shape =
-      ShapeUtil::MakeShape(S32, sharding.tile_assignment().dimensions());
+  auto dimensions = sharding.tile_assignment().dimensions();
+  if (sharding.ReplicateOnLastTileDim()) {
+    dimensions.pop_back();
+  }
+  auto table_shape = ShapeUtil::MakeShape(S32, dimensions);
   return MakePartitionOffsets(table_shape, sharding, partition_id, b);
 }
 
@@ -287,12 +299,341 @@ HloInstruction* PadBaseShapeBeforeUnevenTiledSharding(
   return PadToShape(hlo, padded_base_shape, b);
 }
 
+absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
+    const HloSharding& partial_sharding, const HloSharding& target_sharding) {
+  if (!partial_sharding.ReplicateOnLastTileDim()) {
+    return absl::nullopt;
+  }
+  int64 rank = partial_sharding.tile_assignment().num_dimensions() - 1;
+  int64 target_rank = target_sharding.tile_assignment().num_dimensions() -
+                      (target_sharding.ReplicateOnLastTileDim() ? 1 : 0);
+  if (target_rank != rank) {
+    return absl::nullopt;
+  }
+
+  absl::flat_hash_map<int64, int64> device_to_replication_group;
+  partial_sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        int64 gid = 0;
+        for (int64 i = 0; i < rank; ++i) {
+          gid *= partial_sharding.tile_assignment().dim(i);
+          gid += indices[i];
+        }
+        device_to_replication_group[device] = gid;
+      });
+
+  // A dimension is expanded when target_tile_size > partial_tile_size and
+  // target_tile_size % partial_tile_size == 0.
+  // expand_tile_dims_positions is the index of the expand_dim.
+  std::vector<int64> expand_tile_dims_indices(rank, -1);
+  // expand_tile_size = target_tile_size / partial_tile_size.
+  std::vector<int64> expand_tile_sizes;
+  int num_expand_dims = 0;
+  for (int64 dim = 0; dim < rank; dim++) {
+    int64 partial_tile_size = partial_sharding.tile_assignment().dim(dim);
+    int64 target_tile_size = target_sharding.tile_assignment().dim(dim);
+    if (target_tile_size % partial_tile_size != 0 ||
+        target_tile_size < partial_tile_size) {
+      return absl::nullopt;
+    }
+
+    if (target_tile_size > partial_tile_size) {
+      expand_tile_dims_indices[dim] = num_expand_dims++;
+      expand_tile_sizes.emplace_back(target_tile_size / partial_tile_size);
+    }
+  }
+
+  // Reshape the partial replicate tile_dimensions.
+  int64 num_target_replication = 1;
+  if (target_sharding.ReplicateOnLastTileDim()) {
+    num_target_replication =
+        target_sharding.tile_assignment().dimensions().back();
+  }
+  auto reshape_dimensions = partial_sharding.tile_assignment().dimensions();
+  int64 num_replication = reshape_dimensions.back();
+  if (num_replication / num_target_replication != Product(expand_tile_sizes) ||
+      num_replication % num_target_replication != 0) {
+    return absl::nullopt;
+  }
+
+  reshape_dimensions.pop_back();
+  reshape_dimensions.insert(reshape_dimensions.end(), expand_tile_sizes.begin(),
+                            expand_tile_sizes.end());
+
+  if (target_sharding.ReplicateOnLastTileDim()) {
+    reshape_dimensions.push_back(num_target_replication);
+  }
+
+  auto reshape_tile_assignment = partial_sharding.tile_assignment();
+  reshape_tile_assignment.Reshape(reshape_dimensions);
+
+  // Transpose.
+  std::vector<int64> perm;
+  perm.reserve(rank + expand_tile_sizes.size());
+  for (int64 dim = 0; dim < rank; dim++) {
+    perm.emplace_back(dim);
+    if (expand_tile_dims_indices[dim] > -1) {
+      perm.emplace_back(expand_tile_dims_indices[dim] + rank);
+    }
+  }
+  auto transpose_sharding = hlo_sharding_util::TransposeSharding(
+      target_sharding.ReplicateOnLastTileDim()
+          ? HloSharding::PartialTile(reshape_tile_assignment)
+          : HloSharding::Tile(reshape_tile_assignment),
+      perm);
+
+  // Reshape to target shape
+  auto transpose_tile_assignment = transpose_sharding.tile_assignment();
+  transpose_tile_assignment.Reshape(
+      target_sharding.tile_assignment().dimensions());
+
+  bool groups_matching = true;
+  target_sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        if (device_to_replication_group[device] !=
+            device_to_replication_group[transpose_tile_assignment(indices)]) {
+          groups_matching = false;
+        }
+      });
+
+  if (groups_matching) {
+    return target_sharding;
+  }
+  return target_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(transpose_tile_assignment)
+             : HloSharding::Tile(transpose_tile_assignment);
+}
+
+absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& replicate_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b) {
+  // Source is tile sharding.
+  auto padded_src_shape =
+      GetPaddedShapeForUnevenPartitioning(base_shape, src_sharding);
+  // Target is partial replicate.
+  auto padded_dst_shape =
+      GetPaddedShapeForUnevenPartitioning(base_shape, dst_sharding);
+  if (ShapeUtil::Compatible(padded_dst_shape, hlo->shape())) {
+    return hlo;
+  }
+
+  auto partition_ordinals =
+      MakeTiledPartitionOrdinals(dst_sharding, partition_id, b);
+
+  auto result = hlo;
+  auto hlo_shape = hlo->shape();
+  for (auto dim : replicate_dims) {
+    int64 dst_shard_count = dst_sharding.tile_assignment().dim(dim);
+    int64 src_per_shard_size =
+        padded_src_shape.dimensions(dim) / dst_shard_count;
+    // Calculate per shard size using the sharding to compare if dst_sharding
+    // needs more padding at the end.
+    int64 dst_per_shard_size =
+        padded_dst_shape.dimensions(dim) / dst_shard_count;
+
+    // If src per shard doesn't have redudant data.
+    if (src_per_shard_size <= dst_per_shard_size || dst_shard_count == 1) {
+      continue;
+    }
+
+    // If src_per_shard * replicate_factor > dst_per_shard , need to
+    // re-distribute the data between each shard using collective permute. For
+    // example, if dimension size is 6 and shard 4 ways in the src but needs to
+    // shard 2 ways in the dst. 4 way sharding has 2 element in each shard,
+    // while 2 way sharding has 3 elements, the last element in the first shard
+    // will be sliced out. re-distribution is needed.
+    //
+    // 1. Calculate left_halo size.
+    // left-halo size is
+    //   (src_per_shard_size - dst_per_shard_size) * i / replicate_factor
+    int64 replicate_factor = src_sharding.tile_assignment().dim(dim) /
+                             dst_sharding.tile_assignment().dim(dim);
+    OffsetCalculation left_halo_size_function =
+        OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+            src_per_shard_size - dst_per_shard_size, 0, replicate_factor));
+
+    // 2. Calculate right_halo size.
+    // right-halo size is 0
+    OffsetCalculation right_halo_size_function =
+        OffsetCalculation(MultiplyAddDivideOffsetCalculation(0, 0, 1));
+
+    auto concat = result;
+    // 3. Halo exchange.
+    auto halo_exchange_result = ExchangeHalo(
+        result, left_halo_size_function, right_halo_size_function, dim,
+        src_sharding, collective_ops_creator, next_channel_id, b);
+
+    if (halo_exchange_result.has_value()) {
+      concat = halo_exchange_result.value();
+    } else {
+      return absl::nullopt;
+    }
+
+    // 4. Slice the valid result.
+    // Slice offset is
+    // (dst_shard_count - i - 1) *
+    // (src_per_shard_size - dst_per_shard_size)
+    // i is the index in dst_sharindg.
+    auto zero_s32 = b->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+    OffsetCalculation start_offset_on_padded_concat_calculation =
+        OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+            dst_per_shard_size - src_per_shard_size,
+            (src_per_shard_size - dst_per_shard_size) * (dst_shard_count - 1),
+            1));
+    auto slice_shape = concat->shape();
+    slice_shape.set_dimensions(dim,
+                               padded_src_shape.dimensions(dim) /
+                                   src_sharding.tile_assignment().dim(dim));
+    std::vector<HloInstruction*> slice_offsets(concat->shape().rank(),
+                                               zero_s32);
+    slice_offsets[dim] = start_offset_on_padded_concat_calculation.Calculate(
+        partition_ordinals[dim], b);
+    result = b->AddInstruction(HloInstruction::CreateDynamicSlice(
+        slice_shape, concat, slice_offsets, slice_shape.dimensions()));
+  }
+  return result;
+}
+
+absl::optional<HloInstruction*> PadFromPartialReplicateShape(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& expand_tile_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b) {
+  auto padded_src_shape =
+      GetPaddedShapeForUnevenPartitioning(base_shape, src_sharding);
+  auto padded_dst_shape =
+      GetPaddedShapeForUnevenPartitioning(base_shape, dst_sharding);
+  if (ShapeUtil::Compatible(padded_dst_shape, hlo->shape())) {
+    return hlo;
+  }
+
+  auto partition_ordinals =
+      MakeTiledPartitionOrdinals(src_sharding, partition_id, b);
+
+  HloInstruction* result = hlo;
+  auto zero = b->AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::Zero(hlo->shape().element_type())));
+  std::vector<int64> expand_dims_without_halo_exchange;
+  // Pad the dimensions needs halo exchange and record the padded dims that
+  // won't need halo exchange.
+  for (auto dim : expand_tile_dims) {
+    int64 src_shard_count = src_sharding.tile_assignment().dim(dim);
+    int64 src_per_shard_size =
+        padded_src_shape.dimensions(dim) / src_shard_count;
+    // Calculate per shard size using the sharding to compare if dst_sharding
+    // needs more padding at the end.
+    int64 dst_per_shard_size =
+        padded_dst_shape.dimensions(dim) / src_shard_count;
+
+    // If dst_sharding doesn't need more padding at the end.
+    if (src_per_shard_size >= dst_per_shard_size) {
+      continue;
+    }
+    // If src sharding at this dimension is not partitoned, simply pad to
+    // the desired shape.
+    if (src_shard_count == 1) {
+      expand_dims_without_halo_exchange.emplace_back(dim);
+      continue;
+    }
+
+    // If dst_padding needs more padding at the end, need to re-distribute the
+    // data between each shard using collective permute.
+    // For example, if dimension size is 6 and shard 2 ways in the src but
+    // needs to shard 4 ways in the dst. 4 ways needs padding 2 0s at the end
+    // and has 2 elements at each shard, while 2 way sharding has 3 elements
+    // in each shard, re-distribution is needed.
+    //
+    // 1. Calculate left_halo size.
+    // left-halo size is 0
+    OffsetCalculation left_halo_size_function =
+        OffsetCalculation(MultiplyAddDivideOffsetCalculation(0, 0, 1));
+
+    // 2. Calculate right_halo size.
+    // right-halo size is D * (i + 1) - S * (i + 1) = (D - S) * i + (D - S)
+    OffsetCalculation right_halo_size_function =
+        OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+            dst_per_shard_size - src_per_shard_size,
+            dst_per_shard_size - src_per_shard_size, 1));
+
+    auto concat = result;
+    // 3. Halo exchange.
+    auto halo_exchange_result = ExchangeHalo(
+        result, left_halo_size_function, right_halo_size_function, dim,
+        src_sharding, collective_ops_creator, next_channel_id, b);
+
+    if (halo_exchange_result.has_value()) {
+      concat = halo_exchange_result.value();
+    } else {
+      return absl::nullopt;
+    }
+
+    // 4. Pad.
+    std::vector<int64> zero_padding(concat->shape().rank());
+    PaddingConfig pad_config = window_util::MakeSymmetricPadding(zero_padding);
+    pad_config.mutable_dimensions(dim)->set_edge_padding_low(0);
+    int64 max_right_halo_size =
+        right_halo_size_function.MaxInRange(0, src_shard_count - 1);
+    pad_config.mutable_dimensions(dim)->set_edge_padding_high(std::max(
+        int64{0}, padded_dst_shape.dimensions(dim) -
+                      padded_src_shape.dimensions(dim) - max_right_halo_size));
+    auto padded_concat_shape = ShapeInference::InferPadShape(
+                                   concat->shape(), zero->shape(), pad_config)
+                                   .ValueOrDie();
+    concat = b->AddInstruction(HloInstruction::CreatePad(
+        padded_concat_shape, concat, zero, pad_config));
+
+    // 5. Slice the valid result.
+    // Slice offset is (D-S) * i
+    auto zero_s32 = b->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
+    OffsetCalculation start_offset_on_padded_concat_calculation =
+        OffsetCalculation(MultiplyAddDivideOffsetCalculation(
+            dst_per_shard_size - src_per_shard_size, 0, 1));
+    auto slice_shape = concat->shape();
+    slice_shape.set_dimensions(dim, dst_per_shard_size);
+    std::vector<HloInstruction*> slice_offsets(concat->shape().rank(),
+                                               zero_s32);
+    slice_offsets[dim] = start_offset_on_padded_concat_calculation.Calculate(
+        partition_ordinals[dim], b);
+    result = b->AddInstruction(HloInstruction::CreateDynamicSlice(
+        slice_shape, concat, slice_offsets, slice_shape.dimensions()));
+  }
+
+  // Pad other dimensions that won't need halo exchange with a single pad.
+  if (!expand_dims_without_halo_exchange.empty()) {
+    std::vector<int64> zero_padding(result->shape().rank());
+    PaddingConfig pad_config = window_util::MakeSymmetricPadding(zero_padding);
+
+    auto padded_shape = result->shape();
+    for (auto dim : expand_dims_without_halo_exchange) {
+      pad_config.mutable_dimensions(dim)->set_edge_padding_low(0);
+      pad_config.mutable_dimensions(dim)->set_edge_padding_high(
+          padded_dst_shape.dimensions(dim) - padded_src_shape.dimensions(dim));
+      padded_shape.set_dimensions(dim, result->shape().dimensions(dim) +
+                                           padded_dst_shape.dimensions(dim) -
+                                           padded_src_shape.dimensions(dim));
+    }
+    result = b->AddInstruction(
+        HloInstruction::CreatePad(padded_shape, result, zero, pad_config));
+  }
+
+  return result;
+}
+
 absl::optional<int64> UniqueTiledDim(const HloSharding& sharding) {
   if (sharding.IsTileMaximal()) {
     return absl::nullopt;
   }
   int64 dim = -1;
-  for (int64 i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  int64 rank = sharding.ReplicateOnLastTileDim()
+                   ? sharding.tile_assignment().num_dimensions() - 1
+                   : sharding.tile_assignment().num_dimensions();
+  for (int64 i = 0; i < rank; ++i) {
     if (sharding.tile_assignment().dim(i) > 1) {
       if (dim != -1) {
         return absl::nullopt;
@@ -942,7 +1283,8 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target) {
   if (source.IsTileMaximal() || target.IsTileMaximal() ||
       source.tile_assignment().num_dimensions() !=
-          target.tile_assignment().num_dimensions()) {
+          target.tile_assignment().num_dimensions() ||
+      source.NumTiles() != target.NumTiles()) {
     return absl::nullopt;
   }
   // Record partition count to index for indices that have different partition
@@ -1027,61 +1369,112 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
   return !source.IsTileMaximal() && !target.IsTileMaximal() &&
          source.tile_assignment().dimensions() ==
              target.tile_assignment().dimensions() &&
+         source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
          source.tile_assignment() != target.tile_assignment();
 }
 
 GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                                     absl::Span<const int64> group_dims) {
+  std::vector<int64> group_dim_shards(group_dims.size(), 1);
+  return GroupShardingOnDims(sharding, group_dims, group_dim_shards);
+}
+
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64> group_dims,
+                                    absl::Span<const int64> group_dim_shards) {
   CHECK(!sharding.IsTileMaximal());
   std::vector<int64> grouped_tiling_dims =
       sharding.tile_assignment().dimensions();
   std::vector<int64> group_dim_sizes(group_dims.size());
   for (int64 i = 0; i < group_dims.size(); ++i) {
-    group_dim_sizes[i] = grouped_tiling_dims[group_dims[i]];
-    grouped_tiling_dims[group_dims[i]] = 1;
+    CHECK_EQ(grouped_tiling_dims[group_dims[i]] % group_dim_shards[i], 0);
+    group_dim_sizes[i] =
+        grouped_tiling_dims[group_dims[i]] / group_dim_shards[i];
+    grouped_tiling_dims[group_dims[i]] = group_dim_shards[i];
   }
+
   std::vector<std::vector<int64>> device_groups(Product(group_dim_sizes));
   sharding.tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 device) {
         int64 group_id = 0;
-        for (int64 dim : group_dims) {
-          group_id *= sharding.tile_assignment().dim(dim);
-          group_id += indices[dim];
+        for (int64 i = 0; i < group_dims.size(); ++i) {
+          group_id *= sharding.tile_assignment().dim(group_dims[i]) /
+                      group_dim_shards[i];
+          group_id += indices[group_dims[i]] / group_dim_shards[i];
         }
         device_groups[group_id].push_back(device);
       });
-  Array<int64> grouped_tiling(grouped_tiling_dims);
-  grouped_tiling.FillIota(0);
-  return GroupedSharding(
+  auto grouped = GroupedSharding(
       std::move(device_groups),
       std::vector<int64>(group_dims.begin(), group_dims.end()),
       std::move(group_dim_sizes), sharding.tile_assignment().num_dimensions(),
-      HloSharding::Tile(grouped_tiling));
+      HloSharding::Replicate());
+  if (sharding.ReplicateOnLastTileDim()) {
+    grouped.data_rank--;
+  }
+  if (Product(grouped_tiling_dims) == 1 ||
+      (sharding.ReplicateOnLastTileDim() &&
+       Product(grouped_tiling_dims) == grouped_tiling_dims.back())) {
+    return grouped;
+  }
+  if (sharding.ReplicateOnLastTileDim() && grouped_tiling_dims.back() == 1) {
+    grouped_tiling_dims.pop_back();
+  }
+  Array<int64> grouped_tiling(grouped_tiling_dims);
+  grouped_tiling.FillIota(0);
+  grouped.sharding = sharding.ReplicateOnLastTileDim() &&
+                             grouped_tiling_dims.size() ==
+                                 sharding.tile_assignment().num_dimensions()
+                         ? HloSharding::PartialTile(grouped_tiling)
+                         : HloSharding::Tile(grouped_tiling);
+  return grouped;
 }
 
 HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
-  CHECK(!grouped_sharding.sharding.IsTileMaximal());
-  std::vector<int64> tiling_dims =
-      grouped_sharding.sharding.tile_assignment().dimensions();
+  std::vector<int64> tiling_dims;
+  bool partial_sharding = false;
+  auto grouped_tiling = grouped_sharding.sharding.tile_assignment();
+  if (grouped_sharding.sharding.IsTileMaximal()) {
+    tiling_dims = std::vector<int64>(grouped_sharding.data_rank, 1);
+    if (grouped_sharding.device_groups[0].size() != 1) {
+      // This is partial sharding.
+      tiling_dims.push_back(grouped_sharding.device_groups[0].size());
+      partial_sharding = true;
+    }
+    grouped_tiling = Array<int64>(tiling_dims);
+    grouped_tiling.FillIota(0);
+  } else {
+    partial_sharding = grouped_sharding.sharding.ReplicateOnLastTileDim();
+    tiling_dims = grouped_sharding.sharding.tile_assignment().dimensions();
+    if (absl::c_linear_search(grouped_sharding.group_dims,
+                              tiling_dims.size())) {
+      tiling_dims.push_back(1);
+      grouped_tiling.Reshape(tiling_dims);
+      partial_sharding = true;
+    }
+  }
   for (int64 i = 0; i < grouped_sharding.group_dims.size(); ++i) {
-    tiling_dims[grouped_sharding.group_dims[i]] =
-        grouped_sharding.group_dim_sizes[i];
+    int64 dim = grouped_sharding.group_dims[i];
+    tiling_dims[dim] *= grouped_sharding.group_dim_sizes[i];
   }
   Array<int64> tiling(tiling_dims);
-  grouped_sharding.sharding.tile_assignment().Each(
-      [&](absl::Span<const int64> indices, int64 device) {
-        std::vector<int64> ungrouped_inds(indices.begin(), indices.end());
-        for (int64 g = 0; g < grouped_sharding.device_groups.size(); ++g) {
-          int64 remaining_group_index = g;
-          for (int64 i = grouped_sharding.group_dims.size() - 1; i >= 0; --i) {
-            ungrouped_inds[grouped_sharding.group_dims[i]] =
-                remaining_group_index % grouped_sharding.group_dim_sizes[i];
-            remaining_group_index /= grouped_sharding.group_dim_sizes[i];
-          }
-          tiling(ungrouped_inds) = grouped_sharding.device_groups[g][device];
-        }
-      });
-  return HloSharding::Tile(tiling);
+  grouped_tiling.Each([&](absl::Span<const int64> indices, int64 device) {
+    std::vector<int64> ungrouped_inds(indices.begin(), indices.end());
+    for (int64 g = 0; g < grouped_sharding.device_groups.size(); ++g) {
+      int64 remaining_group_index = g;
+      for (int64 i = grouped_sharding.group_dims.size() - 1; i >= 0; --i) {
+        int64 dim = grouped_sharding.group_dims[i];
+        int64 groups_in_this_dim = grouped_sharding.group_dim_sizes[i];
+        ungrouped_inds[dim] = (remaining_group_index % groups_in_this_dim) *
+                                  grouped_tiling.dim(dim) +
+                              indices[dim];
+        remaining_group_index /= groups_in_this_dim;
+      }
+      tiling(ungrouped_inds) = grouped_sharding.device_groups[g][device];
+    }
+  });
+  return partial_sharding ? HloSharding::PartialTile(tiling)
+                          : HloSharding::Tile(tiling);
 }
 
 GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
@@ -1135,12 +1528,15 @@ GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
           grouped_sharding.device_groups[g], reference.device_groups[ref_g]);
     }
   }
-  if (matching_groups) {
+  if (matching_groups && !grouped_sharding.sharding.IsTileMaximal()) {
     auto tiles = grouped_sharding.sharding.tile_assignment();
     tiles.Each([&](absl::Span<const int64> indices, int64* device) {
       *device = original_src_to_ref_permutation[*device];
     });
-    grouped_sharding.sharding = HloSharding::Tile(tiles);
+    grouped_sharding.sharding =
+        grouped_sharding.sharding.ReplicateOnLastTileDim()
+            ? HloSharding::PartialTile(tiles)
+            : HloSharding::Tile(tiles);
   }
   grouped_sharding.device_groups = std::move(reference.device_groups);
   return grouped_sharding;
@@ -1151,6 +1547,9 @@ Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
   auto result = original_base_shape;
   for (int64 i = 0; i < grouped_sharding.group_dims.size(); ++i) {
     int64 dim = grouped_sharding.group_dims[i];
+    if (dim >= original_base_shape.rank()) {
+      continue;
+    }
     int64 groups = grouped_sharding.group_dim_sizes[i];
     result.set_dimensions(dim, result.dimensions(dim) / groups);
   }
@@ -1322,49 +1721,6 @@ HloInstruction* PerGroupSliceFromReplicated(
       shard_shape.dimensions()));
 }
 
-absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
-    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
-    absl::Span<int64 const> tgt_to_src) {
-  if (source.IsTileMaximal()) {
-    return source;
-  }
-  std::vector<int64> tgt_dims_skipping_new(tgt_to_src.size(), -1);
-  int64 skipped_tgt_dims = 0;
-  for (int64 i = 0; i < tgt_to_src.size(); ++i) {
-    if (tgt_to_src[i] < 0) {
-      skipped_tgt_dims++;
-    } else {
-      tgt_dims_skipping_new[i] = i - skipped_tgt_dims;
-    }
-  }
-  int64 skipped_src_dims = absl::c_count(src_to_tgt, -1);
-  std::vector<int64> perm(src_to_tgt.size());
-  for (int64 i = 0; i < src_to_tgt.size(); ++i) {
-    if (src_to_tgt[i] < 0) {
-      if (source.tile_assignment().dim(i) > 1) {
-        return absl::nullopt;
-      }
-      perm[src_to_tgt.size() - skipped_src_dims] = i;
-      skipped_src_dims--;
-    } else {
-      perm[tgt_dims_skipping_new[src_to_tgt[i]]] = i;
-    }
-  }
-  auto tgt_sharding = hlo_sharding_util::TransposeSharding(source, perm);
-  if (skipped_tgt_dims == 0) {
-    return tgt_sharding;
-  }
-  auto reshape_tiles = tgt_sharding.tile_assignment();
-  std::vector<int64> tgt_tiles(tgt_to_src.size(), 1);
-  for (int64 i = 0; i < tgt_tiles.size(); ++i) {
-    if (tgt_to_src[i] >= 0) {
-      tgt_tiles[i] = reshape_tiles.dim(tgt_dims_skipping_new[i]);
-    }
-  }
-  reshape_tiles.Reshape(tgt_tiles);
-  return HloSharding::Tile(reshape_tiles);
-}
-
 absl::optional<HloOpcode> ParseReductionComputation(
     const HloComputation* reduction_comp) {
   if (reduction_comp->num_parameters() != 2) {
@@ -1381,6 +1737,48 @@ absl::optional<HloOpcode> ParseReductionComputation(
     return absl::nullopt;
   }
   return root->opcode();
+}
+
+absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+    const HloSharding& sharding,
+    const std::vector<std::vector<int64>>& device_groups) {
+  if (sharding.NumTiles() < device_groups.size() || device_groups.size() < 2 ||
+      device_groups[0].size() < 2) {
+    return absl::nullopt;
+  }
+  int64 rank = sharding.tile_assignment().num_dimensions();
+  if (sharding.ReplicateOnLastTileDim()) {
+    rank--;
+  }
+  absl::flat_hash_map<int64, std::vector<int64>> device_to_index;
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> index, int64 device) {
+        device_to_index[device] =
+            std::vector<int64>(index.begin(), index.begin() + rank);
+      });
+  std::vector<int64> dims;
+  int64 group_count = 1;
+  for (int64 i = 0; i < rank; ++i) {
+    if (device_to_index[device_groups[0][0]][i] ==
+        device_to_index[device_groups[0][1]][i]) {
+      dims.push_back(i);
+      group_count *= sharding.tile_assignment().dim(i);
+    }
+  }
+  if (group_count != device_groups.size()) {
+    return absl::nullopt;
+  }
+  for (const auto& group : device_groups) {
+    for (int64 i = 1; i < group.size(); ++i) {
+      if (absl::c_any_of(dims, [&](const int64 dim) {
+            return device_to_index[group[i]][dim] !=
+                   device_to_index[group[0]][dim];
+          })) {
+        return absl::nullopt;
+      }
+    }
+  }
+  return dims;
 }
 
 }  // namespace spmd

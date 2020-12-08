@@ -63,15 +63,7 @@ const T* GetTensorData(const TfLiteEvalTensor* tensor) {
 }
 
 // Returns the shape of a TfLiteEvalTensor struct.
-inline const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
-  if (tensor == nullptr) {
-    return RuntimeShape();
-  }
-  TfLiteIntArray* dims = tensor->dims;
-  const int dims_size = dims->size;
-  const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
-  return RuntimeShape(dims_size, dims_data);
-}
+const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor);
 
 // Return true if the given tensors have the same shape.
 bool HaveSameShapes(const TfLiteEvalTensor* input1,

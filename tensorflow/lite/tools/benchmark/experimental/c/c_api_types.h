@@ -46,8 +46,18 @@ extern "C" {
 
 typedef enum TfLiteStatus {
   kTfLiteOk = 0,
+
+  // Generally referring to an error in the runtime (i.e. interpreter)
   kTfLiteError = 1,
-  kTfLiteDelegateError = 2
+
+  // Generally referring to an error from a TfLiteDelegate itself.
+  kTfLiteDelegateError = 2,
+
+  // Generally referring to an error in applying a delegate due to
+  // incompatibility between runtime and delegate, e.g., this error is returned
+  // when trying to apply a TfLite delegate onto a model graph that's already
+  // immutable.
+  kTfLiteApplicationError = 3
 } TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
@@ -70,7 +80,7 @@ struct TfLiteRegistration;
 
 // An external context is a collection of information unrelated to the TF Lite
 // framework, but useful to a subset of the ops. TF Lite knows very little
-// about about the actual contexts, but it keeps a list of them, and is able to
+// about the actual contexts, but it keeps a list of them, and is able to
 // refresh them if configurations like the number of recommended threads
 // change.
 typedef struct TfLiteExternalContext {
@@ -88,7 +98,7 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON)
+    defined(HEXAGON) || (__clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];
@@ -225,6 +235,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
     }                                                                      \
   } while (0)
 
+#define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s not near %s (%f != %f)",       \
+                         __FILE__, __LINE__, #a, #b, static_cast<double>(a), \
+                         static_cast<double>(b));                            \
+      return kTfLiteError;                                                   \
+    }                                                                        \
+  } while (0)
+
 #define TF_LITE_ENSURE_OK(context, status) \
   do {                                     \
     const TfLiteStatus s = (status);       \
@@ -279,6 +300,7 @@ typedef enum {
   kTfLiteFloat16 = 10,
   kTfLiteFloat64 = 11,
   kTfLiteComplex128 = 12,
+  kTfLiteUInt64 = 13,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -333,6 +355,7 @@ typedef union TfLitePtrUnion {
    * members are deprecated. */
   int32_t* i32;
   int64_t* i64;
+  uint64_t* u64;
   float* f;
   TfLiteFloat16* f16;
   double* f64;
@@ -358,6 +381,8 @@ typedef union TfLitePtrUnion {
 //  * kTfLitePersistentRo: Allocated and populated during prepare. This is
 //        useful for tensors that can be computed during prepare and treated
 //        as constant inputs for downstream ops (also in prepare).
+//  * kTfLiteCustom: Custom memory allocation provided by the user. See
+//        TfLiteCustomAllocation below.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -365,6 +390,7 @@ typedef enum TfLiteAllocationType {
   kTfLiteArenaRwPersistent,
   kTfLiteDynamic,
   kTfLitePersistentRo,
+  kTfLiteCustom,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.
@@ -397,7 +423,16 @@ typedef struct TfLiteSparsity {
   int dim_metadata_size;
 } TfLiteSparsity;
 
-// An tensor in the interpreter system which is a wrapper around a buffer of
+// Defines a custom memory allocation not owned by the runtime.
+// `data` should be aligned to kDefaultTensorAlignment defined in
+// lite/util.h. (Currently 64 bytes)
+// NOTE: See Interpreter.SetCustomAllocationForTensor for details on usage.
+typedef struct TfLiteCustomAllocation {
+  void* data;
+  size_t bytes;
+} TfLiteCustomAllocation;
+
+// A tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
 #ifndef TF_LITE_STATIC_MEMORY
 typedef struct TfLiteTensor {

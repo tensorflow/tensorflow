@@ -1,4 +1,4 @@
-# MLIR-HLO
+# MLIR-HLO: A Standalone "HLO" MLIR-based Compiler
 
 The code here exists in two places:
 
@@ -22,9 +22,42 @@ upstream.
 
 ## QuickStart: building and testing
 
-TODO
+These instructions work on Linux, you may have to adjust for your platform.
+
+To build the code in this repository, you need a clone of the LLVM/MLIR git
+repository:
+
+    $ git clone https://github.com/llvm/llvm-project.git
+
+
+You need to make sure you have the right commit checked out in the LLVM
+repository (you need to do this every time you pull from this repo):
+
+    $ (cd llvm-project && git checkout $(cat build_tools/llvm_version.txt))
+
+We provide a script to configure and build LLVM/MLIR:
+
+    $ build_tools/build_mlir.sh ${PWD}/llvm-project/ ${PWD}/llvm-build
+
+Again this is something to do every time you pull from this repository and the
+LLVM revision changes.
+
+Finally you can build and test this repository:
+
+    $ mkdir build && cd build
+    $ cmake .. -GNinja \
+       -DLLVM_ENABLE_LLD=ON \
+       -DCMAKE_BUILD_TYPE=Release \
+       -DLLVM_ENABLE_ASSERTIONS=On \
+       -DMLIR_DIR=${PWD}/../llvm-build/lib/cmake/mlir
+    $ ninja check-mlir-hlo
+
 
 ## Overview
+
+MLIR-HLO aims to provide an end-to-end compiler for CPU and GPU, as well as
+building reusable blocks for other accelerators. This is heavily inspired by the
+success of XLA.
 
 [XLA](https://www.tensorflow.org/xla/) (Accelerated Linear Algebra) is a
 domain-specific compiler framework and execution environment for linear algebra,
@@ -73,7 +106,7 @@ pipeline using MLIR:
 *   `mhlo`: "meta"-HLO dialect ; similar to `xla_hlo`, but with extensions for
     dynamic shape support.
 *   `lmhlo`: "late"-"meta"-HLO, it is the IR after buffer allocation is
-    performed. In XLA the buffer allocation is a side-datastructure which keeps
+    performed. In XLA the buffer allocation is a side-data structure which keeps
     track of these informations, while this separate dialect materializes it in
     the IR.
 
@@ -81,7 +114,7 @@ We describe these in more details below.
 
 ### HLO Client Dialect: `chlo`.
 
-*   It was originaly designed to map the
+*   It was originally designed to map the
     [XLA client APIs](https://www.tensorflow.org/xla/operation_semantics) (e.g.,
     ops supports implicit broadcast and roughly modeled on XlaBuilder API)
     modulo support for dynamic shapes and additional ops required to support

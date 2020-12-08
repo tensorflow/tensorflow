@@ -22,16 +22,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
-using ::tflite::gpu::metal::RuntimeOptions;
+using ::tflite::gpu::CalculationsPrecision;
 using ::tflite::gpu::ValueId;
 using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::HalfBits;
@@ -40,71 +40,77 @@ using ::tflite::gpu::TensorUsageRecord;
 
 @implementation TFLInferenceContext {
   std::vector<TFLComputeTask*> _computeTasks;
+  // contains indexes of _computeTasks
+  std::vector<int> _taskIdsWithInOutBuffers;
+  std::vector<ValueId> _inputIds;
   std::vector<ValueId> _outputIds;
   id<MTLDevice> _device;
-  RuntimeOptions _options;
+  CalculationsPrecision _precision;
+  std::map<ValueId, BHWC> _tensorShapes;
 }
 
 - (absl::Status)compileModelWithDevice:(id<MTLDevice>)device
-                       taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors
-                       outputBufferIDs:(const std::vector<ValueId>&)requestedOutputBufferIDs
-                        runtimeOptions:(const RuntimeOptions&)options {
+                                 model:(const tflite::gpu::metal::CompiledModel&) compiledModel
+                        inputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)inputBufferIDs
+                       outputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)outputBufferIDs
+                             precision:(tflite::gpu::CalculationsPrecision)precision {
   _device = device;
-  _outputIds = requestedOutputBufferIDs;
-  _options = options;
+  _inputIds = inputBufferIDs;
+  _outputIds = outputBufferIDs;
+  _precision = precision;
   // Metal resources are created here.
-  for (const auto& node : taskDescriptors) {
+  for (const auto& node : compiledModel.nodes) {
     TFLComputeTask* task = [[TFLComputeTask alloc] init];
-    RETURN_IF_ERROR([task compileWithDevice:_device taskDescriptor:node runtimeOptions:_options]);
+    RETURN_IF_ERROR([task compileWithDevice:_device
+                             taskDescriptor:node
+                                  precision:_precision]);
+    [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
+  _tensorShapes = compiledModel.tensor_shapes;
+  [self allocateTensors];
   return absl::OkStatus();
 }
 
-- (absl::Status)setInputDimensions:(const std::map<ValueId, BHWC>&)inputDimensions
-                  outputDimensions:(std::map<ValueId, BHWC>*)outputDimensions
-                   taskDescriptors:(const std::vector<ComputeTaskDescriptorPtr>&)taskDescriptors {
+- (absl::Status)allocateTensors {
   // These maps contain all input/output/intermediate buffers shared across model.
-  std::map<ValueId, BHWC> dimensions = inputDimensions;
   std::map<ValueId, id<MTLBuffer>> buffers;
   std::set<ValueId> preallocatedIds;
   // Insert uninitialized input buffers. This buffers will be set externally.
-  for (auto dimension : dimensions) {
-    buffers[dimension.first] = nil;
-    preallocatedIds.insert(dimension.first);
+  for (auto tensor_id : _inputIds) {
+    buffers[tensor_id] = nil;
+    preallocatedIds.insert(tensor_id);
   }
   for (const auto& outputId : _outputIds) {
     preallocatedIds.insert(outputId);
   }
   for (auto& task : _computeTasks) {
     // The same device must be used here as well as on shader compilation stage.
-    RETURN_IF_ERROR([task setInputDimensionsWithDevice:_device dimensions:&dimensions]);
-  }
-  for (auto id : _outputIds) {
-    (*outputDimensions)[id] = dimensions[id];
+    RETURN_IF_ERROR([task updateParamsWithDevice:_device tensorShapes:_tensorShapes]);
   }
 
   // TODO(ypisarchyk): it make sense to move it to separate function
   // Generate usage records for each intermediate tensor in order of their first_task
   std::vector<TensorUsageRecord<size_t>> usageRecords;
   std::map<ValueId, size_t> usageRecordIds;
-  for (uint32_t i = 0; i < taskDescriptors.size(); ++i) {
-    auto outputId = taskDescriptors[i]->output_buffer.id;
-    if (!preallocatedIds.count(outputId)) {
-      if (!usageRecordIds.count(outputId)) {
-        const auto it = dimensions.find(outputId);
-        if (it == dimensions.end()) {
-          return absl::InternalError("Dimensions for intermediate tensor not found.");
+  for (uint32_t i = 0; i < _computeTasks.size(); ++i) {
+    for (const auto tensor_id : [_computeTasks[i] getOutputIds]) {
+      if (!preallocatedIds.count(tensor_id)) {
+        if (!usageRecordIds.count(tensor_id)) {
+          const auto it = _tensorShapes.find(tensor_id);
+          if (it == _tensorShapes.end()) {
+            return absl::InternalError("Dimensions for intermediate tensor not found.");
+          }
+          usageRecordIds[tensor_id] = usageRecords.size();
+          usageRecords.emplace_back(it->second.w * it->second.h * AlignByN(it->second.c, 4), i, i);
+        } else {
+          usageRecords[usageRecordIds[tensor_id]].last_task = i;
         }
-        usageRecordIds[outputId] = usageRecords.size();
-        usageRecords.emplace_back(it->second.w * it->second.h * AlignByN(it->second.c, 4), i, i);
-      } else {
-        usageRecords[usageRecordIds[outputId]].last_task = i;
       }
     }
-    for (auto& buffer : taskDescriptors[i]->input_buffers) {
-      if (!preallocatedIds.count(buffer.id)) {
-        usageRecords[usageRecordIds[buffer.id]].last_task = i;
+    for (const auto tensor_id : [_computeTasks[i] getInputIds]) {
+      if (!preallocatedIds.count(tensor_id)) {
+        usageRecords[usageRecordIds[tensor_id]].last_task = i;
       }
     }
   }
@@ -113,9 +119,8 @@ using ::tflite::gpu::TensorUsageRecord;
   RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY_BEST, &assignment));
   auto objectsCount = assignment.object_sizes.size();
   std::vector<id<MTLBuffer>> sharedBuffers(objectsCount);
-  size_t dataTypeSize = _options.storage_precision == RuntimeOptions::Precision::FP32
-                            ? sizeof(float)
-                            : sizeof(HalfBits);
+  const bool f32_storage = _precision == CalculationsPrecision::F32;
+  size_t dataTypeSize = f32_storage ? sizeof(float) : sizeof(HalfBits);
 
   // allocate buffers for each shared object
   for (size_t i = 0; i < objectsCount; ++i) {
@@ -144,7 +149,11 @@ using ::tflite::gpu::TensorUsageRecord;
     sharedBuffers[i] = [_device newBufferWithLength:bufferSize
                                             options:MTLResourceStorageModeShared];
   }
-  for (auto& task : _computeTasks) {
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    auto& task = _computeTasks[i];
+    if ([task hasInOutIds:preallocatedIds]) {
+      _taskIdsWithInOutBuffers.push_back(i);
+    }
     RETURN_IF_ERROR([task assignBuffers:&buffers
                               outputIds:_outputIds
                          usageRecordIds:usageRecordIds
@@ -157,9 +166,13 @@ using ::tflite::gpu::TensorUsageRecord;
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
        inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers
              encoderBlock:(id<MTLComputeCommandEncoder> (^)(bool isLast))encoderBlock {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
-    [task encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers];
+    [task encodeWithEncoder:commandEncoder];
     if (encoderBlock != nil) {
       commandEncoder = encoderBlock(i == _computeTasks.size() - 1);
     }

@@ -38,9 +38,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T, typename Tpadding>
 class PadOp : public OpKernel {
@@ -392,72 +389,5 @@ REGISTER_KERNEL_BUILDER(Name("PadV2")
                         PadOp<CPUDevice, int32, int64>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#ifdef TENSORFLOW_USE_SYCL
-// Registration of the GPU implementations.
-#define REGISTER_SYCL_KERNEL(T)                                   \
-  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
-                              .Device(DEVICE_SYCL)                \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int32>("Tpaddings") \
-                              .HostMemory("paddings"),            \
-                          PadOp<SYCLDevice, T, int32>);           \
-  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
-                              .Device(DEVICE_SYCL)                \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int64>("Tpaddings") \
-                              .HostMemory("paddings"),            \
-                          PadOp<SYCLDevice, T, int64>);           \
-  REGISTER_KERNEL_BUILDER(Name("PadV2")                           \
-                              .Device(DEVICE_SYCL)                \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int32>("Tpaddings") \
-                              .HostMemory("paddings")             \
-                              .HostMemory("constant_values"),     \
-                          PadOp<SYCLDevice, T, int32>)            \
-  REGISTER_KERNEL_BUILDER(Name("PadV2")                           \
-                              .Device(DEVICE_SYCL)                \
-                              .TypeConstraint<T>("T")             \
-                              .TypeConstraint<int64>("Tpaddings") \
-                              .HostMemory("paddings")             \
-                              .HostMemory("constant_values"),     \
-                          PadOp<SYCLDevice, T, int64>)
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
-REGISTER_KERNEL_BUILDER(Name("Pad")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int32>);
-REGISTER_KERNEL_BUILDER(Name("Pad")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int64>);
-REGISTER_KERNEL_BUILDER(Name("PadV2")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("constant_values")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int32>);
-REGISTER_KERNEL_BUILDER(Name("PadV2")
-                            .Device(DEVICE_SYCL)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("Tpaddings")
-                            .HostMemory("input")
-                            .HostMemory("paddings")
-                            .HostMemory("constant_values")
-                            .HostMemory("output"),
-                        PadOp<CPUDevice, int32, int64>);
-#undef REGISTER_SYCL_KERNEL
-#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

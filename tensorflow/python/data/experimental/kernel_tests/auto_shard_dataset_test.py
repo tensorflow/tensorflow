@@ -103,6 +103,43 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(batch_size=[1, 3, 10])))
+  def testDatasetOfReaderDatasetsPipeline(self, batch_size):
+    # This tests a scenario where a list_files main return multiple files
+    # due to the glob containing wildcards.
+    def batch(iterator, n):
+      l = len(iterator)
+      for i in range(0, l, n):
+        yield iterator[i:min(i + n, l)]
+
+    datasets = []
+    for files in batch(self.test_filenames, batch_size):
+      datasets.append(
+          dataset_ops.Dataset.list_files(files, shuffle=False).map(
+              core_readers.TFRecordDataset))
+    dataset = dataset_ops.Dataset.from_tensor_slices(datasets)
+    dataset = dataset.flat_map(lambda x: x)
+
+    # Simulate additional ops in between flat_map and interleave. This should be
+    # a no-op since if ShardDataset is placed right after flat_map, we will only
+    # have two datasets left at this point.
+    dataset = dataset.prefetch(1)
+    dataset = dataset.prefetch(1)
+
+    dataset = dataset.interleave(
+        lambda x: x, cycle_length=1, num_parallel_calls=1)
+
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+
+    self.assertDatasetProduces(dataset, expected)
+
   @combinations.generate(test_base.default_test_combinations())
   def testZipReaderPipeline(self):
     dataset1 = dataset_ops.Dataset.list_files(
@@ -255,6 +292,23 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          combinations.combine(sharding_policy=[
+              distribute_options.AutoShardPolicy.DATA,
+              distribute_options.AutoShardPolicy.AUTO
+          ])))
+  def testShardByDataBeforePrefetch(self, sharding_policy):
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.apply(testing.assert_next(["Shard", "Prefetch"]))
+    dataset = dataset.prefetch(1)
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = sharding_policy
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 2, 0)
+    self.assertDatasetProduces(dataset, [0, 2])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
           combinations.times(combinations.combine(
               sharding_policy=[distribute_options.AutoShardPolicy.DATA,
                                distribute_options.AutoShardPolicy.FILE]),
@@ -394,32 +448,6 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
       self.evaluate(self.getNext(dataset)())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShardWithLegacyRebatch(self):
-    # Tests that RebatchDatasetV1 is a passthrough op.
-    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
-    dataset = dataset.apply(
-        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
-    dataset = dataset.flat_map(core_readers.TFRecordDataset)
-    dataset = dataset.batch(5)
-    dataset = distribute._LegacyRebatchDataset(dataset, num_replicas=1)
-    dataset = distribute._AutoShardDataset(dataset, 5, 3)
-    nxt = self.getNext(dataset)
-    self.evaluate(nxt())
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testShardWithRebatch(self):
-    # Tests that RebatchDatasetV2 is a passthrough op.
-    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
-    dataset = dataset.apply(
-        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
-    dataset = dataset.flat_map(core_readers.TFRecordDataset)
-    dataset = dataset.batch(5)
-    dataset = distribute._RebatchDataset(dataset, batch_sizes=5)
-    dataset = distribute._AutoShardDataset(dataset, 5, 3)
-    nxt = self.getNext(dataset)
-    self.evaluate(nxt())
-
-  @combinations.generate(test_base.default_test_combinations())
   def testNoReaderPipelines(self):
     dataset = dataset_ops.Dataset.range(1024)
     dataset = distribute._AutoShardDataset(dataset, 2, 0)
@@ -456,6 +484,36 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
     dataset = dataset.apply(cardinality.assert_cardinality(42))
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMaxIntraOpParallelism(self):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = dataset_ops._MaxIntraOpParallelismDataset(dataset, 1)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPrivateThreadpool(self):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = dataset_ops._PrivateThreadPoolDataset(dataset, 1)
     dataset = distribute._AutoShardDataset(dataset, 5, 0)
 
     expected = [
@@ -527,6 +585,92 @@ class AutoShardTextLineDatasetTest(
         for r in range(0, 10)
     ]
     self.assertDatasetProduces(dataset, expected)
+
+
+class AutoShardWithRebatchDatasetTest(
+    reader_dataset_ops_test_base.TFRecordDatasetTestBase,
+    parameterized.TestCase):
+
+  def _setUpFiles(self, num_files, num_records_per_file):
+    self._num_files = num_files
+    self._num_records = num_records_per_file
+    self.test_filenames = self._createFiles()
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileShardingWithLegacyRebatch(self):
+    # Tests that RebatchDatasetV1 is a passthrough op.
+    self._setUpFiles(num_files=5, num_records_per_file=10)
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.apply(
+        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = distribute._LegacyRebatchDataset(dataset, num_replicas=5)
+    dataset = distribute._AutoShardDataset(dataset, 5, 3)
+    expected = [[self._record(3, i)] for i in range(10)]
+    self.assertDatasetProduces(dataset, expected)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFileShardingWithRebatch(self):
+    # Tests that RebatchDatasetV2 is a passthrough op.
+    self._setUpFiles(num_files=3, num_records_per_file=5)
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.apply(
+        testing.assert_next(["Shard", "FlatMap", "Batch", "Rebatch"]))
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = distribute._RebatchDataset(dataset, batch_sizes=[2, 1, 2])
+    dataset = distribute._AutoShardDataset(dataset, 3, 1)
+    expected = [[self._record(1, 0), self._record(1, 1)], [self._record(1, 2)],
+                [self._record(1, 3), self._record(1, 4)]]
+    self.assertDatasetProduces(dataset, expected)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.times(
+              combinations.combine(sharding_policy=[
+                  distribute_options.AutoShardPolicy.DATA,
+                  distribute_options.AutoShardPolicy.AUTO
+              ]), combinations.combine(with_prefetch=[True, False]))))
+  def testUseLegacyRebatchWithDataSharding(self, sharding_policy,
+                                           with_prefetch):
+    # This test simulates a distributed environment with 3 workers, each with
+    # 1 replica.
+    dataset = dataset_ops.Dataset.range(8)
+    dataset = dataset.batch(4)
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = sharding_policy
+    dataset = dataset.with_options(options)
+    # We expect the auto-shard rewrite to rewrite RebatchDatasetV2 to
+    # RebatchDataset(V1) for correctness reasons. This will modify the output
+    # of the dataset.
+    worker_a_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 1, 1])
+    if with_prefetch:
+      worker_a_dataset = worker_a_dataset.prefetch(1)
+    worker_a_dataset = distribute._AutoShardDataset(
+        worker_a_dataset, 3, 0, num_replicas=3)
+    expected = [[0, 1], [4, 5]]
+    self.assertDatasetProduces(worker_a_dataset, expected)
+
+    worker_b_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[1, 1, 2])
+    if with_prefetch:
+      worker_b_dataset = worker_b_dataset.prefetch(1)
+    worker_b_dataset = distribute._AutoShardDataset(
+        worker_b_dataset, 3, 1, num_replicas=3)
+    expected = [[2, 3], [6, 7]]
+    self.assertDatasetProduces(worker_b_dataset, expected)
+
+    worker_c_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[1, 2, 1])
+    if with_prefetch:
+      worker_c_dataset = worker_c_dataset.prefetch(1)
+    worker_c_dataset = distribute._AutoShardDataset(
+        worker_c_dataset, 3, 2, num_replicas=3)
+    expected = [[], []]
+    self.assertDatasetProduces(worker_c_dataset, expected)
 
 
 if __name__ == "__main__":

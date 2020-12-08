@@ -22,26 +22,26 @@ from absl.testing import parameterized
 import numpy
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import strategy_test_lib
-from tensorflow.python.distribute.single_loss_example import batchnorm_example
-from tensorflow.python.distribute.single_loss_example import minimize_loss_example
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras.distribute import optimizer_combinations
+from tensorflow.python.keras.distribute.test_example import batchnorm_example
+from tensorflow.python.keras.distribute.test_example import minimize_loss_example
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_v2_toggles
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.platform import test
 
 
 VAR_MAP_V1 = {
@@ -71,7 +71,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     self.evaluate(iterator.initializer)
     return iterator
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           optimizer_combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
@@ -122,7 +122,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))
       self.assertTrue(is_not_increasing)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           optimizer_combinations.distributions_and_v1_optimizers(),
           combinations.combine(mode=["graph"], use_callable_loss=[True, False])
@@ -161,7 +161,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))
       self.assertTrue(is_not_increasing)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           optimizer_combinations.distributions_and_v1_and_v2_optimizers(),
           combinations.combine(mode=["graph", "eager"])) + combinations.combine(
@@ -211,7 +211,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def get_expected_variables(num_parameter_devices):
         name = optimizer._name
 
-        if strategy_test_lib.is_optimizer_v2_instance(optimizer):
+        if isinstance(optimizer, optimizer_v2.OptimizerV2):
           variables = VAR_MAP_V2[name]
         else:
           variables = VAR_MAP_V1[name]
@@ -228,7 +228,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           get_expected_variables(len(distribution.extended.parameter_devices)),
           set(created_variables))
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           combinations.combine(momentum=[0.8, 0.9, 0.99], renorm=[False, True]),
           combinations.times(
@@ -295,7 +295,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
               expected_moving_mean - averaged_batch_mean(i)) * (1.0 - momentum))
           self.assertNear(expected_moving_means[i], moving_means[i], 0.0001)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           combinations.combine(loss_reduction=[
               losses_impl.Reduction.SUM, losses_impl.Reduction.MEAN,
@@ -352,7 +352,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
         optimizer = optimizer_fn()  # GradientDescent with 0.2 learning rate
 
-        if strategy_test_lib.is_optimizer_v2_instance(optimizer):
+        if isinstance(optimizer, optimizer_v2.OptimizerV2):
           return optimizer.minimize(loss_fn, [w])
         else:
           if use_callable_loss:
@@ -411,7 +411,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         # One of the mean loss reductions.
         self.assertNear(weight, 2 + 0.053, 0.0001)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       combinations.times(
           optimizer_combinations.distributions_and_v1_and_v2_optimizers(),
           combinations.combine(mode=["graph", "eager"]),
@@ -429,11 +429,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         return dataset.batch(batch_size=1, drop_remainder=True)
 
       optimizer = optimizer_fn()
-      kernel = strategy_test_lib.create_variable_like_keras_layer(
-          "kernel", (1, 1), dtypes.float32)
-      bias = strategy_test_lib.create_variable_like_keras_layer(
-          "bias", (1,), dtypes.float32)
-      # layer = core.Dense(1, use_bias=True)
+      layer = core.Dense(1, use_bias=True)
 
       key1 = "foo"
       value1 = "bar"
@@ -441,13 +437,12 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def model_fn(output_context, x):
         """A very simple model written by the user."""
         def loss_fn():
-          y = array_ops.reshape(nn_ops.bias_add(
-              math_ops.matmul(x, kernel), bias), []) - constant_op.constant(1.)
+          y = array_ops.reshape(layer(x), []) - constant_op.constant(1.)
           return y * y
 
-        if strategy_test_lib.is_optimizer_v2_instance(optimizer):
+        if isinstance(optimizer, optimizer_v2.OptimizerV2):
           train_op = optimizer.minimize(
-              loss_fn, lambda: [kernel, bias])
+              loss_fn, lambda: layer.trainable_variables)
         else:
           train_op = optimizer.minimize(loss_fn)
         loss = loss_fn()
@@ -516,8 +511,8 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       for _ in range(5):
         _, loss = run_step()
         losses.append(loss)
-        weights.append(self.evaluate(kernel))
-        biases.append(self.evaluate(bias))
+        weights.append(self.evaluate(layer.kernel))
+        biases.append(self.evaluate(layer.bias))
 
       loss_is_not_increasing = all(y <= x for x, y in zip(losses, losses[1:]))
       self.assertTrue(loss_is_not_increasing)
@@ -541,7 +536,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)
     self.assertEqual(initial_loss.shape, loss_tensor.shape)
 
-  @combinations.generate(
+  @ds_combinations.generate(
       optimizer_combinations.distributions_and_v2_optimizers())
   def test_empty_var_list(self, distribution, optimizer_fn):
     opt = optimizer_fn()

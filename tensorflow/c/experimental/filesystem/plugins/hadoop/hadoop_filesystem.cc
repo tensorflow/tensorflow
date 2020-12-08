@@ -22,11 +22,10 @@ limitations under the License.
 #include <sstream>
 #include <string>
 
-#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/env.h"
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/logging.h"
 #include "tensorflow/c/tf_status.h"
-#include "third_party/hadoop/hdfs.h"
 
 // Implementation of a filesystem for HADOOP environments.
 // This filesystem will support `hdfs://`, `viewfs://` and `har://` URI schemes.
@@ -37,11 +36,17 @@ static void plugin_memory_free(void* ptr) { free(ptr); }
 void ParseHadoopPath(const std::string& fname, std::string* scheme,
                      std::string* namenode, std::string* path) {
   size_t scheme_end = fname.find("://") + 2;
-  *scheme = fname.substr(0, scheme_end + 1);
+  // We don't want `://` in scheme.
+  *scheme = fname.substr(0, scheme_end - 2);
   size_t nn_end = fname.find("/", scheme_end + 1);
-  if (nn_end == std::string::npos) return;
+  if (nn_end == std::string::npos) {
+    *namenode = fname.substr(scheme_end + 1);
+    *path = "";
+    return;
+  }
   *namenode = fname.substr(scheme_end + 1, nn_end - scheme_end - 1);
-  *path = fname.substr(nn_end + 1);
+  // We keep `/` in path.
+  *path = fname.substr(nn_end);
 }
 
 void SplitArchiveNameAndPath(std::string* path, std::string* nn,
@@ -54,7 +59,7 @@ void SplitArchiveNameAndPath(std::string* path, std::string* nn,
   }
   // Case of hadoop archive. Namenode is the path to the archive.
   std::ostringstream namenodestream;
-  namenodestream << "har://" << nn
+  namenodestream << "har://" << *nn
                  << path->substr(0, index_end_archive_name + 4);
   *nn = namenodestream.str();
   path->erase(0, index_end_archive_name + 4);
@@ -143,15 +148,20 @@ class LibHDFS {
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
     if (hdfs_home != nullptr) {
       auto JoinPath = [](std::string home, std::string lib) {
+#if defined(_WIN32)
+        if (home.back() != '\\') home.push_back('\\');
+        return home + "lib\\native\\" + lib;
+#else
         if (home.back() != '/') home.push_back('/');
         return home + "lib/native/" + lib;
+#endif
       };
       std::string path = JoinPath(hdfs_home, kLibHdfsDso);
       TryLoadAndBind(path.c_str(), &handle_, status);
       if (TF_GetCode(status) == TF_OK) {
         return;
       } else {
-        std::cerr << "HadoopFileSystem load error: " << TF_Message(status);
+        TF_Log(TF_FATAL, "HadoopFileSystem load error: %s", TF_Message(status));
       }
     }
 
@@ -163,16 +173,17 @@ class LibHDFS {
   void* handle_;
 };
 
-// We rely on HDFS connection caching here. The HDFS client calls
-// org.apache.hadoop.fs.FileSystem.get(), which caches the connection
-// internally.
-hdfsFS Connect(LibHDFS* libhdfs, const std::string& path, TF_Status* status) {
+// We implement connection caching in Tensorflow, which can significantly
+// improve performance. Fixes #43187
+hdfsFS Connect(tf_hadoop_filesystem::HadoopFile* hadoop_file,
+               const std::string& path, TF_Status* status) {
+  auto libhdfs = hadoop_file->libhdfs;
   std::string scheme, namenode, hdfs_path;
   ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
 
-  hdfsBuilder* builder = libhdfs->hdfsNewBuilder();
+  std::string cacheKey(scheme);
   if (scheme == "file") {
-    libhdfs->hdfsBuilderSetNameNode(builder, nullptr);
+    namenode = "";
   } else if (scheme == "viewfs") {
     char* defaultFS = nullptr;
     libhdfs->hdfsConfGetStr("fs.defaultFS", &defaultFS);
@@ -188,21 +199,33 @@ hdfsFS Connect(LibHDFS* libhdfs, const std::string& path, TF_Status* status) {
     // The default NameNode configuration will be used (from the XML
     // configuration files). See:
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
-    libhdfs->hdfsBuilderSetNameNode(builder, "default");
+    namenode = "default";
   } else if (scheme == "har") {
     std::string path_har = path;
     SplitArchiveNameAndPath(&path_har, &namenode, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
-    libhdfs->hdfsBuilderSetNameNode(builder, namenode.c_str());
   } else {
-    libhdfs->hdfsBuilderSetNameNode(
-        builder, namenode.empty() ? "default" : namenode.c_str());
+    if (namenode.empty()) {
+      namenode = "default";
+    }
   }
-  auto fs = libhdfs->hdfsBuilderConnect(builder);
-  if (fs == nullptr)
-    TF_SetStatusFromIOError(status, TF_NOT_FOUND, strerror(errno));
-  else
-    TF_SetStatus(status, TF_OK, "");
+  cacheKey += namenode;
+
+  absl::MutexLock l(&hadoop_file->connection_cache_lock);
+  if (hadoop_file->connection_cache.find(cacheKey) ==
+      hadoop_file->connection_cache.end()) {
+    hdfsBuilder* builder = libhdfs->hdfsNewBuilder();
+    libhdfs->hdfsBuilderSetNameNode(
+        builder, namenode.empty() ? nullptr : namenode.c_str());
+    auto cacheFs = libhdfs->hdfsBuilderConnect(builder);
+    if (cacheFs == nullptr) {
+      TF_SetStatusFromIOError(status, TF_ABORTED, strerror(errno));
+      return cacheFs;
+    }
+    hadoop_file->connection_cache[cacheKey] = cacheFs;
+  }
+  auto fs = hadoop_file->connection_cache[cacheKey];
+  TF_SetStatus(status, TF_OK, "");
   return fs;
 }
 
@@ -216,6 +239,7 @@ typedef struct HDFSFile {
   LibHDFS* libhdfs;
   absl::Mutex mu;
   hdfsFile handle ABSL_GUARDED_BY(mu);
+  bool disable_eof_retried;
   HDFSFile(std::string path, std::string hdfs_path, hdfsFS fs, LibHDFS* libhdfs,
            hdfsFile handle)
       : path(std::move(path)),
@@ -223,7 +247,15 @@ typedef struct HDFSFile {
         fs(fs),
         libhdfs(libhdfs),
         mu(),
-        handle(handle) {}
+        handle(handle) {
+    const char* disable_eof_retried_str =
+        getenv("HDFS_DISABLE_READ_EOF_RETRIED");
+    if (disable_eof_retried_str && disable_eof_retried_str[0] == '1') {
+      disable_eof_retried = true;
+    } else {
+      disable_eof_retried = false;
+    }
+  }
 } HDFSFile;
 
 void Cleanup(TF_RandomAccessFile* file) {
@@ -247,8 +279,12 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 
   char* dst = buffer;
   bool eof_retried = false;
-  int64_t r = 0;
-  while (TF_GetCode(status) == TF_OK && !eof_retried) {
+  if (hdfs_file->disable_eof_retried) {
+    // eof_retried = true, avoid calling hdfsOpenFile in Read, Fixes #42597
+    eof_retried = true;
+  }
+  int64_t read = 0;
+  while (TF_GetCode(status) == TF_OK && n > 0) {
     // We lock inside the loop rather than outside so we don't block other
     // concurrent readers.
     absl::MutexLock l(&hdfs_file->mu);
@@ -257,12 +293,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     // of int32. -2 offset can avoid JVM OutOfMemoryError.
     size_t read_n =
         (std::min)(n, static_cast<size_t>(std::numeric_limits<int>::max() - 2));
-    r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset), dst,
-                           static_cast<tSize>(read_n));
+    int64_t r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset),
+                                   dst, static_cast<tSize>(read_n));
     if (r > 0) {
       dst += r;
       n -= r;
       offset += r;
+      read += r;
     } else if (!eof_retried && r == 0) {
       // Always reopen the file upon reaching EOF to see if there's more data.
       // If writers are streaming contents while others are concurrently
@@ -274,11 +311,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
-      handle = libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
-      if (handle == nullptr) {
+      hdfs_file->handle =
+          libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
+      if (hdfs_file->handle == nullptr) {
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
+      handle = hdfs_file->handle;
       eof_retried = true;
     } else if (eof_retried && r == 0) {
       TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
@@ -288,7 +327,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
       TF_SetStatusFromIOError(status, errno, path);
     }
   }
-  return r;
+  return read;
 }
 
 }  // namespace tf_random_access_file
@@ -308,7 +347,7 @@ typedef struct HDFSFile {
         handle(handle) {}
 } HDFSFile;
 
-static void Cleanup(TF_WritableFile* file) {
+void Cleanup(TF_WritableFile* file) {
   auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
   hdfs_file->libhdfs->hdfsCloseFile(hdfs_file->fs, hdfs_file->handle);
   hdfs_file->fs = nullptr;
@@ -387,30 +426,36 @@ void Close(const TF_WritableFile* file, TF_Status* status) {
 // SECTION 3. Implementation for `TF_ReadOnlyMemoryRegion`
 // ----------------------------------------------------------------------------
 namespace tf_read_only_memory_region {
-
-// TODO(vnvo2409): Implement later
-
+// Hadoop doesn't support Readonly Memory Region
 }  // namespace tf_read_only_memory_region
 
 // SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_hadoop_filesystem {
 
+HadoopFile::HadoopFile(TF_Status* status)
+    : libhdfs(new LibHDFS(status)),
+      connection_cache_lock(),
+      connection_cache() {}
+
 void Init(TF_Filesystem* filesystem, TF_Status* status) {
-  filesystem->plugin_filesystem = new LibHDFS(status);
+  filesystem->plugin_filesystem = new HadoopFile(status);
   if (TF_GetCode(status) != TF_OK) return;
   TF_SetStatus(status, TF_OK, "");
 }
 
 void Cleanup(TF_Filesystem* filesystem) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
   delete libhdfs;
+  delete hadoop_file;
 }
 
 void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                          TF_RandomAccessFile* file, TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -426,8 +471,27 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
 
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  auto handle = libhdfs->hdfsOpenFile(fs, hdfs_path.c_str(), O_WRONLY, 0, 0, 0);
+  if (handle == nullptr) return TF_SetStatusFromIOError(status, errno, path);
+
+  file->plugin_file =
+      new tf_writable_file::HDFSFile(hdfs_path, fs, libhdfs, handle);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -458,8 +522,9 @@ void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
 
 void PathExists(const TF_Filesystem* filesystem, const char* path,
                 TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -474,8 +539,9 @@ void PathExists(const TF_Filesystem* filesystem, const char* path,
 
 void Stat(const TF_Filesystem* filesystem, const char* path,
           TF_FileStatistics* stats, TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -493,8 +559,9 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
 
 int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
                     TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return -1;
 
   std::string scheme, namenode, hdfs_path;
@@ -514,8 +581,9 @@ int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
 
 void DeleteFile(const TF_Filesystem* filesystem, const char* path,
                 TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -529,8 +597,9 @@ void DeleteFile(const TF_Filesystem* filesystem, const char* path,
 
 void CreateDir(const TF_Filesystem* filesystem, const char* path,
                TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -544,8 +613,9 @@ void CreateDir(const TF_Filesystem* filesystem, const char* path,
 
 void DeleteDir(const TF_Filesystem* filesystem, const char* path,
                TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path;
@@ -580,8 +650,9 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
 
 void RenameFile(const TF_Filesystem* filesystem, const char* src,
                 const char* dst, TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, src, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, src, status);
   if (TF_GetCode(status) != TF_OK) return;
 
   std::string scheme, namenode, hdfs_path_src, hdfs_path_dst;
@@ -601,8 +672,9 @@ void RenameFile(const TF_Filesystem* filesystem, const char* src,
 
 int GetChildren(const TF_Filesystem* filesystem, const char* path,
                 char*** entries, TF_Status* status) {
-  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
-  auto fs = Connect(libhdfs, path, status);
+  auto hadoop_file = static_cast<HadoopFile*>(filesystem->plugin_filesystem);
+  auto libhdfs = hadoop_file->libhdfs;
+  auto fs = Connect(hadoop_file, path, status);
   if (TF_GetCode(status) != TF_OK) return -1;
 
   std::string scheme, namenode, hdfs_path;
@@ -638,7 +710,9 @@ int GetChildren(const TF_Filesystem* filesystem, const char* path,
   return num_entries;
 }
 
-// TODO(vnvo2409): Implement later
+static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
+  return strdup(uri);
+}
 
 }  // namespace tf_hadoop_filesystem
 
@@ -646,6 +720,42 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
                                         const char* uri) {
   TF_SetFilesystemVersionMetadata(ops);
   ops->scheme = strdup(uri);
+
+  ops->random_access_file_ops = static_cast<TF_RandomAccessFileOps*>(
+      plugin_memory_allocate(TF_RANDOM_ACCESS_FILE_OPS_SIZE));
+  ops->random_access_file_ops->cleanup = tf_random_access_file::Cleanup;
+  ops->random_access_file_ops->read = tf_random_access_file::Read;
+
+  ops->writable_file_ops = static_cast<TF_WritableFileOps*>(
+      plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
+  ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
+  ops->writable_file_ops->append = tf_writable_file::Append;
+  ops->writable_file_ops->tell = tf_writable_file::Tell;
+  ops->writable_file_ops->flush = tf_writable_file::Flush;
+  ops->writable_file_ops->sync = tf_writable_file::Sync;
+  ops->writable_file_ops->close = tf_writable_file::Close;
+
+  ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
+      plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
+  ops->filesystem_ops->init = tf_hadoop_filesystem::Init;
+  ops->filesystem_ops->cleanup = tf_hadoop_filesystem::Cleanup;
+  ops->filesystem_ops->new_random_access_file =
+      tf_hadoop_filesystem::NewRandomAccessFile;
+  ops->filesystem_ops->new_writable_file =
+      tf_hadoop_filesystem::NewWritableFile;
+  ops->filesystem_ops->new_appendable_file =
+      tf_hadoop_filesystem::NewAppendableFile;
+  ops->filesystem_ops->new_read_only_memory_region_from_file =
+      tf_hadoop_filesystem::NewReadOnlyMemoryRegionFromFile;
+  ops->filesystem_ops->path_exists = tf_hadoop_filesystem::PathExists;
+  ops->filesystem_ops->stat = tf_hadoop_filesystem::Stat;
+  ops->filesystem_ops->get_file_size = tf_hadoop_filesystem::GetFileSize;
+  ops->filesystem_ops->delete_file = tf_hadoop_filesystem::DeleteFile;
+  ops->filesystem_ops->create_dir = tf_hadoop_filesystem::CreateDir;
+  ops->filesystem_ops->delete_dir = tf_hadoop_filesystem::DeleteDir;
+  ops->filesystem_ops->rename_file = tf_hadoop_filesystem::RenameFile;
+  ops->filesystem_ops->get_children = tf_hadoop_filesystem::GetChildren;
+  ops->filesystem_ops->translate_name = tf_hadoop_filesystem::TranslateName;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

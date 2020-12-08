@@ -111,6 +111,7 @@ struct NNAPIOpMappingArgs {
   TfLiteContext* context;
   NNAPIOpBuilder* builder;
   TfLiteNode* node;
+  int node_index;
   std::vector<int>* model_state_outputs;
   std::vector<int>* model_state_tfl_inputs;
   std::vector<std::tuple<int, int>>* feedback_loops;

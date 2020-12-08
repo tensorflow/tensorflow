@@ -28,6 +28,7 @@ from tensorflow.python.keras.applications import inception_resnet_v2
 from tensorflow.python.keras.applications import inception_v3
 from tensorflow.python.keras.applications import mobilenet
 from tensorflow.python.keras.applications import mobilenet_v2
+from tensorflow.python.keras.applications import mobilenet_v3
 from tensorflow.python.keras.applications import nasnet
 from tensorflow.python.keras.applications import resnet
 from tensorflow.python.keras.applications import resnet_v2
@@ -51,6 +52,8 @@ ARG_TO_MODEL = {
                             [inception_resnet_v2.InceptionResNetV2]),
     'mobilenet': (mobilenet, [mobilenet.MobileNet]),
     'mobilenet_v2': (mobilenet_v2, [mobilenet_v2.MobileNetV2]),
+    'mobilenet_v3_small': (mobilenet_v3, [mobilenet_v3.MobileNetV3Small]),
+    'mobilenet_v3_large': (mobilenet_v3, [mobilenet_v3.MobileNetV3Large]),
     'densenet': (densenet, [densenet.DenseNet121,
                             densenet.DenseNet169, densenet.DenseNet201]),
     'nasnet_mobile': (nasnet, [nasnet.NASNetMobile]),

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -84,12 +85,15 @@ class EagerClusterFunctionLibraryRuntime
 
   struct FunctionData {
     const string target;
+    const absl::optional<std::vector<int>> ret_indices;
     core::RefCountPtr<EagerClient> eager_client;
     std::unique_ptr<EagerOperation> op;
 
-    FunctionData(const string& target, EagerClient* eager_client,
-                 std::unique_ptr<EagerOperation> op)
+    FunctionData(const string& target,
+                 const absl::optional<std::vector<int>>& ret_indices,
+                 EagerClient* eager_client, std::unique_ptr<EagerOperation> op)
         : target(target),
+          ret_indices(ret_indices),
           eager_client(core::RefCountPtr<EagerClient>(eager_client)),
           op(std::move(op)) {
       eager_client->Ref();

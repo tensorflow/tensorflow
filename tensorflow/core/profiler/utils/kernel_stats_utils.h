@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// Populates kernel launch information from a KernelDetails XStat.
+// Populates kernel launch information from a kKernelDetails XStat.
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
                              KernelReport* kernel);
 
@@ -50,7 +50,9 @@ struct KernelReportEqualToComparator {
 };
 
 // Sorts kernel reorts by total duration descendingly.
-void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db);
+// Keeps only the top kernel reports with long kernel duration in the given
+// KernelStatsDb. Kernel reports with shorter kernel duration are dropped.
+void SortAndKeepTopKDurationKernelReportsInDb(KernelStatsDb* kernel_stats_db);
 
 struct KernelReportValue {
   uint64 total_duration_ns = 0;
@@ -95,8 +97,10 @@ using KernelReportMap =
     absl::flat_hash_map<KernelReport, KernelReportValue, KernelHash,
                         KernelReportEqualToComparator>;
 
-// Copies reports into the given KernelStatsDb.
-void CopyKernelReportsToDb(const KernelReportMap& reports, KernelStatsDb* dst);
+// Copies the top kernel reports with long kernel duration into the given
+// KernelStatsDb.
+void CopyTopKDurationKernelReportsToDb(const KernelReportMap& reports,
+                                       KernelStatsDb* dst);
 
 // Inserts or aggregates KernelReports into the given KernelReportMap.
 void InsertOrUpdateKernelReport(const KernelReport& kernel,

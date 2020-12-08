@@ -81,6 +81,18 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
   gradients for operations that have sparse gradients
   (e.g. `tf.gather`).
 
+  >>> v = tf.Variable([[0.,1, 2], [2, 3, 4], [4, 5, 6], [6, 7, 8]])
+  >>> with tf.GradientTape() as tape:
+  ...   r = tf.gather(v, [1,3])
+  >>> index_slices = tape.gradient(r,v)
+  >>> index_slices
+  <...IndexedSlices object ...>
+  >>> index_slices.indices.numpy()
+  array([1, 3], dtype=int32)
+  >>> index_slices.values.numpy()
+  array([[1., 1., 1.],
+         [1., 1., 1.]], dtype=float32)
+
   Contrast this representation with
   `tf.sparse.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
@@ -429,9 +441,12 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "elements. This may consume a large amount of memory." %
             num_elements)
     else:
-      warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-          "This may consume a large amount of memory.")
+      if value.dense_shape.op.type != "VariableShape":
+        # VariableShape may hide static shapes behind a resource handle
+        # producing a warning that isn't that useful to users.
+        warnings.warn(
+            "Converting sparse IndexedSlices(%s) to a dense Tensor of unknown "
+            "shape. This may consume a large amount of memory." % value)
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 

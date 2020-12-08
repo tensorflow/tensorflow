@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -51,6 +52,23 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     for x in [1., 2., 3., 5.]:
       self.assertEqual(x, self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testIgnoreError_withLogWarning(self):
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
+    dataset = (
+        dataset_ops.Dataset.from_tensor_slices(components).map(
+            lambda x: array_ops.check_numerics(x, "message")).apply(
+                error_ops.ignore_errors(log_warning=True)))
+    get_next = self.getNext(dataset)
+    for x in [1., 2., 3.]:
+      self.assertEqual(x, self.evaluate(get_next()))
+    with self.captureWritesToStream(sys.stderr) as logged:
+      self.assertEqual(5., self.evaluate(get_next()))
+    expected = "Tensor had NaN values"
+    self.assertIn((expected), logged.contents())
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
@@ -142,6 +160,11 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual((1. / x, x), self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinality(self):
+    ds = dataset_ops.Dataset.range(10).apply(error_ops.ignore_errors())
+    self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.UNKNOWN)
 
 
 if __name__ == "__main__":

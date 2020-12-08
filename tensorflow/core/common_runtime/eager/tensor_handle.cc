@@ -115,6 +115,20 @@ bool TensorHandle::PackedTensorHandleData::IsReady() const {
   return true;
 }
 
+Status TensorHandle::PackedTensorHandleData::WaitReady(
+    const char* caller) const {
+  {
+    tf_shared_lock l(mu_);
+    if (!is_poisoned_.ok()) {
+      return is_poisoned_;
+    }
+  }
+  for (auto* handle : handles_) {
+    TF_RETURN_IF_ERROR(handle->WaitReady(caller));
+  }
+  return Status::OK();
+}
+
 void TensorHandle::PackedTensorHandleData::Poison(Status status) {
   mutex_lock l(mu_);
   is_poisoned_ = status;
@@ -370,14 +384,16 @@ TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
 #if !defined(IS_MOBILE_PLATFORM)
 TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
     int64 op_id, int32 output_num, const string& remote_task,
-    tensorflow::DataType dtype, Device* d, EagerContext* ctx) {
-  return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx);
+    tensorflow::DataType dtype, Device* d, EagerContext* ctx,
+    const bool unknown_device) {
+  return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx,
+                          unknown_device);
 }
 
 TensorHandle::TensorHandle(int64 op_id, int32 output_num,
                            const string& remote_task,
                            tensorflow::DataType dtype, Device* d,
-                           EagerContext* ctx)
+                           EagerContext* ctx, const bool unknown_device)
     : ImmediateExecutionTensorHandle(kEager),
       dtype(dtype),
       device_(d),
@@ -385,6 +401,7 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       resource_remote_device_incarnation_(
           GetRemoteDeviceIncarnation(resource_device_)),
+      unknown_device_(unknown_device),
       ctx_(ctx),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             remote_task, ctx) {
@@ -392,17 +409,15 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
            << " device: " << VariantDeviceDebugString(device_);
 }
 
-TensorHandle* TensorHandle::CreateLazyRemoteHandle(int64 op_id,
-                                                   int32 output_num,
-                                                   tensorflow::DataType dtype,
-                                                   Device* d,
-                                                   EagerContext* ctx) {
-  return new TensorHandle(op_id, output_num, dtype, d, ctx);
+TensorHandle* TensorHandle::CreateLazyRemoteHandle(
+    int64 op_id, int32 output_num, tensorflow::DataType dtype, Device* d,
+    const bool is_ready, EagerContext* ctx) {
+  return new TensorHandle(op_id, output_num, dtype, d, is_ready, ctx);
 }
 
 TensorHandle::TensorHandle(int64 op_id, int32 output_num,
                            tensorflow::DataType dtype, Device* d,
-                           EagerContext* ctx)
+                           const bool is_ready, EagerContext* ctx)
     : ImmediateExecutionTensorHandle(kEager),
       dtype(dtype),
       device_(d),
@@ -412,7 +427,7 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
           GetRemoteDeviceIncarnation(resource_device_)),
       ctx_(ctx),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
-            ctx->GetContextViewId()) {
+            ctx->GetContextViewId(), is_ready) {
   DVLOG(3) << "Creating Lazy Remote TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
 }
@@ -429,6 +444,11 @@ tensorflow::DataType TensorHandle::DataType() const { return dtype; }
 
 bool TensorHandle::IsReady() const {
   return absl::visit([](auto& data) { return data.IsReady(); }, data_);
+}
+
+Status TensorHandle::WaitReady(const char* caller) const {
+  return absl::visit([caller](auto& data) { return data.WaitReady(caller); },
+                     data_);
 }
 
 TensorHandle::HandleType TensorHandle::Type() const {
@@ -518,6 +538,17 @@ Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
   return mirror.TensorValue(t);
 }
 
+Status TensorHandle::WaitUnknownDevice() const {
+  if (unknown_device_) {
+    TF_RETURN_IF_ERROR(absl::visit(
+        [](auto& data) {
+          return data.WaitReady("TensorHandle::UnknownDevice");
+        },
+        data_));
+  }
+  return Status::OK();
+}
+
 VariantDevice TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
   if (VariantDeviceIsCustom(device_)) {
     return device_;
@@ -598,6 +629,25 @@ Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
     inference_shape_ = other_shape;
   } else {
     inference_shape_ = other->inference_shape_;
+  }
+  return Status::OK();
+}
+
+Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
+  DCHECK(shape != nullptr);
+  if (!IsReady() && !inference_shape_.unknown_rank()) {
+    *shape = inference_shape_;
+    return Status::OK();
+  } else {
+    auto result = absl::visit(
+        [](auto& data) {
+          TensorShape shape;
+          Status s = data.Shape(&shape);
+          return std::make_pair(shape, s);
+        },
+        data_);
+    TF_RETURN_IF_ERROR(result.second);
+    *shape = result.first;
   }
   return Status::OK();
 }
@@ -786,13 +836,21 @@ Status TensorHandle::AddResourceShapeMirror(const Device* d, int64 op_id,
 
   resource_shape_mirrors_.emplace(
       std::piecewise_construct, std::forward_as_tuple(d->name()),
-      std::forward_as_tuple(op_id, output_num, ctx->GetContextViewId()));
+      std::forward_as_tuple(op_id, output_num, ctx->GetContextViewId(),
+                            /*is_ready=*/true));
 
   return Status::OK();
 }
 
 Status TensorHandle::SetRemoteShape(const TensorShape& shape, const Device* d,
                                     uint64 context_view_id) {
+  return SetRemoteShapeAndDevice(shape, d, context_view_id, /*op_device=*/"");
+}
+
+Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
+                                             const Device* d,
+                                             uint64 context_view_id,
+                                             string op_device) {
   DVLOG(3) << "SetRemoteShape on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -830,7 +888,27 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape, const Device* d,
   // For mirrors, this is not the case because they colocate with the data
   // consuming op/function device, and we (for now) have to aggressively
   // invalidate those copies to avoid any false positives during cluster update.
-  return data.SetShape(shape);
+  if (op_device.empty()) {
+    return data.SetShape(shape);
+  } else {
+    if (!unknown_device_) {
+      return errors::Internal("Cannot reset known devices.");
+    }
+    Device* device;
+    TF_RETURN_IF_ERROR(ctx_->FindDeviceFromName(op_device.c_str(), &device));
+    device_ = device;
+    op_device_ = device;
+    resource_device_ = dtype == DT_RESOURCE ? device : nullptr;
+    resource_remote_device_incarnation_ =
+        GetRemoteDeviceIncarnation(resource_device_);
+    string remote_task;
+    if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
+      return errors::InvalidArgument(
+          "Unable to find remote task corresponding to device ",
+          device->name());
+    }
+    return data.SetShapeAndRemoteTask(shape, remote_task);
+  }
 }
 
 void TensorHandle::PoisonRemote(Status status, const Device* d,
@@ -921,7 +999,7 @@ void TensorHandle::Poison(Status status, const Device* d) {
 
 Status TensorHandle::CopyToDevice(const EagerContext& ctx,
                                   tensorflow::Device* d,
-                                  tensorflow::Tensor* output) {
+                                  tensorflow::Tensor* output) const {
   tensorflow::Device* dstd = (d == nullptr) ? ctx.HostCPU() : d;
   tensorflow::Device* srcd = absl::get<Device*>(DeviceOrHostCPU(ctx));
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
@@ -1040,6 +1118,7 @@ const char* TensorHandle::DeviceName(Status* status) const {
   if (VariantDeviceIsCustom(device())) {
     return absl::get<CustomDevice*>(device())->name().c_str();
   }
+  status->Update(WaitUnknownDevice());
   tensorflow::Device* d = op_device();
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                         : d->name().c_str();
@@ -1049,10 +1128,33 @@ const char* TensorHandle::BackingDeviceName(Status* status) const {
   if (VariantDeviceIsCustom(device())) {
     return absl::get<tensorflow::CustomDevice*>(device())->name().c_str();
   } else {
+    status->Update(WaitUnknownDevice());
     tensorflow::Device* d = absl::get<tensorflow::Device*>(device());
     return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                           : d->name().c_str();
   }
+}
+
+const char* TensorHandle::DeviceType(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return nullptr;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? "CPU" : d->parsed_name().type.c_str();
+}
+
+int TensorHandle::DeviceId(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    status->Update(
+        tensorflow::errors::Unimplemented("Custom device unsupported"));
+    return -1;
+  }
+  status->Update(WaitUnknownDevice());
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? 0 : d->parsed_name().id;
 }
 
 tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {

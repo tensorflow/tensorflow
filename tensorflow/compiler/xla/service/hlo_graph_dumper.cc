@@ -1012,6 +1012,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGather:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:
@@ -1152,7 +1153,16 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   for (const auto& line : instr->ExtraAttributesToString(
            HloPrintOptions().set_print_subcomputation_mode(
                HloPrintOptions::PrintSubcomputationMode::kOff))) {
-    lines.push_back(HtmlLikeStringSanitize(line));
+    // Some instructions have giant replica group fields, so truncate the
+    // replica group line length to 128.
+    constexpr int kMaxReplicaGroupLen = 128;
+    if (absl::StartsWith(line, "replica_groups=") &&
+        line.length() > kMaxReplicaGroupLen) {
+      lines.push_back(HtmlLikeStringSanitize(
+          StrCat(line.substr(0, kMaxReplicaGroupLen - 3), "...")));
+    } else {
+      lines.push_back(HtmlLikeStringSanitize(line));
+    }
   }
 
   // Show the shape and layout of the instruction, unless it's an inlined fusion

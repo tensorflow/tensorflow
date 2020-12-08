@@ -60,6 +60,9 @@ message OverviewPageAnalysis {
   // Percentage of TF-op execution time on the device (excluding the idle time)
   // that are in eager mode.
   double device_op_time_eager_percent = 15;
+  // Percentage of TF-op execution time on the device (excluding the idle time)
+  // that are for outside compilation.
+  double device_op_time_outside_compilation_percent = 16;
 }
 
 // Overview result for a performance tip to users.
@@ -84,6 +87,12 @@ message GenericRecommendation {
   // A statement that recommends if the user should try using lower precision.
   // Shows this statement to users only if it is not empty.
   string precision_statement = 5;
+  // Indicates if device collectives are a performance bottleneck. Possible
+  // values: "no", "moderate", "high".
+  string device_collectives_bottleneck = 6;
+  // A statement that recommends if we need to further investigate
+  // device-collectives performance.
+  string device_collectives_statement = 7;
 }
 
 // Overview result for the recommendation section.
@@ -99,10 +108,14 @@ message OverviewPageRecommendation {
   // bottleneck.
   string output_statement = 9;
   // A statement that recommends the next steps for investigating eager-mode
-  // related bottleneck (it is a html so that it can link to other tools/docs.)
+  // related bottleneck (it is an html so that it can link to other tools/docs.)
   string eager_statement_html = 12;
+  // A statement that recommends the next steps for investigating
+  // outside-compilation related bottleneck (it is an html so that it can link
+  // to other tools/docs.)
+  string outside_compilation_statement_html = 13;
   // A statement that recommends the next steps for investigating tf-function
-  // related bottleneck (it is a html so that it can link to other tools/docs.)
+  // related bottleneck (it is an html so that it can link to other tools/docs.)
   string tf_function_statement_html = 10;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;

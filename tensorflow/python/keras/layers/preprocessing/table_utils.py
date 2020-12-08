@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -62,8 +63,10 @@ class TableHandler(object):
       raise RuntimeError("Size mismatch between values and key arrays. "
                          "Keys had size %s, values had size %s." %
                          (len(keys), len(values)))
-    keys = ops.convert_to_tensor(keys, dtype=self.table._key_dtype)  # pylint: disable=protected-access
-    values = ops.convert_to_tensor(values, dtype=self.table._value_dtype)  # pylint: disable=protected-access
+    keys = ops.convert_to_tensor_v2_with_dispatch(
+        keys, dtype=self.table._key_dtype)  # pylint: disable=protected-access
+    values = ops.convert_to_tensor_v2_with_dispatch(
+        values, dtype=self.table._value_dtype)  # pylint: disable=protected-access
     if values.shape.ndims != 1:
       raise ValueError("`values` must be 1-dimensional, got an input with "
                        " %s dimensions." % values.shape.ndims)
@@ -163,7 +166,7 @@ def get_vocabulary_from_file(vocabulary_path, encoding="utf-8"):
         token = text
       elif isinstance(text, bytes):
         token = text.decode(encoding, "ignore")
-      token = token.strip()
+      token = token.rstrip(os.linesep)
       vocab.append(token)
   return vocab
 

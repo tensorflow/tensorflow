@@ -125,9 +125,9 @@ func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 }
 
 // CHECK-LABEL: func @greater
-func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
-  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
-  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+func @greater(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "mhlo.compare"(%arg0, %arg1) {compare_type = "SIGNED", comparison_direction = "GT"}
+  %0 = "tf.Greater"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
   return %0: tensor<2xi1>
 }
 
@@ -220,13 +220,6 @@ func @sparse_to_dense(%arg0: tensor<3x2xi32>, %arg1: tensor<3xf32>, %arg2: tenso
   return %0 : tensor<3x3xf32>
 }
 
-// CHECK-LABEL: fft
-func @fft(%arg0: tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>> {
-  // CHECK: "mhlo.fft"(%arg0)
-  %0 = "tf.FFT"(%arg0) : (tensor<3x5x8xcomplex<f32>>) -> tensor<3x5x8xcomplex<f32>>
-  return %0 : tensor<3x5x8xcomplex<f32>>
-}
-
 // CHECK-LABEL: reverse_sequence
 func @reverse_sequence(%arg0: tensor<4x2x3x1x1xi32>, %arg1: tensor<3xi32>) -> tensor<4x2x3x1x1xi32> {
   // CHECK-NOT: tf.ReverseSequence
@@ -263,6 +256,91 @@ func @non_max_suppression_v4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2
   // CHECK-NOT: tf.NonMaxSuppressionV4
   %0:2 = "tf.NonMaxSuppressionV4"(%arg0, %arg1, %max_size, %arg2, %arg3) {pad_to_max_output_size = true}: (tensor<3x4xf32>, tensor<3xf32>, tensor<i32>, tensor<f32>, tensor<f32>) -> (tensor<2xi32>, tensor<i32>)
   return %0#0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: bessel_i0e
+func @bessel_i0e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64>) -> (tensor<3xf16>, tensor<3xf32>, tensor<3xf64>) {
+  // CHECK-NOT: tf.BesselI0e
+  %0 = "tf.BesselI0e"(%arg0) : (tensor<3xf16>) -> (tensor<3xf16>)
+  %1 = "tf.BesselI0e"(%arg1) : (tensor<3xf32>) -> (tensor<3xf32>)
+  %2 = "tf.BesselI0e"(%arg2) : (tensor<3xf64>) -> (tensor<3xf64>)
+  return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
+}
+
+// CHECK-LABEL: bessel_i1e
+func @bessel_i1e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64>) -> (tensor<3xf16>, tensor<3xf32>, tensor<3xf64>) {
+  // CHECK-NOT: tf.BesselI1e
+  %0 = "tf.BesselI1e"(%arg0) : (tensor<3xf16>) -> (tensor<3xf16>)
+  %1 = "tf.BesselI1e"(%arg1) : (tensor<3xf32>) -> (tensor<3xf32>)
+  %2 = "tf.BesselI1e"(%arg2) : (tensor<3xf64>) -> (tensor<3xf64>)
+  return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
+}
+
+// CHECK-LABEL: diag
+func @diag(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
+  // CHECK-NOT: tf.Diag
+  %0 = "tf.Diag"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// CHECK-LABEL: random_uniform_int
+func @random_uniform_int(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<1000xi32> {
+  %0 = "tf.Const"() {value = dense<1000> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NOT: tf.RandomUniformInt
+  %1 = "tf.RandomUniformInt"(%0, %arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<1xi32>, tensor<i32>, tensor<i32>) -> tensor<1000xi32>
+  return %1 : tensor<1000xi32>
+}
+
+// CHECK-LABEL: multinomial
+func @multinomial(%arg0: tensor<2x4xf32>, %seed: tensor<i32>, %seed2: tensor<i32>) -> tensor<2x10xi32> {
+  // CHECK-NOT: tf.Multinomial
+  %samples = "tf.Const"() { value = dense<10> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Multinomial"(%arg0, %samples) {seed = 0, seed2 = 0}: (tensor<2x4xf32>, tensor<i32>) -> tensor<2x10xi32>
+  return %1 : tensor<2x10xi32>
+}
+
+// CHECK-LABEL: @set_dynamic_dimension_size
+func @set_dynamic_dimension_size(%input: tensor<4xf32>, %size: tensor<i32>) -> tensor<4xf32> {
+  %dimension = "tf.Const"() { value = dense<0> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: mhlo.set_dimension_size
+  %0 = "tf.XlaSetDynamicDimensionSize"(%input, %dimension, %size) : (tensor<4xf32>, tensor<i32>, tensor<i32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @erfinv
+func @erfinv(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Erfinv
+  %0 = "tf.Erfinv"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @ndtri
+func @ndtri(%input: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK-NOT: tf.Ndtri
+  %0 = "tf.Ndtri"(%input) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @fake_param
+func @fake_param() -> tensor<4xf32> {
+  // CHECK-NOT: tf.FakeParam
+  %0 = "tf.FakeParam"() {shape = #tf.shape<4>} : () -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: @parameterized_truncated_normal
+func @parameterized_truncated_normal(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<10000000xf32> {
+  %0 = "tf.Const"() {value = dense<10000000> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NOT: tf.ParameterizedTruncatedNormal
+  %1 = "tf.ParameterizedTruncatedNormal"(%0, %arg0, %arg1, %arg2, %arg3) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<1xi32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<10000000xf32>
+  return %1 : tensor<10000000xf32>
+}
+
+// CHECK-LABEL: @xla_svd
+func @xla_svd(%arg0: tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>) {
+  // CHECK-NOT: XlaSvd
+  %s, %u, %v = "tf.XlaSvd"(%arg0) {max_iter = 1, epsilon = 1.0E-09 : f32, precision_config = ""} : (tensor<1x1xf32>) -> (tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>)
+  return %s, %u, %v : tensor<1xf32>, tensor<1x1xf32>, tensor<1x1xf32>
 }
 
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is

@@ -27,7 +27,6 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -40,13 +39,14 @@ from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.saving.saved_model import network_serialization
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
 
 
 # pylint: disable=g-classes-have-attributes
@@ -107,7 +107,16 @@ class Functional(training_lib.Model):
   ))
 
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, inputs=None, outputs=None, name=None, trainable=True):
+  def __init__(self, inputs=None, outputs=None, name=None, trainable=True,
+               **kwargs):
+    # This is used by the Model class, since we have some logic to swap the
+    # class in the __new__ method, which will lead to __init__ get invoked
+    # twice. Using the skip_init to skip one of the invocation of __init__ to
+    # avoid any side effects
+    skip_init = kwargs.pop('skip_init', False)
+    if skip_init:
+      return
+    generic_utils.validate_kwargs(kwargs, {})
     super(Functional, self).__init__(name=name, trainable=trainable)
     self._init_graph_network(inputs, outputs)
 
@@ -131,10 +140,16 @@ class Functional(training_lib.Model):
     # Models constructed with a single Tensor or list of Tensors can
     # be called with a dict, where the keys of the dict are the names
     # of the `Input` objects. Extra keys are ignored with warning.
-    self._enable_dict_to_input_mapping = (
-        not nest.is_nested(self._nested_inputs) or
-        (isinstance(self._nested_inputs, (list, tuple, dict)) and
-         not any(nest.is_nested(t) for t in self._nested_inputs)))
+    if not nest.is_nested(self._nested_inputs):
+      self._enable_dict_to_input_mapping = True
+    elif (isinstance(self._nested_inputs, (list, tuple)) and
+          not any(nest.is_nested(t) for t in self._nested_inputs)):
+      self._enable_dict_to_input_mapping = True
+    elif (isinstance(self._nested_inputs, dict) and
+          not any(nest.is_nested(t) for t in self._nested_inputs.values())):
+      self._enable_dict_to_input_mapping = True
+    else:
+      self._enable_dict_to_input_mapping = False
 
     if not keras_tensor.keras_tensors_enabled():
       if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
@@ -190,9 +205,9 @@ class Functional(training_lib.Model):
         self.inputs, self.outputs)
     self._network_nodes = nodes
     self._nodes_by_depth = nodes_by_depth
-    self._layers = layers
+    self._self_tracked_trackables = layers
     self._layer_call_argspecs = {}
-    for layer in self._layers:
+    for layer in self._self_tracked_trackables:
       self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
     # Build self.input_names and self.output_names.
@@ -389,6 +404,7 @@ class Functional(training_lib.Model):
     return nest.map_structure(lambda t: getattr(t, '_keras_mask', None),
                               output_tensors)
 
+  @doc_controls.do_not_doc_inheritable
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
@@ -486,6 +502,19 @@ class Functional(training_lib.Model):
     # Return shapes as TensorShapes.
     return output_shapes
 
+  def _init_set_name(self, name, zero_based=True):
+    if not name:
+      cls_name = self.__class__.__name__
+      if self.__class__ == Functional:
+        # Hide the functional class name from user, since its not a public
+        # visible class. Use "Model" instead,
+        cls_name = 'Model'
+      self._name = backend.unique_object_name(
+          generic_utils.to_snake_case(cls_name),
+          zero_based=zero_based)
+    else:
+      self._name = name
+
   def _run_internal_graph(self, inputs, training=None, mask=None):
     """Computes output tensors for new inputs.
 
@@ -581,8 +610,8 @@ class Functional(training_lib.Model):
   def _conform_to_reference_input(self, tensor, ref_input):
     """Set shape and dtype based on `keras.Input`s."""
     if isinstance(tensor, ops.Tensor):
-      # Allow (None,) and (None, 1) Tensors to be passed interchangably. Use the
-      # shape specified by the `keras.Input`.
+      # Allow (None,) and (None, 1) Tensors to be passed interchangeably. Use
+      # the shape specified by the `keras.Input`.
       t_shape = tensor.shape
       t_rank = t_shape.rank
       ref_shape = ref_input.shape
@@ -613,7 +642,7 @@ class Functional(training_lib.Model):
 
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
-    elif isinstance(tensor, composite_tensor.CompositeTensor):
+    elif tf_utils.is_extension_type(tensor):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
 
@@ -770,11 +799,11 @@ class Functional(training_lib.Model):
         self._nodes_by_depth[depth].append(node)
 
     # Insert layers and update other layer attrs.
-    layer_set = set(self._layers)
+    layer_set = set(self._self_tracked_trackables)
     deferred_layers = []
     for layer in layers:
       if layer not in layer_set:
-        self._layers.append(layer)
+        self._self_tracked_trackables.append(layer)
         deferred_layers.append(layer)
         self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
         layer_set.add(layer)
@@ -841,6 +870,13 @@ class Functional(training_lib.Model):
   @property
   def _trackable_saved_model_saver(self):
     return network_serialization.NetworkSavedModelSaver(self)
+
+  def _get_save_spec(self, dynamic_batch=True):
+    if getattr(self, '_has_explicit_input_shape', True):
+      # Functional models and Sequential models that have an explicit input
+      # shape should use the batch size set by the input layer.
+      dynamic_batch = False
+    return super(Functional, self)._get_save_spec(dynamic_batch)
 
 
 def _make_node_key(layer_name, node_index):
@@ -1055,7 +1091,8 @@ def _should_skip_first_node(layer):
   # the network config.
   return (isinstance(layer, Functional) and
           # Filter out Sequential models without an input shape.
-          isinstance(layer._layers[0], input_layer_module.InputLayer))
+          isinstance(layer._self_tracked_trackables[0],
+                     input_layer_module.InputLayer))
 
 
 def connect_ancillary_layers(model, created_layers):
@@ -1082,7 +1119,7 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
     custom_objects: Optional dictionary mapping names (strings) to custom
       classes or functions to be considered during deserialization.
     created_layers: Optional dictionary mapping names to Layer objects. Any
-      layer not in this dictionary will be be created and added to the dict.
+      layer not in this dictionary will be created and added to the dict.
       This function will add new nodes to all layers (excluding InputLayers),
       instead of re-using pre-existing nodes in the layers.
 
@@ -1360,3 +1397,48 @@ def shape_with_no_batch_size(x):
   if shape:
     shape[0] = None
   return shape
+
+
+class ModuleWrapper(base_layer.Layer):
+  """Wrapper for `tf.Module`s to support the Functional and Sequential API."""
+
+  def __init__(self, module, method_name=None, **kwargs):
+    """Initializes the wrapper Layer for this module.
+
+    Arguments:
+      module: The `tf.Module` instance to be wrapped.
+      method_name: (Optional) str. The name of the method to use as the forward
+        pass of the module. If not set, defaults to '__call__' if defined, or
+        'call'.
+      **kwargs: Additional keywrod arguments. See `tf.keras.layers.Layer`.
+
+    Raises:
+      ValueError: If `method` is not defined on `module`.
+    """
+    super(ModuleWrapper, self).__init__(**kwargs)
+    if method_name is None:
+      if hasattr(module, '__call__'):
+        method_name = '__call__'
+      elif hasattr(module, 'call'):
+        method_name = 'call'
+    if method_name is None or not hasattr(module, method_name):
+      raise ValueError('{} is not defined on object {}'.format(
+          method_name, module))
+
+    self._module = module
+    self._method_name = method_name
+
+    # Check if module.__call__ has a `training` arg or accepts `**kwargs`.
+    method = getattr(module, method_name)
+    method_arg_spec = tf_inspect.getfullargspec(method)
+    self._expects_training_arg = ('training' in method_arg_spec.args or
+                                  method_arg_spec.varkw is not None)
+    self._expects_mask_arg = ('mask' in method_arg_spec.args or
+                              method_arg_spec.varkw is not None)
+
+  def call(self, *args, **kwargs):
+    if 'training' in kwargs and not self._expects_training_arg:
+      kwargs.pop('training')
+    if 'mask' in kwargs and not self._expects_mask_arg:
+      kwargs.pop('mask')
+    return getattr(self._module, self._method_name)(*args, **kwargs)

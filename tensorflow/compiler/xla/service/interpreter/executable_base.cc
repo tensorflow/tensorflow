@@ -50,11 +50,14 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   // TransferManager methods below.
   std::vector<ShapedBuffer> argument_buffers;
   argument_buffers.reserve(arguments.size());
+  int device_ordinal = run_options->device_ordinal();
+  if (device_ordinal < 0) {
+    device_ordinal = 0;
+  }
   for (auto& argument : arguments) {
     const ShapeTree<MaybeOwningDeviceMemory>& buffers = argument.Buffers();
-    argument_buffers.push_back(ShapedBuffer(buffers.shape(), buffers.shape(),
-                                            /*platform=*/nullptr,
-                                            /*device_ordinal=*/0));
+    argument_buffers.push_back(ShapedBuffer(buffers.shape(),
+                                            /*device_ordinal=*/device_ordinal));
     auto in_it = buffers.begin();
     auto out_it = argument_buffers.back().buffers().begin();
     for (; in_it != buffers.end(); ++in_it, ++out_it) {
@@ -118,7 +121,7 @@ StatusOr<ExecutionOutput> InterpreterExecutableBase::ExecuteAsyncOnStream(
   }
 
   TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      Evaluate(*computation, arg_literals));
+                      Evaluate(run_options, *computation, arg_literals));
   // Shrink the generated dynamic shape into static shape.
   result_literal = result_literal.ToStatic();
 

@@ -137,7 +137,7 @@ XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
     arg_max = Select(eq, tie_id, arg_max);
   }
   Tuple(b, {max, arg_max});
-  return b->Build().ConsumeValueOrDie();
+  return b->BuildAndNoteError();
 }
 
 XlaOp ArgMinMax(XlaOp input, PrimitiveType output_type, int axis, bool is_min,

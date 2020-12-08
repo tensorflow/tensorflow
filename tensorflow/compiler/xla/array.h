@@ -297,8 +297,8 @@ class Array {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean, stddev);
     for (int64 i = 0; i < num_elements(); ++i) {
-      if constexpr (std::is_same<T, bool>()) {
-        values_[i] = distribution(g) > 0.0;
+      if (std::is_same<T, bool>()) {
+        values_[i] = static_cast<T>(distribution(g) > 0.0);
       } else {
         values_[i] = static_cast<T>(distribution(g));
       }

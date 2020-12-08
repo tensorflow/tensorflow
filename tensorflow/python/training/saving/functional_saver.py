@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import uuid
-
 from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -72,9 +70,14 @@ class _SingleDeviceSaver(object):
     tensor_slices = []
     for saveable in self._saveable_objects:
       for spec in saveable.specs:
-        tensor_names.append(spec.name)
-        tensors.append(spec.tensor)
-        tensor_slices.append(spec.slice_spec)
+        tensor = spec.tensor
+        # A tensor value of `None` indicates that this SaveableObject gets
+        # recorded in the object graph, but that no value is saved in the
+        # checkpoint.
+        if tensor is not None:
+          tensor_names.append(spec.name)
+          tensors.append(tensor)
+          tensor_slices.append(spec.slice_spec)
     save_device = options.experimental_io_device or "cpu:0"
     with ops.device(save_device):
       return io_ops.save_v2(file_prefix, tensor_names, tensor_slices, tensors)
@@ -247,7 +250,7 @@ class MultiDeviceSaver(object):
       sharded_suffix = array_ops.where(
           string_ops.regex_full_match(file_prefix, "^s3://.*"),
           constant_op.constant(".part"),
-          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
+          constant_op.constant("_temp/part"))
       tmp_checkpoint_prefix = string_ops.string_join(
           [file_prefix, sharded_suffix])
 
@@ -289,7 +292,7 @@ class MultiDeviceSaver(object):
     # latest values of options like experimental_io_device.
     if context.executing_eagerly() and len(self._single_device_savers) > 1:
       # Explicitly place the identity op on the first device.
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def tf_function_save():
         save_fn()
       tf_function_save()
@@ -325,7 +328,7 @@ class MultiDeviceSaver(object):
     # latest values of options like experimental_io_device.
     if context.executing_eagerly() and len(self._single_device_savers) > 1:
       first_device, _ = list(self._single_device_savers.items())[0]
-      @def_function.function(experimental_compile=False)
+      @def_function.function(jit_compile=False)
       def tf_function_restore():
         restore_ops = restore_fn()
         restore_tensors = {}

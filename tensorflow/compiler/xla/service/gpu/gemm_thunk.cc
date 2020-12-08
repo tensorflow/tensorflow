@@ -33,32 +33,40 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-GemmThunk::GemmThunk(ThunkInfo thunk_info,
+GpuGemmConfig GetGpuGemmConfig(const HloInstruction *gemm) {
+  GpuGemmConfig config;
+  config.output_shape = gemm->shape();
+  config.lhs_shape = gemm->operand(0)->shape();
+  config.rhs_shape = gemm->operand(1)->shape();
+  auto backend_config_or = gemm->backend_config<GemmBackendConfig>();
+  config.backend_config = std::move(backend_config_or.ValueOrDie());
+  return config;
+}
+
+GemmThunk::GemmThunk(ThunkInfo thunk_info, GpuGemmConfig &&config,
                      const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
                      const BufferAllocation::Slice &output_buffer,
-                     bool implements_whole_instruction,
-                     const GemmBackendConfig &backend_config)
+                     bool implements_whole_instruction)
     : Thunk(Kind::kGemm, thunk_info),
-      hlo_instruction_(thunk_info.hlo_instruction),
+      config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
-      implements_whole_instruction_(implements_whole_instruction),
-      backend_config_(backend_config) {}
+      implements_whole_instruction_(implements_whole_instruction) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
   auto get_device_address = [&](const BufferAllocation::Slice &slice) {
     return params.buffer_allocations->GetDeviceAddress(slice);
   };
 
-  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction_;
+  VLOG(3) << "Running GEMM thunk";
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(hlo_instruction_, backend_config_, lhs_data, rhs_data,
-                 output_data, params.stream, implements_whole_instruction_,
-                 profile_index(), params.profiler);
+  return RunGemm(config_, lhs_data, rhs_data, output_data, params.stream,
+                 implements_whole_instruction_, profile_index(),
+                 params.profiler);
 }
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -160,8 +168,7 @@ static bool DoGemmWithAlgorithm(
       .ok();
 }
 
-Status RunGemm(const HloInstruction *gemm,
-               const GemmBackendConfig &backend_config,
+Status RunGemm(const GpuGemmConfig &gemm_config,
                se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
                bool implements_whole_instruction,
@@ -170,14 +177,11 @@ Status RunGemm(const HloInstruction *gemm,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
   VLOG(2) << "Executing a GemmThunk";
-  CHECK(IsCublasGemm(*gemm));
 
-  const Shape &output_shape = gemm->shape();
-  const HloInstruction *lhs = gemm->operand(0);
-  const HloInstruction *rhs = gemm->operand(1);
-
-  const Shape &lhs_shape = lhs->shape();
-  const Shape &rhs_shape = rhs->shape();
+  const Shape &output_shape = gemm_config.output_shape;
+  const Shape &lhs_shape = gemm_config.lhs_shape;
+  const Shape &rhs_shape = gemm_config.rhs_shape;
+  const GemmBackendConfig &backend_config = gemm_config.backend_config;
 
   const DotDimensionNumbers &dim_nums = backend_config.dot_dimension_numbers();
   CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
@@ -202,10 +206,6 @@ Status RunGemm(const HloInstruction *gemm,
     CHECK_LT(shape->layout().minor_to_major(col_dim), 2);
   }
 
-  // BLAS gemm reduces rows of LHS and columns of RHS. The Dot operator between
-  // matrices reduces dimension 1 of LHS and dimension 0 of RHS regardless of
-  // their layout. Therefore, we should treat dimension 0 as row and dimension 1
-  // as column when mapping a matrix Dot to BLAS gemm.
   int64 output_num_rows = output_shape.dimensions(row_dim);
   int64 output_num_cols = output_shape.dimensions(col_dim);
 

@@ -36,8 +36,13 @@ namespace mhlo {
 
 /// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
 /// false, emits an error if there is any operation that can't be legalized.
+/// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
+/// patterns from TF2XLA fallback for provided device type (see
+/// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
+/// used.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
-    bool allow_partial_conversion = false, bool legalize_chlo = true);
+    bool allow_partial_conversion = false, bool legalize_chlo = true,
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
 
 /// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
 /// specified device type.
@@ -63,8 +68,14 @@ std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 /// dialect using the conversion patterns registered by the HLO dialect. When
 /// allow_partial_conversion is false, emits an error if there is any operation
 /// that can't be legalized.
-LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false,
-                         bool legalize_chlo = true);
+/// When `tf2xla_fallback_device_type` is not `None`, also uses legalization
+/// patterns from TF2XLA fallback for provided device type (see
+/// legalize_tf_with_tf2xla.cc for details). By default, TF2XLA fallback is not
+/// used.
+LogicalResult legalizeTF(
+    Operation* op, bool allow_partial_conversion = false,
+    bool legalize_chlo = true,
+    llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None);
 
 // Legalizes TF/XLA communication ops (TF dialect) to HLO dialect communication
 // ops.

@@ -40,11 +40,12 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("host_id", &PyTpuClient::host_id)
       .def("get_default_device_assignment",
            [](PyTpuClient* client, int num_replicas, int num_partitions)
-               -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
+               -> StatusOr<
+                   std::vector<std::vector<std::shared_ptr<PjRtDevice>>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                                  client->GetDefaultDeviceAssignment(
                                      num_replicas, num_partitions));
-             std::vector<std::vector<std::shared_ptr<Device>>> result;
+             std::vector<std::vector<std::shared_ptr<PjRtDevice>>> result;
              result.resize(num_replicas);
              for (int r = 0; r < num_replicas; ++r) {
                result[r].resize(num_partitions);
@@ -60,11 +61,11 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
            [](PyTpuClient* client, int num_replicas)
-               -> StatusOr<std::vector<std::shared_ptr<Device>>> {
+               -> StatusOr<std::vector<std::shared_ptr<PjRtDevice>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                                  client->GetDefaultDeviceAssignment(
                                      num_replicas, /*num_partitions=*/1));
-             std::vector<std::shared_ptr<Device>> result;
+             std::vector<std::shared_ptr<PjRtDevice>> result;
              for (int i = 0; i < num_replicas; ++i) {
                int device_id = device_assignment(i, 0);
                auto iter = client->id_to_device().find(device_id);
@@ -96,7 +97,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def(
           "buffer_from_pyval",
           [](std::shared_ptr<PyTpuClient> client,
-             const pybind11::object& argument, std::shared_ptr<Device> device,
+             const pybind11::object& argument,
+             std::shared_ptr<PjRtDevice> device,
              bool force_copy) -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
             if (device == nullptr) {
               TF_RET_CHECK(!client->local_devices().empty());
@@ -145,7 +147,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
   py::class_<PyTpuBuffer>(m, "PyTpuBuffer")
       .def_property_readonly("client", &PyTpuBuffer::client)
       .def("copy_to_device",
-           [](PyTpuBuffer* buffer, std::shared_ptr<Device> dst_device) {
+           [](PyTpuBuffer* buffer, std::shared_ptr<PjRtDevice> dst_device) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
@@ -171,6 +173,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyTpuBuffer::on_host_shape)
+      .def("xla_shape", &PyTpuBuffer::on_host_shape)
       .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted",
@@ -202,9 +205,16 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def_property_readonly("traceback",
                              [](PyTpuExecutable*) { return py::none(); });
 
-  py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
+  py::class_<TpuDevice, PjRtDevice, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)
       .def_property_readonly("core_on_chip", &TpuDevice::core_on_chip)
+      // TODO(skye): this is a horrible hack because falling back to
+      // PjRtDevice::platform_name() segfaults, due to TpuDevice::client_ being
+      // uninitialized. This can be removed when PyTpuClient subclasses
+      // PjRtClient and can be used to set TpuDevice::client_.
+      .def_property_readonly(
+          "platform",
+          [](const TpuDevice& device) -> std::string { return kTpuPlatform; })
       .def("__repr__", [](const TpuDevice& device) {
         return absl::StrFormat(
             "TpuDevice(id=%i, host_id=%i, coords=(%i,%i,%i), core_on_chip=%i)",

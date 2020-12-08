@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
@@ -26,6 +26,14 @@ package(
 flatbuffer_cc_library(
     name = "database_fbs",
     srcs = ["database.fbs"],
+)
+
+exports_files(srcs = ["database.fbs"])
+
+flatbuffer_java_library(
+    name = "database_fbs_java",
+    srcs = ["database.fbs"],
+    package_prefix = "org.tensorflow",
 )
 
 cc_library(
@@ -116,6 +124,8 @@ cc_test(
     ],
 )
 
+exports_files(["gpu_compatibility.bin"])
+
 genrule(
     name = "gpu_compatibility_binary",
     srcs = ["gpu_compatibility.bin"],
@@ -169,6 +179,7 @@ cc_library(
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
+    tags = ["no_mac"],  # b/163222453
     deps = [
         ":devicedb_sample",
         ":gpu_compatibility",

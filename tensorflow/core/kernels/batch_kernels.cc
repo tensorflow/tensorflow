@@ -20,16 +20,60 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/numbers.h"
 
 namespace tensorflow {
+namespace {
+constexpr int64 kMinInflightBatchesLimit = 16;
+constexpr double kInitialInflightBatchesLimit = 64;
+constexpr int64 kBatchesToAverageOver = 10;
+constexpr int64 kMaxInflightBatchesLimit = 128;
+}  // namespace
+
+auto* batch_op_split_usage = monitoring::Gauge<string, 1>::New(
+    "/tensorflow/serving/batching/enable_large_batch_splitting",
+    "Tracks the usage of attribute `enable_large_batch_splitting` for "
+    "BatchFunction kernel in a saved model.",
+    "model_name");
+
+void RecordBatchSplitUsage(
+    absl::optional<bool> maybe_enable_large_batch_splitting,
+    const string& model_name) {
+  if (maybe_enable_large_batch_splitting.has_value()) {
+    if (maybe_enable_large_batch_splitting.value()) {
+      batch_op_split_usage->GetCell(model_name)->Set("true");
+    } else {
+      batch_op_split_usage->GetCell(model_name)->Set("false");
+    }
+  } else {
+    batch_op_split_usage->GetCell(model_name)->Set("unset");
+  }
+}
+
+void RecordBatchParamNumBatchThreads(int64 num_batch_threads,
+                                     const string& model_name) {
+  static auto* cell = monitoring::Gauge<int64, 1>::New(
+      "/tensorflow/serving/batching/num_batch_threads",
+      "Tracks the number of batch threads of a model.", "model_name");
+  cell->GetCell(model_name)->Set(num_batch_threads);
+}
+
+const string& GetModelName(OpKernelContext* ctx) {
+  static string* kModelNameUnset = new string("model_name_unset");
+  if (!ctx->session_metadata()) return *kModelNameUnset;
+  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+  return ctx->session_metadata()->name();
+}
 
 using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
@@ -58,12 +102,40 @@ class BatchResource : public serving::BatchResourceBase {
     return Status::OK();
   }
 
+  static Status Create(
+      AdaptiveBatcherT::Options adaptive_shared_batch_scheduler_options,
+      int32 max_batch_size, int32 batch_timeout_micros,
+      int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+      FunctionLibraryRuntime::Handle fhandle,
+      std::unique_ptr<BatchResource>* resource) {
+    std::shared_ptr<AdaptiveBatcherT> batcher;
+    TF_RETURN_IF_ERROR(AdaptiveBatcherT::Create(
+        adaptive_shared_batch_scheduler_options, &batcher));
+
+    resource->reset(new BatchResource(
+        fhandle, std::move(batcher),
+        GetAdaptiveBatcherQueueOptions(max_batch_size, batch_timeout_micros,
+                                       max_enqueued_batches, true),
+        allowed_batch_sizes));
+    return Status::OK();
+  }
+
   string DebugString() const final { return "BatchResource"; }
 
  private:
   BatchResource(FunctionLibraryRuntime::Handle fhandle,
                 std::shared_ptr<BatcherT> batcher,
                 const BatcherT::QueueOptions& batcher_queue_options,
+                std::vector<int32> allowed_batch_sizes)
+      : BatchResourceBase(
+            /*has_process_batch_function=*/fhandle != kInvalidHandle,
+            std::move(batcher), batcher_queue_options,
+            std::move(allowed_batch_sizes)),
+        fhandle_(fhandle) {}
+
+  BatchResource(FunctionLibraryRuntime::Handle fhandle,
+                std::shared_ptr<AdaptiveBatcherT> batcher,
+                const AdaptiveBatcherT::QueueOptions& batcher_queue_options,
                 std::vector<int32> allowed_batch_sizes)
       : BatchResourceBase(
             /*has_process_batch_function=*/fhandle != kInvalidHandle,
@@ -106,11 +178,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
   explicit BatchFunctionKernel(OpKernelConstruction* c) : AsyncOpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("container", &container_));
     OP_REQUIRES_OK(c, c->GetAttr("shared_name", &shared_name_));
-    // If shared_name is not supplied, use name instead (prevent collisions by
-    // default).
-    if (shared_name_.empty()) {
-      shared_name_ = name();
-    }
     OP_REQUIRES_OK(c, c->GetAttr("batching_queue", &batcher_queue_));
     OP_REQUIRES_OK(c, c->GetAttr("num_batch_threads", &num_batch_threads_));
     OP_REQUIRES_OK(c, c->GetAttr("max_batch_size", &max_batch_size_));
@@ -126,12 +193,37 @@ class BatchFunctionKernel : public AsyncOpKernel {
     OP_REQUIRES_OK(c, c->GetAttr("f", &func));
     OP_REQUIRES_OK(
         c, lib->Instantiate(func.name(), AttrSlice(&func.attr()), &fhandle_));
+    if (num_batch_threads_ <= 0) {
+      adaptive_batch_scheduler_options_ =
+          absl::make_optional(AdaptiveBatchSchedulerOptions{
+              kMinInflightBatchesLimit, kInitialInflightBatchesLimit,
+              kBatchesToAverageOver});
+
+      // Use a shared shared pool across all models if adaptive shared batch
+      // scheduler is used.
+      // `shared_name_` and `container_` is used to look up an instantiated
+      // scheduler instance in `ComputeAsync`.
+      container_ = "__adapative_container";
+      shared_name_ = "__adaptive_global_shared_thread_pool";
+      // Use name to prevent collisions by default.
+      if (batcher_queue_.empty()) {
+        batcher_queue_ = name();
+      }
+    }
+
+    if (shared_name_.empty()) {
+      // If shared_name is not supplied, use name instead (prevent collisions by
+      // default).
+      shared_name_ = name();
+    }
 
     if (c->HasAttr("enable_large_batch_splitting")) {
       OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
                                    &enable_large_batch_splitting_));
+      has_attribute_enable_large_batch_splitting_ = true;
     } else {
       enable_large_batch_splitting_ = false;
+      has_attribute_enable_large_batch_splitting_ = false;
     }
 
     OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
@@ -140,16 +232,65 @@ class BatchFunctionKernel : public AsyncOpKernel {
   bool IsExpensive() override { return false; }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
+    RecordBatchSplitUsage(
+        has_attribute_enable_large_batch_splitting_
+            ? absl::make_optional(enable_large_batch_splitting_)
+            : absl::nullopt,
+        GetModelName(c));
+    // TODO(b/173255290): Add num_batch_threads_ parameter to TFRT batch kernel.
+    RecordBatchParamNumBatchThreads(num_batch_threads_, GetModelName(c));
+
+    std::function<Status(BatchResource**)> creator;
+
+    if (adaptive_batch_scheduler_options_ != absl::nullopt) {
+      creator = [this](BatchResource** r) {
+        serving::AdaptiveSharedBatchScheduler<
+            serving::BatchResourceBase::BatchTask>::Options
+            adaptive_shared_batch_scheduler_options;
+        adaptive_shared_batch_scheduler_options.thread_pool_name =
+            "adaptive_batch_threads";
+        adaptive_shared_batch_scheduler_options.num_batch_threads =
+            kMaxInflightBatchesLimit;
+        // adaptive_shared_batch_scheduler_options.full_batch_scheduling_boost_micros
+        // is 0 (default value) intentionally, so tasks are scheduled in a FIFO
+        // way.
+        // Two rationales to use default value (zero) for
+        // `full_batch_scheduling_boost_micros`
+        // 1) In this way, tasks scheduling policy is FIFO. Compared with round
+        // robin (what shared batch scheduler does), FIFO ensures that model
+        // with low QPS (i.e., models enqueue fewer tasks in the shared queue)
+        // will be processed timely.
+        // 2) If set, `full_batch_scheduling_boost_micros` should be of order
+        // the batch processing latency (which varies on a model basis).
+        // If a non-zero value is not set properly, it harms tail latency.
+        adaptive_shared_batch_scheduler_options.min_in_flight_batches_limit =
+            adaptive_batch_scheduler_options_->min_in_flight_batches_limit;
+        adaptive_shared_batch_scheduler_options
+            .initial_in_flight_batches_limit =
+            adaptive_batch_scheduler_options_->initial_in_flight_batches_limit;
+        adaptive_shared_batch_scheduler_options.batches_to_average_over =
+            adaptive_batch_scheduler_options_->batches_to_average_over;
+        std::unique_ptr<BatchResource> new_resource;
+        TF_RETURN_IF_ERROR(BatchResource::Create(
+            adaptive_shared_batch_scheduler_options, max_batch_size_,
+            batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
+            fhandle_, &new_resource));
+        *r = new_resource.release();
+        return Status::OK();
+      };
+    } else {
+      creator = [this](BatchResource** r) {
+        std::unique_ptr<BatchResource> new_resource;
+        TF_RETURN_IF_ERROR(BatchResource::Create(
+            num_batch_threads_, max_batch_size_, batch_timeout_micros_,
+            max_enqueued_batches_, allowed_batch_sizes_, fhandle_,
+            enable_large_batch_splitting_, &new_resource));
+        *r = new_resource.release();
+        return Status::OK();
+      };
+    }
+
     BatchResource* br;
-    std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
-      std::unique_ptr<BatchResource> new_resource;
-      TF_RETURN_IF_ERROR(BatchResource::Create(
-          num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-          max_enqueued_batches_, allowed_batch_sizes_, fhandle_,
-          enable_large_batch_splitting_, &new_resource));
-      *r = new_resource.release();
-      return Status::OK();
-    };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &br, creator),
@@ -198,6 +339,18 @@ class BatchFunctionKernel : public AsyncOpKernel {
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
   bool enable_large_batch_splitting_;
+  bool has_attribute_enable_large_batch_splitting_;
+
+  // Parameters for adaptive batch scheduler only.
+  // Note 'num_batch_threads_' above is shared by two implementations of batch
+  // scheduler.
+  struct AdaptiveBatchSchedulerOptions {
+    int64 min_in_flight_batches_limit;
+    double initial_in_flight_batches_limit;
+    int64 batches_to_average_over;
+  };
+  absl::optional<AdaptiveBatchSchedulerOptions>
+      adaptive_batch_scheduler_options_ = absl::nullopt;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),
@@ -246,8 +399,8 @@ class BatchKernel : public AsyncOpKernel {
     // Assume br calls done, so nothing to do here.
   }
 
-  // Validates 'allowed_batch_sizes_'. The entries must increase monotonically,
-  // and the last one must equal 'max_batch_size_'.
+  // Validates 'allowed_batch_sizes_'. The entries must increase
+  // monotonically, and the last one must equal 'max_batch_size_'.
   Status ValidateAllowedBatchSizes() const {
     if (allowed_batch_sizes_.empty()) {
       return Status::OK();

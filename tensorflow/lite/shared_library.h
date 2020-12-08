@@ -33,11 +33,13 @@ class SharedLibrary {
     return ::LoadLibrary(lib);
   }
   static inline void* GetLibrarySymbol(void* handle, const char* symbol) {
-    return static_cast<void*>(
+    return reinterpret_cast<void*>(
         GetProcAddress(static_cast<HMODULE>(handle), symbol));
   }
+  // Warning: Unlike dlsym(RTLD_DEFAULT), it doesn't search the symbol from
+  // dependent DLLs.
   static inline void* GetSymbol(const char* symbol) {
-    return static_cast<void*>(GetProcAddress(nullptr, symbol));
+    return reinterpret_cast<void*>(GetProcAddress(nullptr, symbol));
   }
   static inline int UnLoadLibrary(void* handle) {
     return FreeLibrary(static_cast<HMODULE>(handle));

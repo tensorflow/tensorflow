@@ -24,6 +24,8 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
+from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
+from tensorboard.plugins.scalar import summary_v2 as scalar_summary_v2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -32,6 +34,10 @@ from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -41,11 +47,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import summary_ops_v2 as summary
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
+from tensorflow.python.tpu import functional as tpu_functional
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.tpu.ops import tpu_ops
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("tpu", "", "Name of TPU to connect to.")
@@ -88,32 +95,41 @@ def _events_from_logdir(test_case, logdir):
   return result
 
 
+def _rewrite_func_wrapper(tf_func):
+
+  def tpu_fn(*args, **kwargs):
+    # tpu.rewrite only accepts list of tensors as input. We need to flatten
+    # keyword arguments to meet this requirement.
+    concrete = tf_func.get_concrete_function(*(list(args) +
+                                               list(kwargs.values())))
+    return tpu.rewrite(concrete.__call__, list(args) + list(kwargs.values()))
+
+  return def_function.function(tpu_fn)
+
+
+def _tpu_partitioned_call_wrapper(tf_func):
+  """Wrap a tensorflow Function with TPUPartitionedCall."""
+
+  def inner_func(*args, **kwargs):
+    concrete = tf_func.get_concrete_function(*args, **kwargs)
+    # TPUPartitionedCall only accepts list of tensors as input args.
+    # Flatten keyword arguments and do some basic ordering:
+    # Positional args + Flattened keyword args + Captured args.
+    op_args = list(args) + list(kwargs.values()) + concrete.captured_inputs
+    return tpu_functional.TPUPartitionedCall(
+        args=op_args,
+        device_ordinal=tpu_ops.tpu_ordinal_selector(),
+        Tout=[o.type for o in concrete.function_def.signature.output_arg],
+        f=concrete)
+
+  return def_function.function(inner_func)
+
+
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
-  def testResourceVariableAssignOnHost(self):
-    strategy = get_tpu_strategy()
-    with strategy.scope():
-      v = variables.Variable(
-          0.0, aggregation=variables.VariableAggregation.MEAN)
-    v2 = variables.Variable(0.0, aggregation=variables.VariableAggregation.MEAN)
-
-    def assign_fn():
-      v2.assign_add(4.0)
-
-    @def_function.function
-    def train_step():
-
-      def assign_add():
-        v.assign_add(2.0)
-        tpu.outside_compilation(assign_fn)
-        v.assign_add(3.0)
-
-      strategy.run(assign_add)
-      return
-
-    train_step()
-    self.assertAllEqual(4.0 * strategy.num_replicas_in_sync, v2.numpy())
-    self.assertAllEqual(5.0, v.numpy())
+  def setUp(self):
+    super(TpuOutsideCompilationTest, self).setUp()
+    config.set_soft_device_placement(False)
 
   def testHostNoInput(self):
     strategy = get_tpu_strategy()
@@ -312,7 +328,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -338,7 +354,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -373,7 +389,7 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -469,8 +485,39 @@ class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
         strategy.experimental_local_results(train_step()),
         constant_op.constant(2916., shape=(strategy.num_replicas_in_sync)))
 
+  def testColocateGradientWithOutsideCompiledOp(self):
+    strategy = get_tpu_strategy()
 
-class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
+    @def_function.function
+    def train_step():
+
+      @def_function.function
+      def tpu_fn(x):
+        x1 = tpu.outside_compilation(math_ops.sqrt, x)
+        grad = gradients_impl.gradients([x1], [x],
+                                        colocate_gradients_with_ops=True)[0]
+        sqrt = [
+            op for op in ops.get_default_graph().get_operations()
+            if op.type == "Sqrt"
+        ][0]
+        sqrt_grad = [
+            op for op in ops.get_default_graph().get_operations()
+            if op.type == "SqrtGrad"
+        ][0]
+        assert sqrt.get_attr(tpu._OUTSIDE_COMPILATION_ATTR) == b"0"
+        assert (sqrt_grad.get_attr(
+            tpu._OUTSIDE_COMPILATION_ATTR) == b"0.gradients/uid")
+        return grad
+
+      return strategy.run(tpu_fn, args=(25.0,))
+
+    self.assertAllEqual(
+        strategy.experimental_local_results(train_step()),
+        constant_op.constant(.1, shape=(strategy.num_replicas_in_sync)))
+
+
+class OutsideCompilationOnUnsupportedOpTest(test.TestCase,
+                                            parameterized.TestCase):
 
   def setUp(self):
     super(OutsideCompilationOnUnsupportedOpTest, self).setUp()
@@ -510,7 +557,7 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
     strategy = get_tpu_strategy()
 
     def host_computation(x):
-      summary.scalar("x", x, step=0)
+      scalar_summary_v2.scalar("x", x, step=0)
       return x * 2.0
 
     @def_function.function
@@ -534,8 +581,77 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
     # written by host.
     self.assertLen(events, 2)
     self.assertEqual(events[1].summary.value[0].tag, "x")
-    self.assertEqual(events[1].summary.value[0].simple_value, 3.0)
 
+  def testHistogramSummaryWithAutoOutsideCompilation(self):
+    strategy = get_tpu_strategy()
+
+    def host_computation(x):
+      histogram_summary_v2.histogram("x", x, step=0)
+      return x * 2.0
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        y = host_computation(x)
+        return y + 1.0
+
+      return strategy.run(computation, args=(2.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(7., shape=(strategy.num_replicas_in_sync)))
+    events = _events_from_logdir(self, logdir)
+    # There will be 2 entries: 1 summary file header entry, and 1 entry
+    # written by host.
+    self.assertLen(events, 2)
+    self.assertEqual(events[1].summary.value[0].tag, "x")
+
+  @parameterized.parameters((True), (False))
+  def testSummaryControlFlowIfWithAutoOutsideCompilation(
+      self, take_true_branch):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def step():
+
+      def computation(x):
+        x = x + 1.0
+        if x < 5:
+          scalar_summary_v2.scalar("x", x, step=0)
+          x = x * 2.0
+        return x + 1.0
+
+      if take_true_branch:
+        return strategy.run(computation, args=(2.0,))
+      else:
+        return strategy.run(computation, args=(10.0,))
+
+    logdir = tempfile.mkdtemp()
+    summary_writer = summary.create_file_writer(logdir, flush_millis=10000)
+    output_value = 12.
+    if take_true_branch:
+      output_value = 7.
+    with summary_writer.as_default(), summary.always_record_summaries():
+      self.assertAllEqual(
+          strategy.experimental_local_results(step()),
+          constant_op.constant(
+              output_value, shape=(strategy.num_replicas_in_sync)))
+    if take_true_branch:
+      events = _events_from_logdir(self, logdir)
+      # There will be 2 entries: 1 summary file header entry, and 1 entry
+      # written by host.
+      #
+      self.assertLen(events, 2)
+      self.assertEqual(events[1].summary.value[0].tag, "cond/x")
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/168493455): Reenable this test once deadlock resolved."
+  )
   def testAutoOutsideCompilationWithFunctionalNodes(self):
     strategy = get_tpu_strategy()
 
@@ -570,6 +686,34 @@ class OutsideCompilationOnUnsupportedOpTest(test.TestCase):
 
     self.assertAllEqual(
         strategy.experimental_local_results(train_step())[0].shape, [1, 2, 3])
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/167235391): Reenable this test once function calls are handled "
+      "by MLIR bridge."
+  )
+  def testOutsideCompilationWithTPUPartitionedCallOp(self):
+    """Tests that control flow with TPUPartitionedCall including outside_compilation works."""
+    get_tpu_strategy()
+
+    def host_computation(x):
+      return x + 1
+
+    @def_function.function()
+    def train_step(x):
+      x2 = x + 5.0
+      logging_ops.print_v2(x2)
+      x2 = tpu.outside_compilation(host_computation, x2)
+      return x2 + 4.0
+
+    tpu_fn = _rewrite_func_wrapper(train_step)
+    partitioned_tpu_fn = _tpu_partitioned_call_wrapper(tpu_fn)
+
+    concrete = partitioned_tpu_fn.get_concrete_function(
+        x=tensor_spec.TensorSpec(
+            shape=(1), dtype=dtypes.float32, name="input_tensor"))
+
+    self.assertIsInstance(
+        concrete(array_ops.ones((1), dtype=dtypes.float32))[0], ops.Tensor)
 
 
 if __name__ == "__main__":

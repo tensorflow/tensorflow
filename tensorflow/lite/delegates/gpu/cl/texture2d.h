@@ -22,27 +22,14 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
-#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-struct Texture2DDescriptor : public GPUObjectDescriptor {
-  DataType element_type;  // FLOAT32 or FLOAT16
-
-  absl::Status PerformSelector(const std::string& selector,
-                               const std::vector<std::string>& args,
-                               const std::vector<std::string>& template_args,
-                               std::string* result) const override;
-
-  GPUResources GetGPUResources() const override;
-  absl::Status PerformReadSelector(const std::vector<std::string>& args,
-                                   std::string* result) const;
-};
 
 // Texture2D represent formatted GPU data storage.
 // Texture2D is moveable but not copyable.
@@ -57,7 +44,7 @@ class Texture2D : public GPUObject {
   Texture2D(const Texture2D&) = delete;
   Texture2D& operator=(const Texture2D&) = delete;
 
-  ~Texture2D();
+  virtual ~Texture2D() { Release(); }
 
   cl_mem GetMemoryPtr() const { return texture_; }
 
@@ -72,6 +59,9 @@ class Texture2D : public GPUObject {
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromTexture2DDescriptor(const Texture2DDescriptor& desc,
+                                             CLContext* context);
 
  private:
   void Release();

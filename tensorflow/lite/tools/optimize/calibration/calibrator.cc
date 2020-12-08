@@ -31,12 +31,14 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/custom_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 
@@ -173,13 +175,21 @@ GlobalCalibratorRegistry* GetCalibratorRegistry() {
 // TODO(jianlijianli): extend this to support multiple recipe for the same
 // model.
 logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
-                                           TfLiteNode* node) {
-  const int lstm_number_input = 24;
-  if (node->inputs->size == lstm_number_input) {
-    // LSTM Op.
-    return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+                                           TfLiteNode* node,
+                                           int builtin_op_code) {
+  switch (builtin_op_code) {
+    case BuiltinOperator_LSTM: {
+      if (node->intermediates->size == 12) {
+        return tflite::optimize::calibration::custom::lstm_logging_kernel;
+      }
+      return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+    }
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
+      return tflite::optimize::calibration::builtin::
+          unidirectional_sequence_lstm_logging_kernel;
+    default:
+      return nullptr;
   }
-  return nullptr;
 }
 
 // A wrapper implementation for |TfLiteRegistration.invoke| that logs inputs,
@@ -202,13 +212,14 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_STATUS(logger->LogTensorValue(
         i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
-  auto kernel_invoke_intermediate = GetLoggingEvalFunc(context, node);
-  TfLiteStatus status;
+  auto builtin_op_code = calibrator->GetOpInfo(node).builtin_op_code;
+  auto kernel_invoke_intermediate =
+      GetLoggingEvalFunc(context, node, builtin_op_code);
   if (kernel_invoke_intermediate == nullptr) {
-    status = kernel_invoke(context, node);
+    TF_LITE_ENSURE_STATUS(kernel_invoke(context, node));
   } else {
-    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger(),
-                                        error_reporter);
+    TF_LITE_ENSURE_STATUS(kernel_invoke_intermediate(
+        context, node, calibrator->GetLogger(), error_reporter));
   }
 
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
@@ -230,7 +241,7 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
         i, tensor.data.f, tensor.bytes / sizeof(float), error_reporter));
   }
 
-  return status;
+  return kTfLiteOk;
 }
 
 // Returns the loggable tensors. Not all inputs and outputs need to be logged.
@@ -271,12 +282,14 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
 
   // Since we only consider the primary subgraph while populating
   // node_to_opinfo, do the same here.
-  TF_LITE_ENSURE_EQ(*context, interpreter->execution_plan().size(),
-                    node_to_opinfo.size());
-  for (const auto op_index : interpreter->execution_plan()) {
-    const auto* node_and_reg = interpreter->node_and_registration(op_index);
-
-    auto op_info = node_to_opinfo.at(op_index);
+  // Because Flex delegate can merge multiple op nodes into one Delegate node if
+  // they are located in a row, the size of the execution plan can be lesser
+  // than the size of the graph's op nodes.
+  TF_LITE_ENSURE(*context,
+                 interpreter->execution_plan().size() <= node_to_opinfo.size());
+  for (const auto& entry : node_to_opinfo) {
+    auto op_info = entry.second;
+    const auto* node_and_reg = interpreter->node_and_registration(entry.first);
     op_info.registration = &node_and_reg->second;
     node_ptr_opinfo_map->insert({&node_and_reg->first, op_info});
   }
@@ -287,7 +300,7 @@ string GetOpName(const tflite::OperatorCode& opcode) {
   if (opcode.custom_code() != nullptr) {
     return opcode.custom_code()->str();
   }
-  return tflite::EnumNamesBuiltinOperator()[opcode.builtin_code()];
+  return tflite::EnumNamesBuiltinOperator()[GetBuiltinCode(&opcode)];
 }
 
 // A |CalibrationReader| that owns the Calibrator.
@@ -349,7 +362,7 @@ TfLiteStatus BuildLoggingInterpreter(
     op_info.node_index = i;
     auto op = operators->Get(i);
     auto operator_code = operator_codes->Get(op->opcode_index());
-    op_info.builtin_op_code = operator_code->builtin_code();
+    op_info.builtin_op_code = GetBuiltinCode(operator_code);
     op_info.name = GetOpName(*operator_code);
     op_info.is_custom_op = operator_code->custom_code() != nullptr;
     op_info.version = operator_code->version();
@@ -368,7 +381,7 @@ TfLiteStatus BuildLoggingInterpreter(
       custom_op_and_versions.insert(
           {op_info.name.c_str(), operator_code->version()});
     } else {
-      op_info.registration = op_resolver.FindOp(operator_code->builtin_code(),
+      op_info.registration = op_resolver.FindOp(GetBuiltinCode(operator_code),
                                                 operator_code->version());
       builtin_op_and_versions.insert(
           {op_info.builtin_op_code, operator_code->version()});
@@ -393,8 +406,8 @@ TfLiteStatus BuildLoggingInterpreter(
   // (TfLiteContext, TfLiteNode) -> OperatorInfo
   std::unordered_map<const TfLiteNode*, OperatorInfo> node_ptr_opinfo_map;
   TfLiteContext* context = nullptr;
-  GetNodeOpInfoMapAndContext(node_to_opinfo, interpreter->get(),
-                             &node_ptr_opinfo_map, &context);
+  TF_LITE_ENSURE_STATUS(GetNodeOpInfoMapAndContext(
+      node_to_opinfo, interpreter->get(), &node_ptr_opinfo_map, &context));
 
   Calibrator* calibrator = nullptr;
   // Register a calibrator object for the context. This can be accessed

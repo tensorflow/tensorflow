@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Keras string lookup preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -37,13 +38,13 @@ class StringLookup(index_lookup.IndexLookup):
   unlimited size or be capped, depending on the configuration options for this
   layer; if there are more unique values in the input than the maximum
   vocabulary size, the most frequent terms will be used to create the
-  vocabulary.
+  vocabulary (and the terms that don't make the cut will be treated as OOV).
 
-  Attributes:
+  Arguments:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask tokens, so the effective number of tokens is
-      (max_tokens - num_oov_indices - (1 if mask_token else 0))
+      `(max_tokens - num_oov_indices - (1 if mask_token else 0))`.
     num_oov_indices: The number of out-of-vocabulary tokens to use; defaults to
       1. If this value is more than 1, OOV inputs are hashed to determine their
       OOV value; if this value is 0, passing an OOV input will result in a '-1'
@@ -51,22 +52,35 @@ class StringLookup(index_lookup.IndexLookup):
       the value is -1 and not 0, this will allow you to effectively drop OOV
       values from categorical encodings.)
     mask_token: A token that represents masked values, and which is mapped to
-      index 0. Defaults to the empty string "". If set to None, no mask term
+      index 0. Defaults to the empty string `""`. If set to None, no mask term
       will be added and the OOV tokens, if any, will be indexed from
-      (0...num_oov_indices) instead of (1...num_oov_indices+1).
+      `(0...num_oov_indices)` instead of `(1...num_oov_indices+1)`.
     oov_token: The token representing an out-of-vocabulary value. Defaults to
-      "[UNK]".
+      `"[UNK]"`.
     vocabulary: An optional list of vocabulary terms, or a path to a text file
       containing a vocabulary to load into this layer. The file should contain
       one token per line. If the list or file contains the same token multiple
       times, an error will be thrown.
-    encoding: The Python string encoding to use. Defaults to `'utf-8'`.
+    encoding: The Python string encoding to use. Defaults to `"utf-8"`.
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
+    output_mode: Specification for the output of the layer. Only applicable
+      when `invert` is False.
+      Defaults to "int". Values can
+      be "int", "binary", or "count", configuring the layer as follows:
+        "int": Return the raw integer indices of the input values.
+        "binary": Outputs a single int array per batch, of either vocab_size or
+          max_tokens size, containing 1s in all elements where the token mapped
+          to that index exists at least once in the batch item.
+        "count": Like "binary", but the int array contains a count of the number
+          of times the token at that index appeared in the batch item.
+    sparse: Boolean. Only applicable to "binary" and "count" output modes.
+      If true, returns a `SparseTensor` instead of a dense `Tensor`.
+      Defaults to `False`.
 
   Examples:
 
-  Creating a lookup layer with a known vocabulary
+  **Creating a lookup layer with a known vocabulary**
 
   This example creates a lookup layer with a pre-existing vocabulary.
 
@@ -78,8 +92,22 @@ class StringLookup(index_lookup.IndexLookup):
   array([[2, 4, 5],
          [5, 1, 3]])>
 
+  **Configuring the layer to apply multi-hot encoding after lookup**
 
-  Creating a lookup layer with an adapted vocabulary
+  Just set `output_mode='binary'`. Note that the first two dimensions
+  in the binary encoding represent the mask value and the OOV value,
+  respectively.
+
+  >>> vocab = ["a", "b", "c", "d"]
+  >>> data = tf.constant([["a", "c", "d"], ["d", "z", "b"]])
+  >>> layer = StringLookup(vocabulary=vocab, output_mode='binary')
+  >>> layer(data)
+  <tf.Tensor: shape=(2, 6), dtype=float32, numpy=
+    array([[0., 0., 1., 0., 1., 1.],
+           [0., 1., 0., 1., 0., 1.]], dtype=float32)>
+
+
+  **Creating a lookup layer with an adapted vocabulary**
 
   This example creates a lookup layer and generates the vocabulary by analyzing
   the dataset.
@@ -102,10 +130,10 @@ class StringLookup(index_lookup.IndexLookup):
   array([[6, 4, 2],
          [2, 3, 5]])>
 
-  Lookups with multiple OOV tokens.
+  **Lookups with multiple OOV indices**
 
-  This example demonstrates how to use a lookup layer with multiple OOV tokens.
-  When a layer is created with more than one OOV token, any OOV values are
+  This example demonstrates how to use a lookup layer with multiple OOV indices.
+  When a layer is created with more than one OOV index, any OOV values are
   hashed into the number of OOV buckets, distributing OOV values in a
   deterministic fashion across the set.
 
@@ -122,7 +150,7 @@ class StringLookup(index_lookup.IndexLookup):
   earlier examples (a maps to 3, etc) in order to make space for the extra OOV
   value.
 
-  Inverse lookup
+  **Inverse lookup**
 
   This example demonstrates how to map indices to strings using this layer. (You
   can also use adapt() with inverse=True, but for simplicity we'll pass the
@@ -140,7 +168,7 @@ class StringLookup(index_lookup.IndexLookup):
   token.
 
 
-  Forward and inverse lookup pairs
+  **Forward and inverse lookup pairs**
 
   This example demonstrates how to use the vocabulary of a standard lookup
   layer to create an inverse lookup layer.
@@ -170,12 +198,14 @@ class StringLookup(index_lookup.IndexLookup):
                vocabulary=None,
                encoding=None,
                invert=False,
+               output_mode=index_lookup.INT,
+               sparse=False,
                **kwargs):
     allowed_dtypes = [dtypes.string]
 
     if "dtype" in kwargs and kwargs["dtype"] not in allowed_dtypes:
-      raise ValueError("StringLookup may only have a dtype in %s." %
-                       allowed_dtypes)
+      raise ValueError("The value of the dtype argument for StringLookup may "
+                       "only be one of %s." % (allowed_dtypes,))
 
     if "dtype" not in kwargs:
       kwargs["dtype"] = dtypes.string
@@ -196,8 +226,10 @@ class StringLookup(index_lookup.IndexLookup):
         oov_token=oov_token,
         vocabulary=vocabulary,
         invert=invert,
+        output_mode=output_mode,
+        sparse=sparse,
         **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("StringLookup")
+    base_preprocessing_layer.keras_kpl_gauge.get_cell("StringLookup").set(True)
 
   def get_config(self):
     config = {"encoding": self.encoding}
@@ -208,7 +240,16 @@ class StringLookup(index_lookup.IndexLookup):
     if self._table_handler.vocab_size() == 0:
       return []
 
-    keys, values = self._table_handler.data()
+    if self.invert:
+      ids, strings = self._table_handler.data()
+    else:
+      strings, ids = self._table_handler.data()
+
     # This is required because the MutableHashTable doesn't preserve insertion
     # order, but we rely on the order of the array to assign indices.
-    return [x.decode(self.encoding) for _, x in sorted(zip(values, keys))]
+    return [x.decode(self.encoding) for _, x in sorted(zip(ids, strings))]
+
+  def set_vocabulary(self, vocab):
+    if isinstance(vocab, str):
+      vocab = table_utils.get_vocabulary_from_file(vocab, self.encoding)
+    super().set_vocabulary(vocab)

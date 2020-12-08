@@ -63,14 +63,14 @@ CpuExecutable::CpuExecutable(
       assignment_(std::move(assignment)) {
   // Resolve symbols in the constructor rather than at execution time to avoid
   // races because FindSymbol is not thread safe.
-  llvm::JITSymbol sym = jit_->FindCompiledSymbol(entry_function_name);
+  llvm::Expected<llvm::JITEvaluatedSymbol> sym =
+      jit_->FindCompiledSymbol(entry_function_name);
   // We expect to find the symbol provided with entry_function_name; otherwise
   // this is an internal error.
-  CHECK(sym) << "Symbol " << entry_function_name << " not found.";
+  CHECK(*sym) << "Symbol " << entry_function_name << " not found.";
   // getAddress can do work under the hood in the jit, so it needs to be
   // guarded by the mutex.
-  compute_function_ =
-      reinterpret_cast<ComputeFunctionType>(cantFail(sym.getAddress()));
+  compute_function_ = reinterpret_cast<ComputeFunctionType>(sym->getAddress());
   VLOG(1) << "compute_function_ at address "
           << reinterpret_cast<void*>(compute_function_);
 }
@@ -210,8 +210,7 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
     absl::Span<MaybeOwningDeviceMemory> buffers,
     absl::Span<ExecutionInput> arguments) {
   se::Stream* stream = run_options->stream();
-  ExecutionOutput result(/*on_host_shape=*/result_shape(),
-                         /*on_device_shape=*/result_shape(),
+  ExecutionOutput result(/*on_device_shape=*/result_shape(),
                          run_options->allocator(),
                          stream->parent()->device_ordinal());
   const HloInputOutputAliasConfig& input_output_alias =
@@ -247,6 +246,12 @@ StatusOr<ExecutionOutput> CpuExecutable::CreateResultShapedBuffer(
       ExecutionInput& input = arguments[alias->parameter_number];
       MaybeOwningDeviceMemory* maybe_owning_memory =
           input.MutableBuffer(alias->parameter_index);
+      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
+        return InvalidArgument(
+            "An input was configured to be must-alias at "
+            "compile time but not donated at runtime: %s",
+            alias->ToString());
+      }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
         // If the caller passes the ownership of the device memory, reuse it

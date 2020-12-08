@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import re
+import sys
 import types
 import unittest
 
@@ -82,18 +82,29 @@ class AutoGraphTestCase(test.TestCase):
       @def_function.function(autograph=False)  # Testing autograph itself.
       def fn_wrapper():
         self.assertions = []
+        self.raises_cm = None
         self.graph_assertions = []
         self.trace_log = []
         fn()
         targets = [args for _, args in self.assertions]
         return targets
 
-      tensors = fn_wrapper()
+      try:
+        tensors = fn_wrapper()
 
-      for assertion in self.graph_assertions:
-        assertion(fn_wrapper.get_concrete_function().graph)
+        for assertion in self.graph_assertions:
+          assertion(fn_wrapper.get_concrete_function().graph)
 
-      actuals = self.evaluate(tensors)
+        actuals = self.evaluate(tensors)
+
+      except:  # pylint:disable=bare-except
+        if self.raises_cm is not None:
+          # Note: Yes, the Raises and function contexts cross.
+          self.raises_cm.__exit__(*sys.exc_info())
+          return
+        else:
+          raise
+
       for (assertion, _), values in zip(self.assertions, actuals):
         assertion(*values)
 
@@ -108,9 +119,9 @@ class AutoGraphTestCase(test.TestCase):
 
   def setUp(self):
     super().setUp()
-    os.environ['AUTOGRAPH_CREATE_SYMBOLS_IN_LOOPS'] = '1'
     self.variables = {}
     self.trace_log = []
+    self.raises_cm = None
     op_callbacks.add_op_callback(self._op_callback)
 
   def tearDown(self):
@@ -144,3 +155,12 @@ class AutoGraphTestCase(test.TestCase):
 
   def assertEqual(self, *args):
     self.assertions.append((super().assertEqual, list(args)))
+
+  def assertDictEqual(self, *args):
+    self.assertions.append((super().assertDictEqual, list(args)))
+
+  def assertRaisesRuntime(self, *args):
+    if self.raises_cm is not None:
+      raise ValueError('cannot use more than one assertRaisesRuntime in a test')
+    self.raises_cm = self.assertRaisesRegex(*args)
+    self.raises_cm.__enter__()

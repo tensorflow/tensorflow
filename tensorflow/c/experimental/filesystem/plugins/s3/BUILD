@@ -26,6 +26,8 @@ cc_library(
     }),
     deps = [
         ":aws_crypto",
+        ":aws_logging",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@aws",
@@ -41,6 +43,18 @@ cc_library(
     deps = [
         "@aws",
         "@boringssl//:crypto",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "aws_logging",
+    srcs = ["aws_logging.cc"],
+    hdrs = ["aws_logging.h"],
+    deps = [
+        "//tensorflow/c:logging",
+        "@aws",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = 1,
 )

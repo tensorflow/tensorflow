@@ -1,6 +1,10 @@
 path: "tensorflow.data"
 tf_module {
   member {
+    name: "AUTOTUNE"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "Dataset"
     mtype: "<type \'type\'>"
   }

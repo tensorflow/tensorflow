@@ -25,7 +25,13 @@ from tensorflow.python._pywrap_mlir import *
 
 def import_graphdef(graphdef, pass_pipeline):
   return ImportGraphDef(
-      str(graphdef).encode('utf-8'),
+      str(graphdef).encode('utf-8'), pass_pipeline.encode('utf-8'))
+
+
+def import_function(concrete_function, pass_pipeline):
+  return ImportFunction(
+      str(concrete_function.function_def).encode('utf-8'),
+      str(concrete_function.graph.as_graph_def().library).encode('utf-8'),
       pass_pipeline.encode('utf-8'))
 
 
@@ -34,6 +40,14 @@ def experimental_convert_saved_model_to_mlir(saved_model_path, exported_names,
   return ExperimentalConvertSavedModelToMlir(
       str(saved_model_path).encode('utf-8'),
       str(exported_names).encode('utf-8'), show_debug_info)
+
+
+def experimental_convert_saved_model_v1_to_mlir_lite(saved_model_path, tags,
+                                                     upgrade_legacy,
+                                                     show_debug_info):
+  return ExperimentalConvertSavedModelV1ToMlirLite(
+      str(saved_model_path).encode('utf-8'),
+      str(tags).encode('utf-8'), upgrade_legacy, show_debug_info)
 
 
 def experimental_convert_saved_model_v1_to_mlir(saved_model_path, tags,
@@ -47,5 +61,4 @@ def experimental_convert_saved_model_v1_to_mlir(saved_model_path, tags,
 
 def experimental_run_pass_pipeline(mlir_txt, pass_pipeline, show_debug_info):
   return ExperimentalRunPassPipeline(
-      mlir_txt.encode('utf-8'), pass_pipeline.encode('utf-8'),
-      show_debug_info)
+      mlir_txt.encode('utf-8'), pass_pipeline.encode('utf-8'), show_debug_info)

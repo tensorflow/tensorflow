@@ -68,7 +68,7 @@ void DeviceOpMetricsDbBuilder::EnterOp(
     uint64 program_id, absl::string_view name, absl::string_view category,
     absl::string_view provenance, bool is_eager, uint64 occurrences,
     uint64 time_ps, uint64 children_time_ps, int64 flops, int64 bytes_accessed,
-    const protobuf::RepeatedPtrField<OpMetrics_MemoryAccessed>&
+    const protobuf::RepeatedPtrField<OpMetrics::MemoryAccessed>&
         memory_accessed_breakdown) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
@@ -82,13 +82,9 @@ void DeviceOpMetricsDbBuilder::EnterOp(
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);
-  op_metrics->set_flops(op_metrics->flops() +
-                        GetCappedPerf(flops * occurrences, self_time_ps,
-                                      peak_tera_flops_per_second_));
-  op_metrics->set_bytes_accessed(
-      op_metrics->bytes_accessed() +
-      GetCappedPerf(bytes_accessed * occurrences, self_time_ps,
-                    peak_hbm_bw_giga_bytes_per_second_ / 1000));
+  op_metrics->set_flops(op_metrics->flops() + flops * occurrences);
+  op_metrics->set_bytes_accessed(op_metrics->bytes_accessed() +
+                                 bytes_accessed * occurrences);
   CombineMemoryAccessedBreakdown(
       memory_accessed_breakdown,
       op_metrics->mutable_memory_accessed_breakdown());

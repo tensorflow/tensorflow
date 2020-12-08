@@ -352,7 +352,7 @@ class DeviceKernelOpTest : public OpsTestBase {
     EXPECT_EQ(TF_OK, TF_GetCode(status));
     TF_DeleteStatus(status);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice(device_name_, {}, "/job:a/replica:0/task:0"));
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
@@ -361,12 +361,39 @@ class DeviceKernelOpTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   const char* device_name_ = tensorflow::DEVICE_GPU;
 #else
   const char* device_name_ = tensorflow::DEVICE_CPU;
 #endif
 };
+
+// Validates that the tensor has shape and type corresponding to
+// dims and dtype.
+void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims,
+                     TF_DataType dtype);
+
+// Copies data of length tensor_size_bytes from values to tensor.
+template <typename T>
+void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
+                     TF_OpKernelContext* ctx);
+
+REGISTER_OP("StreamOp").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestStream) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    SP_Stream stream = TF_GetStream(ctx, s);
+    // Stream is always null if device is not a pluggable device. More test
+    // cases will be added when pluggable device mechanism is supported.
+    EXPECT_EQ(stream, nullptr);
+    EXPECT_NE(TF_OK, TF_GetCode(s));
+    TF_DeleteStatus(s);
+  };
+
+  SetupOp("StreamOp", "StreamOp", my_compute_func);
+  TF_ASSERT_OK(RunOpKernel());
+}
 
 REGISTER_OP("AllocateOutputOp1").Output("output1: float");
 
@@ -379,22 +406,11 @@ TEST_F(DeviceKernelOpTest, TestAllocateOutputSizeOne) {
     TF_Tensor* output = TF_AllocateOutput(
         /*context=*/ctx, /*index=*/0, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
         /*num_dims=*/1, /*len=*/tensor_size_bytes, s);
-    EXPECT_EQ(TF_OK, TF_GetCode(s));
-    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
-    EXPECT_EQ(1, TF_NumDims(output));
-    EXPECT_EQ(1, TF_Dim(output, 0));
+    validate_tensor(output, &dim, 1, TF_FLOAT);
 
     // Set output to 3
-    float* data = reinterpret_cast<float*>(TF_TensorData(output));
-    float value = 3.0f;
-#if GOOGLE_CUDA
-    OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
-    cc_ctx->eigen_gpu_device().memcpyHostToDevice(data, &value,
-                                                  tensor_size_bytes);
-#else
-    *data = value;
-#endif
-
+    float values[1] = {3.0f};
+    set_tensor_data<float>(output, values, tensor_size_bytes, ctx);
     TF_DeleteStatus(s);
     TF_DeleteTensor(output);
   };
@@ -417,12 +433,8 @@ TEST_F(DeviceKernelOpTest, TestAllocateEmptyOutput) {
     TF_Tensor* output = TF_AllocateOutput(
         /*context=*/ctx, /*index=*/0, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
         /*num_dims=*/1, /*len=*/0, s);
-
     EXPECT_EQ(TF_OK, TF_GetCode(s));
-    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
-    EXPECT_EQ(1, TF_NumDims(output));
-    EXPECT_EQ(0, TF_Dim(output, 0));
-
+    validate_tensor(output, &dim, 1, TF_FLOAT);
     TF_DeleteStatus(s);
     TF_DeleteTensor(output);
   };
@@ -442,27 +454,16 @@ TEST_F(DeviceKernelOpTest, TestAllocateOutputSize2x3) {
     TF_Status* s = TF_NewStatus();
     // Allocate 2x3 output
     int64_t dim[2] = {2, 3};
-    size_t tensor_size_bytes = 6 * TF_DataTypeSize(TF_FLOAT);
+    size_t tensor_size_bytes = TF_DataTypeSize(TF_FLOAT) * 6;
     TF_Tensor* output = TF_AllocateOutput(
         /*context=*/ctx, /*index=*/0, /*dtype=*/TF_FLOAT, /*dims=*/dim,
         /*num_dims=*/2, /*len=*/tensor_size_bytes, s);
     EXPECT_EQ(TF_OK, TF_GetCode(s));
-    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
-    EXPECT_EQ(2, TF_NumDims(output));
-    EXPECT_EQ(2, TF_Dim(output, 0));
-    EXPECT_EQ(3, TF_Dim(output, 1));
+    validate_tensor(output, dim, 2, TF_FLOAT);
 
     // Set output to [1 2 3 4 5 6]
-    void* data = TF_TensorData(output);
-    float value[6] = {1, 2, 3, 4, 5, 6};
-#if GOOGLE_CUDA
-    OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
-    cc_ctx->eigen_gpu_device().memcpyHostToDevice(data, value,
-                                                  tensor_size_bytes);
-#else
-    memcpy(data, value, tensor_size_bytes);
-#endif
-
+    float values[6] = {1, 2, 3, 4, 5, 6};
+    set_tensor_data<float>(output, values, tensor_size_bytes, ctx);
     TF_DeleteStatus(s);
     TF_DeleteTensor(output);
   };
@@ -473,5 +474,201 @@ TEST_F(DeviceKernelOpTest, TestAllocateOutputSize2x3) {
   Tensor* output = GetOutput(0);
   EXPECT_EQ("Tensor<type: float shape: [2,3] values: [1 2 3][4 5 6]>",
             output->DebugString(100));
+}
+
+REGISTER_OP("AllocateTempOp1").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateTempSizeOne) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    // Allocate scalar TF_Tensor
+    TF_Status* s = TF_NewStatus();
+    int64_t dim = 1;
+    TF_AllocatorAttributes alloc_attrs;
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    alloc_attrs.on_host = 0;
+#else
+    alloc_attrs.on_host = 1;
+#endif
+    TF_Tensor* output = TF_AllocateTemp(
+        /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
+        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
+    size_t tensor_size_bytes = TF_DataTypeSize(TF_FLOAT);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    validate_tensor(output, &dim, 1, TF_FLOAT);
+
+    // Set TF_Tensor value to 3
+    float values[1] = {3.0f};
+    set_tensor_data<float>(output, values, tensor_size_bytes, ctx);
+    TF_SetOutput(ctx, 0, output, s);
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateTempOp1", "AllocateTemp1", my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [1] values: 3>",
+            output->DebugString(100));
+}
+
+REGISTER_OP("AllocateTempOp0").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateTempEmpty) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    // Allocate empty TF_Tensor
+    int64_t dim = 0;
+    TF_AllocatorAttributes alloc_attrs;
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    alloc_attrs.on_host = 0;
+#else
+    alloc_attrs.on_host = 1;
+#endif
+    TF_Tensor* output = TF_AllocateTemp(
+        /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/&dim,
+        /*num_dims=*/1, /*allocator_attributes*/ &alloc_attrs, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    validate_tensor(output, &dim, 1, TF_FLOAT);
+    TF_SetOutput(ctx, 0, output, s);
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateTempOp0", "AllocateTemp0", my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [0] values: >",
+            output->DebugString(100));
+}
+
+REGISTER_OP("AllocateTempOp2x3").Output("output1: float");
+
+TEST_F(DeviceKernelOpTest, TestAllocateTempSize2x3) {
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    size_t tensor_size_bytes = 6 * TF_DataTypeSize(TF_FLOAT);
+    // Allocate 2x3 TF_Tensor
+    int64_t dim[2] = {2, 3};
+    TF_AllocatorAttributes alloc_attrs;
+    alloc_attrs.struct_size = TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE;
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+    alloc_attrs.on_host = 0;
+#else
+    alloc_attrs.on_host = 1;
+#endif
+    TF_Tensor* output = TF_AllocateTemp(
+        /*context=*/ctx, /*dtype=*/TF_FLOAT, /*dims=*/dim,
+        /*num_dims=*/2, /*allocator_attributes*/ &alloc_attrs, s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    validate_tensor(output, dim, 2, TF_FLOAT);
+
+    // Set TF_Tensor values to [1 2 3 4 5 6]
+    float values[6] = {1, 2, 3, 4, 5, 6};
+    set_tensor_data<float>(output, values, tensor_size_bytes, ctx);
+    TF_SetOutput(ctx, 0, output, s);
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  SetupOp("AllocateTempOp2x3", "AllocateTempOp2x3", my_compute_func);
+
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ("Tensor<type: float shape: [2,3] values: [1 2 3][4 5 6]>",
+            output->DebugString(100));
+}
+
+TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
+  const char* node_name = "TestForwardInputOrAllocateOutputKernel";
+  const char* op_name = "BazOp";
+  const char* device_name = "FakeDeviceName";
+
+  REGISTER_OP(op_name)
+      .Input("input1: float")
+      .Input("input2: float")
+      .Output("output1: float")
+      .Attr("SomeDataTypeAttr: type");
+
+  // A kernel whose Compute function that forwards a scalar input to output
+  auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
+    TF_Status* s = TF_NewStatus();
+    int candidate_input_indices[1] = {0};
+    int forwarded_input;
+    int64_t output_dims[1] = {};
+    TF_Tensor* output = TF_ForwardInputOrAllocateOutput(
+        /*context=*/ctx, candidate_input_indices,
+        /*num_candidate_input_indices=*/1,
+        /*output_index=*/0, output_dims, /*output_num_dims=*/0,
+        &forwarded_input, /*status=*/s);
+    EXPECT_EQ(TF_OK, TF_GetCode(s));
+    EXPECT_EQ(forwarded_input, 0);
+    EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
+    EXPECT_EQ(0, TF_NumDims(output));
+    TF_DeleteStatus(s);
+    TF_DeleteTensor(output);
+  };
+
+  TF_KernelBuilder* builder = TF_NewKernelBuilder(op_name, device_name, nullptr,
+                                                  my_compute_func, nullptr);
+
+  {
+    TF_Status* status = TF_NewStatus();
+    TF_RegisterKernelBuilder(node_name, builder, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status));
+    TF_DeleteStatus(status);
+  }
+
+  {
+    OpKernelContext::Params p;
+    DummyDevice dummy_device(nullptr);
+    p.device = &dummy_device;
+    AllocatorAttributes alloc_attrs;
+    p.output_attr_array = &alloc_attrs;
+
+    Tensor t(123.0f);
+
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    // GetFakeKernel requires a NodeDef with two inputs
+    inputs.emplace_back(&t);
+    inputs.emplace_back();
+    p.inputs = &inputs;
+
+    Status status;
+    std::unique_ptr<OpKernel> kernel =
+        GetFakeKernel(device_name, op_name, node_name, &status);
+    TF_EXPECT_OK(status);
+    ASSERT_NE(nullptr, kernel.get());
+
+    p.op_kernel = kernel.get();
+    OpKernelContext ctx(&p);
+    kernel->Compute(&ctx);
+    ASSERT_EQ(123, ctx.mutable_output(0)->scalar<float>()());
+  }
+}
+
+void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims,
+                     TF_DataType dtype) {
+  EXPECT_EQ(TF_FLOAT, TF_TensorType(tensor));
+  EXPECT_EQ(num_dims, TF_NumDims(tensor));
+  for (int i = 0; i < num_dims; ++i) {
+    EXPECT_EQ(dims[i], TF_Dim(tensor, i));
+  }
+}
+
+template <typename T>
+void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes,
+                     TF_OpKernelContext* ctx) {
+  T* data = reinterpret_cast<T*>(TF_TensorData(tensor));
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+  OpKernelContext* cc_ctx = reinterpret_cast<OpKernelContext*>(ctx);
+  cc_ctx->eigen_gpu_device().memcpyHostToDevice(data, values,
+                                                tensor_size_bytes);
+#else
+  memcpy(data, values, tensor_size_bytes);
+#endif
 }
 }  // namespace tensorflow

@@ -171,6 +171,24 @@ ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandle(
                                          /*op_device=*/nullptr, this);
 }
 
+ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandleFromTFTensor(
+    tensorflow::Tensor& t, const char* d_name) {
+  // If device name is not specified, create the TensorHandle on host cpu.
+  if (d_name == nullptr)
+    return TensorHandle::CreateLocalHandle(std::move(t), /*d=*/HostCPU(),
+                                           /*op_device=*/nullptr, this);
+  Device* d = nullptr;
+  auto status = FindDeviceFromName(d_name, &d);
+  if (!status.ok()) return nullptr;
+  return TensorHandle::CreateLocalHandle(std::move(t), /*d=*/d,
+                                         /*op_device=*/nullptr, this);
+}
+
+ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
+    ImmediateExecutionTensorHandle* handle) {
+  return handle;
+}
+
 // TODO(b/152902651): We have to keep this function here since EagerOperation
 // depends on EagerContext. Thus, the context build target can't depend on
 // EagerOperation.
@@ -191,6 +209,9 @@ Status EagerContext::RegisterFunction(AbstractFunction* f) {
 // eager_operation.cc we can avoid a circular dependency between them.
 Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                                int* num_retvals) {
+  for (int i = 0; i < Inputs().size(); ++i) {
+    TF_RETURN_IF_ERROR(Inputs()[i]->WaitUnknownDevice());
+  }
   // Run eager placement logic.
   VariantDevice device;
   TF_RETURN_IF_ERROR(eager::MaybePinToCustomDevice(&device, *this));
@@ -205,12 +226,18 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
       device = ctx_.HostCPU();
     }
   }
+
+  tensorflow::TensorHandle** retval_array =
+      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
+  if (VariantDeviceIsCustom(device)) {
+    return absl::get<CustomDevice*>(device)->Execute(this, retval_array,
+                                                     num_retvals);
+  }
+
   if (device != kVariantDeviceNull) {
     SetDevice(device);
   }
-  return EagerExecute(
-      this, reinterpret_cast<tensorflow::TensorHandle**>(retvals.data()),
-      num_retvals);
+  return EagerExecute(this, retval_array, num_retvals);
 }
 
 }  //  namespace tensorflow

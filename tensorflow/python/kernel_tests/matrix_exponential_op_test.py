@@ -137,6 +137,12 @@ class ExponentialOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_impl.matrix_exponential(tensor3)
 
+  def testInfinite(self):
+    # Check that the op does not loop forever on infinite inputs. (b/158433036)
+    in_tensor = [[np.inf, 1.], [1., 1.]]
+    result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
+    self.assertTrue(np.all(np.isnan(result)))
+
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
     self._verifyExponentialReal(np.empty([2, 0, 0]))

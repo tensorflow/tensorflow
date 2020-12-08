@@ -28,7 +28,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -101,7 +101,7 @@ class VariablesToConstantsTest(test.TestCase):
     for expected, actual in zip(expected_value, actual_value):
       np.testing.assert_almost_equal(expected.numpy(), actual.numpy())
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasModel(self):
     """Test a basic Keras model with Variables."""
     input_data = {"x": constant_op.constant(1., shape=[1, 1])}
@@ -124,7 +124,7 @@ class VariablesToConstantsTest(test.TestCase):
     root, output_func = self._freezeModel(to_save)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testKerasLSTM(self):
     """Test a Keras LSTM containing dynamic_rnn ops."""
     input_data = {
@@ -146,7 +146,7 @@ class VariablesToConstantsTest(test.TestCase):
     root, output_func = self._freezeModel(to_save)
     self._testConvertedFunction(root, root.f, output_func, input_data)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def testEmbeddings(self):
     """Test model with embeddings."""
     input_data = {

@@ -36,15 +36,26 @@ training.
 The tf.data service uses a cluster of workers to prepare data for training your
 model. The `processing_mode` argument to
 `tf.data.experimental.service.distribute` describes how to leverage multiple
-workers to process the input dataset. Currently, the only supported
-processing mode is "parallel_epochs", which means that the entire input dataset
-will be processed independently by each of the tf.data service workers. For this
+workers to process the input dataset. Currently, there are two processing modes
+to choose from: "distributed_epoch" and "parallel_epochs".
+
+"distributed_epoch" means that the dataset will be split across all tf.data
+service workers. The dispatcher produces "splits" for the dataset and sends them
+to workers for further processing. For example, if a dataset begins with a list
+of filenames, the dispatcher will iterate through the filenames and send the
+filenames to tf.data workers, which will perform the rest of the dataset
+transformations on those files. "distributed_epoch" is useful when your model
+needs to see each element of the dataset exactly once, or if it needs to see the
+data in a generally-sequential order. "distributed_epoch" only works for
+datasets with splittable sources, such as `Dataset.from_tensor_slices`,
+`Dataset.list_files`, or `Dataset.range`.
+
+"parallel_epochs" means that the entire input dataset will be processed
+independently by each of the tf.data service workers. For this
 reason, it is important to shuffle data (e.g. filenames) non-deterministically,
 so that each worker will process the elements of the dataset in a different
-order. If your model  requires input data to arrive in a certain order, the
-"parallel_epochs" processing mode will not work well. We plan to support
-additional modes of processing (such as processing a different shard of the
-input data by each worker) in the near future.
+order. "parallel_epochs" can be used to distribute datasets that aren't
+splittable.
 
 ### Measure potential impact
 
@@ -94,7 +105,7 @@ address and port. To connect to the service, you will use a string in the format
 "grpc://<dispatcher_address>:<dispatcher_port>".
 
 ```
-# Create dataset however you were before using the tf.data service.
+# Create the dataset however you were before using the tf.data service.
 dataset = your_dataset_factory()
 
 service = "grpc://{}:{}".format(dispatcher_address, dispatcher_port)
@@ -107,10 +118,11 @@ dataset = dataset.apply(tf.data.experimental.service.distribute(
 
 Below is a toy example that you can run yourself.
 
->>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+>>> dispatcher = tf.data.experimental.service.DispatchServer()
 >>> dispatcher_address = dispatcher.target.split("://")[1]
 >>> worker = tf.data.experimental.service.WorkerServer(
-...     port=0, dispatcher_address=dispatcher_address)
+...     tf.data.experimental.service.WorkerConfig(
+...         dispatcher_address=dispatcher_address))
 >>> dataset = tf.data.Dataset.range(10)
 >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
 ...     processing_mode="parallel_epochs", service=dispatcher.target))
@@ -128,5 +140,7 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id
 from tensorflow.python.data.experimental.ops.data_service_ops import register_dataset
+from tensorflow.python.data.experimental.service.server_lib import DispatcherConfig
 from tensorflow.python.data.experimental.service.server_lib import DispatchServer
+from tensorflow.python.data.experimental.service.server_lib import WorkerConfig
 from tensorflow.python.data.experimental.service.server_lib import WorkerServer

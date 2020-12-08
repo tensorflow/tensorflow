@@ -3,6 +3,7 @@ load(
     "tflite_cc_shared_object",
     "tflite_copts",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -46,6 +47,7 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",
     ],
@@ -59,12 +61,15 @@ cc_library(
     deps = [
         ":c_api_internal",
         ":common",
+        "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates:interpreter_utils",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels/internal:compatibility",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_library(
@@ -79,7 +84,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:kernel_api",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 cc_test(
@@ -110,6 +115,7 @@ cc_test(
         ":c_api_experimental",
         ":common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/delegates:delegate_test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -122,7 +128,9 @@ cc_library(
         "builtin_op_data.h",
         "common.h",
     ],
-    alwayslink = 1,
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
+    alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
 # For use with library targets that can't use relative paths.

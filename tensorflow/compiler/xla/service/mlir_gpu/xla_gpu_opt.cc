@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -90,7 +90,8 @@ MlirCompiler::IRHook XlaGpuOpt::GetIRHookBreakingLoweringStage(
     LoweringStage breaking_stage) {
   return {[](mlir::ModuleOp module) -> Status {
             mlir::PassManager pm(module.getContext());
-            pm.addPass(::mlir::createInjectErrorsForTestingPass());
+            pm.addNestedPass<::mlir::FuncOp>(
+                ::mlir::createInjectErrorsForTestingPass());
             if (failed(pm.run(module))) {
               return InternalError("InjectErrorsForTestingPass failed.");
             }

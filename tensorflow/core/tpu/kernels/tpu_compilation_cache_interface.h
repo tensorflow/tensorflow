@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
@@ -109,6 +109,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64* uid,
       std::vector<std::string>* proto_key,
+      std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,
       const std::function<Status(TpuProgramGroupInterface*)>& compile_function);
@@ -197,6 +198,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64* uid,
       std::vector<std::string>* proto_key,
+      std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
       std::vector<CompiledSubgraph*>* removed_entries,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,

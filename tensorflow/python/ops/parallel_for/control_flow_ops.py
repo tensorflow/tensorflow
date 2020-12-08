@@ -23,11 +23,13 @@ import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -208,6 +210,40 @@ def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
   return outputs
 
 
+def _should_expand_composite(value):
+  return (isinstance(value, composite_tensor.CompositeTensor)
+          # Leave sparse tensors to be converted by `PFor._convert_sparse`.
+          and not isinstance(value, sparse_tensor.SparseTensor)
+          and not isinstance(value, indexed_slices.IndexedSlices))
+
+
+# pylint: disable=protected-access
+def _composite_to_tensors(value):
+  """Converts a CompositeTensor into a list of stackable tensors."""
+  if _should_expand_composite(value):
+    spec = value._type_spec
+    if not isinstance(spec, type_spec.BatchableTypeSpec):
+      raise ValueError("CompositeTensor instance {} returned from "
+                       "parallel_for or vectorized_map loop body must provide "
+                       "a `BatchableTypeSpec` (saw: {}).".format(
+                           value, spec))
+    return spec._to_tensor_list(value)
+  return value
+# pylint: enable=protected-access
+
+
+# pylint: disable=protected-access
+def _composite_from_tensors(stacked_tensors,
+                            preconverted_value,
+                            batch_size):
+  """Converts a list of stacked tensors to a batch CompositeTensor."""
+  if _should_expand_composite(preconverted_value):
+    batch_type_spec = preconverted_value._type_spec._batch(batch_size)
+    return batch_type_spec._from_compatible_tensor_list(stacked_tensors)
+  return stacked_tensors
+# pylint: enable=protected-access
+
+
 def _loop_fn_has_config(loop_fn):
   """Test if `loop_fn` has a `pfor_config` argument."""
   if tf_inspect.isfunction(loop_fn):
@@ -235,6 +271,7 @@ def _pfor_impl(loop_fn,
   assert not context.executing_eagerly()
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
+  iters_value = tensor_util.constant_value(iters)
   # Run the loop body
   with ops.name_scope("loop_body"):
     loop_var = array_ops.placeholder_with_default(0, shape=[])
@@ -246,11 +283,13 @@ def _pfor_impl(loop_fn,
     else:
       assert pfor_config is None
       loop_fn_outputs = loop_fn(loop_var)
+    loop_fn_output_tensors = nest.map_structure(_composite_to_tensors,
+                                                loop_fn_outputs)
 
   # Convert outputs to Tensor if needed.
   rewrap_as_ndarray = False
   tmp_loop_fn_outputs = []
-  for loop_fn_output in nest.flatten(loop_fn_outputs):
+  for loop_fn_output in nest.flatten(loop_fn_output_tensors):
     if (loop_fn_output is not None and not isinstance(
         loop_fn_output,
         (ops.Operation, ops.Tensor, sparse_tensor.SparseTensor))):
@@ -266,7 +305,8 @@ def _pfor_impl(loop_fn,
       else:
         loop_fn_output = ops.convert_to_tensor(loop_fn_output)
     tmp_loop_fn_outputs.append(loop_fn_output)
-  loop_fn_outputs = nest.pack_sequence_as(loop_fn_outputs, tmp_loop_fn_outputs)
+  loop_fn_output_tensors = nest.pack_sequence_as(loop_fn_output_tensors,
+                                                 tmp_loop_fn_outputs)
 
   new_ops = set(ops.get_default_graph().get_operations()) - existing_ops
   iters = ops.convert_to_tensor(iters)
@@ -275,7 +315,6 @@ def _pfor_impl(loop_fn,
       raise ValueError("parallel_iterations must be None or a positive integer")
     if parallel_iterations == 1:
       raise ValueError("Found parallel_iterations == 1. Use for_loop instead.")
-    iters_value = tensor_util.constant_value(iters)
     if iters_value is not None and iters_value < parallel_iterations:
       parallel_iterations = None
   if parallel_iterations is None:
@@ -283,13 +322,12 @@ def _pfor_impl(loop_fn,
       converter = PFor(loop_var, iters, new_ops,
                        fallback_to_while_loop=fallback_to_while_loop,
                        pfor_config=pfor_config)
-      outputs = []
-      for loop_fn_output in nest.flatten(loop_fn_outputs):
+      flattened_output_tensors = []
+      for loop_fn_output in nest.flatten(loop_fn_output_tensors):
         output = converter.convert(loop_fn_output)
         if rewrap_as_ndarray:
           output = np_arrays.tensor_to_ndarray(output)
-        outputs.append(output)
-      return nest.pack_sequence_as(loop_fn_outputs, outputs)
+        flattened_output_tensors.append(output)
   else:
     if pfor_config is not None and pfor_config._has_reductions():  # pylint: disable=protected-access
       raise ValueError("Setting parallel_iterations currently unsupported if"
@@ -302,26 +340,29 @@ def _pfor_impl(loop_fn,
       converter = PFor(loop_var, num_remaining_iterations, new_ops,
                        fallback_to_while_loop=fallback_to_while_loop,
                        pfor_config=pfor_config)
-      remaining_outputs = []
-      flattened_loop_fn_outputs = nest.flatten(loop_fn_outputs)
-      for loop_fn_output in flattened_loop_fn_outputs:
+      remaining_output_tensors = []
+      flattened_output_tensors = nest.flatten(loop_fn_output_tensors)
+      for loop_fn_output in flattened_output_tensors:
         output = converter.convert(loop_fn_output)
         if rewrap_as_ndarray:
           output = np_arrays.tensor_to_ndarray(output)
-        remaining_outputs.append(output)
+        remaining_output_tensors.append(output)
 
     with ops.name_scope("pfor_tiled"):
       loop_fn_dtypes = [ops.convert_to_tensor(x).dtype
-                        for x in flattened_loop_fn_outputs]
+                        for x in flattened_output_tensors]
 
       def tiled_loop_body(j):
         offset = j * parallel_iterations + num_remaining_iterations
 
         def tiled_loop_fn(i, pfor_config=None):
           if loop_fn_has_config:
-            return nest.flatten(loop_fn(i + offset, pfor_config=pfor_config))
+            loop_fn_outputs = loop_fn(i + offset, pfor_config=pfor_config)
           else:
-            return nest.flatten(loop_fn(i + offset))
+            loop_fn_outputs = loop_fn(i + offset)
+          return nest.flatten(
+              # Stacking across iterations requires explicit Tensors.
+              nest.map_structure(_composite_to_tensors, loop_fn_outputs))
 
         return _pfor_impl(
             tiled_loop_fn,
@@ -329,25 +370,42 @@ def _pfor_impl(loop_fn,
             fallback_to_while_loop=fallback_to_while_loop,
             pfor_config=pfor_config)
 
-      tiled_outputs = for_loop(tiled_loop_body, loop_fn_dtypes,
-                               num_tiled_iterations, parallel_iterations=1)
-      tiled_outputs = [_flatten_first_two_dims(y) for y in tiled_outputs]
+      tiled_output_tensors = for_loop(
+          tiled_loop_body, loop_fn_dtypes,
+          num_tiled_iterations, parallel_iterations=1)
+      tiled_output_tensors = [
+          _flatten_first_two_dims(y) for y in tiled_output_tensors]
 
     with ops.name_scope("pfor"):
-      iters_value = tensor_util.constant_value(iters)
       if iters_value is None or iters_value % parallel_iterations:
-        outputs = control_flow_ops.cond(
+        output_tensors = control_flow_ops.cond(
             math_ops.equal(num_remaining_iterations, 0),
-            lambda: tiled_outputs,
-            lambda: [array_ops.concat([x, y], axis=0)
-                     for x, y in zip(remaining_outputs, tiled_outputs)])
+            lambda: tiled_output_tensors,
+            lambda: [array_ops.concat([x, y], axis=0)  # pylint: disable=g-long-lambda
+                     for x, y in zip(remaining_output_tensors,
+                                     tiled_output_tensors)])
       else:
-        outputs = tiled_outputs
-      flattened_outputs = nest.flatten(outputs)
+        output_tensors = tiled_output_tensors
+      flattened_output_tensors = nest.flatten(output_tensors)
+
+      for output, original_output in zip(flattened_output_tensors,
+                                         nest.flatten(loop_fn_output_tensors)):
+        # Restore any shape information lost from tiling.
+        # TODO(b/174254748): this may not be correct for stacked `variant`s.
+        output.set_shape(
+            tensor_shape.TensorShape([iters_value]).concatenate(
+                original_output.shape))
+
       if rewrap_as_ndarray:
-        flattened_outputs = [
-            np_arrays.tensor_to_ndarray(x) for x in flattened_outputs]
-      return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
+        flattened_output_tensors = [
+            np_arrays.tensor_to_ndarray(x) for x in flattened_output_tensors]
+
+  return nest.map_structure_up_to(
+      loop_fn_outputs,
+      functools.partial(_composite_from_tensors, batch_size=iters_value),
+      nest.pack_sequence_as(loop_fn_output_tensors,
+                            flattened_output_tensors),
+      loop_fn_outputs)
 
 
 def _broadcasting_gather(x, i):
@@ -357,7 +415,10 @@ def _broadcasting_gather(x, i):
     i = 0
   elif static_first_dim is None:
     i = array_ops.where_v2(array_ops.shape(x)[0] > 1, i, 0)
-  return array_ops.gather(x, i)
+  result = array_ops.gather(x, i)
+  if isinstance(x, np_arrays.ndarray):
+    result = np_arrays.ndarray.from_tensor(result)
+  return result
 
 
 @tf_export("vectorized_map")
@@ -447,10 +508,21 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
     results of applying fn to tensors unpacked from elems along the first
     dimension, from first to last.
 
+    Although they are less common as user-visible inputs and outputs, note that
+    tensors of type `tf.variant` which represent tensor lists (for example from
+    `tf.raw_ops.TensorListFromTensor`) are vectorized by stacking the list
+    contents rather than the variant itself, and so the container tensor will
+    have a scalar shape when returned rather than the usual stacked shape. This
+    improves the performance of control flow gradient vectorization.
+
   Raises:
     ValueError: If vectorization fails and fallback_to_while_loop is False.
   """
-  elems = nest.map_structure(ops.convert_to_tensor, elems)
+  def _convert_to_tensor_or_ndarray(x):
+    if isinstance(x, np_arrays.ndarray):
+      return x
+    return ops.convert_to_tensor(x)
+  elems = nest.map_structure(_convert_to_tensor_or_ndarray, elems)
 
   def loop_fn(i):
     gathered_elems = nest.map_structure(lambda x: _broadcasting_gather(x, i),
@@ -459,9 +531,13 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
 
   # Extract batch size from the maximum first dimension of any element.
   flat_elems = nest.flatten(elems)
-  static_first_dims = [elem.shape.as_list()[0]
-                       if elem.shape.rank is not None else None
-                       for elem in flat_elems]
+  def _get_shape(x):
+    if isinstance(x, np_arrays.ndarray):
+      x = x.data
+    if x.shape.rank is None:
+      return None
+    return x.shape.as_list()[0]
+  static_first_dims = [_get_shape(elem) for elem in flat_elems]
   if any([s is None for s in static_first_dims]):
     batch_size = math_ops.reduce_max(
         [array_ops.shape(elem)[0] for elem in flat_elems])

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/util/cuda_sparse.h"
 
 namespace tensorflow {
+
 namespace {
 
 // A set of initialized handles to the underlying ROCm libraries used by
@@ -67,9 +68,9 @@ class HipSparseHandles {
 
   Status Initialize() {
     if (initialized_) return Status::OK();
-    TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreate(&hipsparse_handle_));
+    TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreate(&hipsparse_handle_));
     TF_RETURN_IF_GPUSPARSE_ERROR(
-        hipsparseSetStream(hipsparse_handle_, stream_));
+        wrap::hipsparseSetStream(hipsparse_handle_, stream_));
     initialized_ = true;
     return Status::OK();
   }
@@ -88,7 +89,7 @@ class HipSparseHandles {
   void Release() {
     if (initialized_) {
       // This should never return anything other than success
-      auto err = hipsparseDestroy(hipsparse_handle_);
+      auto err = wrap::hipsparseDestroy(hipsparse_handle_);
       DCHECK(err == HIPSPARSE_STATUS_SUCCESS)
           << "Failed to destroy hipSPARSE instance.";
       initialized_ = false;
@@ -156,23 +157,23 @@ Status GpuSparse::Initialize() {
 #define TF_CALL_HIP_LAPACK_TYPES(m) m(float, S) m(double, D)
 
 // Macros to construct hipsparse method names.
-#define SPARSE_FN(method, sparse_prefix) hipsparse##sparse_prefix##method
+#define SPARSE_FN(method, sparse_prefix) wrap::hipsparse##sparse_prefix##method
 
 Status GpuSparse::Coo2csr(const int* cooRowInd, int nnz, int m,
                           int* csrRowPtr) const {
   DCHECK(initialized_);
-  TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseXcoo2csr(*gpusparse_handle_, cooRowInd,
-                                                 nnz, m, csrRowPtr,
-                                                 HIPSPARSE_INDEX_BASE_ZERO));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      wrap::hipsparseXcoo2csr(*gpusparse_handle_, cooRowInd, nnz, m, csrRowPtr,
+                              HIPSPARSE_INDEX_BASE_ZERO));
   return Status::OK();
 }
 
 Status GpuSparse::Csr2coo(const int* csrRowPtr, int nnz, int m,
                           int* cooRowInd) const {
   DCHECK(initialized_);
-  TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseXcsr2coo(*gpusparse_handle_, csrRowPtr,
-                                                 nnz, m, cooRowInd,
-                                                 HIPSPARSE_INDEX_BASE_ZERO));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      wrap::hipsparseXcsr2coo(*gpusparse_handle_, csrRowPtr, nnz, m, cooRowInd,
+                              HIPSPARSE_INDEX_BASE_ZERO));
   return Status::OK();
 }
 
@@ -252,7 +253,7 @@ Status GpuSparse::CsrgemmNnz(
     int* csrSortedRowPtrC, int* nnzTotalDevHostPtr) {
   DCHECK(initialized_);
   DCHECK(nnzTotalDevHostPtr != nullptr);
-  TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseXcsrgemmNnz(
+  TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseXcsrgemmNnz(
       *gpusparse_handle_, transA, transB, m, n, k, descrA, nnzA,
       csrSortedRowPtrA, csrSortedColIndA, descrB, nnzB, csrSortedRowPtrB,
       csrSortedColIndB, descrC, csrSortedRowPtrC, nnzTotalDevHostPtr));

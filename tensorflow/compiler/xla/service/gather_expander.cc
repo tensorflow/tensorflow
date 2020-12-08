@@ -269,6 +269,22 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
   return MakeTransposeHlo(accumulator, permutation);
 }
 
+// Computes how many trips a loop implementing this gather op would take.
+static int64 GatherLoopTripCount(HloInstruction* gather_instr) {
+  HloInstruction* start_indices = gather_instr->mutable_operand(1);
+  const Shape& start_indices_shape = start_indices->shape();
+  const GatherDimensionNumbers& dim_numbers =
+      gather_instr->gather_dimension_numbers();
+
+  int64 trip_count = 1;
+  for (int64 i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
+    if (i != dim_numbers.index_vector_dim()) {
+      trip_count *= start_indices_shape.dimensions(i);
+    }
+  }
+  return trip_count;
+}
+
 // High Level Algorithm
 //
 // We follow the following steps in sequence:
@@ -311,20 +327,13 @@ StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
   HloComputation* computation = gather_instr->parent();
   HloInstruction* operand = gather_instr->mutable_operand(0);
   HloInstruction* start_indices = gather_instr->mutable_operand(1);
-  const Shape& start_indices_shape = start_indices->shape();
   const Shape& output_shape = gather_instr->shape();
   int64 output_rank = output_shape.dimensions_size();
 
   const GatherDimensionNumbers& dim_numbers =
       gather_instr->gather_dimension_numbers();
 
-  int64 gather_loop_trip_count = 1;
-  for (int64 i = 0, e = start_indices_shape.dimensions_size(); i < e; i++) {
-    if (i != dim_numbers.index_vector_dim()) {
-      gather_loop_trip_count *= start_indices_shape.dimensions(i);
-    }
-  }
-
+  int64 gather_loop_trip_count = GatherLoopTripCount(gather_instr);
   if (!IsInt32(gather_loop_trip_count)) {
     return Unimplemented(
         "Gather operations with more than 2147483647 gather indices are not "
@@ -373,7 +382,11 @@ bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kGather &&
          // Avoid expanding gather ops that produce zero sized tensors,
          // instead punt these to ZeroSizedHloElimination.
-         !ShapeUtil::IsZeroElementArray(inst->shape());
+         !ShapeUtil::IsZeroElementArray(inst->shape()) &&
+         // In kEliminateSimpleGathers mode, we only simplify instructions
+         // which can be represented without a loop -- i.e. we only simplify
+         // gathers which have a trip count of 1.
+         (mode_ == kEliminateAllGathers || GatherLoopTripCount(inst) == 1);
 }
 
 }  // namespace xla

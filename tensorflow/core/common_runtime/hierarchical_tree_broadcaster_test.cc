@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -137,9 +138,8 @@ DEF_TL_TEST(8, 7, 7, -1, V(0, 1))
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
-              int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
+              int64 step_id, int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -166,11 +166,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
                     const DeviceLocality& client_locality, int stream_index,
+                    CancellationManager* cancellation_manager,
                     const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::RecvFromPeer(
         peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, stream_index, done);
+        to_alloc_attr, to_tensor, client_locality, stream_index,
+        cancellation_manager, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -179,11 +181,13 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
                   const AllocatorAttributes& from_alloc_attr,
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
+                  CancellationManager* cancellation_manager,
                   const StatusCallback& done) override {
     if (MaybeFail(done)) return;
     CollectiveRemoteAccessLocal::PostToPeer(
         peer_device, peer_task, key, from_device, from_device_ctx,
-        from_alloc_attr, from_tensor, client_locality, done);
+        from_alloc_attr, from_tensor, client_locality, cancellation_manager,
+        done);
   }
 
   mutex mu_;
@@ -253,10 +257,11 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
-                           kStepId, fail_after);
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
+                           fail_after);
+    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
+                                           dev_mgr_.get(),
+                                           gpu_ring_order_.get(), work_queue_);
     col_params_.name = "test_collective";
     col_params_.instance.data_type = dtype;
     static const int kGroupKey = 6;
@@ -328,8 +333,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
           dev_name = strings::StrCat(task_name, "/device:CPU:", di);
         }
         VLOG(2) << "dev=" << dev_name;
-        col_params_.instance.device_names.push_back(dev_name);
-        col_params_.instance.task_names.push_back(task_name);
+        col_params_.group.device_names.push_back(dev_name);
+        col_params_.group.task_names.push_back(task_name);
         col_params_.task.is_local.push_back(true);
       }
     }
@@ -337,7 +342,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       for (int di = 0; di < num_devices_per_worker; di++) {
         int default_rank = wi * num_devices_per_worker + di;
         instances_.push_back(new DeviceInstance(
-            default_rank, col_params_.instance.device_names[default_rank],
+            default_rank, col_params_.group.device_names[default_rank],
             device_type, this));
       }
     }
@@ -539,8 +544,8 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
       for (int di = 0; di < num_gpus; di++) {
         string dev_name = strings::StrCat(task_name, "/device:GPU:", di);
-        cp->instance.task_names.push_back(task_name);
-        cp->instance.device_names.push_back(dev_name);
+        cp->group.task_names.push_back(task_name);
+        cp->group.device_names.push_back(dev_name);
       }
     }
   }
@@ -557,22 +562,16 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       TF_CHECK_OK(parent_->dev_mgr_->LookupDevice(dev_name, &device_));
       col_params_.name = parent_->col_params_.name;
       col_params_.instance.data_type = parent_->col_params_.instance.data_type;
-      col_params_.group.group_key = parent_->col_params_.group.group_key;
+      col_params_.group = parent_->col_params_.group;
       col_params_.instance.instance_key =
           parent_->col_params_.instance.instance_key;
-      col_params_.group.device_type = parent_->col_params_.group.device_type;
-      col_params_.group.group_size = parent_->col_params_.group.group_size;
-      col_params_.instance.device_names =
-          parent_->col_params_.instance.device_names;
-      col_params_.instance.task_names =
-          parent_->col_params_.instance.task_names;
       col_params_.task.is_local = parent_->col_params_.task.is_local;
       col_params_.instance.impl_details.subdiv_permutations =
           parent_->col_params_.instance.impl_details.subdiv_permutations;
       col_params_.subdiv_rank = parent_->col_params_.subdiv_rank;
 
       int group_size = col_params_.group.group_size;
-      CHECK_EQ(group_size, col_params_.instance.device_names.size());
+      CHECK_EQ(group_size, col_params_.group.device_names.size());
       // Default rank is order in device_names.
       col_params_.default_rank = rank;
 
@@ -624,6 +623,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       OpKernelContext::Params op_params;
       op_params.step_id = parent_->step_id_;
       op_params.device = device_;
+      op_params.cancellation_manager = &parent_->cancellation_manager_;
       gtl::InlinedVector<TensorValue, 4> inputs;
       inputs.push_back(TensorValue(&tensor_));
       op_params.inputs = &inputs;
@@ -674,8 +674,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
           new HierarchicalTreeBroadcaster;
       core::ScopedUnref unref(broadcaster);
       auto col_ctx = std::make_shared<CollectiveContext>(
-          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
-          col_params_, exec_key, kStepId, input_tensor_ptr, output_tensor_ptr);
+          parent_->col_exec_, /*nccl_communicator*/ nullptr,
+          parent_->dev_mgr_.get(), &ctx, &op_params, col_params_, exec_key,
+          kStepId, input_tensor_ptr, output_tensor_ptr);
       TF_CHECK_OK(broadcaster->InitializeCollectiveContext(col_ctx));
 
       // Run the broadcast.
@@ -715,6 +716,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
   int bcast_recv_counter_ TF_GUARDED_BY(mu_) = 0;
   int bcast_send_counter_ TF_GUARDED_BY(mu_) = 0;
   int failure_count_ TF_GUARDED_BY(mu_) = 0;
+  CancellationManager cancellation_manager_;
 };
 
 TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams1Task8GPU) {
@@ -788,8 +790,8 @@ TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams4TasksVariableGPU) {
     string task_name = strings::StrCat("/job:worker/replica:0/task:", ti);
     for (int di = 0; di < dev_per_task[ti]; di++) {
       string dev_name = strings::StrCat(task_name, "/device:GPU:", di);
-      cp.instance.task_names.push_back(task_name);
-      cp.instance.device_names.push_back(dev_name);
+      cp.group.task_names.push_back(task_name);
+      cp.group.device_names.push_back(dev_name);
       cp.group.group_size++;
     }
   }

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdbool.h>
+
 #ifndef TENSORFLOW_CORE_TPU_LIBTFTPU_H_
 #define TENSORFLOW_CORE_TPU_LIBTFTPU_H_
 
@@ -39,7 +41,8 @@ limitations under the License.
 extern "C" {
 #endif
 
-TFTPU_CAPI_EXPORT void TfTpu_Initialize();
+TFTPU_CAPI_EXPORT void TfTpu_Initialize(bool init_library, int argc,
+                                        char** argv);
 
 #ifdef __cplusplus
 }

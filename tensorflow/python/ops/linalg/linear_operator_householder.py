@@ -123,6 +123,14 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
       ValueError:  `is_self_adjoint` is not `True`, `is_positive_definite` is
         not `False` or `is_square` is not `True`.
     """
+    parameters = dict(
+        reflection_axis=reflection_axis,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[reflection_axis]):
       self._reflection_axis = linear_operator_util.convert_nonref_to_tensor(
@@ -152,6 +160,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
       # TODO(b/143910018) Remove graph_parents in V3.
       self._set_graph_parents([self._reflection_axis])

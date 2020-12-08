@@ -691,6 +691,10 @@ class SelectAndScatterOpConverter
 
 struct LhloLegalizeToParallelLoopsPass
     : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<StandardOpsDialect, scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     auto func = getFunction();
 
@@ -709,7 +713,7 @@ struct LhloLegalizeToParallelLoopsPass
     target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
                         lmhlo::SelectAndScatterOp>();
 
-    if (failed(applyPartialConversion(func, target, patterns))) {
+    if (failed(applyPartialConversion(func, target, std::move(patterns)))) {
       signalPassFailure();
     }
   }

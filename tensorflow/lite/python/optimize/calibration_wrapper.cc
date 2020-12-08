@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
+#include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
 
 #define TFLITE_PY_CHECK(x)               \
@@ -78,6 +79,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT8;
     case kTfLiteInt64:
       return TensorType_INT64;
+    case kTfLiteUInt64:
+      return TensorType_UINT64;
     case kTfLiteString:
       return TensorType_STRING;
     case kTfLiteBool:
@@ -93,6 +96,42 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
 }
 
 }  // namespace
+
+PyObject* AddIntermediateTensors(PyObject* data) {
+  using tflite::interpreter_wrapper::PythonErrorReporter;
+  char* buf = nullptr;
+  Py_ssize_t length;
+  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  ::tflite::python::ImportNumpy();
+
+  if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+    return nullptr;
+  }
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
+                                               error_reporter.get());
+  if (!model) {
+    PyErr_Format(PyExc_ValueError, "Invalid model");
+    return nullptr;
+  }
+  flatbuffers::FlatBufferBuilder builder;
+  auto tflite_model = CreateMutableModel(*model->GetModel());
+  if (optimize::AddIntermediateTensorsToFusedOp(&builder, tflite_model.get()) !=
+      kTfLiteOk) {
+    error_reporter->exception();
+    return nullptr;
+  }
+
+  if (builder.GetSize()) {
+    return python_utils::ConvertToPyString(
+        reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+        builder.GetSize());
+  } else {
+    // When AddIntermediateTensorsToFusedOp early returns, return the model as
+    // it is.
+    return python_utils::ConvertToPyString(buf, length);
+  }
+}
 
 CalibrationWrapper::CalibrationWrapper(
     std::unique_ptr<tflite::Interpreter> interpreter,
@@ -225,7 +264,8 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   for (int j = 0; j < PyArray_NDIM(array); j++) {
     // Ensure the calibration data input shape is the same as the model input
     // shape unless the dimension is unknown.
-    if (tensor->dims_signature->size == tensor->dims->size &&
+    if (tensor->dims_signature != nullptr &&
+        tensor->dims_signature->size == tensor->dims->size &&
         tensor->dims_signature->data[j] == -1) {
       has_unknown_dims = true;
     } else if (tensor->dims->data[j] != PyArray_SHAPE(array)[j]) {
@@ -248,6 +288,14 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   tensor = interpreter_->tensor(index);
 
   size_t size = PyArray_NBYTES(array);
+
+  if (tensor->type == kTfLiteString) {
+    tflite::DynamicBuffer buffer;
+    buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
+    buffer.WriteToTensor(interpreter_->tensor(index), /*new_shape=*/nullptr);
+    Py_RETURN_NONE;
+  }
+
   if (size != tensor->bytes) {
     PyErr_Format(PyExc_ValueError,
                  "numpy array had %zu bytes but expected %zu bytes.", size,

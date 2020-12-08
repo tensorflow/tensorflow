@@ -15,7 +15,8 @@ py_binary(
     deps = [
         ":modify_model_interface_constants",
         ":modify_model_interface_lib",
-        "//tensorflow/python:platform",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 
@@ -52,7 +53,7 @@ py_library(
     name = "modify_model_interface_constants",
     srcs = ["modify_model_interface_constants.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/lite/python:lite_constants"],
+    deps = ["//tensorflow/python:dtypes"],
 )
 
 pybind_extension(

@@ -70,12 +70,6 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
         ]
     }
 
-  def ShouldRunTest(self, run_params):
-    # TODO(b/162448349): Enable the test for TRT 7.1.3.
-    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
-      return (False, "Skip test due to b/162448349")
-    return super().ShouldRunTest(run_params)
-
 
 class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
@@ -123,24 +117,11 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         "TRTEngineOp_1": ["c2", "conv", "div", "weights"]
     }
 
-  def GetConversionParams(self, run_params):
-    """Return a ConversionParams for test."""
-    conversion_params = super(SimpleMultiEnginesTest,
-                              self).GetConversionParams(run_params)
-    rewrite_config_with_trt = self.GetTrtRewriterConfig(
-        run_params=run_params,
-        conversion_params=conversion_params,
-        # Disable layout optimizer, since it will convert BiasAdd with NHWC
-        # format to NCHW format under four dimentional input.
-        disable_non_trt_optimizers=True)
-    return conversion_params._replace(
-        rewriter_config_template=rewrite_config_with_trt)
-
-  def ShouldRunTest(self, run_params):
-    # TODO(b/162448349): Enable the test for TRT 7.1.3.
-    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
-      return (False, "Skip test due to b/162448349")
-    return super().ShouldRunTest(run_params)
+  def setUp(self):
+    super(trt_test.TfTrtIntegrationTestBase, self).setUp()
+    # Disable layout optimizer, since it will convert BiasAdd with NHWC
+    # format to NCHW format under four dimentional input.
+    self.DisableNonTrtOptimizers()
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):

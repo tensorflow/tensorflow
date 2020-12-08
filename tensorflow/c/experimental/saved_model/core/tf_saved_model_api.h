@@ -25,9 +25,12 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/revived_objects.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -55,7 +58,7 @@ class TFSavedModelAPI : public SavedModelAPI {
                      ConcreteFunction** function) override;
 
   Status GetSignatureDefFunction(const std::string& signature_def_key,
-                                 ConcreteFunction** function) override;
+                                 SignatureDefFunction** function) override;
 
   static Status Load(
       const std::string& directory,
@@ -63,24 +66,17 @@ class TFSavedModelAPI : public SavedModelAPI {
       ImmediateExecutionContext* context,
       std::unique_ptr<TFSavedModelAPI>* out);
 
-  std::vector<ConcreteFunction*> ListFunctions() override;
-
   ~TFSavedModelAPI() override = default;
 
+  Status GetVariable(const std::string& variable_path, Variable** variable);
+
  private:
-  TFSavedModelAPI(
-      const std::string& directory, SavedModelV2Bundle bundle,
-      std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>
-          revived_objects,
-      std::unordered_map<std::string, std::unique_ptr<TFConcreteFunction>>
-          concrete_functions);
+  TFSavedModelAPI(const std::string& directory, SavedModelV2Bundle bundle,
+                  RevivedObjects revived_objects);
 
   std::string directory_;
   SavedModelV2Bundle bundle_;
-  std::unordered_map<int, std::unique_ptr<TensorHandleConvertible>>
-      revived_objects_;
-  std::unordered_map<std::string, std::unique_ptr<TFConcreteFunction>>
-      concrete_functions_;
+  RevivedObjects revived_objects_;
 };
 
 }  // namespace tensorflow

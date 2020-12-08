@@ -410,14 +410,17 @@ Allocator* cpu_allocator_base();
 // call it directly.
 Allocator* cpu_allocator(int numa_node = port::kNUMANoAffinity);
 
-// If 'enable' is true, the default CPU allocator implementation will collect
-// AllocatorStats. By default, it's disabled.
-void EnableCPUAllocatorStats(bool enable);
+// Enables AllocatorStats in the default CPU allocator implementation.  By
+// default, it's disabled.
+void EnableCPUAllocatorStats();
+// Disables AllocatorStats in the default CPU allocator implementation.  By
+// default, it's disabled.
+void DisableCPUAllocatorStats();
 bool CPUAllocatorStatsEnabled();
 
-// If 'enable' is true, the default CPU allocator implementation will collect
-// full statistics. By default, it's disabled.
-void EnableCPUAllocatorFullStats(bool enable);
+// Enables full statistics collection in the default CPU allocator
+// implementation.  By default, it's disabled.
+void EnableCPUAllocatorFullStats();
 bool CPUAllocatorFullStatsEnabled();
 
 // An object that does the underlying suballoc/free of memory for a higher-level
@@ -436,7 +439,11 @@ class SubAllocator {
                const std::vector<Visitor>& free_visitors);
 
   virtual ~SubAllocator() {}
-  virtual void* Alloc(size_t alignment, size_t num_bytes) = 0;
+  // Allocates at least num_bytes. Returns actual number of bytes allocated in
+  // bytes_received. The caller can safely use the full bytes_received sized
+  // buffer following the returend pointer.
+  virtual void* Alloc(size_t alignment, size_t num_bytes,
+                      size_t* bytes_received) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
 
  protected:

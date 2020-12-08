@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
@@ -19,12 +20,8 @@ exports_files(["test_linux_binary.sh"])
 
 cc_library(
     name = "micro_test",
-    srcs = [
-        "test_utils.cc",
-    ],
     hdrs = [
         "micro_test.h",
-        "test_utils.h",
     ],
     visibility = [
         ":micro",
@@ -69,6 +66,7 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3ONLY",
     tags = [
+        "no_oss",  # TODO(b/174680668): Exclude python targets from OSS.
         "nomicro_static",  # TF dep incompatible w/ TF_LITE_STATIC_MEMORY.
         "noubsan",  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
     ],
@@ -77,4 +75,11 @@ py_binary(
         "//third_party/py/numpy",
         "@absl_py//absl:app",
     ],
+)
+
+bzl_library(
+    name = "micro_test_bzl",
+    srcs = ["micro_test.bzl"],
+    visibility = ["//visibility:private"],
+    deps = ["//tensorflow/lite/micro:build_def_bzl"],
 )

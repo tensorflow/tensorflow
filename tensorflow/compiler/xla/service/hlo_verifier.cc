@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -136,20 +137,23 @@ Status ShapeVerifier::HandleCopy(HloInstruction* copy) {
 }
 
 Status ShapeVerifier::HandleDot(HloInstruction* dot) {
-  TF_ASSIGN_OR_RETURN(const Shape expected,
-                      ShapeInference::InferDotOpShape(
-                          dot->operand(0)->shape(), dot->operand(1)->shape(),
-                          dot->dot_dimension_numbers()));
+  TF_ASSIGN_OR_RETURN(
+      const Shape expected,
+      ShapeInference::InferDotOpShape(
+          dot->operand(0)->shape(), dot->operand(1)->shape(),
+          dot->dot_dimension_numbers(),
+          /*preferred_element_type=*/dot->shape().element_type()));
   return CheckShape(dot, expected);
 }
 
 Status ShapeVerifier::HandleConvolution(HloInstruction* convolution) {
   TF_ASSIGN_OR_RETURN(
-      const Shape expected,
+      Shape expected,
       ShapeInference::InferConvolveShape(
           convolution->operand(0)->shape(), convolution->operand(1)->shape(),
           convolution->feature_group_count(), convolution->batch_group_count(),
-          convolution->window(), convolution->convolution_dimension_numbers()));
+          convolution->window(), convolution->convolution_dimension_numbers(),
+          /*preferred_element_type=*/convolution->shape().element_type()));
   return CheckShape(convolution, expected);
 }
 
@@ -703,6 +707,20 @@ Status ShapeVerifier::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
+Status ShapeVerifier::HandleDynamicReshape(HloInstruction* dynamic_reshape) {
+  // Check for mixed precision.
+  const Shape& operand_shape = dynamic_reshape->operand(0)->shape();
+  TF_RET_CHECK(SameElementType(dynamic_reshape->shape(), operand_shape));
+  TF_RET_CHECK(ShapeUtil::ElementsIn(dynamic_reshape->shape()) ==
+               ShapeUtil::ElementsIn(operand_shape));
+  TF_RET_CHECK(dynamic_reshape->shape().rank() + 1 ==
+               dynamic_reshape->operand_count());
+  for (int64 i = 1; i < dynamic_reshape->operand_count(); ++i) {
+    TF_RET_CHECK(dynamic_reshape->operand(i)->shape().element_type() == S32);
+  }
+  return Status::OK();
+}
+
 Status ShapeVerifier::HandleReshape(HloInstruction* reshape) {
   // Check for mixed precision.
   const Shape& operand_shape = reshape->operand(0)->shape();
@@ -787,6 +805,28 @@ Status ShapeVerifier::HandleCustomCall(HloInstruction* instruction) {
       TF_RET_CHECK(LayoutUtil::HasLayout(operand_shape_with_layout));
     }
   }
+  for (const auto& pair : custom_call->output_to_operand_aliasing()) {
+    TF_RET_CHECK(pair.second.first < custom_call->operand_count())
+        << "Invalid aliasing operand index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(
+        custom_call->operand(pair.second.first)->shape(), pair.second.second))
+        << "Invalid aliasing operand shape index.";
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(custom_call->shape(), pair.first))
+        << "Invalid aliasing output shape index.";
+    const Shape& output_subshape =
+        ShapeUtil::GetSubshape(custom_call->shape(), pair.first);
+    const Shape& operand_subshape = ShapeUtil::GetSubshape(
+        custom_call->operand(pair.second.first)->shape(), pair.second.second);
+    if (layout_sensitive_) {
+      TF_RET_CHECK(operand_subshape == output_subshape)
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    } else {
+      TF_RET_CHECK(ShapeUtil::Compatible(output_subshape, operand_subshape))
+          << "Different aliasing shapes: " << operand_subshape.ToString()
+          << " vs " << output_subshape.ToString();
+    }
+  }
   return Status::OK();
 }
 
@@ -845,12 +885,16 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
+  VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
+  auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
+  auto input_shapes = reduce_window_instr->input_array_shapes();
+  VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
+  auto init_shapes = reduce_window_instr->init_value_shapes();
+  VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";
   TF_RETURN_IF_ERROR(CheckShape(
-      reduce_window,
-      ShapeInference::InferReduceWindowShape(
-          reduce_window->operand(0)->shape(),
-          reduce_window->operand(1)->shape(), reduce_window->window(),
-          reduce_window->to_apply()->ComputeProgramShape())));
+      reduce_window, ShapeInference::InferReduceWindowShape(
+                         input_shapes, init_shapes, reduce_window->window(),
+                         reduce_window->to_apply()->ComputeProgramShape())));
 
   return allow_mixed_precision_
              ? Status::OK()
@@ -1023,7 +1067,7 @@ namespace {
 // inputs.
 Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
-    // White list the following opcodes for mixed-precision check, because
+    // Allow-list the following opcodes for mixed-precision check, because
     // they involve data pass through or grouping via tuples, where the
     // precisions of buffers can be different.
     case HloOpcode::kCall:
@@ -1146,6 +1190,7 @@ Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
       case HloOpcode::kCopyDone:
       case HloOpcode::kCopyStart:
       case HloOpcode::kCustomCall:
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kGetTupleElement:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
@@ -1699,6 +1744,31 @@ Status CheckElementwiseInstruction(HloInstruction* instruction) {
           "output: %s\noperand: %s\n",
           HloOpcodeString(instruction->opcode()),
           ShapeUtil::HumanString(out_shape),
+          ShapeUtil::HumanString(operand_shape));
+    }
+  }
+  if (auto* comparison = DynCast<HloCompareInstruction>(instruction)) {
+    const Shape& operand_shape = comparison->operand(1)->shape();
+    PrimitiveType operand_element_type = operand_shape.element_type();
+    Comparison::Type default_comparison_type =
+        Comparison::DefaultComparisonType(operand_element_type);
+    if (primitive_util::IsFloatingPointType(operand_element_type)) {
+      if (comparison->type() != Comparison::Type::kFloat &&
+          comparison->type() != Comparison::Type::kFloatTotalOrder) {
+        return FailedPrecondition(
+            "Expected comparison type %s or %s.\n"
+            "actual: %s\noperand: %s\n",
+            ComparisonTypeToString(Comparison::Type::kFloat),
+            ComparisonTypeToString(Comparison::Type::kFloatTotalOrder),
+            ComparisonTypeToString(comparison->type()),
+            ShapeUtil::HumanString(operand_shape));
+      }
+    } else if (comparison->type() != default_comparison_type) {
+      return FailedPrecondition(
+          "Expected comparison type %s.\n"
+          "actual: %s\noperand: %s\n",
+          ComparisonTypeToString(default_comparison_type),
+          ComparisonTypeToString(comparison->type()),
           ShapeUtil::HumanString(operand_shape));
     }
   }

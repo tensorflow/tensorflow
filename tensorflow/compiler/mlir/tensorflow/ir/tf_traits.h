@@ -33,7 +33,7 @@ namespace TF {
 static inline LogicalResult VerifyRefTypeMatch(mlir::Type type,
                                                mlir::Type maybe_ref_type) {
   if (auto ref_type = maybe_ref_type.dyn_cast<mlir::TF::TensorFlowRefType>())
-    return success(ref_type.RemoveRef().getKind() == type.getKind());
+    return success(ref_type.RemoveRef().getTypeID() == type.getTypeID());
   return failure();
 }
 
@@ -123,6 +123,10 @@ class CannotDuplicate : public TraitBase<ConcreteType, CannotDuplicate> {
     return success();
   }
 };
+
+// Trait to indicate an operation cannot be constant folded.
+template <typename ConcreteType>
+class NoConstantFold : public TraitBase<ConcreteType, NoConstantFold> {};
 
 // Coefficient-wise binary operation with implicit broadcasting support, for
 // example tf.Sub operation.

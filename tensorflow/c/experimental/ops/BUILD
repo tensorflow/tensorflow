@@ -1,3 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 # Experimental ops. These will eventually be replaced by machine-generated versions.
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -19,7 +22,7 @@ cc_library(
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_unified_internal",
-        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/c/eager:tracing_utils",
         "//tensorflow/core/platform:errors",
     ],
 )
@@ -38,11 +41,64 @@ cc_library(
     deps = [
         ":array_ops",
         "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/eager:tracing_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "nn_ops",
+    srcs = [
+        "nn_ops.cc",
+    ],
+    hdrs = [
+        "nn_ops.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_unified_internal",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/c/eager:tracing_utils",
         "//tensorflow/core/platform:errors",
+    ],
+)
+
+cc_library(
+    name = "ops",
+    hdrs = [
+        "array_ops.h",
+        "math_ops.h",
+        "nn_ops.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":array_ops",
+        ":math_ops",
+        ":nn_ops",
+        "//tensorflow/c/eager:abstract_context",
+        "//tensorflow/c/eager:abstract_operation",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_unified_internal",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "array_ops.h",
+        "math_ops.h",
+        "nn_ops.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )

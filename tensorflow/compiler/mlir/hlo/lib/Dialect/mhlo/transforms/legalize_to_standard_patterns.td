@@ -36,6 +36,10 @@ def IsSameSizePred : CPred<
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
 
+// Unary Lowering Patterns.
+def : Pat<(HLO_CeilOp HLO_FpTensor:$i), (CeilFOp $i)>;
+
+// Binary Lowering Patterns.
 def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r),
           (AndOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;

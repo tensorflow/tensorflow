@@ -184,6 +184,7 @@ REGISTER_OP("PrefetchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("slack_period: int = 0")
     .Attr("legacy_autotune: bool = true")
+    .Attr("buffer_size_min: int = 0")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // buffer_size should be a scalar.
@@ -852,7 +853,18 @@ REGISTER_OP("OptionalFromValue")
     .Input("components: Toutput_types")
     .Output("optional: variant")
     .Attr("Toutput_types: list(type) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<DataType> dtypes;
+      TF_RETURN_IF_ERROR(c->GetAttr("Toutput_types", &dtypes));
+      c->set_output(0, c->Scalar());
+      std::vector<shape_inference::ShapeAndType> shapes_and_types;
+      shapes_and_types.reserve(c->num_inputs());
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        shapes_and_types.emplace_back(c->input(i), dtypes[i], ST_OPTIONAL);
+      }
+      c->set_output_handle_shapes_and_types(0, shapes_and_types);
+      return Status::OK();
+    });
 
 REGISTER_OP("OptionalNone")
     .Output("optional: variant")
@@ -882,6 +894,7 @@ REGISTER_OP("ModelDataset")
     .Output("handle: variant")
     .Attr("algorithm: int = 0")
     .Attr("cpu_budget: int = 0")
+    .Attr("ram_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);

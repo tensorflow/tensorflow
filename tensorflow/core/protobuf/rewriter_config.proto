@@ -39,6 +39,13 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
+  // Enum for layout conversion between NCHW and NHWC on CPU. Default is OFF.
+  enum CpuLayout {
+    NO_CONVERSION_ON_CPU = 0;
+    NCHW_TO_NHWC = 1;
+    NHWC_TO_NCHW = 2;
+  }
+
   // Enum controlling the number of times to run optimizers. The default is to
   // run them twice.
   enum NumIterationsType {
@@ -46,6 +53,9 @@ message RewriterConfig {
     ONE = 1;
     TWO = 2;
   }
+
+  // CPU Conversion settings between NHCW and NCHW.
+  CpuLayout cpu_layout_conversion = 50;
 
   // Optimize tensor layouts (default is ON)
   // e.g. This will try to use NCHW layout on GPU which is faster.

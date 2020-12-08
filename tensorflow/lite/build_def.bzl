@@ -172,6 +172,34 @@ def tf_to_tflite(name, src, options, out):
     Args:
       name: Name of rule.
       src: name of the input graphdef file.
+      options: options passed to TFLite Converter.
+      out: name of the output flatbuffer file.
+    """
+
+    toco_cmdline = " ".join([
+        "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
+        "--experimental_new_converter",
+        ("--graph_def_file=$(location %s)" % src),
+        ("--output_file=$(location %s)" % out),
+    ] + options)
+    native.genrule(
+        name = name,
+        srcs = [src],
+        outs = [out],
+        cmd = toco_cmdline,
+        tools = ["//tensorflow/lite/python:tflite_convert"] + tf_binary_additional_srcs(),
+    )
+
+def DEPRECATED_tf_to_tflite(name, src, options, out):
+    """DEPRECATED Convert a frozen tensorflow graphdef to TF Lite's flatbuffer, using toco.
+
+    Please use tf_to_tflite instead.
+    TODO(b/138396996): Migrate away from this deprecated rule.
+
+    Args:
+      name: Name of rule.
+      src: name of the input graphdef file.
       options: options passed to TOCO.
       out: name of the output flatbuffer file.
     """
@@ -331,7 +359,6 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
-        "rfft2d",
         "round",
         "rsqrt",
         "scatter_nd",
@@ -584,7 +611,7 @@ def gen_zip_test(
         conversion_mode,
         test_tags,
         test_args,
-        additional_test_args = {},
+        additional_test_tags_args = {},
         **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
@@ -595,9 +622,11 @@ def gen_zip_test(
         list above.
       test_tags: tags for the generated cc_test.
       test_args: the basic cc_test args to be used.
-      additional_test_args: a dictionary of additional args to be used together
-        with test_args. The key is an identifier to be used in test tag, and
-        the value is a list of additional test args to be used.
+      additional_test_tags_args: a dictionary of additional test tags and args
+        to be used together with test_tags and test_args. The key is an
+        identifier which can be in creating a test tag to identify a set of
+        tests. The value is a tuple of list of additional test tags and args to
+        be used.
       **kwargs: tf_cc_test kwargs
     """
     toco = "//tensorflow/lite/toco:toco"
@@ -621,11 +650,13 @@ def gen_zip_test(
         tags = test_tags + ["gen_zip_test"],
         **kwargs
     )
-    for key, value in additional_test_args.items():
+    for key, value in additional_test_tags_args.items():
+        extra_tags, extra_args = value
+        extra_tags.append("gen_zip_test_%s" % key)
         tf_cc_test(
             name = "%s_%s" % (name, key),
-            args = test_args + value,
-            tags = test_tags + ["gen_zip_test_%s" % key],
+            args = test_args + extra_args,
+            tags = test_tags + extra_tags,
             **kwargs
         )
 
@@ -731,32 +762,12 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "no_windows",
             ] + tags + coverage_tags,
             deps = [
+                "//third_party/py/tensorflow",
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
         )
-
-def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):
-    return select({
-        "//tensorflow/lite:tflite_experimental_runtime_eager": if_eager,
-        "//tensorflow/lite:tflite_experimental_runtime_non_eager": if_non_eager,
-        "//conditions:default": if_none,
-    })
-
-def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_none = []):
-    return if_tflite_experimental_runtime(
-        if_eager = [
-            # "//tensorflow/lite/experimental/tf_runtime:eager_interpreter",
-            # "//tensorflow/lite/experimental/tf_runtime:eager_model",
-            # "//tensorflow/lite/experimental/tf_runtime:subgraph",
-        ] + if_eager,
-        if_non_eager = [
-            # "//tensorflow/lite/experimental/tf_runtime:interpreter",
-            # "//tensorflow/lite/experimental/tf_runtime:model",
-        ] + if_non_eager,
-        if_none = [] + if_none,
-    )
 
 def tflite_custom_cc_library(
         name,
@@ -789,7 +800,7 @@ def tflite_custom_cc_library(
             model = models,
         )
         real_srcs.append(":%s_registration" % name)
-        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+        real_deps.append("//tensorflow/lite:create_op_resolver_with_selected_ops")
     else:
         # Support all operators if `models` not specified.
         real_deps.append("//tensorflow/lite/java/src/main/native")
@@ -799,7 +810,7 @@ def tflite_custom_cc_library(
         srcs = real_srcs,
         hdrs = [
             # TODO(b/161323860) replace this by generated header.
-            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+            "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),
         linkopts = select({

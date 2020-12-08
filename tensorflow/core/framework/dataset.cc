@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/resource.h"
@@ -382,6 +383,14 @@ int64 GetTotalBytes(const std::vector<Tensor>& element) {
   return total_bytes;
 }
 
+std::string FullName(const std::string& prefix, const std::string& name) {
+  if (str_util::StrContains(name, kColon)) {
+    LOG(ERROR) << name << " should not contain " << kColon;
+  }
+
+  return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
@@ -425,6 +434,31 @@ Status DatasetBase::MakeIterator(
     iterator->reset();
   }
   return s;
+}
+
+Status DatasetBase::MakeSplitProvider(
+    std::unique_ptr<SplitProvider>* split_provider) const {
+  std::vector<const DatasetBase*> inputs;
+  Status s = InputDatasets(&inputs);
+  if (errors::IsUnimplemented(s)) {
+    return errors::Unimplemented(
+        "Cannot create a split provider for dataset of type ", type_string(),
+        ", because the dataset implements neither `InputDatasets` nor "
+        "`MakeSplitProvider`.");
+  }
+  if (inputs.size() != 1) {
+    return errors::Unimplemented(
+        "Cannot create a split provider for dataset of type ", type_string(),
+        ", because the dataset is not unary (having arity ", inputs.size(),
+        "), and no custom implementation of `MakeSplitProvider` is defined.");
+  }
+  return inputs[0]->MakeSplitProvider(split_provider);
+}
+
+Status DatasetBase::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  return errors::Unimplemented("InputDatasets not implemented for ",
+                               type_string());
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
@@ -552,6 +586,64 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   }
   DVLOG(3) << prefix() << " GetNext exit";
   return s;
+}
+
+Status DatasetBaseIterator::Skip(IteratorContext* ctx, int num_to_skip,
+                                 bool* end_of_sequence, int* num_skipped) {
+  profiler::TraceMe activity([&] { return BuildTraceMeName(); },
+                             profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " Skip enter";
+  auto model = ctx->model();
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    auto output = node_->output();
+    if (output) {
+      output->record_stop(now_nanos);
+    }
+    node_->record_start(now_nanos);
+  }
+  Status s = SkipInternal(ctx, num_to_skip, end_of_sequence, num_skipped);
+  if (model && model->collect_resource_usage() && node_) {
+    int64 now_nanos = EnvTime::NowNanos();
+    node_->record_stop(now_nanos);
+    auto output = node_->output();
+    if (output) {
+      output->record_start(now_nanos);
+    }
+  }
+  if (TF_PREDICT_FALSE(errors::IsOutOfRange(s))) {
+    s = errors::Internal("Iterator \"", params_.prefix,
+                         "\" returned `OutOfRange`. This indicates an "
+                         "implementation error as `OutOfRange` errors are not "
+                         "expected to be returned here. Original message: ",
+                         s.error_message());
+    LOG(ERROR) << s;
+  }
+  DVLOG(3) << prefix() << " Skip exit";
+  return s;
+}
+
+Status DatasetBaseIterator::SkipInternal(IteratorContext* ctx, int num_to_skip,
+                                         bool* end_of_sequence,
+                                         int* num_skipped) {
+  *num_skipped = 0;
+  for (int i = 0; i < num_to_skip; ++i) {
+    std::vector<Tensor> out_tensors;
+    TF_RETURN_IF_ERROR(GetNextInternal(ctx, &out_tensors, end_of_sequence));
+    if (*end_of_sequence) {
+      return Status::OK();
+    }
+    // RecordElement is used to count the number of element computed and
+    // help calculate the CPU time spent on a given iterator to do the
+    // autotuning.
+    // Here we only call RecordElement in the default implementation of
+    // SkipInternal (which trivially calls GetNextInternal) and assume
+    // that the overriden SkipInternal in the derived class will have
+    // negligible cost compare to its GetNextInternal.
+    RecordElement(ctx, &out_tensors);
+    (*num_skipped)++;
+  }
+  return Status::OK();
 }
 
 void DatasetOpKernel::Compute(OpKernelContext* ctx) {

@@ -291,18 +291,24 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
 struct GroupedSharding {
   GroupedSharding(std::vector<std::vector<int64>> device_groups,
                   std::vector<int64> group_dims,
-                  std::vector<int64> group_dim_sizes, int64 rank,
+                  std::vector<int64> group_dim_sizes, int64 data_rank,
                   HloSharding grouped_sharding)
       : device_groups(std::move(device_groups)),
         group_dims(std::move(group_dims)),
         group_dim_sizes(std::move(group_dim_sizes)),
+        data_rank(data_rank),
         sharding(std::move(grouped_sharding)) {}
   std::vector<std::vector<int64>> device_groups;
   std::vector<int64> group_dims;
   std::vector<int64> group_dim_sizes;
-  int64 rank;
+  int64 data_rank;
   HloSharding sharding;
 };
+
+// Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64> group_dims,
+                                    absl::Span<const int64> group_dim_shards);
 
 // Creates a GroupedSharding for a tiled sharding.
 GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
@@ -335,17 +341,49 @@ HloInstruction* PerGroupSliceFromReplicated(
     absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
     SpmdBuilder* b);
 
-// Similar to hlo_sharding_util::TransposeSharding(), but allows removing/adding
-// non-partitioned dimensions. In src_to_tgt and tgt_to_src, -1 represents a
-// non-existing dimension.
-absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
-    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
-    absl::Span<int64 const> tgt_to_src);
-
 // Returns the opcode if `reduction_comp` represents a simple binary elementwise
 // computation on the two operands.
 absl::optional<HloOpcode> ParseReductionComputation(
     const HloComputation* reduction_comp);
+
+// Pad the shape from partial replicate shape for `dst_sharding`.
+// If dst_sharding needs more padding and per_shard_size increased in
+// dst_sharding, halo exchange on the right side is needed.
+absl::optional<HloInstruction*> PadFromPartialReplicateShape(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& expand_tile_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+
+// Get the compatible sharding from a partial replicate sharding to a desired
+// target tiled sharding.
+// Compatible means replicate sharding can transform to the target tile
+// dimensions by dynamic slice.
+// For example, if partial_sharding is
+// {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+// Target sharding is {devices=[2,2]0,1,2,3}, the returned compatible sharding
+// will be sharding={devices=[2,2]0,2,1,3}.
+// If patial replicate sharding is not partial replicate or can't reshard to
+// target_tile_dims by dynamic slice, return absl::nullopt.
+// If target_sharding is already compatible, returns it.
+absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
+    const HloSharding& partial_sharding, const HloSharding& target_sharding);
+
+// Do left halo exchange if all-reduce directly from tile sharding to partial
+// replicate sharding will remove useful data from the source.
+absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& replicate_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+
+// Finds a list of dimensions that can be grouped on such that it will have the
+// specified device groups. Group order and dimension order are ignored.
+absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+    const HloSharding& sharding,
+    const std::vector<std::vector<int64>>& device_groups);
 
 }  // namespace spmd
 }  // namespace xla

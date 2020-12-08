@@ -7,9 +7,9 @@ input / output information. The metadata consists of both
 *   human readable parts which convey the best practice when using the model,
     and
 *   machine readable parts that can be leveraged by code generators, such as the
-    [TensorFlow Lite Android code generator](../guide/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
+    [TensorFlow Lite Android code generator](../inference_with_metadata/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
     and the
-    [Android Studio ML Binding feature](../guide/codegen.md#generate-code-with-android-studio-ml-model-binding).
+    [Android Studio ML Binding feature](../inference_with_metadata/codegen.md#generate-code-with-android-studio-ml-model-binding).
 
 All image models published on
 [TensorFlow Lite hosted models](https://www.tensorflow.org/lite/guide/hosted_models)
@@ -37,7 +37,7 @@ There are three parts to the model metadata in the
 [schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs):
 
 1.  **Model information** - Overall description of the model as well as items
-    such as licence terms. See
+    such as license terms. See
     [ModelMetadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L640).
 2.  **Input information** - Description of the inputs and pre-processing
     required such as normalization. See
@@ -47,9 +47,9 @@ There are three parts to the model metadata in the
     [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L599).
 
 Since TensorFlow Lite only supports single subgraph at this point, the
-[TensorFlow Lite code generator](../guide/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
+[TensorFlow Lite code generator](../inference_with_metadata/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
 and the
-[Android Studio ML Binding feature](../guide/codegen.md#generate-code-with-android-studio-ml-model-binding)
+[Android Studio ML Binding feature](../inference_with_metadata/codegen.md#generate-code-with-android-studio-ml-model-binding)
 will use `ModelMetadata.name` and `ModelMetadata.description`, instead of
 `SubGraphMetadata.name` and `SubGraphMetadata.description`, when displaying
 metadata and generating code.
@@ -82,11 +82,11 @@ is compatible with existing TFLite framework and Interpreter. See
 [Pack mtadata and associated files into the model](#pack-metadata-and-associated-files-into-the-model)
 for more details.
 
-The associate file information can be recored in the metadata. Depending on the
-file type and where the file is attached to (i.e. `ModelMetadata`,
+The associated file information can be recorded in the metadata. Depending on
+the file type and where the file is attached to (i.e. `ModelMetadata`,
 `SubGraphMetadata`, and `TensorMetadata`),
-[the TensorFlow Lite Android code generator](../guide/codegen.md) may apply
-corresponding pre/post processing automatically to the object. See
+[the TensorFlow Lite Android code generator](../inference_with_metadata/codegen.md)
+may apply corresponding pre/post processing automatically to the object. See
 [the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L77-L127)
 in the schema for more details.
 
@@ -161,8 +161,7 @@ are two independent steps. Here are the details.
 and the
 [TensorFlow Lite C++ API](https://github.com/tensorflow/tensorflow/blob/09ec15539eece57b257ce9074918282d88523d56/tensorflow/lite/c/common.h#L391).
 \
-[2] The
-[metadata extractor library](../guide/codegen.md#read-the-metadata-from-models)
+[2] The [metadata extractor library](#read-the-metadata-from-models)
 
 When processing image data for uint8 models, normalization and quantization are
 sometimes skipped. It is fine to do so when the pixel values are in the range of
@@ -329,7 +328,7 @@ populator.populate()
 
 You can pack as many associated files as you want into the model through
 `load_associated_files`. However, it is required to pack at least those files
-documented in the metadata. In this example, packing the lable file is
+documented in the metadata. In this example, packing the label file is
 mandatory.
 
 ## Visualize the metadata
@@ -347,6 +346,9 @@ json_file = displayer.get_metadata_json()
 with open(export_json_file, "w") as f:
   f.write(json_file)
 ```
+
+Android Studio also supports displaying metadata through the
+[Android Studio ML Binding feature](https://developer.android.com/studio/preview/features#tensor-flow-lite-models).
 
 ## Metadata versioning
 
@@ -373,12 +375,12 @@ does not imply the true incompatibility. When bumping up the MAJOR number, it
 does not necessarily mean the backwards compatibility is broken. Therefore, we
 use the
 [Flatbuffers file identification](https://google.github.io/flatbuffers/md__schemas.html),
-[file_identifiler](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
+[file_identifier](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
 to denote the true compatibility of the metadata schema. The file identifier is
 exactly 4 characters long. It is fixed to a certain metadata schema and not
 subject to change by users. If the backward compatibility of the metadata schema
 has to be broken for some reason, the file_identifier will bump up, for example,
-from “M001” to “M002”. File_identifiler is expected to be changed much less
+from “M001” to “M002”. File_identifier is expected to be changed much less
 frequently than the metadata_version.
 
 ### The minimum necessary metadata parser version
@@ -391,5 +393,118 @@ largest version number among the versions of all the fields populated and the
 smallest compatible version indicated by the file identifier. The minimum
 necessary metadata parser version is automatically populated by the
 `MetadataPopulator` when the metadata is populated into a TFLite model. See the
-[metadata extractor](../guide/codegen.md#read-the-metadata-from-models) about
-how the minimum necessary metadata parser version is used.
+[metadata extractor](#read-the-metadata-from-models) for more information on how
+the minimum necessary metadata parser version is used.
+
+## Read the metadata from models
+
+The Metadata Extractor library is convenient tool to read the metadata and
+associated files from a models across different platforms (see the
+[Java version](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/metadata/java)
+and the
+[C++ version](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/metadata/cc)).
+You can build your own metadata extractor tool in other languages using the
+Flatbuffers library.
+
+### Read the metadata in Java
+
+To use the Metadata Extractor library in your Android app, we recommend using
+the
+[TensorFlow Lite Metadata AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-metadata).
+It contains the `MetadataExtractor` class, as well as the FlatBuffers Java
+bindings for the
+[metadata schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs)
+and the
+[model schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs).
+
+You can specify this in your `build.gradle` dependencies as follows:
+
+```build
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite-metadata:0.0.0-nightly'
+}
+```
+
+You can initialize a `MetadataExtractor` object with a `ByteBuffer` that points
+to the model:
+
+```java
+public MetadataExtractor(ByteBuffer buffer);
+```
+
+The `ByteBuffer` must remain unchanged for the entire lifetime of the
+`MetadataExtractor` object. The initialization may fail if the Flatbuffers file
+identifier of the model metadata does not match that of the metadata parser. See
+[metadata versioning](#metadata-versioning) for more information.
+
+With matching file identifiers, the metadata extractor will successfully read
+metadata generated from all past and future schema due to the Flatbuffers'
+forwards and backwards compatibility mechanism. However, fields from future
+schemas cannot be extracted by older metadata extractors. The
+[minimum necessary parser version](#the-minimum-necessary-metadata-parser-version)
+of the metadata indicates the minimum version of metadata parser that can read
+the metadata Flatbuffers in full. You can use the following method to verify if
+the minimum necessary parser version condition is met:
+
+```java
+public final boolean isMinimumParserVersionSatisfied();
+```
+
+Passing in a model without metadata is allowed. However, invoking methods that
+read from the metadata will cause runtime errors. You can check if a model has
+metadata by invoking the `hasMetadata` method:
+
+```java
+public boolean hasMetadata();
+```
+
+`MetadataExtractor` provides convenient functions for you to get the
+input/output tensors' metadata. For example,
+
+```java
+public int getInputTensorCount();
+public TensorMetadata getInputTensorMetadata(int inputIndex);
+public QuantizationParams getInputTensorQuantizationParams(int inputIndex);
+public int[] getInputTensorShape(int inputIndex);
+public int getoutputTensorCount();
+public TensorMetadata getoutputTensorMetadata(int inputIndex);
+public QuantizationParams getoutputTensorQuantizationParams(int inputIndex);
+public int[] getoutputTensorShape(int inputIndex);
+```
+
+Though the
+[TensorFlow Lite model schema](https://github.com/tensorflow/tensorflow/blob/aa7ff6aa28977826e7acae379e82da22482b2bf2/tensorflow/lite/schema/schema.fbs#L1075)
+supports multiple subgraphs, the TFLite Interpreter currently only supports a
+single subgraph. Therefore, `MetadataExtractor` omits subgraph index as an input
+argument in its methods.
+
+## Read the associated files from models
+
+The TensorFlow Lite model with metadata and associated files is essentially a
+zip file that can be unpacked with common zip tools to get the associated files.
+For example, you can unzip
+[mobilenet_v1_0.75_160_quantized](https://tfhub.dev/tensorflow/lite-model/mobilenet_v1_0.75_160_quantized/1/metadata/1)
+and extract the label file in the model as follows:
+
+```sh
+$ unzip mobilenet_v1_0.75_160_quantized_1_metadata_1.tflite
+Archive:  mobilenet_v1_0.75_160_quantized_1_metadata_1.tflite
+ extracting: labels.txt
+```
+
+You can also read associated files through the Metadata Extractor library.
+
+In Java, pass the file name into the `MetadataExtractor.getAssociatedFile`
+method:
+
+```java
+public InputStream getAssociatedFile(String fileName);
+```
+
+Similarily, in C++, this can be done with the method,
+`ModelMetadataExtractor::GetAssociatedFile`:
+
+```c++
+tflite::support::StatusOr<absl::string_view> GetAssociatedFile(
+      const std::string& filename) const;
+```

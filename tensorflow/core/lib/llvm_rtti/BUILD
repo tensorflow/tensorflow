@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 # Library for using LLVM style RTTI in TensorFlow.
 load(
     "//tensorflow/core/platform:rules_cc.bzl",

@@ -330,6 +330,24 @@ class FunctionCallFrame : public CallFrameInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionCallFrame);
 };
 
+// Language agnostic stack traces.
+class AbstractStackTrace {
+ public:
+  struct TracePrintingOptions {
+    // Show inline the contents of each stack line.
+    bool show_line_contents = false;
+
+    // Drop the common largest prefix of all filenames in stack frames.
+    bool filter_common_prefix = false;
+  };
+
+  virtual ~AbstractStackTrace() {}
+
+  // The returned span is alive as long as the AbstractStackTrace is alive.
+  virtual absl::Span<StackFrame const> ToFrames() const = 0;
+  virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
+};
+
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
 //
@@ -375,7 +393,12 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddFunctionDef(const FunctionDef& fdef) TF_LOCKS_EXCLUDED(mu_);
+  //
+  // Associates `graph` with a function `func_name`. Lifetime assumption:
+  // `graph` has to outlive all instantiated graphs.
+  Status AddFunctionDef(const FunctionDef& fdef,
+                        const Graph* graph_with_debug_info = nullptr)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.
@@ -402,6 +425,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // nodes using the function, and all previous pointers returned by `Find()`
   // are no longer in use.
   Status RemoveFunction(const std::string& func) TF_LOCKS_EXCLUDED(mu_);
+
+  // Removes all the functions and gradient functions.
+  void Clear() TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
@@ -481,14 +507,25 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
                              const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
 
+  // Returns graph with debug stack traces for the given function, or `nullptr`
+  // if none found.
+  const Graph* GetGraphWithDebugInfo(const std::string& func_name) const {
+    tf_shared_lock l(mu_);
+    std::shared_ptr<FunctionDefAndOpRegistration> entry = FindHelper(func_name);
+    return entry ? entry->graph_with_debug_info : nullptr;
+  }
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
-    explicit FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
+    explicit FunctionDefAndOpRegistration(
+        const FunctionDef& fdef_in,
+        const Graph* graph_with_debug_info = nullptr);
 
     const FunctionDef fdef;
     const OpRegistrationData op_registration_data;
+    const Graph* graph_with_debug_info;
   };
 
   std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
@@ -501,7 +538,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
+  Status AddFunctionDefHelper(const FunctionDef& fdef,
+                              const Graph* graph_with_debug_info, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -611,6 +649,9 @@ class FunctionLibraryRuntime {
     // runtime will leave device specification empty and will rely on Placer to
     // infer correct device.
     std::vector<string> output_devices;
+
+    // If set, it indicates the original output indices of a component function.
+    absl::optional<std::vector<int>> ret_indices = absl::nullopt;
 
     // Maps from a CompositeDevice name to a list of underlying physical
     // devices.

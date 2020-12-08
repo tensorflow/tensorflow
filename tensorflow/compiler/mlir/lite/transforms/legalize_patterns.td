@@ -27,6 +27,9 @@ def NonOpaqueElementsAttr : ElementsAttrBase<
 def F32ElementsAttr : ElementsAttrBase<
   CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isF32()">, "float constant tensor">;
 
+def Int64ElementsAttr : ElementsAttrBase<
+  CPred<"$_self.cast<ElementsAttr>().getType().getElementType().isInteger(64)">, "Int 64 constant tensor">;
+
 // Extract the ith int element from an ArrayAttr $0 as an 32-bit IntegerAttr
 // with builder.
 class ExtractI32At<int i> : NativeCodeCall<
@@ -49,6 +52,10 @@ def ExtractSingleElementAsInteger : NativeCodeCall<
 // Extracts the single int32 element from $_self.
 def ExtractSingleElementAsInt32 : NativeCodeCall<
     "$_builder.getI32IntegerAttr(ExtractSingleElementAsInteger($_self.cast<ElementsAttr>()).getInt())">;
+
+// Converts tensor with int64 to int32.
+def CreateTFCastToInt32Op : NativeCodeCall<
+  "CreateCastToInt32($0, $_loc, $_builder)">;
 
 // Checks whether the given operation has static shapes and same shapes of all inputs.
 def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
@@ -109,6 +116,9 @@ def LegalizeArgMax : Pat<(TF_ArgMaxOp $input, $dim),
 def LegalizeArgMin : Pat<(TF_ArgMinOp $input, $dim),
                          (TFL_ArgMinOp $input, $dim)>;
 
+def LegalizeBroadcastTo : Pat<(TF_BroadcastToOp $input, $dim),
+                              (TFL_BroadcastToOp $input, $dim)>;
+
 def LegalizeCeil : Pat<(TF_CeilOp $arg), (TFL_CeilOp $arg)>;
 
 def LegalizeCos : Pat<(TF_CosOp $arg), (TFL_CosOp $arg)>;
@@ -149,6 +159,7 @@ def LegalizeMaxPool2D : Pat<
               IsIntList1XY1:$ksize,
               IsIntList1XY1:$strides,
               $padding,
+              $explicit_paddings,
               IsDataFormatNHWC:$format),
           (TFL_MaxPool2DOp $value,
               /*padding=*/$padding,
@@ -182,8 +193,8 @@ def LegalizeRound : Pat<(TF_RoundOp $arg), (TFL_RoundOp $arg)>;
 def LegalizeRsqrt : Pat<(TF_RsqrtOp $arg), (TFL_RsqrtOp $arg)>;
 def LegalizeSqrt : Pat<(TF_SqrtOp $arg), (TFL_SqrtOp $arg)>;
 def LegalizeSquare : Pat<(TF_SquareOp $arg), (TFL_SquareOp $arg)>;
-def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, I32Tensor:$segment_ids),
-                             (TFL_SegmentSumOp $data, $segment_ids)>;
+def LegalizeSegmentSum : Pat<(TF_SegmentSumOp $data, $segment_ids),
+                             (TFL_SegmentSumOp $data, (CreateTFCastToInt32Op $segment_ids))>;
 def LegalizeSelect : Pat<(TF_SelectOp $cond, $x, $y),
                          (TFL_SelectOp $cond, $x, $y)>;
 def LegalizeSelectV2SameStaticShape : Pat<(TF_SelectV2Op:$src_op $cond, $x, $y),
@@ -207,8 +218,11 @@ def LegalizeSoftPlus : Pat<(TF_SoftplusOp F32Tensor:$arg0),
 def LegalizeSqueeze : Pat<(TF_SqueezeOp $arg, $squeeze_dims),
                           (TFL_SqueezeOp $arg, $squeeze_dims)>;
 def LegalizeTanh : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
+
 def LegalizeTranspose : Pat<(TF_TransposeOp $arg, $perm),
-                            (TFL_TransposeOp $arg, $perm)>;
+                            (TFL_TransposeOp $arg,
+                            (CreateTFCastToInt32Op $perm))>;
+
 def LegalizeWhere : Pat<(TF_WhereOp $arg), (TFL_WhereOp $arg)>;
 def LegalizeZerosLike : Pat<(TF_ZerosLikeOp $arg), (TFL_ZerosLikeOp $arg)>;
 
@@ -253,7 +267,7 @@ def LegalizeAddv2 : Pat<(TF_AddV2Op $lhs, $rhs),
                         (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
 def LegalizeBiasAdd : Pat<
   (TF_BiasAddOp F32Tensor:$l, F32Tensor:$r, IsDataFormatNHWC:$data_format),
-  (TFL_AddOp $l, $r, TFL_AF_None)>;
+  (TF_AddV2Op $l, $r)>;
 def LegalizeSub : Pat<(TF_SubOp $lhs, $rhs),
                       (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
 def LegalizeMul : Pat<(TF_MulOp $lhs, $rhs),
@@ -295,8 +309,9 @@ def LegalizeRank : Pat<(TF_RankOp $input), (TFL_RankOp $input)>;
 def LegalizeSquaredDifference : Pat<(TF_SquaredDifferenceOp $l, $r),
                                     (TFL_SquaredDifferenceOp $l, $r)>;
 
-def LegalizeReverseV2 : Pat<(TF_ReverseV2Op $arg0, $arg1),
-                            (TFL_ReverseV2Op $arg0, $arg1)>;
+def LegalizeReverseV2 : Pat<
+  (TF_ReverseV2Op $arg0, $axis),
+  (TFL_ReverseV2Op $arg0, (CreateTFCastToInt32Op $axis))>;
 
 def LegalizeEqual : Pat<(TF_EqualOp $arg0, $arg1,
                           /*incompatible_shape_error=*/ConstBoolAttrTrue),
@@ -313,33 +328,40 @@ def LegalizeMean : Pat<(TF_MeanOp $arg0, $arg1, BoolAttr:$arg2),
                        (TFL_MeanOp $arg0, $arg1, $arg2)>;
 
 def LegalizeSum : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2),
-                      (TFL_SumOp $arg, $axes, $arg2)>;
+                      (TFL_SumOp $arg, (CreateTFCastToInt32Op $axes), $arg2)>;
 
 // TopK in TFL is always sorted so we ignore that attribute here.
 def LegalizeTopKV2 : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted),
                          (TFL_TopKV2Op $input, $k)>;
 
-def LegalizeMin : Pat<(TF_MinOp $arg0, $arg1, BoolAttr:$arg2),
-                      (TFL_ReduceMinOp $arg0, $arg1, $arg2)>;
+def LegalizeMin : Pat<
+  (TF_MinOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceMinOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeMax : Pat<(TF_MaxOp $arg0, $arg1, BoolAttr:$arg2),
-                      (TFL_ReduceMaxOp $arg0, $arg1, $arg2)>;
+def LegalizeMax : Pat<
+  (TF_MaxOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceMaxOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeProd : Pat<(TF_ProdOp $arg0, $arg1, BoolAttr:$arg2),
-                       (TFL_ReduceProdOp $arg0, $arg1, $arg2)>;
+def LegalizeProd : Pat<
+  (TF_ProdOp $arg0, $axes, BoolAttr:$arg2),
+  (TFL_ReduceProdOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
 
-def LegalizeAny : Pat<(TF_AnyOp $input, $reduction_indices, $keep_dims),
-                      (TFL_ReduceAnyOp $input, $reduction_indices, $keep_dims)>;
+def LegalizeAny : Pat<
+  (TF_AnyOp $input, $reduction_indices, $keep_dims),
+  (TFL_ReduceAnyOp $input, (CreateTFCastToInt32Op $reduction_indices),
+                   $keep_dims)>;
 
 def LegalizeCast : Pat<(TF_CastOp $arg0, BoolAttr:$arg1), (TFL_CastOp $arg0)>;
 
 def LegalizeBatchToSpaceND : Pat<
   (TF_BatchToSpaceNDOp $input, $block_shape, $crops),
-  (TFL_BatchToSpaceNdOp $input, $block_shape, $crops)>;
+  (TFL_BatchToSpaceNdOp $input, (CreateTFCastToInt32Op $block_shape),
+     (CreateTFCastToInt32Op $crops))>;
 
 def LegalizeSpaceToBatchND : Pat<
   (TF_SpaceToBatchNDOp $input, $block_shape, $paddings),
-  (TFL_SpaceToBatchNdOp $input, $block_shape, $paddings)>;
+  (TFL_SpaceToBatchNdOp $input, (CreateTFCastToInt32Op $block_shape),
+     (CreateTFCastToInt32Op $paddings))>;
 
 def LegalizeSpaceToDepth : Pat<
   (TF_SpaceToDepthOp $input, $block_size, IsDataFormatNHWC:$data_format),
@@ -423,10 +445,53 @@ def LegalizeConv2DBackpropInput : Pat<
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
 
+def IsRankZeroAttr
+  : CPred<"$_self.cast<DenseElementsAttr>().getType().getRank() == 0">;
+
+def HasValueZero
+  : CPred<"$_self.cast<DenseElementsAttr>().getSplatValue()."
+          "cast<::mlir::IntegerAttr>().getInt() == 0">;
+
+// TFLite only supports MatrixSetDiag ops with scalar zero k attribute.
+def IsSupportedByTFLiteMatrixSetDiag
+  : ElementsAttrBase<And<[ElementsAttr.predicate,
+                          IsRankZeroAttr, HasValueZero]>,
+                     "MatrixSetDiag attribute verification">;
+
+// Attribute align doesn't matter when k is zero.
 def LegalizeMatrixSetDiag : Pat<
-  (TF_MatrixSetDiagOp $input, $diagonal),
+  (TF_MatrixSetDiagV3Op $input, $diagonal,
+    (ConstantLikeMatcher IsSupportedByTFLiteMatrixSetDiag:$k), $align),
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
 
 def LegalizeScatterNd : Pat<
-  (TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
-  (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;
+  (TF_ScatterNdOp $indices, $updates, $shape),
+  (TFL_ScatterNdOp (CreateTFCastToInt32Op $indices), $updates,
+    (CreateTFCastToInt32Op $shape))>;
+
+def LegalizeCumsum : Pat<
+  (TF_CumsumOp $input, $axis, $exclusive, $reverse),
+  (TFL_CumsumOp $input, (CreateTFCastToInt32Op $axis), $exclusive, $reverse)>;
+
+def LegalizeReshape : Pat<
+  (TF_ReshapeOp $input, $shape),
+  (TFL_ReshapeOp $input, (CreateTFCastToInt32Op $shape))>;
+
+def ZeroIntAttr
+  : AttrConstraint<CPred<"$_self.cast<::mlir::IntegerAttr>().getInt() == 0">>;
+
+// ellipsis_mask and new_axis_mask should be zero.
+def LegalizeStridedSlice : Pat<
+  (TF_StridedSliceOp
+    $input, $begin, $end, $strides, $begin_mask, $end_mask,
+    ZeroIntAttr:$ellipsis_mask, ZeroIntAttr:$new_axis_mask, $shrink_axis_mask),
+  (TFL_StridedSliceOp $input,
+    (CreateTFCastToInt32Op $begin), (CreateTFCastToInt32Op $end),
+    (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
+    (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
+    (convertIntAttrTo32Bit $new_axis_mask),
+    (convertIntAttrTo32Bit $shrink_axis_mask))>;
+
+def LegalizeRfft2d : Pat<
+  (TF_RFFT2DOp $input, $fft_length),
+  (TFL_RFFT2dOp $input, $fft_length)>;

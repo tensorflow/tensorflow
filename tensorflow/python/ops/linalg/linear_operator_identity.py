@@ -252,6 +252,17 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
         `{is_self_adjoint, is_non_singular, is_positive_definite}`.
       TypeError:  If `num_rows` or `batch_shape` is ref-type (e.g. Variable).
     """
+    parameters = dict(
+        num_rows=num_rows,
+        batch_shape=batch_shape,
+        dtype=dtype,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        assert_proper_shapes=assert_proper_shapes,
+        name=name)
+
     dtype = dtype or dtypes.float32
     self._assert_proper_shapes = assert_proper_shapes
 
@@ -272,6 +283,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
       linear_operator_util.assert_not_ref_type(num_rows, "num_rows")
@@ -596,6 +608,16 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       ValueError:  If `num_rows` is determined statically to be non-scalar, or
         negative.
     """
+    parameters = dict(
+        num_rows=num_rows,
+        multiplier=multiplier,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        assert_proper_shapes=assert_proper_shapes,
+        name=name)
+
     self._assert_proper_shapes = assert_proper_shapes
 
     with ops.name_scope(name, values=[multiplier, num_rows]):
@@ -620,6 +642,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
       self._num_rows = linear_operator_util.shape_tensor(

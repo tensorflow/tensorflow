@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/optimize_dataset_op.h"
 
+// On mobile we do not provide optimize dataset op because not all of its
+// dependencies are available there. The op is replaced with a no-op.
+#if !defined(IS_MOBILE_PLATFORM)
 #include <map>
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -26,9 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 /* static */ constexpr const char* const OptimizeDatasetOp::kDatasetType;
 /* static */ constexpr const char* const OptimizeDatasetOp::kInputDataset;
@@ -80,43 +80,55 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                                      &optimizations_default));
 
     string job_name = port::JobName();
-    if (job_name.empty()) {
-      // If `job_name` is empty, apply the enabled and default optimizations
-      // directly.
-      optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
-                           optimizations_enabled.end());
-      optimizations.insert(optimizations.end(), optimizations_default.begin(),
-                           optimizations_default.end());
-    } else {
-      // The map that stores the experiment names and for how much percentage
-      // of the jobs, the experiments will be randomly turned on.
-      //
-      // This is currently empty; we have no live experiments yet.
-      absl::flat_hash_map<string, uint64> live_experiments;
+    // The map that stores the live experiment names and for how much percentage
+    // of the Borg jobs, the experiments will be randomly turned on.
+    // clang-format off
+    absl::flat_hash_map<string, uint64> live_experiments = {
+        {"enable_gradient_descent", 0},
+        {"map_parallelization", 100}
+    };
+    // clang-format on
+    auto hash_func = [](const string& str) { return Hash64(str); };
+    optimizations = SelectOptimizations(
+        job_name, live_experiments, optimizations_enabled,
+        optimizations_disabled, optimizations_default, hash_func);
 
-      const string opt_ins_raw = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
-      const string opt_outs_raw = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
-      auto hash_func = [](const string& str) { return Hash64(str); };
-      optimizations = SelectOptimizations(
-          job_name, opt_ins_raw, opt_outs_raw, live_experiments,
-          optimizations_enabled, optimizations_disabled, optimizations_default,
-          hash_func);
+    // Log and record the live experiments that will be applied.
+    if (!job_name.empty() && !live_experiments.empty()) {
+      VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+                 "Please see `go/tf-data-experiments` for more details.";
 
-      // Log the experiments that will be applied.
-      if (!live_experiments.empty() && VLOG_IS_ON(1)) {
-        VLOG(1) << "The input pipeline is subject to tf.data experiment. "
-                   "Please see `go/tf-data-experiments` for more details.";
-
-        for (auto& pair : live_experiments) {
-          string experiment = pair.first;
-          if (std::find(optimizations.begin(), optimizations.end(),
-                        experiment) != optimizations.end()) {
-            VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
-            metrics::RecordTFDataExperiment(experiment);
-          }
+      for (auto& pair : live_experiments) {
+        string experiment = pair.first;
+        if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
+            optimizations.end()) {
+          VLOG(1) << "The live experiment \"" << experiment << "\" is applied.";
+          metrics::RecordTFDataExperiment(experiment);
         }
       }
     }
+  }
+
+  // The vector stores the graduated experiment names which will be turned on
+  // for all input pipelines.
+  // clang-format off
+  std::vector<string> graduated_experiments = {"disable_intra_op_parallelism"};
+  // clang-format on
+
+  // Add the graduated experiments to the optimization list and log them.
+  for (auto& experiment : graduated_experiments) {
+    if (std::find(optimizations.begin(), optimizations.end(), experiment) ==
+        optimizations.end()) {
+      optimizations.push_back(experiment);
+    }
+    VLOG(1) << "The graduated experiment \"" << experiment << "\" is applied.";
+  }
+
+  // If there are no optimizations to be applied, directly return the input.
+  if (optimizations.empty()) {
+    *output = input;
+    input->Ref();
+    return;
   }
 
   auto config_factory = [this, &optimizations]() {
@@ -167,3 +179,25 @@ REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
+#else  // !IS_MOBILE_PLATFORM
+namespace tensorflow {
+namespace data {
+
+OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
+    : UnaryDatasetOpKernel(ctx) {}
+
+void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                                    DatasetBase** output) {
+  input->Ref();
+  *output = input;
+}
+
+namespace {
+REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+}  // namespace
+}  // namespace data
+}  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM

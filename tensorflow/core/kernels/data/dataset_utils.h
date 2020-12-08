@@ -105,26 +105,6 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
                               const std::vector<Tensor>& received);
 
-// Returns a stable hash of the subgraph rooted at the given node.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
-Status HashNode(const GraphDef& graph, const NodeDef& node,
-                const FunctionLibraryDefinition& flib_def, uint64* hash);
-
-// Returns a stable hash of the given tensor.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashTensor(const Tensor& tensor, uint64* hash);
-
-// Returns a stable hash of the given graph.
-//
-// NOTE: There is currently no guarantee that the hash of a subgraph will stay
-// the same between TensorFlow builds.
-Status HashGraph(const GraphDef& graph, uint64* hash);
-
 // Writes dataset elements to the checkpoint writer using the given key prefix.
 // The elements can be read back by passing the same key prefix to
 // ReadElementsFromCheckpoint. Only one list of elements can be written under
@@ -191,24 +171,28 @@ class VariantTensorDataReader : public IteratorStateReader {
   explicit VariantTensorDataReader(
       const std::vector<const VariantTensorData*>& data);
 
-  Status ReadScalar(StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece key) override;
+  Status ReadScalar(StringPiece key, int64* val) const override;
+  Status ReadScalar(StringPiece key, tstring* val) const override;
+  Status ReadTensor(StringPiece key, Tensor* val) const override;
+  bool Contains(StringPiece key) const override;
 
-  Status ReadScalar(StringPiece name, StringPiece key, int64* val) override;
-  Status ReadScalar(StringPiece name, StringPiece key, tstring* val) override;
-  Status ReadTensor(StringPiece name, StringPiece key, Tensor* val) override;
-  bool Contains(StringPiece name, StringPiece key) override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    int64* val) const override;
+  Status ReadScalar(StringPiece name, StringPiece key,
+                    tstring* val) const override;
+  Status ReadTensor(StringPiece name, StringPiece key,
+                    Tensor* val) const override;
+  bool Contains(StringPiece name, StringPiece key) const override;
 
  private:
   template <typename T>
-  Status ReadScalarInternal(StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece key, Tensor* val) const;
 
   template <typename T>
-  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val);
-  Status ReadTensorInternal(StringPiece name, StringPiece key, Tensor* val);
+  Status ReadScalarInternal(StringPiece name, StringPiece key, T* val) const;
+  Status ReadTensorInternal(StringPiece name, StringPiece key,
+                            Tensor* val) const;
 
   std::map<string, std::map<string, size_t>> map_;
   std::map<string, const VariantTensorData*> data_;  // Not owned.
@@ -297,24 +281,26 @@ class DummyResourceOp : public OpKernel {
 };
 
 // Given an op prefix and an op to match, returns whether the op to match
-// is a regex match for any version of the op prefix. For example,
-// MatchesAnyVersionRE("BatchDataset", "BatchDataset") == true
-// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2") == true
-// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3") == true
-// MatchesAnyVersionRE("PaddedBatchDataset", "BatchDataset") == false
-bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match);
+// is a match for any version of the op prefix. For example,
+// MatchesAnyVersion("BatchDataset", "BatchDataset") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
+// MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
 
-// Based on `optimizations_enabled`, `optimizations_disabled`, and
-// `optimizations_disabled`, returns the list of optimizations that will be
+// Based on `job_name`, `optimizations_enabled`, `optimizations_disabled` and
+// `optimizations_default`, returns the list of optimizations that will be
 // applied.
 std::vector<tstring> SelectOptimizations(
-    const string& job_name, const string& opt_ins_raw,
-    const string& opt_outs_raw,
+    const string& job_name,
     const absl::flat_hash_map<string, uint64>& live_experiments,
     const std::vector<tstring>& optimizations_enabled,
     const std::vector<tstring>& optimizations_disabled,
     const std::vector<tstring>& optimizations_default,
     std::function<uint64(const string&)> hash_func);
+
+// Removes device placements from the ops of all functions in `library`.
+void StripDevicePlacement(FunctionDefLibrary* library);
 
 }  // namespace data
 }  // namespace tensorflow

@@ -217,6 +217,9 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
             *np_utils.tf_broadcast(a.data, a_min.data, a_max.data)))
 
 
+setattr(np_arrays.ndarray, 'clip', clip)
+
+
 @np_utils.np_doc('matmul')
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):
@@ -261,10 +264,11 @@ def cross(a, b, axisa=-1, axisb=-1, axisc=-1, axis=None):  # pylint: disable=mis
 
   def f(a, b):  # pylint: disable=missing-docstring
     # We can't assign to captured variable `axisa`, so make a new variable
-    axis_a = axisa
-    axis_b = axisb
-    axis_c = axisc
-    if axis is not None:
+    if axis is None:
+      axis_a = axisa
+      axis_b = axisb
+      axis_c = axisc
+    else:
       axis_a = axis
       axis_b = axis
       axis_c = axis

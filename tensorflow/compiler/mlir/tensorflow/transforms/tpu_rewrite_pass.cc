@@ -25,10 +25,9 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
@@ -147,18 +147,15 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
       clone.setName("main");
-      clone.setVisibility(FuncOp::Visibility::Public);
+      clone.setPublic();
     } else {
-      clone.setVisibility(FuncOp::Visibility::Private);
+      clone.setPrivate();
     }
     symbol_table.insert(clone);
   }
 
-  // Serialize module and return.
-  {
-    llvm::raw_string_ostream os(*serialized_func_module);
-    module_for_func.get().print(os);
-  }
+  *serialized_func_module =
+      tensorflow::SerializeMlirModule(module_for_func.get());
   return success();
 }
 
@@ -409,12 +406,15 @@ Operation* BuildCompileOp(
   std::string txt_module;
   if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
 
-  auto result_type =
+  auto compilation_status_type =
       RankedTensorType::get({}, builder->getType<TF::StringType>());
+  auto program_type =
+      RankedTensorType::get({2}, builder->getType<TF::StringType>());
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
-      cluster_func.getLoc(), /*compilation_status=*/result_type, /*program=*/
-      llvm::SmallVector<Type, 8>(num_cores_per_replica, result_type),
+      cluster_func.getLoc(),
+      /*compilation_status=*/compilation_status_type, /*program=*/
+      llvm::SmallVector<Type, 8>(num_cores_per_replica, program_type),
       compile_op_operands, txt_module, txt_metadata);
 
   return WrapOpInLaunch(builder, compile_op.getLoc(), compile_op,
@@ -598,9 +598,9 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 // func @main(%arg0: tensor<i1>) {
 //   %0 = "tf.Shape"(%arg0) : (tensor<i1>) -> tensor<?xi32>
 //   %1:2 = "tf._TPUCompileMlir"(%0) {device = "/CPU:0"} :
-//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<!tf.string>)
+//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
 //   %2 = "tf.TPUExecute"(%arg0, %1#0) {device = "/TPU:0"} :
-//            (tensor<i1>, tensor<!tf.string>) -> tensor<i1>
+//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
 //   return
 // }
 //
@@ -624,9 +624,9 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 //                              {n = 2 : i32, devices = ["/TPU:0", "/TPU:1"]} {
 //     %1 = "tf.Shape"(%ri) : (tensor<i1>) -> tensor<?xi32>
 //     %2:2 = "tf._TPUCompileMlir"(%1) {device = "/CPU:0"} :
-//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<!tf.string>)
+//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
 //     %3 = "tf.TPUExecute"(%ri, %2#0) :
-//            (tensor<i1>, tensor<!tf.string>) -> tensor<i1>
+//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
 //     tf_device.return %3 : tensor<i1>
 //   }
 //   return
@@ -644,7 +644,7 @@ LogicalResult Rewrite(
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
       cluster_func.getParentOfType<tf_device::ReplicateOp>();
-  if (replicate) num_replicas = replicate.n().getLimitedValue();
+  if (replicate) num_replicas = replicate.n();
 
   auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);

@@ -15,8 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 
+#include <stdint.h>
+
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/util.h"
 
 using ::testing::Eq;

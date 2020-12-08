@@ -269,7 +269,7 @@ def EfficientNet(
   if blocks_args == 'default':
     blocks_args = DEFAULT_BLOCKS_ARGS
 
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -479,7 +479,11 @@ def block(inputs,
   if 0 < se_ratio <= 1:
     filters_se = max(1, int(filters_in * se_ratio))
     se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
-    se = layers.Reshape((1, 1, filters), name=name + 'se_reshape')(se)
+    if bn_axis == 1:
+      se_shape = (filters, 1, 1)
+    else:
+      se_shape = (1, 1, filters)
+    se = layers.Reshape(se_shape, name=name + 'se_reshape')(se)
     se = layers.Conv2D(
         filters_se,
         1,

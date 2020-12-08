@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from absl import flags
 import numpy as np
 
 from tensorboard.plugins.histogram import summary_v2 as histogram_summary_v2
@@ -29,10 +30,10 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import tpu_strategy as tpu_strategy_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
-from tensorflow.python.eager import test
+from tensorflow.python.eager.context import set_soft_device_placement
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.distribute import distribute_strategy_test
@@ -45,7 +46,8 @@ from tensorflow.python.keras.layers import pooling as pool_layer_lib
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
-from tensorflow.python.platform import flags
+# from tensorflow.python.platform import flags
+from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.tpu import tpu_strategy_util
 
@@ -166,7 +168,7 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
   def setUp(self):
     super(AutoOutsideCompilationWithKerasTest, self).setUp()
     v2_compat.enable_v2_behavior()
-    context.context().soft_device_placement = True
+    set_soft_device_placement(True)
     self.summary_dir = self.get_temp_dir()
 
   def validate_recorded_sumary_file(self, event_files, summary_dict,
@@ -245,34 +247,44 @@ class AutoOutsideCompilationWithKerasTest(test.TestCase):
   def testSummaryWithCustomTrainingLoop(self):
     strategy = get_tpu_strategy()
 
+    writer = summary_ops_v2.create_file_writer_v2(self.summary_dir)
     with strategy.scope():
       model = distribute_strategy_test.get_model()
       model.compile('sgd', 'mse')
-      writer = summary_ops_v2.create_file_writer_v2(self.summary_dir)
 
-      @def_function.function
-      def custom_function(dataset):
+    @def_function.function
+    def custom_function(dataset):
 
-        def _custom_step(features, labels):
-          del labels
-          logits = model(features)
-          with summary_ops_v2.always_record_summaries(), writer.as_default():
-            scalar_summary_v2.scalar(
-                'logits',
-                math_ops.reduce_sum(logits),
-                step=model.optimizer.iterations)
-          return logits
+      def _custom_step(features, labels):
+        del labels
+        logits = model(features)
+        with summary_ops_v2.record_if(True), writer.as_default():
+          scalar_summary_v2.scalar(
+              'logits',
+              math_ops.reduce_sum(logits),
+              step=model.optimizer.iterations)
+        return logits
 
-        iterator = iter(dataset)
-        output = strategy.unwrap(
-            strategy.run(_custom_step, args=(next(iterator))))
-        return output
+      iterator = iter(dataset)
+      output = strategy.unwrap(
+          strategy.run(_custom_step, args=(next(iterator))))
+      return output
 
-      dataset = strategy.experimental_distribute_dataset(
-          distribute_strategy_test.get_dataset(strategy))
+    dataset = strategy.experimental_distribute_dataset(
+        distribute_strategy_test.get_dataset(strategy))
 
-      custom_function(dataset)
+    custom_function(dataset)
+    writer.close()
+
+    event_files = file_io.get_matching_files_v2(
+        os.path.join(self.summary_dir, 'event*'))
+    events_count_dictionary = {
+        ('logits'): 0,
+    }
+    self.validate_recorded_sumary_file(event_files, events_count_dictionary,
+                                       1)
 
 
 if __name__ == '__main__':
+  ops.enable_eager_execution()
   test.main()

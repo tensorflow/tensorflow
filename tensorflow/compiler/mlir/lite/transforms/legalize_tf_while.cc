@@ -33,6 +33,10 @@ namespace {
 // cond and body regions.
 struct LegalizeWhile
     : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect>();
+  }
+
   void RunOnFunction(FuncOp func);
 
   void runOnOperation() override {
@@ -58,10 +62,10 @@ void RunOnWhile(TF::WhileOp while_op) {
     auto call = builder.create<CallOp>(while_op.getLoc(), func, new_operands);
     builder.create<YieldOp>(while_op.getLoc(), call.getResults());
     // Mark old function as private so that it can be DCE'd if not called.
-    func.setVisibility(SymbolTable::Visibility::Private);
+    func.setPrivate();
   };
-  create_region_with_call(while_op.cond_func(), new_op.cond());
-  create_region_with_call(while_op.body_func(), new_op.body());
+  create_region_with_call(while_op.cond_function(), new_op.cond());
+  create_region_with_call(while_op.body_function(), new_op.body());
 
   op->replaceAllUsesWith(new_op.getResults());
   op->erase();

@@ -34,9 +34,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/gemm_functors.h"
-#include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/util/image_resizer_state.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -191,7 +191,7 @@ EIGEN_ALWAYS_INLINE PerCacheLineParameters<T1> CalculatePerCacheLineParameters(
   } else if (in_y >= resized_height) {
     in_y = (resized_height * 2.0f) - (in_y + 1.0f + pad_offset);
   }
-  // Here's where do do the actual resize.
+  // Here's where to do the actual resize.
   in_y *= st.height_scale;
   const int64 top_y_index = static_cast<int64>(std::floor(in_y));
   const int64 bottom_y_index =

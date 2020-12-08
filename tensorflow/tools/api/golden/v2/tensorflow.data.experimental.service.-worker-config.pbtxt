@@ -1,0 +1,39 @@
+path: "tensorflow.data.experimental.service.WorkerConfig"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.WorkerConfig\'>"
+  is_instance: "<class \'tensorflow.python.data.experimental.service.server_lib.WorkerConfig\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "dispatcher_address"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dispatcher_timeout_ms"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "heartbeat_interval_ms"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "port"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "protocol"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "worker_address"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

@@ -116,7 +116,7 @@ class DropoutWrapperBase(object):
     with ops.name_scope_v2("DropoutWrapperInit"):
 
       def tensor_and_const_value(v):
-        tensor_value = ops.convert_to_tensor(v)
+        tensor_value = ops.convert_to_tensor_v2_with_dispatch(v)
         const_value = tensor_util.constant_value(tensor_value)
         return (tensor_value, const_value)
 

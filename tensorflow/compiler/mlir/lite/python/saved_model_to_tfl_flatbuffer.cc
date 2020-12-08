@@ -16,11 +16,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/types/span.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -118,16 +119,16 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   return Status::OK();
 }
 
-Status ConvertSavedModelToTFLiteFlatBuffer(
-    const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
-    string* result) {
+Status ConvertSavedModelToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
+                                           const toco::TocoFlags& toco_flags,
+                                           string* result) {
   mlir::MLIRContext context;
   mlir::TFL::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
   std::vector<string> node_names;
   std::vector<string> node_dtypes;
-  std::vector<std::vector<int>> node_shapes;
+  std::vector<llvm::Optional<std::vector<int>>> node_shapes;
   std::vector<llvm::Optional<double>> node_mins;
   std::vector<llvm::Optional<double>> node_maxs;
 
@@ -156,9 +157,12 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   tensorflow::GraphImportConfig specs;
   specs.upgrade_legacy = true;
 
+  std::vector<std::string> custom_opdefs(toco_flags.custom_opdefs().begin(),
+                                         toco_flags.custom_opdefs().end());
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
+                                       absl::MakeSpan(custom_opdefs),
                                        exported_names, specs, &context));
 
   if (!model_flags.input_arrays().empty() ||
@@ -170,10 +174,15 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
+  // Disable the unfolding of the 16x16 TF::BatchMatMulOp to avoid the
+  // conversion to an unsupported 16x16 TFL::FullyConnectedOp.
+  if (toco_flags.inference_type() == toco::IODataType::QUANTIZED_INT16) {
+    pass_config.unfold_batch_matmul = false;
+  }
 
   // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, result,
+      toco_flags, std::move(module), pass_config, tags, result,
       /*session=*/llvm::None);
   return status;
 }

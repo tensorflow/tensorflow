@@ -25,12 +25,13 @@ limitations under the License.
 #include <fstream>
 #include <vector>
 
+#include "tensorflow/core/platform/file_statistics.h"
 #include "tensorflow/core/platform/strcat.h"
 #ifdef _WIN32
 #include <io.h>  // for _mktemp
 #endif
 #include "absl/base/macros.h"
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
@@ -389,7 +390,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 typedef std::function<Status(
     uint64 start_offset, const std::string& object_to_upload,
     const std::string& bucket, uint64 file_size, const std::string& gcs_path,
-    std::string* session_uri)>
+    UploadSessionHandle* session_handle)>
     SessionCreator;
 
 // Function object declaration with params needed to upload objects.
@@ -405,6 +406,11 @@ typedef std::function<Status(const string& session_uri, uint64 file_size,
                              uint64* uploaded)>
     StatusPoller;
 
+// Function object declaration with params needed to poll upload status.
+typedef std::function<Status(const string& fname, const string& bucket,
+                             const string& object, int64* generation)>
+    GenerationGetter;
+
 /// \brief GCS-based implementation of a writeable file.
 ///
 /// Since GCS objects are immutable, this implementation writes to a local
@@ -417,7 +423,8 @@ class GcsWritableFile : public WritableFile {
                   std::function<void()> file_cache_erase,
                   RetryConfig retry_config, bool compose_append,
                   SessionCreator session_creator,
-                  ObjectUploader object_uploader, StatusPoller status_poller)
+                  ObjectUploader object_uploader, StatusPoller status_poller,
+                  GenerationGetter generation_getter)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
@@ -429,7 +436,8 @@ class GcsWritableFile : public WritableFile {
         start_offset_(0),
         session_creator_(std::move(session_creator)),
         object_uploader_(std::move(object_uploader)),
-        status_poller_(std::move(status_poller)) {
+        status_poller_(std::move(status_poller)),
+        generation_getter_(std::move(generation_getter)) {
     // TODO: to make it safer, outfile_ should be constructed from an FD
     VLOG(3) << "GcsWritableFile: " << GetGcsPath();
     if (GetTmpFilename(&tmp_content_filename_).ok()) {
@@ -449,7 +457,8 @@ class GcsWritableFile : public WritableFile {
                   std::function<void()> file_cache_erase,
                   RetryConfig retry_config, bool compose_append,
                   SessionCreator session_creator,
-                  ObjectUploader object_uploader, StatusPoller status_poller)
+                  ObjectUploader object_uploader, StatusPoller status_poller,
+                  GenerationGetter generation_getter)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
@@ -461,7 +470,8 @@ class GcsWritableFile : public WritableFile {
         start_offset_(0),
         session_creator_(std::move(session_creator)),
         object_uploader_(std::move(object_uploader)),
-        status_poller_(std::move(status_poller)) {
+        status_poller_(std::move(status_poller)),
+        generation_getter_(std::move(generation_getter)) {
     VLOG(3) << "GcsWritableFile: " << GetGcsPath() << "with existing file "
             << tmp_content_filename;
     tmp_content_filename_ = tmp_content_filename;
@@ -542,7 +552,7 @@ class GcsWritableFile : public WritableFile {
       return errors::Internal(
           "Could not write to the internal temporary file.");
     }
-    string session_uri;
+    UploadSessionHandle session_handle;
     uint64 start_offset = 0;
     string object_to_upload = object_;
     bool should_compose = false;
@@ -556,17 +566,21 @@ class GcsWritableFile : public WritableFile {
                             io::Basename(object_), ".", start_offset_);
       }
     }
-    TF_RETURN_IF_ERROR(
-        CreateNewUploadSession(start_offset, object_to_upload, &session_uri));
+    TF_RETURN_IF_ERROR(CreateNewUploadSession(start_offset, object_to_upload,
+                                              &session_handle));
     uint64 already_uploaded = 0;
     bool first_attempt = true;
     const Status upload_status = RetryingUtils::CallWithRetries(
-        [&first_attempt, &already_uploaded, &session_uri, &start_offset,
+        [&first_attempt, &already_uploaded, &session_handle, &start_offset,
          this]() {
-          if (!first_attempt) {
+          if (session_handle.resumable && !first_attempt) {
             bool completed;
             TF_RETURN_IF_ERROR(RequestUploadSessionStatus(
-                session_uri, &completed, &already_uploaded));
+                session_handle.session_uri, &completed, &already_uploaded));
+            LOG(INFO) << "### RequestUploadSessionStatus: completed = "
+                      << completed
+                      << ", already_uploaded = " << already_uploaded
+                      << ", file = " << GetGcsPath();
             if (completed) {
               // Erase the file from the file cache on every successful write.
               file_cache_erase_();
@@ -577,7 +591,8 @@ class GcsWritableFile : public WritableFile {
             }
           }
           first_attempt = false;
-          return UploadToSession(session_uri, start_offset, already_uploaded);
+          return UploadToSession(session_handle.session_uri, start_offset,
+                                 already_uploaded);
         },
         retry_config_);
     if (upload_status.code() == errors::Code::NOT_FOUND) {
@@ -617,41 +632,49 @@ class GcsWritableFile : public WritableFile {
   /// Initiates a new resumable upload session.
   Status CreateNewUploadSession(uint64 start_offset,
                                 std::string object_to_upload,
-                                std::string* session_uri) {
+                                UploadSessionHandle* session_handle) {
     uint64 file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
     return session_creator_(start_offset, object_to_upload, bucket_, file_size,
-                            GetGcsPath(), session_uri);
+                            GetGcsPath(), session_handle);
   }
 
   /// Appends the data of append_object to the original object and deletes
   /// append_object.
   Status AppendObject(string append_object) {
-    VLOG(3) << "AppendObject: " << GetGcsPathWithObject(append_object) << " to "
-            << GetGcsPath();
-    std::unique_ptr<HttpRequest> request;
-    TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
+    const string append_object_path = GetGcsPathWithObject(append_object);
+    VLOG(3) << "AppendObject: " << append_object_path << " to " << GetGcsPath();
 
-    request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket_, "/o/",
-                                    request->EscapeString(object_),
-                                    "/compose"));
+    int64 generation = 0;
+    TF_RETURN_IF_ERROR(
+        generation_getter_(GetGcsPath(), bucket_, object_, &generation));
 
-    const string request_body =
-        strings::StrCat("{'sourceObjects': [{'name': '", object_,
-                        "'},{'name': '", append_object, "'}]}");
-    request->SetTimeouts(timeouts_->connect, timeouts_->idle,
-                         timeouts_->metadata);
-    request->AddHeader("content-type", "application/json");
-    request->SetPostFromBuffer(request_body.c_str(), request_body.size());
-    return RetryingUtils::CallWithRetries(
-        [&request, &append_object, this]() {
+    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&append_object, &generation, this]() {
+          std::unique_ptr<HttpRequest> request;
+          TF_RETURN_IF_ERROR(filesystem_->CreateHttpRequest(&request));
+
+          request->SetUri(strings::StrCat(kGcsUriBase, "b/", bucket_, "/o/",
+                                          request->EscapeString(object_),
+                                          "/compose"));
+
+          const string request_body = strings::StrCat(
+              "{'sourceObjects': [{'name': '", object_,
+              "','objectPrecondition':{'ifGenerationMatch':", generation,
+              "}},{'name': '", append_object, "'}]}");
+          request->SetTimeouts(timeouts_->connect, timeouts_->idle,
+                               timeouts_->metadata);
+          request->AddHeader("content-type", "application/json");
+          request->SetPostFromBuffer(request_body.c_str(), request_body.size());
           TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
                                           " when composing to ", GetGcsPath());
-          TF_RETURN_WITH_CONTEXT_IF_ERROR(
-              filesystem_->DeleteFile(GetGcsPathWithObject(append_object),
-                                      nullptr),
-              " when cleaning up.");
           return Status::OK();
+        },
+        retry_config_));
+
+    return RetryingUtils::DeleteWithRetries(
+        [&append_object_path, this]() {
+          return filesystem_->DeleteFile(append_object_path, nullptr);
         },
         retry_config_);
   }
@@ -707,6 +730,7 @@ class GcsWritableFile : public WritableFile {
   const SessionCreator session_creator_;
   const ObjectUploader object_uploader_;
   const StatusPoller status_poller_;
+  const GenerationGetter generation_getter_;
 };
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -913,6 +937,7 @@ GcsFileSystem::GcsFileSystem(
     std::pair<const string, const string>* additional_header,
     bool compose_append)
     : timeouts_(timeouts),
+      retry_config_(retry_config),
       auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       zone_provider_(std::move(zone_provider)),
@@ -926,7 +951,6 @@ GcsFileSystem::GcsFileSystem(
           kCacheNeverExpire, kBucketLocationCacheMaxEntries)),
       allowed_locations_(allowed_locations),
       compose_append_(compose_append),
-      retry_config_(retry_config),
       additional_header_(additional_header) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
@@ -1080,7 +1104,7 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
 Status GcsFileSystem::CreateNewUploadSession(
     uint64 start_offset, const std::string& object_to_upload,
     const std::string& bucket, uint64 file_size, const std::string& gcs_path,
-    std::string* session_uri) {
+    UploadSessionHandle* session_handle) {
   std::vector<char> output_buffer;
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
@@ -1096,9 +1120,10 @@ Status GcsFileSystem::CreateNewUploadSession(
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.metadata);
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(),
                                   " when initiating an upload to ", gcs_path);
-  if (session_uri != nullptr) {
-    *session_uri = request->GetResponseHeader("Location");
-    if (session_uri->empty()) {
+  if (session_handle != nullptr) {
+    session_handle->resumable = true;
+    session_handle->session_uri = request->GetResponseHeader("Location");
+    if (session_handle->session_uri.empty()) {
       return errors::Internal("Unexpected response from GCS when writing to ",
                               gcs_path, ": 'Location' header not returned.");
     }
@@ -1241,9 +1266,9 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
   auto session_creator =
       [this](uint64 start_offset, const std::string& object_to_upload,
              const std::string& bucket, uint64 file_size,
-             const std::string& gcs_path, std::string* session_uri) {
+             const std::string& gcs_path, UploadSessionHandle* session_handle) {
         return CreateNewUploadSession(start_offset, object_to_upload, bucket,
-                                      file_size, gcs_path, session_uri);
+                                      file_size, gcs_path, session_handle);
       };
   auto object_uploader =
       [this](const std::string& session_uri, uint64 start_offset,
@@ -1259,10 +1284,23 @@ Status GcsFileSystem::NewWritableFile(const string& fname,
                                       completed, uploaded);
   };
 
+  auto generation_getter = [this](const string& fname, const string& bucket,
+                                  const string& object, int64* generation) {
+    GcsFileStat stat;
+    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&fname, &bucket, &object, &stat, this]() {
+          return UncachedStatForObject(fname, bucket, object, &stat);
+        },
+        retry_config_));
+    *generation = stat.generation_number;
+    return Status::OK();
+  };
+
   result->reset(new GcsWritableFile(
       bucket, object, this, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
-      compose_append_, session_creator, object_uploader, status_poller));
+      compose_append_, session_creator, object_uploader, status_poller,
+      generation_getter));
   return Status::OK();
 }
 
@@ -1288,6 +1326,9 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
     if (status.ok()) {
       old_content << read_chunk;
       offset += kReadAppendableFileBufferSize;
+    } else if (status.code() == error::NOT_FOUND) {
+      // New file, there is no existing content in it.
+      break;
     } else if (status.code() == error::OUT_OF_RANGE) {
       // Expected, this means we reached EOF.
       old_content << read_chunk;
@@ -1301,9 +1342,9 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
   auto session_creator =
       [this](uint64 start_offset, const std::string& object_to_upload,
              const std::string& bucket, uint64 file_size,
-             const std::string& gcs_path, std::string* session_uri) {
+             const std::string& gcs_path, UploadSessionHandle* session_handle) {
         return CreateNewUploadSession(start_offset, object_to_upload, bucket,
-                                      file_size, gcs_path, session_uri);
+                                      file_size, gcs_path, session_handle);
       };
   auto object_uploader =
       [this](const std::string& session_uri, uint64 start_offset,
@@ -1320,13 +1361,26 @@ Status GcsFileSystem::NewAppendableFile(const string& fname,
                                       completed, uploaded);
   };
 
+  auto generation_getter = [this](const string& fname, const string& bucket,
+                                  const string& object, int64* generation) {
+    GcsFileStat stat;
+    TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
+        [&fname, &bucket, &object, &stat, this]() {
+          return UncachedStatForObject(fname, bucket, object, &stat);
+        },
+        retry_config_));
+    *generation = stat.generation_number;
+    return Status::OK();
+  };
+
   // Create a writable file and pass the old content to it.
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   result->reset(new GcsWritableFile(
       bucket, object, this, old_content_filename, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
-      compose_append_, session_creator, object_uploader, status_poller));
+      compose_append_, session_creator, object_uploader, status_poller,
+      generation_getter));
   return Status::OK();
 }
 

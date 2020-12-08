@@ -30,7 +30,14 @@ namespace tensorflow {
 // tracing or immediate execution mode.
 class AbstractOperation {
  protected:
-  enum AbstractOperationKind { kGraph, kMlir, kEager, kTfrt };
+  enum AbstractOperationKind {
+    kGraph,
+    kMlir,
+    kEager,
+    kTfrt,
+    kTape,
+    kOpHandler
+  };
   explicit AbstractOperation(AbstractOperationKind kind) : kind_(kind) {}
   virtual ~AbstractOperation() {}
 

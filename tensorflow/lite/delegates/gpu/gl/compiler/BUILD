@@ -38,7 +38,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/gl:object",
-        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:variant",
@@ -88,6 +87,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:compiler_options",
         "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -179,6 +179,7 @@ cc_test(
     srcs = ["fuse_auto_input_test.cc"],
     tags = [
         "local",
+        "no_mac",  # TODO(b/171881489)
     ],
     deps = [
         ":compiled_node",
