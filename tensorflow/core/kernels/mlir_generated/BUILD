@@ -129,7 +129,9 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cwise_binary_op",
-    srcs = ["unranked_gpu_add.cc"],
+    srcs = [
+        "unranked_op_gpu_add.cc",
+    ],
     tags = [
         "manual",
     ],
@@ -180,9 +182,9 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
-    name = "gpu_add_test",
+    name = "gpu_binary_ops_test",
     size = "small",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
+    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
     ],
@@ -195,8 +197,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
