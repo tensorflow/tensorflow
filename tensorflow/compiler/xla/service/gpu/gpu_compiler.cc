@@ -470,14 +470,14 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
   tensorflow::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+      OptimizeHloModule(module.get(), stream_exec, options.device_allocator));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
@@ -494,10 +494,10 @@ StatusOr<
     std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
 GpuCompiler::RunHloPassesAndBufferAssignement(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* executor,
-    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+    bool optimize, const CompileOptions& options) {
   if (optimize) {
-    TF_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module),
-                                                 executor, device_allocator));
+    TF_ASSIGN_OR_RETURN(hlo_module,
+                        RunHloPasses(std::move(hlo_module), executor, options));
   }
 
   std::unique_ptr<StreamAssignment> stream_assignment =
@@ -643,7 +643,7 @@ static Status CompileModuleToLlvmIrImpl(
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
   auto slow_compile_alarm = SlowCompilationAlarm();
 

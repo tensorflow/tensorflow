@@ -121,7 +121,7 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   // Run all HLO passes to produce an optimized module.
   auto result_or = backend->compiler()->RunHloPassesAndBufferAssignement(
       std::move(hlo_module), backend->default_stream_executor(),
-      backend->memory_allocator(), optimize_xla_hlo);
+      optimize_xla_hlo, {backend->memory_allocator()});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(result_or.status(),
                                   "running XLA pass pipeline");
   std::unique_ptr<HloModule> optimized_hlo_module =
