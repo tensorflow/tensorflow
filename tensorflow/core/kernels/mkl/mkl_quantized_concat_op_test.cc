@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -92,20 +93,26 @@ TEST_F(QuantizedConcatTest, Small8BitDifferentRange) {
 
 void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
                                         float second_min, float second_max) {
-  TF_ASSERT_OK(NodeDefBuilder("quantized_concat_op", "_MklQuantizedConcatV2")
-                   .Input(FakeInput(2, DT_QUINT8))
-                   .Input(FakeInput(DT_INT32))
-                   .Input(FakeInput(2, DT_FLOAT))
-                   .Input(FakeInput(2, DT_FLOAT))
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))     // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Attr("N", 2)
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("Tidx", DT_INT32)
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_concat_op", NativeFormatEnabled()
+                                                ? "QuantizedConcatV2"
+                                                : "_MklQuantizedConcatV2")
+          .Input(FakeInput(2, DT_QUINT8))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(2, DT_FLOAT))
+          .Input(FakeInput(2, DT_FLOAT))
+          .Attr("N", 2)
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("Tidx", DT_INT32);
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(2, DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(2, DT_UINT8))
+        .Input(FakeInput(2, DT_UINT8))
+        .Attr("_kernel", "QuantizedMklOp");
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   const int first_batch = 2;
   const int first_height = 2;
@@ -145,10 +152,12 @@ void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_min});
   AddInputFromArray<float>(TensorShape({}), {first_max});
   AddInputFromArray<float>(TensorShape({}), {second_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
@@ -165,20 +174,26 @@ TEST_F(QuantizedConcatTest, SecondDim8BitSameRange) {
 void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
                                             float second_min,
                                             float second_max) {
-  TF_ASSERT_OK(NodeDefBuilder("quantized_concat_op", "_MklQuantizedConcatV2")
-                   .Input(FakeInput(2, DT_QUINT8))
-                   .Input(FakeInput(DT_INT32))
-                   .Input(FakeInput(2, DT_FLOAT))
-                   .Input(FakeInput(2, DT_FLOAT))
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(DT_UINT8))     // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Input(FakeInput(2, DT_UINT8))  // MKL second tensor
-                   .Attr("N", 2)
-                   .Attr("T", DataTypeToEnum<quint8>::v())
-                   .Attr("Tidx", DT_INT32)
-                   .Attr("_kernel", "QuantizedMklOp")
-                   .Finalize(node_def()));
+  NodeDefBuilder builder =
+      NodeDefBuilder("quantized_concat_op", NativeFormatEnabled()
+                                                ? "QuantizedConcatV2"
+                                                : "_MklQuantizedConcatV2")
+          .Input(FakeInput(2, DT_QUINT8))
+          .Input(FakeInput(DT_INT32))
+          .Input(FakeInput(2, DT_FLOAT))
+          .Input(FakeInput(2, DT_FLOAT))
+          .Attr("N", 2)
+          .Attr("T", DataTypeToEnum<quint8>::v())
+          .Attr("Tidx", DT_INT32);
+  if (!NativeFormatEnabled()) {
+    // Add MKL metadata tensors
+    builder.Input(FakeInput(2, DT_UINT8))
+        .Input(FakeInput(DT_UINT8))
+        .Input(FakeInput(2, DT_UINT8))
+        .Input(FakeInput(2, DT_UINT8))
+        .Attr("_kernel", "QuantizedMklOp");
+  }
+  TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   const int first_batch = 2;
   const int first_height = 2;
@@ -219,10 +234,12 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
   AddInputFromArray<float>(TensorShape({}), {second_min});
   AddInputFromArray<float>(TensorShape({}), {first_max});
   AddInputFromArray<float>(TensorShape({}), {second_max});
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  if (!NativeFormatEnabled()) {
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  }
   TF_ASSERT_OK(RunOpKernel());
   const Tensor& output_quantized = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
