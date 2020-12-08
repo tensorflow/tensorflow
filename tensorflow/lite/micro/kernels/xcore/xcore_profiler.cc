@@ -36,12 +36,8 @@ void XCoreProfiler::EndEvent(uint32_t event_handle) {
 #ifdef XCORE
   event_duration =
       (event_end_time - event_start_time_) / PLATFORM_REFERENCE_MHZ;
-  TF_LITE_REPORT_ERROR(reporter_, "%s took %d microseconds", event_tag_,
-                       event_duration);
 #else  // not XCORE
   event_duration = event_end_time - event_start_time_;
-  TF_LITE_REPORT_ERROR(reporter_, "%s took %d cycles", event_tag_,
-                       event_duration);
 #endif
   if (event_count_ < XCORE_PROFILER_MAX_LEVELS) {
     event_times_[event_count_] = event_duration;
