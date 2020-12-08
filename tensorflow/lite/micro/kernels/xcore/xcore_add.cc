@@ -35,13 +35,12 @@ struct AddThreadData {
 extern "C" {
 ATTRIBUTE_THREAD_FUNCTION void add_thread_worker(void* context) {
   AddThreadData* td = (AddThreadData*)context;
-  add_elementwise(td->Y, td->X0, td->X0, td->params, td->start, td->count);
+  add_elementwise(td->Y, td->X0, td->X1, td->params, td->start, td->count);
 }
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  AddOpData* op = nullptr;
-  op = reinterpret_cast<AddOpData*>(
+  auto* op = reinterpret_cast<AddOpData*>(
       context->AllocatePersistentBuffer(context, sizeof(AddOpData)));
   op->stack_scratch_index = -1;
   op->stack_size = 0;
@@ -59,28 +58,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* bss = GetInput(context, node, 2);
 
-  AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
+  auto* op = reinterpret_cast<AddOpData*>(node->user_data);
 
-  // for (int i = 0; i < bss->bytes; i++) {
-  //   printf("QQQ i=%d   v=%02x\n", i, (int)bss->data.raw[i]);
-  // }
-
-  // op->params.output.bias = reinterpret_cast<int32_t>(bss->data.i32[0]);
-  // op->params.input[0].multiplier =
-  // reinterpret_cast<int32_t>(bss->data.i32[1]); op->params.input[1].multiplier
-  // = reinterpret_cast<int32_t>(bss->data.i32[2]); op->params.input[0].shr =
-  // reinterpret_cast<int32_t>(bss->data.i32[3]); op->params.input[1].shr =
-  // reinterpret_cast<int32_t>(bss->data.i32[4]); op->params.output.shr =
-  // reinterpret_cast<int32_t>(bss->data.i32[5]);
-
-  // printf("QQQ op->params.input[0].shr=%d\n", op->params.input[0].shr);
-  // printf("QQQ op->params.input[0].multiplier=%d\n",
-  //        op->params.input[0].multiplier);
-  // printf("QQQ op->params.input[1].shr=%d\n", op->params.input[1].shr);
-  // printf("QQQ op->params.input[1].multiplier=%d\n",
-  //        op->params.input[1].multiplier);
-  // printf("QQQ op->params.output.bias=%d\n", op->params.output.bias);
-  // printf("QQQ op->params.output.shr=%d\n", op->params.output.shr);
+  op->params.input[0].shr = reinterpret_cast<int32_t>(bss->data.i32[0]);
+  op->params.input[0].multiplier = reinterpret_cast<int32_t>(bss->data.i32[1]);
+  op->params.input[1].shr = reinterpret_cast<int32_t>(bss->data.i32[2]);
+  op->params.input[1].multiplier = reinterpret_cast<int32_t>(bss->data.i32[3]);
+  op->params.output.bias = reinterpret_cast<int32_t>(bss->data.i32[4]);
+  op->params.output.shr = reinterpret_cast<int32_t>(bss->data.i32[5]);
 
   // allocate the stack for thread workers
   GET_THREAD_FUNCTION_STACKSIZE(op->stack_size, add_thread_worker);
@@ -97,7 +82,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = GetInput(context, node, 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  AddOpData* op = reinterpret_cast<AddOpData*>(node->user_data);
+  auto* op = reinterpret_cast<AddOpData*>(node->user_data);
   Dispatcher* dispatcher = GetDispatcher();
 
   // initialize the dispatcher
@@ -136,17 +121,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // }
 
   // create 1 task for now
-  // thread_data[0].Y = output->data.int8;
-  // thread_data[0].X0 = input0->data.int8;
-  // thread_data[0].X1 = input1->data.int8;
-  // thread_data[0].params = &op->params;
-  // thread_data[0].start = 0;
-  // thread_data[0].count = output->bytes;
+  thread_data[0].Y = output->data.int8;
+  thread_data[0].X0 = input0->data.int8;
+  thread_data[0].X1 = input1->data.int8;
+  thread_data[0].params = &op->params;
+  thread_data[0].start = 0;
+  thread_data[0].count = output->bytes;
 
-  // dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[0]));
+  dispatcher->AddTask(reinterpret_cast<void*>(&thread_data[0]));
 
-  // // start and wait for tasks to complete
-  // dispatcher->JoinTasks();
+  // start and wait for tasks to complete
+  dispatcher->JoinTasks();
 
   return kTfLiteOk;
 }
