@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/ops.h"
@@ -59,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -110,6 +110,8 @@ PYBIND11_MODULE(xla_extension, m) {
     throw std::runtime_error("Unable to initialize Numpy API");
   }
 
+  CHECK(tensorflow::RegisterNumpyBfloat16());
+
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
@@ -132,7 +134,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
-  m.def("bfloat16_dtype", Bfloat16Dtype);
+  m.def("bfloat16_dtype",
+        []() { return py::handle(tensorflow::Bfloat16Dtype()); });
 
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);

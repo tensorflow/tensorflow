@@ -387,16 +387,19 @@ cc_library(
     ],
 )
 
+# bfloat16_lib is shared with JAX, and must not depend on any other parts of
+# TensorFlow.
+# TODO(phawkins): move bfloat16 into its own pip package.
 cc_library(
     name = "bfloat16_lib",
     srcs = ["lib/core/bfloat16.cc"],
     hdrs = ["lib/core/bfloat16.h"],
     deps = [
         ":numpy_lib",
-        ":safe_ptr",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "//third_party/eigen3",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/strings",
     ],
 )
 
