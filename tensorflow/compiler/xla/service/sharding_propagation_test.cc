@@ -856,40 +856,41 @@ TEST_F(ShardingPropagationTest, While) {
 HloModule module
 
 %cond {
-  %vars.cond = (u32[], f32[10]{0}) parameter(0)
-  %count.cond = u32[] get-tuple-element((u32[], f32[10]{0}) %vars.cond), index=0
+  %vars.cond = (u32[], f32[10,10]) parameter(0)
+  %count.cond = u32[] get-tuple-element((u32[], f32[10,10]) %vars.cond), index=0
   %limit = u32[] constant(10)
   ROOT %lt = pred[] compare(u32[] %count.cond, u32[] %limit), direction=LT
 }
 
 %body {
-  %vars = (u32[], f32[10]{0}) parameter(0)
+  %vars = (u32[], f32[10,10]) parameter(0)
   %count = u32[] get-tuple-element(%vars), index=0
-  %acc = f32[10]{0} get-tuple-element((u32[], f32[10]{0}) %vars), index=1
+  %acc = f32[10,10] get-tuple-element((u32[], f32[10,10]) %vars), index=1
 
   %one = u32[] constant(1)
   %count.1 = u32[] add(u32[] %count, u32[] %one), sharding={replicated}
-  %acc.1 = f32[10]{0} add(f32[10]{0} %acc, f32[10]{0} %acc)
-  ROOT %tuple = (u32[], f32[10]{0}) tuple(u32[] %count.1, f32[10]{0} %acc.1)
+  %acc.1 = f32[10,10] add(f32[10,10] %acc, f32[10,10] %acc)
+  ROOT %tuple = (u32[], f32[10,10]) tuple(u32[] %count.1, f32[10,10] %acc.1)
 }
 
 ENTRY %entry {
-  %p0 = f32[10]{0} parameter(0)
-  %p0.copy = f32[10]{0} copy(f32[10]{0} %p0)
-  %p1 = f32[10]{0} parameter(1)
+  %p0 = f32[10,10] parameter(0)
+  %p0.copy = f32[10,10] copy(f32[10,10] %p0)
+  %p1 = f32[10,10] parameter(1)
   %zero = u32[] constant(0)
-  %init = (u32[], f32[10]{0}) tuple(u32[] %zero, f32[10]{0} %p0.copy)
-  %while = (u32[], f32[10]{0}) while((u32[], f32[10]{0}) %init),
+  %init = (u32[], f32[10,10]) tuple(u32[] %zero, f32[10,10] %p0.copy)
+  %while = (u32[], f32[10,10]) while((u32[], f32[10,10]) %init),
     body=%body, condition=%cond
-  %res = f32[10]{0} get-tuple-element((u32[], f32[10]{0}) %while), index=1
-  %prev = f32[10]{0} get-tuple-element((u32[], f32[10]{0}) %init), index=1
-  %res.1 = f32[10]{0} multiply(f32[10]{0} %res, %prev)
-  ROOT %res_tuple = (f32[10]{0}) tuple(f32[10]{0} %res.1)
+  %res = f32[10,10] get-tuple-element((u32[], f32[10,10]) %while), index=1
+  %prev = f32[10,10] get-tuple-element((u32[], f32[10,10]) %init), index=1
+  %res.1 = f32[10,10] multiply(f32[10,10] %res, %prev)
+  ROOT %res_tuple = (f32[10,10]) tuple(f32[10,10] %res.1)
 })";
 
   auto while_is_sharded = [this](HloModule* module,
                                  const HloSharding& sharding) {
-    TF_ASSERT_OK_AND_ASSIGN(bool changed, ShardingPropagation().Run(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                            ShardingPropagation(/*is_spmd=*/true).Run(module));
     EXPECT_TRUE(changed);
     auto while_instr = FindInstruction(module, "while");
     EXPECT_NE(nullptr, while_instr);
@@ -911,7 +912,7 @@ ENTRY %entry {
     auto body_root = FindInstruction(module.get(), "tuple");
     EXPECT_NE(nullptr, body_root);
     auto sharding =
-        ParseSharding("{{replicated}, {devices=[2]0,1}}").ConsumeValueOrDie();
+        ParseSharding("{{replicated}, {devices=[2,1]0,1}}").ConsumeValueOrDie();
     body_root->set_sharding(sharding);
     while_is_sharded(module.get(), sharding);
   }
@@ -921,11 +922,30 @@ ENTRY %entry {
                             ParseAndReturnVerifiedModule(hlo_string));
     auto acc_1 = FindInstruction(module.get(), "acc.1");
     EXPECT_NE(nullptr, acc_1);
-    acc_1->set_sharding(ParseSharding("{devices=[2]0,1}").ConsumeValueOrDie());
+    acc_1->set_sharding(
+        ParseSharding("{devices=[2,1]0,1}").ConsumeValueOrDie());
 
-    while_is_sharded(
-        module.get(),
-        ParseSharding("{{replicated}, {devices=[2]0,1}}").ConsumeValueOrDie());
+    while_is_sharded(module.get(),
+                     ParseSharding("{{replicated}, {devices=[2,1]0,1}}")
+                         .ConsumeValueOrDie());
+  }
+  {
+    // Merge partial sharding from operand and body.
+    TF_ASSERT_OK_AND_ASSIGN(auto module,
+                            ParseAndReturnVerifiedModule(hlo_string));
+    auto acc_1 = FindInstruction(module.get(), "acc.1");
+    EXPECT_NE(nullptr, acc_1);
+    acc_1->set_sharding(
+        ParseSharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}")
+            .ConsumeValueOrDie());
+    auto p0 = FindInstruction(module.get(), "p0");
+    p0->set_sharding(
+        ParseSharding("{devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}")
+            .ConsumeValueOrDie());
+
+    while_is_sharded(module.get(),
+                     ParseSharding("{{replicated}, {devices=[2,2]0,1,2,3}}")
+                         .ConsumeValueOrDie());
   }
 }
 
