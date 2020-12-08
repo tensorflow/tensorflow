@@ -7523,6 +7523,7 @@ exports_files([
     "cwise_op_gpu_sigmoid.cu.cc",
     "cwise_op_gpu_sin.cu.cc",
     "cwise_op_gpu_sqrt.cu.cc",
+    "cwise_op_gpu_square.cu.cc",
     "cwise_op_gpu_squared_difference.cu.cc",
     "cwise_op_gpu_sub.cu.cc",
     "cwise_op_gpu_tanh.cu.cc",
