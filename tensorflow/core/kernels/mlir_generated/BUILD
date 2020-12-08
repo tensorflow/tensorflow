@@ -137,6 +137,14 @@ tf_kernel_library(
     ],
     deps = [
         ":add_v2_unranked_kernels",
+        ":equal_unranked_kernels",
+        ":greater_equal_unranked_kernels",
+        ":greater_unranked_kernels",
+        ":less_equal_unranked_kernels",
+        ":less_unranked_kernels",
+        ":maximum_unranked_kernels",
+        ":minimum_unranked_kernels",
+        ":not_equal_unranked_kernels",
         ":unranked_op_gpu_base",
         "//third_party/eigen3",
     ],
@@ -333,28 +341,83 @@ gen_kernel_library(
         "f64",
         "i64",
     ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # TODO(b/174543802): Enable once fusion heuristics is better.
     # unroll_factors = "4",
 )
 
-gen_kernel_library(
-    name = "equal",
-    generate_ranked = False,
-    generate_unranked = True,
-    tile_size = "256,1,1",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i1",
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-    ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
-    # unroll_factors = "4",
-)
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i1",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "equal",
+        "not_equal",
+    ]
+]
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "less",
+        "less_equal",
+        "greater",
+        "greater_equal",
+    ]
+]
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "maximum",
+        "minimum",
+    ]
+]
 
 # Kernels that support all floating-point types.
 [
