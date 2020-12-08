@@ -1275,8 +1275,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_data = im2col_data;
     gemm_input_shape = &im2col_shape;
   } else {
-    // TODO(aselle): We need to make sure to not send im2col if it is not
-    // needed.
     TFLITE_DCHECK(!im2col_data);
     gemm_input_data = input_data;
     gemm_input_shape = &input_shape;
