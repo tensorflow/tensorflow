@@ -163,6 +163,12 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 #endif
   void* lib_tf_internal =
       SharedLibrary::LoadLibrary(filename_pywrap_tensorflow_internal);
+#if defined(_WIN32)
+  if (lib_tf_internal == nullptr) {
+    lib_tf_internal = SharedLibrary::LoadLibrary(
+        "_pywrap_tensorflow_interpreter_wrapper.pyd");
+  }
+#endif
   if (lib_tf_internal) {
     acquire_flex_delegate_func =
         reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
