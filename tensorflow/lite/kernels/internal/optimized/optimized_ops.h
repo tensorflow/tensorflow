@@ -7828,7 +7828,7 @@ inline void Transpose2D(const RuntimeShape& input_shape,
   }
 }
 
-// TODO(alanchiao): see if we can reduce the number
+// TODO(b/173718660): see if we can reduce the number
 // of lines of code in branching without affecting latency.
 template <typename T>
 inline void Transpose3D(const TransposeParams& params,
