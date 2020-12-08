@@ -440,7 +440,7 @@ filegroup(
     name = "nccl_collective_thunk_src",
     srcs = if_nccl(
         ["nccl_collective_thunk.cc"],
-        ["dummy_collective_thunk.cc"],
+        ["nccl_collective_thunk_dummy.cc"],
     ),
 )
 
@@ -448,7 +448,7 @@ tf_cuda_library(
     name = "nccl_collective_thunk",
     srcs = if_cuda_or_rocm(
         [":nccl_collective_thunk_src"],
-        ["dummy_collective_thunk.cc"],
+        ["nccl_collective_thunk_dummy.cc"],
     ),
     hdrs = ["nccl_collective_thunk.h"],
     deps = [
@@ -480,7 +480,7 @@ filegroup(
     name = "nccl_all_gather_thunk_src",
     srcs = if_nccl(
         ["nccl_all_gather_thunk.cc"],
-        ["dummy_all_gather_thunk.cc"],
+        ["nccl_all_gather_thunk_dummy.cc"],
     ),
 )
 
@@ -488,7 +488,7 @@ tf_cuda_library(
     name = "nccl_all_gather_thunk",
     srcs = if_cuda_or_rocm(
         [":nccl_all_gather_thunk_src"],
-        ["dummy_all_gather_thunk.cc"],
+        ["nccl_all_gather_thunk_dummy.cc"],
     ),
     hdrs = ["nccl_all_gather_thunk.h"],
     deps = [
@@ -520,7 +520,7 @@ filegroup(
     name = "nccl_all_reduce_thunk_src",
     srcs = if_nccl(
         ["nccl_all_reduce_thunk.cc"],
-        ["dummy_all_reduce_thunk.cc"],
+        ["nccl_all_reduce_thunk_dummy.cc"],
     ),
 )
 
@@ -528,7 +528,7 @@ tf_cuda_library(
     name = "nccl_all_reduce_thunk",
     srcs = if_cuda_or_rocm(
         [":nccl_all_reduce_thunk_src"],
-        ["dummy_all_reduce_thunk.cc"],
+        ["nccl_all_reduce_thunk_dummy.cc"],
     ),
     hdrs = ["nccl_all_reduce_thunk.h"],
     deps = [
@@ -560,7 +560,7 @@ filegroup(
     name = "nccl_all_to_all_thunk_src",
     srcs = if_nccl(
         ["nccl_all_to_all_thunk.cc"],
-        ["dummy_all_to_all_thunk.cc"],
+        ["nccl_all_to_all_thunk_dummy.cc"],
     ),
 )
 
@@ -568,7 +568,7 @@ tf_cuda_library(
     name = "nccl_all_to_all_thunk",
     srcs = if_cuda_or_rocm(
         [":nccl_all_to_all_thunk_src"],
-        ["dummy_all_to_all_thunk.cc"],
+        ["nccl_all_to_all_thunk_dummy.cc"],
     ),
     hdrs = ["nccl_all_to_all_thunk.h"],
     deps = [
@@ -600,7 +600,7 @@ filegroup(
     name = "nccl_test_utils_src",
     srcs = if_nccl(
         ["nccl_test_utils.cc"],
-        ["dummy_nccl_test_utils.cc"],
+        ["nccl_test_utils_dummy.cc"],
     ),
 )
 
@@ -608,7 +608,7 @@ tf_cuda_library(
     name = "nccl_test_utils",
     srcs = if_cuda_or_rocm(
         [":nccl_test_utils_src"],
-        ["dummy_nccl_test_utils.cc"],
+        ["nccl_test_utils_dummy.cc"],
     ),
     hdrs = ["nccl_test_utils.h"],
     deps = [
