@@ -157,9 +157,9 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         output_min_mkl_shape.SetMklTensor(false);
         output_max_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, 1, &output_min, {},
-                                  output_min_mkl_shape);
+                                  output_min_mkl_shape, this->native_format_);
         AllocateOutputSetMklShape(context, 2, &output_max, {},
-                                  output_max_mkl_shape);
+                                  output_max_mkl_shape, this->native_format_);
         output_min->flat<float>()(0) = min_input;
         output_max->flat<float>()(0) = max_input;
       }
@@ -381,6 +381,18 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizedAvgPool")
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklAvgPoolingOp<CPUDevice, qint8>);
+
+REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizedAvgPool")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklAvgPoolingOp<CPUDevice, quint8, true>);
+
+REGISTER_KERNEL_BUILDER(Name("_MklNativeQuantizedAvgPool")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklAvgPoolingOp<CPUDevice, qint8, true>);
 
 }  // namespace tensorflow
 
