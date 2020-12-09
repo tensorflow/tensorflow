@@ -21,7 +21,7 @@ namespace {
 void CreateConvertMlirToXlaHloPipelineWithDefaults(mlir::OpPassManager& pm) {
   tensorflow::CreateConvertMlirToXlaHloPipeline(
       pm, /*device_type=*/"XLA_CPU_JIT",
-      /*custom_legalization_passes=*/{});
+      /*custom_legalization_passes=*/{}, /*inline_after_legalization=*/false);
 }
 
 mlir::PassPipelineRegistration<> pipeline(
