@@ -289,11 +289,15 @@ For example:
     bool IsPackedBlockArgument(BlockArgument block_arg);
     unsigned GetReplicaOperandIndexForBlockArgument(BlockArgument block_arg, unsigned replica);
     Value GetReplicaOperandForBlockArgument(BlockArgument block_arg, unsigned replica);
+    bool WrapsSingleOp();
   }];
 
   let builders = [
     OpBuilderDAG<(ins "int":$n,
       "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&":$devices,
+      "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
+      "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
+    OpBuilderDAG<(ins "int":$n, "llvm::Optional<DictionaryAttr>":$devices,
       "llvm::ArrayRef<std::pair<ValueRange, Type>>":$replicated_inputs,
       "ValueRange":$packed_inputs, "TypeRange":$replica_output_types)>,
   ];
