@@ -1459,6 +1459,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
+    NoSideEffect,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
