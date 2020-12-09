@@ -164,8 +164,8 @@ using ::tflite::gpu::TensorUsageRecord;
 }
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
-       inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers
-             encoderBlock:(id<MTLComputeCommandEncoder> (^)(bool isLast))encoderBlock {
+       inputOutputBuffers:
+           (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
   for (auto& task_index : _taskIdsWithInOutBuffers) {
     auto& task = _computeTasks[task_index];
     [task updateBuffers:inputOutputBuffers];
@@ -173,10 +173,44 @@ using ::tflite::gpu::TensorUsageRecord;
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
     [task encodeWithEncoder:commandEncoder];
-    if (encoderBlock != nil) {
-      commandEncoder = encoderBlock(i == _computeTasks.size() - 1);
+  }
+}
+
+- (void)encodeWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+             inputOutputBuffers:
+                 (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+    auto& task = _computeTasks[i];
+    [task encodeWithEncoder:encoder];
+    [encoder endEncoding];
+  }
+}
+
+- (void)encodeWithCommandQueue:(id<MTLCommandQueue>)commandQueue
+            inputOutputBuffers:
+                (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers
+             flushPeriodically:(int)flushPeriod {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
+  id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+    auto& task = _computeTasks[i];
+    [task encodeWithEncoder:encoder];
+    [encoder endEncoding];
+    if (i % flushPeriod == (flushPeriod - 1)) {
+      [commandBuffer commit];
+      commandBuffer = [commandQueue commandBuffer];
     }
   }
+  [commandBuffer commit];
 }
 
 @end
