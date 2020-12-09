@@ -309,4 +309,23 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
                                   output_zero_point, output_quantized);
 }
 
+TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
+  constexpr int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
+  // TODO(b/155682734): Input scale must be smaller than output scale for
+  // xtensa.
+  const float input_scale = 0.4f;
+  const int input_zero_point = 0;
+  const float output_scale = 1.0f;
+  const int output_zero_point = 0;
+  int8_t output_quantized[length];
+  int8_t values_quantized[length];
+  int16_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
 TF_LITE_MICRO_TESTS_END
