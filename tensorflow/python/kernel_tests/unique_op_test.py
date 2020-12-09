@@ -123,6 +123,8 @@ class UniqueTest(test.TestCase):
     self.assertEqual(idx.shape.as_list(), [2])
     _, idx = gen_array_ops.unique_v2(x, axis=[-3])
     self.assertEqual(idx.shape.as_list(), [3])
+    _, idx = gen_array_ops.unique_v2([0, 1, 2], axis=[])
+    self.assertEqual(idx.shape.as_list(), [3])
 
     with self.assertRaisesRegexp(ValueError, "axis expects a 1D vector"):
       gen_array_ops.unique_v2(x, axis=[[0]])
