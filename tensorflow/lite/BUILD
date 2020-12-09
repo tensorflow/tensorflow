@@ -718,7 +718,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:op_resolver",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/shims:builtin_ops",
     ],
 )
 
