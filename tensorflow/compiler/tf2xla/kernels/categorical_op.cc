@@ -91,13 +91,6 @@ class CategoricalOp : public XlaOpKernel {
     xla::PrimitiveType type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &type));
     xla::XlaOp log_uniforms = GetLogUniforms(uniform_shape, type, ctx);
-    bool num_samples_is_dynamic;
-    OP_REQUIRES_OK(
-        ctx, ctx->ResolveInputDynamismIntoPred(1, &num_samples_is_dynamic));
-    if (num_samples_is_dynamic && num_samples != 1) {
-      // Number samples is dimension 1 in uniform_shape_array.
-      log_uniforms = xla::SetDimensionSize(log_uniforms, ctx->Input(1), 1);
-    }
 
     // Use Gumbel softmax trick to generate categorical samples.
     // See:
