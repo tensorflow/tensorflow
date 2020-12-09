@@ -744,6 +744,7 @@ def load_weights_from_hdf5_group_by_name(
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
+    original_backend = f.attrs['backend']
     if hasattr(original_backend, 'decode'):
       original_backend = original_backend.decode('utf8')
   else:
@@ -860,13 +861,15 @@ def load_attributes_from_hdf5_group(group, name):
       data: Attributes data.
   """
   if name in group.attrs:
-    data = [n.decode('utf8') for n in group.attrs[name]]
+    data = [n.decode('utf8') if hasattr(n,"decode") else n
+            for n in group.attrs[name]]
   else:
     data = []
     chunk_id = 0
     while '%s%d' % (name, chunk_id) in group.attrs:
       data.extend(
-          [n.decode('utf8') for n in group.attrs['%s%d' % (name, chunk_id)]])
+          [n.decode('utf8') if hasattr(n,"decode") else n
+          for n in group.attrs['%s%d' % (name, chunk_id)]])
       chunk_id += 1
   return data
 
