@@ -1498,8 +1498,7 @@ void HloInstruction::set_single_sharding(const HloSharding& sharding) {
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
   if (sharding_ != nullptr &&
-      ShapeUtil::CompatibleIgnoringElementTypeAndDimensions(
-        shape_, derived_instruction->shape())) {
+      ShapeUtil::CompatibleKind(shape_, derived_instruction->shape())) {
     // Only copy sharding if the tuple tree shape of the two instruction is
     // compatible because copying it between differently shaped instructions
     // can produce invalid shardings.
