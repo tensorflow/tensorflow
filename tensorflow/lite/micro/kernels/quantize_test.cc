@@ -270,10 +270,8 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
 #endif
 
 #if !defined(XTENSA)
-// TODO(b/174603495): Since the hifimini optimized implementation does support
-// input==int16 and output==int8, it seems like this kernel test should pass. It
-// currently does not, but we are moving it to its own ifdef block to make it
-// more visible and hopefully fix this in the near future.
+// TODO(b/155682734): Hifimini optimized quantize requires input scale to be
+// smaller then output scale.
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
