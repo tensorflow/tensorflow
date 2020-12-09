@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/concatenation.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
+#include "tensorflow/lite/kernels/internal/reference/exp.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
@@ -1943,15 +1944,6 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
-}
-
-template <typename T>
-inline void Exp(const T* input_data, const size_t num_elements,
-                T* output_data) {
-  ruy::profiler::ScopeLabel label("Exp");
-  for (size_t idx = 0; idx < num_elements; ++idx) {
-    output_data[idx] = std::exp(input_data[idx]);
-  }
 }
 
 template <typename T>
