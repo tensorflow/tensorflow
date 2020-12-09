@@ -21,13 +21,11 @@ limitations under the License.
 // llvm::Optional value after each call.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
-
 #include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
-
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
 namespace mlir {
@@ -62,7 +60,8 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // Sanity check 1: make sure all input tensors have the same shape
   // if input[0] has shape [A, B, C], input[1] to input[N-1] should also have
   // shape[A, B, C]
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
 
   // Check for ranked tensor type.
   if (!result_type) {
@@ -73,13 +72,14 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // Valid axis in TF is [-rank(input), rank(input))
   // Valid axis in TOSA is [0, rank(input))
   // Plus rank(input) once if axis is negative.
-  auto input_type = op->getOperand(0).getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      op->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("PackOp: input type not ranked tensor");
     return llvm::None;
   }
 
-  auto input_rank = input_type.getShape().size();
+  int32_t input_rank = input_type.getShape().size();
   if (axis < 0) axis += input_rank;
 
   input_type = inputs[0].getType().dyn_cast<RankedTensorType>();
@@ -115,7 +115,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // performing concat.
   if (input_tensor_rank == 0) {
     SmallVector<int64_t, 8> reshape_rank1_size1_shape{1};
-    auto reshape_rank1_size1_type =
+    RankedTensorType reshape_rank1_size1_type =
         RankedTensorType::get(ArrayRef<int64_t>(reshape_rank1_size1_shape),
                               result_type.getElementType());
     ArrayAttr shape_rank1_size1_attr =
@@ -207,7 +207,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   }
 
   concat_output_shape[concat_axis] = orig_input_dim_on_axis * 2;
-  auto concat_type = RankedTensorType::get(
+  RankedTensorType concat_type = RankedTensorType::get(
       ArrayRef<int64_t>(concat_output_shape), result_type.getElementType());
   auto a1_concat_op = rewriter.create<tosa::ConcatOp>(
       op->getLoc(), concat_type, inputs[0], inputs[1], concat_axis_attr);
@@ -228,7 +228,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   if (input_tensor_rank == 0) return a1_concat_op.getResult();
 
   // Reshape [N * A, B, C] to [N, A, B, C].
-  auto reshape_output_type = RankedTensorType::get(
+  RankedTensorType reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(reshape_output_shape), result_type.getElementType());
 
   auto a2_reshape_op = rewriter.create<tosa::ReshapeOp>(
@@ -237,7 +237,7 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
   // If axis is equal to input tensor rank, then we need extra transpose
   // [N, A, B, C] to [A, B, C, N]
   if (axis == input_tensor_rank) {
-    auto a3_transpose_perm =
+    Value a3_transpose_perm =
         get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, perm);
 
     return rewriter
@@ -253,7 +253,8 @@ llvm::Optional<Value> convertPackOp(PatternRewriter& rewriter, Operation* op,
 llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
                                            Operation* op, Value input_value,
                                            int32_t axis) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   auto input_shape = input_type.getShape();
@@ -281,7 +282,7 @@ llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
       perm_vec.push_back(i);
     }
 
-    auto a1_transpose_perm =
+    Value a1_transpose_perm =
         get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, perm_vec);
 
     for (int i = 0; i < input_rank; i++) {
@@ -301,7 +302,7 @@ llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
   }
 
   // Step 2: slice [N, A, B, C] into N [A, B, C].
-  auto transposed_input_type =
+  RankedTensorType transposed_input_type =
       transposed_input_value.getType().dyn_cast<RankedTensorType>();
   if (!transposed_input_type) return llvm::None;
 
@@ -355,10 +356,12 @@ llvm::Optional<ValueRange> convertUnpackOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
                                       Value result_value, Value condition_value,
                                       Value x_value, Value y_value) {
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
-  auto condition_type = condition_value.getType().dyn_cast<RankedTensorType>();
-  auto x_type = x_value.getType().dyn_cast<RankedTensorType>();
-  auto y_type = y_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType condition_type =
+      condition_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType x_type = x_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType y_type = y_value.getType().dyn_cast<RankedTensorType>();
 
   if (!result_type || !condition_type || !x_type || !y_type) {
     op->emitOpError("Select: failed ranked tensor type check");
@@ -376,10 +379,8 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
   }
 
   // Need to reshape the condition.
-  SmallVector<int64_t, 8> new_cond_dims;
-  for (int i = 0; i < (result_type.getRank() - condition_type.getRank()); i++) {
-    new_cond_dims.push_back(1);
-  }
+  SmallVector<int64_t, 8> new_cond_dims(
+      result_type.getRank() - condition_type.getRank(), 1);
 
   for (int i = 0; i < condition_type.getRank(); i++) {
     new_cond_dims.push_back(condition_type.getShape()[i]);
@@ -402,13 +403,13 @@ llvm::Optional<Value> convertSelectOp(PatternRewriter& rewriter, Operation* op,
 llvm::Optional<Value> convertZerosLikeOp(PatternRewriter& rewriter,
                                          Operation* op, Value result,
                                          Value input) {
-  auto result_type = result.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
     op->emitOpError("Zeroslike: result not ranked tensor type");
     return llvm::None;
   }
 
-  auto input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("Zeroslike: input not ranked tensor type");
     return llvm::None;
@@ -432,9 +433,12 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
                                         Operation* op, Value output_val,
                                         Value input_lhs_val,
                                         Value input_rhs_val) {
-  auto input_lhs_type = input_lhs_val.getType().dyn_cast<RankedTensorType>();
-  auto input_rhs_type = input_rhs_val.getType().dyn_cast<RankedTensorType>();
-  auto output_type = output_val.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_lhs_type =
+      input_lhs_val.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_rhs_type =
+      input_rhs_val.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      output_val.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!input_lhs_type || !input_rhs_type || !output_type) return llvm::None;
 
@@ -455,7 +459,7 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 
   Value output;
   if (output_is_qtype) {
-    auto rescale_type =
+    RankedTensorType rescale_type =
         RankedTensorType::get(output_type.getShape(), rewriter.getI32Type());
     auto input_lhs_qtype = input_lhs_type.getElementType()
                                .cast<mlir::quant::UniformQuantizedType>();
@@ -469,9 +473,9 @@ llvm::Optional<Value> convertMultiplyOp(PatternRewriter& rewriter,
 
     double output_rescale_scale = in_lhs_scale * in_rhs_scale / output_scale;
 
-    auto op1_rescale_lhs = buildRescaleToInt32(
+    Value op1_rescale_lhs = buildRescaleToInt32(
         rewriter, op, input_lhs_val, 1.0f, input_lhs_qtype.getZeroPoint());
-    auto op2_rescale_rhs = buildRescaleToInt32(
+    Value op2_rescale_rhs = buildRescaleToInt32(
         rewriter, op, input_rhs_val, 1.0f, input_rhs_qtype.getZeroPoint());
     auto op3_mul_op1_op2 = rewriter.create<tosa::MulOp>(
         op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs, 0);
@@ -492,14 +496,14 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
                                                  Value x, Value y) {
   // Squared-difference is (x-y)*(x-y).
   // This lowering calculates the difference and multiplies.
-  auto result_type = result.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
     op->emitOpError("SquaredDifference: result not ranked tensor type");
     return llvm::None;
   }
 
-  auto x_type = x.getType().dyn_cast<RankedTensorType>();
-  auto y_type = y.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType x_type = x.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType y_type = y.getType().dyn_cast<RankedTensorType>();
   if (!x_type || !y_type) {
     op->emitOpError("SquaredDifference: inputs not ranked tensor type");
     return llvm::None;
@@ -516,13 +520,13 @@ llvm::Optional<Value> convertSquaredDifferenceOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertRoundOp(PatternRewriter& rewriter, Operation* op,
                                      Value result, Value input) {
   // Implements banker's rounding by calculating floor(input + 0.5).
-  auto result_type = result.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type = result.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
     op->emitOpError("Round: result not ranked tensor type");
     return llvm::None;
   }
 
-  auto input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("Round: input not ranked tensor type");
     return llvm::None;
@@ -545,7 +549,8 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
   // ConcatV2 becomes a series of TOSA Concat operators that take pairs of
   // tensors as arguments.   Rank-0 tensors are reshaped to Rank-1,
   // shape (1,) tensors.
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   if (!result_type) {
     op->emitOpError("ConcatV2Op: result type not ranked tensor.");
     return llvm::None;
@@ -554,7 +559,8 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
   // Valid axis in TF is [-rank(input), rank(input)).
   // Valid axis in TOSA is [0, rank(input)).
   // Plus rank(input) once if axis is negative.
-  auto input_type = op->getOperand(0).getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      op->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("ConcatV2Op: input type not ranked tensor.");
     return llvm::None;
@@ -574,8 +580,8 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
 
   Value lhs_val = values[0];
   Value rhs_val = values[1];
-  auto lhs_type = lhs_val.getType().cast<RankedTensorType>();
-  auto rhs_type = rhs_val.getType().cast<RankedTensorType>();
+  RankedTensorType lhs_type = lhs_val.getType().cast<RankedTensorType>();
+  RankedTensorType rhs_type = rhs_val.getType().cast<RankedTensorType>();
   ArrayRef<int64_t> lhs_tensor_shape = lhs_type.getShape();
   ArrayRef<int64_t> rhs_tensor_shape = rhs_type.getShape();
   int input_tensor_rank = lhs_tensor_shape.size();
@@ -594,7 +600,7 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
       return llvm::None;
     }
     SmallVector<int64_t, 8> reshape_rank1_size1_shape{1};
-    auto reshape_rank1_size1_type =
+    RankedTensorType reshape_rank1_size1_type =
         RankedTensorType::get(ArrayRef<int64_t>(reshape_rank1_size1_shape),
                               result_type.getElementType());
     ArrayAttr shape_rank1_size1_attr =
@@ -617,7 +623,7 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
     concat_result_shape[axis] = lhs_tensor_shape[axis] + rhs_tensor_shape[axis];
   }
 
-  auto concat_type = RankedTensorType::get(
+  RankedTensorType concat_type = RankedTensorType::get(
       ArrayRef<int64_t>(concat_result_shape), result_type.getElementType());
 
   mlir::quant::UniformQuantizedType lhs_quant_type =
@@ -649,22 +655,22 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
 
     // Rescale input if scale is not equal to output tensor scale.
     if (lhs_scale != result_scale) {
-      auto rescale_type =
+      RankedTensorType rescale_type =
           RankedTensorType::get(lhs_type.getShape(), result_quant_type);
 
-      auto rescale_op = buildRescale(rewriter, op, rescale_type, lhs_val,
-                                     lhs_scale / result_scale, lhs_zeropoint,
-                                     result_zeropoint);
+      Value rescale_op = buildRescale(rewriter, op, rescale_type, lhs_val,
+                                      lhs_scale / result_scale, lhs_zeropoint,
+                                      result_zeropoint);
 
       lhs_val = rescale_op;
     }
     if (rhs_scale != result_scale) {
-      auto rescale_type =
+      RankedTensorType rescale_type =
           RankedTensorType::get(rhs_type.getShape(), result_quant_type);
 
-      auto rescale_op = buildRescale(rewriter, op, rescale_type, rhs_val,
-                                     rhs_scale / result_scale, rhs_zeropoint,
-                                     result_zeropoint);
+      Value rescale_op = buildRescale(rewriter, op, rescale_type, rhs_val,
+                                      rhs_scale / result_scale, rhs_zeropoint,
+                                      result_zeropoint);
 
       rhs_val = rescale_op;
     }
@@ -694,12 +700,12 @@ llvm::Optional<Value> convertConcatV2Op(PatternRewriter& rewriter,
       rhs_zeropoint = rhs_quant_type.getZeroPoint();
 
       if (rhs_scale != result_scale) {
-        auto rescale_type =
+        RankedTensorType rescale_type =
             RankedTensorType::get(rhs_type.getShape(), result_quant_type);
 
-        auto rescale_op = buildRescale(rewriter, op, rescale_type, rhs_val,
-                                       rhs_scale / result_scale, rhs_zeropoint,
-                                       result_zeropoint);
+        Value rescale_op = buildRescale(rewriter, op, rescale_type, rhs_val,
+                                        rhs_scale / result_scale, rhs_zeropoint,
+                                        result_zeropoint);
 
         rhs_val = rescale_op;
       }
@@ -772,11 +778,14 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
   //  shape=a3_shape)
   //
 
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
-  auto block_shape_type =
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType block_shape_type =
       block_shape_value.getType().dyn_cast<RankedTensorType>();
-  auto paddings_type = paddings_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType paddings_type =
+      paddings_value.getType().dyn_cast<RankedTensorType>();
 
   // Not a ranked tensor output.
   if (!result_type) {
@@ -862,7 +871,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     padded_shape[i + block_rank + 1] = input_shape[i + block_rank + 1];
   }
 
-  auto a0_pad_const_attr_type =
+  RankedTensorType a0_pad_const_attr_type =
       RankedTensorType::get({(input_rank), 2}, rewriter.getIntegerType(32));
 
   // Create a const op to generate the tensor type for the input padding array
@@ -935,7 +944,7 @@ llvm::Optional<Value> convertSpaceToBatchNDOp(PatternRewriter& rewriter,
     a3_transpose_shape[i] = a2_shape[a3_perm[i]];
   }
 
-  auto a3_transpose_const =
+  Value a3_transpose_const =
       get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, a3_perm);
 
   auto a3_transpose_a2_op = rewriter.create<tosa::TransposeOp>(
@@ -1030,11 +1039,14 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
   // a4_slice_a3 = tosa.slice(input=a3_reshape_a2, start=a4_start,
   // size=a4_size)
 
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
-  auto block_shape_type =
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType block_shape_type =
       block_shape_value.getType().dyn_cast<RankedTensorType>();
-  auto crops_type = crops_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType crops_type =
+      crops_value.getType().dyn_cast<RankedTensorType>();
 
   if (!result_type) {
     op->emitOpError("BatchToSpaceND: result type not ranked tensor");
@@ -1151,7 +1163,7 @@ llvm::Optional<Value> convertBatchToSpaceNDOp(PatternRewriter& rewriter,
     a2_transpose_shape[i] = a1_shape[a2_perm[i]];
   }
 
-  auto a2_transpose_perm =
+  Value a2_transpose_perm =
       get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, a2_perm);
   auto a2_transpose_a1_op = rewriter.create<tosa::TransposeOp>(
       op->getLoc(),
@@ -1219,14 +1231,16 @@ llvm::Optional<Value> convertExpandDimsOp(PatternRewriter& rewriter,
                                           Operation* op, Value result_value,
                                           Value input_value, Value dim_value) {
   // Lowers to a reshape op with 1's inserted in the appropriate dimensions.
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
     op->emitOpError("ExpandDims: output type not ranked tensor");
     return llvm::None;
   }
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("ExpandDims: input type not ranked tensor");
     return llvm::None;
@@ -1270,14 +1284,16 @@ llvm::Optional<Value> convertSqueezeOp(PatternRewriter& rewriter, Operation* op,
                                        SmallVector<int32_t, 8>& squeeze_dims) {
   // Lowers to a reshape op where dimensions in squeeze_dims with size=1
   // are removed.
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
     op->emitOpError("Squeeze: output type not ranked tensor");
     return llvm::None;
   }
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("Squeeze: input type not ranked tensor");
     return llvm::None;
@@ -1335,7 +1351,8 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
   // a2 = sub(a1, one_bcast)
   // a3 = ge(x, zero_bcast)
   // a4 = select(a3, x, a2)
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
     op->emitOpError("Elu: output type not ranked tensor");
@@ -1343,16 +1360,13 @@ llvm::Optional<Value> convertEluOp(PatternRewriter& rewriter, Operation* op,
   }
 
   int32_t input_rank = output_type.getShape().size();
-  SmallVector<int64_t, 4> bcast_shape;
-  for (int i = 0; i < input_rank; i++) {
-    bcast_shape.push_back(1);
-  }
+  SmallVector<int64_t, 4> bcast_shape(input_rank, 1);
 
   // Can't directly create size=1, rank=rank(input) tensor because
   // it will be optimized out.  Instead, create rank0 tensor and reshape later.
-  auto one_const_op = getTosaConstTensorSingleF32(rewriter, op, 1.0);
+  Value one_const_op = getTosaConstTensorSingleF32(rewriter, op, 1.0);
 
-  auto zero_const_op = getTosaConstTensorSingleF32(rewriter, op, 0.0);
+  Value zero_const_op = getTosaConstTensorSingleF32(rewriter, op, 0.0);
 
   auto a1_exp_in_op =
       rewriter.create<tosa::ExpOp>(op->getLoc(), output_type, features_value);
@@ -1386,8 +1400,10 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   // We'll use first version for direct fp lowering, and second version for
   // quantized lowering since second one we can restrict input to exp() be
   // negative, and thus LUT can always be within [0.0, 1.0].
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
-  auto input_type = logits_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      logits_value.getType().dyn_cast<RankedTensorType>();
 
   // Not a ranked tensor input/output
   if (!output_type || !input_type) {
@@ -1414,17 +1430,17 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     auto int16_element_qtype = mlir::quant::UniformQuantizedType::get(
         true, rewriter.getIntegerType(16), rewriter.getF32Type(), 1.0f, 0,
         -32768, 32767);
-    auto int16_logits_type =
+    RankedTensorType int16_logits_type =
         RankedTensorType::get(logits_shape, int16_element_qtype);
-    auto int32_logits_type =
+    RankedTensorType int32_logits_type =
         RankedTensorType::get(logits_shape, rewriter.getIntegerType(32));
-    auto int16_rsum_type =
+    RankedTensorType int16_rsum_type =
         RankedTensorType::get(rsum_shape, int16_element_qtype);
-    auto int32_rsum_type =
+    RankedTensorType int32_rsum_type =
         RankedTensorType::get(rsum_shape, rewriter.getIntegerType(32));
 
     // Step 1. get x - max(x)
-    auto op1_rescale_in =
+    Value op1_rescale_in =
         buildRescale(rewriter, op, int32_logits_type, logits_value, 1.0f,
                      in_quant_type.getZeroPoint(), 0);
 
@@ -1445,10 +1461,10 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       return std::lround(32768.0 * v);
     };
 
-    auto exp_table_const = getTosa1DConstTensorTable(rewriter, op, exp_func);
+    Value exp_table_const = getTosa1DConstTensorTable(rewriter, op, exp_func);
 
     // Step 2. rescale input
-    auto op4_rescale_op3 = buildRescale(
+    Value op4_rescale_op3 = buildRescale(
         rewriter, op, int16_logits_type, op3_sub_op1_op2.getResult(),
         in_quant_type.getScale() * 128.0 / exp_sample_grain, 0, 0);
 
@@ -1511,7 +1527,7 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
       return std::lround(32768.0 * v);
     };
 
-    auto one_over_one_plus_x_table_const =
+    Value one_over_one_plus_x_table_const =
         getTosa1DConstTensorTable(rewriter, op, one_over_one_plus_x_func);
 
     auto op14_table_op13 = rewriter.create<tosa::TableOp>(
@@ -1519,11 +1535,11 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
         one_over_one_plus_x_table_const);
 
     // Rescale sum(exp(x)) from 0.23 back to 0.16
-    auto op15_rescale_op14 = buildRescale(rewriter, op, int32_rsum_type,
-                                          op14_table_op13, 1.0 / 128.0, 0, 0);
+    Value op15_rescale_op14 = buildRescale(rewriter, op, int32_rsum_type,
+                                           op14_table_op13, 1.0 / 128.0, 0, 0);
 
     // Rescale exp(x) from 0.23 back to 0.16
-    auto op16_rescale_op5 =
+    Value op16_rescale_op5 =
         buildRescale(rewriter, op, int32_logits_type, op5_table_op4.getResult(),
                      1.0 / 128.0, 0, 0);
 
@@ -1559,7 +1575,7 @@ llvm::Optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     // op4 = mul(op1, op3)
     auto op1_exp_in =
         rewriter.create<tosa::ExpOp>(op->getLoc(), output_type, logits_value);
-    auto rsum_type =
+    RankedTensorType rsum_type =
         RankedTensorType::get(rsum_shape, output_type.getElementType());
 
     // Keep dims so we don't need to reshape later
@@ -1587,14 +1603,16 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   // op4 = mul(op1, op3)
   // op5 = log(op4)
 
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) {
     op->emitOpError("LogSoftmax: output type not ranked tensor.");
     return llvm::None;
   }
 
-  auto input_type = op->getOperand(0).getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      op->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("LogSoftmax: input type not ranked tensor.");
     return llvm::None;
@@ -1619,8 +1637,8 @@ llvm::Optional<Value> convertLogSoftmaxOp(PatternRewriter& rewriter,
   SmallVector<int64_t, 4> rsum_shape(output_type.getShape().begin(),
                                      output_type.getShape().end());
   rsum_shape[input_rank - 1] = 1;
-  auto rsum_type = RankedTensorType::get(ArrayRef<int64_t>(rsum_shape),
-                                         output_type.getElementType());
+  RankedTensorType rsum_type = RankedTensorType::get(
+      ArrayRef<int64_t>(rsum_shape), output_type.getElementType());
   // Keep dims so we don't need to reshape later
   auto op2_reducesum_op1 = rewriter.create<tosa::ReduceSumOp>(
       op->getLoc(), rsum_type, op1_exp_in.getResult(),
@@ -1651,7 +1669,8 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   // a4 = tf.reshape(a3, [orig_shape[0], orig_shape[1]//b, orig_shape[2]//b,
   // orig_shape[3]*b*b])
   // return a4
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
 
   // Not a ranked tensor output.
   if (!output_type) {
@@ -1659,7 +1678,8 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("SpaceToDepth: input type not ranked tensor.");
     return llvm::None;
@@ -1697,13 +1717,13 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   a_reshape_dims.push_back(block_size[1]);
   a_reshape_dims.push_back(input_shape[3]);
 
-  auto a_reshape_output_type = RankedTensorType::get(
+  RankedTensorType a_reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(a_reshape_dims), output_type.getElementType());
   auto a2_reshape_a_op = rewriter.create<tosa::ReshapeOp>(
       op->getLoc(), a_reshape_output_type, input_value,
       rewriter.getI64ArrayAttr(a_reshape_dims));
 
-  auto a3_transpose_perm = get1DConstTensor<tosa::ConstOp, int32_t>(
+  Value a3_transpose_perm = get1DConstTensor<tosa::ConstOp, int32_t>(
       rewriter, op, {0, 1, 3, 2, 4, 5});
 
   auto a3_transpose_a2_op = rewriter.create<tosa::TransposeOp>(
@@ -1716,7 +1736,7 @@ llvm::Optional<Value> convertSpaceToDepthOp(PatternRewriter& rewriter,
   a3_reshape_dims.push_back(input_shape[2] / block_size[1]);
   a3_reshape_dims.push_back(input_shape[3] * block_size[0] * block_size[1]);
 
-  auto a3_reshape_output_type = RankedTensorType::get(
+  RankedTensorType a3_reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(a3_reshape_dims), output_type.getElementType());
   return rewriter
       .create<tosa::ReshapeOp>(op->getLoc(), a3_reshape_output_type,
@@ -1739,7 +1759,8 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   // orig_shape[3] // (b*b)])
   // return a4
 
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
 
   // Not a ranked tensor output
   if (!output_type) {
@@ -1747,7 +1768,8 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("DepthToSpace: input type not ranked tensor.");
     return llvm::None;
@@ -1780,13 +1802,13 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   a_reshape_dims.push_back(block_size[1]);
   a_reshape_dims.push_back(input_shape[3] / (block_size[0] * block_size[1]));
 
-  auto a_reshape_output_type = RankedTensorType::get(
+  RankedTensorType a_reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(a_reshape_dims), output_type.getElementType());
   auto a2_reshape_a_op = rewriter.create<tosa::ReshapeOp>(
       op->getLoc(), a_reshape_output_type, input_value,
       rewriter.getI64ArrayAttr(a_reshape_dims));
 
-  auto a3_transpose_perm = get1DConstTensor<tosa::ConstOp, int32_t>(
+  Value a3_transpose_perm = get1DConstTensor<tosa::ConstOp, int32_t>(
       rewriter, op, {0, 1, 3, 2, 4, 5});
 
   auto a3_transpose_a2_op = rewriter.create<tosa::TransposeOp>(
@@ -1799,7 +1821,7 @@ llvm::Optional<Value> convertDepthToSpaceOp(PatternRewriter& rewriter,
   a3_reshape_dims.push_back(input_shape[2] * block_size[1]);
   a3_reshape_dims.push_back(input_shape[3] / (block_size[0] * block_size[1]));
 
-  auto a3_reshape_output_type = RankedTensorType::get(
+  RankedTensorType a3_reshape_output_type = RankedTensorType::get(
       ArrayRef<int64_t>(a3_reshape_dims), output_type.getElementType());
   return rewriter
       .create<tosa::ReshapeOp>(op->getLoc(), a3_reshape_output_type,
@@ -1816,14 +1838,16 @@ llvm::Optional<ValueRange> convertSplitOp(PatternRewriter& rewriter,
   // This lowering creates num_split slice ops and ties them together
   // with IdentityN to get from an array of Operations to a single Operation
   // with a list of result tensors.
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!result_type) {
     op->emitOpError("Split: output type not ranked tensor.");
     return llvm::None;
   }
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("Split: input type not ranked tensor.");
     return llvm::None;
@@ -1889,14 +1913,16 @@ llvm::Optional<ValueRange> convertSplitVOp(PatternRewriter& rewriter,
   // This lowering creates num_split slice ops and ties them together
   // with IdentityN to get from an array of Operations to a single Operation
   // with a list of result tensors.
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!result_type) {
     op->emitOpError("SplitV: output type not ranked tensor.");
     return llvm::None;
   }
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) {
     op->emitOpError("SplitV: input type not ranked tensor.");
     return llvm::None;
@@ -1996,8 +2022,10 @@ llvm::Optional<Value> convertStridedSliceOp(
   // to insert tosa.Reverse operators for this.
   assert(ellipsis_mask == 0);
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
-  auto result_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType result_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
 
   if (!result_type) {
     op->emitOpError("StridedSlice: output type not ranked tensor.");
@@ -2117,7 +2145,8 @@ llvm::Optional<Value> convertFloorDivOp(PatternRewriter& rewriter,
   // a2 = mul(lhs, a1);
   // a3 = floor(a2);
   // return a3;
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
@@ -2144,7 +2173,8 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
   // a4 = sub(a2, a3);
   // return a4;
 
-  auto output_type = result_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType output_type =
+      result_value.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!output_type) return llvm::None;
 
@@ -2166,7 +2196,8 @@ llvm::Optional<Value> convertFloorModOp(PatternRewriter& rewriter,
 llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
                                              Operation* op, Value input_value,
                                              StringAttr fused_activation_fn) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =
@@ -2181,11 +2212,11 @@ llvm::Optional<Value> convertFusedActivation(PatternRewriter& rewriter,
       op->emitWarning("Quantized TANH lowering TBD!");
       return llvm::None;
     } else {
-      auto rescale_type = RankedTensorType::get(input_type.getShape(),
-                                                rewriter.getIntegerType(32));
+      RankedTensorType rescale_type = RankedTensorType::get(
+          input_type.getShape(), rewriter.getIntegerType(32));
 
-      auto op1_rescale_in = buildRescaleToInt32(rewriter, op, input_value, 1.0f,
-                                                input_qtype.getZeroPoint());
+      Value op1_rescale_in = buildRescaleToInt32(
+          rewriter, op, input_value, 1.0f, input_qtype.getZeroPoint());
 
       Value op2_relu_op1;
       if (fused_activation_fn.getValue() == "NONE") {
@@ -2272,7 +2303,8 @@ llvm::Optional<Value> convertReduceOpCommon(
     Value input_value, ElementsAttr axes_elems, bool keep_dims,
     Type reduce_element_type, bool is_quantized, double input_scale,
     int64_t input_zp, double output_scale, int64_t output_zp) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   ArrayRef<int64_t> input_shape = input_type.getShape();
@@ -2299,7 +2331,7 @@ llvm::Optional<Value> convertReduceOpCommon(
       auto axis_attr = rewriter.getI64IntegerAttr(axis_val);
 
       shape_vec[axis_val] = 1;
-      auto reduce_type = RankedTensorType::get(
+      RankedTensorType reduce_type = RankedTensorType::get(
           llvm::makeArrayRef<int64_t>(shape_vec), reduce_element_type);
 
       auto reduce_op =
@@ -2309,7 +2341,7 @@ llvm::Optional<Value> convertReduceOpCommon(
     }
 
     if (is_quantized) {
-      auto output_rescale_type = RankedTensorType::get(
+      RankedTensorType output_rescale_type = RankedTensorType::get(
           llvm::makeArrayRef<int64_t>(shape_vec), output_type.getElementType());
       val = buildRescaleFromInt32(rewriter, op, output_rescale_type, val,
                                   output_scale, output_zp);
@@ -2331,7 +2363,8 @@ llvm::Optional<Value> convertReduceOpCommon(
 llvm::Optional<Value> convertReduceAllOp(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, bool keep_dims) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceAllOp>(
@@ -2343,7 +2376,8 @@ llvm::Optional<Value> convertReduceAllOp(
 llvm::Optional<Value> convertReduceAnyOp(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, bool keep_dims) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceAnyOp>(
@@ -2355,7 +2389,8 @@ llvm::Optional<Value> convertReduceAnyOp(
 llvm::Optional<Value> convertReduceMinOp(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, bool keep_dims) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceMinOp>(
@@ -2367,7 +2402,8 @@ llvm::Optional<Value> convertReduceMinOp(
 llvm::Optional<Value> convertReduceMaxOp(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, bool keep_dims) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   return convertReduceOpCommon<tosa::ReduceMaxOp>(
@@ -2379,7 +2415,8 @@ llvm::Optional<Value> convertReduceMaxOp(
 llvm::Optional<Value> convertReduceProdOp(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, bool keep_dims) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =
@@ -2403,7 +2440,8 @@ llvm::Optional<Value> convertReduceProdOp(
 llvm::Optional<Value> convertReduceSumOp(
     PatternRewriter& rewriter, Operation* op, RankedTensorType output_type,
     Value input_value, ElementsAttr axes_elems, bool keep_dims) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =
@@ -2456,7 +2494,8 @@ llvm::Optional<Value> convertReduceMeanOp(
   // op1 = reduce_sum(input)
   // op2 = mul(op1, 1.0 / num_elements_on_reduced_axis)
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   bool input_is_qtype =
@@ -2534,7 +2573,8 @@ llvm::Optional<Value> convertReduceMeanOp(
 llvm::Optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                                       RankedTensorType output_type,
                                       Value input_value, StringRef mode) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   auto input_shape = input_type.getShape();
@@ -2600,7 +2640,8 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
                                         RankedTensorType output_type,
                                         Value input_value, double scale,
                                         int64_t zeropoint) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   auto output_shape = output_type.getShape();
@@ -2613,7 +2654,7 @@ llvm::Optional<Value> convertQuantizeOp(PatternRewriter& rewriter,
     return llvm::None;
   }
 
-  auto output_fp_type =
+  RankedTensorType output_fp_type =
       RankedTensorType::get(output_shape, rewriter.getF32Type());
 
   Value zp_val =
@@ -2644,7 +2685,8 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
                                           RankedTensorType output_type,
                                           Value input_value, double scale,
                                           int64_t zeropoint) {
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   // input element type could only be quantized integer
@@ -2661,7 +2703,7 @@ llvm::Optional<Value> convertDequantizeOp(PatternRewriter& rewriter,
 
   // TOSA doesn't support CAST AINT8 -> FLOAT, need to RESCALE to INT32
   // followed by a CAST
-  auto op1_rescale_in =
+  Value op1_rescale_in =
       buildRescale(rewriter, op, output_int32_type, input_value, 1.0, 0, 0);
 
   auto op2_cast_op1 =
@@ -2689,7 +2731,8 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   // op1 = quantize(input)
   // op2 = dequantize(op1)
 
-  auto input_type = input_value.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type =
+      input_value.getType().dyn_cast<RankedTensorType>();
   if (!input_type) return llvm::None;
 
   // quantized as INT<num_bits>, where num_bits can only be 8, 16
@@ -2709,7 +2752,8 @@ llvm::Optional<Value> convertFakeQuantOp(PatternRewriter& rewriter,
   auto int_element_qtype = mlir::quant::UniformQuantizedType::get(
       true, rewriter.getIntegerType(num_bits), rewriter.getF32Type(), 1.0f, 0,
       qmin, qmax);
-  auto output_int_type = RankedTensorType::get(output_shape, int_element_qtype);
+  RankedTensorType output_int_type =
+      RankedTensorType::get(output_shape, int_element_qtype);
 
   double scale = (max - min) / static_cast<double>(qmax - qmin);
   int64_t zeropoint = std::llround((-min) / scale + static_cast<double>(qmin));
@@ -2730,8 +2774,8 @@ llvm::Optional<Value> convertTFConv2DCommon(
     Value input, Value filter, Value bias, ArrayAttr strides_attr,
     ArrayAttr dilations_attr, ArrayAttr explicit_padding_attr,
     StringRef padding_ref, StringRef data_format_ref) {
-  auto input_type = input.getType().dyn_cast<RankedTensorType>();
-  auto filter_type = filter.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType input_type = input.getType().dyn_cast<RankedTensorType>();
+  RankedTensorType filter_type = filter.getType().dyn_cast<RankedTensorType>();
   // Not a ranked tensor output
   if (!input_type) return llvm::None;
   if (!filter_type) return llvm::None;
@@ -2743,7 +2787,7 @@ llvm::Optional<Value> convertTFConv2DCommon(
   a1_transpose_dims.push_back(filter_shape[0]);
   a1_transpose_dims.push_back(filter_shape[1]);
   a1_transpose_dims.push_back(filter_shape[2]);
-  auto a1_filter_transpose_perm =
+  Value a1_filter_transpose_perm =
       get1DConstTensor<tosa::ConstOp, int32_t>(rewriter, op, {3, 0, 1, 2});
   auto a1_filter_transpose_op = rewriter.create<tosa::TransposeOp>(
       op->getLoc(),
