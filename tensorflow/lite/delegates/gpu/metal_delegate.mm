@@ -716,6 +716,14 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_
 
 // Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
 // `metal_delegate_internal.h`.
+bool TFLGpuDelegateSetCommandEncoder(
+    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder) {
+  auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
+  if (!metal_delegate) return false;
+  metal_delegate->SetCommandEncoder(encoder);
+  return true;
+}
+
 bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
                                     id<MTLCommandBuffer> command_buffer) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
