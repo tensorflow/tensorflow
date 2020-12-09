@@ -374,6 +374,21 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "Equal") {
       return static_cast<BaselineOutT>(lhs == rhs);
     }
+    if (GetParam().op_name == "NotEqual") {
+      return static_cast<BaselineOutT>(lhs != rhs);
+    }
+    if (GetParam().op_name == "Greater") {
+      return static_cast<BaselineOutT>(lhs > rhs);
+    }
+    if (GetParam().op_name == "GreaterEqual") {
+      return static_cast<BaselineOutT>(lhs >= rhs);
+    }
+    if (GetParam().op_name == "Less") {
+      return static_cast<BaselineOutT>(lhs < rhs);
+    }
+    if (GetParam().op_name == "LessEqual") {
+      return static_cast<BaselineOutT>(lhs <= rhs);
+    }
     if (GetParam().op_name == "LogicalAnd") {
       if (auto val = LogicalAnd(lhs, rhs)) {
         return static_cast<BaselineOutT>(val.value());
@@ -411,6 +426,14 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
        std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8,
                              DT_INT16, DT_INT64}) {
     parameters.emplace_back("Equal", dt, DT_BOOL);
+    parameters.emplace_back("NotEqual", dt, DT_BOOL);
+  }
+  for (DataType dt :
+       {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT8, DT_INT16, DT_INT64}) {
+    parameters.emplace_back("Greater", dt, DT_BOOL);
+    parameters.emplace_back("GreaterEqual", dt, DT_BOOL);
+    parameters.emplace_back("Less", dt, DT_BOOL);
+    parameters.emplace_back("LessEqual", dt, DT_BOOL);
   }
   parameters.emplace_back("LogicalAnd", DT_BOOL, DT_BOOL,
                           /*use_constraint=*/false);

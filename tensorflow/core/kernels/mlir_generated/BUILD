@@ -162,8 +162,13 @@ tf_kernel_library(
         "unranked_op_gpu_bitwise_or.cc",
         "unranked_op_gpu_bitwise_xor.cc",
         "unranked_op_gpu_equal.cc",
+        "unranked_op_gpu_greater.cc",
+        "unranked_op_gpu_greater_equal.cc",
+        "unranked_op_gpu_less.cc",
+        "unranked_op_gpu_less_equal.cc",
         "unranked_op_gpu_logical_and.cc",
         "unranked_op_gpu_logical_or.cc",
+        "unranked_op_gpu_not_equal.cc",
     ],
     tags = [
         "manual",
