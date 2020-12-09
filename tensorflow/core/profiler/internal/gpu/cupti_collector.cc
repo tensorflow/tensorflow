@@ -113,7 +113,7 @@ struct PerDeviceCollector {
     }
 
     stats.occupancy_pct =
-        occ_result.activeBlocksPerMultiprocessor * params.block_size;
+        occ_result.activeBlocksPerMultiprocessor * params.block_size * 100;
     stats.occupancy_pct /= device_properties.maxThreadsPerMultiprocessor;
 
     status = cudaOccMaxPotentialOccupancyBlockSize(
@@ -184,7 +184,7 @@ struct PerDeviceCollector {
       params.dynamic_smem_size = event.kernel_info.dynamic_shared_memory_usage;
 
       OccupancyStats& occ_stats = occupancy_cache[params];
-      if (occ_stats.occupancy_pct == 0) {
+      if (occ_stats.occupancy_pct == 0.0) {
         occ_stats = GetOccupancy(params);
       }
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
