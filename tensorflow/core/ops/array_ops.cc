@@ -1479,12 +1479,9 @@ Status UniqueIdxShapeFn(InferenceContext* c) {
     }
     c->set_output(1, c->Vector(c->Dim(input, axis)));
     return Status::OK();
-  } else {
-    return errors::InvalidArgument(
-        "axis does not support input tensors larger than 1 elements.");
   }
-
-  return Status::OK();
+  return errors::InvalidArgument(
+      "axis does not support input tensors larger than 1 elements.");
 }
 }  // namespace
 
