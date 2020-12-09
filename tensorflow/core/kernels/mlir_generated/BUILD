@@ -158,6 +158,7 @@ tf_kernel_library(
     name = "cwise_binary_op",
     srcs = [
         "unranked_op_gpu_add.cc",
+        "unranked_op_gpu_bitwise_and.cc",
         "unranked_op_gpu_equal.cc",
     ],
     tags = [
@@ -165,6 +166,7 @@ tf_kernel_library(
     ],
     deps = [
         ":add_v2_unranked_kernels",
+        ":bitwise_and_unranked_kernels",
         ":equal_unranked_kernels",
         ":greater_equal_unranked_kernels",
         ":greater_unranked_kernels",
@@ -370,6 +372,26 @@ gen_kernel_library(
         "i64",
     ],
     # TODO(b/174543802): Enable once fusion heuristics is better.
+    # unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "bitwise_and",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256,1,1",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        # TODO(b/172804967): Enable once fixed.
+        # "ui8",
+        # "ui16",
+        # "ui32",
+        # "ui64",
+    ],
+    # TODO(b/174543802): Enable once fusion heursitics is better.
     # unroll_factors = "4",
 )
 

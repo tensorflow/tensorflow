@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -45,6 +46,18 @@ struct BinaryTestParam {
 
 // To add additional tests for other kernels, search for PLACEHOLDER in this
 // file.
+
+// Some templates to have versions of the operations that are conditional on
+// the used types. C++17 would make this easier.
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseAnd(T lhs, T rhs) {
+  return lhs & rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseAnd(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
 
 class ParametricGpuBinaryOpsTest
     : public OpsTestBase,
@@ -298,6 +311,11 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "AddV2") {
       return static_cast<BaselineOutT>(lhs + rhs);
     }
+    if (GetParam().op_name == "BitwiseAnd") {
+      if (auto val = BitwiseAnd(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
     if (GetParam().op_name == "Equal") {
       return static_cast<BaselineOutT>(lhs == rhs);
     }
@@ -305,7 +323,8 @@ class ParametricGpuBinaryOpsTest
     // test here.
     // <PLACEHOLDER>
     LOG(FATAL) << "Cannot generate expected result for op "
-               << GetParam().op_name;
+               << GetParam().op_name << " on input type "
+               << typeid(BaselineType).name();
     return static_cast<BaselineOutT>(lhs);
   }
 };
@@ -315,6 +334,11 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
   for (DataType dt :
        std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
     parameters.emplace_back("AddV2", dt, dt);
+  }
+  // TODO(b/172804967): Expand to unsigned once fixed.
+  for (DataType dt :
+       std::vector<DataType>{DT_INT8, DT_INT16, DT_INT32, DT_INT64}) {
+    parameters.emplace_back("BitwiseAnd", dt, dt);
   }
   for (DataType dt :
        std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8,
