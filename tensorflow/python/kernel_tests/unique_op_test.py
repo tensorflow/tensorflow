@@ -110,7 +110,7 @@ class UniqueTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testShapeInferenceV2(self):
     """Test shape inference."""
-    x = np.random.randint(2, high=10, size=(3, 2, 1))
+    x = np.arange(6).reshape(3, 2, 1)
     _, idx = gen_array_ops.unique_v2(x, axis=[0])
     self.assertEqual(idx.shape.as_list(), [3])
     _, idx = gen_array_ops.unique_v2(x, axis=[1])
