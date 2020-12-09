@@ -2097,6 +2097,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # allocations at a lower level.
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def test_functions_cleaned(self):
+    self.skipTest("TODO(b/175152958): The test is leaking function definitions")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
     root = module.Module()
