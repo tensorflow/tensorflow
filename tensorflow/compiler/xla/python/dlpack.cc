@@ -214,11 +214,9 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
 }
 
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
-  const se::Platform* platform =
-      device.local_device_state()->executor()->platform();
-  if (platform->id() == se::host::kHostPlatformId) {
+  if (device.client()->platform_id() == kCpuId) {
     return kDLCPU;
-  } else if (platform->id() == se::cuda::kCudaPlatformId) {
+  } else if (device.client()->platform_id() == kGpuId) {
     return kDLGPU;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
@@ -228,7 +226,7 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
 StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
   DLContext context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
-  context.device_id = device.local_device_id();
+  context.device_id = device.local_hardware_id();
   return context;
 }
 
@@ -241,14 +239,14 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
             "DLPack CPU device type mismatch with PjRtClient platform %s",
             client.platform_name());
       }
-      return client.LookupLocalDevice(context.device_id);
+      return client.LookupAddressableDevice(context.device_id);
     case kDLGPU:
       if (client.platform_id() != kGpuId) {
         return InvalidArgument(
             "DLPack GPU device type mismatch with PjRtClient platform %s",
             client.platform_name());
       }
-      return client.LookupLocalDevice(context.device_id);
+      return client.LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
@@ -297,7 +295,7 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
-  dt.ctx.device_id = buffer->buffer()->device()->local_device_id();
+  dt.ctx.device_id = buffer->buffer()->device()->local_hardware_id();
   dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(

@@ -705,10 +705,10 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   return Status::OK();
 }
 
-Status EagerContext::AddFunctionDefWithDebugInfo(
-    const FunctionDef& fdef, const Graph* graph_with_debug_info) {
+Status EagerContext::AddFunctionDefWithStackTraces(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces) {
   return AddFunctionDef(fdef, FunctionDefLibrary(),
-                        /* add_to_local_only=*/false, graph_with_debug_info);
+                        /* add_to_local_only=*/false, stack_traces);
 }
 
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
@@ -719,7 +719,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
                                     const bool add_to_local_only,
-                                    const Graph* graph_with_debug_info) {
+                                    const StackTracesMap& stack_traces) {
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -753,8 +753,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     is_first_ref = registered_function->RefCountIsOne();
   }
   if (is_first_ref) {
-    TF_RETURN_IF_ERROR(
-        func_lib_def_.AddFunctionDef(fdef, graph_with_debug_info));
+    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
     TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     if (!add_to_local_only) {
       return MaybeRegisterFunctionRemotely(fdef);

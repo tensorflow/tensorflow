@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace xla {
 
-class InterpreterDevice : public PjRtDevice {
+class InterpreterDevice : public PjRtStreamExecutorDevice {
  public:
   InterpreterDevice(int id,
                     std::unique_ptr<LocalDeviceState> local_device_state);

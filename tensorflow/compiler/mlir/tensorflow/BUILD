@@ -889,6 +889,7 @@ cc_library(
         "transforms/layout_optimization.cc",
         "transforms/mark_ops_for_outside_compilation.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
+        "transforms/merge_control_flow.cc",
         "transforms/optimize.cc",
         "transforms/outside_compiled_to_host_launch.cc",
         "transforms/parallel_execute_to_islands.cc",
@@ -1976,6 +1977,7 @@ cc_library(
     hdrs = ["utils/bridge_logger.h"],
     deps = [
         ":dump_mlir_util",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

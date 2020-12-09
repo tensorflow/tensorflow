@@ -553,7 +553,7 @@ Status CreateHloProfilingArtifacts(
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/,
-    se::DeviceMemoryAllocator* /*device_allocator*/) {
+    const CompileOptions& /*options*/) {
   std::unique_ptr<llvm::TargetMachine> jit_target_machine =
       SimpleOrcJIT::InferTargetMachineForJIT(
           CompilerTargetOptions(module->config()),
@@ -566,12 +566,13 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
 StatusOr<
     std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
-CpuCompiler::RunHloPassesAndBufferAssignement(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+CpuCompiler::RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
+                                              se::StreamExecutor* executor,
+                                              bool optimize,
+                                              const CompileOptions& options) {
   if (optimize) {
-    TF_ASSIGN_OR_RETURN(
-        module, RunHloPasses(std::move(module), executor, device_allocator));
+    TF_ASSIGN_OR_RETURN(module,
+                        RunHloPasses(std::move(module), executor, options));
   }
 
   // Select an order for emitting the HLO instructions for each computation.
@@ -632,7 +633,7 @@ struct OrcJITPostCompilationHook {
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* /*device_allocator*/) {
+    const CompileOptions& options) {
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));

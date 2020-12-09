@@ -26,8 +26,8 @@ static const char kInterpreterPlatformName[] = "interpreter";
 
 InterpreterDevice::InterpreterDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state)
-    : PjRtDevice(id, std::move(local_device_state),
-                 /*device_kind=*/kInterpreterPlatformName) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               /*device_kind=*/kInterpreterPlatformName) {}
 
 StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,

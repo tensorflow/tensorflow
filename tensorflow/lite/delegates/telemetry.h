@@ -19,19 +19,24 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 
-// This file defines data structures to represent detailed TFLite delegate
-// status, e.g. NNAPI delegate application failure because of a driver issue
-// etc. Such status is ONLY to be used for internal APIs.
-// Note, we simply use TfLiteStatus to represent high-level status while
-// delegate-specific status codes are defined with DelegateStatus.
+// This file implements utilities for delegate telemetry. These enable
+// representation and reporting of hardware-specific configurations, status
+// codes, etc.
+// These APIs are for internal use *only*, and should be modified with care to
+// avoid incompatibilities between delegates & runtime.
 // WARNING: This is an experimental feature that is subject to change.
 namespace tflite {
 namespace delegates {
 
-// Defines the source of the code where it is generated from. We list all TFLite
-// delegates that're officially implemented and available as of April, 2020
-// (i.e. w/ 'TFLITE_' prefix to imply this).
+// Used to identify specific events for tflite::Profiler.
+constexpr char kDelegateSettingsTag[] = "delegate_settings";
+constexpr char kDelegateStatusTag[] = "delegate_status";
+
+// Defines the delegate or hardware-specific 'namespace' that a status code
+// belongs to. For example, GPU delegate errors might be belong to TFLITE_GPU,
+// while OpenCL-specific ones might be TFLITE_GPU_CL.
 enum class DelegateStatusSource {
   NONE = 0,
   TFLITE_GPU = 1,
@@ -42,8 +47,16 @@ enum class DelegateStatusSource {
   MAX_NUM_SOURCES = std::numeric_limits<int32_t>::max(),
 };
 
-// Defines the detailed status that combines a DelegateStatusSource and a
-// status int32_t code.
+// DelegateStatus defines a namespaced status with a combination of
+// DelegateStatusSource & the corresponding fine-grained 32-bit code. Used to
+// convert to/from a 64-bit representation as follows:
+//
+// delegates::DelegateStatus status(
+//      delegates::DelegateStatusSource::TFLITE_NNAPI,
+//      ANEURALNETWORKS_OP_FAILED);
+// int64_t code = status.full_status();
+//
+// auto parsed_status = delegates::DelegateStatus(code);
 class DelegateStatus {
  public:
   DelegateStatus() : DelegateStatus(DelegateStatusSource::NONE, 0) {}
@@ -76,6 +89,20 @@ class DelegateStatus {
   // value of a status code, like kTfLiteOk.
   int32_t code_;
 };
+
+// Used by delegates to report their configuration/settings to TFLite.
+// Calling this method adds a new GENERAL_RUNTIME_INSTRUMENTATION_EVENT to
+// the runtime Profiler.
+TfLiteStatus ReportDelegateSettings(TfLiteContext* context,
+                                    TfLiteDelegate* delegate,
+                                    const TFLiteSettings& settings);
+
+// Used by delegates to report their status to the TFLite runtime.
+// Calling this method adds a new GENERAL_RUNTIME_INSTRUMENTATION_EVENT to
+// the runtime Profiler.
+TfLiteStatus ReportDelegateStatus(TfLiteContext* context,
+                                  TfLiteDelegate* delegate,
+                                  const DelegateStatus& status);
 
 }  // namespace delegates
 }  // namespace tflite

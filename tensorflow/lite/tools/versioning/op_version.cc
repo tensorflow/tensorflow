@@ -620,10 +620,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_SELECT:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SQUARED_DIFFERENCE:
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
-        return 2;
-      }
-      return 1;
+    case BuiltinOperator_DEPTH_TO_SPACE:
     case BuiltinOperator_MIRROR_PAD:
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;

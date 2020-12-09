@@ -870,6 +870,10 @@ It is computed as:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BatchMatMulV2Op : TF_Op<"BatchMatMulV2", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
@@ -5024,6 +5028,26 @@ Table initializer that takes two tensors for keys and values respectively.
   TF_DerivedOperandTypeAttr Tkey = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_InplaceAddOp : TF_Op<"InplaceAdd", [AllTypesMatch<["x", "y"]>, NoSideEffect]> {
+  let summary = "Adds v into specified rows of x.";
+
+  let description = [{
+Computes y = x; y[i, :] += v; return y.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$x,
+    TF_Int32Tensor:$i,
+    TF_Tensor:$v
+  );
+
+  let results = (outs
+    TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
   let summary = "Updates specified rows 'i' with values 'v'.";
 
@@ -5367,6 +5391,37 @@ def TF_IteratorV2Op : TF_Op<"IteratorV2", []> {
 
   let results = (outs
     Res<TF_ResourceTensor, "", [TF_DatasetIteratorAlloc]>:$handle
+  );
+}
+
+def TF_KthOrderStatisticOp : TF_Op<"KthOrderStatistic", [NoSideEffect]> {
+  let summary = "Computes the Kth order statistic of a data set. The current";
+
+  let description = [{
+implementation uses a binary search requiring exactly 32 passes over
+the input data. The running time is linear with respect to input
+size. The median-of-medians algorithm is probably faster, but is
+difficult to implement efficiently in XLA. The implementation imposes
+a total ordering on floats. The ordering is consistent with the usual
+partial order.  Positive NaNs are greater than positive
+infinity. Negative NaNs are less than negative infinity. NaNs with
+distinct payloads are treated as distinct. Subnormal numbers are
+preserved (not flushed to zero). Positive infinity is greater than all
+numbers. Negative infinity is less than all numbers. Positive is
+greater than negative zero. There are less than k values greater than
+the kth order statistic. There are at least k values greater than or
+equal to the Kth order statistic. The semantics are not the same as
+top_k_unique.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$input,
+
+    I64Attr:$k
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$output
   );
 }
 
@@ -6499,6 +6554,27 @@ iterator in `iterator` to the first element of `dataset`.
   );
 
   let results = (outs);
+}
+
+def TF_MakeUniqueOp : TF_Op<"MakeUnique", [NoSideEffect]> {
+  let summary = [{
+Make all elements in the non-Batch dimension unique, but \"close\" to
+  }];
+
+  let description = [{
+their initial value. Never returns a sub-normal number. Never returns
+zero. The sign of each input element is always identical to the sign
+of the corresponding output element. Behavior for infinite elements is
+undefined. Behavior for subnormal elements is undefined.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$input
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$output
+  );
 }
 
 def TF_MatMulOp : TF_Op<"MatMul", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
@@ -15230,6 +15306,36 @@ array([[1, 2, 3, 1, 2, 3],
   let hasFolder = 1;
 }
 
+def TF_TopKUniqueOp : TF_Op<"TopKUnique", [NoSideEffect]> {
+  let summary = "Returns the TopK unique values in the array in sorted order.";
+
+  let description = [{
+The running time is proportional to the product of K and the input
+size. Sorting the whole array is more efficient for sufficiently large
+values of K. The median-of-medians algorithm is probably faster, but
+difficult to implement efficiently in XLA. If there are fewer than K
+unique numbers (not NANs), the results are padded with negative
+infinity. NaNs are never returned. Subnormal numbers are flushed to
+zero. If an element appears at multiple indices, the highest index is
+returned. If a TopK element never appears in the input due to padding
+values, the indices are padded with negative one. If a padding value
+appears in the input and padding is needed, the highest index of the
+padding value will be returned. The semantics are not the same as
+kth_order_statistic.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$input,
+
+    I64Attr:$k
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$topk,
+    TF_Int32Tensor:$topk_indices
+  );
+}
+
 def TF_TopKV2Op : TF_Op<"TopKV2", [NoSideEffect]> {
   let summary = [{
 Finds values and indices of the `k` largest elements for the last dimension.
@@ -15263,6 +15369,29 @@ If two elements are equal, the lower-index element appears first.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TF_TopKWithUniqueOp : TF_Op<"TopKWithUnique", [NoSideEffect]> {
+  let summary = "Returns the TopK values in the array in sorted order.";
+
+  let description = [{
+This is a combination of MakeUnique and TopKUnique. The returned top-K will
+have its lower bits replaced by iota, thus it will be close to the original
+value but not exactly the same. The running time is proportional to the product
+of K and the input size. NaNs are never returned. Subnormal numbers are flushed
+to zero.
+  }];
+
+  let arguments = (ins
+    TF_Float32Tensor:$input,
+
+    I64Attr:$k
+  );
+
+  let results = (outs
+    TF_Float32Tensor:$topk,
+    TF_Int32Tensor:$topk_indices
+  );
 }
 
 def TF_TransposeOp : TF_Op<"Transpose", [NoSideEffect]> {

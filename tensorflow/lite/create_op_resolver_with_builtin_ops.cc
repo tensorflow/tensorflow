@@ -15,17 +15,16 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 
-// The JNI code in interpreter_jni.cc expects a CreateOpResolver() function in
-// the tflite namespace. This one instantiates a
-// BuiltinOpResolverWithoutDefaultDelegates, with all the builtin ops but
-// without applying any TfLite delegates by default (like the XNNPACK delegate).
-// For smaller binary sizes users should avoid linking this in, and should
-// provide a custom make CreateOpResolver() instead.
+// This function instantiates a  BuiltinOpResolverWithoutDefaultDelegates, with
+// all the builtin ops but without applying any TfLite delegates by default
+// (like the XNNPACK delegate). For smaller binary sizes users should avoid
+// linking this in, and should provide a CreateOpResolver() with selected ops
+// instead.
 std::unique_ptr<OpResolver> CreateOpResolver() {  // NOLINT
   return std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver>(
       new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());

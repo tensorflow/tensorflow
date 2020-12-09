@@ -643,6 +643,15 @@ class TFRGen(transformer.CodeGenerator):
     else:
       return value, ty
 
+  def _i64_to_index(self, value, ty):
+    if ty == TFRTypes.I64:
+      casted = self._ssa_name('casted')
+      self._emit_with_loc('\n{} = index_cast {} : i64 to index'.format(
+          casted, value))
+      return casted, TFRTypes.INDEX
+    else:
+      return value, ty
+
   def _value_to_tensor(self, value, ty, node):
     value, ty = self._index_to_I64(value, ty)
     cst_tensor = self._ssa_name('cst')
@@ -828,15 +837,19 @@ class TFRGen(transformer.CodeGenerator):
       if func_name == 'len':
         arg, ty = self.visit(node.args[0])
         ty = self._get_inferred_type(node.args[0], ty)
-        assert ty == TFRTypes.TF_TENSOR_SHAPE_LIST, ty
-        len_value = self._ssa_name('len')
-        self._emit_with_loc(
-            '\n{} = shape.rank {} : !shape.shape -> !shape.size'.format(
-                len_value, arg), node)
-        size_value = self._ssa_name('len_size')
-        self._emit_with_loc(
-            '\n{} = shape.size_to_index {} : !shape.size'.format(
-                size_value, len_value), node)
+        if ty == TFRTypes.TF_TENSOR_SHAPE_LIST:
+          len_value = self._ssa_name('len')
+          self._emit_with_loc(
+              '\n{} = shape.rank {} : !shape.shape -> !shape.size'.format(
+                  len_value, arg), node)
+          size_value = self._ssa_name('len_size')
+          self._emit_with_loc(
+              '\n{} = shape.size_to_index {} : !shape.size'.format(
+                  size_value, len_value), node)
+        elif ty == TFRTypes.TENSOR_LIST:
+          size_value = self._ssa_name('len')
+          self._emit_with_loc(
+              '\n{} = tfr.get_length {} -> index'.format(size_value, arg), node)
         return (size_value, TFRTypes.INDEX)
 
     raise NotImplementedError('call operator not recognized: {} {}'.format(
@@ -845,7 +858,7 @@ class TFRGen(transformer.CodeGenerator):
   def visit_Compare(self, node):
     lhs, lhs_ty = self.visit(node.left)
     for op, right in zip(node.ops, node.comparators):
-      rhs, _ = self.visit(right)
+      rhs, rhs_ty = self.visit(right)
       if isinstance(op, ast.Eq):
         pred = 'eq'
       elif isinstance(op, ast.Lt):
@@ -870,6 +883,10 @@ class TFRGen(transformer.CodeGenerator):
           code = 'cmpi'
         elif lhs_ty == TFRTypes.F32:
           code = 'cmpf'
+        elif lhs_ty == TFRTypes.INDEX:
+          code = 'cmpi'
+          # TODO(fengliuai): the reverse type inference should solve the issue.
+          rhs, _ = self._i64_to_index(rhs, rhs_ty)
         else:
           raise NotImplementedError('Compare operand type not recognized')
         self._emit_with_loc(

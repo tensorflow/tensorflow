@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,16 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_BFLOAT16_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_BFLOAT16_H_
+#include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 
-#include "pybind11/pybind11.h"
-#include "tensorflow/compiler/xla/statusor.h"
-
-namespace xla {
-
-xla::StatusOr<pybind11::object> Bfloat16Dtype();
-
-}  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_BFLOAT16_H_
+void SE_InitPlugin(SE_PlatformRegistrationParams* const params,
+                   TF_Status* const status) {
+  params->platform->struct_size = SP_PLATFORM_STRUCT_SIZE;
+  params->platform->name = "GPU";
+  params->platform->type = "XGPU";
+}

@@ -317,5 +317,27 @@ TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
   }
 }
 
+TEST_F(DynamismInferenceTest, InferThroughPad) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    // Test the analysis on a gather.
+    auto operand1 = ConstantR1<int32>(&b, {1, 2});
+    auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
+    PaddingConfig padding_config;
+    padding_config.add_dimensions()->set_edge_padding_high(1);
+    // After pad the value is [constant, constant, parameter].
+    auto pad = Pad(operand1, parameter, padding_config);
+    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+    // Everything is constant, result is also contant.
+    EXPECT_FALSE(
+        ComputeDynamismLiteral(client, pad, &b).ValueOrDie().Get<bool>({0}));
+    EXPECT_FALSE(
+        ComputeDynamismLiteral(client, pad, &b).ValueOrDie().Get<bool>({1}));
+    EXPECT_TRUE(
+        ComputeDynamismLiteral(client, pad, &b).ValueOrDie().Get<bool>({2}));
+  }
+}
+
 }  // namespace
 }  // namespace xla

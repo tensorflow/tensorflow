@@ -24,17 +24,17 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 @interface TFLComputeTask : NSObject
 
 /// Returns empty string or error if shader can't be compiled.
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
                    taskDescriptor:(const tflite::gpu::metal::NodeDescriptor&)desc
-                   runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
+                        precision:(tflite::gpu::CalculationsPrecision)precision;
 
 /// Updates parameters for inputs/outputs/intermediate tensors
 - (absl::Status)updateParamsWithDevice:(id<MTLDevice>)device

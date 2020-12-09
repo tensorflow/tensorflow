@@ -3347,6 +3347,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     // contant False if dimension is static.
     // - Reduce: Convert to reduce or.
     // - Constant: Convert to constant False.
+    // - Reshape, slice, transpose, pad:
+    //   Convert into predicate type with same opcode.
     // - Other ops: Not supported.
     // Create the instruction for the new handle.
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
@@ -3449,6 +3451,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kReshape:
+      case HloOpcode::kPad:
         break;
       case HloOpcode::kGetDimensionSize: {
         int64 dimension = instr_proto->dimensions(0);

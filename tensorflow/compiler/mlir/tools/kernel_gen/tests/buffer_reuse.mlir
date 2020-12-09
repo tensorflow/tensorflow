@@ -3,7 +3,7 @@
 // CHECK-LABEL: @unique_reuse_output
 func @unique_reuse_output() -> (index, memref<2x3xi64>) attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK-SAME: reuse_output = 1 : index
+  // CHECK-SAME: reuse_output = 1 : i32
   %result_0 = constant 1 : index
   %result_1 = alloc() : memref<2x3xi64>
   return %result_0, %result_1 : index, memref<2x3xi64>
@@ -13,7 +13,7 @@ func @unique_reuse_output() -> (index, memref<2x3xi64>) attributes {tf_entry} {
 func @ambiguous_reuse_output(%pred : i1)
     -> (memref<2x3xi64>, memref<2x3xi64>) attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK: reuse_output = -1
+  // CHECK: reuse_output = -1 : i32
   %mem = alloc() : memref<2x3xi64>
   %other_mem = alloc() : memref<2x3xi64>
   cond_br %pred, ^bb0, ^bb1
@@ -32,7 +32,7 @@ func @direct_reuse(%not_a_memref : index,
                    %reusable_1 : memref<6xi64>) -> memref<2x3xi64>
                    attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [4 : index, 5 : index]
+  // CHECK-SAME: reuse_input_candidates = [4 : i32, 5 : i32]
   %result = alloc() : memref<2x3xi64>
   return %result : memref<2x3xi64>
 }
@@ -42,7 +42,7 @@ func @local_reuse_with_memref_maps(
     %arg : memref<?xi64, offset: 2, strides: [3]>, %n : index)
     -> memref<?xi64, offset: 2, strides: [3]> attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = alloc(%n) : memref<?xi64, offset: 2, strides: [3]>
   linalg.generic {
     indexing_maps = [affine_map<(i) -> (i)>, affine_map<(i) -> (i)>],
@@ -65,7 +65,7 @@ func @memref_reinterpret_cast_alias(%arg : memref<f32>, %n : index)
       strides: [%c0]: memref<f32> to memref<?xf32>
 
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = alloc(%n) : memref<?xf32>
 
   // reinterpreted (arg) and result are of same size.
@@ -86,7 +86,7 @@ func @memref_cast_alias(%arg : memref<*xf32>, %n : index)
   %casted = memref_cast %arg : memref<*xf32> to memref<?xf32>
 
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = alloc(%n) : memref<?xf32>
 
   // reinterpreted (arg) and result are of same size.
@@ -116,7 +116,7 @@ func @indirect_size_equality(%arg0 : memref<?xi64>,
   }
 
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index, 1 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
   %result = alloc(%n) : memref<?xi64>
 
   // arg0 and result are equal in size.
@@ -151,7 +151,7 @@ func @livetimes_incompatible(%arg0 : memref<3xi64>)
 // CHECK-LABEL: @never_used
 func @never_used(%arg0 : memref<3xi64>) -> memref<3xi64> attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = alloc() : memref<3xi64>
   %c0 = constant 0 : index
   %0 = load %arg0[%c0] : memref<3xi64>
@@ -164,7 +164,7 @@ func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   cond_br %pred, ^bb0, ^bb1
 ^bb0:
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [1 : index]
+  // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem0 = alloc() : memref<6xi64>
 
   // Keep buffer argument live in this branch. Reuse is still possible because
@@ -175,7 +175,7 @@ func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   br ^bb2(%mem0 : memref<6xi64>)
 ^bb1:
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [1 : index]
+  // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem1 = alloc() : memref<6xi64>
   br ^bb2(%mem1 : memref<6xi64>)
 ^bb2(%result : memref<6xi64>):
@@ -201,7 +201,7 @@ func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
   br ^bb2(%mem0 : memref<6xi64>)
 ^bb1:
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [1 : index]
+  // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem1 = alloc() : memref<6xi64>
   br ^bb2(%mem1 : memref<6xi64>)
 ^bb2(%result : memref<6xi64>):
@@ -213,7 +213,7 @@ func @branching_reuse_if(%pred : i1, %arg : memref<6xi64>)
     -> memref<6xi64> attributes {tf_entry} {
   %result = scf.if %pred -> (memref<6xi64>) {
     // CHECK: alloc
-    // CHECK-SAME: reuse_input_candidates = [1 : index]
+    // CHECK-SAME: reuse_input_candidates = [1 : i32]
     %mem0 = alloc() : memref<6xi64>
 
     // Keep buffer argument live in this branch. Reuse is still possible because
@@ -224,7 +224,7 @@ func @branching_reuse_if(%pred : i1, %arg : memref<6xi64>)
     scf.yield %mem0 : memref<6xi64>
   } else {
     // CHECK: alloc
-    // CHECK-SAME: reuse_input_candidates = [1 : index]
+    // CHECK-SAME: reuse_input_candidates = [1 : i32]
     %mem1 = alloc() : memref<6xi64>
     scf.yield %mem1 : memref<6xi64>
   }
@@ -249,7 +249,7 @@ func @branching_no_reuse_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     scf.yield %mem0 : memref<6xi64>
   } else {
     // CHECK: alloc
-    // CHECK-SAME: reuse_input_candidates = [1 : index]
+    // CHECK-SAME: reuse_input_candidates = [1 : i32]
     %mem1 = alloc() : memref<6xi64>
     scf.yield %mem1 : memref<6xi64>
   }
@@ -357,7 +357,7 @@ func @abs_unranked_i64(%arg : memref<*xi64>,
   %flat_arg = memref_reshape %arg(%flat_shape)
       : (memref<*xi64>, memref<1xindex>) -> memref<?xi64>
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index], reuse_output = 0 : index
+  // CHECK-SAME: reuse_input_candidates = [0 : i32], reuse_output = 0 : i32
   %flat_result = alloc(%arg_size) : memref<?xi64>
   linalg.generic {
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],
@@ -389,7 +389,7 @@ func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
 
     // Allocation and use of new buffer.
     // CHECK: alloc
-    // CHECK-SAME: reuse_input_candidates = [0 : index]
+    // CHECK-SAME: reuse_input_candidates = [0 : i32]
     %mem = alloc() : memref<3xf32>
     %use = load %mem[%c0] : memref<3xf32>
 
@@ -402,7 +402,7 @@ func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
 func @index_element_type(%arg : memref<2x3xindex>) -> memref<2x3xindex>
     attributes {tf_entry} {
   // CHECK: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = alloc() : memref<2x3xindex>
   return %result : memref<2x3xindex>
 }
@@ -429,7 +429,7 @@ func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
   %7 = load %6[%c0] : memref<1xi64>
   %8 = index_cast %7 : i64 to index
   // CHECK-LABEL: alloc
-  // CHECK-SAME: reuse_input_candidates = [0 : index]
+  // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %9 = alloc(%8) : memref<?xf32>
   linalg.generic {
     indexing_maps = [affine_map<(d0) -> (d0)>, affine_map<(d0) -> (d0)>],

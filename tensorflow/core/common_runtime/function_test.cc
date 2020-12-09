@@ -393,6 +393,35 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
 
+TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
+  class DummyStackTrace : public AbstractStackTrace {
+    absl::Span<StackFrame const> ToFrames() const override { return {}; }
+
+    std::string ToString(const TracePrintingOptions& opts) const override {
+      return "DummyStackTrace";
+    }
+  };
+
+  FunctionDef func = test::function::XTimesTwo();
+  Init({});
+
+  StackTracesMap stack_traces;
+  stack_traces["two"] = std::make_shared<DummyStackTrace>();
+
+  TF_CHECK_OK(lib_def_->AddFunctionDef(func, stack_traces));
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {}, &handle));
+
+  const FunctionBody* func_body = flr0_->GetFunctionBody(handle);
+  for (const Node* node : func_body->graph->nodes()) {
+    if (node->name() == "two") {
+      EXPECT_EQ(node->GetStackTrace()->ToString({}), "DummyStackTrace");
+    }
+  }
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
+}
+
 TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_MultiDeviceBacked) {
   Init({test::function::XTimesTwo()});
   auto x = test::AsTensor<float>({1, 2, 3, 4});

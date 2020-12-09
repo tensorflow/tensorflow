@@ -104,7 +104,9 @@ cc_library(
         "utils/utils.h",
     ],
     deps = [
+        ":tfr",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

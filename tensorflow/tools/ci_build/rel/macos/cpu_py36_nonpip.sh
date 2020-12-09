@@ -27,7 +27,7 @@ python3.6 -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
 
 # Install macos pip dependencies
-install_macos_pip_deps sudo pip3.6
+install_macos_pip_deps virtualenv
 
 # Run configure.
 export TF_NEED_CUDA=0

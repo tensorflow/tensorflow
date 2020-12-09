@@ -14,7 +14,9 @@ exports_files(glob([
     "testdata/*.tflite",
     "testdata/*.csv",
     "models/testdata/*",
-]))
+]) + [
+    "create_op_resolver.h",
+])
 
 config_setting(
     name = "gemmlowp_profiling",
@@ -260,7 +262,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/delegates:status",
+        "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
@@ -347,7 +349,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/delegates:status",
+        "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
@@ -704,6 +706,34 @@ cc_library(
         ":kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+# Defines CreateOpResolver with all builtin ops.
+cc_library(
+    name = "create_op_resolver_with_builtin_ops",
+    srcs = ["create_op_resolver_with_builtin_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+# This target is created for tflite_custom_cc_library build rule. It requires
+# the header file generated from gen_selected_ops so should not be depended on
+# directly.
+# TODO(b/174972014): Generate this target to give RegisterSelectedOps a custom namespace.
+cc_library(
+    name = "create_op_resolver_with_selected_ops",
+    srcs = ["create_op_resolver_with_selected_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:mutable_op_resolver",
+        "//tensorflow/lite:op_resolver",
     ],
 )
 

@@ -157,7 +157,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
     config = super(Adagrad, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'initial_accumulator_value': self._initial_accumulator_value,
         'epsilon': self.epsilon,
     })

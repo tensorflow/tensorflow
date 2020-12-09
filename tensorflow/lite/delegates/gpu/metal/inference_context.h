@@ -23,11 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 /// Stages of model preprocessing:
 /// 1. Operations' initialization. All operations are initialized and added into
@@ -56,7 +56,7 @@ limitations under the License.
                                  model:(const tflite::gpu::metal::CompiledModel&)compiledModel
                         inputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)inputBufferIDs
                        outputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)outputBufferIDs
-                        runtimeOptions:(const tflite::gpu::metal::RuntimeOptions&)options;
+                             precision:(tflite::gpu::CalculationsPrecision)precision;
 
 /// Inserts all GPU compute tasks into the command encoder.
 /// @param inputOutputBuffers Must be created and passed into the method with pairs ID:buffer

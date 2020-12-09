@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
 
@@ -81,8 +81,8 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case U64:
       return py::dtype::of<uint64>();
     case BF16: {
-      TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
-      return py::dtype::from_args(bfloat16);
+      py::handle bfloat16(tensorflow::Bfloat16Dtype());
+      return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
     }
     case F16:
       return py::dtype("e");  // PEP 3118 code for "float16
@@ -237,10 +237,11 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
     // We requested an array of uint16 since NumPy doesn't know how
     // to produce our custom bfloat16 type. Reinterpret the array as bfloat16
     // before handing it back to the caller.
-    TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
+    py::handle bfloat16(tensorflow::Bfloat16Dtype());
+    bfloat16.inc_ref();
     array = py::reinterpret_steal<py::array>(
         PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
-                     reinterpret_cast<PyArray_Descr*>(bfloat16.release().ptr()),
+                     reinterpret_cast<PyArray_Descr*>(bfloat16.ptr()),
                      static_cast<PyTypeObject*>(nullptr)));
   }
   return array;
