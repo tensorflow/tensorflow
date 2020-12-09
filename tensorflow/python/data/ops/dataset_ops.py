@@ -1774,11 +1774,6 @@ name=None))
     in general precludes the possibility of executing user-defined
     transformations in parallel (because of Python GIL).
 
-    The order of elements yielded by this transformation is
-    deterministic, as long as `map_func` is a pure function and
-    `deterministic=True`. If `map_func` contains any stateful operations, the
-    order in which that state is accessed is undefined.
-
     Performance can often be improved by setting `num_parallel_calls` so that
     `map` will use multiple threads to process elements. If deterministic order
     isn't required, it can also improve performance to set
@@ -1788,6 +1783,12 @@ name=None))
     >>> dataset = dataset.map(lambda x: x + 1,
     ...     num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
+
+    If `num_parallel_calls > 1`, the order of elements yielded by this
+    transformation is deterministic if `deterministic=True`. If `map_func`
+    contains stateful operations and `num_parallel_calls > 1`, the order in
+    which that state is accessed is undefined, so the values of output elements
+    may not be deterministic regardless of the `deterministic` flag value.
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
