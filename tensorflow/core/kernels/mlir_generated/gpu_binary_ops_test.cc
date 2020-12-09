@@ -67,6 +67,15 @@ template <typename T,
 absl::optional<T> BitwiseOr(T /*lhs*/, T /*rhs*/) {
   return absl::nullopt;
 }
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseXor(T lhs, T rhs) {
+  return lhs ^ rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseXor(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
 
 class ParametricGpuBinaryOpsTest
     : public OpsTestBase,
@@ -330,6 +339,11 @@ class ParametricGpuBinaryOpsTest
         return static_cast<BaselineOutT>(val.value());
       }
     }
+    if (GetParam().op_name == "BitwiseXor") {
+      if (auto val = BitwiseXor(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
     if (GetParam().op_name == "Equal") {
       return static_cast<BaselineOutT>(lhs == rhs);
     }
@@ -354,6 +368,7 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
        std::vector<DataType>{DT_INT8, DT_INT16, DT_INT32, DT_INT64}) {
     parameters.emplace_back("BitwiseAnd", dt, dt);
     parameters.emplace_back("BitwiseOr", dt, dt);
+    parameters.emplace_back("BitwiseXor", dt, dt);
   }
   for (DataType dt :
        std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8,

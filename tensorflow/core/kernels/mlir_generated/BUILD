@@ -160,6 +160,7 @@ tf_kernel_library(
         "unranked_op_gpu_add.cc",
         "unranked_op_gpu_bitwise_and.cc",
         "unranked_op_gpu_bitwise_or.cc",
+        "unranked_op_gpu_bitwise_xor.cc",
         "unranked_op_gpu_equal.cc",
     ],
     tags = [
@@ -169,6 +170,7 @@ tf_kernel_library(
         ":add_v2_unranked_kernels",
         ":bitwise_and_unranked_kernels",
         ":bitwise_or_unranked_kernels",
+        ":bitwise_xor_unranked_kernels",
         ":equal_unranked_kernels",
         ":greater_equal_unranked_kernels",
         ":greater_unranked_kernels",
@@ -401,6 +403,7 @@ gen_kernel_library(
     for name in [
         "bitwise_and",
         "bitwise_or",
+        "bitwise_xor",
     ]
 ]
 
