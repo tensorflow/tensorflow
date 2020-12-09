@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_SVDF_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_SVDF_H_
 
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
@@ -33,7 +34,6 @@ struct OpData {
   int input_zero_point;
   int output_zero_point;
 };
-
 
 // TensorflowLite Micro-specific reference implementation for Integer SVDF.
 void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,

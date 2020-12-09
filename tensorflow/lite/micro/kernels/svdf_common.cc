@@ -12,7 +12,6 @@
 #include "tensorflow/lite/micro/kernels/svdf.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
-
 namespace tflite {
 
 void EvalIntegerSvdfReference(TfLiteContext* context, TfLiteNode* node,
