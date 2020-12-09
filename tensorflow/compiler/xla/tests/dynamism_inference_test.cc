@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -158,6 +159,21 @@ TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
     auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
     auto pred = Eq(c, p);
     auto result = Select(pred, p, c);
+    EXPECT_EQ(ComputeDynamismScalar(client, result, &b, {}).ValueOrDie(), true);
+  }
+}
+
+TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto c = ConstantR0<int32>(&b, 42);
+    auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}), "p0");
+    auto zero = ConstantR0<int32>(&b, 0);
+    XlaComputation add_s32 = CreateScalarAddComputation(S32, &b);
+    auto reduce = Reduce(p, zero, add_s32, {0});
+    auto pred = Eq(c, reduce);
+    auto result = Select(pred, reduce, c);
     EXPECT_EQ(ComputeDynamismScalar(client, result, &b, {}).ValueOrDie(), true);
   }
 }
