@@ -448,12 +448,13 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
   // Test with maximum possible x and quantized_multiplier
   const int32_t x = std::numeric_limits<int32_t>::max();
   const int32_t quantized_multiplier = std::numeric_limits<int32_t>::max();
-  const int32_t expected =
+  const int shift = -3;
+  const int32_t expected = static_cast<int32_t>(
       TfLiteRound(static_cast<int64_t>(x) * quantized_multiplier /
-                  static_cast<double>(1ll << 31 - (-3)));
-  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, -3),
+                  static_cast<double>(1ll << (31 - shift))));
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift),
             expected);
-  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, -3),
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, shift),
             -expected);
 }
 
@@ -479,12 +480,13 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt64) {
   // Test with maximum possible x and quantized_multiplier
   const int64_t x = (1ll << 47) - 1;
   const int32_t quantized_multiplier = std::numeric_limits<int32_t>::max();
-  // Expected is around 'x * quantized_multiplier / 2**(31 - (-31))' ~= 65536
+  const int shift = -31;
+  // Expected is around 'x * quantized_multiplier / 2**(31 - shift)' ~= 65536
   // As there is some rounding error, expected is a bit smaller.
   const int32_t expected = 65534;
-  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, -31),
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift),
             expected);
-  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, -31),
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, shift),
             -expected);
 }
 
