@@ -15,8 +15,11 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/eager/unified_api_testutil.h"
 #include "tensorflow/c/experimental/gradients/grad_test_helper.h"
 #include "tensorflow/c/experimental/gradients/tape/tape_context.h"
+#include "tensorflow/c/experimental/ops/nn_ops.h"
+#include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -28,16 +31,19 @@ using tensorflow::TF_StatusPtr;
 
 Status SparseSoftmaxCrossEntropyWithLogitsModel(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-    absl::Span<AbstractTensorHandle*> outputs,
-    const GradientRegistry& registry) {
+    absl::Span<AbstractTensorHandle*> outputs) {
   return ops::SparseSoftmaxCrossEntropyWithLogits(
       ctx, inputs, outputs, "SparseSoftmaxCrossEntropyWithLogits");
 }
 
 Status SparseSoftmaxCrossEntropyWithLogitsGradModel(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-    absl::Span<AbstractTensorHandle*> outputs,
-    const GradientRegistry& registry) {
+    absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(
+      registry.Register("SparseSoftmaxCrossEntropyWithLogits",
+                        SparseSoftmaxCrossEntropyWithLogitsRegisterer));
+
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch score.
   tape.Watch(inputs[1]);  // Watch label.
@@ -58,15 +64,16 @@ Status SparseSoftmaxCrossEntropyWithLogitsGradModel(
 
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
+                    absl::Span<AbstractTensorHandle*> outputs) {
   return ops::BiasAdd(ctx, inputs, outputs, "BiasAdd");
 }
 
 Status BiasAddGradModel(AbstractContext* ctx,
                         absl::Span<AbstractTensorHandle* const> inputs,
-                        absl::Span<AbstractTensorHandle*> outputs,
-                        const GradientRegistry& registry) {
+                        absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(registry.Register("BiasAdd", BiasAddRegisterer));
+
   Tape tape(/*persistent=*/false);
   tape.Watch(inputs[0]);  // Watch A.
   tape.Watch(inputs[1]);  // Watch Bias.
@@ -84,14 +91,6 @@ Status BiasAddGradModel(AbstractContext* ctx,
   return Status::OK();
 }
 
-Status RegisterGradients(GradientRegistry* registry) {
-  TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
-  TF_RETURN_IF_ERROR(
-      registry->Register("SparseSoftmaxCrossEntropyWithLogits",
-                         SparseSoftmaxCrossEntropyWithLogitsRegisterer));
-  return Status::OK();
-}
-
 class CppGradients
     : public ::testing::TestWithParam<std::tuple<const char*, bool, bool>> {
  protected:
@@ -99,7 +98,7 @@ class CppGradients
     TF_StatusPtr status(TF_NewStatus());
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
-    CHECK_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
     {
       AbstractContext* ctx_raw = nullptr;
@@ -108,12 +107,8 @@ class CppGradients
       ASSERT_EQ(errors::OK, s.code()) << s.error_message();
       ctx_.reset(ctx_raw);
     }
-
-    s = RegisterGradients(&registry_);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   }
 
-  GradientRegistry registry_;
   AbstractContextPtr ctx_;
 
  public:
@@ -131,19 +126,31 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
   // Score
   float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 0.0f, -1.0f};
   int64_t X_dims[] = {3, 3};
-  AbstractTensorHandlePtr X =
-      GetTensorHandleUtilFloat(ctx_.get(), X_vals, X_dims, 2);
+  AbstractTensorHandlePtr X;
+  {
+    AbstractTensorHandle* X_raw;
+    Status s =
+        TestTensorHandleWithDimsFloat(ctx_.get(), X_vals, X_dims, 2, &X_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    X.reset(X_raw);
+  }
   // Label
   int Y_vals[] = {1, 0, 1};
   int64_t Y_dims[] = {3};
-  AbstractTensorHandlePtr Y =
-      GetTensorHandleUtilInt(ctx_.get(), Y_vals, Y_dims, 1);
+  AbstractTensorHandlePtr Y;
+  {
+    AbstractTensorHandle* Y_raw;
+    Status s =
+        TestTensorHandleWithDimsInt(ctx_.get(), Y_vals, Y_dims, 1, &Y_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Y.reset(Y_raw);
+  }
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       SparseSoftmaxCrossEntropyWithLogitsModel,
       SparseSoftmaxCrossEntropyWithLogitsGradModel, ctx_.get(),
       {X.get(), Y.get()},
-      /*use_function=*/UseFunction(), registry_));
+      /*use_function=*/UseFunction()));
 }
 
 TEST_P(CppGradients, TestBiasAddGrad) {
@@ -154,17 +161,29 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   // A
   float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f};
   int64_t A_dims[] = {2, 2};
-  AbstractTensorHandlePtr A =
-      GetTensorHandleUtilFloat(ctx_.get(), A_vals, A_dims, 2);
+  AbstractTensorHandlePtr A;
+  {
+    AbstractTensorHandle* A_raw;
+    Status s =
+        TestTensorHandleWithDimsFloat(ctx_.get(), A_vals, A_dims, 2, &A_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    A.reset(A_raw);
+  }
   // Bias
   float Bias_vals[] = {2.0f, 3.0f};
   int64_t Bias_dims[] = {2};
-  AbstractTensorHandlePtr Bias =
-      GetTensorHandleUtilFloat(ctx_.get(), Bias_vals, Bias_dims, 1);
+  AbstractTensorHandlePtr Bias;
+  {
+    AbstractTensorHandle* Bias_raw;
+    Status s = TestTensorHandleWithDimsFloat(ctx_.get(), Bias_vals, Bias_dims,
+                                             1, &Bias_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Bias.reset(Bias_raw);
+  }
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
-      /*use_function=*/UseFunction(), registry_));
+      /*use_function=*/UseFunction()));
 }
 
 #ifdef PLATFORM_GOOGLE
