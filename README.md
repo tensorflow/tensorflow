@@ -45,13 +45,13 @@ To install the current release, which includes support for
 Windows)*:
 
 ```
-$ pip install tensorflow
+pip install tensorflow
 ```
 
 A smaller CPU-only package is also available:
 
 ```
-$ pip install tensorflow-cpu
+pip install tensorflow-cpu
 ```
 
 To update TensorFlow to the latest version, add `--upgrade` flag to the above
@@ -64,7 +64,7 @@ commands.
 #### *Try your first TensorFlow program*
 
 ```shell
-$ python
+python
 ```
 
 ```python
