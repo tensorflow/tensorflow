@@ -162,6 +162,8 @@ tf_kernel_library(
         "unranked_op_gpu_bitwise_or.cc",
         "unranked_op_gpu_bitwise_xor.cc",
         "unranked_op_gpu_equal.cc",
+        "unranked_op_gpu_logical_and.cc",
+        "unranked_op_gpu_logical_or.cc",
     ],
     tags = [
         "manual",
@@ -176,6 +178,8 @@ tf_kernel_library(
         ":greater_unranked_kernels",
         ":less_equal_unranked_kernels",
         ":less_unranked_kernels",
+        ":logical_and_unranked_kernels",
+        ":logical_or_unranked_kernels",
         ":maximum_unranked_kernels",
         ":minimum_unranked_kernels",
         ":not_equal_unranked_kernels",
@@ -404,6 +408,25 @@ gen_kernel_library(
         "bitwise_and",
         "bitwise_or",
         "bitwise_xor",
+    ]
+]
+
+# Logical operations.
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "i1",
+        ],
+        # TODO(b/174543802): Enable once fusion heursitics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "logical_and",
+        "logical_or",
     ]
 ]
 

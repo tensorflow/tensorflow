@@ -35,13 +35,20 @@ namespace tensorflow {
 namespace {
 
 // Tests are parametrized with the kernel name, the input data type and the
-// output data type.
+// output data type. Additionally, the flag use_constraint can be set to false
+// if the operation's nodedef does not have a type constraint associated with
+// it.
 struct BinaryTestParam {
   std::string op_name;
   DataType input_type;
   DataType output_type;
-  BinaryTestParam(const std::string& name, DataType input, DataType output)
-      : op_name(name), input_type(input), output_type(output) {}
+  bool use_constraint;
+  BinaryTestParam(const std::string& name, DataType input, DataType output,
+                  bool use_constraint = true)
+      : op_name(name),
+        input_type(input),
+        output_type(output),
+        use_constraint(use_constraint) {}
 };
 
 // To add additional tests for other kernels, search for PLACEHOLDER in this
@@ -76,6 +83,24 @@ template <typename T,
 absl::optional<T> BitwiseXor(T /*lhs*/, T /*rhs*/) {
   return absl::nullopt;
 }
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalAnd(T lhs, T rhs) {
+  return lhs && rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalAnd(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalOr(T lhs, T rhs) {
+  return lhs || rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalOr(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
 
 class ParametricGpuBinaryOpsTest
     : public OpsTestBase,
@@ -93,11 +118,13 @@ class ParametricGpuBinaryOpsTest
              const TensorShape& shape_1,
              const absl::InlinedVector<T, 10>& input_2,
              const TensorShape& shape_2) {
-    TF_ASSERT_OK(NodeDefBuilder("some_name", GetParam().op_name)
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Attr("T", DataTypeToEnum<T>::v())
-                     .Finalize(node_def()));
+    auto builder = NodeDefBuilder("some_name", GetParam().op_name)
+                       .Input(FakeInput(DataTypeToEnum<T>::v()))
+                       .Input(FakeInput(DataTypeToEnum<T>::v()));
+    if (GetParam().use_constraint) {
+      builder.Attr("T", DataTypeToEnum<T>::v());
+    }
+    TF_ASSERT_OK(builder.Finalize(node_def()));
 
     TF_ASSERT_OK(InitOp());
     inputs_.clear();
@@ -347,6 +374,16 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "Equal") {
       return static_cast<BaselineOutT>(lhs == rhs);
     }
+    if (GetParam().op_name == "LogicalAnd") {
+      if (auto val = LogicalAnd(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
+    if (GetParam().op_name == "LogicalOr") {
+      if (auto val = LogicalOr(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
     // Add the logic for creating expected values for the kernel you want to
     // test here.
     // <PLACEHOLDER>
@@ -375,6 +412,10 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
                              DT_INT16, DT_INT64}) {
     parameters.emplace_back("Equal", dt, DT_BOOL);
   }
+  parameters.emplace_back("LogicalAnd", DT_BOOL, DT_BOOL,
+                          /*use_constraint=*/false);
+  parameters.emplace_back("LogicalOr", DT_BOOL, DT_BOOL,
+                          /*use_constraint=*/false);
   // Add the parameters (kernel name and data types to test) here.
   // <PLACEHOLDER>
   return parameters;
