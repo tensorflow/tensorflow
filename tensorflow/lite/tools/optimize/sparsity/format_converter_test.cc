@@ -44,6 +44,11 @@ TEST(FormatConverterTest, SimpleTestD0D1) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestS0D1) {
@@ -70,6 +75,11 @@ TEST(FormatConverterTest, SimpleTestS0D1) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestD0S1) {
@@ -96,6 +106,11 @@ TEST(FormatConverterTest, SimpleTestD0S1) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestS0S1) {
@@ -124,6 +139,11 @@ TEST(FormatConverterTest, SimpleTestS0S1) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestD1D0) {
@@ -148,6 +168,11 @@ TEST(FormatConverterTest, SimpleTestD1D0) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestS1D0) {
@@ -174,6 +199,11 @@ TEST(FormatConverterTest, SimpleTestS1D0) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestD1S0) {
@@ -200,6 +230,11 @@ TEST(FormatConverterTest, SimpleTestD1S0) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, SimpleTestS1S0) {
@@ -228,6 +263,11 @@ TEST(FormatConverterTest, SimpleTestS1S0) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, 3DTestS0D1S2) {
@@ -259,6 +299,11 @@ TEST(FormatConverterTest, 3DTestS0D1S2) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, 3DTestD0D1S2) {
@@ -288,6 +333,11 @@ TEST(FormatConverterTest, 3DTestD0D1S2) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, 3DTestS0S1S2) {
@@ -321,6 +371,11 @@ TEST(FormatConverterTest, 3DTestS0S1S2) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, 3DTestS0S2S1) {
@@ -354,6 +409,11 @@ TEST(FormatConverterTest, 3DTestS0S2S1) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, BlockTestD0D1) {
@@ -384,6 +444,11 @@ TEST(FormatConverterTest, BlockTestD0D1) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 // BCSR
@@ -417,6 +482,11 @@ TEST(FormatConverterTest, BlockTestD0S11DBlock) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 // BCSR
@@ -450,6 +520,11 @@ TEST(FormatConverterTest, BlockTestD0S12DBlock) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 // BCSC
@@ -483,6 +558,11 @@ TEST(FormatConverterTest, BlockTestD1S0) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 // BCSR with last block being empty
@@ -516,6 +596,11 @@ TEST(FormatConverterTest, BlockTestD0S1LastBlockEmpty) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 
 TEST(FormatConverterTest, BlockTestD0S1ColMajorBlock) {
@@ -550,6 +635,11 @@ TEST(FormatConverterTest, BlockTestD0S1ColMajorBlock) {
   converter.SparseToDense(expected_data.data());
   const auto data_back = converter.GetData();
   EXPECT_EQ(data_back, dense_values);
+
+  std::vector<int> dense_data(dense_values.size());
+  converter.SparseToDense(expected_data.data(), dense_data.size(),
+                          dense_data.data(), nullptr);
+  EXPECT_EQ(dense_data, dense_values);
 }
 }  // namespace
 }  // namespace sparsity

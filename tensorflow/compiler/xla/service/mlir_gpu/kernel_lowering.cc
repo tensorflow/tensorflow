@@ -168,9 +168,17 @@ class LowerToNVVMPass
     ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
-    target.addIllegalOp<::mlir::LLVM::ExpOp>();
     target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
     target.addLegalDialect<::mlir::NVVM::NVVMDialect>();
+    // TODO(frgossen): Move this upstream as
+    // `configureGpuToNVVMConversionLegality`.
+    // Declare some LLVM operations illegal to ensure their lowering to `__nv`
+    // intrinsics.
+    target.addIllegalOp<mlir::LLVM::CosOp, mlir::LLVM::ExpOp,
+                        mlir::LLVM::FAbsOp, mlir::LLVM::FCeilOp,
+                        mlir::LLVM::FFloorOp, mlir::LLVM::LogOp,
+                        mlir::LLVM::Log10Op, mlir::LLVM::Log2Op,
+                        mlir::LLVM::SinOp, mlir::LLVM::SqrtOp>();
     // TODO(csigg): Remove once we support replacing non-root ops.
     target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
                       ::mlir::gpu::YieldOp>();

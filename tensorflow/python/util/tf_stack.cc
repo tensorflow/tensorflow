@@ -19,7 +19,7 @@ limitations under the License.
 // We store the retrieved stack trace within the Node object directly. Then
 // whenever the graph is instantiated/copies, we copy the stack trace with it.
 // Since the graph instantiation goes through the protobuf roundtrip, we store
-// the original Graph with stack traces attached in FunctionLibraryDefinition.
+// the original stack traces mapping attached in FunctionLibraryDefinition.
 
 #include <Python.h>
 #include <frameobject.h>

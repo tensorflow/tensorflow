@@ -223,7 +223,7 @@ class NcclCliqueRendezvous
         local_participants_(local_participants),
         callback_(callback) {}
 
-  StatusOr<ParticipantImplOutput> RunCollectiveOp(
+  StatusOr<LockedNcclClique> RunCollectiveOp(
       const NcclCliqueParticipantData&) override {
     tensorflow::mutex_lock lock(mu_);
     bool primary = !initialized_;
@@ -238,7 +238,7 @@ class NcclCliqueRendezvous
     if (primary) {
       lock_ = std::make_shared<absl::MutexLock>(clique->mu());
     }
-    return ParticipantImplOutput{primary, LockedNcclClique{clique, lock_}};
+    return LockedNcclClique{clique, lock_};
   }
 
  private:

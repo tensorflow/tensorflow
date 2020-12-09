@@ -37,6 +37,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -1058,10 +1059,10 @@ tf_cc_test(
     size = "small",
     srcs = ["op_gen_lib_test.cc"],
     deps = [
+        ":op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/framework:op_gen_lib",
     ],
 )
 
@@ -1111,6 +1112,7 @@ tf_cc_test(
     srcs = ["run_handler_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":tensor_testutil",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework_internal",
@@ -1120,7 +1122,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",

@@ -240,7 +240,7 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def("device_count", &PyClient::device_count)
-      .def("local_device_count", &PyClient::local_device_count)
+      .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("host_id", &PyClient::host_id)

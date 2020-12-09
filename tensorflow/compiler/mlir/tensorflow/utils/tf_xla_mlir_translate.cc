@@ -250,7 +250,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunction(
       module_op, arg_shapes, /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
       emit_return_tuple, /*use_resource_updates_for_aliases=*/true,
       IdentityShapeRepresentationFn(), &compilation_result,
-      /*custom_legalization_passes=*/{});
+      /*custom_legalization_passes=*/{}, /*inline_after_legalization=*/false);
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
                << compilation_status.ToString();

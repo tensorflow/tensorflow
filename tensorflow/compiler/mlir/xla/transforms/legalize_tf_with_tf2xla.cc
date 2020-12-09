@@ -154,6 +154,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::IgammaOp>(),
     TypeID::get<TF::IgammacOp>(),
     TypeID::get<TF::IgammaGradAOp>(),
+    TypeID::get<TF::InplaceAddOp>(),
     TypeID::get<TF::InTopKV2Op>(),
     TypeID::get<TF::InvertOp>(),
     TypeID::get<TF::InvOp>(),

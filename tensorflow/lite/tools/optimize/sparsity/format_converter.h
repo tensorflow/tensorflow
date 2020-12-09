@@ -54,18 +54,27 @@ class FormatConverter {
   FormatConverter(const std::vector<int>& shape,
                   const TfLiteSparsity& sparsity);
 
+  // TODO(b/175040247): Return const reference to avoid copy.
   std::vector<T> GetData() { return data_; }
   std::vector<std::vector<int>> GetDimMetadata() { return dim_metadata_; }
 
+  // Method for dense to sparse conversion. Need to call GetData() method to get
+  // the compressed data.
   TfLiteStatus DenseToSparse(const T* src_data);
 
+  // Method for sparse to dense conversion. Need to call GetData() method to get
+  // the decompressed data.
   TfLiteStatus SparseToDense(const T* src_data);
+  // Method for sparse to dense conversion with caller provided buffer. No need
+  // to call GetData() with this method.
+  TfLiteStatus SparseToDense(const T* src_data, const size_t dest_size,
+                             T* dest_data, TfLiteContext* context);
 
  private:
   // A recursive function to fetch data from the compressed src_data buffer and
   // populate the dense buffer.
   void Populate(const T* src_data, std::vector<int> indices, int level,
-                int prev_idx, int* src_data_ptr);
+                int prev_idx, int* src_data_ptr, T* dest_data);
 
   // Check if val is equal to zero.
   bool IsZero(const T val);
@@ -76,7 +85,7 @@ class FormatConverter {
   // tensor with (2, 2) block has blocked_shape (2, 2).
   std::vector<int> blocked_shape_;
   // Total number of elements in the dense tensor.
-  uint64_t dense_size_;
+  size_t dense_size_;
   // Has n(original dimension)+k(block_dimension) elements.
   std::vector<int> traversal_order_;
   // Format of each dimension in the traversal order.

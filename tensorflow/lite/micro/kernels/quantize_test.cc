@@ -270,10 +270,8 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8NoZeroPoint) {
 #endif
 
 #if !defined(XTENSA)
-// TODO(b/174603495): Since the hifimini optimized implementation does support
-// input==int16 and output==int8, it seems like this kernel test should pass. It
-// currently does not, but we are moving it to its own ifdef block to make it
-// more visible and hopefully fix this in the near future.
+// TODO(b/155682734): Hifimini optimized quantize requires input scale to be
+// smaller then output scale.
 TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
@@ -302,6 +300,25 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt32) {
   const int output_zero_point = 0;
   int32_t output_quantized[length];
   int32_t values_quantized[length];
+  int16_t input_quantized[length];
+  tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
+                                  input_zero_point, dims, values,
+                                  values_quantized, output_scale,
+                                  output_zero_point, output_quantized);
+}
+
+TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
+  constexpr int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
+  // TODO(b/155682734): Input scale must be smaller than output scale for
+  // xtensa.
+  const float input_scale = 0.4f;
+  const int input_zero_point = 0;
+  const float output_scale = 1.0f;
+  const int output_zero_point = 0;
+  int8_t output_quantized[length];
+  int8_t values_quantized[length];
   int16_t input_quantized[length];
   tflite::testing::TestRequantize(dims, values, input_quantized, input_scale,
                                   input_zero_point, dims, values,

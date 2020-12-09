@@ -61,6 +61,7 @@
     *   Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
     *   Added dynamic range quantization support for the BatchMatMul op.
+    *  Added DEPTH_TO_SPACE support in Post training quantization.
     *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
        only supports float32 input.
     *  TFLite Supports SingatureDef:

@@ -52,10 +52,15 @@ bool PyLong_CheckNoOverflow(PyObject* object) {
 
 // Registered numpy type ID. Global variable populated by the registration code.
 // Protected by the GIL.
-int npy_bfloat16 = -1;
+int npy_bfloat16 = NPY_NOTYPE;
 
 // Forward declaration.
-extern PyTypeObject PyBfloat16_Type;
+extern PyTypeObject bfloat16_type;
+
+// Pointer to the bfloat16 type object we are using. This is either a pointer
+// to bfloat16_type, if we choose to register it, or to the bfloat16 type
+// registered by another system into NumPy.
+PyTypeObject* bfloat16_type_ptr = nullptr;
 
 // Representation of a Python bfloat16 object.
 struct PyBfloat16 {
@@ -66,7 +71,7 @@ struct PyBfloat16 {
 // Returns true if 'object' is a PyBfloat16.
 bool PyBfloat16_Check(PyObject* object) {
   return PyObject_IsInstance(object,
-                             reinterpret_cast<PyObject*>(&PyBfloat16_Type));
+                             reinterpret_cast<PyObject*>(&bfloat16_type));
 }
 
 // Extracts the value of a PyBfloat16 object.
@@ -76,8 +81,7 @@ bfloat16 PyBfloat16_Bfloat16(PyObject* object) {
 
 // Constructs a PyBfloat16 object from a bfloat16.
 Safe_PyObjectPtr PyBfloat16_FromBfloat16(bfloat16 x) {
-  Safe_PyObjectPtr ref =
-      make_safe(PyBfloat16_Type.tp_alloc(&PyBfloat16_Type, 0));
+  Safe_PyObjectPtr ref = make_safe(bfloat16_type.tp_alloc(&bfloat16_type, 0));
   PyBfloat16* p = reinterpret_cast<PyBfloat16*>(ref.get());
   if (p) {
     p->value = x;
@@ -332,7 +336,7 @@ Py_hash_t PyBfloat16_Hash(PyObject* self) {
 }
 
 // Python type for PyBfloat16 objects.
-PyTypeObject PyBfloat16_Type = {
+PyTypeObject bfloat16_type = {
     PyVarObject_HEAD_INIT(nullptr, 0) "bfloat16",  // tp_name
     sizeof(PyBfloat16),                            // tp_basicsize
     0,                                             // tp_itemsize
@@ -393,7 +397,7 @@ PyArray_ArrFuncs NPyBfloat16_ArrFuncs;
 PyArray_Descr NPyBfloat16_Descr = {
     PyObject_HEAD_INIT(nullptr)  //
                                  /*typeobj=*/
-    (&PyBfloat16_Type),
+    (&bfloat16_type),
     // We must register bfloat16 with a kind other than "f", because numpy
     // considers two types with the same kind and size to be equal, but
     // float16 != bfloat16.
@@ -1306,9 +1310,30 @@ bool Initialize() {
     return false;
   }
 
-  PyBfloat16_Type.tp_base = &PyGenericArrType_Type;
+  // If another module (presumably either TF or JAX) has registered a bfloat16
+  // type, use it. We don't want two bfloat16 types if we can avoid it since it
+  // leads to confusion if we have two different types with the same name. This
+  // assumes that the other module has a sufficiently complete bfloat16
+  // implementation. The only known NumPy bfloat16 extension at the time of
+  // writing is this one (distributed in TF and JAX).
+  // TODO(phawkins): distribute the bfloat16 extension as its own pip package,
+  // so we can unambiguously refer to a single canonical definition of bfloat16.
+  int typenum = PyArray_TypeNumFromName(const_cast<char*>("bfloat16"));
+  if (typenum != NPY_NOTYPE) {
+    PyArray_Descr* descr = PyArray_DescrFromType(typenum);
+    // The test for an argmax function here is to verify that the
+    // bfloat16 implementation is sufficiently new, and, say, not from
+    // an older version of TF or JAX.
+    if (descr && descr->f && descr->f->argmax) {
+      npy_bfloat16 = typenum;
+      bfloat16_type_ptr = descr->typeobj;
+      return true;
+    }
+  }
 
-  if (PyType_Ready(&PyBfloat16_Type) < 0) {
+  bfloat16_type.tp_base = &PyGenericArrType_Type;
+
+  if (PyType_Ready(&bfloat16_type) < 0) {
     return false;
   }
 
@@ -1328,12 +1353,13 @@ bool Initialize() {
 
   Py_TYPE(&NPyBfloat16_Descr) = &PyArrayDescr_Type;
   npy_bfloat16 = PyArray_RegisterDataType(&NPyBfloat16_Descr);
+  bfloat16_type_ptr = &bfloat16_type;
   if (npy_bfloat16 < 0) {
     return false;
   }
 
   // Support dtype(bfloat16)
-  if (PyDict_SetItemString(PyBfloat16_Type.tp_dict, "dtype",
+  if (PyDict_SetItemString(bfloat16_type.tp_dict, "dtype",
                            reinterpret_cast<PyObject*>(&NPyBfloat16_Descr)) <
       0) {
     return false;
@@ -1559,7 +1585,7 @@ bool Initialize() {
 }
 
 bool RegisterNumpyBfloat16() {
-  if (npy_bfloat16 >= 0) {
+  if (npy_bfloat16 != NPY_NOTYPE) {
     // Already initialized.
     return true;
   }
@@ -1574,7 +1600,7 @@ bool RegisterNumpyBfloat16() {
 }
 
 PyObject* Bfloat16Dtype() {
-  return reinterpret_cast<PyObject*>(&PyBfloat16_Type);
+  return reinterpret_cast<PyObject*>(bfloat16_type_ptr);
 }
 
 int Bfloat16NumpyType() { return npy_bfloat16; }

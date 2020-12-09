@@ -145,6 +145,8 @@ if _running_from_pip_package():
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
     if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
+      # Load Pluggable Device Library
+      _ll.load_pluggable_device_library(_plugin_dir)
 
 # Add module aliases
 if hasattr(_current_module, 'keras'):

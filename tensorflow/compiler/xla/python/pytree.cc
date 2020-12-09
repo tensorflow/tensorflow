@@ -32,6 +32,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
+#include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
 

@@ -169,26 +169,37 @@ class MlirUnrankedOp : public OpKernel {
   GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type)         \
   REGISTER_KERNEL(tf_op, mlir_type, data_type)
 
+#define GENERATE_AND_REGISTER_BINARY_KERNEL2(                               \
+    tf_op, mlir_type, tf_data_type, result_data_type, input_data_type)      \
+  GENERATE_BINARY_KERNEL2(tf_op, mlir_type, tf_data_type, result_data_type, \
+                          input_data_type)                                  \
+  REGISTER_KERNEL(tf_op, mlir_type, input_data_type)
+
 #define GENERATE_BINARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type) \
-  extern "C" UntypedUnrankedMemRefType MLIR_FUNCTION(tf_op, mlir_type)(   \
-      tensorflow::OpKernelContext * ctx,                                  \
-      const ::UnrankedMemRefType<data_type>* arg1,                        \
-      const ::UnrankedMemRefType<data_type>* arg2);                       \
-                                                                          \
-  namespace {                                                             \
-  class MlirUnranked##tf_op##mlir_type##Op                                \
-      : public MlirUnrankedOp<tf_data_type, data_type,                    \
-                              MlirUnranked##tf_op##mlir_type##Op> {       \
-   public:                                                                \
-    using MlirUnrankedOp::MlirUnrankedOp;                                 \
-                                                                          \
-    static ::UnrankedMemRefType<data_type> Invoke(                        \
-        OpKernelContext* ctx,                                             \
-        llvm::ArrayRef<::UnrankedMemRefType<data_type>> args) {           \
-      return ConvertToTyped<data_type>(                                   \
-          MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0], &args[1]));      \
-    }                                                                     \
-  };                                                                      \
+  GENERATE_BINARY_KERNEL2(tf_op, mlir_type, tf_data_type, data_type, data_type)
+
+#define GENERATE_BINARY_KERNEL2(tf_op, mlir_type, tf_data_type,         \
+                                result_data_type, input_data_type)      \
+  extern "C" UntypedUnrankedMemRefType MLIR_FUNCTION(tf_op, mlir_type)( \
+      tensorflow::OpKernelContext * ctx,                                \
+      const ::UnrankedMemRefType<input_data_type>* arg1,                \
+      const ::UnrankedMemRefType<input_data_type>* arg2);               \
+                                                                        \
+  namespace {                                                           \
+  class MlirUnranked##tf_op##mlir_type##Op                              \
+      : public MlirUnrankedOp<tf_data_type, result_data_type,           \
+                              MlirUnranked##tf_op##mlir_type##Op,       \
+                              input_data_type> {                        \
+   public:                                                              \
+    using MlirUnrankedOp::MlirUnrankedOp;                               \
+                                                                        \
+    static ::UnrankedMemRefType<result_data_type> Invoke(               \
+        OpKernelContext* ctx,                                           \
+        llvm::ArrayRef<::UnrankedMemRefType<input_data_type>> args) {   \
+      return ConvertToTyped<result_data_type>(                          \
+          MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0], &args[1]));    \
+    }                                                                   \
+  };                                                                    \
   }
 
 #define GENERATE_AND_REGISTER_UNARY_KERNEL(tf_op, mlir_type, tf_data_type, \
@@ -199,27 +210,27 @@ class MlirUnrankedOp : public OpKernel {
 #define GENERATE_UNARY_KERNEL(tf_op, mlir_type, tf_data_type, data_type) \
   GENERATE_UNARY_KERNEL2(tf_op, mlir_type, tf_data_type, data_type, data_type)
 
-#define GENERATE_UNARY_KERNEL2(tf_op, mlir_type, tf_data_type, data_type, \
-                               input_data_type)                           \
-  extern "C" UntypedUnrankedMemRefType MLIR_FUNCTION(tf_op, mlir_type)(   \
-      tensorflow::OpKernelContext * ctx,                                  \
-      const ::UnrankedMemRefType<input_data_type>* arg);                  \
-                                                                          \
-  namespace {                                                             \
-  class MlirUnranked##tf_op##mlir_type##Op                                \
-      : public MlirUnrankedOp<tf_data_type, data_type,                    \
-                              MlirUnranked##tf_op##mlir_type##Op,         \
-                              input_data_type> {                          \
-   public:                                                                \
-    using MlirUnrankedOp::MlirUnrankedOp;                                 \
-                                                                          \
-    static ::UnrankedMemRefType<data_type> Invoke(                        \
-        OpKernelContext* ctx,                                             \
-        llvm::ArrayRef<::UnrankedMemRefType<input_data_type>> args) {     \
-      return ConvertToTyped<data_type>(                                   \
-          MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0]));                \
-    }                                                                     \
-  };                                                                      \
+#define GENERATE_UNARY_KERNEL2(tf_op, mlir_type, tf_data_type,          \
+                               result_data_type, input_data_type)       \
+  extern "C" UntypedUnrankedMemRefType MLIR_FUNCTION(tf_op, mlir_type)( \
+      tensorflow::OpKernelContext * ctx,                                \
+      const ::UnrankedMemRefType<input_data_type>* arg);                \
+                                                                        \
+  namespace {                                                           \
+  class MlirUnranked##tf_op##mlir_type##Op                              \
+      : public MlirUnrankedOp<tf_data_type, result_data_type,           \
+                              MlirUnranked##tf_op##mlir_type##Op,       \
+                              input_data_type> {                        \
+   public:                                                              \
+    using MlirUnrankedOp::MlirUnrankedOp;                               \
+                                                                        \
+    static ::UnrankedMemRefType<result_data_type> Invoke(               \
+        OpKernelContext* ctx,                                           \
+        llvm::ArrayRef<::UnrankedMemRefType<input_data_type>> args) {   \
+      return ConvertToTyped<result_data_type>(                          \
+          MLIR_FUNCTION(tf_op, mlir_type)(ctx, &args[0]));              \
+    }                                                                   \
+  };                                                                    \
   }
 
 }  // namespace tensorflow

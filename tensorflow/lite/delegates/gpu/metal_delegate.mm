@@ -453,12 +453,16 @@ class Delegate {
     // We need only synchronization so volatile works better than atomic which reads from global
     // memory each time.
     __block volatile bool buffer_completed = false;
-    __block id<MTLCommandBuffer> command_buffer;
-    __block id<MTLComputeCommandEncoder> encoder = external_command_encoder_;
+    id<MTLCommandBuffer> command_buffer;
+    id<MTLComputeCommandEncoder> encoder = external_command_encoder_;
     if (external_command_encoder_ == nil) {
       command_buffer = [command_queue_ commandBuffer];
       encoder = [command_buffer computeCommandEncoder];
     }
+    const bool flush = external_command_encoder_ == nil &&
+        (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive ||
+         options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive);
+    const int flush_period = 8;
 
     const bool is_quantized_model = !quant_conversion_map_.empty();
     if (is_quantized_model) {
@@ -478,36 +482,32 @@ class Delegate {
                                          shape:input.shape
                                   sourceBuffer:input_output_buffers_[input.id]
                                convertedBuffer:bphwc4_buffers_[input.id]];
-      if (external_command_encoder_ == nil) {
-        [encoder endEncoding];
-        [command_buffer commit];
+    }
+    if (flush) {
+      [encoder endEncoding];
+      [command_buffer commit];
+    }
+
+    if (external_command_encoder_ != nil ||
+        options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
+      // encoder == external_command_encoder_
+      [inference_context_ encodeWithEncoder:encoder
+                         inputOutputBuffers:bphwc4_buffers_];
+    } else {
+      if (flush) {
+        [inference_context_ encodeWithCommandQueue:command_queue_
+                                inputOutputBuffers:bphwc4_buffers_
+                                 flushPeriodically:flush_period];
         command_buffer = [command_queue_ commandBuffer];
+        encoder = [command_buffer computeCommandEncoder];
+      } else {
+        [encoder endEncoding];
+        [inference_context_ encodeWithCommandBuffer:command_buffer
+                                 inputOutputBuffers:bphwc4_buffers_];
         encoder = [command_buffer computeCommandEncoder];
       }
     }
 
-    [inference_context_
-         encodeWithEncoder:encoder
-        inputOutputBuffers:bphwc4_buffers_
-              encoderBlock:^(bool isLast) {
-                if (external_command_encoder_ != nil ||
-                    options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
-                  return encoder;
-                }
-                if (isLast) {
-                  if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
-                    [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
-                      buffer_completed = true;
-                    }];
-                  }
-                } else {
-                  [encoder endEncoding];
-                  [command_buffer commit];
-                  command_buffer = [command_queue_ commandBuffer];
-                  encoder = [command_buffer computeCommandEncoder];
-                }
-                return encoder;
-              }];
     for (const auto& output : graph_outputs_) {
       if (output.set_externally) continue;
       if (bphwc4_buffers_[output.id] == input_output_buffers_[output.id]) continue;
@@ -519,6 +519,11 @@ class Delegate {
 
     if (external_command_encoder_ == nil) {
       [encoder endEncoding];
+      if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
+        [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+          buffer_completed = true;
+        }];
+      }
       [command_buffer commit];
       if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
         while (!buffer_completed) {
@@ -530,16 +535,16 @@ class Delegate {
         // passive wait: this thread sleeps until GPU finishes.
         [command_buffer waitUntilCompleted];
       } else if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive) {
-        command_buffer = [command_queue_ commandBuffer];
-        encoder = [command_buffer computeCommandEncoder];
-        [encoder setComputePipelineState:signal_program_];
-        [encoder setBuffer:signal_buffer_ offset:0 atIndex:0];
+        id<MTLCommandBuffer> signal_cb = [command_queue_ commandBuffer];
+        id<MTLComputeCommandEncoder> signal_encoder = [signal_cb computeCommandEncoder];
+        [signal_encoder setComputePipelineState:signal_program_];
+        [signal_encoder setBuffer:signal_buffer_ offset:0 atIndex:0];
         signal_value_++;
-        [encoder setBytes:&signal_value_ length:sizeof(int) atIndex:1];
-        [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
+        [signal_encoder setBytes:&signal_value_ length:sizeof(int) atIndex:1];
+        [signal_encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
                 threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-        [encoder endEncoding];
-        [command_buffer commit];
+        [signal_encoder endEncoding];
+        [signal_cb commit];
         gpu_alarm_clock_->Start();
         const int* signal_ptr = reinterpret_cast<const int*>([signal_buffer_ contents]);
         while (signal_ptr[0] != signal_value_) {

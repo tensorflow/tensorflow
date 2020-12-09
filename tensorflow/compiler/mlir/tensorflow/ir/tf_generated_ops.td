@@ -5028,6 +5028,26 @@ Table initializer that takes two tensors for keys and values respectively.
   TF_DerivedOperandTypeAttr Tkey = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_InplaceAddOp : TF_Op<"InplaceAdd", [AllTypesMatch<["x", "y"]>, NoSideEffect]> {
+  let summary = "Adds v into specified rows of x.";
+
+  let description = [{
+Computes y = x; y[i, :] += v; return y.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$x,
+    TF_Int32Tensor:$i,
+    TF_Tensor:$v
+  );
+
+  let results = (outs
+    TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_InplaceUpdateOp : TF_Op<"InplaceUpdate", [NoSideEffect]> {
   let summary = "Updates specified rows 'i' with values 'v'.";
 
