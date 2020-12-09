@@ -26,6 +26,36 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
+Status SparseSoftmaxCrossEntropyWithLogitsModel(
+    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<AbstractTensorHandle*> outputs,
+    const GradientRegistry& registry) {
+  return ops::SparseSoftmaxCrossEntropyWithLogits(
+      ctx, inputs, outputs, "SparseSoftmaxCrossEntropyWithLogits");
+}
+
+Status SparseSoftmaxCrossEntropyWithLogitsGradModel(
+    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<AbstractTensorHandle*> outputs,
+    const GradientRegistry& registry) {
+  Tape tape(/*persistent=*/false);
+  tape.Watch(inputs[0]);  // Watch score.
+  tape.Watch(inputs[1]);  // Watch label.
+  std::vector<AbstractTensorHandle*> temp_outputs(2);
+  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
+  TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
+      tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs),
+      "SparseSoftmaxCrossEntropyWithLogitsGrad"));
+
+  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                          /*sources=*/inputs,
+                                          /*output_gradients=*/{}, outputs));
+  for (auto temp_output : temp_outputs) {
+    temp_output->Unref();
+  }
+  return Status::OK();
+}
+
 Status BiasAddModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
@@ -56,6 +86,9 @@ Status BiasAddGradModel(AbstractContext* ctx,
 
 Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
+  TF_RETURN_IF_ERROR(
+      registry->Register("SparseSoftmaxCrossEntropyWithLogits",
+                         SparseSoftmaxCrossEntropyWithLogitsRegisterer));
   return Status::OK();
 }
 
@@ -88,6 +121,31 @@ class CppGradients
   bool UseFunction() const { return std::get<2>(GetParam()); }
 };
 
+TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
+  if (UseFunction()) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
+
+  // Score
+  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 0.0f, -1.0f};
+  int64_t X_dims[] = {3, 3};
+  AbstractTensorHandlePtr X =
+      GetTensorHandleUtilFloat(ctx_.get(), X_vals, X_dims, 2);
+  // Label
+  int Y_vals[] = {1, 0, 1};
+  int64_t Y_dims[] = {3};
+  AbstractTensorHandlePtr Y =
+      GetTensorHandleUtilInt(ctx_.get(), Y_vals, Y_dims, 1);
+
+  ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
+      SparseSoftmaxCrossEntropyWithLogitsModel,
+      SparseSoftmaxCrossEntropyWithLogitsGradModel, ctx_.get(),
+      {X.get(), Y.get()},
+      /*use_function=*/UseFunction(), registry_));
+}
+
 TEST_P(CppGradients, TestBiasAddGrad) {
   if (UseFunction() && UseMlir()) {
     GTEST_SKIP() << "SetAttrString has not been implemented yet.\n";
@@ -103,8 +161,6 @@ TEST_P(CppGradients, TestBiasAddGrad) {
   int64_t Bias_dims[] = {2};
   AbstractTensorHandlePtr Bias =
       GetTensorHandleUtilFloat(ctx_.get(), Bias_vals, Bias_dims, 1);
-
-  std::vector<AbstractTensorHandle*> inputs{A.get(), Bias.get()};
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},

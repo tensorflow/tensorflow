@@ -144,8 +144,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   // Numerical Grad Check
   for (int i = 0; i < num_elems; i++) {
     // Get relative epsilon value
-    float epsilon =
-        std::abs(theta_data[i] * 1e-4 + 1e-4);  // add 1e-4 to prevent div by 0
+    float epsilon = theta_data[i] == 0 ? 1e-4 : std::abs(theta_data[i] * 1e-4);
     AbstractTensorHandlePtr two_eps =
         GetScalarTensorHandleUtil(ctx, 2 * epsilon);
 
@@ -182,9 +181,8 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
     // Calculate using the difference quotient definition:
     // (f(theta + eps) - f(theta - eps)) / (2 * eps).
-    TF_RETURN_IF_ERROR(ops::DivNoNan(ctx, {fDiff, two_eps.get()},
-                                     absl::MakeSpan(f_outputs),
-                                     "diff_quotient"));
+    TF_RETURN_IF_ERROR(ops::Div(ctx, {fDiff, two_eps.get()},
+                                absl::MakeSpan(f_outputs), "diff_quotient"));
     AbstractTensorHandle* diff_quotient = f_outputs[0];
 
     TF_Tensor* grad_tensor;
