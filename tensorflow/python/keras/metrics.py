@@ -37,8 +37,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.activations import sigmoid
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import keras_tensor
@@ -2134,7 +2134,7 @@ class AUC(Metric):
     label_weights = None if self.multi_label else self.label_weights
 
     if self._from_logits:
-      y_pred = sigmoid(y_pred)
+      y_pred = activations.sigmoid(y_pred)
 
     with ops.control_dependencies(deps):
       return metrics_utils.update_confusion_matrix_variables(
