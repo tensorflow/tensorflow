@@ -677,7 +677,7 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       self.assertAllClose(out, out2, atol=1e-05)
 
       # Test non-default options in h5
-      with h5py.File('_', driver='core',
+      with h5py.File('test.h5', driver='core',
                      backing_store=False) as h5file:
         keras.models.save_model(model, h5file)
         loaded_model = keras.models.load_model(h5file)
