@@ -354,9 +354,9 @@ def TFL_SameFirstOperandAndFirstResultElementType :
               TFL_TCresVTEtIsSameAsOp<0, 0>>;
 
 // This is a quantization-aware version of TCopVTEtAreSameAt
-class TFL_TCopVTEtAreSameAt<int i, int j> : Or<[
+class TFL_TCopVTEtAreSameAt<int i, int j, int num=8> : Or<[
   TCopVTEtAreSameAt<[i, j]>,
-  TFL_TFOperandTypesWithSameBits<i, j, 8>,
+  TFL_TFOperandTypesWithSameBits<i, j, num>,
   And<[
     SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
       quant_QuantizedType.predicate>,
@@ -3676,7 +3676,8 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
-  TCopVTEtAreSameAt<[9, 10, 11]>>;
+  And<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
+       TFL_TCopVTEtAreSameAt<9, 11, 16>]>>;
 
 def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
@@ -3982,6 +3983,7 @@ def BidiLstmMandatoryInputsConstraint : PredOpTrait<
                        30, 31, 32, 35, 36, 37, 38]>,
     Neg<TypeIsPred<"input", F32>>]>>;
 
+// TODO(b/172517537): support quantized types
 def BidiLstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
   TCopVTEtAreSameAt<[9, 10, 11, 26, 27, 28]>>;
