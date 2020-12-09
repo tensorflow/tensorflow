@@ -298,6 +298,9 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "AddV2") {
       return static_cast<BaselineOutT>(lhs + rhs);
     }
+    if (GetParam().op_name == "Equal") {
+      return static_cast<BaselineOutT>(lhs == rhs);
+    }
     // Add the logic for creating expected values for the kernel you want to
     // test here.
     // <PLACEHOLDER>
@@ -312,6 +315,11 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
   for (DataType dt :
        std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
     parameters.emplace_back("AddV2", dt, dt);
+  }
+  for (DataType dt :
+       std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8,
+                             DT_INT16, DT_INT64}) {
+    parameters.emplace_back("Equal", dt, DT_BOOL);
   }
   // Add the parameters (kernel name and data types to test) here.
   // <PLACEHOLDER>
@@ -332,6 +340,21 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
     }                                                          \
     case DT_HALF: {                                            \
       using nt = EnumToDataType<DT_HALF>::Type;                \
+      code;                                                    \
+      break;                                                   \
+    }                                                          \
+    case DT_INT8: {                                            \
+      using nt = EnumToDataType<DT_INT8>::Type;                \
+      code;                                                    \
+      break;                                                   \
+    }                                                          \
+    case DT_INT16: {                                           \
+      using nt = EnumToDataType<DT_INT16>::Type;               \
+      code;                                                    \
+      break;                                                   \
+    }                                                          \
+    case DT_INT32: {                                           \
+      using nt = EnumToDataType<DT_INT32>::Type;               \
       code;                                                    \
       break;                                                   \
     }                                                          \

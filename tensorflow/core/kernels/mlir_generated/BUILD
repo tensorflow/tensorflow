@@ -158,6 +158,7 @@ tf_kernel_library(
     name = "cwise_binary_op",
     srcs = [
         "unranked_op_gpu_add.cc",
+        "unranked_op_gpu_equal.cc",
     ],
     tags = [
         "manual",
