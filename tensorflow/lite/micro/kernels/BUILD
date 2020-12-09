@@ -308,6 +308,7 @@ cc_library(
         "svdf_common.cc",
         "tanh.cc",
         "transpose_conv.cc",
+        "transpose.cc",
         "unpack.cc",
         "zeros_like.cc",
     ] + select({
@@ -1158,6 +1159,17 @@ cc_test(
 cc_test(
     name = "tanh_test",
     srcs = ["tanh_test.cc"],
+    deps = [
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

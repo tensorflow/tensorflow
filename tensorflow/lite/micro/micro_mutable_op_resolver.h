@@ -496,6 +496,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       tflite::Register_TRANSPOSE_CONV(), ParseTransposeConv);
   }
 
+  TfLiteStatus AddTranspose() {
+    return AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
+                      ParseTranspose);
+  }
+
   TfLiteStatus AddUnpack() {
     return AddBuiltin(BuiltinOperator_UNPACK,
                       tflite::ops::micro::Register_UNPACK(), ParseUnpack);
