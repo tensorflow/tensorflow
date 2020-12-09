@@ -41,7 +41,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   se::StreamExecutor* executor =
       client->backend().stream_executor(0).ValueOrDie();
   auto device_state = absl::make_unique<LocalDeviceState>(
@@ -51,11 +51,11 @@ StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
       absl::make_unique<InterpreterDevice>(0, std::move(device_state));
   devices.push_back(std::move(device));
 
-  return std::make_unique<PjRtClient>(
+  return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
       "interpreter", client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
-      /*gpu_run_options=*/nullptr);
+      /*gpu_run_options=*/nullptr));
 }
 
 }  // namespace xla
