@@ -234,6 +234,10 @@ class Delegate {
     external_command_encoder_ = encoder;
   }
 
+  void SetCommandBuffer(id<MTLCommandBuffer> command_buffer) {
+    external_command_buffer_ = command_buffer;
+  }
+
   // This directs the runtime to allocate memory for input/output temporary
   // tensors that require dequantization/quantization.
   absl::Status GetRequiredTemporaries(TfLiteContext* context, TfLiteNode* node,
@@ -453,13 +457,15 @@ class Delegate {
     // We need only synchronization so volatile works better than atomic which reads from global
     // memory each time.
     __block volatile bool buffer_completed = false;
-    id<MTLCommandBuffer> command_buffer;
+    id<MTLCommandBuffer> command_buffer = external_command_buffer_;
     id<MTLComputeCommandEncoder> encoder = external_command_encoder_;
-    if (external_command_encoder_ == nil) {
+    if (external_command_buffer_ == nil && external_command_encoder_ == nil) {
       command_buffer = [command_queue_ commandBuffer];
+    }
+    if (external_command_encoder_ == nil) {
       encoder = [command_buffer computeCommandEncoder];
     }
-    const bool flush = external_command_encoder_ == nil &&
+    const bool flush = external_command_encoder_ == nil && external_command_buffer_ == nil &&
         (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive ||
          options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive);
     const int flush_period = 8;
@@ -517,7 +523,7 @@ class Delegate {
                                  convertedBuffer:input_output_buffers_[output.id]];
     }
 
-    if (external_command_encoder_ == nil) {
+    if (external_command_encoder_ == nil && external_command_buffer_ == nil) {
       [encoder endEncoding];
       if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
         [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
@@ -554,6 +560,11 @@ class Delegate {
         }
       }
     } else {
+      if (external_command_buffer_ != nil) {
+        [encoder endEncoding];
+        // External command buffer must be set before every invoke call.
+        external_command_buffer_ = nil;
+      }
       // External command encoder must be set before every invoke call.
       external_command_encoder_ = nil;
       // External command encoder is assigned so all output buffers are controlled by a user.
@@ -625,6 +636,7 @@ class Delegate {
   std::vector<BufferDescriptor> graph_outputs_;
 
   id<MTLComputeCommandEncoder> external_command_encoder_ = nil;
+  id<MTLCommandBuffer> external_command_buffer_ = nil;
   id<MTLCommandQueue> command_queue_;
   std::unique_ptr<GpuAlarmClock> gpu_alarm_clock_;
   id<MTLComputePipelineState> signal_program_;
@@ -728,9 +740,7 @@ bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
                                     id<MTLCommandBuffer> command_buffer) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
   if (!metal_delegate) return false;
-  id<MTLComputeCommandEncoder> encoder = [command_buffer computeCommandEncoder];
-  metal_delegate->SetCommandEncoder(encoder);
-  [encoder endEncoding];
+  metal_delegate->SetCommandBuffer(command_buffer);
   return true;
 }
 
