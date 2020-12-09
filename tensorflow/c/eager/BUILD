@@ -248,6 +248,7 @@ cc_library(
         ":c_api_unified_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
