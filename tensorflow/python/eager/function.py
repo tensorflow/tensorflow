@@ -27,7 +27,6 @@ import threading
 import types as types_lib
 import weakref
 
-import numpy as np
 import six
 from six.moves import map
 
@@ -46,7 +45,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -76,6 +74,8 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+from tensorflow.python.eager import _concrete_function
 
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
@@ -2734,64 +2734,9 @@ class FunctionSpec(object):
       return inputs, {}, flat_inputs, filtered_flat_inputs
 
 
-def _as_ndarray(value):
-  """Converts value to an ndarray, assumes _is_ndarray(value)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return value.__array__()
-
-
-def _is_ndarray(value):
-  """Tests whether the given value is an ndarray (and not a TF tensor/var)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return hasattr(value, "__array__") and not (
-      isinstance(value, ops.Tensor)
-      or isinstance(value, resource_variable_ops.BaseResourceVariable)
-      or hasattr(value, "_should_act_as_resource_variable")
-
-      # For legacy reasons we do not automatically promote Numpy strings.
-      or isinstance(value, np.str_)
-      # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type)
-      # CompositeTensors should be flattened instead.
-      or isinstance(value, composite_tensor.CompositeTensor))
-
-
-def _convert_numpy_inputs(inputs):
-  """Convert numpy array inputs to tensors."""
-  # We assume that any CompositeTensors have already converted their components
-  # from numpy arrays to Tensors, so we don't need to expand composites here for
-  # the numpy array conversion. Instead, we do so because the flattened inputs
-  # are eventually passed to ConcreteFunction()._call_flat, which requires
-  # expanded composites.
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
-
-  # Check for NumPy arrays in arguments and convert them to Tensors.
-  # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
-  # finding a way to store them directly in the cache key (currently not
-  # possible since ndarrays are not hashable).
-  need_packing = False
-  filtered_flat_inputs = []
-  for index, value in enumerate(flat_inputs):
-    if isinstance(value,
-                  (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
-      filtered_flat_inputs.append(value)
-    elif hasattr(value, "__array__") and not (
-        hasattr(value, "_should_act_as_resource_variable") or
-        isinstance(value, (np.str_, type, composite_tensor.CompositeTensor))):
-      # This case is equivalent to _is_ndarray(value) == True
-      a = _as_ndarray(value)
-      if not isinstance(a, np.ndarray):
-        raise TypeError("The output of __array__ must be an np.ndarray "
-                        "(got {} from {}).".format(type(a), type(value)))
-      flat_inputs[index] = constant_op.constant(a)
-      filtered_flat_inputs.append(flat_inputs[index])
-      need_packing = True
-  if need_packing:
-    return (nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs,
-        expand_composites=True), flat_inputs, filtered_flat_inputs)
-  else:
-    return inputs, flat_inputs, filtered_flat_inputs
+_as_ndarray = _concrete_function._as_ndarray  # pylint: disable=protected-access
+_is_ndarray = _concrete_function._is_ndarray  # pylint: disable=protected-access
+_convert_numpy_inputs = _concrete_function._convert_numpy_inputs  # pylint: disable=protected-access
 
 
 def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):

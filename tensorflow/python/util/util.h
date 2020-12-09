@@ -160,6 +160,15 @@ bool IsTensor(PyObject* o);
 //   True if the object is an eager tensor (or mimicking as one).
 bool IsEagerTensorSlow(PyObject* o);
 
+// Returns a true if its input is a BaseResourceVariable.
+//
+// Args:
+//   o: the input to be checked.
+//
+// Returns:
+//   True if the object is a BaseResourceVariable.
+bool IsBaseResourceVariable(PyObject* o);
+
 // Returns a true if its input is a ResourceVariable.
 //
 // Args:

@@ -1888,6 +1888,9 @@ class ResourceVariable(BaseResourceVariable):
     self._constraint = None
 
 
+_pywrap_utils.RegisterType("BaseResourceVariable", BaseResourceVariable)
+
+
 class UninitializedVariable(BaseResourceVariable):
   """A variable with no initializer."""
 
