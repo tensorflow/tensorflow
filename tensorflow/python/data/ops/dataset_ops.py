@@ -1784,11 +1784,11 @@ name=None))
     ...     num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
 
-    If `num_parallel_calls > 1`, the order of elements yielded by this
-    transformation is deterministic if `deterministic=True`. If `map_func`
-    contains stateful operations and `num_parallel_calls > 1`, the order in
-    which that state is accessed is undefined, so the values of output elements
-    may not be deterministic regardless of the `deterministic` flag value.
+    The order of elements yielded by this transformation is deterministic if
+    `deterministic=True`. If `map_func` contains stateful operations and
+    `num_parallel_calls > 1`, the order in which that state is accessed is
+    undefined, so the values of output elements may not be deterministic
+    regardless of the `deterministic` flag value.
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
