@@ -45,9 +45,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
+
 
 namespace tflite {
 namespace gpu {
@@ -338,19 +339,17 @@ class Delegate {
     GpuInfo gpu_info;
     GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
     size_t storage_type_size;
-    RuntimeOptions runtime_options;
+    CalculationsPrecision precision;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
-      runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
       if (gpu_info.IsRoundToNearestSupported()) {
-        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
+        precision = CalculationsPrecision::F16;
       } else {
-        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
+        precision = CalculationsPrecision::F32_F16;
       }
     } else {
       storage_type_size = sizeof(float);
-      runtime_options.storage_precision = RuntimeOptions::Precision::FP32;
-      runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
+      precision = CalculationsPrecision::F32;
     }
 
     // TODO(impjdi): Merge logic with above.
@@ -435,7 +434,7 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, gpu_info, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, gpu_info, precision, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
@@ -444,7 +443,7 @@ class Delegate {
                                                          model:optimized_model
                                                 inputBufferIDs:input_ids
                                                outputBufferIDs:output_ids
-                                                runtimeOptions:runtime_options]);
+                                                     precision:precision]);
     return absl::OkStatus();
   }
 
@@ -454,12 +453,16 @@ class Delegate {
     // We need only synchronization so volatile works better than atomic which reads from global
     // memory each time.
     __block volatile bool buffer_completed = false;
-    __block id<MTLCommandBuffer> command_buffer;
-    __block id<MTLComputeCommandEncoder> encoder = external_command_encoder_;
+    id<MTLCommandBuffer> command_buffer;
+    id<MTLComputeCommandEncoder> encoder = external_command_encoder_;
     if (external_command_encoder_ == nil) {
       command_buffer = [command_queue_ commandBuffer];
       encoder = [command_buffer computeCommandEncoder];
     }
+    const bool flush = external_command_encoder_ == nil &&
+        (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive ||
+         options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive);
+    const int flush_period = 8;
 
     const bool is_quantized_model = !quant_conversion_map_.empty();
     if (is_quantized_model) {
@@ -479,36 +482,32 @@ class Delegate {
                                          shape:input.shape
                                   sourceBuffer:input_output_buffers_[input.id]
                                convertedBuffer:bphwc4_buffers_[input.id]];
-      if (external_command_encoder_ == nil) {
-        [encoder endEncoding];
-        [command_buffer commit];
+    }
+    if (flush) {
+      [encoder endEncoding];
+      [command_buffer commit];
+    }
+
+    if (external_command_encoder_ != nil ||
+        options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
+      // encoder == external_command_encoder_
+      [inference_context_ encodeWithEncoder:encoder
+                         inputOutputBuffers:bphwc4_buffers_];
+    } else {
+      if (flush) {
+        [inference_context_ encodeWithCommandQueue:command_queue_
+                                inputOutputBuffers:bphwc4_buffers_
+                                 flushPeriodically:flush_period];
         command_buffer = [command_queue_ commandBuffer];
+        encoder = [command_buffer computeCommandEncoder];
+      } else {
+        [encoder endEncoding];
+        [inference_context_ encodeWithCommandBuffer:command_buffer
+                                 inputOutputBuffers:bphwc4_buffers_];
         encoder = [command_buffer computeCommandEncoder];
       }
     }
 
-    [inference_context_
-         encodeWithEncoder:encoder
-        inputOutputBuffers:bphwc4_buffers_
-              encoderBlock:^(bool isLast) {
-                if (external_command_encoder_ != nil ||
-                    options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
-                  return encoder;
-                }
-                if (isLast) {
-                  if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
-                    [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
-                      buffer_completed = true;
-                    }];
-                  }
-                } else {
-                  [encoder endEncoding];
-                  [command_buffer commit];
-                  command_buffer = [command_queue_ commandBuffer];
-                  encoder = [command_buffer computeCommandEncoder];
-                }
-                return encoder;
-              }];
     for (const auto& output : graph_outputs_) {
       if (output.set_externally) continue;
       if (bphwc4_buffers_[output.id] == input_output_buffers_[output.id]) continue;
@@ -520,6 +519,11 @@ class Delegate {
 
     if (external_command_encoder_ == nil) {
       [encoder endEncoding];
+      if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
+        [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
+          buffer_completed = true;
+        }];
+      }
       [command_buffer commit];
       if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
         while (!buffer_completed) {
@@ -531,16 +535,16 @@ class Delegate {
         // passive wait: this thread sleeps until GPU finishes.
         [command_buffer waitUntilCompleted];
       } else if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive) {
-        command_buffer = [command_queue_ commandBuffer];
-        encoder = [command_buffer computeCommandEncoder];
-        [encoder setComputePipelineState:signal_program_];
-        [encoder setBuffer:signal_buffer_ offset:0 atIndex:0];
+        id<MTLCommandBuffer> signal_cb = [command_queue_ commandBuffer];
+        id<MTLComputeCommandEncoder> signal_encoder = [signal_cb computeCommandEncoder];
+        [signal_encoder setComputePipelineState:signal_program_];
+        [signal_encoder setBuffer:signal_buffer_ offset:0 atIndex:0];
         signal_value_++;
-        [encoder setBytes:&signal_value_ length:sizeof(int) atIndex:1];
-        [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
+        [signal_encoder setBytes:&signal_value_ length:sizeof(int) atIndex:1];
+        [signal_encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1)
                 threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-        [encoder endEncoding];
-        [command_buffer commit];
+        [signal_encoder endEncoding];
+        [signal_cb commit];
         gpu_alarm_clock_->Start();
         const int* signal_ptr = reinterpret_cast<const int*>([signal_buffer_ contents]);
         while (signal_ptr[0] != signal_value_) {
@@ -712,14 +716,6 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_
 
 // Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
 // `metal_delegate_internal.h`.
-bool TFLGpuDelegateSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder) {
-  auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
-  if (!metal_delegate) return false;
-  metal_delegate->SetCommandEncoder(encoder);
-  return true;
-}
-
 bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
                                     id<MTLCommandBuffer> command_buffer) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);

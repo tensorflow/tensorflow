@@ -97,7 +97,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   const std::string& platform_name() const {
     return pjrt_client_->platform_name();
   }
-  int local_device_count() const { return pjrt_client_->local_device_count(); }
+  int addressable_device_count() const {
+    return pjrt_client_->addressable_device_count();
+  }
   int device_count() const { return pjrt_client_->device_count(); }
   int host_id() const { return pjrt_client_->host_id(); }
 

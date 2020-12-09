@@ -35,13 +35,21 @@ Status FunctionDefToBodyHelper(
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
 
-  std::unique_ptr<Graph> graph(new Graph(lib_def));
+  auto graph = absl::make_unique<Graph>(lib_def);
   graph->SetConstructionContext(ConstructionContext::kFunctionDef);
-
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
   TF_RETURN_IF_ERROR(ConvertNodeDefsToGraph(opts, result.nodes, graph.get()));
+
+  const StackTracesMap& stack_traces =
+      lib_def->GetStackTraces(fdef.signature().name());
+  for (Node* n : graph->nodes()) {
+    auto it = stack_traces.find(n->name());
+    if (n && it != stack_traces.end()) {
+      n->SetStackTrace(it->second);
+    }
+  }
 
   // Call BuildControlFlowInfo to validate that this function body has
   // well-formed control flow.

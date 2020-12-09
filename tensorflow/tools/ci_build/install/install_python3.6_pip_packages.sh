@@ -101,7 +101,7 @@ pip3 install --upgrade astor
 pip3 install --upgrade gast
 pip3 install --upgrade termcolor
 
-pip3 install --upgrade h5py==3.1.0
+pip3 install --upgrade h5py==2.8.0
 
 # Keras
 pip3 install keras_preprocessing==1.0.5

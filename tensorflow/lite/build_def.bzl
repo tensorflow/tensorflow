@@ -800,7 +800,7 @@ def tflite_custom_cc_library(
             model = models,
         )
         real_srcs.append(":%s_registration" % name)
-        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+        real_deps.append("//tensorflow/lite:create_op_resolver_with_selected_ops")
     else:
         # Support all operators if `models` not specified.
         real_deps.append("//tensorflow/lite/java/src/main/native")
@@ -810,7 +810,7 @@ def tflite_custom_cc_library(
         srcs = real_srcs,
         hdrs = [
             # TODO(b/161323860) replace this by generated header.
-            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+            "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),
         linkopts = select({

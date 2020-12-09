@@ -516,6 +516,11 @@ class ConvertToHloModule {
   //
   // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
+    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    if (!main)
+      return module_.emitError(
+          "conversion requires module with `main` function");
+
     for (auto func : module_.getOps<FuncOp>()) {
       if (func.empty()) continue;
       if (failed(RunOnFunction(func))) return failure();
@@ -539,8 +544,11 @@ class ConvertToHloModule {
       xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
-    return lowered_computation_[module_.lookupSymbol<mlir::FuncOp>("main")]
-        .proto();
+    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    // This is an invariant check as Run returns failure if there is no main
+    // function and so the main proto shouldn't be consumed in that case.
+    CHECK(main) << "requires module to have main function";  // Crash Ok.
+    return lowered_computation_[main].proto();
   }
 
   // Lower function call to HLO call instruction

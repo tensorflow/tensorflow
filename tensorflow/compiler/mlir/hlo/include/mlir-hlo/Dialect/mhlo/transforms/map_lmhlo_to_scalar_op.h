@@ -482,6 +482,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NotOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::OrOp>(Location loc,
+                                                 ArrayRef<Type> result_types,
+                                                 ArrayRef<Value> args,
+                                                 OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::OrOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::RsqrtOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
@@ -577,6 +586,15 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::TanhOp>(Location loc,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::TanhOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::XorOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::XOrOp>{}(
       loc, result_types, args, b);
 }
 

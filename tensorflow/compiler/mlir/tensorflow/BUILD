@@ -1977,6 +1977,7 @@ cc_library(
     hdrs = ["utils/bridge_logger.h"],
     deps = [
         ":dump_mlir_util",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

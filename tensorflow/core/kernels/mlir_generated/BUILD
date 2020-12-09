@@ -77,6 +77,20 @@ filegroup(
     compatible_with = get_compatible_with_cloud(),
 )
 
+filegroup(
+    name = "unary_kernel_srcs",
+    srcs = if_mlir_unranked_kernels_enabled(
+        if_false = [
+            "cwise_op_gpu_abs.cc",
+            "cwise_op_gpu_base.cc",
+            "cwise_op_gpu_base.h",
+            "cwise_op_gpu_tanh.cc",
+        ],
+        if_true = [":unary_unranked_kernel_srcs"],
+    ),
+    compatible_with = get_compatible_with_cloud(),
+)
+
 cc_library(
     name = "unranked_op_gpu_base",
     srcs = ["unranked_op_gpu_base.cc"],
@@ -96,45 +110,68 @@ cc_library(
 
 tf_kernel_library(
     name = "cwise_unary_op",
-    srcs = [":unary_unranked_kernel_srcs"],
+    srcs = [":unary_kernel_srcs"],
     tags = [
         "manual",
     ],
-    deps = [
-        # Technically we only need to depend on the kernel libraries for the
-        # unranked kernels which are enabled by default. But this would
-        # make our BUILD target structure uglier. We already need to make
-        # sure that those targets can be built, so it should not hurt to
-        # link them in even if they are currently not needed yet.
-        ":abs_unranked_kernels",
-        ":ceil_unranked_kernels",
-        ":conj_unranked_kernels",
-        ":cos_unranked_kernels",
-        ":exp_unranked_kernels",
-        ":floor_unranked_kernels",
-        ":imag_unranked_kernels",
-        ":is_inf_unranked_kernels",
-        ":log_unranked_kernels",
-        ":logical_not_unranked_kernels",
-        ":real_unranked_kernels",
-        ":rsqrt_unranked_kernels",
-        ":sign_unranked_kernels",
-        ":sin_unranked_kernels",
-        ":sqrt_unranked_kernels",
-        ":tanh_unranked_kernels",
-        ":unranked_op_gpu_base",
-        "//third_party/eigen3",
-    ],
+    deps = if_mlir_unranked_kernels_enabled(
+        if_false = [
+            ":abs_kernels",
+            ":tanh_kernels",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/synchronization",
+            "@com_google_absl//absl/types:span",
+            "//third_party/eigen3",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core/platform:stream_executor",
+        ],
+        if_true = [
+            # Technically we only need to depend on the kernel libraries for the
+            # unranked kernels which are enabled by default. But this would
+            # make our BUILD target structure uglier. We already need to make
+            # sure that those targets can be built, so it should not hurt to
+            # link them in even if they are currently not needed yet.
+            ":abs_unranked_kernels",
+            ":ceil_unranked_kernels",
+            ":conj_unranked_kernels",
+            ":cos_unranked_kernels",
+            ":exp_unranked_kernels",
+            ":floor_unranked_kernels",
+            ":imag_unranked_kernels",
+            ":is_inf_unranked_kernels",
+            ":log_unranked_kernels",
+            ":logical_not_unranked_kernels",
+            ":real_unranked_kernels",
+            ":rsqrt_unranked_kernels",
+            ":sign_unranked_kernels",
+            ":sin_unranked_kernels",
+            ":sqrt_unranked_kernels",
+            ":tanh_unranked_kernels",
+            ":unranked_op_gpu_base",
+            "//third_party/eigen3",
+        ],
+    ),
 )
 
 tf_kernel_library(
     name = "cwise_binary_op",
-    srcs = ["unranked_gpu_add.cc"],
+    srcs = [
+        "unranked_op_gpu_add.cc",
+    ],
     tags = [
         "manual",
     ],
     deps = [
         ":add_v2_unranked_kernels",
+        ":equal_unranked_kernels",
+        ":greater_equal_unranked_kernels",
+        ":greater_unranked_kernels",
+        ":less_equal_unranked_kernels",
+        ":less_unranked_kernels",
+        ":maximum_unranked_kernels",
+        ":minimum_unranked_kernels",
+        ":not_equal_unranked_kernels",
         ":unranked_op_gpu_base",
         "//third_party/eigen3",
     ],
@@ -180,9 +217,9 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
-    name = "gpu_add_test",
+    name = "gpu_binary_ops_test",
     size = "small",
-    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_add_test.cc"]),
+    srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_binary_ops_test.cc"]),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/173033461
     ],
@@ -195,8 +232,10 @@ tf_cuda_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:device",
         "//tensorflow/core/common_runtime:device_factory",
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:ops_testutil",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 
@@ -244,7 +283,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "4",
+    unroll_factors = "2",
 )
 
 gen_kernel_library(
@@ -289,7 +328,7 @@ gen_kernel_library(
     generate_unranked = True,
     tile_size = "256",
     types = ["i1"],
-    unroll_factors = "4",
+    unroll_factors = "1",
 )
 
 gen_kernel_library(
@@ -329,28 +368,83 @@ gen_kernel_library(
         "f64",
         "i64",
     ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # TODO(b/174543802): Enable once fusion heuristics is better.
     # unroll_factors = "4",
 )
 
-gen_kernel_library(
-    name = "equal",
-    generate_ranked = False,
-    generate_unranked = True,
-    tile_size = "256,1,1",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i1",
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-    ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
-    # unroll_factors = "4",
-)
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i1",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "equal",
+        "not_equal",
+    ]
+]
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "less",
+        "less_equal",
+        "greater",
+        "greater_equal",
+    ]
+]
+
+[
+    gen_kernel_library(
+        name = name,
+        generate_ranked = False,
+        generate_unranked = True,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "maximum",
+        "minimum",
+    ]
+]
 
 # Kernels that support all floating-point types.
 [

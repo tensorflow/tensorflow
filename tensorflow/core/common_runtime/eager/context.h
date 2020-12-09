@@ -234,8 +234,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // entry to the KernelAndDevice cache for it if it's not exist.
   Status AddFunctionDef(const FunctionDef& fdef) override;
 
-  Status AddFunctionDefWithDebugInfo(
-      const FunctionDef& fdef, const Graph* graph_with_debug_info) override;
+  Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) override;
 
   // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
   // it to the local FunctionLibraryDefinition as well, but no need to add it
@@ -244,7 +244,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status AddFunctionDef(const FunctionDef& fdef,
                         const FunctionDefLibrary& library,
                         const bool add_to_local_only = false,
-                        const Graph* graph_with_debug_info = nullptr);
+                        const StackTracesMap& stack_traces = {});
 
   const FunctionDef* GetFunctionDef(const string& function_name);
 

@@ -22,16 +22,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
-using ::tflite::gpu::metal::RuntimeOptions;
+using ::tflite::gpu::CalculationsPrecision;
 using ::tflite::gpu::ValueId;
 using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::HalfBits;
@@ -45,7 +45,7 @@ using ::tflite::gpu::TensorUsageRecord;
   std::vector<ValueId> _inputIds;
   std::vector<ValueId> _outputIds;
   id<MTLDevice> _device;
-  RuntimeOptions _options;
+  CalculationsPrecision _precision;
   std::map<ValueId, BHWC> _tensorShapes;
 }
 
@@ -53,17 +53,17 @@ using ::tflite::gpu::TensorUsageRecord;
                                  model:(const tflite::gpu::metal::CompiledModel&) compiledModel
                         inputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)inputBufferIDs
                        outputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)outputBufferIDs
-                        runtimeOptions:(const RuntimeOptions&)options {
+                             precision:(tflite::gpu::CalculationsPrecision)precision {
   _device = device;
   _inputIds = inputBufferIDs;
   _outputIds = outputBufferIDs;
-  _options = options;
+  _precision = precision;
   // Metal resources are created here.
   for (const auto& node : compiledModel.nodes) {
     TFLComputeTask* task = [[TFLComputeTask alloc] init];
     RETURN_IF_ERROR([task compileWithDevice:_device
                              taskDescriptor:node
-                             runtimeOptions:_options]);
+                                  precision:_precision]);
     [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
@@ -119,9 +119,8 @@ using ::tflite::gpu::TensorUsageRecord;
   RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY_BEST, &assignment));
   auto objectsCount = assignment.object_sizes.size();
   std::vector<id<MTLBuffer>> sharedBuffers(objectsCount);
-  size_t dataTypeSize = _options.storage_precision == RuntimeOptions::Precision::FP32
-                            ? sizeof(float)
-                            : sizeof(HalfBits);
+  const bool f32_storage = _precision == CalculationsPrecision::F32;
+  size_t dataTypeSize = f32_storage ? sizeof(float) : sizeof(HalfBits);
 
   // allocate buffers for each shared object
   for (size_t i = 0; i < objectsCount; ++i) {
@@ -165,8 +164,8 @@ using ::tflite::gpu::TensorUsageRecord;
 }
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
-       inputOutputBuffers:(const std::map<ValueId, id<MTLBuffer>>&)inputOutputBuffers
-             encoderBlock:(id<MTLComputeCommandEncoder> (^)(bool isLast))encoderBlock {
+       inputOutputBuffers:
+           (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
   for (auto& task_index : _taskIdsWithInOutBuffers) {
     auto& task = _computeTasks[task_index];
     [task updateBuffers:inputOutputBuffers];
@@ -174,10 +173,44 @@ using ::tflite::gpu::TensorUsageRecord;
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
     [task encodeWithEncoder:commandEncoder];
-    if (encoderBlock != nil) {
-      commandEncoder = encoderBlock(i == _computeTasks.size() - 1);
+  }
+}
+
+- (void)encodeWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+             inputOutputBuffers:
+                 (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+    auto& task = _computeTasks[i];
+    [task encodeWithEncoder:encoder];
+    [encoder endEncoding];
+  }
+}
+
+- (void)encodeWithCommandQueue:(id<MTLCommandQueue>)commandQueue
+            inputOutputBuffers:
+                (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers
+             flushPeriodically:(int)flushPeriod {
+  for (auto& task_index : _taskIdsWithInOutBuffers) {
+    auto& task = _computeTasks[task_index];
+    [task updateBuffers:inputOutputBuffers];
+  }
+  id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+    auto& task = _computeTasks[i];
+    [task encodeWithEncoder:encoder];
+    [encoder endEncoding];
+    if (i % flushPeriod == (flushPeriod - 1)) {
+      [commandBuffer commit];
+      commandBuffer = [commandQueue commandBuffer];
     }
   }
+  [commandBuffer commit];
 }
 
 @end

@@ -26,8 +26,8 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : PjRtDevice(id, std::move(local_device_state),
-                 /*device_kind=*/kCpuPlatformName) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               /*device_kind=*/kCpuPlatformName) {}
 
 StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
@@ -40,7 +40,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutorConfig config;
     config.ordinal = i;
@@ -57,11 +57,11 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
     devices.push_back(std::move(device));
   }
 
-  return std::make_unique<PjRtClient>(
+  return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
       kCpuName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
-      /*gpu_run_options=*/nullptr);
+      /*gpu_run_options=*/nullptr));
 }
 
 }  // namespace xla

@@ -26,14 +26,14 @@ limitations under the License.
 
 namespace xla {
 
-class PjRtTpuDevice : public PjRtDevice {
+class PjRtTpuDevice : public PjRtStreamExecutorDevice {
  public:
   PjRtTpuDevice(const tensorflow::tpu::TpuCoreLocationExternal core,
                 std::unique_ptr<LocalDeviceState> local_device_state,
                 int host_id, const std::array<int, 3>& coords,
                 std::string device_kind)
-      : PjRtDevice(core.Id(), std::move(local_device_state),
-                   std::move(device_kind), host_id),
+      : PjRtStreamExecutorDevice(core.Id(), std::move(local_device_state),
+                                 std::move(device_kind), host_id),
         core_(core),
         coords_(coords) {}
 
