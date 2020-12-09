@@ -26,12 +26,11 @@ cc_library(
         "-ldl",
     ],
     deps = [
-        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/core/shims:common",
-        "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
         "//tensorflow/lite/java/jni",
     ],
@@ -46,9 +45,7 @@ cc_library(
     deps = [
         ":native_framework_only",
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/shims:builtin_ops",
-        "//tensorflow/lite/core/shims:framework",
+        "//tensorflow/lite:framework",
     ],
     alwayslink = 1,
 )
