@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_CONVOLUTION_TRANSPOSED_SELECTOR_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_CONVOLUTION_TRANSPOSED_SELECTOR_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_CONVOLUTION_TRANSPOSED_SELECTOR_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_CONVOLUTION_TRANSPOSED_SELECTOR_H_
 
 #include <memory>
 
@@ -25,7 +25,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
@@ -35,8 +34,7 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
     const ConvolutionTransposedAttributes& attr, const GpuInfo& gpu_info,
     const OperationDef& op_def, WeightsDescription* weights_desc);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_CONVOLUTION_TRANSPOSED_SELECTOR_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_CONVOLUTION_TRANSPOSED_SELECTOR_H_

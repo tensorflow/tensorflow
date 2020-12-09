@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/selectors/operation_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/operation_selector.h"
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/dw_convolution_selector.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/convolution_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/convolution_transposed_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/default_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/dw_convolution_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/fully_connected_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/simple_selectors.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
@@ -38,7 +38,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 bool IsRecommendedForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                       const GpuInfo& gpu_info,
@@ -530,6 +529,5 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/simple_selectors.h"
 
 #include <memory>
 #include <set>
@@ -44,7 +44,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
                                          const GpuInfo& gpu_info) {
@@ -194,6 +193,5 @@ std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
       CreateQuantizeAndDequantize(op_def, attr));
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

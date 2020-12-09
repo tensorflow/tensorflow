@@ -13,28 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
+
 #include <memory>
 
-#include "absl/strings/str_cat.h"
-#include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
-#include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-absl::Status SelectDefault(const GpuInfo& gpu_info, const OperationDef& op_def,
-                           ModelHints hints, const std::vector<Value*>& inputs,
-                           const std::vector<Value*>& outputs, const Node& node,
-                           GPUOperationsSubgraph* gpu_subgraph) {
-  return absl::UnimplementedError(
-      absl::StrCat("No selector for ", node.operation.type));
+std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
+    GPUOperationsSubgraph* gpu_subgraph) {
+  gpu_subgraph->operations.clear();
+  gpu_subgraph->new_tensors.clear();
+  gpu_subgraph->operations.push_back({});
+  for (int i = 0; i < inputs.size(); ++i) {
+    gpu_subgraph->operations[0].input_ids.push_back(inputs[i]->id);
+  }
+  for (int i = 0; i < outputs.size(); ++i) {
+    gpu_subgraph->operations[0].output_ids.push_back(outputs[i]->id);
+  }
+
+  return &gpu_subgraph->operations[0].operation;
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

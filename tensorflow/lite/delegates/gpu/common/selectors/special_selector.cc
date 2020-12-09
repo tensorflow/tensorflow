@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/selectors/special_selector.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/special_selector.h"
 
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -27,7 +27,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 absl::Status TryDepthwiseConvPlus1x1Conv(
     CalculationsPrecision precision, const GraphFloat32& graph,
@@ -207,6 +206,5 @@ absl::Status GPUSubgraphFromGraph(
   return absl::NotFoundError("No special combination.");
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

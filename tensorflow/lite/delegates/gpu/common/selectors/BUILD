@@ -7,11 +7,11 @@ cc_library(
     name = "convolution_selector",
     hdrs = ["convolution_selector.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl/selectors/default:convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors/default:convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
     ],
@@ -21,9 +21,9 @@ cc_library(
     name = "convolution_transposed_selector",
     hdrs = ["convolution_transposed_selector.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl/selectors/default:convolution_transposed_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors/default:convolution_transposed_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:weights_layout",
         "@com_google_absl//absl/memory",
@@ -35,10 +35,10 @@ cc_library(
     hdrs = ["default_selector.h"],
     deps = [
         ":subgraph",
-        "//tensorflow/lite/delegates/gpu/cl/selectors/default:default_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors/default:default_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
     ],
@@ -48,9 +48,9 @@ cc_library(
     name = "dw_convolution_selector",
     hdrs = ["dw_convolution_selector.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl/selectors/default:dw_convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors/default:dw_convolution_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/memory",
     ],
@@ -60,9 +60,9 @@ cc_library(
     name = "fully_connected_selector",
     hdrs = ["fully_connected_selector.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl/selectors/default:fully_connected_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors/default:fully_connected_selector",  # buildcleaner: keep
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/memory",
     ],

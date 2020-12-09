@@ -22,7 +22,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 std::unique_ptr<GPUOperation> SelectFullyConnectedGeneric(
     const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
@@ -96,6 +95,5 @@ std::unique_ptr<GPUOperation> SelectFullyConnected(
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

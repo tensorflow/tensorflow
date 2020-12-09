@@ -13,29 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SELECTOR_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SELECTOR_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SUBGRAPH_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SUBGRAPH_H_
 
 #include <memory>
+#include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
-#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-absl::Status SelectDefault(const GpuInfo& gpu_info, const OperationDef& op_def,
-                           ModelHints hints, const std::vector<Value*>& inputs,
-                           const std::vector<Value*>& outputs, const Node& node,
-                           GPUOperationsSubgraph* gpu_subgraph);
+struct GPUOperationWithRefs {
+  std::unique_ptr<GPUOperation> operation;
 
-}  // namespace cl
+  // input and output ids can be positive or negative.
+  // if we have positive id, we will use preallocated tensor from GraphFloat32
+  // otherwise, we will use ids for newly allocated tensors
+  std::vector<int> input_ids;
+  std::vector<int> output_ids;
+};
+
+struct GPUOperationsSubgraph {
+  std::vector<GPUOperationWithRefs> operations;
+  std::vector<std::pair<BHWC, TensorDescriptor>> new_tensors;
+};
+
+std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
+    GPUOperationsSubgraph* gpu_subgraph);
+
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_DEFAULT_SELECTOR_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SUBGRAPH_H_

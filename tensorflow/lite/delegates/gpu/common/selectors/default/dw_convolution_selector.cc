@@ -14,13 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 
 std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
@@ -79,6 +78,5 @@ std::unique_ptr<GPUOperation> SelectDWConvolution(
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

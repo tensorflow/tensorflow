@@ -30,7 +30,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 
 std::unique_ptr<GPUOperation> SelectConvolutionAdreno(
@@ -201,6 +200,5 @@ std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
   return absl::make_unique<ConverterToConvWeights>(std::move(converter));
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

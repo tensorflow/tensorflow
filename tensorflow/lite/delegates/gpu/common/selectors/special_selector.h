@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,31 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_OPERATION_SELECTOR_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_OPERATION_SELECTOR_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SPECIAL_SELECTOR_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SPECIAL_SELECTOR_H_
 
-#include <memory>
+#include <map>
+#include <set>
+#include <vector>
 
-#include "tensorflow/lite/delegates/gpu/cl/selectors/subgraph.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
-#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
+#include "tensorflow/lite/delegates/gpu/common/selectors/subgraph.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
-absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
-                                  const OperationDef& op_def, ModelHints hints,
-                                  const std::vector<Value*>& inputs,
-                                  const std::vector<Value*>& outputs,
-                                  const Node& node,
-                                  GPUOperationsSubgraph* gpu_subgraph);
+absl::Status GPUSubgraphFromGraph(
+    const GpuInfo& gpu_info, CalculationsPrecision precision,
+    const GraphFloat32& graph, NodeId first_node_id,
+    const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
+    std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph,
+    std::string* name);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_OPERATION_SELECTOR_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SPECIAL_SELECTOR_H_

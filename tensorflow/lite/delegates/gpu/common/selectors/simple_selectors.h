@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_SIMPLE_SELECTORS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_SIMPLE_SELECTORS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SIMPLE_SELECTORS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SIMPLE_SELECTORS_H_
 
 #include <memory>
 
@@ -26,7 +26,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 
 std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
                                          const GpuInfo& gpu_info);
@@ -98,8 +97,7 @@ std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
 std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
     const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def);
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_SELECTORS_SIMPLE_SELECTORS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SELECTORS_SIMPLE_SELECTORS_H_

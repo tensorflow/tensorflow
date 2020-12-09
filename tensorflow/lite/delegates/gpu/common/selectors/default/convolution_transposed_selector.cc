@@ -23,7 +23,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 
 std::unique_ptr<GPUOperation> SelectConvolutionTransposedAdreno(
@@ -142,6 +141,5 @@ std::unique_ptr<GPUOperation> SelectConvolutionTransposedWithDynamicWeights(
   }
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

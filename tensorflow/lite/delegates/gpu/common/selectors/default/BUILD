@@ -46,11 +46,11 @@ cc_library(
     name = "default_selector",
     srcs = ["default_selector.cc"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_hints",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/selectors:subgraph",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@com_google_absl//absl/strings",
     ],
@@ -60,7 +60,7 @@ cc_library(
     name = "dw_convolution_selector",
     srcs = ["dw_convolution_selector.cc"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
