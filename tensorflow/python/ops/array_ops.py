@@ -4759,6 +4759,7 @@ def reverse_sequence(input,
 
 
 @tf_export("reverse_sequence", v1=[])
+@dispatch.add_dispatch_support
 def reverse_sequence_v2(input,
                         seq_lengths,
                         seq_axis=None,
