@@ -54,9 +54,10 @@ class FormatConverter {
   FormatConverter(const std::vector<int>& shape,
                   const TfLiteSparsity& sparsity);
 
-  // TODO(b/175040247): Return const reference to avoid copy.
-  std::vector<T> GetData() { return data_; }
-  std::vector<std::vector<int>> GetDimMetadata() { return dim_metadata_; }
+  const std::vector<T>& GetData() { return data_; }
+  const std::vector<std::vector<int>>& GetDimMetadata() {
+    return dim_metadata_;
+  }
 
   // Method for dense to sparse conversion. Need to call GetData() method to get
   // the compressed data.
@@ -68,7 +69,7 @@ class FormatConverter {
   // Method for sparse to dense conversion with caller provided buffer. No need
   // to call GetData() with this method.
   TfLiteStatus SparseToDense(const T* src_data, const size_t dest_size,
-                             T* dest_data, TfLiteContext* context);
+                             T* dest_data, TfLiteContext* context = nullptr);
 
  private:
   // A recursive function to fetch data from the compressed src_data buffer and
