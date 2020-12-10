@@ -52,7 +52,7 @@ void CompareNumericalAndManualGradients(
   for (int j = 0; j < num_grad; j++) {
     ASSERT_NEAR(dnumerical[j], expected_grad[j], abs_error);
   }
-  delete dnumerical;
+  delete[] dnumerical;
   TF_DeleteTensor(numerical_tensor);
 }
 
