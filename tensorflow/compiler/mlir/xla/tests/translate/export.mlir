@@ -145,6 +145,27 @@ func @main() -> !mhlo.token {
 
 // CHECK:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  call @empty_callee() : () -> ()
+  return %arg0 : tensor<4xi32>
+}
+
+func @empty_callee() {
+  return
+}
+
+// CHECK:       [[CALLEE:%.*]] () -> () {
+// CHECK-NEXT:    ROOT %{{.*}} = () tuple()
+// CHECK-NEXT:  }
+
+// CHECK:       ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
+// CHECK-NEXT:    ROOT %[[ARG]] = s32[4] parameter(0)
+// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]
+// CHECK-NEXT:  }
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   %0 = call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   %1 = call @callee(%0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %1 : tensor<4xi32>
@@ -962,7 +983,7 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // CHECK: [[SORT:%.+]] = (f32[16,16], s32[16,16]) sort(f32[16,16] %Arg_0.1, s32[16,16] %Arg_1.2), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 // CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=0
-// CHECK: ROOT [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
+// CHECK: [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
 
 // -----
 
@@ -979,7 +1000,7 @@ func @main(%input0: tensor<16x16xf32>) {
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
 // CHECK:   ROOT %[[CMP:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
 
-// CHECK: ROOT %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+// CHECK: %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 
 // -----
 

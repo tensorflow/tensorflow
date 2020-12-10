@@ -126,6 +126,15 @@ def _tfr_control_flow_range_for(x):
   return x_sum
 
 
+@composite.Composite('TestInputNOp')
+def _tfr_control_flow_tensor_list_size(ins):
+  n = len(ins)
+  if n == 1:
+    return ins[0]
+  else:
+    return math_ops.AddN(ins)
+
+
 #--- test fn for tf ops ---
 
 
@@ -403,6 +412,24 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT:   %{{.*}} = constant true
       CHECK-NEXT:   tfr.return %[[for_stmt]] : !tfr.tensor
       CHECK-NEXT: }
+
+      CHECK-LABEL: tfr.func @tf__test_input_n_op(%ins: !tfr.tensor_list) -> (!tfr.tensor) {
+      CHECK-NEXT:   %[[len:.*]] = tfr.get_length %ins -> index
+      CHECK-NEXT:   %[[cst:.*]] = constant 1 : i64
+      CHECK-NEXT:   %[[casted:.*]] = index_cast %[[cst]] : i64 to index
+      CHECK-NEXT:   %[[eq:.*]] = cmpi "eq", %[[len]], %[[casted]] : index
+      CHECK-NEXT:   %[[if:.*]] = scf.if %[[eq]] -> (!tfr.tensor) {
+      CHECK-NEXT:     %{{.*}} = constant true
+      CHECK-NEXT:     %{{.*}} = constant 0 : index
+      CHECK-NEXT:     %[[elt:.*]] = tfr.get_element %ins[%cst_2] : (!tfr.tensor_list, index) -> !tfr.tensor
+      CHECK-NEXT:     scf.yield %[[elt]] : !tfr.tensor
+      CHECK-NEXT:   } else {
+      CHECK-NEXT:     %{{.*}} = constant true
+      CHECK-NEXT:     %[[AddN:.*]] = tfr.call @tf__add_n(%ins) : (!tfr.tensor_list) -> (!tfr.tensor)
+      CHECK-NEXT:     scf.yield %[[AddN]] : !tfr.tensor
+      CHECK-NEXT:   }
+      CHECK-NEXT:   tfr.return %[[if_stmt]] : !tfr.tensor
+      CHECK-NEXT:  }
     """
     self._check_code(mlir_code, mlir_code_exp)
 

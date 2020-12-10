@@ -1530,6 +1530,10 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     const auto& ret = ret_and_idx.value();
     auto* inst = node_values_[ret.node->id()];
     if (ret.node->IsRetval()) {
+      if (!ret.node->requested_device().empty())
+        func.setResultAttr(
+            ret_and_idx.index(), "tf.device",
+            builder_.getStringAttr(ret.node->requested_device()));
       TF_RETURN_IF_ERROR(set_attributes_on_func(ret.node, ret_and_idx.index(),
                                                 /*is_arg=*/false));
       // Lookup the instruction inside the island

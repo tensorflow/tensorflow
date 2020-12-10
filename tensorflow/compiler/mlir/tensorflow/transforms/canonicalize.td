@@ -55,6 +55,16 @@ def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
 // BatchMatMul op patterns.
 //===----------------------------------------------------------------------===//
 
+// Static shaped operands in a legal BatchMatMul op will have matching batch
+// dimensions and can be upgraded to the BatchMatMulV2 op. Canonicalizing
+// dynamically shaped operands is not correct as that will execute ops that
+// have non matching batch dimensions but are broadcastable which should fail
+// with V1.
+def BatchMatMulToV2 :
+  Pat<(TF_BatchMatMulOp AnyStaticShapeTensor:$x, AnyStaticShapeTensor:$y,
+                        $adj_x, $adj_y),
+      (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y)>;
+
 def BatchMatMulToMatMul : Pat<(TF_BatchMatMulOp $x, $y, $adj_x, $adj_y),
                               (TF_MatMulOp $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;

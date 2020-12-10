@@ -174,6 +174,13 @@ func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   return %0: tensor<4xi32>
 }
 
+// CHECK-LABEL: func @bitwise_xor
+func @bitwise_xor(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK-NEXT: mhlo.xor
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0: tensor<4xi32>
+}
+
 // CHECK-LABEL: func @bitwise_and
 func @bitwise_and(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
   // CHECK-NEXT: mhlo.and

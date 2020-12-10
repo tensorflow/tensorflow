@@ -20469,12 +20469,13 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 	return output
 }
 
-// Returns the TopK values in the array in sorted order. This is a combination
+// Returns the TopK values in the array in sorted order.
 //
-// of MakeUnique and TopKUnique. The returned top-K will have its lower bits
-// replaced by iota, thus it will be close to the original value but not exactly
-// the same. The running time is proportional to the product of K and the input
-// size. NaNs are never returned. Subnormal numbers are flushed to zero.
+// This is a combination of MakeUnique and TopKUnique. The returned top-K will
+// have its lower bits replaced by iota, thus it will be close to the original
+// value but not exactly the same. The running time is proportional to the product
+// of K and the input size. NaNs are never returned. Subnormal numbers are flushed
+// to zero.
 func TopKWithUnique(scope *Scope, input tf.Output, k int64) (topk tf.Output, topk_indices tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -29883,7 +29884,7 @@ func QuantizedAvgPool(scope *Scope, input tf.Output, min_input tf.Output, max_in
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-//     Adds v into specified rows of x.
+// Adds v into specified rows of x.
 //
 //     Computes y = x; y[i, :] += v; return y.
 //
@@ -34871,9 +34872,9 @@ func TPUReplicateMetadata(scope *Scope, num_replicas int64, optional ...TPURepli
 	return scope.AddOperation(opspec)
 }
 
-// Returns the TopK unique values in the array in sorted order. The
+// Returns the TopK unique values in the array in sorted order.
 //
-// running time is proportional to the product of K and the input
+// The running time is proportional to the product of K and the input
 // size. Sorting the whole array is more efficient for sufficiently large
 // values of K. The median-of-medians algorithm is probably faster, but
 // difficult to implement efficiently in XLA. If there are fewer than K

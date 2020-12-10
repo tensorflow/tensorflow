@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::BHWC;
@@ -34,7 +33,7 @@ using ::tflite::gpu::HalfBits;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::CreateComputeProgram;
 using ::tflite::gpu::metal::DispatchParamsFunction;
-using ::tflite::gpu::metal::RuntimeOptions;
+using ::tflite::gpu::CalculationsPrecision;
 using ::tflite::gpu::metal::UniformsFunction;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
@@ -73,7 +72,7 @@ struct UniformBuffer {
 
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
                    taskDescriptor:(const tflite::gpu::metal::NodeDescriptor&)desc
-                   runtimeOptions:(const RuntimeOptions&)options {
+                        precision:(CalculationsPrecision)precision; {
   size_t offset = desc.task->src_tensors_names.size() + desc.task->uniform_buffers.size()
                   + desc.task->immutable_buffers.size() + 1;
   RETURN_IF_ERROR(_metal_args.Init(device, offset, &desc.task->args, &desc.task->shader_source));
@@ -90,13 +89,13 @@ struct UniformBuffer {
   NSString* toAccumulatorType2 = @"";
   NSString* toAccumulatorType3 = @"";
   NSString* toAccumulatorType4 = @"";
-  if (options.storage_precision == RuntimeOptions::Precision::FP32) {
+  if (precision == CalculationsPrecision::F32) {
     storageType = @"float";
     accumulatorType = @"float";
   } else {
     // FP16
     storageType = @"half";
-    if (options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    if (precision == CalculationsPrecision::F32_F16) {
       accumulatorType = @"float";
       toAccumulatorType = @"float";
       toAccumulatorType2 = @"float2";
@@ -136,10 +135,9 @@ struct UniformBuffer {
     _uniformBuffers.emplace_back(UniformBuffer{{}, uniform.data_function});
   }
   _outputBuffers.emplace_back(OutputBuffer{desc.dst_tensors_ids[0], nil});
+  const bool f32_storage = precision == CalculationsPrecision::F32;
   for (auto& immutable : desc.task->immutable_buffers) {
-    int padding =
-        4 * (options.storage_precision == RuntimeOptions::Precision::FP32 ? sizeof(float)
-                                                                          : sizeof(HalfBits));
+    int padding = 4 * (f32_storage ? sizeof(float) : sizeof(HalfBits));
     int paddedSize = AlignByN(immutable.data.size(), padding);
     immutable.data.resize(paddedSize);
     id<MTLBuffer> metalBuffer = [device newBufferWithBytes:immutable.data.data()
@@ -231,21 +229,6 @@ struct UniformBuffer {
   return false;
 }
 
-- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
-  for (auto& buffer : _inputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer != inputOutputBuffers.end()) {
-      buffer.metalHandle = externalBuffer->second;
-    }
-  }
-  for (auto& buffer : _outputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer != inputOutputBuffers.end()) {
-      buffer.metalHandle = externalBuffer->second;
-    }
-  }
-}
-
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder {
   // The dispatch call is intended to be skipped.
   if (_groupsCount.x * _groupsCount.y * _groupsCount.z == 0) {
@@ -292,6 +275,16 @@ struct UniformBuffer {
     result.push_back(buffer.uid);
   }
   return result;
+}
+
+- (void)setSrcTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor
+           withIndex:(int)index; {
+  _inputBuffers[index].metalHandle = tensor.GetBufferHandle();
+}
+
+- (void)setDstTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor
+           withIndex:(int)index; {
+  _outputBuffers[index].metalHandle = tensor.GetBufferHandle();
 }
 
 - (void)setDescription:(const std::string&)description {

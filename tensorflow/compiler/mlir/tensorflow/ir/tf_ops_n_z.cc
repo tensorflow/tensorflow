@@ -400,7 +400,7 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op.template getParentOfType<ModuleOp>();
+  auto module = op->template getParentOfType<ModuleOp>();
   SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
@@ -532,7 +532,11 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
   auto ranked_type = type.dyn_cast<RankedTensorType>();
   if (!ranked_type) return {};
 
-  auto output_type = getType().cast<ShapedType>();
+  // DenseIntElementsAttr::get requires the output type be ranked with static
+  // shape.
+  auto output_type = getType().dyn_cast<RankedTensorType>();
+  if (!output_type || !output_type.hasStaticShape()) return {};
+
   int32_t rank = ranked_type.getRank();
   return DenseIntElementsAttr::get(output_type, rank);
 }
@@ -2375,7 +2379,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
     // If the types don't match then only fold if all the operands are in the TF
     // dialect.
     for (auto user : op.getOperation()->getUsers())
-      if (user->getDialect() != op.getDialect()) return {};
+      if (user->getDialect() != op->getDialect()) return {};
   }
 
   return op.x();

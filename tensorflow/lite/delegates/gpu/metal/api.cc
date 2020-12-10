@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/winograd.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -183,7 +182,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                                 const std::vector<ValueId>& inputs,
                                 const std::vector<ValueId>& outputs,
                                 const GpuInfo& gpu_info,
-                                const RuntimeOptions& options,
+                                CalculationsPrecision precision,
                                 int* last_value_id,
                                 std::map<ValueId, BHWC>* tensor_shapes,
                                 std::vector<NodeDescriptor>* nodes) {
@@ -199,15 +198,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
   node_desc.src_tensors_ids = inputs;
   node_desc.dst_tensors_ids = outputs;
   OperationDef op_def;
-  if (options.storage_precision == RuntimeOptions::Precision::FP32) {
-    op_def.precision = CalculationsPrecision::F32;
-  } else {
-    if (options.accumulator_precision == RuntimeOptions::Precision::FP32) {
-      op_def.precision = CalculationsPrecision::F32_F16;
-    } else {
-      op_def.precision = CalculationsPrecision::F16;
-    }
-  }
+  op_def.precision = precision;
   DataType data_type = DeduceDataTypeFromPrecision(op_def.precision);
   TensorDescriptor tensor_descriptor =
       TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC};
@@ -536,7 +527,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
 }  // namespace
 
 absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
-                     const RuntimeOptions& options,
+                     CalculationsPrecision precision,
                      CompiledModel* compiled_model) {
   int last_value_id = 0;
   for (const auto& value : graph.values()) {
@@ -555,11 +546,11 @@ absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
     }
     std::vector<NodeDescriptor> node_descs;
     std::vector<ComputeTaskDescriptorPtr> custom_tasks;
-    auto custom_status =
-        RegisterCustomOps(graph, node, inputs, outputs, options, &custom_tasks);
+    auto custom_status = RegisterCustomOps(graph, node, inputs, outputs,
+                                           precision, &custom_tasks);
     if (!custom_status.ok()) {
       auto primary_status = RegisterPrimaryOps(
-          graph, node, inputs, outputs, gpu_info, options, &last_value_id,
+          graph, node, inputs, outputs, gpu_info, precision, &last_value_id,
           &compiled_model->tensor_shapes, &node_descs);
       if (!primary_status.ok()) {
         return absl::UnimplementedError(

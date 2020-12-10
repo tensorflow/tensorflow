@@ -167,13 +167,7 @@ class LowerToNVVMPass
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
     ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
-    target.addIllegalDialect<::mlir::gpu::GPUDialect>();
-    target.addIllegalOp<::mlir::LLVM::ExpOp>();
-    target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
-    target.addLegalDialect<::mlir::NVVM::NVVMDialect>();
-    // TODO(csigg): Remove once we support replacing non-root ops.
-    target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
-                      ::mlir::gpu::YieldOp>();
+    ::mlir::configureGpuToNVVMConversionLegality(target);
     if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }

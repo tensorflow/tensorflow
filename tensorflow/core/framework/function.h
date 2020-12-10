@@ -339,14 +339,25 @@ class AbstractStackTrace {
 
     // Drop the common largest prefix of all filenames in stack frames.
     bool filter_common_prefix = false;
+
+    // Do not show internal frames.
+    bool drop_internal_frames = false;
   };
 
   virtual ~AbstractStackTrace() {}
 
   // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
+
+  // Returns the last stack frame from user code, attempting to ignore the
+  // framework code. Returns an empty optional if no such stack frame was found.
+  virtual absl::optional<StackFrame> LastUserFrame() const = 0;
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
 };
+
+using StackTracesMap =
+    std::unordered_map<std::string,
+                       std::shared_ptr<tensorflow::AbstractStackTrace>>;
 
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
@@ -397,7 +408,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Associates `graph` with a function `func_name`. Lifetime assumption:
   // `graph` has to outlive all instantiated graphs.
   Status AddFunctionDef(const FunctionDef& fdef,
-                        const Graph* graph_with_debug_info = nullptr)
+                        const StackTracesMap& stack_traces = {})
       TF_LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
@@ -509,10 +520,14 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Returns graph with debug stack traces for the given function, or `nullptr`
   // if none found.
-  const Graph* GetGraphWithDebugInfo(const std::string& func_name) const {
+  const StackTracesMap& GetStackTraces(const std::string& func_name) const {
     tf_shared_lock l(mu_);
     std::shared_ptr<FunctionDefAndOpRegistration> entry = FindHelper(func_name);
-    return entry ? entry->graph_with_debug_info : nullptr;
+    if (entry) {
+      return entry->stack_traces;
+    }
+    static const auto* empty_map = new StackTracesMap;
+    return *empty_map;
   }
 
  private:
@@ -520,12 +535,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   struct FunctionDefAndOpRegistration {
     explicit FunctionDefAndOpRegistration(
-        const FunctionDef& fdef_in,
-        const Graph* graph_with_debug_info = nullptr);
+        const FunctionDef& fdef_in, const StackTracesMap& stack_traces = {});
 
     const FunctionDef fdef;
     const OpRegistrationData op_registration_data;
-    const Graph* graph_with_debug_info;
+    const StackTracesMap stack_traces;
   };
 
   std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
@@ -539,7 +553,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
   Status AddFunctionDefHelper(const FunctionDef& fdef,
-                              const Graph* graph_with_debug_info, bool* added)
+                              const StackTracesMap& stack_traces, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);

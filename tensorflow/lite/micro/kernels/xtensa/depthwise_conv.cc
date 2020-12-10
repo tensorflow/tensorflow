@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
+
 #include <xtensa/tie/xt_hifi2.h>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -61,6 +63,7 @@ struct OpData {
   int32_t output_activation_max;
 };
 
+#if defined(HIFIMINI)
 inline void DepthwiseConvPerChannel(
     const DepthwiseParams& params, const int32_t* output_multiplier,
     const int32_t* output_shift, const RuntimeShape& input_shape,
@@ -304,6 +307,7 @@ inline void DepthwiseConv4x32MatchingInputAndFilter(
     output_data[ch_1] = static_cast<int8_t>(AE_TRUNCA32Q48(block_1_acc));
   }
 }
+#endif
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteDepthwiseConvParams* params, int width,
@@ -331,7 +335,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
 
     // TODO(b/148610881): Consider calculating quantized params at int24
-    // calculations:
+    // calculations for hifimini.
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
@@ -424,6 +428,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
+#if defined(HIFIMINI)
   DepthwiseConvPerChannel(op_params, data->per_channel_output_multiplier,
                           data->per_channel_output_shift,
                           tflite::micro::GetTensorShape(input),
@@ -434,6 +439,18 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                           tflite::micro::GetTensorData<int32_t>(bias),
                           tflite::micro::GetTensorShape(output),
                           tflite::micro::GetTensorData<int8_t>(output));
+#else
+  reference_integer_ops::DepthwiseConvPerChannel(
+      op_params, data->per_channel_output_multiplier,
+      data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int8_t>(input),
+      tflite::micro::GetTensorShape(filter),
+      tflite::micro::GetTensorData<int8_t>(filter),
+      tflite::micro::GetTensorShape(bias),
+      tflite::micro::GetTensorData<int32_t>(bias),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
+#endif
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -454,6 +471,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
           : nullptr;
 
+#if defined(HIFIMINI)
   // Handle special case for streaming model.
   int* input_dims = input->dims->data;
   int* filter_dims = filter->dims->data;
@@ -474,6 +492,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         tflite::micro::GetTensorData<int8_t>(output));
     return kTfLiteOk;
   }
+#endif
+
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteInt8:
       EvalQuantizedPerChannel(context, node, params, op_data, input, filter,

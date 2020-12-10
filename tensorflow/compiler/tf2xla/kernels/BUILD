@@ -121,6 +121,7 @@ tf_kernel_library(
         "tridiagonal_ops.cc",
         "unary_ops.cc",
         "unary_ops_composition.cc",
+        "unique_op.cc",
         "unpack_op.cc",
         "variable_ops.cc",
         "where_op.cc",

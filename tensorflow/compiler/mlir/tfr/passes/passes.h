@@ -25,8 +25,10 @@ limitations under the License.
 namespace mlir {
 namespace TFR {
 
-void populateSCFOpsCanonicalizationPatterns(OwningRewritePatternList &results,
-                                            MLIRContext *context);
+// Scans the func op and adds all the canonicalization patterns of the ops
+// except the tf ops, inside the function.
+void populateCanonicalizationPatterns(FuncOp func,
+                                      OwningRewritePatternList &patterns);
 
 // Decompose ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeTFOpsPass(

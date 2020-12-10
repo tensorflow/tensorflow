@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/utils/string_container_utils.h"
+#include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -233,8 +234,64 @@ Status ParseXlaArguments(absl::string_view input_shapes_str,
 
 }  // anonymous namespace
 
-static mlir::LogicalResult MlirTfToHloTextTranslateFunction(
-    mlir::ModuleOp module_op, llvm::raw_ostream& output) {
+// Test BuildHloFromTf. BuildHloFromTf only performs part of the conversion, so
+// to make this test comparable to other compile tests, the test implements
+// the remaining parts of the conversion.
+Status CompileMlirToXlaHloViaBuilder(
+    mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+    llvm::StringRef device_type, XlaCompilationResult* compilation_result,
+    llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+        custom_legalization_passes) {
+  // This call to RefineShapes is redundant with the call in BuildHloFromTf.
+  // It's here so xla::Parameters that are created form block.getArguments will
+  // have the proper shapes.
+  TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
+
+  mlir::FuncOp main = module_op.lookupSymbol<mlir::FuncOp>("main");
+  mlir::Block& block = main.getRegion().front();
+  xla::XlaBuilder builder("main");
+
+  // Create xla_params.
+  std::vector<xla::XlaOp> xla_params;
+  for (mlir::BlockArgument& arg : block.getArguments()) {
+    auto num = arg.getArgNumber();
+    xla::Shape shape = xla::TypeToShape(arg.getType());
+    xla::XlaOp argop =
+        xla::Parameter(&builder, num, shape, absl::StrCat("Arg_", num));
+    xla_params.push_back(argop);
+  }
+
+  std::vector<xla::XlaOp> returns(1);
+  TF_RETURN_IF_ERROR(BuildHloFromTf(module_op, builder, xla_params, returns,
+                                    arg_shapes, device_type,
+                                    custom_legalization_passes));
+
+  xla::XlaOp return_value;
+  if (returns.size() == 1)
+    return_value = returns[0];
+  else
+    return_value = xla::Tuple(&builder, returns);
+
+  TF_ASSIGN_OR_RETURN(
+      xla::XlaComputation computation,
+      return_value.valid() ? builder.Build(return_value) : builder.Build());
+  auto hlo_module = computation.proto();
+  xla::HloProto hlo_proto;
+  hlo_proto.mutable_hlo_module()->Swap(&hlo_module);
+
+  compilation_result->computation = std::make_shared<xla::XlaComputation>();
+  xla::XlaComputation* xla_computation = compilation_result->computation.get();
+  *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
+
+  XlaHelpers::ShapeRepresentationFn shape_representation_fn =
+      IdentityShapeRepresentationFn();
+  return PopulateResultIOInfo(module_op, arg_shapes, /*use_tuple_args=*/false,
+                              /*use_resource_updates_for_aliases=*/false,
+                              shape_representation_fn, compilation_result);
+}
+
+static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
+    mlir::ModuleOp module_op, llvm::raw_ostream& output, bool via_builder) {
   if (!module_op) return mlir::failure();
 
   llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
@@ -245,12 +302,21 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunction(
     return mlir::failure();
   }
 
+  auto device_type = "XLA_CPU_JIT";
+  llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
+      custom_legalization_passes{};
   XlaCompilationResult compilation_result;
-  auto compilation_status = CompileMlirToXlaHlo(
-      module_op, arg_shapes, /*device_type=*/"XLA_CPU_JIT", emit_use_tuple_arg,
-      emit_return_tuple, /*use_resource_updates_for_aliases=*/true,
-      IdentityShapeRepresentationFn(), &compilation_result,
-      /*custom_legalization_passes=*/{});
+  auto compilation_status =
+      via_builder
+          ? CompileMlirToXlaHloViaBuilder(module_op, arg_shapes, device_type,
+                                          &compilation_result,
+                                          custom_legalization_passes)
+          : CompileMlirToXlaHlo(module_op, arg_shapes, device_type,
+                                emit_use_tuple_arg, emit_return_tuple,
+                                /*use_resource_updates_for_aliases=*/true,
+                                IdentityShapeRepresentationFn(),
+                                &compilation_result,
+                                custom_legalization_passes);
   if (!compilation_status.ok()) {
     LOG(ERROR) << "TF/XLA compilation failed: "
                << compilation_status.ToString();
@@ -326,10 +392,25 @@ static mlir::LogicalResult MlirModuleToSerializedMlirStringAttrTranslate(
   return mlir::success();
 }
 
+static mlir::LogicalResult MlirTfToHloTextTranslateFunction(
+    mlir::ModuleOp module_op, llvm::raw_ostream& output) {
+  return MlirTfToHloTextTranslateFunctionImpl(module_op, output, false);
+}
+
+static mlir::LogicalResult MlirTfToHloTextViaBuilderTranslateFunction(
+    mlir::ModuleOp module_op, llvm::raw_ostream& output) {
+  return MlirTfToHloTextTranslateFunctionImpl(module_op, output, true);
+}
+
 }  // namespace tensorflow
 
 static mlir::TranslateFromMLIRRegistration MlirTfToHloTextTranslate(
     "mlir-tf-to-hlo-text", tensorflow::MlirTfToHloTextTranslateFunction,
+    tensorflow::RegisterMlirInputDialects);
+
+static mlir::TranslateFromMLIRRegistration MlirTfToHloTextViaBuilderTranslate(
+    "mlir-tf-to-hlo-text-via-builder",
+    tensorflow::MlirTfToHloTextViaBuilderTranslateFunction,
     tensorflow::RegisterMlirInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirTfGraphToHloTextTranslate(

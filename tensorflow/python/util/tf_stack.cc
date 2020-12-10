@@ -19,7 +19,7 @@ limitations under the License.
 // We store the retrieved stack trace within the Node object directly. Then
 // whenever the graph is instantiated/copies, we copy the stack trace with it.
 // Since the graph instantiation goes through the protobuf roundtrip, we store
-// the original Graph with stack traces attached in FunctionLibraryDefinition.
+// the original stack traces mapping attached in FunctionLibraryDefinition.
 
 #include <Python.h>
 #include <frameobject.h>
@@ -135,6 +135,17 @@ class StackTraceWrapper : public AbstractStackTrace {
     return *stack_frames_cache_;
   }
 
+  absl::optional<StackFrame> LastUserFrame() const override {
+    GenerateCache();
+    for (int i = stack_frames_cache_->size() - 1; i >= 0; i--) {
+      const StackFrame& frame = stack_frames_cache_->at(i);
+      if (!IsInternalFrame(frame)) {
+        return frame;
+      }
+    }
+    return absl::nullopt;
+  }
+
   std::string ToString(const TracePrintingOptions& opts) const override {
     GenerateCache();
     std::vector<std::string> files_to_find_prefix;
@@ -147,12 +158,18 @@ class StackTraceWrapper : public AbstractStackTrace {
         opts.filter_common_prefix
             ? io::CommonPathPrefix(files_to_find_prefix).size()
             : 0;
-    return absl::StrJoin(
-        *stack_frames_cache_, "\n",
-        [&](std::string* out, const StackFrame& frame) {
-          absl::StrAppend(out,
-                          StackFrameToString(frame, opts, shared_prefix_size));
-        });
+
+    if (!opts.drop_internal_frames) {
+      return ToStringHelper(*stack_frames_cache_, opts, shared_prefix_size);
+    }
+
+    std::vector<StackFrame> filtered_frames;
+    for (const StackFrame& frame : *stack_frames_cache_) {
+      if (!IsInternalFrame(frame)) {
+        filtered_frames.push_back(frame);
+      }
+    }
+    return ToStringHelper(filtered_frames, opts, shared_prefix_size);
   }
 
   bool IsCacheGenerated() const { return stack_frames_cache_.has_value(); }
@@ -198,6 +215,24 @@ class StackTraceWrapper : public AbstractStackTrace {
   }
 
  private:
+  static std::string ToStringHelper(absl::Span<StackFrame const> stack_frames,
+                                    const TracePrintingOptions& opts,
+                                    int shared_prefix_size) {
+    return absl::StrJoin(
+        stack_frames, "\n", [&](std::string* out, const StackFrame& frame) {
+          absl::StrAppend(out,
+                          StackFrameToString(frame, opts, shared_prefix_size));
+        });
+  }
+
+  static bool IsInternalFrame(const StackFrame& frame) {
+    // Use a simple heuristic for now.
+    // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
+    return absl::StrContains(frame.file_name, "tensorflow/python") &&
+           !absl::StrContains(frame.file_name, "keras") &&
+           !absl::StrContains(frame.file_name, "test.py");
+  }
+
   mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
   StackTrace captured_;
   // Using optional to force destruction while we hold a GIL.
@@ -296,9 +331,16 @@ PYBIND11_MODULE(_tf_stack, m) {
              self.GenerateCache();
              return py::hash(py::str(self.ToString({})));
            })
-      .def("__repr__", [](const StackTraceWrapper& self) {
-        self.GenerateCache();
-        return py::str(self.ToString({}));
+      .def("__repr__",
+           [](const StackTraceWrapper& self) {
+             self.GenerateCache();
+             return py::str(self.ToString({}));
+           })
+      .def("last_user_frame", [](const StackTraceWrapper& self) {
+        if (absl::optional<StackFrame> frame = self.LastUserFrame()) {
+          return *frame;
+        }
+        return StackFrame{};
       });
 
   m.def(

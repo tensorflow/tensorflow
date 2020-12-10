@@ -102,27 +102,8 @@ bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs) {
   }
 }
 
-// Returns a sharding where each tuple element is chosen as the more specific
-// one of the corresponding elements in a and b. Requires a an b to have the
-// same tuple nesting.
-HloSharding MergeForMoreSpecificSharding(const HloSharding& a,
-                                         const HloSharding& b) {
-  if (a.IsTuple()) {
-    HloSharding result = a;
-    CHECK(b.IsTuple());
-    CHECK_EQ(a.tuple_elements().size(), b.tuple_elements().size());
-    for (int64 i = 0; i < result.tuple_elements().size(); ++i) {
-      result.tuple_elements()[i] = MergeForMoreSpecificSharding(
-          a.tuple_elements()[i], b.tuple_elements()[i]);
-    }
-    return result;
-  }
-  return IsShardingMoreSpecific(a, b) ? a : b;
-}
-
 // Tries to refine `to_merge` by combining with `old`. Returns if the final
-// `to_merge` is more specific than `old`. May combine partial sharding in
-// addition to MergeForMoreSpecificSharding().
+// `to_merge` is more specific than `old`.
 bool MergeSharding(const HloSharding& old, HloSharding* to_merge,
                    bool may_combine_partial_sharding) {
   if (old.IsTuple()) {
@@ -1093,8 +1074,8 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       }
       auto sharding = instruction->operand(0)->sharding();
       if (instruction->has_sharding()) {
-        sharding =
-            MergeForMoreSpecificSharding(sharding, instruction->sharding());
+        MergeSharding(instruction->sharding(), &sharding,
+                      may_combine_partial_sharding);
       }
       return MaybeImproveInstructionSharding(std::move(sharding), instruction,
                                              may_combine_partial_sharding);
@@ -1319,6 +1300,12 @@ absl::optional<HloSharding> GetShardingFromUser(
     case HloOpcode::kReshape: {
       return hlo_sharding_util::ReshapeSharding(
           user.shape(), instruction.shape(), user.sharding());
+    }
+    case HloOpcode::kPad: {
+      if (&instruction != user.operand(0)) {
+        return absl::nullopt;
+      }
+      return user.sharding();
     }
     case HloOpcode::kSlice: {
       return user.sharding();
@@ -1673,8 +1660,10 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   // If instruction is a while, or the root or a parameter of a while body,
   // then propagate its sharding to the while instruction, to its body root,
   // and to its condition parameter.
-  std::function<void(HloInstruction*)> maybe_computation_propagation =
-      [&](HloInstruction* instruction) {
+  std::function<void(HloInstruction*, absl::flat_hash_set<HloInstruction*>*)>
+      maybe_computation_propagation = [&](HloInstruction* instruction,
+                                          absl::flat_hash_set<HloInstruction*>*
+                                              changed) {
         auto propagate_to_instruction = [&](HloInstruction* search_inst) {
           auto related_instructions = get_related_instructions(search_inst);
           if (absl::c_count(related_instructions, instruction)) {
@@ -1683,7 +1672,8 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
                   inst->sharding() != instruction->sharding()) {
                 VLOG(2) << "Add computation sharding: " << inst->name();
                 inst->set_sharding(instruction->sharding());
-                maybe_computation_propagation(inst);
+                changed->insert(inst);
+                maybe_computation_propagation(inst, changed);
               }
             }
           }
@@ -1785,6 +1775,14 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         for (const HloInstruction* instruction : instructions) {
           already_sharded_counter += (instruction->has_sharding() ? 1 : 0);
         }
+        auto clear_cache = [&](HloInstruction* hlo) {
+          for (auto operand : hlo->operands()) {
+            already_inferred_from_users.erase(operand);
+          }
+          for (auto user : hlo->users()) {
+            already_inferred_from_operands.erase(user);
+          }
+        };
         // First iterate the HLO graph in post order taking shardings from
         // operands.
         for (HloInstruction* instruction : instructions) {
@@ -1799,12 +1797,11 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             any_changed = true;
             VLOG(2) << "Add sharding (forward-pass): "
                     << instruction->ToString();
-            maybe_computation_propagation(instruction);
-            for (auto operand : instruction->operands()) {
-              already_inferred_from_users.erase(operand);
-            }
-            for (auto user : instruction->users()) {
-              already_inferred_from_operands.erase(user);
+            absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
+            maybe_computation_propagation(instruction, &changed_in_comp_prop);
+            clear_cache(instruction);
+            for (auto hlo : changed_in_comp_prop) {
+              clear_cache(hlo);
             }
             changed_last_iter = true;
           }
@@ -1823,12 +1820,11 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
             ++inferred_from_user_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (backward-pass): " << (*it)->ToString();
-            maybe_computation_propagation(*it);
-            for (auto operand : (*it)->operands()) {
-              already_inferred_from_users.erase(operand);
-            }
-            for (auto user : (*it)->users()) {
-              already_inferred_from_operands.erase(user);
+            absl::flat_hash_set<HloInstruction*> changed_in_comp_prop;
+            maybe_computation_propagation(*it, &changed_in_comp_prop);
+            clear_cache(*it);
+            for (auto hlo : changed_in_comp_prop) {
+              clear_cache(hlo);
             }
             changed_last_iter = true;
           }

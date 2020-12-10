@@ -388,7 +388,7 @@ template <typename Op>
 LogicalResult FoldOperandsPermutation(
     ArrayRef<int64_t> permutation, Op *op,
     ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
-  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+  MLIRContext *context = (*op)->template getParentOfType<ModuleOp>().getContext();
 
   // We only support NHWC <-> NCHW permutations.
   static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};

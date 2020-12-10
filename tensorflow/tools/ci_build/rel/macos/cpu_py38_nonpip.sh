@@ -23,11 +23,11 @@ install_bazelisk
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
 export MACOSX_DEPLOYMENT_TARGET=10.10
 sudo xcode-select -s "${DEVELOPER_DIR}"
-python -m virtualenv tf_build_env --system-site-packages
+python3.8 -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
 
 # Install macos pip dependencies
-install_macos_pip_deps sudo pip3.8
+install_macos_pip_deps virtualenv
 
 # Run configure.
 export TF_NEED_CUDA=0

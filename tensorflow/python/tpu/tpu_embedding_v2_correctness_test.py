@@ -123,11 +123,6 @@ class TPUEmbeddingCorrectness(parameterized.TestCase, test.TestCase):
     self.feature_friends_row_lengths = [1, 3, 1, 3]
     self.resolver = None
 
-  def tearDown(self):
-    if self.resolver:
-      tpu_strategy_util.shutdown_tpu_system(self.resolver)
-    super(TPUEmbeddingCorrectness, self).tearDown()
-
   def _get_strategy(self):
     self.resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project)

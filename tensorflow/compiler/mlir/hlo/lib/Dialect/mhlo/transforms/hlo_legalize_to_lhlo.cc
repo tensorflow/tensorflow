@@ -428,7 +428,7 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
       mhlo::ReturnOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto& entry_block = op.getParentRegion()->front();
+    auto& entry_block = op->getParentRegion()->front();
     auto num_arguments = entry_block.getNumArguments();
     if (operands.size() > num_arguments) {
       return op.emitError(
@@ -629,11 +629,15 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::MulOp>,
       HloToLhloOpConverter<mhlo::NegOp>,
       HloToLhloOpConverter<mhlo::NotOp>,
+      HloToLhloOpConverter<mhlo::OrOp>,
       HloToLhloOpConverter<mhlo::RealOp>,
       HloToLhloOpConverter<mhlo::RemOp>,
       HloToLhloOpConverter<mhlo::RsqrtOp>,
       HloToLhloOpConverter<mhlo::ReshapeOp>,
       HloToLhloOpConverter<mhlo::SelectOp>,
+      HloToLhloOpConverter<mhlo::ShiftLeftOp>,
+      HloToLhloOpConverter<mhlo::ShiftRightArithmeticOp>,
+      HloToLhloOpConverter<mhlo::ShiftRightLogicalOp>,
       HloToLhloOpConverter<mhlo::SignOp>,
       HloToLhloOpConverter<mhlo::SinOp>,
       HloToLhloOpConverter<mhlo::SliceOp>,
@@ -641,6 +645,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::SubOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
       HloToLhloOpConverter<mhlo::TransposeOp>,
+      HloToLhloOpConverter<mhlo::XorOp>,
       HloToLhloReduceOpConverter,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,

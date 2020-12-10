@@ -4455,7 +4455,7 @@ def image_gradients(image):
     image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS,
       delta=1, dtype=tf.float32),
       shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
-    dx, dy = tf.image.image_gradients(image)
+    dy, dx = tf.image.image_gradients(image)
     print(image[0, :,:,0])
     tf.Tensor(
       [[ 0.  1.  2.  3.  4.]
@@ -4463,14 +4463,14 @@ def image_gradients(image):
       [10. 11. 12. 13. 14.]
       [15. 16. 17. 18. 19.]
       [20. 21. 22. 23. 24.]], shape=(5, 5), dtype=float32)
-    print(dx[0, :,:,0])
+    print(dy[0, :,:,0])
     tf.Tensor(
       [[5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)
-    print(dy[0, :,:,0])
+    print(dx[0, :,:,0])
     tf.Tensor(
       [[1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]

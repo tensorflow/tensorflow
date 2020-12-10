@@ -336,6 +336,7 @@ tensorflow/lite/micro/kernels/split_v.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \
 tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
+tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
 tensorflow/lite/micro/kernels/unpack.cc
 
@@ -478,23 +479,32 @@ ALL_PROJECT_TARGETS :=
 ARDUINO_LIBRARY_TARGETS :=
 ARDUINO_LIBRARY_ZIPS :=
 
-# The download scripts require that the downloads directory already exist for
-# improved error checking. To accomodate that, we first create a downloads
-# directory.
-$(shell mkdir -p ${MAKEFILE_DIR}/downloads)
+# For some invocations of the makefile, it is useful to avoid downloads. This
+# can be achieved by explicitly passing in DISABLE_DOWNLOADS=true on the command
+# line. Note that for target-specific downloads (e.g. CMSIS) there will need to
+# be corresponding checking in the respecitve included makefiles (e.g.
+# ext_libs/cmsis_nn.inc)
+DISABLE_DOWNLOADS :=
 
-# Directly download the flatbuffers library.
-DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
-ifneq ($(DOWNLOAD_RESULT), SUCCESS)
-  $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+ifneq ($(DISABLE_DOWNLOADS), true)
+  # The download scripts require that the downloads directory already exist for
+  # improved error checking. To accomodate that, we first create a downloads
+  # directory.
+  $(shell mkdir -p ${MAKEFILE_DIR}/downloads)
+
+  # Directly download the flatbuffers library.
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
+  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+    $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+  endif
+
+  include $(MAKEFILE_DIR)/third_party_downloads.inc
+  THIRD_PARTY_DOWNLOADS :=
+  $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
+  $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
+  $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
+  $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 endif
-
-include $(MAKEFILE_DIR)/third_party_downloads.inc
-THIRD_PARTY_DOWNLOADS :=
-$(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
-$(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
 # The target-specific makefile must have a name that is exactly
 # TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET

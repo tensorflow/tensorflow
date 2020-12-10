@@ -106,6 +106,13 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.version = 2;
       property.quantizable_int16 = false;
       break;
+    case BuiltinOperator_DEPTH_TO_SPACE:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      property.quantizable_int16 = false;
+      break;
     case BuiltinOperator_SPLIT:
       // We skip input 0 since it is the split dim which is not real valued.
       property.inputs = {{1, {}}};

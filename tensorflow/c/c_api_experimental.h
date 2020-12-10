@@ -304,6 +304,27 @@ TF_CAPI_EXPORT extern void
 TF_ImportGraphDefOptionsSetValidateColocationConstraints(
     TF_ImportGraphDefOptions* opts, unsigned char enable);
 
+// Load the library specified by library_filename and register the pluggable
+// device and related kernels present in that library. This function is not
+// supported on embedded on mobile and embedded platforms and will fail if
+// called.
+//
+// Pass "library_filename" to a platform-specific mechanism for dynamically
+// loading a library. The rules for determining the exact location of the
+// library are platform-specific and are not documented here.
+//
+// On success, returns the newly created library handle and places OK in status.
+// The caller owns the library handle.
+//
+// On failure, returns nullptr and places an error status in status.
+TF_CAPI_EXPORT extern TF_Library* TF_LoadPluggableDeviceLibrary(
+    const char* library_filename, TF_Status* status);
+
+// Frees the memory associated with the library handle.
+// Does NOT unload the library.
+TF_CAPI_EXPORT extern void TF_DeletePluggableDeviceLibraryHandle(
+    TF_Library* lib_handle);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

@@ -48,7 +48,7 @@ struct PropagateTfAbiKnowledgeToKernelsPass
     llvm::SmallVector<Value, 4> worklist;
     // We currently only handle entry functions and do not propagate across
     // functions.
-    if (function.getAttrOfType<mlir::UnitAttr>(
+    if (function->getAttrOfType<mlir::UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName)) {
       // For all operands of this function, we know they are aligned. Also, by
       // construction of kernel generator, we know that there is no offset and

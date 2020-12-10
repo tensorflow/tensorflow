@@ -1185,7 +1185,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
       // Conv2D. So, fetch attribute by identifier instead of the
       // op.explicit_paddings() attribute getter.
       explicit_paddings =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
     }
 
     SmallVector<int64_t, num_spatial_dims> spatial_dim_indices;
@@ -1473,7 +1473,7 @@ class ConvertMatrixDiagPartV3Op
     // {sub} the subdiagonal alignment. "LEFT" means rows will be padded to the
     // left, "RIGHT" means rows will be padded ot the right.  The default is
     // "RIGHT_LEFT".
-    StringRef align = op.getAttrOfType<StringAttr>("align").getValue();
+    StringRef align = op->getAttrOfType<StringAttr>("align").getValue();
     enum Alignment { kLeft, kRight };
 
     // default is RIGHT_LEFT
@@ -1691,7 +1691,7 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
 
   LogicalResult matchAndRewrite(TF::EinsumOp op,
                                 PatternRewriter &rewriter) const override {
-    StringAttr equation = op.getAttrOfType<StringAttr>("equation");
+    StringAttr equation = op->getAttrOfType<StringAttr>("equation");
     if (op.N() == 1) {
       rewriter.replaceOpWithNewOp<UnaryEinsumOp>(
           op, op.getType(), *op.inputs().begin(), equation);
@@ -4183,7 +4183,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
       // Conv2DBackpropInput. So, fetch attribute by identifier instead of the
       // op.explicit_paddings() attribute getter.
       ArrayRef<Attribute> explicit_paddings_attr =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
       explicit_paddings.reserve(explicit_paddings_attr.size());
       for (Attribute explicit_padding : explicit_paddings_attr)
         explicit_paddings.push_back(
@@ -4346,7 +4346,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
       // Conv2DBackpropFilter. So, fetch attribute by identifier instead of the
       // op.explicit_paddings() attribute getter.
       ArrayRef<Attribute> explicit_paddings_attr =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
       explicit_paddings.reserve(explicit_paddings_attr.size());
       for (Attribute explicit_padding : explicit_paddings_attr)
         explicit_paddings.push_back(

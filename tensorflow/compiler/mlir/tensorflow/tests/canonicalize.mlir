@@ -16,6 +16,20 @@ func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
   return
 }
 
+// CHECK-LABEL: testBatchMatMulToV2
+func @testBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<2x5x7xf32>) -> tensor<2x3x7xf32> {
+  // CHECK: tf.BatchMatMulV2
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3x5xf32>, tensor<2x5x7xf32>) -> tensor<2x3x7xf32>
+  return %0: tensor<2x3x7xf32>
+}
+
+// CHECK-LABEL: testDynamicBatchMatMulToV2
+func @testDynamicBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<?x5x7xf32>) -> tensor<2x3x7xf32> {
+  // CHECK: tf.BatchMatMul
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3x5xf32>, tensor<?x5x7xf32>) -> tensor<2x3x7xf32>
+  return %0: tensor<2x3x7xf32>
+}
+
 // CHECK-LABEL: testBatchMatMulToMatMul
 func @testBatchMatMulToMatMul(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32>) -> tensor<2x2xf32> {
   %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
@@ -888,6 +902,20 @@ func @testRankOfRankedTensor(%arg0 : tensor<4x3x2xf32>) -> tensor<i32> {
 
   // CHECK: return [[VAL0]]
   return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: testRankOfRankedTensorUnrankedOutput
+func @testRankOfRankedTensorUnrankedOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<*xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// CHECK-LABEL: testRankOfRankedTensorDynamicShapeOutput
+func @testRankOfRankedTensorDynamicShapeOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<?xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
 }
 
 // CHECK-LABEL: @foldFill

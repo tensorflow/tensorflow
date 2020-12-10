@@ -297,10 +297,11 @@ inline void gen_lut(double (*func)(double), double min, double max,
         TfLiteRound(func(min + i * step + half_step) * 32768.0);
     double midpoint_err = midpoint_interp_val - midpoint_val;
     double bias = TfLiteRound(midpoint_err / 2.0);
-    table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
+    table[i] = std::min<double>(std::max<double>(sample_val - bias, -32768.0),
+                                32767.0);
   }
-  table[num - 1] =
-      std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
+  table[num - 1] = std::min<double>(
+      std::max<double>(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
 }
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
@@ -325,10 +326,11 @@ inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
         TfLiteRound(func(min + i * step + half_step) * 32768.0f);
     float midpoint_err = midpoint_interp_val - midpoint_val;
     float bias = TfLiteRound(midpoint_err / 2.0f);
-    table[i] = std::min(std::max(sample_val - bias, -32768.0f), 32767.0f);
+    table[i] = std::min<float>(std::max<float>(sample_val - bias, -32768.0f),
+                               32767.0f);
   }
-  table[num - 1] = std::min(
-      std::max(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
+  table[num - 1] = std::min<float>(
+      std::max<float>(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
 }
 
 // int16_t func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
