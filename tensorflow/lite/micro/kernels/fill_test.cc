@@ -74,6 +74,42 @@ void TestFill(int* dims_shape, DimsType* dims_data,
 
 TF_LITE_MICRO_TESTS_BEGIN
 
+TF_LITE_MICRO_TEST(FillInt8) {
+  constexpr int dim1 = 3;
+  constexpr int dim2 = 8;
+
+  int dims_shape[] = {1, 2};
+  int32_t dims_data[] = {dim1, dim2};
+
+  int value_shape[] = {0};
+  int8_t value_data[] = {-42};
+ 
+  int output_shape[] = {2, dim1, dim2};
+  int8_t output_data[dim1 * dim2];
+
+  TestFill(dims_shape, dims_data,
+           value_shape, value_data,
+           output_shape, output_data);
+}
+
+TF_LITE_MICRO_TEST(FillInt16) {
+  constexpr int dim1 = 2;
+  constexpr int dim2 = 4;
+
+  int dims_shape[] = {1, 2};
+  int32_t dims_data[] = {dim1, dim2};
+
+  int value_shape[] = {0};
+  int16_t value_data[] = {1024};
+ 
+  int output_shape[] = {2, dim1, dim2};
+  int16_t output_data[dim1 * dim2];
+
+  TestFill(dims_shape, dims_data,
+           value_shape, value_data,
+           output_shape, output_data);
+}
+
 TF_LITE_MICRO_TEST(FillInt32) {
   constexpr int dim1 = 2;
   constexpr int dim2 = 3;

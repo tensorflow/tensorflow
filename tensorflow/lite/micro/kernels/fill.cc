@@ -101,6 +101,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteEvalTensor* output = GetEvalOutput(context, node, kOutputTensor);
 
   switch (output->type) {
+    case kTfLiteInt8:
+      FillImpl<int8_t>(value, output);
+      break;
+    case kTfLiteInt16:
+      FillImpl<int16_t>(value, output);
+      break;
     case kTfLiteInt32:
       FillImpl<int32_t>(value, output);
       break;
