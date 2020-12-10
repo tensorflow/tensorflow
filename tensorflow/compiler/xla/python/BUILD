@@ -211,6 +211,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",  # TODO(zhangqiaorjc): Remove after adding a factory method for PjRtBuffer.
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:platform",

@@ -119,12 +119,39 @@ cc_library(
 
 cc_library(
     name = "pjrt_client",
-    srcs = ["pjrt_client.cc"],
     hdrs = ["pjrt_client.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/pjrt/distributed:protocol_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_cost_analysis",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "pjrt_stream_executor_client",
+    srcs = ["pjrt_stream_executor_client.cc"],
+    hdrs = ["pjrt_stream_executor_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":event_pool",
         ":local_device_state",
+        ":pjrt_client",
         ":tracked_device_buffer",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
@@ -181,7 +208,7 @@ cc_library(
     ],
     deps = [
         ":local_device_state",
-        ":pjrt_client",
+        ":pjrt_stream_executor_client",
         ":tracked_device_buffer",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -215,7 +242,7 @@ cc_library(
     srcs = ["interpreter_device.cc"],
     hdrs = ["interpreter_device.h"],
     deps = [
-        ":pjrt_client",
+        ":pjrt_stream_executor_client",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
@@ -229,7 +256,7 @@ cc_library(
     srcs = ["cpu_device.cc"],
     hdrs = ["cpu_device.h"],
     deps = [
-        ":pjrt_client",
+        ":pjrt_stream_executor_client",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -242,7 +269,7 @@ cc_library(
     srcs = ["gpu_device.cc"],
     hdrs = ["gpu_device.h"],
     deps = [
-        ":pjrt_client",
+        ":pjrt_stream_executor_client",
         "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla:statusor",
@@ -279,6 +306,7 @@ tf_cc_test(
     deps = [
         ":gpu_device",
         ":pjrt_client",
+        ":pjrt_stream_executor_client",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/compiler/xla/client:xla_builder",
