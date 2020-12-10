@@ -507,6 +507,7 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "abstract_tensor_handle",
+    srcs = ["abstract_tensor_handle.cc"],
     hdrs = ["abstract_tensor_handle.h"],
     visibility = [
         "//tensorflow:internal",

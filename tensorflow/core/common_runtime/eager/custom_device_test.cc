@@ -93,6 +93,7 @@ TEST(CustomDevice, TestTensorHandle) {
   s = tensor->NumElements(&num_elements);
   ASSERT_TRUE(s.ok()) << s.error_message();
   EXPECT_EQ(3, num_elements);
+  EXPECT_EQ("TensorHandle(shape=[3], dtype=DT_FLOAT)", tensor->DebugString());
 }
 
 }  // namespace

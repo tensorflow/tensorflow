@@ -38,6 +38,10 @@ class AbstractTensorHandle : public core::RefCounted {
   virtual tensorflow::Status Shape(
       tensorflow::PartialTensorShape* shape) const = 0;
 
+  // The default debug string includes a shape and dtype. Implementations are
+  // free to override it with something more informative.
+  virtual std::string DebugString() const;
+
   AbstractTensorHandleKind getKind() const { return kind_; }
 
  private:
