@@ -3396,7 +3396,24 @@ This operation creates a tensor of `shape` and `dtype`.
   let hasFolder = 1;
 }
 
-def TF_EnqueueTPUEmbeddingRaggedTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingRaggedTensorBatch", [SameVariadicOperandSize]> {
+def TF_EnqueueTPUEmbeddingIntegerBatchOp : TF_Op<"EnqueueTPUEmbeddingIntegerBatch", [TF_TPUEmbeddingSideEffect]> {
+  let summary = [{
+An op that enqueues a list of input batch tensors to TPUEmbedding.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Int32Tensor>:$batch,
+    TF_StrTensor:$mode_override,
+
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_EnqueueTPUEmbeddingRaggedTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingRaggedTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
   let summary = "Eases the porting of code that uses tf.nn.embedding_lookup().";
 
   let description = [{
@@ -3430,7 +3447,42 @@ the corresponding feature.
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_EnqueueTPUEmbeddingSparseTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseTensorBatch", [SameVariadicOperandSize]> {
+def TF_EnqueueTPUEmbeddingSparseBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
+  let summary = [{
+An op that enqueues TPUEmbedding input indices from a SparseTensor.
+  }];
+
+  let description = [{
+This Op eases the porting of code that uses embedding_lookup_sparse(),
+although some Python preprocessing of the SparseTensor arguments to
+embedding_lookup_sparse() is required to produce the arguments to this Op,
+since only a single EnqueueTPUEmbeddingSparseBatch Op is allowed per training
+step.
+
+The tensors at corresponding positions in the three input lists
+must have the same shape, i.e. rank 1 with dim_size() equal to the total
+number of lookups into the table described by the corresponding table_id.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_I32OrI64Tensor>:$sample_indices,
+    Variadic<TF_I32OrI64Tensor>:$embedding_indices,
+    Variadic<TF_F32OrF64Tensor>:$aggregation_weights,
+    TF_StrTensor:$mode_override,
+
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T1 = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T2 = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T3 = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_EnqueueTPUEmbeddingSparseTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingSparseTensorBatch", [SameVariadicOperandSize, TF_TPUEmbeddingSideEffect]> {
   let summary = [{
 Eases the porting of code that uses tf.nn.embedding_lookup_sparse().
   }];
@@ -9683,7 +9735,7 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", []> {
+def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
   let summary = "An op that receives embedding activations on the TPU.";
 
   let description = [{
@@ -16775,7 +16827,7 @@ def TF__ListToArrayOp : TF_Op<"_ListToArray", [NoSideEffect]> {
   TF_DerivedResultSizeAttr N = TF_DerivedResultSizeAttr<0>;
 }
 
-def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", []> {
+def TF__RecvTPUEmbeddingActivationsOp : TF_Op<"_RecvTPUEmbeddingActivations", [TF_TPUEmbeddingSideEffect]> {
   let summary = "An op that receives embeddng activations on the TPU.";
 
   let description = [{
