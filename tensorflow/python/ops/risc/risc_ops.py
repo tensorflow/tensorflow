@@ -21,11 +21,6 @@ from __future__ import print_function
 
 from tensorflow.python.ops import gen_risc_ops
 
-# go/tf-wildcard-import
-# pylint: disable=wildcard-import
-from tensorflow.python.ops.risc_ops_gen import *
-# pylint: enable=wildcard-import
-
 
 def risc_add(
     input_lhs,

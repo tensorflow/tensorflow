@@ -11645,6 +11645,29 @@ rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RiscAddOp : TF_Op<"RiscAdd", [Commutative, NoSideEffect]> {
+  let summary = "Returns x + y element-wise.";
+
+  let description = [{
+*NOTE*: `RiscAdd` does not supports broadcasting.
+
+Given two input tensors, the `tf.risc_add` operation computes the sum for every element in the tensor.
+
+Both input and output have a range `(-inf, inf)`.
+  }];
+
+  let arguments = (ins
+    TF_FloatTensor:$x,
+    TF_FloatTensor:$y
+  );
+
+  let results = (outs
+    TF_FloatTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RollOp : TF_Op<"Roll", [NoSideEffect]> {
   let summary = "Rolls the elements of a tensor along an axis.";
 
