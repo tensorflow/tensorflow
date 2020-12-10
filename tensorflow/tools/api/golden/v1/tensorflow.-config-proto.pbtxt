@@ -249,6 +249,10 @@ tf_proto {
           name: "MLIR_BRIDGE_ROLLOUT_DISABLED"
           number: 2
         }
+        value: {
+          name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED"
+          number: 3
+        }
       }
       reserved_range {
         start: 2
