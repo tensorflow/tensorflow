@@ -625,6 +625,9 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
         r0.push_back(idx);
       else
         r1.push_back(idx);
+    } else if (s0_shape[s0_idx] == 1) {
+      r0.push_back(idx);
+      r1.push_back(idx);
     }
   }
 }
