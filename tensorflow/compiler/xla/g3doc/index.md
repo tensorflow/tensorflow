@@ -42,40 +42,11 @@ removing memory operations is one of the best ways to improve performance.
 
 ## Enable XLA for TensorFlow models
 
-### Auto-clustering
+### Explicit compilation with `tf.function(jit_compile=True)`
 
-A simplest way to start using XLA in TensorFlow models is to enable
-_auto-clustering_, which automatically finds _clusters_ (connected subgraphs)
-within the TensorFlow graph which can be compiled and executed using XLA.
-Auto-clustering on GPU can be enabled by setting the `TF_XLA_FLAGS` environment
-variable:
-
-```
-$ TF_XLA_FLAGS=--tf_xla_auto_jit=2 path/to/your/tf/program
-```
-
-Auto-clustering is currently optimized for GPU workloads, but it can also be
-enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
-
-```
-$ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
-```
-
-Note: Auto-clustering support on CPU and on multi-GPU environments is
-experimental.
-
-For a detailed usage example see the [auto-clustering tutorial
-colab](./tutorials/autoclustering_xla.ipynb).
-
-### Explicit compilation with tf.function
-
-Auto-clustering is a great tool for making the model faster without any changes
-to the code, but it may be hard to understand what changes have been performed.
-
-Explicit compilation API offers a more fine-grained control for choosing which
-functions should be compiled.
-For example, the following TensorFlow function which performs the MNIST training
-is compiled with XLA:
+Explicit compilation API offers a fine-grained control for choosing which
+functions should be compiled. For example, the following TensorFlow function
+which performs the MNIST training is compiled with XLA:
 
 ```
 @tf.function(jit_compile=True)
@@ -116,8 +87,33 @@ recompiled_on_launch(tf.ones([1, 10]), tf.ones([1, 10]))
 recompiled_on_launch(tf.ones([1, 100]), tf.ones([1, 100]))
 ```
 
-See the [tutorial colab](./tutorials/compile.ipynb) for a more detailed usage
-example.
+See the [tutorial colab](./tutorials/jit_compile.ipynb) for a more detailed
+usage example.
+
+### Auto-clustering
+
+A simple way to start using XLA in TensorFlow models without any changes is to
+enable _auto-clustering_, which automatically finds _clusters_ (connected
+subgraphs) within the TensorFlow graph which can be compiled and executed using
+XLA. Auto-clustering on GPU can be enabled by setting the `TF_XLA_FLAGS`
+environment variable:
+
+```
+$ TF_XLA_FLAGS=--tf_xla_auto_jit=2 path/to/your/tf/program
+```
+
+Auto-clustering is currently optimized for GPU workloads, but it can also be
+enabled on CPU by additionally using the flag `--tf_xla_cpu_global_jit`:
+
+```
+$ TF_XLA_FLAGS="--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit" path/to/your/program
+```
+
+Note: Auto-clustering support on CPU and on multi-GPU environments is
+experimental.
+
+For a detailed usage example see the
+[auto-clustering tutorial colab](./tutorials/autoclustering_xla.ipynb).
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
