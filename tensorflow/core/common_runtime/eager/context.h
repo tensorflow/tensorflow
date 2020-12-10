@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -80,26 +81,6 @@ class RemoteMgr;
 
 class TensorHandle;
 class EagerOperation;
-
-class CustomDevice {
- public:
-  virtual ~CustomDevice() {}
-  virtual const string& name() = 0;
-  virtual Status CopyTensorToDevice(TensorHandle* tensor,
-                                    TensorHandle** result) = 0;
-
-  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
-                                      const string& target_device_name,
-                                      TensorHandle** result) = 0;
-
-  virtual Status Execute(const EagerOperation* op, TensorHandle** retvals,
-                         int* num_retvals) = 0;
-};
-
-// Custom devices do many of the same things as physical Devices, but have a
-// much more restricted interface. We pass around ambiguous pointers since
-// TensorHandles may be placed either on custom or physical devices.
-using VariantDevice = absl::variant<Device*, CustomDevice*>;
 
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:

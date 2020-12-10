@@ -27,7 +27,7 @@ namespace tensorflow {
 // execution mode.
 class AbstractTensorHandle : public core::RefCounted {
  protected:
-  enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt };
+  enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt, kCustomDevice };
   explicit AbstractTensorHandle(AbstractTensorHandleKind kind) : kind_(kind) {}
   virtual ~AbstractTensorHandle() {}
 
