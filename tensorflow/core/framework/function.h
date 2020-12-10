@@ -339,6 +339,9 @@ class AbstractStackTrace {
 
     // Drop the common largest prefix of all filenames in stack frames.
     bool filter_common_prefix = false;
+
+    // Do not show internal frames.
+    bool drop_internal_frames = false;
   };
 
   virtual ~AbstractStackTrace() {}
