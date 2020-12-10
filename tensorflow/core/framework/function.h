@@ -345,6 +345,10 @@ class AbstractStackTrace {
 
   // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
+
+  // Returns the last stack frame from user code, attempting to ignore the
+  // framework code. Returns an empty optional if no such stack frame was found.
+  virtual absl::optional<StackFrame> LastUserFrame() const = 0;
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
 };
 

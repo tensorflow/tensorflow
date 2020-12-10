@@ -135,6 +135,20 @@ class StackTraceWrapper : public AbstractStackTrace {
     return *stack_frames_cache_;
   }
 
+  absl::optional<StackFrame> LastUserFrame() const override {
+    GenerateCache();
+    for (int i = stack_frames_cache_->size() - 1; i >= 0; i--) {
+      const StackFrame& frame = stack_frames_cache_->at(i);
+      // Use a simple heuristic: internal frames are those in tensorflow/python,
+      // excluding tests.
+      if (!absl::StrContains(frame.file_name, "tensorflow/python") ||
+          absl::StrContains(frame.file_name, "test.py")) {
+        return frame;
+      }
+    }
+    return absl::nullopt;
+  }
+
   std::string ToString(const TracePrintingOptions& opts) const override {
     GenerateCache();
     std::vector<std::string> files_to_find_prefix;
@@ -296,9 +310,16 @@ PYBIND11_MODULE(_tf_stack, m) {
              self.GenerateCache();
              return py::hash(py::str(self.ToString({})));
            })
-      .def("__repr__", [](const StackTraceWrapper& self) {
-        self.GenerateCache();
-        return py::str(self.ToString({}));
+      .def("__repr__",
+           [](const StackTraceWrapper& self) {
+             self.GenerateCache();
+             return py::str(self.ToString({}));
+           })
+      .def("last_user_frame", [](const StackTraceWrapper& self) {
+        if (absl::optional<StackFrame> frame = self.LastUserFrame()) {
+          return *frame;
+        }
+        return StackFrame{};
       });
 
   m.def(
