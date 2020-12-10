@@ -392,9 +392,7 @@ void WriteScalarString(JNIEnv* env, jobject src, TfLiteTensor* tensor) {
 
 }  // namespace
 
-#ifdef __cplusplus
 extern "C" {
-#endif  // __cplusplus
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index) {
@@ -615,6 +613,4 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_quantizationZeroPoint(
   return static_cast<jint>(tensor ? tensor->params.zero_point : 0);
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus
