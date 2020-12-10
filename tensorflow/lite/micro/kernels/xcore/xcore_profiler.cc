@@ -4,10 +4,6 @@
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
-#ifdef XCORE
-#include <platform.h>  // for PLATFORM_REFERENCE_MHZ
-#endif
-
 namespace tflite {
 namespace micro {
 namespace xcore {
@@ -32,12 +28,7 @@ uint32_t XCoreProfiler::BeginEvent(const char* tag, EventType event_type,
 void XCoreProfiler::EndEvent(uint32_t event_handle) {
   uint32_t event_duration;
   int32_t event_end_time = tflite::GetCurrentTimeTicks();
-#ifdef XCORE
-  event_duration =
-      (event_end_time - event_start_time_) / PLATFORM_REFERENCE_MHZ;
-#else  // not XCORE
   event_duration = event_end_time - event_start_time_;
-#endif
   if (event_count_ < XCORE_PROFILER_MAX_LEVELS) {
     event_times_[event_count_] = event_duration;
     event_count_++;
