@@ -57,6 +57,7 @@ TfLiteRegistration* Register_CIRCULAR_BUFFER();
 TfLiteRegistration Register_CONCATENATION();
 TfLiteRegistration Register_COS();
 TfLiteRegistration Register_DEQUANTIZE();
+TfLiteRegistration Register_DIV();
 TfLiteRegistration Register_EQUAL();
 TfLiteRegistration Register_FLOOR();
 TfLiteRegistration Register_GREATER();

@@ -26,8 +26,8 @@ namespace reference_ops {
 // Element-wise div that can often be used for inner loop of broadcast Div as
 // well as the non-broadcast Div.
 inline void DivElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
+                           const uint8_t* input1_data,
+                           const uint8_t* input2_data, uint8_t* output_data) {
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
@@ -36,32 +36,33 @@ inline void DivElementwise(int size, const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.output_offset, 256);
 
   for (int i = 0; i < size; ++i) {
-    const int32 input1_val = params.input1_offset + input1_data[i];
-    const int32 input2_val = params.input2_offset + input2_data[i];
+    const int32_t input1_val = params.input1_offset + input1_data[i];
+    const int32_t input2_val = params.input2_offset + input2_data[i];
     TFLITE_DCHECK_NE(input2_val, 0);
     int recip_shift;
-    const int32 input2_inv =
+    const int32_t input2_inv =
         (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
                          : -GetReciprocal(-input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
-    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
-        input1_val, input2_inv, headroom);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
     const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32 unclamped_result =
+    const int32_t unclamped_result =
         params.output_offset +
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             unscaled_quotient, params.output_multiplier, total_shift);
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<uint8>(clamped_output);
+    output_data[i] = static_cast<uint8_t>(clamped_output);
   }
 }
 
 inline void Div(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const uint8* input1_data,
-                const RuntimeShape& input2_shape, const uint8* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
+                const RuntimeShape& input1_shape, const uint8_t* input1_data,
+                const RuntimeShape& input2_shape, const uint8_t* input2_data,
+                const RuntimeShape& output_shape, uint8_t* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
@@ -73,11 +74,11 @@ inline void Div(const ArithmeticParams& params,
 template <int N = 5>
 inline void BroadcastDivSlow(const ArithmeticParams& params,
                              const RuntimeShape& unextended_input1_shape,
-                             const uint8* input1_data,
+                             const uint8_t* input1_data,
                              const RuntimeShape& unextended_input2_shape,
-                             const uint8* input2_data,
+                             const uint8_t* input2_data,
                              const RuntimeShape& unextended_output_shape,
-                             uint8* output_data) {
+                             uint8_t* output_data) {
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
@@ -98,28 +99,29 @@ inline void BroadcastDivSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_LT(params.output_offset, 256);
 
   auto div_func = [&](int indexes[N]) {
-    const int32 input1_val =
+    const int32_t input1_val =
         params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    const int32 input2_val =
+    const int32_t input2_val =
         params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
     TFLITE_DCHECK_NE(input2_val, 0);
     int recip_shift;
-    const int32 input2_inv =
+    const int32_t input2_inv =
         (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
                          : -GetReciprocal(-input2_val, 31, &recip_shift);
     const int headroom = CountLeadingSignBits(input1_val);
-    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
-        input1_val, input2_inv, headroom);
+    const int32_t unscaled_quotient =
+        MultiplyByQuantizedMultiplierGreaterThanOne(input1_val, input2_inv,
+                                                    headroom);
     const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32 unclamped_result =
+    const int32_t unclamped_result =
         params.output_offset +
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             unscaled_quotient, params.output_multiplier, total_shift);
-    const int32 clamped_output =
+    const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
     output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<uint8>(clamped_output);
+        static_cast<uint8_t>(clamped_output);
   };
   NDOpsHelper<N>(output_desc, div_func);
 }
