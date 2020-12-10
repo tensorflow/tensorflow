@@ -37,6 +37,10 @@ def import_function(concrete_function, pass_pipeline):
 
 def experimental_convert_saved_model_to_mlir(saved_model_path, exported_names,
                                              show_debug_info):
+  print(saved_model_path)
+  print(str(saved_model_path).encode('utf-8'))
+  print(exported_names)
+  print(str(exported_names).encode('utf-8'))
   return ExperimentalConvertSavedModelToMlir(
       str(saved_model_path).encode('utf-8'),
       str(exported_names).encode('utf-8'), show_debug_info)
