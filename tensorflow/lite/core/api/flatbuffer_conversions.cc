@@ -765,6 +765,8 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_BatchMatMulOptions()) {
         params->adj_x = bmm_params->adj_x();
         params->adj_y = bmm_params->adj_y();
+        params->asymmetric_quantize_inputs =
+            bmm_params->asymmetric_quantize_inputs();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
