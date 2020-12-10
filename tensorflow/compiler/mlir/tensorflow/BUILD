@@ -1670,15 +1670,16 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:xla_helpers",
     "//tensorflow/compiler/tf2xla:xla_argument",
-    "//tensorflow/compiler/xla/client:xla_computation",
-    "//tensorflow/core/common_runtime:core_cpu_internal",
-    "//tensorflow/core/platform:logging",
-    "//tensorflow/core:framework",
-    "//tensorflow/core:protos_all_cc",
-    "//tensorflow/stream_executor/lib",
     "//tensorflow/compiler/xla:shape_util",
     "//tensorflow/compiler/xla:xla_data_proto_cc",
+    "//tensorflow/compiler/xla/client:xla_computation",
     "//tensorflow/compiler/xla/service:hlo",
+    "//tensorflow/core:framework",
+    "//tensorflow/core:protos_all_cc",
+    "//tensorflow/core/common_runtime:core_cpu_internal",
+    "//tensorflow/core/platform:logging",
+    "//tensorflow/core/tpu:tpu_defs",
+    "//tensorflow/stream_executor/lib",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary

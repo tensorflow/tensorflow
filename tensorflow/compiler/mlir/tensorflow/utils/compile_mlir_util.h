@@ -39,8 +39,7 @@ namespace tensorflow {
 void CreateConvertMlirToXlaHloPipeline(
     mlir::OpPassManager& pm, llvm::StringRef device_type,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes,
-    bool inline_after_legalization);
+        custom_legalization_passes);
 
 // Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
 // should only contain operations in tf dialect. If the input module contains
@@ -74,8 +73,7 @@ Status ConvertMLIRToXlaComputation(
     bool return_tuple,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn = nullptr,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes = {},
-    bool inline_after_legalization = false);
+        custom_legalization_passes = {});
 
 // Helper struct representing argument tensor or resource handle shapes.
 struct TensorOrResourceShape {
@@ -93,8 +91,7 @@ Status CompileMlirToXlaHlo(
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     llvm::MutableArrayRef<std::unique_ptr<mlir::Pass>>
-        custom_legalization_passes,
-    bool inline_after_legalization);
+        custom_legalization_passes);
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
