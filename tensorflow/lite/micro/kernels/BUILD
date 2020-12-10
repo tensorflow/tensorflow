@@ -682,6 +682,7 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
+    tags = ["nomsan"],  # b/175133159
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",
