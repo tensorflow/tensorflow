@@ -274,28 +274,6 @@ py_library(
 
 # TODO(gunan): Investigate making this action hermetic so we do not need
 # to run it locally.
-
-py_library(
-    name = "platform",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python/platform"],
-)
-
-py_library(
-    name = "platform_benchmark",
-    deps = ["//tensorflow/python/platform:benchmark"],
-)
-
-py_library(
-    name = "platform_analytics",
-    deps = ["//tensorflow/python/platform:analytics"],
-)
-
-py_library(
-    name = "platform_test",
-    deps = ["//tensorflow/python/platform:test"],
-)
-
 cc_library(
     name = "cost_analyzer_lib",
     srcs = ["grappler/cost_analyzer.cc"],
@@ -338,12 +316,12 @@ tf_python_pybind_extension(
     module_name = "_pywrap_cost_analyzer",
     deps = [
         ":cost_analyzer_headers",
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
 )
@@ -370,49 +348,17 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_model_analyzer",
     deps = [
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
 )
 
-cc_library(
-    name = "numpy_lib",
-    srcs = ["lib/core/numpy.cc"],
-    hdrs = ["lib/core/numpy.h"],
-    deps = [
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-# bfloat16_lib is shared with JAX, and must not depend on any other parts of
-# TensorFlow.
-# TODO(phawkins): move bfloat16 into its own pip package.
-cc_library(
+alias(
     name = "bfloat16_lib",
-    srcs = ["lib/core/bfloat16.cc"],
-    hdrs = ["lib/core/bfloat16.h"],
-    deps = [
-        ":numpy_lib",
-        "//tensorflow/core/platform:logging",
-        "//third_party/eigen3",
-        "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_bfloat16",
-    srcs = ["lib/core/bfloat16_wrapper.cc"],
-    hdrs = ["lib/core/bfloat16.h"],
-    module_name = "_pywrap_bfloat16",
-    deps = [
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
+    actual = "//tensorflow/python/lib/core:bfloat16_lib",
 )
 
 # Necessary for the pywrap inclusion below.
@@ -433,110 +379,10 @@ tf_python_pybind_extension(
         ":tfcompile_headers_lib",
         "@pybind11",
         "//third_party/python_runtime:headers",
-        ":pybind11_lib",
-        ":pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
         # The headers here cannot be brought in via cc_header_only_library
         "//tensorflow/compiler/aot:llvm_targets",
-    ],
-)
-
-cc_library(
-    name = "ndarray_tensor_bridge",
-    srcs = ["lib/core/ndarray_tensor_bridge.cc"],
-    hdrs = ["lib/core/ndarray_tensor_bridge.h"],
-    visibility = tf_external_workspace_visible(
-        visibility + [
-            "//tensorflow:ndarray_tensor_allow_list",
-        ],
-    ),
-    deps = [
-        ":bfloat16_lib",
-        ":numpy_lib",
-        "//tensorflow/c:c_api_no_xla",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "py_exception_registry",
-    srcs = ["lib/core/py_exception_registry.cc"],
-    hdrs = ["lib/core/py_exception_registry.h"],
-    deps = [
-        "//tensorflow/c:tf_status_headers",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/python_runtime:headers",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "pybind11_absl",
-    hdrs = ["lib/core/pybind11_absl.h"],
-    features = ["-parse_headers"],
-    visibility = tf_external_workspace_visible(visibility),
-    deps = [
-        "//tensorflow/core/platform:stringpiece",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "pybind11_lib",
-    hdrs = ["lib/core/pybind11_lib.h"],
-    compatible_with = get_compatible_with_portable(),
-    features = ["-parse_headers"],
-    visibility = tf_external_workspace_visible(visibility),
-    deps = [
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "pybind11_status_headers",
-    hdrs = [
-        "lib/core/py_exception_registry.h",
-        "lib/core/pybind11_status.h",
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-    ],
-    features = [
-        "-parse_headers",
-    ],
-    visibility = tf_external_workspace_visible(visibility),
-    deps = [
-        "//tensorflow/c:tf_status_headers",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "pybind11_status",
-    hdrs = [
-        "lib/core/py_exception_registry.h",
-        "lib/core/pybind11_status.h",
-        "//tensorflow/c:headers",
-    ],
-    features = ["-parse_headers"],
-    visibility = tf_external_workspace_visible(visibility),
-    deps = [
-        ":pybind11_status_headers",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "pybind11_proto",
-    hdrs = ["lib/core/pybind11_proto.h"],
-    features = ["-parse_headers"],
-    visibility = tf_external_workspace_visible(visibility),
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@pybind11",
     ],
 )
 
@@ -567,8 +413,6 @@ tf_python_pybind_extension(
     srcs = ["client/tf_session_wrapper.cc"],
     hdrs = [
         "client/tf_session_helper.h",
-        "lib/core/numpy.h",
-        "lib/core/safe_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -576,12 +420,14 @@ tf_python_pybind_extension(
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:numpy_hdr",
+        "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
     module_name = "_pywrap_tf_session",
     deps = [
-        ":pybind11_lib",
-        ":pybind11_status",
-        ":safe_pyobject_ptr",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//third_party/py/numpy:headers",
         "//tensorflow/c:pywrap_required_hdrs",
@@ -629,7 +475,7 @@ tf_python_pybind_extension(
     hdrs = ["util/util.h"],
     module_name = "_pywrap_utils",
     deps = [
-        ":pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -641,10 +487,10 @@ tf_python_pybind_extension(
     hdrs = ["util/kernel_registry.h"],
     module_name = "_pywrap_kernel_registry",
     deps = [
-        ":pybind11_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -658,13 +504,13 @@ tf_python_pybind_extension(
     hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
     module_name = "_pywrap_quantize_training",
     deps = [
-        ":pybind11_lib",
-        ":pybind11_proto",
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -713,12 +559,12 @@ tf_python_pybind_extension(
     srcs = ["client/debug_events_writer_wrapper.cc"],
     module_name = "_pywrap_debug_events_writer",
     deps = [
-        ":pybind11_absl",
-        ":pybind11_proto",
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_absl",
+        "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -730,12 +576,12 @@ tf_python_pybind_extension(
     srcs = ["client/events_writer_wrapper.cc"],
     module_name = "_pywrap_events_writer",
     deps = [
-        ":pybind11_absl",
-        ":pybind11_proto",
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_absl",
+        "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -748,10 +594,10 @@ tf_python_pybind_extension(
     hdrs = ["//tensorflow/tools/graph_transforms:transform_graph_hdrs"],
     module_name = "_pywrap_transform_graph",
     deps = [
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -761,22 +607,22 @@ tf_python_pybind_extension(
     name = "_pywrap_checkpoint_reader",
     srcs = ["util/py_checkpoint_reader_wrapper.cc"],
     hdrs = [
-        "lib/core/ndarray_tensor.h",
-        "lib/core/safe_ptr.h",
-        ":py_exception_registry_hdr",
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
+        "//tensorflow/python/lib/core:ndarray_tensor_hdr",
+        "//tensorflow/python/lib/core:py_exception_registry_hdr",
+        "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
     module_name = "_pywrap_checkpoint_reader",
     deps = [
-        ":pybind11_lib",
-        ":pybind11_status",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
@@ -784,21 +630,14 @@ tf_python_pybind_extension(
     ],
 )
 
-filegroup(
-    name = "py_exception_registry_hdr",
-    srcs = [
-        "lib/core/py_exception_registry.h",
-    ],
-    visibility = ["//visibility:public"],
-)
-
+# TODO(yanhuasun): Move this back and the source file back to lib/core directory.
 tf_python_pybind_extension(
     name = "_pywrap_py_exception_registry",
-    srcs = ["lib/core/py_exception_registry_wrapper.cc"],
+    srcs = ["py_exception_registry_wrapper.cc"],
     hdrs = [
-        ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
+        "//tensorflow/python/lib/core:py_exception_registry_hdr",
     ],
     module_name = "_pywrap_py_exception_registry",
     deps = [
@@ -818,7 +657,7 @@ tf_python_pybind_extension(
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
     module_name = "_pywrap_toco_api",
     deps = [
-        ":pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -834,39 +673,12 @@ cc_library(
     hdrs = ["util/util.h"],
     deps = [
         ":safe_ptr",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
     ],
-)
-
-cc_library(
-    name = "py_func_lib",
-    srcs = ["lib/core/py_func.cc"],
-    hdrs = ["lib/core/py_func.h"],
-    deps = [
-        ":ndarray_tensor",
-        ":ndarray_tensor_bridge",
-        ":numpy_lib",
-        ":py_util",
-        ":safe_ptr",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:tfe_context_internal",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:script_ops_op_lib",
-        "//tensorflow/core/common_runtime/eager:context",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-    ],
-    alwayslink = 1,
 )
 
 cc_header_only_library(
@@ -874,142 +686,7 @@ cc_header_only_library(
     features = ["-parse_headers"],
     tags = ["no-ide"],
     deps = [
-        ":py_func_lib",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_py_func",
-    srcs = ["lib/core/py_func_wrapper.cc"],
-    module_name = "_pywrap_py_func",
-    deps = [
-        ":py_func_headers_lib",
-        "//third_party/python_runtime:headers",
-        "@pybind11",
-    ],
-)
-
-cc_library(
-    name = "safe_pyobject_ptr",
-    srcs = ["lib/core/safe_pyobject_ptr.cc"],
-    hdrs = ["lib/core/safe_pyobject_ptr.h"],
-    deps = [
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
-    name = "safe_pyobject_ptr_required_hdrs",
-    textual_hdrs = ["lib/core/safe_pyobject_ptr.h"],
-)
-
-cc_library(
-    name = "safe_ptr",
-    srcs = [
-        "lib/core/safe_ptr.cc",
-        "//tensorflow/c/eager:headers",
-    ],
-    hdrs = ["lib/core/safe_ptr.h"],
-    deps = [
-        ":safe_pyobject_ptr",
-        "//tensorflow/c:c_api_no_xla",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
-    name = "ndarray_tensor_headers",
-    hdrs = [
-        "lib/core/bfloat16.h",
-        "lib/core/ndarray_tensor.h",
-        "lib/core/ndarray_tensor_bridge.h",
-        "lib/core/numpy.h",
-        "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
-        "//tensorflow/c:headers",
-        "//tensorflow/c/eager:headers",
-    ],
-    features = [
-        "-parse_headers",
-    ],
-    visibility = tf_external_workspace_visible(visibility + [
-        "//tensorflow:ndarray_tensor_allow_list",
-    ]),
-    deps = [
-        ":numpy_lib",
-        "//tensorflow/c:pywrap_required_hdrs",
-        "//tensorflow/c:tf_status_headers",
-        "//tensorflow/core:framework_internal_headers_lib",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
-    name = "ndarray_tensor",
-    srcs = ["lib/core/ndarray_tensor.cc"],
-    hdrs = ["lib/core/ndarray_tensor.h"],
-    visibility = tf_external_workspace_visible(visibility + [
-        "//tensorflow:ndarray_tensor_allow_list",
-    ]),
-    deps = [
-        ":bfloat16_lib",
-        ":ndarray_tensor_bridge",
-        ":numpy_lib",
-        ":safe_ptr",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/c/eager:tfe_context_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "py_seq_tensor",
-    srcs = ["lib/core/py_seq_tensor.cc"],
-    hdrs = ["lib/core/py_seq_tensor.h"],
-    features = ["-parse_headers"],
-    deps = [
-        ":ndarray_tensor",
-        ":ndarray_tensor_bridge",
-        ":numpy_lib",
-        ":py_util",
-        ":safe_ptr",
-        "//tensorflow/c:tensor_interface",
-        "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/c/eager:c_api_internal",
-        "//tensorflow/c/eager:tfe_context_internal",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/python_runtime:headers",  # build_cleaner: keep; DNR: b/35864863
-    ],
-)
-
-cc_library(
-    name = "py_util",
-    srcs = ["lib/core/py_util.cc"],
-    hdrs = ["lib/core/py_util.h"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:script_ops_op_lib",
-        "//tensorflow/core/platform:logging",
-        "//third_party/python_runtime:headers",
-    ],
-)
-
-cc_library(
-    name = "py_record_reader_lib",
-    srcs = ["lib/io/py_record_reader.cc"],
-    hdrs = ["lib/io/py_record_reader.h"],
-    deps = [
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        "//tensorflow/python/lib/core:py_func_lib",
     ],
 )
 
@@ -1136,9 +813,9 @@ tf_python_pybind_extension(
     srcs = ["framework/python_op_gen_wrapper.cc"],
     module_name = "_pywrap_python_op_gen",
     deps = [
-        ":pybind11_absl",
-        ":pybind11_lib",
         ":python_op_gen_headers_lib",
+        "//tensorflow/python/lib/core:pybind11_absl",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -1244,7 +921,7 @@ py_library(
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
-        ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
+        "//tensorflow/python/lib/core:_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_python_api_dispatcher",
         ":_pywrap_python_api_info",
         ":_pywrap_python_api_parameter_converter",
@@ -1351,9 +1028,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_dtypes",
-        ":_pywrap_bfloat16",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/lib/core:_pywrap_bfloat16",
     ],
 )
 
@@ -1516,9 +1193,9 @@ tf_python_pybind_extension(
     srcs = ["framework/op_def_registry.cc"],
     module_name = "_op_def_registry",
     deps = [
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
 )
@@ -1538,8 +1215,8 @@ cc_library(
     srcs = ["framework/py_context_manager.cc"],
     hdrs = ["framework/py_context_manager.h"],
     deps = [
-        ":safe_pyobject_ptr",
         "//tensorflow/core:lib",  # for core/platform/logging.h
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -1572,8 +1249,8 @@ cc_library(
     hdrs = ["framework/op_def_util.h"],
     deps = [
         ":cpp_python_util",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
     ],
@@ -1594,17 +1271,17 @@ tf_python_pybind_extension(
     ],
     hdrs = [
         "framework/op_def_util.h",
-        "lib/core/safe_ptr.h",
         "util/util.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
+        "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
     module_name = "_op_def_util",
     deps = [
-        ":pybind11_status",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -1627,12 +1304,12 @@ cc_library(
         ":op_def_util_cc",
         ":python_api_info",
         ":python_tensor_converter",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
     ],
@@ -1647,7 +1324,6 @@ tf_python_pybind_extension(
         "framework/python_api_info.h",
         "framework/python_api_parameter_converter.h",
         "framework/python_tensor_converter.h",
-        "lib/core/numpy.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -1655,10 +1331,11 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:numpy_hdr",
     ],
     module_name = "_pywrap_python_api_parameter_converter",
     deps = [
-        ":safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
@@ -1708,12 +1385,12 @@ cc_library(
         ":cpp_python_util",
         ":op_def_util_cc",
         ":python_tensor_converter",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
     ],
@@ -1727,7 +1404,6 @@ tf_python_pybind_extension(
         "framework/op_def_util.h",
         "framework/python_api_info.h",
         "framework/python_tensor_converter.h",
-        "lib/core/numpy.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -1735,10 +1411,11 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:numpy_hdr",
     ],
     module_name = "_pywrap_python_api_info",
     deps = [
-        ":safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
@@ -1786,8 +1463,8 @@ cc_library(
     hdrs = ["framework/python_api_dispatcher.h"],
     deps = [
         ":cpp_python_util",
-        ":safe_pyobject_ptr",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -1802,7 +1479,7 @@ tf_python_pybind_extension(
     hdrs = ["framework/python_api_dispatcher.h"],
     module_name = "_pywrap_python_api_dispatcher",
     deps = [
-        ":safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
     ],
@@ -1825,10 +1502,10 @@ cc_library(
     hdrs = ["framework/python_tensor_converter.h"],
     deps = [
         ":cpp_python_util",
-        ":safe_pyobject_ptr",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/strings",
     ],
@@ -1840,7 +1517,6 @@ tf_python_pybind_extension(
     srcs = ["framework/python_tensor_converter_wrapper.cc"],
     hdrs = [
         "framework/python_tensor_converter.h",
-        "lib/core/numpy.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
@@ -1848,10 +1524,11 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:numpy_hdr",
     ],
     module_name = "_pywrap_python_tensor_converter",
     deps = [
-        ":safe_pyobject_ptr_required_hdrs",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/memory",
@@ -2358,11 +2035,6 @@ py_test(
         ":framework_test_combinations_lib",
         "//tensorflow/python/eager:test",
     ],
-)
-
-py_library(
-    name = "client_testlib",
-    deps = ["//tensorflow/python/platform:client_testlib"],
 )
 
 py_library(
@@ -4598,10 +4270,10 @@ py_library(
     srcs = ["ops/script_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":_pywrap_py_func",
         ":array_ops",
         ":framework_for_generated_wrappers",
         ":script_ops_gen",
+        "//tensorflow/python/lib/core:_pywrap_py_func",
         "//third_party/py/numpy",
     ],
 )
@@ -5583,17 +5255,6 @@ py_strict_library(
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
 # other purposes.
-py_strict_library(
-    name = "tf_stack",
-    srcs = ["util/tf_stack.py"],
-    srcs_version = "PY2AND3",
-    # TODO(mdan): Remove public visibility.
-    visibility = ["//visibility:public"],
-    deps = [
-        ":_tf_stack",
-        "@six_archive//:six",
-    ],
-)
 
 tf_python_pybind_extension(
     name = "_tf_stack",
@@ -5620,6 +5281,18 @@ tf_python_pybind_extension(
     ] + if_static([
         ":stack_trace",
     ]),
+)
+
+py_strict_library(
+    name = "tf_stack",
+    srcs = ["util/tf_stack.py"],
+    srcs_version = "PY2AND3",
+    # TODO(mdan): Remove public visibility.
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_tf_stack",
+        "@six_archive//:six",
+    ],
 )
 
 tf_py_test(
@@ -5655,10 +5328,10 @@ cc_library(
     srcs = ["util/function_parameter_canonicalizer.cc"],
     hdrs = ["util/function_parameter_canonicalizer.h"],
     deps = [
-        ":py_util",
-        ":safe_pyobject_ptr",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
@@ -5674,8 +5347,8 @@ tf_python_pybind_extension(
     ],
     module_name = "_function_parameter_canonicalizer_binding_for_test",
     deps = [
-        ":safe_pyobject_ptr_required_hdrs",
         "//tensorflow/core:lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/types:span",
         "@pybind11",
@@ -5981,11 +5654,11 @@ tf_python_pybind_extension(
     srcs = ["client/device_lib_wrapper.cc"],
     module_name = "_pywrap_device_lib",
     deps = [
-        ":pybind11_proto",
-        ":pybind11_status",
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/python/lib/core:pybind11_proto",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -6081,18 +5754,21 @@ pywrap_tensorflow_macro(
         ":numpy_lib",
         ":safe_ptr",
         ":py_exception_registry",
-        ":py_func_lib",
-        ":py_record_reader_lib",
-        ":pybind11_absl",
-        ":pybind11_lib",
-        ":pybind11_status",
-        ":pybind11_proto",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/lib/io:py_record_reader_lib",
+        "//tensorflow/python/lib/core:pybind11_absl",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_proto",
         ":python_api_dispatcher",
         ":python_api_info",
         ":python_api_parameter_converter",
         ":python_op_gen",
         ":python_tensor_converter",
-        ":safe_pyobject_ptr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         ":tf_session_helper",
         "//third_party/python_runtime:headers",
         "//tensorflow/c:c_api",
@@ -6109,9 +5785,6 @@ pywrap_tensorflow_macro(
         "//tensorflow/c/eager:mnist_gradients_testutil",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core/data/service:server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -6158,7 +5831,7 @@ filegroup(
         ":ndarray_tensor",  # checkpoint_reader
         ":numpy_lib",  # checkpoint_reader
         ":py_exception_registry",  # py_exception_registry
-        ":py_func_lib",  # py_func
+        "//tensorflow/python/lib/core:py_func_lib",
         ":python_api_dispatcher",  # python_api_dispatcher
         ":python_api_info",  # python_api_info
         ":python_api_parameter_converter",  # python_api_parameter_converter
@@ -6316,52 +5989,6 @@ cc_import(
 )
 
 # ** Targets for Windows build (end) **
-
-tf_python_pybind_extension(
-    name = "_pywrap_file_io",
-    srcs = ["lib/io/file_io_wrapper.cc"],
-    module_name = "_pywrap_file_io",
-    deps = [
-        ":pybind11_absl",
-        ":pybind11_status",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:protos_all_cc",
-        "@pybind11",
-    ],
-)
-
-py_library(
-    name = "lib",
-    srcs = [
-        "lib/io/file_io.py",
-        "lib/io/python_io.py",
-        "lib/io/tf_record.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":_pywrap_file_io",
-        ":_pywrap_record_io",
-        ":errors",
-        ":pywrap_tensorflow",
-        ":util",
-        "@six_archive//:six",
-    ],
-)
-
-tf_python_pybind_extension(
-    name = "_pywrap_record_io",
-    srcs = ["lib/io/record_io_wrapper.cc"],
-    module_name = "_pywrap_record_io",
-    deps = [
-        ":pybind11_absl",
-        ":pybind11_status",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_headers_for_pybind",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/memory",
-        "@pybind11",
-    ],
-)
 
 py_library(
     name = "session",
@@ -6593,47 +6220,6 @@ tf_py_test(
         ":convert_to_constants",
         ":framework_test_lib",
         ":math_ops",
-    ],
-)
-
-tf_py_test(
-    name = "bfloat16_test",
-    size = "small",
-    srcs = ["lib/core/bfloat16_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":lib",
-        ":pywrap_tensorflow",
-    ],
-)
-
-tf_py_test(
-    name = "file_io_test",
-    size = "small",
-    srcs = ["lib/io/file_io_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_rocm",
-        "no_windows",
-    ],
-    deps = [
-        ":client_testlib",
-        ":errors",
-        ":lib",
-    ],
-)
-
-tf_py_test(
-    name = "tf_record_test",
-    size = "small",
-    srcs = ["lib/io/tf_record_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":errors",
-        ":lib",
-        ":util",
     ],
 )
 
@@ -7088,7 +6674,7 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tf_item",
     deps = [
-        ":pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
@@ -7164,12 +6750,12 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tf_cluster",
     deps = [
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
@@ -7226,12 +6812,12 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tf_optimizer",
     deps = [
-        ":pybind11_status",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core/common_runtime/gpu:gpu_id",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
     ],
 )
@@ -7560,18 +7146,18 @@ tf_python_pybind_extension(
     name = "_pywrap_mlir",
     srcs = ["mlir_wrapper.cc"],
     hdrs = [
-        "lib/core/safe_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
+        "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
     module_name = "_pywrap_mlir",
     deps = [
-        ":pybind11_lib",
-        ":pybind11_status",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
@@ -7581,14 +7167,7 @@ tf_python_pybind_extension(
 cc_library(
     name = "unified_api_pywrap_required_headers",
     textual_hdrs = [
-        "lib/core/numpy.h",
-        "lib/core/py_exception_registry.h",
-        "lib/core/pybind11_status.h",
-        "lib/core/bfloat16.h",
-        "lib/core/ndarray_tensor.h",
-        "lib/core/ndarray_tensor_bridge.h",
-        "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
+        "//tensorflow/python/lib/core:basic_hdrs",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -7624,10 +7203,7 @@ tf_python_pybind_extension(
     name = "_pywrap_tfe",
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
-        "lib/core/numpy.h",
-        "lib/core/safe_ptr.h",
         "util/util.h",
-        ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -7636,16 +7212,19 @@ tf_python_pybind_extension(
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/python/eager:pywrap_required_hdrs",
+        "//tensorflow/python/lib/core:numpy_hdr",
+        "//tensorflow/python/lib/core:py_exception_registry_hdr",
+        "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
     module_name = "_pywrap_tfe",
     # Only include TensorFlow header-only targets here.
     # If a cc_library needs to depend on TensorFlow .cc files through srcs or
     # deps, then you can use cc_header_only_library to keep only headers.
     deps = [
-        ":safe_pyobject_ptr",
-        ":pybind11_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/py/numpy:headers",
-        ":pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
@@ -7705,22 +7284,22 @@ py_binary(
 tf_python_pybind_extension(
     name = "_pywrap_parallel_device",
     srcs = [
-        "lib/core/safe_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager/parallel_device:headers",
         "//tensorflow/c/eager/parallel_device:sources",
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
+        "//tensorflow/python/lib/core:safe_ptr_hdr",
     ],
     module_name = "_pywrap_parallel_device",
     visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
     deps = [
-        ":pybind11_lib",
-        ":pybind11_status",
-        ":safe_pyobject_ptr",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -7758,6 +7337,112 @@ cuda_py_test(
     deps = [
         ":client_testlib",
     ],
+)
+
+alias(
+    name = "platform_benchmark",
+    actual = "//tensorflow/python/platform:benchmark",
+)
+
+alias(
+    name = "platform_analytics",
+    actual = "//tensorflow/python/platform:analytics",
+)
+
+py_library(
+    name = "platform_test",
+    deps = ["//tensorflow/python/platform:test"],
+)
+
+alias(
+    name = "platform",
+    actual = "//tensorflow/python/platform:platform",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "client_testlib",
+    actual = "//tensorflow/python/platform:client_testlib",
+)
+
+alias(
+    name = "pybind11_absl",
+    actual = "//tensorflow/python/lib/core:pybind11_absl",
+)
+
+alias(
+    name = "pybind11_proto",
+    actual = "//tensorflow/python/lib/core:pybind11_proto",
+)
+
+alias(
+    name = "py_func_lib",
+    actual = "//tensorflow/python/lib/core:py_func_lib",
+)
+
+alias(
+    name = "py_seq_tensor",
+    actual = "//tensorflow/python/lib/core:py_seq_tensor",
+)
+
+alias(
+    name = "py_util",
+    actual = "//tensorflow/python/lib/core:py_util",
+)
+
+alias(
+    name = "py_record_reader_lib",
+    actual = "//tensorflow/python/lib/io:py_record_reader_lib",
+)
+
+alias(
+    name = "numpy_lib",
+    actual = "//tensorflow/python/lib/core:numpy_lib",
+)
+
+alias(
+    name = "py_exception_registry",
+    actual = "//tensorflow/python/lib/core:py_exception_registry",
+)
+
+alias(
+    name = "pybind11_lib",
+    actual = "//tensorflow/python/lib/core:pybind11_lib",
+)
+
+alias(
+    name = "pybind11_status_headers",
+    actual = "//tensorflow/python/lib/core:pybind11_status_headers",
+)
+
+alias(
+    name = "pybind11_status",
+    actual = "//tensorflow/python/lib/core:pybind11_status",
+)
+
+alias(
+    name = "lib",
+    actual = "//tensorflow/python/lib/io:lib",
+)
+
+alias(
+    name = "safe_ptr",
+    actual = "//tensorflow/python/lib/core:safe_ptr",
+)
+
+alias(
+    name = "ndarray_tensor",
+    actual = "//tensorflow/python/lib/core:ndarray_tensor",
+)
+
+alias(
+    name = "ndarray_tensor_bridge",
+    actual = "//tensorflow/python/lib/core:ndarray_tensor_bridge",
+)
+
+alias(
+    name = "ndarray_tensor_headers",
+    actual = "//tensorflow/python/lib/core:ndarray_tensor_headers",
 )
 
 alias(
