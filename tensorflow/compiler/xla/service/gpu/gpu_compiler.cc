@@ -682,6 +682,18 @@ GpuCompiler::CompileToTargetBinary(const HloModule& module,
   };
 
   tensorflow::thread::ThreadPool* thread_pool = options.thread_pool;
+
+  absl::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
+  if (module.config().debug_options().xla_gpu_force_compilation_parallelism() !=
+      0) {
+    overriding_thread_pool.emplace(
+        tensorflow::Env::Default(), "",
+        module.config()
+            .debug_options()
+            .xla_gpu_force_compilation_parallelism());
+    thread_pool = &*overriding_thread_pool;
+  }
+
   if (!thread_pool) {
     return compile_single_module(llvm_module.get(), /*relocatable=*/false);
   }
@@ -729,6 +741,8 @@ GpuCompiler::CompileToTargetBinary(const HloModule& module,
       context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
       std::unique_ptr<llvm::Module> new_llvm_module;
+      // Switch to a new context by dumping and re-parsing LLVM IR. Each thread
+      // has its own context to avoid race conditions.
       {
         std::string ir;
         {

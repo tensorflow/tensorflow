@@ -45,15 +45,16 @@ const char* const kDlTensorCapsuleName = "dltensor";
 struct DLPackTensor {
   ~DLPackTensor();
 
-  // At most one of buffer and buffer_reference/scoped_hold is populated.
+  // At most one of owned_buffer and buffer_reference/external_reference_hold is
+  // populated.
 
-  // `buffer` is populated if we have exclusive (read-write) access.
-  std::shared_ptr<TrackedDeviceBuffer> buffer;
+  // `owned_buffer` is populated if we have exclusive (read-write) access.
+  std::shared_ptr<void> owned_buffer;
 
-  // `buffer_reference` and `scoped_hold` are populated if we have
+  // `buffer_reference` and `external_reference_hold` are populated if we have
   // shared (read-only) access.
   py::object buffer_reference;
-  absl::optional<PjRtBuffer::ScopedHold> scoped_hold;
+  std::unique_ptr<PjRtBuffer::ExternalReferenceHold> external_reference_hold;
 
   std::vector<int64> shape;
   std::vector<int64> strides;
@@ -269,28 +270,30 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   if (take_ownership) {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
-    StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or =
-        buffer->buffer()->Release(/*wait_for_operations_to_complete=*/true);
+    StatusOr<absl::optional<std::shared_ptr<void>>> buffer_or =
+        buffer->buffer()->ReleaseDeviceMemoryOwnership(
+            /*wait_for_operations_to_complete=*/true);
     if (!buffer_or.ok()) {
       return InvalidArgument(
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    pack->buffer = buffer_or.ConsumeValueOrDie();
-    if (!pack->buffer) {
+    absl::optional<std::shared_ptr<void>> owned_buffer_opt =
+        buffer_or.ConsumeValueOrDie();
+    if (!owned_buffer_opt.has_value()) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
-    TF_RET_CHECK(pack->buffer->device_memory().size() == 1);
-    dt.data = pack->buffer->device_memory().front().opaque();
+    pack->owned_buffer = owned_buffer_opt.value();
+    dt.data = pack->owned_buffer.get();
   } else {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
     TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    pack->scoped_hold.emplace(
-        buffer->buffer()->GetBufferWithExternalReference());
-    dt.data = pack->scoped_hold->buffer()->device_memory().front().opaque();
+    TF_ASSIGN_OR_RETURN(pack->external_reference_hold,
+                        buffer->buffer()->AcquireExternalReference());
+    dt.data = pack->external_reference_hold->OpaqueDeviceMemoryDataPointer();
   }
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
@@ -377,7 +380,10 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  auto pjrt_buffer = std::make_unique<PjRtBuffer>(
+  // TODO(zhangqiaorjc): Add a factory method that avoids StreamExecutor
+  // specifics. The challenge may be what generic data structures to use for
+  // definition events.
+  auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       shape, shape, std::move(device_buffer), client->pjrt_client(), device);
   return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
                                     Traceback::Get());

@@ -357,6 +357,14 @@ absl::Status MetalSpatialTensor::CreateFromDescriptor(const TensorDescriptor& de
   return absl::OkStatus();
 }
 
+void MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
+  memory_ = buffer;
+}
+
+id<MTLBuffer> MetalSpatialTensor::GetBufferHandle() const {
+  return memory_;
+}
+
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
                           const TensorDescriptor& descriptor, MetalSpatialTensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
@@ -366,6 +374,19 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
                           const TensorDescriptor& descriptor, MetalSpatialTensor* result) {
   return CreateTensor(device, shape, descriptor, nullptr, result);
+}
+
+MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
+                                            const BHWC& shape,
+                                            const TensorDescriptor& descriptor) {
+  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
+  return MetalSpatialTensor(buffer, false, shape5D, descriptor);
+}
+
+MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& descriptor) {
+  return MetalSpatialTensor(buffer, false, shape, descriptor);
 }
 
 }  // namespace metal

@@ -5600,25 +5600,25 @@ tf_python_pybind_extension(
     hdrs = [
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
+        # Using header directly is required to avoid ODR violations.
+        "util/stack_trace.h",
     ],
     # TODO(b/138203821): change to "util._tf_stack" once the bug is fixed.
     module_name = "_tf_stack",
     deps = [
-        ":stack_trace",
-        "//tensorflow/c:pywrap_required_hdrs",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//tensorflow/core/framework:pywrap_required_hdrs",
-        "//tensorflow/core/platform:path",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
         "@pybind11",
-    ],
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "//tensorflow/c:pywrap_required_hdrs",
+        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
+        "//tensorflow/core/framework:pywrap_required_hdrs",
+        "//tensorflow/core/platform:path",
+    ] + if_static([
+        ":stack_trace",
+    ]),
 )
 
 tf_py_test(

@@ -322,8 +322,7 @@ using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
 using PrepareLstmQuantStats =
-    TFL::ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp,
-                                quant::QuantizeCastOp, quant::DequantizeCastOp>;
+    TFL::ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp>;
 
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
@@ -341,9 +340,6 @@ void PrepareQuantizePass::runOnFunction() {
     }
   }
 
-  // During the legalization, unsigned quantized type is used, so we have to
-  // convert all of them to signed.
-  OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   int bit_width = quant_specs_.GetQuantizationTypeWidth();
   // When this is true, the quantizer will try its best to extract the
@@ -357,18 +353,31 @@ void PrepareQuantizePass::runOnFunction() {
   bool infer_tensor_range =
       (quant_specs_.post_training_quantization || eager_quantize) &&
       !quant_specs_.disable_infer_tensor_range;
+
+  // LSTM's restrict_scale requirement should be handled before converting stats
+  // to Q-DQ ops. The pattern is applied for non-PTQ case to make op ordering
+  // consistent. Otherwise some FileCheck tests would fail.
+  OwningRewritePatternList patterns_1;
+  if (quant_specs_.post_training_quantization) {
+    patterns_1.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
+  }
+  applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+
+  // During the legalization, unsigned quantized type is used, so we have to
+  // convert all of them to signed.
+  OwningRewritePatternList patterns_2;
   if (is_signed) {
-    patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
+    patterns_2.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(
+        ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(bit_width, false, true, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, true, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
-  patterns.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+  applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 

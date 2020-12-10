@@ -151,10 +151,11 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   // not considered uncompilable.
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+      stack_trace.emplace_back(
+          StackFrameView{frame.name, frame.function_name, frame.n});
     }
   }
-  stack_trace.emplace_back(StackFrameView{node.name(), ""});
+  stack_trace.emplace_back(StackFrameView{node.name(), "", &node});
 
   RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
   IsCompilableNode(node, lib_runtime, &stack_trace,
@@ -173,10 +174,11 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   std::vector<StackFrameView> stack_trace;
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+      stack_trace.emplace_back(
+          StackFrameView{frame.name, frame.function_name, frame.n});
     }
   }
-  stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
+  stack_trace.emplace_back(StackFrameView{call_def.name(), "", nullptr});
 
   RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
   IsCompilableCall(call_def, lib_runtime, &stack_trace,
@@ -359,7 +361,8 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   bool is_compilable = true;
   for (const Node* node : fbody->graph->op_nodes()) {
-    stack_trace->emplace_back(StackFrameView{node->name(), function.name()});
+    stack_trace->emplace_back(
+        StackFrameView{node->name(), function.name(), node});
     is_compilable &= IsCompilableNode(*node, lib_runtime, stack_trace,
                                       &function, uncompilable_nodes);
     stack_trace->pop_back();
@@ -583,7 +586,8 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
                     [](const StackFrameView& stack_element) {
                       return StackFrame{
                           std::string(stack_element.name),
-                          std::string(stack_element.function_name)};
+                          std::string(stack_element.function_name),
+                          stack_element.n};
                     });
 
   node_info.name = std::string(stack_trace.back().name);

@@ -29884,7 +29884,7 @@ func QuantizedAvgPool(scope *Scope, input tf.Output, min_input tf.Output, max_in
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-//     Adds v into specified rows of x.
+// Adds v into specified rows of x.
 //
 //     Computes y = x; y[i, :] += v; return y.
 //

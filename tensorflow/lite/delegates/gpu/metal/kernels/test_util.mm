@@ -127,7 +127,7 @@ absl::Status SingleOpModel::Invoke() {
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> command_encoder = [command_buffer computeCommandEncoder];
-  [graph encodeWithEncoder:command_encoder inputOutputBuffers:inout_buffers encoderBlock:nil];
+  [graph encodeWithEncoder:command_encoder inputOutputBuffers:inout_buffers];
   [command_encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -235,7 +235,7 @@ absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> de
   id<MTLCommandQueue> commandQueue = [device newCommandQueue];
   id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
   id<MTLComputeCommandEncoder> commandEncoder = [commandBuffer computeCommandEncoder];
-  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers encoderBlock:nil];
+  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers];
   [commandEncoder endEncoding];
   [commandBuffer commit];
   [commandBuffer waitUntilCompleted];

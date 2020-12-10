@@ -1174,13 +1174,13 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in,
-                                 const Graph* graph_with_debug_info)
+                                 const StackTracesMap& stack_traces)
     : fdef(fdef_in),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
       op_registration_data(fdef.signature(), shape_inference::UnknownShape,
                            true /* is_function */),
-      graph_with_debug_info(graph_with_debug_info) {}
+      stack_traces(stack_traces) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)
@@ -1233,14 +1233,14 @@ FunctionLibraryDefinition::FindHelper(const string& func) const {
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(
-    const FunctionDef& fdef, const Graph* graph_with_debug_info) {
+    const FunctionDef& fdef, const StackTracesMap& stack_traces) {
   mutex_lock l(mu_);
   bool added;
-  return AddFunctionDefHelper(fdef, graph_with_debug_info, &added);
+  return AddFunctionDefHelper(fdef, stack_traces, &added);
 }
 
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
-    const FunctionDef& fdef, const Graph* graph_with_debug_info, bool* added) {
+    const FunctionDef& fdef, const StackTracesMap& stack_traces, bool* added) {
   *added = false;
   std::shared_ptr<FunctionDefAndOpRegistration>& entry =
       function_defs_[fdef.signature().name()];
@@ -1260,8 +1260,7 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(
         "Cannot add function '", fdef.signature().name(),
         "' because an op with the same name already exists.");
   }
-  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef,
-                                                         graph_with_debug_info);
+  entry = std::make_shared<FunctionDefAndOpRegistration>(fdef, stack_traces);
   *added = true;
   return Status::OK();
 }
@@ -1403,7 +1402,7 @@ Status FunctionLibraryDefinition::AddLibrary(
   Status s;
   bool added;
   for (const FunctionDef& fdef : lib_def.function()) {
-    s = AddFunctionDefHelper(fdef, /*graph_with_debug_info=*/nullptr, &added);
+    s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
     if (!s.ok()) {
       Remove(funcs, funcs_with_grads);
       return s;
@@ -1430,8 +1429,7 @@ Status FunctionLibraryDefinition::ReplaceFunction(const string& func,
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(
-      AddFunctionDefHelper(fdef, /*graph_with_debug_info=*/nullptr, &added));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added));
   return Status::OK();
 }
 

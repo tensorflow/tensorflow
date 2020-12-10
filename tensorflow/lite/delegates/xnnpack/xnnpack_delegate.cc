@@ -3178,22 +3178,25 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
 
         switch (input_tensor.type) {
           case kTfLiteFloat32: {
+            const size_t dense_size = context->tensors[t].bytes / sizeof(float);
+            float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
             tflite::optimize::sparsity::FormatConverter<float> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
-                static_cast<const float*>(input_tensor.data.data));
-            const std::vector<float> out = converter.GetData();
-            std::memcpy(unpacked_data, out.data(), out.size() * sizeof(float));
+                static_cast<const float*>(input_tensor.data.data), dense_size,
+                unpacked_fp32_data, context);
             break;
           }
           case kTfLiteFloat16: {
+            const size_t dense_size =
+                context->tensors[t].bytes / sizeof(Eigen::half);
+            Eigen::half* unpacked_fp16_data =
+                reinterpret_cast<Eigen::half*>(unpacked_data);
             tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
-                static_cast<const Eigen::half*>(input_tensor.data.data));
-            const std::vector<Eigen::half> out = converter.GetData();
-            std::memcpy(unpacked_data, out.data(),
-                        out.size() * sizeof(Eigen::half));
+                static_cast<const Eigen::half*>(input_tensor.data.data),
+                dense_size, unpacked_fp16_data, context);
             break;
           }
           default: {

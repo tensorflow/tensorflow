@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 @interface TFLComputeTask : NSObject
 
@@ -59,12 +60,14 @@ limitations under the License.
 
 - (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids;
 
-- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
-
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder;
 
 - (std::vector<tflite::gpu::ValueId>)getOutputIds;
 - (std::vector<tflite::gpu::ValueId>)getInputIds;
+
+- (void)setSrcTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor withIndex:(int)index;
+
+- (void)setDstTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor withIndex:(int)index;
 
 - (void)setDescription:(const std::string&)description;
 

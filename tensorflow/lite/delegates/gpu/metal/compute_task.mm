@@ -229,21 +229,6 @@ struct UniformBuffer {
   return false;
 }
 
-- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
-  for (auto& buffer : _inputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer != inputOutputBuffers.end()) {
-      buffer.metalHandle = externalBuffer->second;
-    }
-  }
-  for (auto& buffer : _outputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer != inputOutputBuffers.end()) {
-      buffer.metalHandle = externalBuffer->second;
-    }
-  }
-}
-
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder {
   // The dispatch call is intended to be skipped.
   if (_groupsCount.x * _groupsCount.y * _groupsCount.z == 0) {
@@ -290,6 +275,16 @@ struct UniformBuffer {
     result.push_back(buffer.uid);
   }
   return result;
+}
+
+- (void)setSrcTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor
+           withIndex:(int)index; {
+  _inputBuffers[index].metalHandle = tensor.GetBufferHandle();
+}
+
+- (void)setDstTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor
+           withIndex:(int)index; {
+  _outputBuffers[index].metalHandle = tensor.GetBufferHandle();
 }
 
 - (void)setDescription:(const std::string&)description {

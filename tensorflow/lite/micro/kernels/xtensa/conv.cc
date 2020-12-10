@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
@@ -60,6 +61,7 @@ struct OpData {
   int32_t output_activation_max;
 };
 
+#if defined(HIFIMINI)
 void ConvPerChannel(const ConvParams& params, const int32_t* output_multiplier,
                     const int32_t* output_shift,
                     const RuntimeShape& input_shape, const int8_t* input_data,
@@ -260,6 +262,7 @@ inline void Conv1x32Input32x32Filter(
     output_data[ch] = static_cast<int8_t>(AE_TRUNCA32Q48(acc_56));
   }
 }
+#endif
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, int width, int height,
@@ -379,6 +382,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
+#if defined(HIFIMINI)
   ConvPerChannel(op_params, data->per_channel_output_multiplier,
                  data->per_channel_output_shift,
                  tflite::micro::GetTensorShape(input),
@@ -389,6 +393,18 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                  tflite::micro::GetTensorData<int32_t>(bias),
                  tflite::micro::GetTensorShape(output),
                  tflite::micro::GetTensorData<int8_t>(output));
+#else
+  reference_integer_ops::ConvPerChannel(
+      op_params, data->per_channel_output_multiplier,
+      data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int8_t>(input),
+      tflite::micro::GetTensorShape(filter),
+      tflite::micro::GetTensorData<int8_t>(filter),
+      tflite::micro::GetTensorShape(bias),
+      tflite::micro::GetTensorData<int32_t>(bias),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
+#endif
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -408,6 +424,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           ? tflite::micro::GetEvalInput(context, node, kBiasTensor)
           : nullptr;
 
+#if defined(HIFIMINI)
   int* input_dims = input->dims->data;
   int* filter_dims = filter->dims->data;
   if (input_dims[0] == 1 && input_dims[1] == 1 && input_dims[2] == 1 &&
@@ -427,6 +444,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         tflite::micro::GetTensorData<int8_t>(output));
     return kTfLiteOk;
   }
+#endif
 
   switch (input->type) {
     case kTfLiteInt8:

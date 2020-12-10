@@ -19,6 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -34,17 +37,79 @@ namespace tensorflow {
 namespace {
 
 // Tests are parametrized with the kernel name, the input data type and the
-// output data type.
+// output data type. Additionally, the flag use_constraint can be set to false
+// if the operation's nodedef does not have a type constraint associated with
+// it.
 struct BinaryTestParam {
   std::string op_name;
   DataType input_type;
   DataType output_type;
-  BinaryTestParam(const std::string& name, DataType input, DataType output)
-      : op_name(name), input_type(input), output_type(output) {}
+  bool use_constraint;
+  BinaryTestParam(const std::string& name, DataType input, DataType output,
+                  bool use_constraint = true)
+      : op_name(name),
+        input_type(input),
+        output_type(output),
+        use_constraint(use_constraint) {}
 };
+
+std::string PrintBinaryTestParam(
+    const ::testing::TestParamInfo<BinaryTestParam>& test_param) {
+  const BinaryTestParam& param = test_param.param;
+  return absl::StrCat(param.op_name, "_", DataType_Name(param.input_type), "_",
+                      DataType_Name(param.output_type));
+}
 
 // To add additional tests for other kernels, search for PLACEHOLDER in this
 // file.
+
+// Some templates to have versions of the operations that are conditional on
+// the used types. C++17 would make this easier.
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseAnd(T lhs, T rhs) {
+  return lhs & rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseAnd(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseOr(T lhs, T rhs) {
+  return lhs | rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseOr(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseXor(T lhs, T rhs) {
+  return lhs ^ rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> BitwiseXor(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalAnd(T lhs, T rhs) {
+  return lhs && rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalAnd(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalOr(T lhs, T rhs) {
+  return lhs || rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> LogicalOr(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
 
 class ParametricGpuBinaryOpsTest
     : public OpsTestBase,
@@ -62,11 +127,13 @@ class ParametricGpuBinaryOpsTest
              const TensorShape& shape_1,
              const absl::InlinedVector<T, 10>& input_2,
              const TensorShape& shape_2) {
-    TF_ASSERT_OK(NodeDefBuilder("some_name", GetParam().op_name)
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Attr("T", DataTypeToEnum<T>::v())
-                     .Finalize(node_def()));
+    auto builder = NodeDefBuilder("some_name", GetParam().op_name)
+                       .Input(FakeInput(DataTypeToEnum<T>::v()))
+                       .Input(FakeInput(DataTypeToEnum<T>::v()));
+    if (GetParam().use_constraint) {
+      builder.Attr("T", DataTypeToEnum<T>::v());
+    }
+    TF_ASSERT_OK(builder.Finalize(node_def()));
 
     TF_ASSERT_OK(InitOp());
     inputs_.clear();
@@ -191,33 +258,6 @@ class ParametricGpuBinaryOpsTest
 
   template <typename T, typename BaselineType, typename OutT,
             typename BaselineOutT>
-  void RunOp() {
-    auto input_1 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    auto input_2 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
-      expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(inp), static_cast<BaselineType>(inp))));
-    }
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
-                                         TensorShape{2, 3}, expected,
-                                         TensorShape{2, 3});
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
   void TestEqualShapes() {
     auto input_1 = {
         static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
@@ -234,9 +274,10 @@ class ParametricGpuBinaryOpsTest
         static_cast<T>(0.1),
         static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
     absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
+    for (auto inp : llvm::zip(input_1, input_2)) {
       expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(inp), static_cast<BaselineType>(inp))));
+          static_cast<BaselineType>(std::get<0>(inp)),
+          static_cast<BaselineType>(std::get<1>(inp)))));
     }
     RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
                                          TensorShape{2, 3}, expected,
@@ -298,21 +339,86 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "AddV2") {
       return static_cast<BaselineOutT>(lhs + rhs);
     }
+    if (GetParam().op_name == "BitwiseAnd") {
+      if (auto val = BitwiseAnd(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
+    if (GetParam().op_name == "BitwiseOr") {
+      if (auto val = BitwiseOr(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
+    if (GetParam().op_name == "BitwiseXor") {
+      if (auto val = BitwiseXor(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
+    if (GetParam().op_name == "Equal") {
+      return static_cast<BaselineOutT>(lhs == rhs);
+    }
+    if (GetParam().op_name == "NotEqual") {
+      return static_cast<BaselineOutT>(lhs != rhs);
+    }
+    if (GetParam().op_name == "Greater") {
+      return static_cast<BaselineOutT>(lhs > rhs);
+    }
+    if (GetParam().op_name == "GreaterEqual") {
+      return static_cast<BaselineOutT>(lhs >= rhs);
+    }
+    if (GetParam().op_name == "Less") {
+      return static_cast<BaselineOutT>(lhs < rhs);
+    }
+    if (GetParam().op_name == "LessEqual") {
+      return static_cast<BaselineOutT>(lhs <= rhs);
+    }
+    if (GetParam().op_name == "LogicalAnd") {
+      if (auto val = LogicalAnd(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
+    if (GetParam().op_name == "LogicalOr") {
+      if (auto val = LogicalOr(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
     // Add the logic for creating expected values for the kernel you want to
     // test here.
     // <PLACEHOLDER>
     LOG(FATAL) << "Cannot generate expected result for op "
-               << GetParam().op_name;
+               << GetParam().op_name << " on input type "
+               << typeid(BaselineType).name();
     return static_cast<BaselineOutT>(lhs);
   }
 };
 
 std::vector<BinaryTestParam> GetBinaryTestParameters() {
   std::vector<BinaryTestParam> parameters;
-  for (DataType dt :
-       std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
+  for (DataType dt : {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
     parameters.emplace_back("AddV2", dt, dt);
   }
+  // TODO(b/172804967): Expand to unsigned once fixed.
+  for (DataType dt : {DT_INT8, DT_INT16, DT_INT32, DT_INT64}) {
+    parameters.emplace_back("BitwiseAnd", dt, dt);
+    parameters.emplace_back("BitwiseOr", dt, dt);
+    parameters.emplace_back("BitwiseXor", dt, dt);
+  }
+  for (DataType dt :
+       {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8, DT_INT16, DT_INT64}) {
+    parameters.emplace_back("Equal", dt, DT_BOOL);
+    parameters.emplace_back("NotEqual", dt, DT_BOOL);
+  }
+  for (DataType dt :
+       {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT8, DT_INT16, DT_INT64}) {
+    parameters.emplace_back("Greater", dt, DT_BOOL);
+    parameters.emplace_back("GreaterEqual", dt, DT_BOOL);
+    parameters.emplace_back("Less", dt, DT_BOOL);
+    parameters.emplace_back("LessEqual", dt, DT_BOOL);
+  }
+  parameters.emplace_back("LogicalAnd", DT_BOOL, DT_BOOL,
+                          /*use_constraint=*/false);
+  parameters.emplace_back("LogicalOr", DT_BOOL, DT_BOOL,
+                          /*use_constraint=*/false);
   // Add the parameters (kernel name and data types to test) here.
   // <PLACEHOLDER>
   return parameters;
@@ -332,6 +438,21 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
     }                                                          \
     case DT_HALF: {                                            \
       using nt = EnumToDataType<DT_HALF>::Type;                \
+      code;                                                    \
+      break;                                                   \
+    }                                                          \
+    case DT_INT8: {                                            \
+      using nt = EnumToDataType<DT_INT8>::Type;                \
+      code;                                                    \
+      break;                                                   \
+    }                                                          \
+    case DT_INT16: {                                           \
+      using nt = EnumToDataType<DT_INT16>::Type;               \
+      code;                                                    \
+      break;                                                   \
+    }                                                          \
+    case DT_INT32: {                                           \
+      using nt = EnumToDataType<DT_INT32>::Type;               \
       code;                                                    \
       break;                                                   \
     }                                                          \
@@ -368,8 +489,6 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
                         NativeOutT>();                                        \
           }))
 
-TEST_P(ParametricGpuBinaryOpsTest, RunOp) { GENERATE_TEST_CALL(RunOp); }
-
 TEST_P(ParametricGpuBinaryOpsTest, EqShapes) {
   GENERATE_TEST_CALL(TestEqualShapes);
 }
@@ -399,6 +518,7 @@ TEST_P(ParametricGpuBinaryOpsTest, EmptyShapeBCast) {
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuBinaryOpsTests, ParametricGpuBinaryOpsTest,
-                         ::testing::ValuesIn(GetBinaryTestParameters()));
+                         ::testing::ValuesIn(GetBinaryTestParameters()),
+                         PrintBinaryTestParam);
 }  // namespace
 }  // end namespace tensorflow

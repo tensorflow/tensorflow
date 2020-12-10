@@ -69,6 +69,15 @@ function patch_to_avoid_strtod() {
   mv ${temp_flexbuffers_path} ${input_flexbuffers_path}
 }
 
+# The BUILD files in the downloaded folder result in an error with:
+#  bazel build tensorflow/lite/micro/...
+#
+# Parameters:
+#   $1 - path to the downloaded flatbuffers code.
+function delete_build_files() {
+  rm -f `find ${1} -name BUILD`
+}
+
 DOWNLOADED_FLATBUFFERS_PATH=${DOWNLOADS_DIR}/flatbuffers
 
 if [ -d ${DOWNLOADED_FLATBUFFERS_PATH} ]; then
@@ -91,6 +100,8 @@ else
   mv /tmp/flatbuffers-${ZIP_PREFIX} ${DOWNLOADED_FLATBUFFERS_PATH}
 
   patch_to_avoid_strtod ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
+  delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}
+
 fi
 
 echo "SUCCESS"

@@ -58,9 +58,11 @@
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
-    *   Added support for saved model's session initializer through
+    *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
-    *   Added dynamic range quantization support for the BatchMatMul op.
+    *  Added DEPTH_TO_SPACE support in Post training quantization.
+    *  Added dynamic range quantization support for the BatchMatMul op.
+        * Both symmetric and asymmetric quantized input tensor are supported.
     *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
        only supports float32 input.
     *  TFLite Supports SingatureDef:

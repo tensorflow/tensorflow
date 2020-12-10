@@ -61,7 +61,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   The following table describes the performance of MobileNets:
   ------------------------------------------------------------------------
   MACs stands for Multiply Adds
-  
+
   |Classification Checkpoint|MACs(M)|Parameters(M)|Top1 Accuracy|Pixel1 CPU(ms)|
   |---|---|---|---|---|
   | mobilenet_v3_large_1.0_224              | 217 | 5.4 |   75.6   |   51.2  |
@@ -76,11 +76,6 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   (https://github.com/tensorflow/models/tree/master/research/slim/nets/mobilenet/README.md).
 
   Optionally loads weights pre-trained on ImageNet.
-
-  Note: each Keras Application expects a specific kind of input preprocessing.
-  For MobileNetV3, call
-  `tf.keras.applications.mobilenet_v3.preprocess_input` on your
-  inputs before passing them to the model.
 
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would
@@ -135,6 +130,10 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
     classifier_activation: A `str` or callable. The activation function to use
       on the "top" layer. Ignored unless `include_top=True`. Set
       `classifier_activation=None` to return the logits of the "top" layer.
+
+  Call arguments:
+    inputs: A floating point `numpy.array` or a `tf.Tensor`, 4D with 3 color
+      channels, with values in the range [0, 255].
 
   Returns:
     A `keras.Model` instance.
@@ -555,6 +554,24 @@ def _inverted_res_block(x, expansion, filters, kernel_size, stride, se_ratio,
 
 @keras_export('keras.applications.mobilenet_v3.preprocess_input')
 def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
+  """A placeholder method for backward compatibility.
+
+  The preprocessing logic has been included in the mobilenet_v3 model
+  implementation. Users are no longer required to call this method to normalize
+  the input data. This method does nothing and only kept as a placeholder to
+  align the API surface between old and new version of model.
+
+  Args:
+    x: A floating point `numpy.array` or a `tf.Tensor`.
+    data_format: Optional data format of the image tensor/array. Defaults to
+      None, in which case the global setting
+      `tf.keras.backend.image_data_format()` is used (unless you changed it,
+      it defaults to "channels_last").{mode}
+
+  Returns:
+    Unchanged `numpy.array` or `tf.Tensor`.
+  """
+
   return x
 
 
@@ -563,8 +580,4 @@ def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
-preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='',
-    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
-    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
