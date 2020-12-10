@@ -82,9 +82,13 @@ tf_cuda_cc_test(
 cc_library(
     name = "common_utils",
     srcs = ["common/utils.cc"],
-    hdrs = ["common/utils.h"],
+    hdrs = [
+        "common/datavec.h",
+        "common/utils.h",
+    ],
     copts = tf_copts(),
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:logging",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
@@ -234,18 +238,22 @@ cc_library(
 
 tf_cuda_library(
     name = "trt_engine_utils",
-    srcs = ["utils/trt_engine_utils.cc"],
-    hdrs = ["utils/trt_engine_utils.h"],
+    srcs = ["utils/trt_engine_utils.cc",
+            "utils/trt_shape_optimization_profiles.cc",],
+    hdrs = ["utils/trt_engine_utils.h",
+            "utils/trt_shape_optimization_profiles.h",
+            "utils/trt_execution_context.h",],
     deps = [
+        ":common_utils",
         ":trt_logging",
         ":utils",
         ":trt_allocator",
-        ":common_utils",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
-        "//tensorflow/stream_executor/lib",
+        "//tensorflow/core:stream_executor_headers_lib",
     ] + if_tensorrt([":tensorrt_lib"]),
 )
 
@@ -287,7 +295,6 @@ tf_cuda_library(
     srcs = [
         "utils/trt_int8_calibrator.cc",
         "utils/trt_lru_cache.cc",
-        "utils/trt_shape_optimization_profiles.cc",
     ],
     hdrs = [
         "utils/trt_int8_calibrator.h",
@@ -295,6 +302,7 @@ tf_cuda_library(
         "utils/trt_shape_optimization_profiles.h",
     ],
     deps = [
+        ":common_utils",
         ":trt_allocator",
         ":trt_engine_utils",
         ":trt_logging",

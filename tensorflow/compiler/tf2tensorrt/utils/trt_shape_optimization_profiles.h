@@ -21,9 +21,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_execution_context.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -44,7 +46,10 @@ namespace tensorrt {
 // by the TensorRT builder to select the best kernel for the optimum value among
 // those kernels that are valid for all input tensors in the [min, max] range.
 struct OptimizationProfileConfig {
-  // Length of vector == num_inputs to engine.
+  // Length of vector == 2*num_inputs to engine. min[0:num_inputs-1] are the min
+  // input dimensions for execution tensors. If engine has shape input tensors,
+  // then min[num_inputs + i] store the shape value for input i. For inputs that
+  // are not shape tensors min = opt = max = {0, {}}.
   std::vector<nvinfer1::Dims> min;
   std::vector<nvinfer1::Dims> opt;
   std::vector<nvinfer1::Dims> max;
@@ -72,28 +77,50 @@ struct OptimizationProfileConfig {
   Status SetDimensions(const nvinfer1::INetworkDefinition* network,
                        nvinfer1::IOptimizationProfile* profile) const {
     int n_inputs = network->getNbInputs();
-    if (min.size() != n_inputs || opt.size() != n_inputs ||
-        max.size() != n_inputs) {
+    if (min.size() != 2 * n_inputs || opt.size() != 2 * n_inputs ||
+        max.size() != 2 * n_inputs) {
       return errors::Internal("Incorrect number of profile config parameters");
     }
     for (int i = 0; i < n_inputs; i++) {
       const nvinfer1::ITensor* input = network->getInput(i);
       const char* name = input->getName();
-      VLOG(2) << "Setting input dimensions for " << name << ", "
-              << ::tensorflow::tensorrt::DebugString(opt[i]);
-      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN, min[i]);
-      profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT, opt[i]);
-      profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX, max[i]);
+      if (input->isShapeTensor()) {
+        int idx = i + n_inputs;
+        VLOG(2) << "Setting shape values for " << name << ", "
+                << ::tensorflow::tensorrt::DebugString(opt[idx]);
+        profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMIN,
+                                min[idx].d, min[idx].nbDims);
+        profile->setShapeValues(name, nvinfer1::OptProfileSelector::kOPT,
+                                opt[idx].d, opt[idx].nbDims);
+        profile->setShapeValues(name, nvinfer1::OptProfileSelector::kMAX,
+                                max[idx].d, max[idx].nbDims);
+      }
+      if (input->isExecutionTensor()) {
+        VLOG(2) << "Setting input dimensions for " << name << ", "
+                << ::tensorflow::tensorrt::DebugString(opt[i]);
+        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMIN,
+                               min[i]);
+        profile->setDimensions(name, nvinfer1::OptProfileSelector::kOPT,
+                               opt[i]);
+        profile->setDimensions(name, nvinfer1::OptProfileSelector::kMAX,
+                               max[i]);
+      }
     }
     return Status::OK();
   }
 #endif
 
   // Returns true if profile range completely includes the given shapes.
-  bool IncludesShapes(const std::vector<TensorShape>& shapes) const {
+  bool IncludesShapes(const std::vector<TensorShape>& shapes,
+                      bool has_shape_tensor,
+                      const std::vector<nvinfer1::Dims>& shape_values) const {
     // min, max, and opt must have the same size which is already verified in
     // SetDimensions.
-    if (min.size() != shapes.size()) {
+    if (min.size() != shapes.size() * 2 ||
+        (has_shape_tensor && min.size() != shape_values.size() * 2)) {
+      VLOG(2) << "Profile size mismatch min size " << min.size()
+              << " vs input shapes size " << shapes.size() << " "
+              << shape_values.size();
       return false;
     }
     for (int i = 0; i < shapes.size(); i++) {
@@ -108,6 +135,25 @@ struct OptimizationProfileConfig {
         if ((min[i].d[dim] > current_shape.dim_size(dim)) ||
             (max[i].d[dim] < current_shape.dim_size(dim))) {
           return false;
+        }
+      }
+    }
+    // Check shape values.
+    if (has_shape_tensor) {
+      int offset = shapes.size();
+      for (int i = 0; i < shape_values.size(); i++) {
+        auto shape_val = shape_values[i];
+        // min, max, and opt must have the same nbDims, which is already
+        // verified in SetDimensions.
+        if (min[i + offset].nbDims != shape_val.nbDims) {
+          return false;
+        }
+        // Check if range [min, max] includes shape_val.
+        for (int dim = 0; dim < shape_val.nbDims; dim++) {
+          if (min[i + offset].d[dim] > shape_val.d[dim] ||
+              max[i + offset].d[dim] < shape_val.d[dim]) {
+            return false;
+          }
         }
       }
     }
@@ -133,9 +179,17 @@ class TrtShapeOptimizationProfile {
 
   // Stores input shape information during profile_generation_mode.
   void AddShape(const std::vector<TensorShape>& shapes) {
-    input_shapes_.insert(shapes);
+    input_shapes_.push_back(shapes);
+    input_shape_values_.push_back(actual_shape_values_);
     VLOG(1) << "Collected shape(s) " << DebugString(shapes) << " for profiles.";
   }
+
+  // Collects ShapeTensorCompatible tensor values. This is needed both during
+  // profile_generation_mode and during normal inference calls.
+  Status CollectShapeValues(OpKernelContext* ctx);
+
+  // Collects ShapeTensorCompatible tensor values, used only for unit tests.
+  Status CollectShapeValues(const DataVec& input);
 
   void clear() { profiles_.clear(); }
 
@@ -156,6 +210,10 @@ class TrtShapeOptimizationProfile {
                                  std::vector<ExecutionContext>& exec_context,
                                  TRTBaseAllocator* memory_allocator);
 
+  Status SetInputShapeBinding(int input_index, int binding_index,
+                              nvinfer1::ICudaEngine* cuda_engine,
+                              nvinfer1::IExecutionContext* exec_context) const;
+
   // Creates optimization profiles profiles_ for the set of concrete input
   // shapes collected in input_shapes_. The input_partial_shapes of the network
   // is used to ensure that the created optimization profiles are compatible
@@ -172,16 +230,30 @@ class TrtShapeOptimizationProfile {
   // Restores profiles from the engine (used after deserialization).
   Status RestoreProfiles(const nvinfer1::ICudaEngine* engine);
 
+  // Whether the network has any shape tensors.
+  bool HasShapeTensor() const { return has_shape_tensor_; }
+
+  void SetShapeTensorMask(const nvinfer1::INetworkDefinition* network);
+
  private:
   // Set of input shape vetors that we collect during profile_generation_mode.
-  std::unordered_set<std::vector<TensorShape>, VectorTensorShapeHasher>
-      input_shapes_;
+  std::vector<std::vector<TensorShape>> input_shapes_;
+
+  // Input shape values that we collect during profile_generation_mode. If the
+  // tensor is not compatible with a TRT shape tensor then an empty shape is
+  // stored.
+  std::vector<std::vector<nvinfer1::Dims>> input_shape_values_;
+
+  // Shape values present in the current inference call.
+  std::vector<nvinfer1::Dims> actual_shape_values_;
 
   // The optimization profiles generated from input_shapes_.
   std::vector<OptimizationProfileConfig> profiles_;
 
-  // Whether the network has any shape tensors.
-  bool has_shape_tensor_;
+  // Whether the network has any shape tensors. Initially we assume that the
+  // network might have a shape value input. This will be updated when the
+  // network is created / engine is deserialized.
+  bool has_shape_tensor_ = true;
 
   // Whether the network/engine requires optimization profiles.
   bool need_profiles_ = false;
@@ -199,12 +271,14 @@ class TrtShapeOptimizationProfile {
                      const nvinfer1::INetworkDefinition* network);
 #endif
 
-  void SetShapeTensorMask(const nvinfer1::INetworkDefinition* network);
+  void SetShapeTensorMask(const nvinfer1::ICudaEngine* engine, int n_inputs);
   void SetShapeTensorMask(
       const std::vector<PartialTensorShape>& input_partial_shapes);
 
-  void ImplicitBatchModeCompatibleStrategy();
-  void OptimalStrategy();
+  void ImplicitBatchModeCompatibleStrategy(
+      const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
+  void OptimalStrategy(
+      const std::vector<std::vector<nvinfer1::Dims>>& collected_shapes);
 };
 
 }  // namespace tensorrt

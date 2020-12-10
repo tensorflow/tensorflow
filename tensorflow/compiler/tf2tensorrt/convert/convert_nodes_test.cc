@@ -32,12 +32,11 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/common/datavec.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -58,6 +57,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1447,7 +1448,15 @@ class OpConverterTest : public ::testing::Test {
   }
 
   void CheckDataTypeMatches(const DataVec& datas) {
+    if (VLOG_IS_ON(2)) {
+      int nbBindings = engine_->getNbBindings();
+      VLOG(2) << "Number of engine bindings: " << nbBindings;
+      for (int i = 0; i < nbBindings; i++) {
+        VLOG(2) << "Binding " << i << " name: " << engine_->getBindingName(i);
+      }
+    }
     for (const auto& data : datas) {
+      VLOG(2) << "Checking if data type matches for tensor " << data.name;
       const int input_index = engine_->getBindingIndex(data.name.c_str());
       ASSERT_NE(-1, input_index);
       const nvinfer1::DataType trt_dtype =
@@ -1478,6 +1487,8 @@ class OpConverterTest : public ::testing::Test {
     TrtShapeOptimizationProfile profiles(
         ProfileStrategy::kImplicitBatchModeCompatible);
     if (!converter_->use_implicit_batch()) {
+      profiles.SetShapeTensorMask(converter_->network());
+      TF_RETURN_IF_ERROR(profiles.CollectShapeValues(input_data));
       // Create a single optimization profile for explicit batch mode
       std::vector<TensorShape> input_shapes;
       TF_RETURN_IF_ERROR(GetShapeFromDataVec(input_data, &input_shapes));
@@ -1511,9 +1522,10 @@ class OpConverterTest : public ::testing::Test {
         engine_->createExecutionContext());
 
     // Prepare input bindings.
-    TF_RETURN_IF_ERROR(SetTrtEngineInputs(
-        engine_.get(), execution_context.get(), 0, buffers,
-        converter_->use_implicit_batch(), batch_size, nullptr, &input_data));
+    TF_RETURN_IF_ERROR(
+        SetTrtEngineInputs(engine_.get(), execution_context.get(), 0, buffers,
+                           converter_->use_implicit_batch(), batch_size,
+                           profiles, nullptr, &input_data));
     // Prepare output bindings.
     TF_RETURN_IF_ERROR(SetTrtEngineOutputs(
         engine_.get(), execution_context.get(), 0, buffers,
@@ -1541,10 +1553,16 @@ class OpConverterTest : public ::testing::Test {
     node_inputs_[name] = input.output;
 
     // Add a real ITensor for conversion conditionally.
-    const nvinfer1::Dims trt_dims =
-        TensorShapeToTrtDims(attrs.shape_, converter_->use_implicit_batch());
+    nvinfer1::Dims trt_dims;
+    Status status = TensorShapeToTrtDims(
+        attrs.shape_, converter_->use_implicit_batch(), &trt_dims);
+    if (converter_->use_implicit_batch() && !status.ok()) {
+      ASSERT_EQ(add_input_status, status);
+    } else {
+      TF_EXPECT_OK(status);
+    }
     if (!converter_->use_implicit_batch() || HasStaticShape(trt_dims)) {
-      int batch_size = dims[0];
+      int batch_size = dims.size() > 0 ? dims[0] : 0;
       Status status =
           converter_->AddInputTensor(name, trt_type, trt_dims, batch_size);
       ASSERT_EQ(add_input_status, status);
@@ -1583,7 +1601,7 @@ class OpConverterTest : public ::testing::Test {
     nvinfer1::DataType dtype;
     TF_ASSERT_OK(TfTypeToTrtType(DataTypeToEnum<T>::v(), &dtype));
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
-    const int64_t num_elements = TrtWeightDimsNumElements(trt_dims);
+    const int64_t num_elements = TRT_ShapedWeights::count(trt_dims);
     QCHECK_EQ(num_elements, values.size())
         << num_elements << " vs " << values.size();
     TRT_ShapedWeights weights(dtype);
@@ -1822,7 +1840,9 @@ class ParameterizedOpConverterTestBase
     if (!dims.empty()) {
       const auto num_elements = std::accumulate(
           std::begin(dims), std::end(dims), 1, std::multiplies<double>());
-      if (num_elements != values.size()) {
+      if (!values.empty() && num_elements != values.size()) {
+        // Note: for conversion only tests, it is valid to have empty values,
+        // otherwise the number of elements should match.
         LOG(WARNING) << "Expected Test Tensor Shape: " << DebugString(dims)
                      << ", Received Input Tensor: " << DebugString(values);
       }
@@ -1847,7 +1867,7 @@ class ParameterizedOpConverterTestBase
       VLOG(2) << "Adding test tensor: " << name << " "
               << DataTypeString(tf_type);
       InputOutputData data{name, AsTensor(values, dims, tf_type)};
-      VLOG(2) << "Added tensor: " << data.name
+      VLOG(2) << "Added tensor: " << data.name << " with dtype "
               << DataTypeString(data.tensor.dtype());
       input_data_.push_back(data);
     }
@@ -2056,8 +2076,13 @@ void TestConvertConst(OpConverterTest* test) {
   }
   {
     Tensor t = test::AsScalar<InputCType>(12);
-    reset_and_test(t, false, {1}, {12});
-    reset_and_test(t, true, {1}, {12});
+    std::vector<int> expected_dims{1};
+    if (IS_TRT_VERSION_GE(6, 0, 0, 0)) {
+      // Scalars are represented as rank 0 tensors in TRT6 or later
+      expected_dims.clear();
+    }
+    reset_and_test(t, false, expected_dims, {12});
+    reset_and_test(t, true, expected_dims, {12});
   }
   {
     Tensor t = test->AsTensor<InputCType>({1, 2});
@@ -2318,102 +2343,157 @@ TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertReshape) {
+TEST_P(OpConverter_FP32_Test, ConvertReshape) {
   // Get the NodeDef for Reshape.
   Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
   auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
   auto reshape = ops::Reshape(s.WithOpName("my_reshape"), input, weights);
   const NodeDef& node_def = reshape.operation.node()->def();
 
-  {
-    // Shape is a tensor, should fail.
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    // Shape is a tensor, should fail in implicit batch mode.
     Reset();
-    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("input", {3, 2, 1});
     AddTestTensor("weights", {3});
     RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"shape\" for Reshape must be a constant, at my_reshape");
-  }
-  {
-    // Reshape to scalar, should fail.
+        node_def, error::INVALID_ARGUMENT,
+        "The input \"shape\" for Reshape must be a constant in implicit batch "
+        "mode, at my_reshape");
+  } else if (!IS_TRT_VERSION_GE(7, 1, 3, 0)) {
+    // Shape is a tensor, should fail before TRT 7.1.3 even in explicit batch /
+    // dynamic shape mode.
     Reset();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("weights", {0}, {});
+    AddTestTensor("input", {3, 2, 1});
+    AddTestTensor("weights", {3});
     RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Reshape to shape=[] is not supported, at my_reshape");
+        node_def, error::INVALID_ARGUMENT,
+        "Non constant shape input tensor for Reshape requires minimum TRT "
+        "7.1.3");
   }
-  {
-    // Reshape tensor with zero rank to empty tensor, should fail.
-    Reset();
-    AddTestTensor("input", {});
-    AddTestWeights<int32>("weights", {1, 0, 1}, {});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Reshape to shape=[] is not supported, at my_reshape");
-  }
+
+  Status reshape_from_scalar_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Internal(
+                "Failed to convert input input to a TRT_TensorOrWeights: "
+                "Scalar input tensor is not supported since the first "
+                "dimension is treated as batch dimension by TRT")
+          : Status::OK();
+  Status add_scalar_tensor_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Internal(
+                "Scalars cannot be represented in implicit batch mode")
+          : Status::OK();
+  Status reshape_to_scalar_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Unimplemented(
+                "Reshape to shape=[] is not supported, at my_reshape")
+          : Status::OK();
+  Status reshape_batch_status =
+      trt_mode_ == TrtTestMode::kImplicitBatch
+          ? errors::Unimplemented(
+                "Reshape on batch dimension is not supported, at my_reshape")
+          : Status::OK();
 
   struct TestParams {
-    int batch_size;
     std::vector<int> tensor_dims;
     std::vector<int> shape;
+    std::vector<int> expected_shape;
+    Status conversion_status;
+    Status runtime_status;
+    std::vector<int> shape_prof;  // needed concrete values if shape == -1.
+    Status add_test_tensor_status;
   };
 
-  // Reshape at batch dimension, should fail.
   std::vector<TestParams> params = {
-      TestParams{1, {1, 2, 3}, {3, 1, 1, 2}},
-      TestParams{1, {1, 2, -1}, {-1, 1, 1, 2}},
-      TestParams{1, {1, 2, 3}, {-1, 1, 1, 2}},
-      TestParams{-1, {1, 2, 3}, {1, 1, 1, 2}},
-      TestParams{-1, {-1, 2, 3}, {1, 1, 1, 6}},  // TODO(laigd): it should pass.
+      // Reshape scalar to tensor, should fail in implicit batch mode.
+      TestParams{{},
+                 {1, 1},
+                 {},
+                 reshape_from_scalar_status,
+                 {},
+                 {},
+                 add_scalar_tensor_status},
+      // Reshape tensor to scalar, should fail in implicit batch mode.
+      // - In explicit batch mode if shape is set as weight it works.
+      // - In explicit batch mode && using shape as tensor input it should
+      //   fail. In that case we set the expected conversion status in the
+      //   test loop.
+      TestParams{{1, 1}, {}, {}, reshape_to_scalar_status},
+      // Reshape at batch dimension, should fail in implicit batch mode.
+      TestParams{{1, 1, 2, 3}, {3, 1, 1, 2}, {}, reshape_batch_status},
+      TestParams{{2, 1, 2, 3}, {-1, 1, 4}, {3, 1, 4}, reshape_batch_status},
+      // Tests that should succeed in every trt_mode.
+      TestParams{{1, 1, 2, 3}, {-1, 1, 3, 2}, {1, 1, 3, 2}},
+      TestParams{{1, 1, 2, 3}, {1, 1, -1}, {1, 1, 6}},
+      TestParams{{1, 1, 2, 3}, {1, 1, 3, 2}},
+      TestParams{{2, 1, 2, 3}, {2, 1, 3, 2}},
+      TestParams{{1, 1, 1}, {1}},
+      TestParams{{1}, {1, 1}},
+      TestParams{{2, 1, 1}, {2}},
+      TestParams{{2}, {2, 1}},
   };
-  for (int i = 0; i < params.size(); ++i) {
-    Reset();
-    const std::vector<int>& dims = params[i].tensor_dims;
-    AddTestTensor("input", dims, params[i].batch_size);
-    AddTestWeights<int32>("weights", {4}, params[i].shape);
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Reshape on batch dimension is not supported, at my_reshape",
-        /*should_run_conversion=*/(dims[0] > 0 && dims[1] > 0 && dims[2] > 0));
+  if (trt_mode_ == TrtTestMode::kImplicitBatch) {
+    // Reshape tensor with zero rank using an empty shape tensor, should fail in
+    // implicit batch mode. In explicit batch mode this is an identity operation
+    // and does not add a reshape layer therefore we do not test it.
+    params.push_back(TestParams{{},
+                                {},
+                                {},
+                                reshape_from_scalar_status,
+                                {},
+                                {},
+                                add_scalar_tensor_status});
+  }
+  // Testing the methods for representing the reshape shape for IShuffleLayer:
+  // as a weight (true) or as a tensor (false).
+  std::vector<bool> shape_input_options(1, true);
+
+  if (trt_mode_ != TrtTestMode::kImplicitBatch &&
+      IS_TRT_VERSION_GE(7, 1, 3, 0)) {
+    shape_input_options.push_back(false);
   }
 
-  // Reshape on non batch dimensions, ok.
-  std::vector<TestParams> ok_params = {
-      TestParams{-1, {1, 2, 3}, {-1, 1, 3, 2}},
-      TestParams{1, {1, 2, 3}, {-1, 1, 3, 2}},
-      TestParams{1, {1, 2, 3}, {1, 1, 3, 2}},
-      TestParams{2, {1, 2, 3}, {2, 1, 3, 2}},
-      TestParams{1, {1, 1}, {1}},
-      TestParams{1, {}, {1, 1}},
-      TestParams{2, {1, 1}, {2}},
-      TestParams{2, {}, {2, 1}},
-  };
-  for (int i = 0; i < ok_params.size(); ++i) {
-    const int batch_size = std::max(1, ok_params[i].batch_size);
-    const auto& shape = ok_params[i].shape;
-    Reset();
-    AddTestTensor("input", ok_params[i].tensor_dims, batch_size);
-    AddTestWeights<int32>("weights", {static_cast<int>(shape.size())}, shape);
-    RunValidationAndConversion(node_def);
-
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_reshape", &output));
-    ASSERT_TRUE(output.is_tensor());
-    const std::vector<int> expected_output_dims(shape.begin() + 1, shape.end());
-    const nvinfer1::Dims actual_output_dims = output.tensor()->getDimensions();
-    ExpectTrtDimsEqualsArray(expected_output_dims, actual_output_dims);
-
-    std::vector<float> input_vec(TrtTensorDimsNumElements(actual_output_dims) *
-                                 batch_size);
-    std::iota(input_vec.begin(), input_vec.end(), 1);
-    const DataVec input_data{{"input", AsTensor<float>(input_vec)}};
-    DataVec output_data{
-        {"my_reshape", ConstructTensor<float>(input_vec.size())}};
-    TF_EXPECT_OK(BuildAndRun(input_data, &output_data, batch_size));
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAreArray(input_vec));
+  for (auto p : params) {
+    for (auto shape_as_weight : shape_input_options) {
+      std::ostringstream oss;
+      oss << "shape " << p.shape;
+      SCOPED_TRACE(StrCat(oss.str(), shape_as_weight ? " weight" : " tensor"));
+      if (!shape_as_weight && p.shape.empty()) {
+        p.conversion_status = errors::Unimplemented(
+            "Reshape with dynamic input requires 1D input tensor, at "
+            "my_reshape");
+      }
+      Reset();
+      const int n_elements =
+          std::accumulate(p.tensor_dims.begin(), p.tensor_dims.end(), 1,
+                          std::multiplies<int>());
+      std::vector<float> input_vec(n_elements);
+      std::iota(input_vec.begin(), input_vec.end(), 1);
+      AddTestTensor("input", p.tensor_dims, tf_type_, input_vec, {},
+                    p.add_test_tensor_status);
+      if (shape_as_weight) {
+        AddTestWeights<int32>("weights", {static_cast<int>(p.shape.size())},
+                              p.shape);
+      } else {
+        std::vector<int32> dims;
+        std::vector<int32> values{p.shape};
+        if (!p.shape.empty()) {
+          dims.push_back(p.shape.size());
+        } else {
+          // If the shape is empty we use a dummy value to ensure that
+          // AddTestTensor creates the corresponding entry in InputOutputData.
+          values.push_back(1);
+        }
+        AddTestTensor("weights", dims, DT_INT32, values, dims);
+      }
+      std::vector<int> expected_shape =
+          p.expected_shape.empty() ? p.shape : p.expected_shape;
+      VLOG(2) << "Calling TestOpConverter";
+      TestOpConverter("my_reshape", node_def, expected_shape,
+                      p.conversion_status, p.runtime_status,
+                      ElementsAreArray(input_vec));
+    }
   }
 }
 
