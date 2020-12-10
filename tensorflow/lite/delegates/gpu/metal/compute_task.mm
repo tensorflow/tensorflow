@@ -191,30 +191,6 @@ struct UniformBuffer {
   return absl::OkStatus();
 }
 
-- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-               usageRecordIds:(const std::map<ValueId, size_t>&)usageRecordIds
-              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers {
-  for (auto& buffer : _outputBuffers) {
-    // If the buffer is intermediate: set its metalHandle from sharedBuffers
-    if (std::find(outputIds.begin(), outputIds.end(), buffer.uid) == outputIds.end()) {
-      auto usageRecordIt = usageRecordIds.find(buffer.uid);
-      if (usageRecordIt == usageRecordIds.end()) {
-        return absl::InternalError("TensorUsageRecord for intermediate tensor is not found.");
-      }
-      buffer.metalHandle = sharedBuffers.at(sharedBufferIds.at(usageRecordIt->second));
-      (*buffers)[buffer.uid] = buffer.metalHandle;
-    }
-  }
-
-  // Re-assign input buffers
-  for (auto& buffer : _inputBuffers) {
-    buffer.metalHandle = (*buffers)[buffer.uid];
-  }
-  return absl::OkStatus();
-}
-
 - (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids {
   for (auto& buffer : _inputBuffers) {
     if (ids.count(buffer.uid)) {

@@ -42,22 +42,6 @@ limitations under the License.
                           tensorShapes:(const std::map<tflite::gpu::ValueId, tflite::gpu::BHWC>&)
                                            tensorShapes;
 
-/// Updates buffers for intermediate tensors only. Returns error if out of memory or a buffer is
-/// larger than MTLDevice can support.
-/// @param buffers is a map from intermediate tensors' ValueId to metal handles with corresponding
-///        buffers.
-/// @param outputIDs must match the output of added operations.
-/// @param usageRecordIds is a map from intermediate tensors' ValueId to corresponding tensor usage
-/// records ids.
-/// @param sharedBufferIds contain shared buffer id for each tensor usage record id.
-/// @param sharedBuffers contain metal handles to the allocated buffers for each shared buffer id.
-/// TODO(ypisarchyk): probably we can decrease the number of parameters here
-- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-               usageRecordIds:(const std::map<::tflite::gpu::ValueId, size_t>&)usageRecordIds
-              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
-
 - (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids;
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder;

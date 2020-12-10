@@ -30,18 +30,34 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
+using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::BHWC;
+using ::tflite::gpu::CalculationsPrecision;
+using ::tflite::gpu::DataType;
+using ::tflite::gpu::HalfBits;
+using ::tflite::gpu::int2;
+using ::tflite::gpu::MemoryStrategy;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::MetalSpatialTensor;
-using ::tflite::gpu::DataType;
 using ::tflite::gpu::TensorDescriptor;
 using ::tflite::gpu::TensorStorageType;
-using ::tflite::gpu::CalculationsPrecision;
-using ::tflite::gpu::ValueId;
-using ::tflite::gpu::AlignByN;
-using ::tflite::gpu::HalfBits;
-using ::tflite::gpu::MemoryStrategy;
 using ::tflite::gpu::TensorUsageRecord;
+using ::tflite::gpu::ValueId;
+
+namespace {
+void AddUsage(ValueId id, int task_index,
+              std::map<ValueId, int2>* usage_records) {
+  auto it = usage_records->find(id);
+  if (it == usage_records->end()) {
+    // initializing start index(.x) and end index(.y)
+    (*usage_records)[id].x = task_index;
+    (*usage_records)[id].y = task_index;
+  } else {
+    // updating end index(.y)
+    (*usage_records)[id].y = task_index;
+  }
+}
+}  // namespace
 
 @implementation TFLInferenceContext {
   std::vector<TFLComputeTask*> _computeTasks;
@@ -49,10 +65,14 @@ using ::tflite::gpu::TensorUsageRecord;
   std::vector<int> _taskIdsWithPreallocatedTensors;
   std::vector<ValueId> _inputIds;
   std::vector<ValueId> _outputIds;
-  id<MTLDevice> _device;
   CalculationsPrecision _precision;
   std::map<ValueId, BHWC> _tensorShapes;
   std::map<ValueId, MetalSpatialTensor> _preallocatedTensors;
+
+  std::map<ValueId, int> _graphIdsToSharedBufferTensors;
+  std::vector<id<MTLBuffer>> _sharedBuffers;
+  std::vector<MetalSpatialTensor> _sharedBufferTensors;  // use references to memory
+                                                         // from _sharedBuffers
 }
 
 - (absl::Status)compileModelWithDevice:(id<MTLDevice>)device
@@ -60,36 +80,42 @@ using ::tflite::gpu::TensorUsageRecord;
                         inputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)inputBufferIDs
                        outputBufferIDs:(const std::vector<tflite::gpu::ValueId>&)outputBufferIDs
                              precision:(tflite::gpu::CalculationsPrecision)precision {
-  _device = device;
   _inputIds = inputBufferIDs;
   _outputIds = outputBufferIDs;
   _precision = precision;
   // Metal resources are created here.
   for (const auto& node : compiledModel.nodes) {
     TFLComputeTask* task = [[TFLComputeTask alloc] init];
-    RETURN_IF_ERROR([task compileWithDevice:_device
+    RETURN_IF_ERROR([task compileWithDevice:device
                              taskDescriptor:node
                                   precision:_precision]);
     [task setDescription:node.description];
     _computeTasks.emplace_back(task);
   }
   _tensorShapes = compiledModel.tensor_shapes;
-  [self allocateTensors];
+  for (auto& task : _computeTasks) {
+    // The same device must be used here as well as on shader compilation stage.
+    RETURN_IF_ERROR([task updateParamsWithDevice:device tensorShapes:_tensorShapes]);
+  }
+  RETURN_IF_ERROR([self allocateTensors:device]);
   return absl::OkStatus();
 }
 
-- (absl::Status)allocateTensors {
-  // These maps contain all input/output/intermediate buffers shared across model.
-  std::map<ValueId, id<MTLBuffer>> buffers;
+- (absl::Status)allocateTensors:(id<MTLDevice>)device {
   std::set<ValueId> preallocatedIds;
-  // Insert uninitialized input buffers. This buffers will be set externally.
   for (auto tensor_id : _inputIds) {
-    buffers[tensor_id] = nil;
     preallocatedIds.insert(tensor_id);
   }
   for (const auto& outputId : _outputIds) {
     preallocatedIds.insert(outputId);
   }
+  for (int i = 0; i < _computeTasks.size(); ++i) {
+    auto& task = _computeTasks[i];
+    if ([task hasInOutIds:preallocatedIds]) {
+      _taskIdsWithPreallocatedTensors.push_back(i);
+    }
+  }
+
   const bool f32_storage = _precision == CalculationsPrecision::F32;
   for (auto& tensor_id : preallocatedIds) {
     BHWC shape = _tensorShapes[tensor_id];
@@ -100,80 +126,133 @@ using ::tflite::gpu::TensorUsageRecord;
     _preallocatedTensors[tensor_id] =
         tflite::gpu::metal::CreateSharedBufferTensor(nil, shape, descriptor);
   }
+
+  RETURN_IF_ERROR([self allocateMemoryForBuffers:device]);
+  [self bindTensorsToOperations];
+  return absl::OkStatus();
+}
+
+- (MetalSpatialTensor*)getTensor:(ValueId)tensorId {
+  if (_preallocatedTensors.find(tensorId) != _preallocatedTensors.end()) {
+    return &_preallocatedTensors[tensorId];
+  } else if (_graphIdsToSharedBufferTensors.find(tensorId) !=
+             _graphIdsToSharedBufferTensors.end()) {
+    return &_sharedBufferTensors[_graphIdsToSharedBufferTensors[tensorId]];
+  }
+  return nullptr;
+}
+
+- (void)bindTensorsToOperations {
   for (auto& task : _computeTasks) {
-    // The same device must be used here as well as on shader compilation stage.
-    RETURN_IF_ERROR([task updateParamsWithDevice:_device tensorShapes:_tensorShapes]);
-  }
-
-  // TODO(ypisarchyk): it make sense to move it to separate function
-  // Generate usage records for each intermediate tensor in order of their first_task
-  std::vector<TensorUsageRecord<size_t>> usageRecords;
-  std::map<ValueId, size_t> usageRecordIds;
-  for (uint32_t i = 0; i < _computeTasks.size(); ++i) {
-    for (const auto tensor_id : [_computeTasks[i] getOutputIds]) {
-      if (!preallocatedIds.count(tensor_id)) {
-        if (!usageRecordIds.count(tensor_id)) {
-          const auto it = _tensorShapes.find(tensor_id);
-          if (it == _tensorShapes.end()) {
-            return absl::InternalError("Dimensions for intermediate tensor not found.");
-          }
-          usageRecordIds[tensor_id] = usageRecords.size();
-          usageRecords.emplace_back(it->second.w * it->second.h * AlignByN(it->second.c, 4), i, i);
-        } else {
-          usageRecords[usageRecordIds[tensor_id]].last_task = i;
-        }
-      }
+    const auto& src_ids = [task getInputIds];
+    for (int i = 0; i < src_ids.size(); ++i) {
+      MetalSpatialTensor* tensor = [self getTensor:src_ids[i]];
+      [task setSrcTensor:*tensor withIndex:i];
     }
-    for (const auto tensor_id : [_computeTasks[i] getInputIds]) {
-      if (!preallocatedIds.count(tensor_id)) {
-        usageRecords[usageRecordIds[tensor_id]].last_task = i;
-      }
+    const auto& dst_ids = [task getOutputIds];
+    for (int i = 0; i < dst_ids.size(); ++i) {
+      MetalSpatialTensor* tensor = [self getTensor:dst_ids[i]];
+      [task setDstTensor:*tensor withIndex:i];
     }
   }
+}
 
-  tflite::gpu::ObjectsAssignment<size_t> assignment;
-  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY_BEST, &assignment));
-  auto objectsCount = assignment.object_sizes.size();
-  std::vector<id<MTLBuffer>> sharedBuffers(objectsCount);
+- (void)getUsages:(std::map<ValueId, int2>*) usages {
+  for (ValueId in_id : _inputIds) {
+    if (_preallocatedTensors.find(in_id) == _preallocatedTensors.end()) {
+      AddUsage(in_id, 0, usages);
+    }
+  }
+  for (int op_index = 0; op_index < _computeTasks.size(); ++op_index) {
+    for (auto& tensor_id : [_computeTasks[op_index] getInputIds]) {
+      if (_preallocatedTensors.find(tensor_id) == _preallocatedTensors.end()) {
+        AddUsage(tensor_id, op_index, usages);
+      }
+    }
+    for (auto& tensor_id : [_computeTasks[op_index] getOutputIds]) {
+      if (_preallocatedTensors.find(tensor_id) == _preallocatedTensors.end()) {
+        AddUsage(tensor_id, op_index, usages);
+      }
+    }
+  }
+  for (ValueId out_id : _outputIds) {
+    if (_preallocatedTensors.find(out_id) == _preallocatedTensors.end()) {
+      AddUsage(out_id, _computeTasks.size(), usages);
+    }
+  }
+}
+
+- (absl::Status)allocateMemoryForBuffers:(id<MTLDevice>)device {
+  std::map<ValueId, int2> buffer_usages;
+  [self getUsages:&buffer_usages];
+
+  std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
+  for (auto& usage : buffer_usages) {
+    const auto& shape = _tensorShapes[usage.first];
+    const size_t buffer_size =
+        shape.b * shape.w * shape.h * AlignByN(shape.c, 4);
+    _graphIdsToSharedBufferTensors[usage.first] =
+        buffer_usage_records.size();
+    buffer_usage_records.push_back({buffer_size,
+                                    static_cast<tflite::gpu::TaskId>(usage.second.x),
+                                    static_cast<tflite::gpu::TaskId>(usage.second.y)});
+  }
+
+  tflite::gpu::ObjectsAssignment<size_t> buffer_assignment;
+  RETURN_IF_ERROR(AssignObjectsToTensors(
+      buffer_usage_records, MemoryStrategy::GREEDY_BEST, &buffer_assignment));
+
+  const bool f32_storage = _precision == CalculationsPrecision::F32;
   size_t dataTypeSize = f32_storage ? sizeof(float) : sizeof(HalfBits);
-
-  // allocate buffers for each shared object
-  for (size_t i = 0; i < objectsCount; ++i) {
+  _sharedBuffers.resize(buffer_assignment.object_sizes.size());
+  for (int i = 0; i < buffer_assignment.object_sizes.size(); ++i) {
     // Initialize metal buffer
-    NSUInteger bufferSize = dataTypeSize * assignment.object_sizes[i];
+    NSUInteger bufferSize = dataTypeSize * buffer_assignment.object_sizes[i];
 
 #if (defined(__MAC_10_14) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14) ||      \
     (defined(__IPHONE_12_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0) || \
     (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
-    if (bufferSize > [_device maxBufferLength]) {
+    if (bufferSize > [device maxBufferLength]) {
       std::string error("Tensor id: ");
-      error += std::to_string(assignment.object_ids[i]) +
+      error += std::to_string(buffer_assignment.object_ids[i]) +
                " with size: " + std::to_string(bufferSize) +
-               " exceeds MTLDevice maxBufferLength: " + std::to_string([_device maxBufferLength]);
+               " exceeds MTLDevice maxBufferLength: " + std::to_string([device maxBufferLength]);
       return absl::ResourceExhaustedError(error);
     }
 #endif
 #if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
-    if ([_device currentAllocatedSize] + bufferSize > [_device recommendedMaxWorkingSetSize]) {
+    if ([device currentAllocatedSize] + bufferSize > [device recommendedMaxWorkingSetSize]) {
       std::string error("Out of memory in MTLBuffer allocation. Currently allocated: ");
-      error += std::to_string([_device currentAllocatedSize]);
+      error += std::to_string([device currentAllocatedSize]);
       return absl::ResourceExhaustedError(error);
     }
 #endif
 
-    sharedBuffers[i] = [_device newBufferWithLength:bufferSize
+    _sharedBuffers[i] = [device newBufferWithLength:bufferSize
                                             options:MTLResourceStorageModeShared];
   }
-  for (int i = 0; i < _computeTasks.size(); ++i) {
-    auto& task = _computeTasks[i];
-    if ([task hasInOutIds:preallocatedIds]) {
-      _taskIdsWithPreallocatedTensors.push_back(i);
+
+  std::vector<bool> created_tensors(buffer_usage_records.size(), false);
+  _sharedBufferTensors.resize(buffer_usage_records.size());
+  TensorDescriptor descriptor;
+  descriptor.storage_type = TensorStorageType::BUFFER;
+  descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
+  descriptor.layout = tflite::gpu::Layout::HWC;
+  for (auto& task : _computeTasks) {
+    const std::vector<ValueId> input_ids = [task getInputIds];
+    const std::vector<ValueId> output_ids = [task getOutputIds];
+    std::vector<ValueId> all_ids = input_ids;
+    all_ids.insert(all_ids.end(), output_ids.begin(), output_ids.end());
+    for (auto& tensor_id : all_ids) {
+      if (_preallocatedTensors.find(tensor_id) != _preallocatedTensors.end()) continue;
+      const int tensor_index = _graphIdsToSharedBufferTensors[tensor_id];
+      if (created_tensors[tensor_index]) continue;
+      const auto& shape = _tensorShapes[tensor_id];
+      const int buffer_index = buffer_assignment.object_ids[tensor_index];
+      _sharedBufferTensors[tensor_index] = tflite::gpu::metal::CreateSharedBufferTensor(
+                                           _sharedBuffers[buffer_index], shape, descriptor);
+      created_tensors[tensor_index] = true;
     }
-    RETURN_IF_ERROR([task assignBuffers:&buffers
-                              outputIds:_outputIds
-                         usageRecordIds:usageRecordIds
-                        sharedBufferIds:assignment.object_ids
-                          sharedBuffers:sharedBuffers]);
   }
   return absl::OkStatus();
 }
