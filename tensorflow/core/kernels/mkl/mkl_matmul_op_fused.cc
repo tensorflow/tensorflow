@@ -86,11 +86,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     const int k = src_tf_shape.dim_size(dim_pair[0]);
     const int channel = weight_tf_shape.dim_size(1 - dim_pair[1]);
 
-    OP_REQUIRES(
-        ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
-        errors::InvalidArgument(
-            "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
-            ", In[1]: ", weight_tf_shape.DebugString()));
+    OP_REQUIRES(ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
+                errors::InvalidArgument("Matrix size-incompatible: In[0]: ",
+                                        src_tf_shape.DebugString(), ", In[1]: ",
+                                        weight_tf_shape.DebugString()));
     OP_REQUIRES(ctx, bias_tensor.shape().dim_size(0) == channel,
                 errors::InvalidArgument(
                     "Must provide as many biases as the channel size: ",
@@ -105,16 +104,16 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     memory::dims weight_dims = memory::dims({channel, k});
     memory::dims bias_dims = memory::dims({channel});
     memory::dims dst_dims = memory::dims({batch, channel});
-    MEMORY_FORMAT src_format = MEMORY_FORMAT::nc;
-    MEMORY_FORMAT weight_format =
-        transpose_b_ ? MEMORY_FORMAT::oi : MEMORY_FORMAT::io;
+    memory::format_tag src_format = memory::format_tag::nc;
+    memory::format_tag weight_format =
+        transpose_b_ ? memory::format_tag::oi : memory::format_tag::io;
 
     // Set weight format for primitive:
     //   1. const, let MKL-DNN determine format because it will be cached;
     //   2. var, keep the original format to avoid reordering.
     MklDnnMatMulFwdParams matmul_params(
         src_dims, weight_dims, bias_dims, dst_dims, src_format,
-        (this->is_weight_const_) ? MEMORY_FORMAT::any : weight_format);
+        (this->is_weight_const_) ? memory::format_tag::any : weight_format);
 
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
@@ -128,7 +127,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
 
     if (src_mkl_shape.IsMklTensor()) {
       this->AllocateOutputTensor(ctx, *matmul_pd, dst_dims,
-                                 MKL_TENSOR_FORMAT_NC, &dst_tensor);
+                                 MklTensorFormat::FORMAT_NC, &dst_tensor);
     } else {
       TensorShape dst_tensor_shape({batch, channel});
       MklDnnShape dst_mkl_shape;
@@ -157,19 +156,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
                         ? src_mkl_shape.GetMklLayout()
                         : memory::desc(src_dims, MklDnnType<T>(), src_format);
 
-      if (IS_SRC_REORDER_NEEDED(src_md, matmul_pd, matmul_prim)) {
+      if (src_md != matmul_pd->src_desc()) {
         src_mkl.SetUsrMem(src_md, src_data);
-        src_mkl.CheckReorderToOpMem(
-            MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_SRC,
-                                   this->cpu_engine_),
-            ctx);
+        src_mkl.CheckReorderToOpMem(matmul_pd.get()->src_desc(),
+                                    this->cpu_engine_, ctx);
         src_data = reinterpret_cast<T*>(src_mkl.GetOpMem().get_data_handle());
       }
 
       // Get cached data when weight is const.
       const memory::desc weight_md =
           memory::desc(weight_dims, MklDnnType<T>(), weight_format);
-      if (IS_WEIGHTS_REORDER_NEEDED(weight_md, matmul_pd, matmul_prim)) {
+      if (weight_md != matmul_pd->weights_desc()) {
         T* cached_weight_data = nullptr;
 
         if (this->is_weight_const_) {
@@ -177,13 +174,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
             this->CacheWeight(ctx, matmul_pd, cached_weight_data, weight_tensor,
                               weight_mkl, weight_md);
           }
-#ifdef ENABLE_MKLDNN_V1
-          cached_weight_data = this->GetCachedWeight(
-              ctx, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_pd));
-#else
-          cached_weight_data = this->GetCachedWeight(
-              ctx, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_pd).desc());
-#endif
+          cached_weight_data =
+              this->GetCachedWeight(ctx, matmul_pd->weights_desc());
         }
 
         // Cache weight may fail when it gets different format in different
@@ -193,10 +185,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           weight_data = cached_weight_data;
         } else {
           weight_mkl.SetUsrMem(weight_md, weight_data);
-          weight_mkl.CheckReorderToOpMem(
-              MEMORY_PD_WITHOUT_DATA(matmul_pd.get()->PRIMITIVE_DESC_WEIGHTS,
-                                     this->cpu_engine_),
-              ctx);
+          weight_mkl.CheckReorderToOpMem(matmul_pd.get()->weights_desc(),
+                                         this->cpu_engine_, ctx);
           weight_data =
               reinterpret_cast<T*>(weight_mkl.GetOpMem().get_data_handle());
         }
@@ -207,9 +197,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
       matmul_prim->Execute(src_data, weight_data, bias_data, dst_data,
                            cpu_stream);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           ctx, errors::Aborted("Operation received an exception:", error_msg));
     }
