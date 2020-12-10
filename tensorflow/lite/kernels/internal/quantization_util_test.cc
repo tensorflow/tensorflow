@@ -422,6 +422,72 @@ TEST(QuantizationUtilTest, GetInvSqrtQuantizedMultiplierExp) {
   EXPECT_THAT(inv_sqrt(kInt32Max), Pair(189812531, 12));
 }
 
+TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt32) {
+  auto quant_and_multiply = [](int32_t x, double multiplier) {
+    int32_t quantized_multiplier;
+    int shift;
+    QuantizeMultiplier(multiplier, &quantized_multiplier, &shift);
+    return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+  };
+
+  EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
+  EXPECT_EQ(quant_and_multiply(1, 0), 0);
+  EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), 0.00001),
+            -21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::min(), -0.00001),
+            21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), 0.00001),
+            21475);
+  EXPECT_EQ(quant_and_multiply(std::numeric_limits<int32_t>::max(), -0.00001),
+            -21475);
+
+  // Test with maximum possible x and quantized_multiplier
+  const int32_t x = std::numeric_limits<int32_t>::max();
+  const int32_t quantized_multiplier = std::numeric_limits<int32_t>::max();
+  const int shift = -3;
+  const int32_t expected = static_cast<int32_t>(
+      TfLiteRound(static_cast<int64_t>(x) * quantized_multiplier /
+                  static_cast<double>(1ll << (31 - shift))));
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift),
+            expected);
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, shift),
+            -expected);
+}
+
+TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt64) {
+  auto quant_and_multiply = [](int64_t x, double multiplier) {
+    int32_t quantized_multiplier;
+    int shift;
+    QuantizeMultiplier(multiplier, &quantized_multiplier, &shift);
+    return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
+  };
+
+  // Negative multipliers are not supported by the 64-bit
+  // MultiplyByQuantizedMultiplier, only use >= 0 multipliers.
+  EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
+  EXPECT_EQ(quant_and_multiply(1, 0), 0);
+  EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
+  EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
+  EXPECT_EQ(quant_and_multiply(-(1ll << 47), 0.00001), -1407385600);
+  EXPECT_EQ(quant_and_multiply((1ll << 47) - 1, 0.00001), 1407385600);
+
+  // Test with maximum possible x and quantized_multiplier
+  const int64_t x = (1ll << 47) - 1;
+  const int32_t quantized_multiplier = std::numeric_limits<int32_t>::max();
+  const int shift = -31;
+  // Expected is around 'x * quantized_multiplier / 2**(31 - shift)' ~= 65536
+  // As there is some rounding error, expected is a bit smaller.
+  const int32_t expected = 65534;
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift),
+            expected);
+  EXPECT_EQ(MultiplyByQuantizedMultiplier(-x, quantized_multiplier, shift),
+            -expected);
+}
+
 TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   auto quantize = [](double beta, double scale, int integer_bits) {
     int32_t q;
