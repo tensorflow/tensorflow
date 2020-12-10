@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
 #define TENSORFLOW_LITE_TOOLS_OPTIMIZE_SPARSITY_FORMAT_CONVERTER_H_
 
-#include <memory>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
