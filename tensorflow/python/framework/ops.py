@@ -5333,13 +5333,12 @@ def _colocate_with(op, ignore_existing=False):
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See `tf.Graph.control_dependencies`
-  for more details.
+  See `tf.Graph.control_dependencies` for more details.
 
   Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
-  this method, as code executes in the expected order.* Only use
-  `tf.control_dependencies` when working with v1-style code or in a graph
-  context such as inside `Dataset.map`.
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.control_dependencies` when working with v1
+  `tf.Graph` code.
 
   When eager execution is enabled, any callable object in the `control_inputs`
   list will be called.
