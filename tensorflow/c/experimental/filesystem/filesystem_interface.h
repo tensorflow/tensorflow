@@ -83,6 +83,31 @@ typedef struct TF_TransactionToken {
   TF_Filesystem* owner;
 } TF_TransactionToken;
 
+typedef struct TF_Filesystem_Option_Value {
+  int type_tag;
+  int num_values;
+  union {
+    int64_t inv_val;
+    double real_val;
+    struct {
+      char* buf;
+      int buf_length;
+    } buffer_val;
+  } * values;  // owned
+  // A pointer to filesystem is needed in case options are passed around
+  // different modules to free the memory or allocate a new buffer for
+  // modification.
+  TF_Filesystem* file_system;
+} TF_Filesystem_Option_Value;
+
+typedef struct TF_Filesystem_Option {
+  char* name;                         // null terminated, owned
+  char* description;                  // null terminated, owned
+  int per_file;                       // bool actually, but bool is not a C type
+  TF_Filesystem_Option_Value* value;  // owned
+  TF_Filesystem* file_system;         // pointer to owning file system
+} TF_Filesystem_Option;
+
 /// SECTION 2. Function tables for functionality provided by plugins
 /// ----------------------------------------------------------------------------
 ///
@@ -810,6 +835,56 @@ typedef struct TF_FilesystemOps {
   /// DEFAULT IMPLEMENTATION: Dump token and owner address.
   char* (*decode_transaction_token)(const TF_Filesystem* filesystem,
                                     const TF_TransactionToken* token);
+
+  /// Returns pointer to an array of available configuration options and their
+  /// current/default values in `options` and number of options in array in
+  /// num_options. Ownership of the array is transferred to caller and the
+  /// caller is responsible of freeing the buffers using respective file systems
+  /// allocation API.
+  ///
+  void (*get_filesystem_configuration)(const TF_Filesystem* filesystem,
+                                             TF_Filesystem_Option** options,
+                                             int* num_options,
+                                             TF_Status* status);
+
+  /// Updates filesystem configuration with options passed in `options`. It can
+  /// contain full set of options supported by the filesystem or just a subset
+  /// of it. Ownership of options and buffers therein belongs to the caller and
+  /// any buffers need to be allocated through filesystem allocation API. On
+  /// success should return TF_OK. On failure should return relevan error code.
+  /// Filesystems may choose to ignore configuration errors but should at least
+  /// display a warning or error message to warn the users.
+  ///
+  void (*set_filesystem_configuration)(
+      const TF_Filesystem* filesystem, const TF_Filesystem_Option** options,
+      int num_options, TF_Status* status);
+
+  /// Returns the value of the filesystem option given in `key` in `option`.
+  /// Valid values of the `key` are returned by
+  /// `get_file_system_configuration_keys` call. This method should return TF_OK
+  /// on success, TF_NOT_FOUND if the key does not exist. Ownership of the
+  /// `option` is transferred to caller. Buffers therein should be allocated and
+  /// freed by the relevant filesystems allocation API.
+  void (*get_filesystem_configuration_option)(
+      const TF_Filesystem* filesystem, const char* key,
+      TF_Filesystem_Option** option, TF_Status* status);
+
+  /// Sets the value of the filesystem option given in `key` to value in
+  /// `option`. Valid values of the `key` are returned by
+  /// `get_file_system_configuration_keys` call. This method should return TF_OK
+  /// on success, TF_NOT_FOUND if the key does not exist or other relevant error
+  /// codes. `option` and the `key` are owned by the caller. Buffers therein
+  /// should be allocated and freed by the filesystems allocation API.
+  void (*set_filesystem_configuration_option)(
+      const TF_Filesystem* filesystem, const TF_Filesystem_Option* option,
+      TF_Status* status);
+
+  /// Returns a list of valid configuration keys in `keys` array and number of
+  /// keys in `num_keys`. Ownership of the buffers in `keys` are transferred to caller
+  /// and needs to be freed using relevant filesystem allocation API.
+  void (*get_filesystem_configuration_keys)(
+      const TF_Filesystem* filesystem, char** keys, int* num_keys,
+      TF_Status* status);
 
 } TF_FilesystemOps;
 // LINT.ThenChange(:filesystem_ops_version)
