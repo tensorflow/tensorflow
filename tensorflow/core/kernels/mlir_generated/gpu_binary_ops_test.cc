@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -51,6 +52,13 @@ struct BinaryTestParam {
         output_type(output),
         use_constraint(use_constraint) {}
 };
+
+std::string PrintBinaryTestParam(
+    const ::testing::TestParamInfo<BinaryTestParam>& test_param) {
+  const BinaryTestParam& param = test_param.param;
+  return absl::StrCat(param.op_name, "_", DataType_Name(param.input_type), "_",
+                      DataType_Name(param.output_type));
+}
 
 // To add additional tests for other kernels, search for PLACEHOLDER in this
 // file.
@@ -386,20 +394,17 @@ class ParametricGpuBinaryOpsTest
 
 std::vector<BinaryTestParam> GetBinaryTestParameters() {
   std::vector<BinaryTestParam> parameters;
-  for (DataType dt :
-       std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
+  for (DataType dt : {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
     parameters.emplace_back("AddV2", dt, dt);
   }
   // TODO(b/172804967): Expand to unsigned once fixed.
-  for (DataType dt :
-       std::vector<DataType>{DT_INT8, DT_INT16, DT_INT32, DT_INT64}) {
+  for (DataType dt : {DT_INT8, DT_INT16, DT_INT32, DT_INT64}) {
     parameters.emplace_back("BitwiseAnd", dt, dt);
     parameters.emplace_back("BitwiseOr", dt, dt);
     parameters.emplace_back("BitwiseXor", dt, dt);
   }
   for (DataType dt :
-       std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8,
-                             DT_INT16, DT_INT64}) {
+       {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8, DT_INT16, DT_INT64}) {
     parameters.emplace_back("Equal", dt, DT_BOOL);
     parameters.emplace_back("NotEqual", dt, DT_BOOL);
   }
@@ -513,6 +518,7 @@ TEST_P(ParametricGpuBinaryOpsTest, EmptyShapeBCast) {
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuBinaryOpsTests, ParametricGpuBinaryOpsTest,
-                         ::testing::ValuesIn(GetBinaryTestParameters()));
+                         ::testing::ValuesIn(GetBinaryTestParameters()),
+                         PrintBinaryTestParam);
 }  // namespace
 }  // end namespace tensorflow
