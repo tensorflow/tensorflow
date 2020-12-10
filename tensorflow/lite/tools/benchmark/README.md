@@ -107,7 +107,7 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 
 ### On Android:
 
-(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the `WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
 
