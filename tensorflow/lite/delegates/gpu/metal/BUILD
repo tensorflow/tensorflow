@@ -33,8 +33,10 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
         "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
+        "//tensorflow/lite/delegates/gpu/metal/selectors:subgraph",
     ],
 )
 
