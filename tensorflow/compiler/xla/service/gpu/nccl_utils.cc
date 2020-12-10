@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/nccl_utils.h"
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -221,7 +223,8 @@ class NcclCliqueRendezvous
       : Rendezvous(rendezvous_key),
         key_(std::move(rendezvous_key.global_devices)),
         local_participants_(local_participants),
-        callback_(callback) {}
+        callback_(callback),
+        counter_(nullptr) {}
 
   StatusOr<LockedNcclClique> RunCollectiveOp(
       const NcclCliqueParticipantData&) override {
@@ -235,10 +238,13 @@ class NcclCliqueRendezvous
       initialized_ = true;
     }
     TF_ASSIGN_OR_RETURN(std::shared_ptr<NcclClique> clique, maybe_clique_);
+    std::unique_ptr<absl::MutexLock> clique_lock;
     if (primary) {
-      lock_ = std::make_shared<absl::MutexLock>(clique->mu());
+      clique_lock = std::make_unique<absl::MutexLock>(clique->mu());
+      counter_ = new absl::BlockingCounter(local_participants_.size());
     }
-    return LockedNcclClique{clique, lock_};
+    return LockedNcclClique(std::move(clique), std::move(clique_lock),
+                            counter_);
   }
 
  private:
@@ -247,7 +253,7 @@ class NcclCliqueRendezvous
   const NcclUniqueIdCallback* callback_;
 
   StatusOr<std::shared_ptr<NcclClique>> maybe_clique_;
-  std::shared_ptr<absl::MutexLock> lock_;
+  absl::BlockingCounter* counter_;
 };
 
 }  // namespace
@@ -280,6 +286,26 @@ StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
   }
 
   return local_participants;
+}
+
+LockedNcclClique::LockedNcclClique(std::shared_ptr<NcclClique> clique,
+                                   std::unique_ptr<absl::MutexLock> lock,
+                                   absl::BlockingCounter* counter)
+    : clique(std::move(clique)), lock_(std::move(lock)), counter_(counter) {}
+
+LockedNcclClique::LockedNcclClique(LockedNcclClique&& other)
+    : clique(std::move(other.clique)),
+      lock_(std::move(other.lock_)),
+      counter_(std::exchange(other.counter_, nullptr)) {}
+
+LockedNcclClique::~LockedNcclClique() {
+  if (counter_) {
+    counter_->DecrementCount();
+    if (lock_) {
+      counter_->Wait();  // Don't release lock until all threads are finished.
+      delete counter_;
+    }
+  }
 }
 
 StatusOr<LockedNcclClique> AcquireNcclClique(

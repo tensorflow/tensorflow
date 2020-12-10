@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
@@ -110,13 +111,21 @@ StatusOr<std::vector<LocalParticipant>> GetLocalParticipants(
     const std::vector<GlobalDeviceId>& participants,
     const std::vector<GlobalDeviceId>* local_devices);  // may be null
 
-struct LockedNcclClique {
+class LockedNcclClique {
+ public:
+  LockedNcclClique(std::shared_ptr<NcclClique> clique,
+                   std::unique_ptr<absl::MutexLock> lock,
+                   absl::BlockingCounter* counter);
+  LockedNcclClique(LockedNcclClique&&);
+  ~LockedNcclClique();
+
   std::shared_ptr<NcclClique> clique;
+
+ private:
   // Must come after clique, so it is destroyed first.
-  // This lock prevents other threads from using this clique. All of the threads
-  // involved should hold onto the lock until they have finished with their
-  // communicator.
-  std::shared_ptr<absl::MutexLock> lock;
+  // One thread holds a lock (it is null in the others).
+  std::unique_ptr<absl::MutexLock> lock_;
+  absl::BlockingCounter* counter_;
 };
 
 // Acquires a locked NCCL clique for use in NCCL collective operations.
