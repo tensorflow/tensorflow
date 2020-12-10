@@ -1415,7 +1415,7 @@ static LogicalResult Verify(OpT op) {
   // So, fetch attribute by string instead of the op.explicit_paddings()
   // attribute getter.
   if (op.padding() == "EXPLICIT") {
-    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
+    auto paddings = op->template getAttrOfType<ArrayAttr>("explicit_paddings");
     if (!paddings)
       return op.emitOpError() << "requires attribute 'explicit_paddings' with "
                                  "'EXPLICIT' padding mode";

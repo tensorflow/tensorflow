@@ -400,7 +400,7 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op.template getParentOfType<ModuleOp>();
+  auto module = op->template getParentOfType<ModuleOp>();
   SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
@@ -2379,7 +2379,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
     // If the types don't match then only fold if all the operands are in the TF
     // dialect.
     for (auto user : op.getOperation()->getUsers())
-      if (user->getDialect() != op.getDialect()) return {};
+      if (user->getDialect() != op->getDialect()) return {};
   }
 
   return op.x();
