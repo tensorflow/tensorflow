@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
-using tensorflow::errors::InvalidArgument;
 // This file forms the basis of a stable ABI for third-party kernel
 // implementations. It is crucial that changes to this file are made cautiously
 // and with a focus on maintaining both source and binary compatibility.
@@ -88,24 +87,8 @@ void AddTypeConstraint(TF_KernelBuilder* kernel_builder, const char* attr_name,
   TF_SetStatus(status, TF_OK, "");
 }
 #undef CASE
-
 }  // namespace
 }  // namespace tensorflow
-
-namespace {
-const tensorflow::AttrValue* GetAttrValue(TF_OpKernelConstruction* ctx,
-                                          const char* attr_name,
-                                          TF_Status* status) {
-  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  const tensorflow::AttrValue* attr =
-      ::tensorflow::AttrSlice(cc_ctx->def()).Find(attr_name);
-  if (attr == nullptr) {
-    status->status = InvalidArgument("Operation '", cc_ctx->def().name(),
-                                     "' has no attr named '", attr_name, "'.");
-  }
-  return attr;
-}
-}  // namespace
 
 void TF_KernelBuilder_TypeConstraint(TF_KernelBuilder* kernel_builder,
                                      const char* attr_name,
@@ -274,81 +257,7 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
   cc_ctx->CtxFailure(s);
 }
 
-void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
-                                         const char* attr_name,
-                                         int32_t* list_size,
-                                         int32_t* total_size,
-                                         TF_Status* status) {
-  const tensorflow::AttrValue* attr = GetAttrValue(ctx, attr_name, status);
-  if (!status->status.ok()) {
-    *list_size = -1;
-    *total_size = -1;
-    return;
-  }
-  switch (attr->value_case()) {
-#define SINGLE_CASE(kK, attr_type, size_expr) \
-  case tensorflow::AttrValue::kK:             \
-    *list_size = -1;                          \
-    *total_size = size_expr;                  \
-    break;
-
-    SINGLE_CASE(kS, TF_ATTR_STRING, attr->s().length());
-    SINGLE_CASE(kI, TF_ATTR_INT, -1);
-    SINGLE_CASE(kF, TF_ATTR_FLOAT, -1);
-    SINGLE_CASE(kB, TF_ATTR_BOOL, -1);
-    SINGLE_CASE(kType, TF_ATTR_TYPE, -1);
-    SINGLE_CASE(kShape, TF_ATTR_SHAPE,
-                attr->shape().unknown_rank() ? -1 : attr->shape().dim_size());
-    SINGLE_CASE(kTensor, TF_ATTR_TENSOR, -1);
-#undef SINGLE_CASE
-
-    case tensorflow::AttrValue::kList:
-      *list_size = 0;
-      *total_size = -1;
-#define LIST_CASE(field, attr_type, ...)      \
-  if (attr->list().field##_size() > 0) {      \
-    *list_size = attr->list().field##_size(); \
-    __VA_ARGS__;                              \
-    break;                                    \
-  }
-
-      LIST_CASE(
-          s, TF_ATTR_STRING, *total_size = 0;
-          for (int i = 0; i < attr->list().s_size();
-               ++i) { *total_size += attr->list().s(i).size(); });
-      LIST_CASE(i, TF_ATTR_INT);
-      LIST_CASE(f, TF_ATTR_FLOAT);
-      LIST_CASE(b, TF_ATTR_BOOL);
-      LIST_CASE(type, TF_ATTR_TYPE);
-      LIST_CASE(
-          shape, TF_ATTR_SHAPE, *total_size = 0;
-          for (int i = 0; i < attr->list().shape_size(); ++i) {
-            const auto& s = attr->list().shape(i);
-            *total_size += s.unknown_rank() ? 0 : s.dim_size();
-          });
-      LIST_CASE(tensor, TF_ATTR_TENSOR);
-      LIST_CASE(tensor, TF_ATTR_FUNC);
-#undef LIST_CASE
-      break;
-
-    case tensorflow::AttrValue::kPlaceholder:
-      *list_size = -1;
-      *total_size = -1;
-      break;
-
-    case tensorflow::AttrValue::kFunc:
-      *list_size = -1;
-      *total_size = -1;
-      break;
-
-    case tensorflow::AttrValue::VALUE_NOT_SET:
-      status->status =
-          InvalidArgument("Attribute '", attr_name, "' has no value set");
-      break;
-  }
-}
-
-#define DEFINE_TF_GETATTR(func, c_type, cc_type, attr_type, list_field)        \
+#define DEFINE_TF_GETATTR(func, c_type, cc_type)                               \
   void TF_OpKernelConstruction_GetAttr##func(TF_OpKernelConstruction* ctx,     \
                                              const char* attr_name,            \
                                              c_type* val, TF_Status* status) { \
@@ -360,84 +269,10 @@ void TF_OpKernelConstruction_GetAttrSize(TF_OpKernelConstruction* ctx,
     if (s.ok()) {                                                              \
       *val = static_cast<c_type>(v);                                           \
     }                                                                          \
-  }                                                                            \
-  void TF_OpKernelConstruction_GetAttr##func##List(                            \
-      TF_OpKernelConstruction* ctx, const char* attr_name, c_type* vals,       \
-      int max_vals, TF_Status* status) {                                       \
-    TF_SetStatus(status, TF_OK, "");                                           \
-    const tensorflow::AttrValue* attr = GetAttrValue(ctx, attr_name, status);  \
-    if (!status->status.ok()) return;                                          \
-    if (attr->value_case() != tensorflow::AttrValue::kList) {                  \
-      status->status =                                                         \
-          InvalidArgument("Value for '", attr_name, "' is not a list.");       \
-      return;                                                                  \
-    }                                                                          \
-    status->status =                                                           \
-        tensorflow::AttrValueHasType(*attr, "list(" attr_type ")");            \
-    if (!status->status.ok()) return;                                          \
-    const auto len = std::min(max_vals, attr->list().list_field##_size());     \
-    for (int i = 0; i < len; ++i) {                                            \
-      vals[i] = static_cast<c_type>(attr->list().list_field(i));               \
-    }                                                                          \
   }
 
-DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType, "type", type)
-DEFINE_TF_GETATTR(Int32, int32_t, tensorflow::int32, "int", i)
-DEFINE_TF_GETATTR(Int64, int64_t, tensorflow::int64, "int", i)
-DEFINE_TF_GETATTR(Float, float, float, "float", f)
-DEFINE_TF_GETATTR(Bool, TF_Bool, bool, "bool", b)
-
-void TF_OpKernelConstruction_GetAttrString(TF_OpKernelConstruction* ctx,
-                                           const char* attr_name, char* value,
-                                           size_t max_length,
-                                           TF_Status* status) {
-  std::string v;
-  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
-  ::tensorflow::Set_TF_Status_from_Status(status, s);
-
-  if (!status->status.ok()) return;
-
-  if (max_length <= 0) {
-    return;
-  }
-  std::memcpy(value, v.data(), std::min<size_t>(v.length(), max_length));
-}
-
-void TF_OpKernelConstruction_GetAttrStringList(TF_OpKernelConstruction* ctx,
-                                               const char* attr_name,
-                                               char** values, size_t* lengths,
-                                               int max_values, void* storage,
-                                               size_t storage_size,
-                                               TF_Status* status) {
-  std::vector<std::string> v;
-  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  ::tensorflow::Status s = cc_ctx->GetAttr(attr_name, &v);
-  ::tensorflow::Set_TF_Status_from_Status(status, s);
-
-  if (!status->status.ok()) return;
-
-  const auto len = std::min(max_values, static_cast<int>(v.size()));
-  char* p = static_cast<char*>(storage);
-  for (int i = 0; i < len; ++i) {
-    const std::string& s = v[i];
-    values[i] = p;
-    lengths[i] = s.size();
-    if ((p + s.size()) > (static_cast<char*>(storage) + storage_size)) {
-      status->status = InvalidArgument(
-          "Not enough storage to hold the requested list of strings");
-      return;
-    }
-    memcpy(values[i], s.data(), s.size());
-    p += s.size();
-  }
-}
-
-bool TF_OpKernelConstruction_HasAttr(TF_OpKernelConstruction* ctx,
-                                     const char* attr_name, TF_Status* status) {
-  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx);
-  return cc_ctx->HasAttr(attr_name);
-}
+DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType)
+DEFINE_TF_GETATTR(Int32, tensorflow::int32, int32_t)
 
 TF_StringView TF_OpKernelConstruction_GetName(TF_OpKernelConstruction* ctx) {
   auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelConstruction*>(ctx);
