@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -249,33 +250,6 @@ class ParametricGpuBinaryOpsTest
 
   template <typename T, typename BaselineType, typename OutT,
             typename BaselineOutT>
-  void RunOp() {
-    auto input_1 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    auto input_2 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
-      expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(inp), static_cast<BaselineType>(inp))));
-    }
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
-                                         TensorShape{2, 3}, expected,
-                                         TensorShape{2, 3});
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
   void TestEqualShapes() {
     auto input_1 = {
         static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
@@ -292,9 +266,10 @@ class ParametricGpuBinaryOpsTest
         static_cast<T>(0.1),
         static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
     absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
+    for (auto inp : llvm::zip(input_1, input_2)) {
       expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(inp), static_cast<BaselineType>(inp))));
+          static_cast<BaselineType>(std::get<0>(inp)),
+          static_cast<BaselineType>(std::get<1>(inp)))));
     }
     RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
                                          TensorShape{2, 3}, expected,
@@ -508,8 +483,6 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
             test_fn<NativeInT COMMA NativeInT COMMA NativeOutT COMMA          \
                         NativeOutT>();                                        \
           }))
-
-TEST_P(ParametricGpuBinaryOpsTest, RunOp) { GENERATE_TEST_CALL(RunOp); }
 
 TEST_P(ParametricGpuBinaryOpsTest, EqShapes) {
   GENERATE_TEST_CALL(TestEqualShapes);
