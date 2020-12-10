@@ -32,6 +32,7 @@ AllOpsResolver::AllOpsResolver() {
   AddDetectionPostprocess();
   AddEqual();
   AddEthosU();
+  AddFill();
   AddFloor();
   AddFullyConnected();
   AddGreater();
