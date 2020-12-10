@@ -430,7 +430,11 @@ tf_cuda_cc_test(
     ],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "no_cuda_asan",  # b/175330074
+        "notap",  # b/175330074
+    ],
     deps = [
         ":abstract_tensor_handle",
         ":c_api_experimental",
