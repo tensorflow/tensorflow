@@ -869,6 +869,7 @@ cc_library(
         "transforms/contraction_fusion.cc",
         "transforms/decompose_resource_ops_pass.cc",
         "transforms/device_index_selector.cc",
+        "transforms/drop_while_shape_invariant.cc",
         "transforms/einsum.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
