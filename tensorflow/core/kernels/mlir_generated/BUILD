@@ -58,6 +58,7 @@ filegroup(
         "unranked_op_gpu_is_inf.cc",
         "unranked_op_gpu_log.cc",
         "unranked_op_gpu_logical_not.cc",
+        "unranked_op_gpu_neg.cc",
         "unranked_op_gpu_real.cc",
         "unranked_op_gpu_rsqrt.cc",
         "unranked_op_gpu_sign.cc",
@@ -142,6 +143,7 @@ tf_kernel_library(
             ":is_inf_unranked_kernels",
             ":log_unranked_kernels",
             ":logical_not_unranked_kernels",
+            ":neg_unranked_kernels",
             ":real_unranked_kernels",
             ":rsqrt_unranked_kernels",
             ":sign_unranked_kernels",
@@ -512,6 +514,28 @@ gen_kernel_library(
     ]
 ]
 
+# Kernels that support all floating-point and signed int types.
+[
+    gen_kernel_library(
+        name = name,
+        generate_unranked = True,
+        tile_size = "256",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i8",
+            "i16",
+            "i32",
+            "i64",
+        ],
+        unroll_factors = "4",
+    )
+    for name in [
+        "neg",
+    ]
+]
+
 # Kernels that support all floating-point types.
 [
     gen_kernel_library(
@@ -531,7 +555,6 @@ gen_kernel_library(
         "floor",
         "is_finite",
         "log",
-        "neg",
         "rsqrt",
         "sqrt",
         "tanh",

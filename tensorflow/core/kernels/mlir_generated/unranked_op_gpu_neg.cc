@@ -13,19 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/cwise_ops_common.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
 namespace tensorflow {
-REGISTER6(UnaryOp, CPU, "Neg", functor::neg, Eigen::half, float, double,
-          bfloat16, complex64, complex128);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
-REGISTER6(UnaryOp, GPU, "Neg", functor::neg, Eigen::half, float, double,
-          bfloat16, complex64, complex128);
-#else
-REGISTER3(UnaryOp, GPU, "Neg", functor::neg, bfloat16, complex64, complex128);
-#endif
-#endif
+GENERATE_AND_REGISTER_UNARY_KERNEL(Neg, f16, DT_HALF, Eigen::half);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Neg, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Neg, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Neg, i8, DT_INT8, int8);
+GENERATE_AND_REGISTER_UNARY_KERNEL(Neg, i16, DT_DOUBLE, int16);
+// TODO(b/25387198): We cannot use a regular GPU kernel for int32.
+GENERATE_AND_REGISTER_UNARY_KERNEL(Neg, i64, DT_DOUBLE, int64);
+
 }  // namespace tensorflow
