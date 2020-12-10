@@ -78,7 +78,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   // in a new module to run the V1 bridge there.
   SmallVector<IslandOp, 8> islands_to_outline;
   getOperation().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
-    auto island_op = cast<IslandOp>(replicate_op.getParentOp());
+    auto island_op = cast<IslandOp>(replicate_op->getParentOp());
     if (!island_op || island_op.WrapsSingleOp()) return;
     islands_to_outline.push_back(island_op);
   });

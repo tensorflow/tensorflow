@@ -247,7 +247,7 @@ bool CanInferTensorListElementType(Value tensorlist,
       continue;
     }
     if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
-      Operation* parent = yield.getParentOp();
+      Operation* parent = yield->getParentOp();
       if (!CanInferTensorListElementType(
               parent->getResult(use.getOperandNumber()), initial_element_shape,
               potential_element_type))
@@ -619,7 +619,7 @@ ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context,
 ArrayRef<FuncOp> ShapeInference::GetCallers(FuncOp fn) {
   auto pair = callers_of_func_.try_emplace(fn);
   if (pair.second) {
-    ModuleOp module = fn.getParentOfType<ModuleOp>();
+    ModuleOp module = fn->getParentOfType<ModuleOp>();
     auto uses = mlir::SymbolTable::getSymbolUses(fn.getOperation(), module);
     if (uses) {
       pair.first->second.reserve(pair.first->second.size());

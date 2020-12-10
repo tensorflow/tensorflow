@@ -316,7 +316,7 @@ void ReplicateToIslandPass::runOnFunction() {
   });
 
   for (tf_executor::IslandOp island_op : replicate_op_islands) {
-    auto graph_op = island_op.getParentOfType<tf_executor::GraphOp>();
+    auto graph_op = island_op->getParentOfType<tf_executor::GraphOp>();
     auto replicate_op =
         cast<tf_device::ReplicateOp>(island_op.GetBody().front());
     if (failed(CreateIslandsFromReplicate(tf_dialect, graph_op, island_op,

@@ -151,7 +151,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
 
   llvm::SmallVector<std::pair<int64_t, llvm::SmallVector<Value, 4>>, 4> mapping;
   auto mirrored_variable_indices_attr =
-      replicate.getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
+      replicate->getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
   if (!mirrored_variable_indices_attr) return mapping;
 
   // Finds the mapping from a replicate argument to an execute operand.

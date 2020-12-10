@@ -483,7 +483,7 @@ bool HandleHostReplicatedInputs(int64_t index,
 void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
                    unsigned arg_num) {
   auto maybe_replicate =
-      llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func.getParentOp());
+      llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func->getParentOp());
 
   llvm::SmallVector<int64_t, 8> transform_input_indices;
   for (auto input : llvm::enumerate(cluster_func.operands())) {
