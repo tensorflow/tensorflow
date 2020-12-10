@@ -696,3 +696,14 @@ func @shift_right_logical(%lhs: tensor<2x2xi32>,
 // CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = shift_right_unsigned %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @constant
+func @constant() {
+  %result = "mhlo.constant"() {
+    value = dense<10> : tensor<i32>
+  } : () -> (tensor<i32>)
+  return
+}
+// CHECK: %[[CONSTANT:.*]] = constant dense<10> : tensor<i32>
