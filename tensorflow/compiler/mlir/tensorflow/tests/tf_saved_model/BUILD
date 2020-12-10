@@ -35,6 +35,8 @@ filegroup(
 all_test_basenames = [py[:-3] for py in glob(
     ["*.py"],
     exclude = [
+        # TODO: re-enable, broken on MacOS
+        "debug_info.py",
         "common.py",
         "common_v1.py",
     ],
