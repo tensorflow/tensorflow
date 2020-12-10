@@ -205,7 +205,9 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
     for (int j = 0; j < node_temporaries->size; ++j) {
       int tensor_index = node_temporaries->data[j];
       alloc_node_[tensor_index] = i;
-      dealloc_node_[tensor_index] = i;
+      if (!preserve_intermediates_) {
+        dealloc_node_[tensor_index] = i;
+      }
     }
   }
 
