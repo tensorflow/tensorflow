@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tempfile
 
 from absl import app
@@ -79,11 +80,12 @@ def do_test(create_module_fn, exported_names=None, show_debug_info=False):
     if FLAGS.save_model_path:
       save_model_path = FLAGS.save_model_path
     else:
-      save_model_path = tempfile.mktemp(suffix='.saved_model')
+      fd, save_model_path = tempfile.mkstemp(suffix='.saved_model')
     save_options = tf.saved_model.SaveOptions(save_debug_info=show_debug_info)
     tf.saved_model.save(
         create_module_fn(), save_model_path, options=save_options)
     logging.info('Saved model to: %s', save_model_path)
+    os.close(fd)
     mlir = pywrap_mlir.experimental_convert_saved_model_to_mlir(
         save_model_path, ','.join(exported_names), show_debug_info)
     # We don't strictly need this, but it serves as a handy sanity check
