@@ -466,16 +466,14 @@ TEST(QuantizationUtilTest, MultiplyByQuantizedMultiplierInt64) {
     return MultiplyByQuantizedMultiplier(x, quantized_multiplier, shift);
   };
 
+  // Negative multipliers are not supported by the 64-bit
+  // MultiplyByQuantizedMultiplier, only use >= 0 multipliers.
   EXPECT_EQ(quant_and_multiply(0, 0.1), 0);
   EXPECT_EQ(quant_and_multiply(1, 0), 0);
   EXPECT_EQ(quant_and_multiply(10000, 0.00097656), 10);
-  EXPECT_EQ(quant_and_multiply(10000, -0.00097656), -10);
   EXPECT_EQ(quant_and_multiply(-10000, 0.00097656), -10);
-  EXPECT_EQ(quant_and_multiply(-10000, -0.00097656), 10);
   EXPECT_EQ(quant_and_multiply(-(1ll << 47), 0.00001), -1407385600);
-  EXPECT_EQ(quant_and_multiply(-(1ll << 47), -0.00001), 1407385600);
   EXPECT_EQ(quant_and_multiply((1ll << 47) - 1, 0.00001), 1407385600);
-  EXPECT_EQ(quant_and_multiply((1ll << 47) - 1, -0.00001), -1407385600);
 
   // Test with maximum possible x and quantized_multiplier
   const int64_t x = (1ll << 47) - 1;
