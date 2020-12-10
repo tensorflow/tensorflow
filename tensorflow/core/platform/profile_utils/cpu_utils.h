@@ -109,6 +109,12 @@ class CpuUtils {
         "\tbne     0b           \n"
         : "=r"(upper), "=r"(lower), "=r"(tmp));
     return ((static_cast<uint64>(upper) << 32) | lower);
+#elif defined(__s390x__)
+    // TOD Clock of s390x runs at a different frequency than the CPU's.
+    // The stepping is 244 picoseconds (~4Ghz).
+    uint64 t;
+    __asm__ __volatile__("stckf %0" : "=Q"(t));
+    return t;      
 #else
     // TODO(satok): Support generic way to emulate clock count.
     // TODO(satok): Support other architectures if wanted.
