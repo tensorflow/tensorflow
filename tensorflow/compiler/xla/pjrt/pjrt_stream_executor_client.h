@@ -223,7 +223,9 @@ class PjRtStreamExecutorClient : public PjRtClient {
     return gpu_run_options_.get();
   }
 
-  tensorflow::thread::ThreadPool* thread_pool() { return &thread_pool_; }
+  tensorflow::thread::ThreadPool* h2d_transfer_pool() {
+    return &h2d_transfer_pool_;
+  }
 
  protected:
   friend class PjRtStreamExecutorBuffer;
@@ -266,7 +268,7 @@ class PjRtStreamExecutorClient : public PjRtClient {
 
   std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options_;
 
-  tensorflow::thread::ThreadPool thread_pool_;
+  tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
 
 // Converts a 2D set of Device objects indexed by [replica][partition] into an
