@@ -2332,6 +2332,12 @@ static Attribute FoldSlice(SliceOp* op, I values) {
 
   auto shape = result_type.getShape();
   int64_t count = result_type.getNumElements();
+  if (count == 0) {
+    return DenseElementsAttr::get<E>(
+        op->getResult().getType().cast<ShapedType>(),
+        /*list=*/{});
+  }
+
   // Compute the striding for each dimension.
   llvm::SmallVector<int64_t, 6> sizes;
   sizes.reserve(shape.size());
