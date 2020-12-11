@@ -320,8 +320,8 @@ def _gen_unranked_kernel_fatbin_impl(ctx):
         mnemonic = "compile",
     )
     compilation_outputs = cc_common.create_compilation_outputs(
-        # We always produce PIC object files.
-        objects = None,
+        # We always produce PIC object files, so use the same object files for both.
+        objects = depset([gpu_bin]),
         pic_objects = depset([gpu_bin]),
     )
     (linking_context, linking_outputs) = cc_common.create_linking_context_from_compilation_outputs(
