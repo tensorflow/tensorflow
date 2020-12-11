@@ -1290,8 +1290,8 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   const NodeDef& add = graph->node(matched.add);
   contraction_node.set_name(add.name());
   contraction_node.set_device(contraction.device());
-  contraction_node.add_input(contraction.input(0));  // 0: input
-  contraction_node.add_input(contraction.input(1));  // 1: filter
+  contraction_node.add_input(contraction.input(0));  // 0: input(conv) / a (matmul)
+  contraction_node.add_input(contraction.input(1));  // 1: filter(conv) / b (matmul)
   contraction_node.add_input(bias_add.input(1));     // 2: bias
 
   // Add OP has two inputs, one is conv+bias/matmul+bias pattern matched
