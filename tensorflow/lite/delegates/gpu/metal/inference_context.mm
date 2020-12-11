@@ -37,6 +37,7 @@ using ::tflite::gpu::DataType;
 using ::tflite::gpu::HalfBits;
 using ::tflite::gpu::int2;
 using ::tflite::gpu::MemoryStrategy;
+using ::tflite::gpu::metal::ComputeTask;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::MetalSpatialTensor;
 using ::tflite::gpu::TensorDescriptor;
@@ -60,7 +61,7 @@ void AddUsage(ValueId id, int task_index,
 }  // namespace
 
 @implementation TFLInferenceContext {
-  std::vector<TFLComputeTask*> _computeTasks;
+  std::vector<ComputeTask> _computeTasks;
   // contains indexes of _computeTasks
   std::vector<int> _taskIdsWithPreallocatedTensors;
   std::vector<ValueId> _inputIds;
@@ -85,17 +86,15 @@ void AddUsage(ValueId id, int task_index,
   _precision = precision;
   // Metal resources are created here.
   for (const auto& node : compiledModel.nodes) {
-    TFLComputeTask* task = [[TFLComputeTask alloc] init];
-    RETURN_IF_ERROR([task compileWithDevice:device
-                             taskDescriptor:node
-                                  precision:_precision]);
-    [task setDescription:node.description];
-    _computeTasks.emplace_back(task);
+    ComputeTask task;
+    RETURN_IF_ERROR(task.CompileWithDevice(device, node, _precision));
+    task.SetDescription(node.description);
+    _computeTasks.emplace_back(std::move(task));
   }
   _tensorShapes = compiledModel.tensor_shapes;
   for (auto& task : _computeTasks) {
     // The same device must be used here as well as on shader compilation stage.
-    RETURN_IF_ERROR([task updateParamsWithDevice:device tensorShapes:_tensorShapes]);
+    RETURN_IF_ERROR(task.UpdateParamsWithDevice(device, _tensorShapes));
   }
   RETURN_IF_ERROR([self allocateTensors:device]);
   return absl::OkStatus();
@@ -111,7 +110,7 @@ void AddUsage(ValueId id, int task_index,
   }
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
-    if ([task hasInOutIds:preallocatedIds]) {
+    if (task.HasInOutIds(preallocatedIds)) {
       _taskIdsWithPreallocatedTensors.push_back(i);
     }
   }
@@ -144,15 +143,15 @@ void AddUsage(ValueId id, int task_index,
 
 - (void)bindTensorsToOperations {
   for (auto& task : _computeTasks) {
-    const auto& src_ids = [task getInputIds];
+    const auto& src_ids = task.GetInputIds();
     for (int i = 0; i < src_ids.size(); ++i) {
       MetalSpatialTensor* tensor = [self getTensor:src_ids[i]];
-      [task setSrcTensor:*tensor withIndex:i];
+      task.SetSrcTensor(*tensor, i);
     }
-    const auto& dst_ids = [task getOutputIds];
+    const auto& dst_ids = task.GetOutputIds();
     for (int i = 0; i < dst_ids.size(); ++i) {
       MetalSpatialTensor* tensor = [self getTensor:dst_ids[i]];
-      [task setDstTensor:*tensor withIndex:i];
+      task.SetDstTensor(*tensor, i);
     }
   }
 }
@@ -164,12 +163,12 @@ void AddUsage(ValueId id, int task_index,
     }
   }
   for (int op_index = 0; op_index < _computeTasks.size(); ++op_index) {
-    for (auto& tensor_id : [_computeTasks[op_index] getInputIds]) {
+    for (auto& tensor_id : _computeTasks[op_index].GetInputIds()) {
       if (_preallocatedTensors.find(tensor_id) == _preallocatedTensors.end()) {
         AddUsage(tensor_id, op_index, usages);
       }
     }
-    for (auto& tensor_id : [_computeTasks[op_index] getOutputIds]) {
+    for (auto& tensor_id : _computeTasks[op_index].GetOutputIds()) {
       if (_preallocatedTensors.find(tensor_id) == _preallocatedTensors.end()) {
         AddUsage(tensor_id, op_index, usages);
       }
@@ -239,8 +238,8 @@ void AddUsage(ValueId id, int task_index,
   descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
   descriptor.layout = tflite::gpu::Layout::HWC;
   for (auto& task : _computeTasks) {
-    const std::vector<ValueId> input_ids = [task getInputIds];
-    const std::vector<ValueId> output_ids = [task getOutputIds];
+    const std::vector<ValueId> input_ids = task.GetInputIds();
+    const std::vector<ValueId> output_ids = task.GetOutputIds();
     std::vector<ValueId> all_ids = input_ids;
     all_ids.insert(all_ids.end(), output_ids.begin(), output_ids.end());
     for (auto& tensor_id : all_ids) {
@@ -263,7 +262,7 @@ void AddUsage(ValueId id, int task_index,
   [self updatePreallocatedTensors:inputOutputBuffers];
   for (int i = 0; i < _computeTasks.size(); ++i) {
     auto& task = _computeTasks[i];
-    [task encodeWithEncoder:commandEncoder];
+    task.EncodeWithEncoder(commandEncoder);
   }
 }
 
@@ -274,7 +273,7 @@ void AddUsage(ValueId id, int task_index,
   for (int i = 0; i < _computeTasks.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     auto& task = _computeTasks[i];
-    [task encodeWithEncoder:encoder];
+    task.EncodeWithEncoder(encoder);
     [encoder endEncoding];
   }
 }
@@ -288,7 +287,7 @@ void AddUsage(ValueId id, int task_index,
   for (int i = 0; i < _computeTasks.size(); ++i) {
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     auto& task = _computeTasks[i];
-    [task encodeWithEncoder:encoder];
+    task.EncodeWithEncoder(encoder);
     [encoder endEncoding];
     if (i % flushPeriod == (flushPeriod - 1)) {
       [commandBuffer commit];
@@ -304,18 +303,18 @@ void AddUsage(ValueId id, int task_index,
   }
   for (auto& task_index : _taskIdsWithPreallocatedTensors) {
     auto& task = _computeTasks[task_index];
-    const auto& src_ids = [task getInputIds];
+    const auto& src_ids = task.GetInputIds();
     for (int i = 0; i < src_ids.size(); ++i) {
       const auto& it = _preallocatedTensors.find(src_ids[i]);
       if (it != _preallocatedTensors.end()) {
-        [task setSrcTensor:it->second withIndex:i];
+        task.SetSrcTensor(it->second, i);
       }
     }
-    const auto& dst_ids = [task getOutputIds];
+    const auto& dst_ids = task.GetOutputIds();
     for (int i = 0; i < dst_ids.size(); ++i) {
       const auto& it = _preallocatedTensors.find(dst_ids[i]);
       if (it != _preallocatedTensors.end()) {
-        [task setDstTensor:it->second withIndex:i];
+        task.SetDstTensor(it->second, i);
       }
     }
   }
