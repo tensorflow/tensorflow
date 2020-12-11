@@ -113,6 +113,7 @@ StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
       ConvertPadding(padding, &builder_),
       GetI64ElementsAttr(lhs_dilation, &builder_),
       GetI64ElementsAttr(rhs_dilation, &builder_),
+      /*window_reversal=*/nullptr,
       ConvertConvDimensionNumbers(dimension_numbers, &builder_),
       builder_.getI64IntegerAttr(feature_group_count),
       builder_.getI64IntegerAttr(batch_group_count), config_attr);

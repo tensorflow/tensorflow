@@ -737,6 +737,26 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating convolution instructions
+  // with window reversal.
+  if (op.hasWindowReversal()) return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::XlaOp xla_result = xla::ConvGeneralDilated(
+      lhs, rhs, Convert_window_strides(op.window_strides()),
+      Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
+      Convert_rhs_dilation(op.rhs_dilation()),
+      Convert_dimension_numbers(op.dimension_numbers()),
+      Convertuint64_t(op.feature_group_count()),
+      Convertuint64_t(op.batch_group_count()),
+      Unwrap(Convert_precision_config(op.precision_config())));
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
