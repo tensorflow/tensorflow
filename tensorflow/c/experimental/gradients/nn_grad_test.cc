@@ -32,8 +32,17 @@ using tensorflow::TF_StatusPtr;
 Status SparseSoftmaxCrossEntropyWithLogitsModel(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs) {
-  return ops::SparseSoftmaxCrossEntropyWithLogits(
-      ctx, inputs, outputs, "SparseSoftmaxCrossEntropyWithLogits");
+  std::vector<AbstractTensorHandle*> temp_outputs(2);
+  TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
+      ctx, inputs, absl::MakeSpan(temp_outputs),
+      "SparseSoftmaxCrossEntropyWithLogits"));
+  // `gradient_checker` only works with model that returns only 1 tensor.
+  // Although, `ops::SparseSoftmaxCrossEntropyWithLogits` returns 2 tensors, the
+  // second tensor isn't needed for computing gradient so we could safely drop
+  // it.
+  outputs[0] = temp_outputs[0];
+  temp_outputs[1]->Unref();
+  return Status::OK();
 }
 
 Status SparseSoftmaxCrossEntropyWithLogitsGradModel(
