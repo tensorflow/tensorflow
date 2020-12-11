@@ -5299,6 +5299,7 @@ tf_py_test(
     name = "tf_stack_test",
     srcs = ["util/tf_stack_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/175394927): enable the test for all oss windows build
     deps = [
         ":client_testlib",
         ":tf_export",
