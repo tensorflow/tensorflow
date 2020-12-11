@@ -637,7 +637,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   VLOG(1) << "Compiling: " << module->name();
   XLA_SCOPED_LOGGING_TIMER(
       absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
-  auto slow_compile_alarm = SlowCompilationAlarm();
+  std::string slow_compilation_msg =
+      absl::StrCat("Compiling module ", module->name());
+  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
   TF_RET_CHECK(stream_exec != nullptr);
   absl::call_once(llvm_command_line_options_initialized,
