@@ -46,9 +46,10 @@ std::vector<StackFrame> StackTrace::ToStackFrames(
   result.reserve(code_objs_.size());
 
   for (int i = code_objs_.size() - 1; i >= 0; --i) {
-    const char* file_name = GetPythonString(code_objs_[i]->co_filename);
+    const std::pair<PyCodeObject*, int>& code_obj = code_objs_[i];
+    const char* file_name = GetPythonString(code_obj.first->co_filename);
     const int line_number =
-        PyCode_Addr2Line(code_objs_[i], last_instructions_[i]);
+        PyCode_Addr2Line(code_objs_[i].first, code_obj.second);
 
     if (!result.empty() && filtered.count(file_name)) {
       continue;  // Never filter the innermost frame.
@@ -60,7 +61,7 @@ std::vector<StackFrame> StackTrace::ToStackFrames(
       result.push_back(it->second);
     } else {
       result.emplace_back(StackFrame{file_name, line_number,
-                                     GetPythonString(code_objs_[i]->co_name)});
+                                     GetPythonString(code_obj.first->co_name)});
     }
   }
 
