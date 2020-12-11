@@ -29,6 +29,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 
 namespace tensorflow {
+
+class ConfigProto;
+
 namespace grappler {
 
 // A TensorFlow model to optimize.
@@ -132,6 +135,8 @@ struct GrapplerItem {
 
   OptimizationOptions optimization_options_;
 };
+
+GrapplerItem::OptimizationOptions CreateOptOptionsForEager();
 
 }  // end namespace grappler
 }  // end namespace tensorflow
