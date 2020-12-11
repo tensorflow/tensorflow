@@ -40,6 +40,9 @@ class TFRDialect : public Dialect {
 
   static StringRef getDialectNamespace() { return "tfr"; }
 
+  Operation *materializeConstant(OpBuilder &builder, Attribute value, Type type,
+                                 Location loc) override;
+
   // Parse a type registered to this dialect.
   Type parseType(DialectAsmParser &parser) const override;
 

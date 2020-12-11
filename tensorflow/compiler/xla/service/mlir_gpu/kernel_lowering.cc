@@ -162,8 +162,7 @@ class LowerToNVVMPass
     ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
-    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
-                                                   &getContext());
+    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns);
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
     ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
@@ -223,8 +222,7 @@ class LowerToROCDLPass
     ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
-    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
-                                                   &getContext());
+    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns);
     ::mlir::populateGpuToROCDLConversionPatterns(converter, patterns);
     ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
 

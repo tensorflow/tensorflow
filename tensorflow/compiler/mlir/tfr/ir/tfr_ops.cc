@@ -121,6 +121,13 @@ TFRDialect::TFRDialect(MLIRContext *context)
   addInterfaces<TFRInlinerInterface>();
 }
 
+Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
+  return nullptr;
+}
+
 bool TFRType::classof(Type type) {
   return llvm::isa<TFRDialect>(type.getDialect());
 }
