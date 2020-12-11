@@ -2,7 +2,8 @@
 
 ## Major Features and Improvements
 
-* `tf.distribute` introduces experimental support for asynchronous training of Keras models via the [`tf.distribute.experimental.ParameterServerStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy?version=nightly) API. Please see below for additional details.
+* `tf.distribute` introduces experimental support for asynchronous training of models via the [`tf.distribute.experimental.ParameterServerStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy) API. Please see the [tutorial](https://www.tensorflow.org/tutorials/distribute/parameter_server_training) to learn more.
+
 * [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras). 
 
 * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below. 
@@ -49,36 +50,17 @@
     * Code that manually enters `keras.backend.get_graph()` before building a functional model is no longer needed.
     * Start enforcing input shape assumptions when calling Functional API Keras models. This may potentially break some users, in case there is a mismatch             between the shape used when creating `Input` objects in a Functional model, and the shape of the data passed to that model. You can fix this mismatch by         either calling the model with correctly-shaped data, or by relaxing `Input` shape assumptions (note that you can pass shapes with `None` entries for axes
       that are meant to be dynamic). You can also disable the input checking entirely by setting `model.input_spec = None`.
-  * Serveral changes have been made to `tf.keras.mixed_precision.experimental`. Note that it is now recommended to use the non-experimental `tf.keras.mixed_precision` API.
-    * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the
-       dtype it will be casted to.
-    * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a
-      float16 or bfloat16 tensor instead of a float32 tensor.
-    * The property
-      `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is 
-      now a tensor, not a `LossScale` object. This means to get a loss scale of
-      a `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale`
-      instead of `opt.loss_scale()`.
-    * The property `should_cast_variables` has been removed from
-      `tf.keras.mixed_precision.experimental.Policy`
-    * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
-      `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the
-      `DynamicLossScale`'s multiplier must be 2.
-    * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to
-      `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the weights of
-      the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead
-      of being reused. This means modifying the weights of the
-      `DynamicLossScale` will no longer affect the weights of the
-      LossScaleOptimizer, and vice versa.
-    * The global policy can no longer be set to a non-floating point policy in
-      `tf.keras.mixed_precision.experimental.set_policy`
-    * In `Layer.call`, `AutoCastVariable`s will no longer be casted within
-      `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a
-      thread local variable is used to determine whether `AutoCastVariable`s are
-      casted, and those two functions run with a different thread. Note this
-      only applies if one of these two functions is called within `Layer.call`;
-      if one of those two functions calls `Layer.call`, `AutoCastVariable`s will
-      still be casted.
+  * Several changes have been made to `tf.keras.mixed_precision.experimental`. Note that it is now recommended to use the non-experimental          `tf.keras.mixed_precision` API.
+   * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the dtype it will be casted to.
+   * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a
+     float16 or bfloat16 tensor instead of a float32 tensor.
+   * The property `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is now a tensor, not a `LossScale` object. This means to get a loss scale      of a `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale`instead of `opt.loss_scale()`.
+   * The property `should_cast_variables` has been removed from `tf.keras.mixed_precision.experimental.Policy`
+   * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the `DynamicLossScale`'s        multiplier must be 2.
+   * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the weights of
+     the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead of being reused. This means modifying the weights of the `DynamicLossScale` will no      longer affect the weights of the LossScaleOptimizer, and vice versa.
+   * The global policy can no longer be set to a non-floating point policy in `tf.keras.mixed_precision.experimental.set_policy`
+   * In `Layer.call`, `AutoCastVariable`s will no longer be casted within `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a thread local        variable is used to determine whether `AutoCastVariable`s are casted, and those two functions run with a different thread. Note this only applies if one of      these two functions is called within `Layer.call`; if one of those two functions calls `Layer.call`, `AutoCastVariable`s will still be casted.
 
 * `tf.data`:
   * `tf.data.experimental.service.DispatchServer` now takes a config tuple instead of individual arguments. Usages should be updated to      `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
@@ -101,12 +83,12 @@
 
 ## Known Caveats
   * `tf.keras.mixed_precision`
-    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the AttributeError "Tensor.op is meaningless when eager execution is enabled". See issue https://github.com/tensorflow/tensorflow/issues/45536 for details and a workaround.
+    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the                 AttributeError "Tensor.op is meaningless when eager execution is enabled". See this [issue](https://github.com/tensorflow/tensorflow/issues/45536) for           details and a workaround.
 
 ## Bug Fixes and Other Changes
 
 ### TF Core:
-  * Introduces experimental support for a new module named  [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy), which
+  * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy), which
     is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable       `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. 
     See [tensorflow/python/ops/numpy_ops/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/numpy_ops/README.md)
     for details of what operations are supported and what are the differences from NumPy.
@@ -164,7 +146,7 @@
   * `tf.data.experimental.AUTOTUNE` is now available in the core API as `tf.data.AUTOTUNE`.
 
 ### `tf.distribute`:
-  * Introduces experimental support for asynchronous training of Keras models via `tf.distribute.experimental.ParameterServerStrategy`:
+  * Introduces experimental support for asynchronous training of models via `tf.distribute.experimental.ParameterServerStrategy`:
     * Replaces the existing `tf.distribute.experimental.ParameterServerStrategy` symbol with a new class that is for parameter server training in TF2. Usage of
       the old symbol, usually with Estimator API, should be **replaced** with [`tf.compat.v1.distribute.experimental.ParameterServerStrategy`].
     * Added `tf.distribute.experimental.coordinator.*` namespace, including the main API `ClusterCoordinator` for coordinating the training cluster, the related       data structure `RemoteValue` and `PerWorkerValue`.
@@ -182,7 +164,7 @@
     * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be
       clearer and easier to understand.
   * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape` as an alternative to accepting a `callable` loss.
-  * Adds `beta` hyperparameter to FTRL optimizer classes (Keras and others) to match [FTRL paper](https://research.google.com/pubs/archive/41159.pdf).  
+  * Adds `beta` hyperparameter to [FTRL](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl) optimizer classes (Keras and others) to match [FTRL paper](https://research.google.com/pubs/archive/41159.pdf).  
   * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for customization of how gradients are aggregated across devices, as well as
      `gradients_transformers` to allow for custom gradient transformations (such as gradient clipping).
   * Improvements to Keras preprocessing layers:
@@ -194,24 +176,10 @@
   * For Keras model, the individual call of `Model.evaluate` uses no cached data for evaluation, while `Model.fit` uses cached data when
     `validation_data` arg is provided for better performance.
   * Adds a `save_traces` argument to `model.save`/ `tf.keras.models.save_model` which determines whether the SavedModel format stores the Keras model/layer call     functions. The traced functions allow Keras to revive custom models and layers without the original class definition, but if this isn't required the tracing     can be disabled with the added option.
-  * The `tf.keras.mixed_precision` API is non non-experimental. The
-    non-experimental API differs from the experimental API in several ways.
-    * `tf.keras.mixed_precision.Policy` no longer takes in a
-      `tf.mixed_precision.experimental.LossScale` in the constructor, and no
-      longer has a `LossScale` associated with it. Instead, `Model.compile`
-      will automatically wrap the optimizer with a `LossScaleOptimizer` using
-      dynamic loss scaling if `Policy.name` is "mixed_float16".
-    * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in
-      different arguments. In particular, it no longer takes in a `LossScale`,
-      and there is no longer a `LossScale` associated with the
-      `LossScaleOptimizer`. Instead, `LossScaleOptimizer` directly implements
-      fixed or dynamic loss scaling. See the documentation of
-      [`tf.keras.mixed_precision.experimental.LossScaleOptimizer`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer?version=nightly)
-      for details on the differences between the experimental
-      `LossScaleOptimizer` and the new non-experimental `LossScaleOptimizer`.
-    * `tf.mixed_precision.experimental.LossScale` and its subclasses are
-      deprecated, as all of its functionality now exists within
-      `tf.keras.mixed_precision.LossScaleOptimizer`
+  * The `tf.keras.mixed_precision` API is now non-experimental. The non-experimental API differs from the experimental API in several ways.
+    * `tf.keras.mixed_precision.Policy` no longer takes in a `tf.mixed_precision.experimental.LossScale` in the constructor, and no longer has a `LossScale`           associated with it. Instead, `Model.compile` will automatically wrap the optimizer with a `LossScaleOptimizer` using dynamic loss scaling if `Policy.name`       is "mixed_float16".
+    * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in different arguments. In particular, it no longer takes in a `LossScale`, and there is       no longer a `LossScale` associated with the `LossScaleOptimizer`. Instead, `LossScaleOptimizer` directly implements fixed or dynamic loss scaling. See the       documentation of [`tf.keras.mixed_precision.experimental.LossScaleOptimizer`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer?version=nightly) for details on the differences between the       experimental `LossScaleOptimizer` and the new non-experimental `LossScaleOptimizer`.
+    * `tf.mixed_precision.experimental.LossScale` and its subclasses are deprecated, as all of its functionality now exists within                      `tf.keras.mixed_precision.LossScaleOptimizer`
 
 ### `tf.lite`:
   * `TFLiteConverter`:
@@ -282,7 +250,7 @@
 
 ## Thanks to our Contributors
 
-This release contains contributions from many people at Google and external contributors.
+This release contains contributions from many people at Google as well as the following external contributors:
 
 8bitmp3, aaa.jq, Abhineet Choudhary, Abolfazl Shahbazi, acxz, Adam Hillier, Adrian Garcia Badaracco, Ag Ramesh, ahmedsabie, Alan Anderson, Alexander Grund, Alexandre Lissy, Alexey Ivanov, Amedeo Cavallo, anencore94, Aniket Kumar Singh, Anthony Platanios, Ashwin Phadke, Balint Cristian, Basit Ayantunde, bbbboom, Ben Barsdell, Benjamin Chetioui, Benjamin Peterson, bhack, Bhanu Prakash Bandaru Venkata, Biagio Montaruli, Brent M. Spell, bubblebooy, bzhao, cfRod, Cheng Chen, Cheng(Kit) Chen, Chris Tessum, Christian, chuanqiw, codeadmin_peritiae, COTASPAR, CuiYifeng, danielknobe, danielyou0230, dannyfriar, daria, DarrenZhang01, Denisa Roberts, dependabot[bot], Deven Desai, Dmitry Volodin, Dmitry Zakharov, drebain, Duncan Riach, Eduard Feicho, Ehsan Toosi, Elena Zhelezina, emlaprise2358, Eugene Kuznetsov, Evaderan-Lab, Evgeniy Polyakov, Fausto Morales, Felix Johnny, fo40225, Frederic Bastien, Fredrik Knutsson, fsx950223, Gaurav Singh, Gauri1 Deshpande, George Grzegorz Pawelczak, gerbauz, Gianluca Baratti, Giorgio Arena, Gmc2, Guozhong Zhuang, Hannes Achleitner, Harirai, HarisWang, Harsh188, hedgehog91, Hemal Mamtora, Hideto Ueno, Hugh Ku, Ian Beauregard, Ilya Persky, jacco, Jakub Beránek, Jan Jongboom, Javier Montalt Tordera, Jens Elofsson, Jerry Shih, jerryyin, jgehw, Jinjing Zhou, jma, jmsmdy, Johan Nordström, John Poole, Jonah Kohn, Jonathan Dekhtiar, jpodivin, Jung Daun, Kai Katsumata, Kaixi Hou, Kamil Rakoczy, Kaustubh Maske Patil, Kazuaki Ishizaki, Kedar Sovani, Koan-Sin Tan, Koki Ibukuro, Krzysztof Laskowski, Kushagra Sharma, Kushan Ahmadian, Lakshay Tokas, Leicong Li, levinxo, Lukas Geiger, Maderator, Mahmoud Abuzaina, Mao Yunfei, Marius Brehler, markf, Martin Hwasser, Martin Kubovčík, Matt Conley, Matthias, mazharul, mdfaijul, Michael137, MichelBr, Mikhail Startsev, Milan Straka, Ml-0, Myung-Hyun Kim, Måns Nilsson, Nathan Luehr, ngc92, nikochiko, Niranjan Hasabnis, nyagato_00, Oceania2018, Oleg Guba, Ongun Kanat, OscarVanL, Patrik Laurell, Paul Tanger, Peter Sobot, Phil Pearl, PlusPlusUltra, Poedator, Prasad Nikam, Rahul-Kamat, Rajeshwar Reddy T, redwrasse, Rickard, Robert Szczepanski, Rohan Lekhwani, Sam Holt, Sami Kama, Samuel Holt, Sandeep Giri, sboshin, Sean Settle, settle, Sharada Shiddibhavi, Shawn Presser, ShengYang1, Shi,Guangyong, Shuxiang Gao, Sicong Li, Sidong-Wei, Srihari Humbarwadi, Srinivasan Narayanamoorthy, Steenu Johnson, Steven Clarkson, stjohnso98, Tamas Bela Feher, Tamas Nyiri, Tarandeep Singh, Teng Lu, Thibaut Goetghebuer-Planchon, Tim Bradley, Tomasz Strejczek, Tongzhou Wang, Torsten Rudolf, Trent Lo, Ty Mick, Tzu-Wei Sung, Varghese, Jojimon, Vignesh Kothapalli, Vishakha Agrawal, Vividha, Vladimir Menshakov, Vladimir Silyaev, VoVAllen, Võ Văn Nghĩa, wondertx, xiaohong1031, Xiaoming (Jason) Cui, Xinan Jiang, Yair Ehrenwald, Yasir Modak, Yasuhiro Matsumoto, Yimei Sun, Yiwen Li, Yixing, Yoav Ramon, Yong Tang, Yong Wu, yuanbopeng, Yunmo Koo, Zhangqiang, Zhou Peng, ZhuBaohe, zilinzhu, zmx
 
