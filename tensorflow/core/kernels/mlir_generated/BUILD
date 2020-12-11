@@ -166,6 +166,7 @@ tf_kernel_library(
         "unranked_op_gpu_equal.cc",
         "unranked_op_gpu_greater.cc",
         "unranked_op_gpu_greater_equal.cc",
+        "unranked_op_gpu_left_shift.cc",
         "unranked_op_gpu_less.cc",
         "unranked_op_gpu_less_equal.cc",
         "unranked_op_gpu_logical_and.cc",
@@ -183,6 +184,7 @@ tf_kernel_library(
         ":equal_unranked_kernels",
         ":greater_equal_unranked_kernels",
         ":greater_unranked_kernels",
+        ":left_shift_unranked_kernels",
         ":less_equal_unranked_kernels",
         ":less_unranked_kernels",
         ":logical_and_unranked_kernels",
@@ -373,6 +375,21 @@ gen_kernel_library(
         "i64",
     ],
     unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "left_shift",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256,1,1",
+    types = [
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+    ],
+    # TODO(b/174543802): Enable once fusion heuristics is better.
+    # unroll_factors = "4",
 )
 
 gen_kernel_library(

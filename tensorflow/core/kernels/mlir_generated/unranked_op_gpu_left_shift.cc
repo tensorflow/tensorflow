@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,21 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
 namespace tensorflow {
-namespace functor {
-#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
-    !defined(MLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED)
-DEFINE_BINARY8(left_shift, int8, int16, int32, int64, uint8, uint16, uint32,
-               uint64);
-#else
-DEFINE_BINARY4(left_shift, uint8, uint16, uint32, uint64)
-#endif
-}  // namespace functor
-}  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i8, DT_INT8, int8);
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i16, DT_INT16, int16);
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i32, DT_INT32, int32);
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i64, DT_INT64, int64);
+
+}  // namespace tensorflow
