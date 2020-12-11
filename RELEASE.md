@@ -99,6 +99,10 @@
 * Building TensorFlow:
   * Windows platform builds: TensorFlow on Windows under MSVC is now built with `--copt=/experimental:preprocessor --host_copt=/experimental:preprocessor` (see `.bazelrc` for more details). Builds including TensorFlow may fail with unexpected syntax errors if these flags are absent. See also [this thread on SIG Build](https://groups.google.com/a/tensorflow.org/g/build/c/LbAw8RILvTg/m/ttnuhYU2BgAJ).
 
+## Known Caveats
+  * `tf.keras.mixed_precision`
+    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the AttributeError "Tensor.op is meaningless when eager execution is enabled". To workaround this issue when using `Model.fit`, do not pass `run_eagerly=True` to `Model.compile`. To workound when using a custom training loop, call `Optimizer.apply_gradients` inside a `tf.function`.
+
 ## Bug Fixes and Other Changes
 
 ### TF Core:
