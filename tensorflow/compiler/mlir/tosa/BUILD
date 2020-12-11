@@ -6,8 +6,9 @@
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 load("//third_party/mlir:tblgen.bzl", "gentbl")
 
+# TODO: Tighten visibility once targets are at the right granularity.
 package(
-    default_visibility = [":internal"],
+    default_visibility = [":friends"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -25,13 +26,8 @@ package_group(
         ":internal",
     ],
     packages = [
+        "//third_party/iree/...",
     ],
-)
-
-config_setting(
-    name = "enable-build",
-    values = {"define": "build-tosa=true"},
-    visibility = ["//visibility:public"],
 )
 
 filegroup(
