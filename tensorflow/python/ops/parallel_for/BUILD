@@ -136,6 +136,7 @@ cuda_py_test(
         "no_mac",
         "no_windows",
         "nogpu",  # TODO(b/155761551): Flaky on GPU on TAP
+        "no_rocm",
     ],
     xla_enabled = True,
     deps = [
