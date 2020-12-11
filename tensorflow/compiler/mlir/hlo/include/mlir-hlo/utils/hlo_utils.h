@@ -83,6 +83,11 @@ enum ScalarLimit {
 // Requires `ty` to be either FloatType or IntegerType.
 DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit);
 
+// Given `op_name` from LMHLO, returns the corresponding op name in MHLO.
+// Returns empty string if no such op exists.
+std::string LmhloToMhloOpName(llvm::StringRef op_name,
+                              mlir::MLIRContext* context);
+
 }  // namespace hlo
 }  // namespace mlir
 

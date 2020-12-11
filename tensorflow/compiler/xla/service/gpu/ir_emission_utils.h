@@ -246,6 +246,7 @@ inline std::string MlirToString(mlir::Operation* op) {
   return s;
 }
 
+int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
