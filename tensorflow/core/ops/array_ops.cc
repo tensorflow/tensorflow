@@ -1441,6 +1441,50 @@ REGISTER_OP("_MklConjugateTranspose")
 #endif  // INTEL_MKL
 
 // --------------------------------------------------------------------------
+namespace {
+Status UniqueIdxShapeFn(InferenceContext* c) {
+  ShapeHandle input = c->input(0);
+  const Tensor* axis_t = c->input_tensor(1);
+  if (axis_t == nullptr || !c->RankKnown(input)) {
+    c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+    return Status::OK();
+  }
+
+  if (c->Rank(c->input(1)) != 1) {
+    return errors::InvalidArgument("axis expects a 1D vector.");
+  }
+
+  int32 n = axis_t->NumElements();
+  if (n == 0) {
+    if (c->Rank(input) != 1) {
+      return errors::InvalidArgument("x expects a 1D vector.");
+    }
+    c->set_output(1, input);
+    return Status::OK();
+  } else if (n == 1) {
+    int64 axis;
+    if (axis_t->dtype() == DT_INT32) {
+      axis = static_cast<int64>(axis_t->flat<int32>()(0));
+    } else {
+      axis = axis_t->flat<int64>()(0);
+    }
+
+    int64 input_rank = c->Rank(input);
+    if (axis < -input_rank || axis >= input_rank) {
+      return errors::InvalidArgument("axis expects to be in the range [",
+                                     -input_rank, ", ", input_rank, ")");
+    }
+    if (axis < 0) {
+      axis += input_rank;
+    }
+    c->set_output(1, c->Vector(c->Dim(input, axis)));
+    return Status::OK();
+  }
+  return errors::InvalidArgument(
+      "axis does not support input tensors larger than 1 elements.");
+}
+}  // namespace
+
 REGISTER_OP("Unique")
     .Input("x: T")
     .Output("y: T")
@@ -1465,7 +1509,7 @@ REGISTER_OP("UniqueV2")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
-      c->set_output(1, c->input(0));
+      TF_RETURN_IF_ERROR(UniqueIdxShapeFn(c));
       return Status::OK();
     });
 
@@ -1496,7 +1540,7 @@ REGISTER_OP("UniqueWithCountsV2")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
-      c->set_output(1, c->input(0));
+      TF_RETURN_IF_ERROR(UniqueIdxShapeFn(c));
       c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     });
