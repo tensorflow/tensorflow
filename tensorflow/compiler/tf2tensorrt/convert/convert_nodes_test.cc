@@ -1804,6 +1804,11 @@ class ParameterizedOpConverterTestBase
     input_data_.clear();
   }
 
+  void Reset(TrtPrecisionMode precision) {
+    OpConverterTest::Reset(precision, trt_mode_);
+    input_data_.clear();
+  }
+
   // Getters of protected attributes
   DataType get_tf_type() { return tf_type_; }
   TrtTestMode get_trt_mode() { return trt_mode_; }
@@ -3116,7 +3121,7 @@ TEST_P(OpConverter_FP32_FP16_Test, ConvertAddN) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertQuantize) {
+TEST_P(OpConverter_FP32_Test, ConvertQuantize) {
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
     Reset(TrtPrecisionMode::INT8);
