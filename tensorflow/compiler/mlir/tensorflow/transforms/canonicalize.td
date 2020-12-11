@@ -55,6 +55,16 @@ def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
 // BatchMatMul op patterns.
 //===----------------------------------------------------------------------===//
 
+// Static shaped operands in a legal BatchMatMul op will have matching batch
+// dimensions and can be upgraded to the BatchMatMulV2 op. Canonicalizing
+// dynamically shaped operands is not correct as that will execute ops that
+// have non matching batch dimensions but are broadcastable which should fail
+// with V1.
+def BatchMatMulToV2 :
+  Pat<(TF_BatchMatMulOp AnyStaticShapeTensor:$x, AnyStaticShapeTensor:$y,
+                        $adj_x, $adj_y),
+      (TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y)>;
+
 def BatchMatMulToMatMul : Pat<(TF_BatchMatMulOp $x, $y, $adj_x, $adj_y),
                               (TF_MatMulOp $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
@@ -255,3 +265,8 @@ def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
 
 def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOnlyReadVariableOpUsers $output)]>;
 
+//===----------------------------------------------------------------------===//
+// Canonicalize tf.Variable ops to tf.VariableV2 ops
+//===----------------------------------------------------------------------===//
+
+def VariableToVariableV2 : Pat<(TF_VariableOp $shape, $container, $shard_name), (TF_VariableV2Op $shape, $container, $shard_name)>;

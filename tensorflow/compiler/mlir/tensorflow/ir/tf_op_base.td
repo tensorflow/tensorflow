@@ -140,6 +140,7 @@ def TF_LookupTableResource : TF_ResourceBase<"LookupTable">;
 def TF_DatasetSeedGeneratorResource : TF_ResourceBase<"DatasetSeedGenerator">;
 def TF_DatasetMemoryCacheResource : TF_ResourceBase<"DatasetMemoryCache">;
 def TF_DatasetIteratorResource : TF_ResourceBase<"DatasetIterator">;
+def TF_TPUEmbeddingResource : TF_ResourceBase<"TPUEmbedding">;
 
 def TF_VariableRead : MemRead<TF_VariableResource>;
 def TF_StackRead : MemRead<TF_StackResource>;
@@ -173,6 +174,8 @@ def TF_SummaryFree : MemFree<TF_SummaryResource>;
 def TF_DatasetSeedGeneratorFree : MemFree<TF_DatasetSeedGeneratorResource>;
 def TF_DatasetMemoryCacheFree : MemFree<TF_DatasetMemoryCacheResource>;
 def TF_DatasetIteratorFree : MemFree<TF_DatasetIteratorResource>;
+
+def TF_TPUEmbeddingSideEffect : MemoryEffects<[MemWrite<TF_TPUEmbeddingResource>]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions

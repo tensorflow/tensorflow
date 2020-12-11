@@ -44,9 +44,9 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -58,6 +58,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -531,7 +532,11 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
   auto ranked_type = type.dyn_cast<RankedTensorType>();
   if (!ranked_type) return {};
 
-  auto output_type = getType().cast<ShapedType>();
+  // DenseIntElementsAttr::get requires the output type be ranked with static
+  // shape.
+  auto output_type = getType().dyn_cast<RankedTensorType>();
+  if (!output_type || !output_type.hasStaticShape()) return {};
+
   int32_t rank = ranked_type.getRank();
   return DenseIntElementsAttr::get(output_type, rank);
 }
@@ -1948,6 +1953,105 @@ ResourceHandleValueAndId SummaryWriterOp::GetResourceHandleValueAndId(
 }
 
 //===----------------------------------------------------------------------===//
+// TPUExecuteOp
+//===----------------------------------------------------------------------===//
+
+void TPUExecuteOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(args().size() + 1);
+
+  // There may be some TPU Embedding ops in the computation, so this effect is
+  // added conservatively.
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUEmbedding::get());
+
+  for (Value value : args()) {
+    if (value.getType()
+            .cast<TensorType>()
+            .getElementType()
+            .isa<ResourceType>()) {
+      // Conservatively mark resource handles as read and write, as without
+      // analyzing TPUCompile, there is not sufficient information to determine
+      // effects on resources. For the MLIR bridge, this op will never be
+      // populated with resource handles and tf.TPUExecuteAndUpdateVariables is
+      // used instead.
+      effects.emplace_back(MemoryEffects::Read::get(), value,
+                           ResourceEffects::Variable::get());
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+    }
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// TPUExecuteAndUpdateVariablesOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(TPUExecuteAndUpdateVariablesOp op) {
+  int num_resource_args = 0;
+  for (Type arg_type : op.args().getTypes())
+    if (arg_type.cast<TensorType>().getElementType().isa<ResourceType>())
+      ++num_resource_args;
+
+  auto check_attr = [&](ArrayAttr indices, llvm::StringRef name,
+                        int min) -> LogicalResult {
+    if (indices.size() != num_resource_args)
+      return op.emitOpError()
+             << "requires '" << name
+             << "' to be the same size as number of resource handles in 'args' "
+                "("
+             << num_resource_args << "), but got " << indices.size();
+
+    for (auto entry : llvm::enumerate(indices.getValue())) {
+      auto int_attr = entry.value().cast<IntegerAttr>();
+      if (int_attr.getInt() < min)
+        return op.emitOpError()
+               << "requires '" << name << "' to contain values of at least "
+               << min << ", but got " << int_attr.getInt() << " at index "
+               << entry.index();
+    }
+
+    return success();
+  };
+
+  return failure(
+      failed(check_attr(op.device_var_reads_indices(),
+                        /*name=*/"device_var_reads_indices", /*min=*/0)) ||
+      failed(check_attr(op.device_var_updates_indices(),
+                        /*name=*/"device_var_updates_indices", /*min=*/-1)));
+}
+
+void TPUExecuteAndUpdateVariablesOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  effects.reserve(device_var_reads_indices().size() + 1);
+
+  // There may be some TPU Embedding ops in the computation, so this effect is
+  // added conservatively.
+  effects.emplace_back(MemoryEffects::Write::get(),
+                       ResourceEffects::TPUEmbedding::get());
+  auto resource_handles = llvm::make_filter_range(args(), [](Value value) {
+    return value.getType()
+        .cast<TensorType>()
+        .getElementType()
+        .isa<ResourceType>();
+  });
+
+  for (auto &entry : llvm::enumerate(resource_handles)) {
+    Value value = entry.value();
+    effects.emplace_back(MemoryEffects::Read::get(), value,
+                         ResourceEffects::Variable::get());
+    if (device_var_updates_indices()
+            .getValue()[entry.index()]
+            .cast<IntegerAttr>()
+            .getInt() >= 0)
+      effects.emplace_back(MemoryEffects::Write::get(), value,
+                           ResourceEffects::Variable::get());
+  }
+}
+
+//===----------------------------------------------------------------------===//
 // TensorListReserveOp
 //===----------------------------------------------------------------------===//
 
@@ -2128,7 +2232,8 @@ class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
     // If the input is an unranked tensor, cannpt rewrite.
     if (!type) return failure();
 
-    // Expected return type of the ToBool operation.
+    // Expected return type of the ToBool operation. The return type of ToBool
+    // operation is always 0D tensor of bool type.
     auto result_type = op.getResult().getType().cast<RankedTensorType>();
 
     // If input is already a tensor<i1>, it can be folded into an identity.
@@ -2496,6 +2601,15 @@ void VarIsInitializedOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// VariableOp
+//===----------------------------------------------------------------------===//
+
+void VariableOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<VariableToVariableV2>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // VariableShapeOp
 //===----------------------------------------------------------------------===//
 
@@ -2533,21 +2647,20 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 
 static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
                                       TypeRange body_input,
-                                      TypeRange body_result) {
-  // Collect all the type lists for the op so that different pairs of type lists
-  // can be compared for the compatibility.
-  constexpr int kNumTypeLists = 5;
-  const std::array<TypeRangeWithDesc, kNumTypeLists> type_lists = {{
-      {op->getOperandTypes(), "input"},
+                                      TypeRange body_result,
+                                      bool shape_invariant) {
+  const TypeRangeWithDesc input_type = {op->getOperandTypes(), "input"};
+  const TypeRangeWithDesc result_type = {op->getResultTypes(), "result"};
+  constexpr int kNumRegionTypeLists = 3;
+  const std::array<TypeRangeWithDesc, kNumRegionTypeLists> region_types = {{
       {body_result, "body result"},
-      {op->getResultTypes(), "result"},
       {cond_input, "condition input"},
       {body_input, "body input"},
   }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
-  // common source of inputs for both.  Therefore, the While op requires the
+  // common source of inputs for both. Therefore, the While op requires the
   // following pairs of type lists to be cast compatible for the tensor_cast
   // operation:
   //
@@ -2556,7 +2669,8 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   // * Operands and body inputs to call the body function for the first
   //   iteration if the cond functions returns True or equivalent result.
   // * Operands and results to assign cond function arguments to op results if
-  //   the cond function returns False or equivalent result.
+  //   the cond function returns False or equivalent result. If the op is shape
+  //   invariant, this does not hold as shapes can differ.
   // * All three pairs using cond inputs, body inputs and results as operand is
   //   a common source for all three.
   // * Body result and cond inputs to call the cond function for the subsequent
@@ -2565,17 +2679,28 @@ static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
   //
   // Note that the operands and body results need not be compatible as they are
   // never converted from one to the another nor there is a common source
-  // tensors.  Compatibility requirement is not transitive.
+  // tensors. Compatibility requirement is not transitive.
 
-  for (int i = 0; i < kNumTypeLists; ++i) {
-    // Skip the first pair as the While op operands and body function results
-    // does not need to be compatible with each other.
-    for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
-      auto &a = type_lists[i];
-      auto &b = type_lists[j];
-      if (failed(VerifyTypeRangesAreCompatible(op, a, b))) return failure();
-    }
-  }
+  if (!shape_invariant &&
+      failed(VerifyTypeRangesAreCompatible(op, input_type, result_type)))
+    return failure();
+
+  // Skip the first pair as the While op operands and body function results does
+  // not need to be compatible with each other.
+  for (int i = 1; i < kNumRegionTypeLists; ++i)
+    if (failed(VerifyTypeRangesAreCompatible(op, input_type, region_types[i])))
+      return failure();
+
+  for (int i = 0; i < kNumRegionTypeLists; ++i)
+    if (failed(VerifyTypeRangesAreCompatible(op, result_type, region_types[i])))
+      return failure();
+
+  for (int i = 0; i < kNumRegionTypeLists; ++i)
+    for (int j = i + 1; j < kNumRegionTypeLists; ++j)
+      if (failed(VerifyTypeRangesAreCompatible(op, region_types[i],
+                                               region_types[j])))
+        return failure();
+
   return success();
 }
 
@@ -2600,7 +2725,8 @@ static LogicalResult Verify(WhileOp op) {
 
   if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
                               /*body_input=*/body_fn_type.getInputs(),
-                              /*body_result=*/body_fn_type.getResults())))
+                              /*body_result=*/body_fn_type.getResults(),
+                              op.shape_invariant())))
     return failure();
   return success();
 }
@@ -2625,7 +2751,8 @@ static LogicalResult Verify(WhileRegionOp op) {
   Operation *body_yield = op.body().front().getTerminator();
   if (failed(VerifyWhileTypes(op, /*cond_input=*/op.cond().getArgumentTypes(),
                               /*body_input=*/op.body().getArgumentTypes(),
-                              /*body_result=*/body_yield->getOperandTypes())))
+                              /*body_result=*/body_yield->getOperandTypes(),
+                              op.shape_invariant())))
     return failure();
   return success();
 }

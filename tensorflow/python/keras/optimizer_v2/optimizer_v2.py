@@ -296,8 +296,11 @@ class OptimizerV2(trackable.Trackable):
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - `_resource_apply_dense` (update variable given gradient tensor is dense)
-    - `_resource_apply_sparse` (update variable given gradient tensor is sparse)
+    - `_resource_apply_dense` (update variable given gradient tensor is a dense
+      `tf.Tensor`)
+    - `_resource_apply_sparse` (update variable given gradient tensor is a
+      sparse `tf.IndexedSlices`. The most common way for this to happen
+      is if you are taking the gradient through a `tf.gather`.)
     - `_create_slots`
       (if your optimizer algorithm requires additional variables)
     - `get_config`
@@ -1001,7 +1004,7 @@ class OptimizerV2(trackable.Trackable):
       lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
-      decay_t = self._get_hyper("decay", var_dtype)
+      decay_t = math_ops.cast(self._initial_decay, var_dtype)
       lr_t = lr_t / (1. + decay_t * local_step)
     return lr_t
 

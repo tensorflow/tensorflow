@@ -161,6 +161,11 @@ class IgnoreErrorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testCardinality(self):
+    ds = dataset_ops.Dataset.range(10).apply(error_ops.ignore_errors())
+    self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.UNKNOWN)
+
 
 if __name__ == "__main__":
   test.main()

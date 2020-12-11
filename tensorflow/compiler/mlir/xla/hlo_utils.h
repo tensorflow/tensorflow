@@ -82,6 +82,8 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }
 
+::xla::StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_UTILS_H_

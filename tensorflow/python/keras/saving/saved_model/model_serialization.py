@@ -29,13 +29,14 @@ class ModelSavedModelSaver(layer_serialization.LayerSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_model'
+    return constants.MODEL_IDENTIFIER
 
   def _python_properties_internal(self):
     metadata = super(ModelSavedModelSaver, self)._python_properties_internal()
     # Network stateful property is dependent on the child layers.
     metadata.pop('stateful')
     metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
+    metadata['save_spec'] = self.obj._get_save_spec(dynamic_batch=False)  # pylint: disable=protected-access
 
     metadata.update(
         saving_utils.model_metadata(
@@ -63,4 +64,4 @@ class SequentialSavedModelSaver(ModelSavedModelSaver):
 
   @property
   def object_identifier(self):
-    return '_tf_keras_sequential'
+    return constants.SEQUENTIAL_IDENTIFIER

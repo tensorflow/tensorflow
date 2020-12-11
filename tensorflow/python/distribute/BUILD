@@ -1794,6 +1794,7 @@ distribute_py_test(
     disable_mlir_bridge = False,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm", # known to be flaky up to 3.10
     ],
     deps = [
         ":combinations",

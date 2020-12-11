@@ -711,6 +711,18 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
+  m.def(
+      "TF_LoadPluggableDeviceLibrary",
+      [](const char* library_filename) {
+        tensorflow::Safe_TF_StatusPtr status =
+            tensorflow::make_safe(TF_NewStatus());
+        auto output =
+            TF_LoadPluggableDeviceLibrary(library_filename, status.get());
+        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        return output;
+      },
+      py::return_value_policy::reference);
+
   m.def("TF_GetOpList", [](TF_Library* lib_handle) {
     TF_Buffer output_buffer = TF_GetOpList(lib_handle);
     return tensorflow::PyoOrThrow(PyBytes_FromStringAndSize(
@@ -720,6 +732,11 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
 
   m.def("TF_DeleteLibraryHandle", TF_DeleteLibraryHandle,
         py::call_guard<py::gil_scoped_release>());
+
+  m.def("TF_PluggableDeviceLibraryHandle",
+        TF_DeletePluggableDeviceLibraryHandle,
+        py::call_guard<py::gil_scoped_release>());
+
   m.def("TF_AddControlInput", TF_AddControlInput);
   m.def(
       "TF_AddInputList", [](TF_OperationDescription* desc, py::handle& inputs) {

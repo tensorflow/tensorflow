@@ -47,6 +47,16 @@ class Sharding(object):
         proto=xla_data_pb2.OpSharding(type=xla_data_pb2.OpSharding.REPLICATED))
 
   @classmethod
+  def manual(cls):
+    """Returns a manuall sharding attribute.
+
+    This means the op is manually partitioned by the user and XLA will not
+    change the shapes.
+    """
+    return Sharding(
+        proto=xla_data_pb2.OpSharding(type=xla_data_pb2.OpSharding.MANUAL))
+
+  @classmethod
   def assign_device(cls, core):
     """Returns an AssignDevice sharding attribute.
 

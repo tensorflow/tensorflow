@@ -93,11 +93,14 @@ class VSpace {
       gtl::ArraySlice<Gradient*> gradient_tensors) const = 0;
 
   // Calls the passed-in backward function.
+  //
+  // `unneeded_gradients` contains sorted list of input indices for which a
+  // gradient is not required.
   virtual Status CallBackwardFunction(
-      BackwardFunction* backward_function,
+      const string& op_type, BackwardFunction* backward_function,
       const std::vector<int64>& unneeded_gradients,
       gtl::ArraySlice<Gradient*> output_gradients,
-      std::vector<Gradient*>* result) const = 0;
+      absl::Span<Gradient*> result) const = 0;
 
   // Builds a tensor filled with ones with the same shape and dtype as `t`.
   virtual Status BuildOnesLike(const TapeTensor& t,
@@ -133,11 +136,24 @@ class GradientTape {
     }
   }
 
+  // Returns whether any tensor in a list of tensors is being watched and has
+  // a trainable dtype.
   bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids,
-                    gtl::ArraySlice<tensorflow::DataType> dtypes);
+                    gtl::ArraySlice<tensorflow::DataType> dtypes) const;
 
+  // Adds this tensor to the list of watched tensors.
+  //
+  // This is a no-op if the tensor is already being watched either from an
+  // earlier call to `GradientTape::Watch` or being an output of an op with
+  // watched inputs.
   void Watch(int64 tensor_id);
 
+  // Records an operation with inputs `input_tensor_id` and outputs
+  // `output_tensors` on the tape and marks all its outputs as watched if at
+  // least one input of the op is watched and has trainable dtype.
+  //
+  // op_type is used to decide which of the incoming gradients can be left as
+  // nullptr instead of building zeros when build_default_zeros_grads == true.
   void RecordOperation(
       const string& op_type, const std::vector<TapeTensor>& output_tensors,
       gtl::ArraySlice<int64> input_tensor_id,
@@ -159,9 +175,10 @@ class GradientTape {
       const gtl::ArraySlice<int64> target_tensor_ids,
       const gtl::ArraySlice<int64> source_tensor_ids,
       const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
-      gtl::ArraySlice<Gradient*> output_gradients,
-      std::vector<Gradient*>* result, bool build_default_zeros_grads = true);
+      gtl::ArraySlice<Gradient*> output_gradients, absl::Span<Gradient*> result,
+      bool build_default_zeros_grads = true);
 
+  // Whether the tape is persistent. See ctor for detailed description.
   bool IsPersistent() const { return persistent_; }
 
  private:
@@ -311,11 +328,10 @@ class ForwardAccumulator {
   // function is running; this effectively adds the backward tape to the active
   // set (but does not require complicated callbacks to the language bindings).
   Status ForwardpropFromTape(
-      const std::vector<TapeTensor>& output_tensors,
+      const string& op_type, const std::vector<TapeTensor>& output_tensors,
       const std::function<BackwardFunction*()>& backward_function_getter,
       const std::function<void(BackwardFunction*)>& backward_function_deleter,
-      const std::vector<Gradient*>& in_grads,
-      std::vector<Gradient*>* out_grads);
+      const std::vector<Gradient*>& in_grads, absl::Span<Gradient*> out_grads);
 
   // Maps from tensor IDs to corresponding JVPs.
   std::unordered_map<int64, Gradient*> accumulated_gradients_;
@@ -368,7 +384,7 @@ inline bool IsDtypeTrainable(DataType dtype) {
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 bool GradientTape<Gradient, BackwardFunction, TapeTensor>::ShouldRecord(
     gtl::ArraySlice<int64> tensor_ids,
-    gtl::ArraySlice<tensorflow::DataType> dtypes) {
+    gtl::ArraySlice<tensorflow::DataType> dtypes) const {
   CHECK_EQ(tensor_ids.size(), dtypes.size());
   for (int i = 0; i < tensor_ids.size(); ++i) {
     if (tensor_tape_.find(tensor_ids[i]) != tensor_tape_.end()) {
@@ -668,7 +684,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     const gtl::ArraySlice<int64> target_tensor_ids,
     const gtl::ArraySlice<int64> source_tensor_ids,
     const std::unordered_map<int64, TapeTensor>& sources_that_are_targets,
-    gtl::ArraySlice<Gradient*> output_gradients, std::vector<Gradient*>* result,
+    gtl::ArraySlice<Gradient*> output_gradients, absl::Span<Gradient*> result,
     bool build_default_zeros_grads) {
   std::unordered_set<int64> sources_set(source_tensor_ids.begin(),
                                         source_tensor_ids.end());
@@ -757,23 +773,17 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         out_gradients.push_back(new_gradients);
       }
     }
-    std::vector<Gradient*> in_gradients;
+    VLOG(1) << "Calling gradient function for '" << trace.op_type << "'";
+    std::vector<Gradient*> in_gradients(trace.input_tensor_id.size());
     DCHECK(build_default_zeros_grads || zero_indices.empty());
     if (any_gradient_nonzero) {
       for (const auto i : zero_indices) {
         out_gradients[i] = trace.output_tensor_info[i].ZerosLike();
       }
       Status s;
-      s = vspace.CallBackwardFunction(trace.backward_function,
+      s = vspace.CallBackwardFunction(trace.op_type, trace.backward_function,
                                       unneeded_gradients, out_gradients,
-                                      &in_gradients);
-      if (in_gradients.size() != trace.input_tensor_id.size()) {
-        return tensorflow::errors::Internal(
-            "Recorded operation '", trace.op_type,
-            "' returned too few gradients. Expected ",
-            trace.input_tensor_id.size(), " but received ",
-            in_gradients.size());
-      }
+                                      absl::MakeSpan(in_gradients));
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
@@ -781,7 +791,6 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         return s;
       }
     } else {
-      in_gradients.resize(trace.input_tensor_id.size());
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
@@ -791,8 +800,6 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
         }
       }
     }
-    VLOG(1) << "Got " << in_gradients.size() << " in_gradients for "
-            << trace.input_tensor_id.size() << " sources";
     for (int i = 0, end = in_gradients.size(); i < end; ++i) {
       const int64 id = trace.input_tensor_id[i];
       if (in_gradients[i] != nullptr) {
@@ -856,20 +863,25 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
   if (!state.op_tape.empty()) {
     return tensorflow::errors::Internal("Invalid tape state.");
   }
-  result->reserve(source_tensor_ids.size());
+  if (result.size() != source_tensor_ids.size()) {
+    return errors::Internal("Expected result Span to be of size ",
+                            source_tensor_ids.size(), " found ", result.size(),
+                            " in call to Tape::ComputeGradient.");
+  }
   std::unordered_set<int64> used_gradient_ids(source_tensor_ids.size());
-  for (auto is : source_tensor_ids) {
-    auto grad_it = gradients.find(is);
+  for (int i = 0; i < source_tensor_ids.size(); i++) {
+    int64 tensor_id = source_tensor_ids[i];
+    auto grad_it = gradients.find(tensor_id);
     if (grad_it == gradients.end()) {
-      result->push_back(nullptr);
+      result[i] = nullptr;
     } else {
       if (grad_it->second.size() > 1) {
         Gradient* grad = vspace.AggregateGradients(grad_it->second);
         grad_it->second.clear();
         grad_it->second.push_back(grad);
       }
-      result->push_back(grad_it->second[0]);
-      used_gradient_ids.insert(is);
+      result[i] = grad_it->second[0];
+      used_gradient_ids.insert(tensor_id);
     }
   }
   VLOG(1) << "Final gradients size: "
@@ -910,10 +922,10 @@ bool ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ShouldRecord(
 template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 Status
 ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
-    const std::vector<TapeTensor>& output_tensors,
+    const string& op_type, const std::vector<TapeTensor>& output_tensors,
     const std::function<BackwardFunction*()>& backward_function_getter,
     const std::function<void(BackwardFunction*)>& backward_function_deleter,
-    const std::vector<Gradient*>& in_grads, std::vector<Gradient*>* out_grads) {
+    const std::vector<Gradient*>& in_grads, absl::Span<Gradient*> out_grads) {
   /* This function is approximately equivalent to this Python code:
 
   forwardprop_aids = tf.ones_like(output_tensors)
@@ -957,7 +969,7 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
     sources_set.insert(aid_id);
     tape->Watch(aid_id);
   }
-  std::vector<Gradient*> grad;
+  std::vector<Gradient*> grad(in_grads.size());
   auto delete_grad = gtl::MakeCleanup([&grad, this] {
     for (Gradient* tensor : grad) {
       this->vspace_.DeleteGradient(tensor);
@@ -969,15 +981,12 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
         backward_function(backward_function_getter(),
                           backward_function_deleter);
     TF_RETURN_IF_ERROR(vspace_.CallBackwardFunction(
-        backward_function.get(), unneeded_gradients, forwardprop_aids, &grad));
+        op_type, backward_function.get(), unneeded_gradients, forwardprop_aids,
+        absl::MakeSpan(grad)));
   }
 
   // Stop the tape from recording
   pop_backward_tape.release()();
-
-  if (grad.size() != in_grads.size()) {
-    return tensorflow::errors::Internal("Wrong number of gradients returned.");
-  }
 
   std::vector<int64> targets;
   std::vector<Gradient*> used_in_grads;
@@ -1076,9 +1085,10 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
   if (forward_function == nullptr) {
     // We have no special-cased forward gradient. Fall back to running the
     // backward function under a gradient tape.
+    forward_grads.resize(output_tensors.size());
     TF_RETURN_IF_ERROR(ForwardpropFromTape(
-        output_tensors, backward_function_getter, backward_function_deleter,
-        in_grads, &forward_grads));
+        op_type, output_tensors, backward_function_getter,
+        backward_function_deleter, in_grads, absl::MakeSpan(forward_grads)));
   } else {
     TF_RETURN_IF_ERROR(
         (*forward_function)(in_grads, &forward_grads, use_batch_));

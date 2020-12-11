@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -162,6 +163,21 @@ TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
   }
 }
 
+TEST_F(DynamismInferenceTest, ReduceUsedTwice) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto c = ConstantR0<int32>(&b, 42);
+    auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2}), "p0");
+    auto zero = ConstantR0<int32>(&b, 0);
+    XlaComputation add_s32 = CreateScalarAddComputation(S32, &b);
+    auto reduce = Reduce(p, zero, add_s32, {0});
+    auto pred = Eq(c, reduce);
+    auto result = Select(pred, reduce, c);
+    EXPECT_EQ(ComputeDynamismScalar(client, result, &b, {}).ValueOrDie(), true);
+  }
+}
+
 TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
@@ -292,6 +308,50 @@ TEST_F(DynamismInferenceTest, GatherWithConstantParent) {
     EXPECT_FALSE(ComputeDynamismLiteral(client, gather, &b)
                      .ValueOrDie()
                      .Get<bool>({0, 0}));
+  }
+}
+
+TEST_F(DynamismInferenceTest, GatherWithSharedConstantParent) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    // Test the analysis on a gather.
+    Shape indices_shape = ShapeUtil::MakeShape(S32, {2});
+    auto operand1 = ConstantR1<int32>(&b, {1, 2});
+    auto operand2 = ConstantR1<int32>(&b, {1, 2});
+    auto indices = Sub(operand1, operand2);
+    GatherDimensionNumbers dim_numbers;
+    dim_numbers.add_offset_dims(1);
+    dim_numbers.add_start_index_map(0);
+    dim_numbers.set_index_vector_dim(1);
+    auto gather = Gather(operand1, indices, dim_numbers, {1});
+    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+    // Everything is constant, result is also contant.
+    EXPECT_FALSE(ComputeDynamismLiteral(client, gather, &b)
+                     .ValueOrDie()
+                     .Get<bool>({0, 0}));
+  }
+}
+
+TEST_F(DynamismInferenceTest, InferThroughPad) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    // Test the analysis on a gather.
+    auto operand1 = ConstantR1<int32>(&b, {1, 2});
+    auto parameter = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {}), "p0");
+    PaddingConfig padding_config;
+    padding_config.add_dimensions()->set_edge_padding_high(1);
+    // After pad the value is [constant, constant, parameter].
+    auto pad = Pad(operand1, parameter, padding_config);
+    ASSERT_TRUE(b.first_error().ok()) << b.first_error().error_message();
+    // Everything is constant, result is also contant.
+    EXPECT_FALSE(
+        ComputeDynamismLiteral(client, pad, &b).ValueOrDie().Get<bool>({0}));
+    EXPECT_FALSE(
+        ComputeDynamismLiteral(client, pad, &b).ValueOrDie().Get<bool>({1}));
+    EXPECT_TRUE(
+        ComputeDynamismLiteral(client, pad, &b).ValueOrDie().Get<bool>({2}));
   }
 }
 

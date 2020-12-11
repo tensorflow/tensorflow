@@ -1,6 +1,11 @@
-load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
+load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
 load("//tensorflow:tensorflow.bzl", "pybind_extension", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library", "tf_gen_op_wrapper_py")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_custom_op_library",
+    "tf_gen_op_wrapper_py",
+    "tf_opts_nortti_if_android",
+)
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -91,10 +96,19 @@ cc_library(
     name = "double_op_and_kernels",
     testonly = 1,
     srcs = ["double_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
+    copts = tflite_copts() + tf_opts_nortti_if_android(),
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+        ],
+    }),
     alwayslink = 1,
 )
 

@@ -431,6 +431,15 @@ class TFRTypeResolver(type_inference.Resolver):
       return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
               None)
 
+    elif f_type == (types.FunctionType,):
+      # A composition Python function name is used directly.
+      op_name = name.qn[0]
+      op_def, _ = self._op_defs.lookup(op_name)
+      if len(op_def.output_arg) == 1:
+        return {_get_type_from_proto(op_def.output_arg[0])}, None
+      return ({tuple(_get_type_from_proto(arg) for arg in op_def.output_arg)},
+              None)
+
     elif f_type == (TFRTypes.PY_BUILTIN_FUNC,):
       assert name.is_simple()
       if name == QN('range'):
@@ -634,6 +643,15 @@ class TFRGen(transformer.CodeGenerator):
     else:
       return value, ty
 
+  def _i64_to_index(self, value, ty):
+    if ty == TFRTypes.I64:
+      casted = self._ssa_name('casted')
+      self._emit_with_loc('\n{} = index_cast {} : i64 to index'.format(
+          casted, value))
+      return casted, TFRTypes.INDEX
+    else:
+      return value, ty
+
   def _value_to_tensor(self, value, ty, node):
     value, ty = self._index_to_I64(value, ty)
     cst_tensor = self._ssa_name('cst')
@@ -809,6 +827,9 @@ class TFRGen(transformer.CodeGenerator):
     if func_type == TFRTypes.TF_RAW_OP:
       return self._visit_tf_op(func_name, node.args, node.keywords, node)
 
+    if func_type == types.FunctionType:
+      return self._visit_tf_op(func_name, node.args, node.keywords, node)
+
     if func_type == TFRTypes.TF_TENSOR_SHAPE_FUNC:
       return (func_name, TFRTypes.TF_TENSOR_SHAPE_LIST)
 
@@ -816,15 +837,19 @@ class TFRGen(transformer.CodeGenerator):
       if func_name == 'len':
         arg, ty = self.visit(node.args[0])
         ty = self._get_inferred_type(node.args[0], ty)
-        assert ty == TFRTypes.TF_TENSOR_SHAPE_LIST, ty
-        len_value = self._ssa_name('len')
-        self._emit_with_loc(
-            '\n{} = shape.rank {} : !shape.shape -> !shape.size'.format(
-                len_value, arg), node)
-        size_value = self._ssa_name('len_size')
-        self._emit_with_loc(
-            '\n{} = shape.size_to_index {} : !shape.size'.format(
-                size_value, len_value), node)
+        if ty == TFRTypes.TF_TENSOR_SHAPE_LIST:
+          len_value = self._ssa_name('len')
+          self._emit_with_loc(
+              '\n{} = shape.rank {} : !shape.shape -> !shape.size'.format(
+                  len_value, arg), node)
+          size_value = self._ssa_name('len_size')
+          self._emit_with_loc(
+              '\n{} = shape.size_to_index {} : !shape.size'.format(
+                  size_value, len_value), node)
+        elif ty == TFRTypes.TENSOR_LIST:
+          size_value = self._ssa_name('len')
+          self._emit_with_loc(
+              '\n{} = tfr.get_length {} -> index'.format(size_value, arg), node)
         return (size_value, TFRTypes.INDEX)
 
     raise NotImplementedError('call operator not recognized: {} {}'.format(
@@ -833,7 +858,7 @@ class TFRGen(transformer.CodeGenerator):
   def visit_Compare(self, node):
     lhs, lhs_ty = self.visit(node.left)
     for op, right in zip(node.ops, node.comparators):
-      rhs, _ = self.visit(right)
+      rhs, rhs_ty = self.visit(right)
       if isinstance(op, ast.Eq):
         pred = 'eq'
       elif isinstance(op, ast.Lt):
@@ -858,6 +883,10 @@ class TFRGen(transformer.CodeGenerator):
           code = 'cmpi'
         elif lhs_ty == TFRTypes.F32:
           code = 'cmpf'
+        elif lhs_ty == TFRTypes.INDEX:
+          code = 'cmpi'
+          # TODO(fengliuai): the reverse type inference should solve the issue.
+          rhs, _ = self._i64_to_index(rhs, rhs_ty)
         else:
           raise NotImplementedError('Compare operand type not recognized')
         self._emit_with_loc(
@@ -1184,7 +1213,13 @@ class TFRGen(transformer.CodeGenerator):
     raise NotImplementedError('If not supported.')
 
   def visit_Name(self, node):
-    val, lookup_type = self.symbol_table.lookup(node.id)
+    val_and_lookup_type = self.symbol_table.lookup(node.id)
+    if val_and_lookup_type:
+      (val, lookup_type) = val_and_lookup_type
+    else:
+      op_def, _ = self._op_defs.lookup(node.id)
+      val = op_def.name
+      lookup_type = anno.getanno(node, anno.Static.TYPES, types.FunctionType)
     type_ = self._get_inferred_type(node, lookup_type)
     return val, type_
 
@@ -1368,10 +1403,16 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
         logging.info('load file: ' + lib_path)
         load_library.load_op_library(lib_path)
 
-  mlir_funcs = [
-      tfr_gen(func, op_defs)
+  py_funcs = [
+      func
       for name, func in tf_inspect.getmembers(source, tf_inspect.isfunction)
       if not method_prefix or name.startswith(method_prefix)
   ]
+  # Sort the methods by the line number, to make sure the definitions are
+  # processed before the usages.
+  # TODO(fengliuai): Use type inference resolver to recursively process any
+  # functions called.
+  py_funcs = sorted(py_funcs, key=lambda x: x.__code__.co_firstlineno)
+  mlir_funcs = [tfr_gen(func, op_defs) for func in py_funcs]
 
   return '\n'.join(mlir_funcs + op_defs.mlir_external_funcs())

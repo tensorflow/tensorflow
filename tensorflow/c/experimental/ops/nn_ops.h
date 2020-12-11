@@ -34,6 +34,15 @@ Status Relu(AbstractContext* ctx,
             absl::Span<AbstractTensorHandle* const> inputs,
             absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status BiasAdd(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status BiasAddGrad(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const char* data_format, const char* name);
+
 }  // namespace ops
 }  // namespace tensorflow
 

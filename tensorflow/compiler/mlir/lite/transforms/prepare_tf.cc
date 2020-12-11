@@ -44,7 +44,7 @@ limitations under the License.
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -526,9 +526,12 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // Insert a new reshape op.
     Value original_input = strided_slice_op.input();
-    // TODO(b/174267775): Make sure that the input type has ranked tensor type.
     RankedTensorType original_input_type =
-        original_input.getType().cast<RankedTensorType>();
+        original_input.getType().dyn_cast<RankedTensorType>();
+    if (!original_input_type) {
+      return failure();
+    }
+
     const ArrayRef<int64_t> &original_input_shape =
         original_input_type.getShape();
     SmallVector<int64_t, 4> revised_shape;

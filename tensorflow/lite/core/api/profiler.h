@@ -181,12 +181,12 @@ class ScopedRuntimeInstrumentationProfile : public ScopedProfile {
       _profile_, __COUNTER__)((profiler), (tag), (node_index))
 
 #define TFLITE_ADD_RUNTIME_INSTRUMENTATION_EVENT(                          \
-    profiler, tag, delegate_status, interpreter_status)                    \
+    profiler, tag, event_metadata1, event_metadata2)                       \
   do {                                                                     \
-    if (!profiler) {                                                       \
+    if (profiler) {                                                        \
       const auto handle = profiler->BeginEvent(                            \
           tag, Profiler::EventType::GENERAL_RUNTIME_INSTRUMENTATION_EVENT, \
-          delegate_status, interpreter_status);                            \
+          event_metadata1, event_metadata2);                               \
       profiler->EndEvent(handle);                                          \
     }                                                                      \
   } while (false);

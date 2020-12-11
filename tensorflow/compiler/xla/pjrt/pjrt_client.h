@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -67,16 +68,56 @@ class PjRtClient;
 
 class PjRtDevice {
  public:
-  explicit PjRtDevice(int id,
-                      std::unique_ptr<LocalDeviceState> local_device_state,
-                      std::string device_kind, int host_id = 0)
+  virtual ~PjRtDevice() {}
+
+  // Return the client that owns this device.
+  virtual PjRtClient* client() const = 0;
+
+  // Whether client can issue command to this device.
+  virtual bool IsAddressable() const = 0;
+
+  // The ID of this device. IDs are unique among devices of this type
+  // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
+  // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
+  virtual int id() const = 0;
+
+  // The task ID of this device according to TpuTopology. This is not the same
+  // as PjRtClient::host_id() in a multi-task setting, where each client can see
+  // devices from all tasks, but only a subset of them are addressable and have
+  // the same task_id as the client.
+  virtual int host_id() const = 0;
+
+  // Opaque hardware ID, e.g., the CUDA device number, useful for identifying
+  // which GPU when interacting with non-JAX code. In general, not guaranteed to
+  // be dense, and -1 if undefined.
+  virtual int local_hardware_id() const = 0;
+
+  // A vendor-dependent string that uniquely identifies the kind of device,
+  // e.g., "Tesla V100-SXM2-16GB". May be used to determine whether two GPUs are
+  // compatible compilation.
+  virtual const std::string& device_kind() const = 0;
+
+  virtual std::string DebugString() const = 0;
+
+  // Transfer the given literal to the infeed queue.
+  virtual Status TransferToInfeed(const LiteralSlice& literal) const = 0;
+
+  // Transfer and return a value of the given shape from the outfeed queue.
+  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const = 0;
+};
+
+class PjRtStreamExecutorDevice : public PjRtDevice {
+ public:
+  explicit PjRtStreamExecutorDevice(
+      int id, std::unique_ptr<LocalDeviceState> local_device_state,
+      std::string device_kind, int host_id = 0)
       : id_(id),
-        local_device_id_(
+        device_ordinal_(
             local_device_state ? local_device_state->device_ordinal() : -1),
         local_device_state_(std::move(local_device_state)),
         host_id_(host_id),
         device_kind_(std::move(device_kind)) {}
-  virtual ~PjRtDevice() {}
+  ~PjRtStreamExecutorDevice() override {}
 
   // Must set client exactly once.
   void SetClient(PjRtClient* client) {
@@ -84,14 +125,25 @@ class PjRtDevice {
     client_ = client;
   }
 
+  // Task ID. This is always 0 on single-task setup.
+  int host_id() const override { return host_id_; }
+
+  // Return `platform_id` from client.
+  PjRtPlatformId platform_id() const;
+
+  // Return `platform_name` from client.
+  const std::string& platform_name() const;
+
+  PjRtClient* client() const override { return client_; }
+
   // The ID of this device. IDs are unique among devices of this type
   // (e.g. CPUs, GPUs). On multi-host platforms, this will be unique across all
   // hosts' devices.  This is the ID that should be used in a DeviceAssignment.
-  int id() const { return id_; }
+  int id() const override { return id_; }
 
-  bool IsLocalDevice() const { return local_device_id_ != -1; }
+  bool IsAddressable() const override { return device_ordinal_ != -1; }
 
-  int local_device_id() const { return local_device_id_; }
+  int local_hardware_id() const override { return device_ordinal_; }
 
   // If this is a device local to this host, returns a LocalDeviceState object
   // that can be used to manipulate the device. Returns nullptr if the device is
@@ -105,32 +157,21 @@ class PjRtDevice {
   // is not local to this host.
   StatusOr<LocalDeviceState*> GetLocalDeviceState() const;
 
-  // The ID of this device's host. This is always 0 on single-host platforms.
-  int host_id() const { return host_id_; }
-
-  // Return `platform_id` from client.
-  PjRtPlatformId platform_id() const;
-
-  // Return `platform_name` from client.
-  const std::string& platform_name() const;
-
   // A vendor-dependent string that uniquely identifies the kind of device.
-  const std::string& device_kind() const { return device_kind_; }
+  const std::string& device_kind() const override { return device_kind_; }
 
-  virtual std::string DebugString() const;
-
-  PjRtClient* client() const { return client_; }
+  std::string DebugString() const override;
 
   // Transfer the given literal to the infeed queue of the given localdevice.
-  virtual Status TransferToInfeed(const LiteralSlice& literal) const;
+  Status TransferToInfeed(const LiteralSlice& literal) const override;
 
   // Transfer and return a value of the given shape from the outfeed of the
   // given device.
-  virtual StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const;
+  StatusOr<Literal> TransferFromOutfeed(const Shape& shape) const override;
 
  private:
   const int id_;
-  const int local_device_id_;  // -1 means not local.
+  const int device_ordinal_;  // -1 means not local.
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string device_kind_;
@@ -178,87 +219,62 @@ class PjRtExecutable;
 // alive as long as any of the other runtime objects are alive.
 class PjRtClient {
  public:
-  // `allocator` may null, in which case the platform default allocator is used.
-  explicit PjRtClient(
-      std::string platform_name, LocalClient* client,
-      std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id,
-      std::unique_ptr<se::DeviceMemoryAllocator> allocator,
-      std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
-      bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
   virtual ~PjRtClient() = default;
 
+  // TODO(zhangqiaorjc): Rename to task_id.
+  // Return the task id of this client. In single-task setting, always 0.
+  virtual int host_id() const = 0;
+
+  // Return the number of devices in the entire computation. In multi-headed
+  // client setting, some are addressable by this client, some are not. In a
+  // single-client setting, this is equal to the number of addressable devices.
+  virtual int device_count() const = 0;
+
+  // Return number of addressable devices. Addressable devices are those that
+  // the client can issue commands to.
+  virtual int addressable_device_count() const = 0;
+
+  // Return all devices in the entire computation, including addressable and
+  // non-addressable devices.
+  virtual absl::Span<PjRtDevice* const> devices() const = 0;
+
+  // TODO(zhangqiaorjc): Rename to addressable_devices.
+  // Return only addressable devices.
+  virtual absl::Span<PjRtDevice* const> local_devices() const = 0;
+
+  // Lookup any PjRtDevice for a given PjRtDevice::id().
+  virtual StatusOr<PjRtDevice*> LookupDevice(int device_id) const = 0;
+
+  // Return an addressable PjRtDevice for a given
+  // PjRtDevice::local_hardware_id().
+  virtual StatusOr<PjRtDevice*> LookupAddressableDevice(
+      int local_hardware_id) const = 0;
+
+  // Return an ID that identifies the platform (CPU/GPU/TPU).
+  virtual PjRtPlatformId platform_id() const = 0;
+
+  // Returns a string that identifies the platform (CPU/GPU/TPU).
+  virtual const std::string& platform_name() const = 0;
+
+  // Return a device-specific default device assignment, e.g., GPU and TPU may
+  // be different.
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const;
-
-  int device_count() const { return devices_.size(); }
-  int local_device_count() const { return local_devices_.size(); }
-  const std::vector<std::unique_ptr<PjRtDevice>>& devices() const {
-    return devices_;
-  }
-  const std::vector<PjRtDevice*>& local_devices() const {
-    return local_devices_;
-  }
-  const std::map<int, PjRtDevice*>& id_to_device() const {
-    return id_to_device_;
-  }
-  int host_id() const { return host_id_; }
-  PjRtPlatformId platform_id() const { return platform_id_; }
-  const std::string& platform_name() const { return platform_name_; }
-
-  LocalDeviceState& device_state(int device_ordinal) const {
-    return *local_devices_.at(device_ordinal)->local_device_state();
-  }
-
-  // Return a local PjRtDevice for a given `local_device_id`.
-  virtual StatusOr<PjRtDevice*> LookupLocalDevice(int local_device_id) const;
-
-  LocalClient* client() const { return client_; }
-  se::DeviceMemoryAllocator* allocator() const { return allocator_; }
-  tensorflow::Allocator* host_memory_allocator() const {
-    return host_memory_allocator_.get();
-  }
-  bool should_stage_host_to_device_transfers() const {
-    return should_stage_host_to_device_transfers_;
-  }
-
-  gpu::GpuExecutableRunOptions* gpu_run_options() const {
-    return gpu_run_options_.get();
-  }
-
-  tensorflow::thread::ThreadPool* h2d_transfer_pool() {
-    return &h2d_transfer_pool_;
-  }
-
-  // Most platforms expect device-to-device transfers to be enqueued on the
-  // source d2d stream, but some platforms use the destination d2d stream. This
-  // function specifies which one the platform expects.
-  virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
-
-  // Generates a unique fingerprint for `executable`. See
-  // PjRtExecutable::fingerprint_.
-  virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const {
-    return absl::optional<std::string>();
-  }
+      int num_replicas, int num_partitions) const = 0;
 
   // Returns a backend-specific HLO cost analysis visitor.
-  virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis();
+  virtual std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis() = 0;
 
+  // Compile `computation` with given `options`.
   virtual StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      const XlaComputation& computation, CompileOptions options);
+      const XlaComputation& computation, CompileOptions options) = 0;
+
+  // Generates a unique fingerprint for `executable`, may be absl::nullopt.
+  virtual StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+      const PjRtExecutable& executable) const = 0;
 
   // Creates a buffer on the device without initializing or copying any data.
-  // An optional `definition_event` may be speficied that can be used to
-  // ensure the buffer isn't referenced until some external mechanism has
-  // initialized the data.
-  // NOTE: The sequencing mechanism is not guaranteed to be supported by all
-  // future backends and so callers should avoid wherever possible.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device);
-  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
-      const Shape& shape, PjRtDevice* device,
-      std::shared_ptr<BufferSequencingEvent> definition_event);
+      const Shape& shape, PjRtDevice* device) = 0;
 
   // Describes the semantics the caller to BufferFromHostBuffer expects from the
   // runtime, in a total order from most restrictive to least restrictive.
@@ -290,13 +306,13 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, const Shape& shape,
       HostBufferSemantics host_buffer_semantics,
-      std::shared_ptr<void> buffer_reference, PjRtDevice* device);
+      std::shared_ptr<void> buffer_reference, PjRtDevice* device) = 0;
 
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for BlockHostUntilReady() completes on
   // the return value before letting literal go out of scope.
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
-      const LiteralSlice& literal, PjRtDevice* device);
+      const LiteralSlice& literal, PjRtDevice* device) = 0;
 
   // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
@@ -309,20 +325,142 @@ class PjRtClient {
   // buffers will become ready until *all* of the sends have completed.
   virtual void MakeCrossHostReceiveBuffers(
       absl::Span<const Shape> shapes, PjRtDevice* device,
-      PjRtCrossHostRecvNotifier&& notifier);
+      PjRtCrossHostRecvNotifier&& notifier) = 0;
 
-  virtual StatusOr<ChannelHandle> CreateChannelHandle() {
+  // Create ChannelHandles for XLA send/recv.
+  virtual StatusOr<ChannelHandle> CreateChannelHandle() = 0;
+  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() = 0;
+  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() = 0;
+};
+
+class PjRtStreamExecutorClient : public PjRtClient {
+ public:
+  // `allocator` may null, in which case the platform default allocator is used.
+  explicit PjRtStreamExecutorClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+      int host_id, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
+  ~PjRtStreamExecutorClient() override = default;
+
+  int host_id() const override { return host_id_; }
+
+  int device_count() const override { return devices_.size(); }
+  int addressable_device_count() const override {
+    return local_devices_.size();
+  }
+  absl::Span<PjRtDevice* const> devices() const override { return devices_; }
+  absl::Span<PjRtDevice* const> local_devices() const override {
+    return local_devices_;
+  }
+
+  StatusOr<PjRtDevice*> LookupDevice(int device_id) const override {
+    auto it = id_to_device_.find(device_id);
+    if (it != id_to_device_.end()) {
+      return it->second;
+    }
+    return InvalidArgument("No matching device found for device_id %d",
+                           device_id);
+  }
+
+  StatusOr<PjRtDevice*> LookupAddressableDevice(
+      int local_hardware_id) const override;
+
+  PjRtPlatformId platform_id() const override { return platform_id_; }
+  const std::string& platform_name() const override { return platform_name_; }
+
+  // Most platforms expect device-to-device transfers to be enqueued on the
+  // source d2d stream, but some platforms use the destination d2d stream. This
+  // function specifies which one the platform expects.
+  virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
+
+  StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
+  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, CompileOptions options) override;
+
+  // Generates a unique fingerprint for `executable`.
+  StatusOr<absl::optional<std::string>> ExecutableFingerprint(
+      const PjRtExecutable& executable) const override {
+    return absl::optional<std::string>();
+  }
+
+  // Returns a backend-specific HLO cost analysis visitor.
+  std::unique_ptr<HloCostAnalysis> GetHloCostAnalysis() override;
+
+  // Creates a buffer on the device without initializing or copying any data.
+  // An optional `definition_event` may be speficied that can be used to
+  // ensure the buffer isn't referenced until some external mechanism has
+  // initialized the data.
+  // NOTE: The sequencing mechanism is not guaranteed to be supported by all
+  // future backends and so callers should avoid wherever possible.
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device) override;
+  StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
+      const Shape& shape, PjRtDevice* device,
+      std::shared_ptr<BufferSequencingEvent> definition_event);
+
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
+      const void* data, const Shape& shape,
+      HostBufferSemantics host_buffer_semantics,
+      std::shared_ptr<void> buffer_reference, PjRtDevice* device) override;
+
+  // Note that literal must remain in scope until the transfer has completed, so
+  // the caller should, for example, wait for BlockHostUntilReady() completes on
+  // the return value before letting literal go out of scope.
+  StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
+      const LiteralSlice& literal, PjRtDevice* device) override;
+
+  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
+  // cross host transfers using `client` on `device'. `shapes` must be the exact
+  // shapes, with identical layouts, corresponding to the buffers that will be
+  // sent. When resources for the transfer are available, notifier will be
+  // called with a vector of PjRtCrossHostRecvBuffer structs, one for each
+  // shape in `shapes`. Each struct contains a buffer that will contain the
+  // received value, and an opaque string that should be transmitted to the
+  // sending host and used in a call to CopyToRemoteDevice. None of the recv
+  // buffers will become ready until *all* of the sends have completed.
+  void MakeCrossHostReceiveBuffers(
+      absl::Span<const Shape> shapes, PjRtDevice* device,
+      PjRtCrossHostRecvNotifier&& notifier) override;
+
+  StatusOr<ChannelHandle> CreateChannelHandle() override {
     return client()->CreateChannelHandle();
   }
-  virtual StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
+  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
     return client()->CreateDeviceToHostChannelHandle();
   }
-  virtual StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
+  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
     return client()->CreateHostToDeviceChannelHandle();
   }
 
+  LocalDeviceState& device_state(int device_ordinal) const {
+    return *tensorflow::down_cast<PjRtStreamExecutorDevice*>(
+                local_devices_.at(device_ordinal))
+                ->local_device_state();
+  }
+  LocalClient* client() const { return client_; }
+  se::DeviceMemoryAllocator* allocator() const { return allocator_; }
+  tensorflow::Allocator* host_memory_allocator() const {
+    return host_memory_allocator_.get();
+  }
+  bool should_stage_host_to_device_transfers() const {
+    return should_stage_host_to_device_transfers_;
+  }
+
+  gpu::GpuExecutableRunOptions* gpu_run_options() const {
+    return gpu_run_options_.get();
+  }
+
+  tensorflow::thread::ThreadPool* h2d_transfer_pool() {
+    return &h2d_transfer_pool_;
+  }
+
  protected:
-  friend class PjRtBuffer;
+  friend class PjRtStreamExecutorBuffer;
   virtual void EnqueueCrossHostReceive(
       std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
       std::shared_ptr<BufferSequencingEvent> definition_event,
@@ -343,7 +481,9 @@ class PjRtClient {
   std::unique_ptr<tensorflow::Allocator> host_memory_allocator_;
 
   // Includes all devices, including non-local devices on multi-host platforms.
-  std::vector<std::unique_ptr<PjRtDevice>> devices_;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> owned_devices_;
+  // Pointers to `owned_devices_`.
+  std::vector<PjRtDevice*> devices_;
   // Maps Device::id() to the corresponding Device. Includes all devices.
   std::map<int, PjRtDevice*> id_to_device_;
   // Local devices indexed by local device ordinal.
@@ -376,6 +516,116 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
 // buffers so we can decouple buffer lifetimes from the corresponding Python
 // references if needed. Thread-safe.
 class PjRtBuffer {
+ public:
+  virtual ~PjRtBuffer() = default;
+
+  virtual const Shape& on_host_shape() const = 0;
+  virtual const Shape& on_device_shape() const = 0;
+  virtual PjRtDevice* device() const = 0;
+  virtual PjRtClient* client() const = 0;
+
+  // Returns the size of the on-device representation of this buffer in bytes.
+  virtual int64 OnDeviceSizeInBytes() const = 0;
+
+  // ExternalReferenceHold is a potentially long-lived hold while the buffer is
+  // being shared by an external framework, e.g., NumPy. A client acquires an
+  // external hold by calling PjRtBuffer::AcquireExternalReference() and
+  // releases it by deleting the ExternalReferenceHold. The external framework
+  // should not modify the underlying buffer unless it is confident via its own
+  // synchronization that modifications do not race with reads from the
+  // PjRtBuffer.
+  struct ExternalReferenceHold {
+    virtual ~ExternalReferenceHold() = default;
+    // Return opaque device memory pointer to root buffer.
+    virtual void* OpaqueDeviceMemoryDataPointer() const = 0;
+  };
+  virtual StatusOr<std::unique_ptr<ExternalReferenceHold>>
+  AcquireExternalReference() = 0;
+
+  // Returns the buffer's value as an XLA Literal. If the value has previously
+  // been prefetched to the host, then returns the prefetched version, otherwise
+  // copies the buffer to the host. Blocks until the value is ready. If
+  // `discard_cached_copy` is true then buffer will no longer keep hold of a
+  // cached copy of the literal (i.e. The reference to the host value will be
+  // removed.) If a layout is passed than a literal with this layout will be
+  // returned.
+  StatusOr<std::shared_ptr<Literal>> ToLiteral() {
+    return ToLiteral(/*discard_cached_copy=*/false, /*layout=*/{});
+  }
+  StatusOr<std::shared_ptr<Literal>> ToLiteral(bool discard_cached_copy) {
+    return ToLiteral(discard_cached_copy, /*layout=*/{});
+  }
+  virtual StatusOr<std::shared_ptr<Literal>> ToLiteral(
+      bool discard_cached_copy, absl::optional<xla::Layout> layout) = 0;
+
+  // Initiates a copy of the buffer to the host. Does not block waiting for
+  // the transfer to complete. The value can be retrieved by a later call to
+  // ToLiteral(). If a layout is passed then a cached copy with this layout will
+  // be created.
+  Status CopyToHostAsync() { return CopyToHostAsync(/*layout=*/{}); }
+  virtual Status CopyToHostAsync(absl::optional<xla::Layout> layout) = 0;
+
+  // Drops the buffer's reference to its associated device memory, leaving the
+  // buffer in an invalid state. The memory will be freed lazily when all async
+  // operations using the buffer have completed, according to the allocation
+  // semantics of the underlying platform. Delete may briefly block if another
+  // thread is in the process of enqueuing an operation on this buffer, but it
+  // will never block for a stream operation to complete. If an external
+  // framework holds a reference to the TrackedDeviceBuffer via
+  // GetBufferWithExternalReference, the memory will not be freed until the
+  // external framework drops the reference.
+  virtual void Delete() = 0;
+
+  // Similar to Delete, drops the buffer's reference to its associated device
+  // memory, leaving the buffer in an invalid state, but transfers the device
+  // memory ownership out via absl::optional<std::shared_ptr<void>> rather than
+  // freeing the device memory, so that another framework can take ownership of
+  // it. A return value of absl::nullopt indicates that PjRtBuffer has been
+  // deleted. The buffer returned from Release may be safely dropped at any time
+  // even if it still has pending async operations. The client should call
+  // BlockHostUntilReady before calling ReleaseDeviceMemoryOwnership with
+  // wait_for_operations_to_complete=false, to ensure that the host has
+  // synchronized past any outstanding write operations to the buffer. If
+  // wait_for_operations_to_complete=true the host will block until any
+  // potentially outstanding asynchronous operations have completed before
+  // returning, in which case it is safe to read or mutate the returned buffer.
+  // If the buffer was shared via an external reference it is the client's
+  // responsibility that accesses via that reference do not interfere with
+  // accesses via the buffer returned from ReleaseDeviceMemoryOwnership.
+  virtual StatusOr<absl::optional<std::shared_ptr<void>>>
+  ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) = 0;
+
+  // True if and only if Delete or Release has previously been called.
+  virtual bool IsDeleted() = 0;
+
+  // Copies the buffer to device `dst_device`, performing a d2d transfer when
+  // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
+  // if `dst_device` lives on a different Client.
+  // Returns an error if the buffer is already on dst_device.
+  virtual StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
+      PjRtDevice* dst_device) = 0;
+
+  // Copies the buffer to the remote device encoded in serialized_descriptor.
+  // This call must be preceded by a call to MakeCrossHostReceiveBuffers on the
+  // remote host's destination device. MakeCrossHostReceiveBuffers takes an
+  // array of shapes to construct the destination buffers, and a callback
+  // supplies an array containing both the destination buffers, and a serialized
+  // descriptor for each buffer. For each destination buffer there should be a
+  // matching call to src->CopyToRemoteDevice on a remote host for a src buffer
+  // of the corresponding shape. serialized_descriptor is the string returned by
+  // the callback along with the corresponding destination buffer.
+  virtual Status CopyToRemoteDevice(
+      absl::string_view serialized_descriptor) = 0;
+
+  // Blocks the host until the buffer's value has been computed and is ready for
+  // immediate use on the device. Useful in particular for timing benchmarks.
+  virtual Status BlockHostUntilReady() = 0;
+
+  // Whether this buffer is on CPU and thus allows for certain optimizations.
+  virtual bool IsOnCpu() const = 0;
+};
+
+class PjRtStreamExecutorBuffer : public PjRtBuffer {
  public:
   // Helper class to retain a "hold" on a PjRtBuffer. A ScopedHold may not
   // outlive its parent PjRtBuffer.
@@ -509,16 +759,16 @@ class PjRtBuffer {
                     se::DeviceMemoryAllocator* allocator) const;
 
    private:
-    friend class PjRtBuffer;
-    friend class PjRtClient;
+    friend class PjRtStreamExecutorBuffer;
+    friend class PjRtStreamExecutorClient;
 
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
     using ForClosure =
-        std::tuple<PjRtBuffer*, Type, State,
+        std::tuple<PjRtStreamExecutorBuffer*, Type, State,
                    StatusOr<std::shared_ptr<TrackedDeviceBuffer>>>;
 
-    ScopedHold(PjRtBuffer* parent, Type type)
+    ScopedHold(PjRtStreamExecutorBuffer* parent, Type type)
         : parent_(parent), type_(type), state_(kUninitialized) {}
     explicit ScopedHold(const ForClosure& closure_helper)
         : parent_(std::get<0>(closure_helper)),
@@ -540,7 +790,7 @@ class PjRtBuffer {
     // passed through a closure that is incompatible with std::move.
     ForClosure ToClosure();
 
-    PjRtBuffer* const parent_;
+    PjRtStreamExecutorBuffer* const parent_;
     const Type type_;
 
     // There is an invariant that if ok() then
@@ -549,28 +799,53 @@ class PjRtBuffer {
     StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or_;
   };
 
-  PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
-             std::shared_ptr<TrackedDeviceBuffer> device_buffer,
-             PjRtClient* client, PjRtDevice* device);
-  virtual ~PjRtBuffer();
+  PjRtStreamExecutorBuffer(Shape on_host_shape, Shape on_device_shape,
+                           std::shared_ptr<TrackedDeviceBuffer> device_buffer,
+                           PjRtClient* client, PjRtDevice* device);
+  ~PjRtStreamExecutorBuffer() override;
 
-  PjRtBuffer(const PjRtBuffer&) = delete;
-  PjRtBuffer(PjRtBuffer&&) = delete;
-  PjRtBuffer& operator=(const PjRtBuffer&) = delete;
-  PjRtBuffer& operator=(PjRtBuffer&&) = delete;
+  PjRtStreamExecutorBuffer(const PjRtStreamExecutorBuffer&) = delete;
+  PjRtStreamExecutorBuffer(PjRtStreamExecutorBuffer&&) = delete;
+  PjRtStreamExecutorBuffer& operator=(const PjRtStreamExecutorBuffer&) = delete;
+  PjRtStreamExecutorBuffer& operator=(PjRtStreamExecutorBuffer&&) = delete;
 
-  const Shape& on_host_shape() const { return on_host_shape_; }
-  const Shape& on_device_shape() const { return on_device_shape_; }
-  PjRtDevice* device() const { return device_; }
+  const Shape& on_host_shape() const override { return on_host_shape_; }
+  const Shape& on_device_shape() const override { return on_device_shape_; }
+  PjRtStreamExecutorDevice* device() const override { return device_; }
   PjRtPlatformId platform_id() const { return client_->platform_id(); }
   const std::string& platform_name() const { return client_->platform_name(); }
-  PjRtClient* client() const { return client_; }
+  PjRtStreamExecutorClient* client() const override { return client_; }
   bool IsEmptyTuple() const {
     return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
   }
 
   // Returns the size of the on-device representation of this buffer in bytes.
-  int64 OnDeviceSizeInBytes() const;
+  int64 OnDeviceSizeInBytes() const override;
+
+  // Implement PjRtBuffer::ExternalReferenceHold a wrapped
+  // ScopedHold::kExternalReference.
+  class ScopedHoldAsExternalReference
+      : public PjRtBuffer::ExternalReferenceHold {
+   public:
+    explicit ScopedHoldAsExternalReference(ScopedHold hold)
+        : external_reference_(std::move(hold)) {
+      CHECK(hold.type() == ScopedHold::kExternalReference);
+    }
+
+    ~ScopedHoldAsExternalReference() override = default;
+
+    void* OpaqueDeviceMemoryDataPointer() const override {
+      return external_reference_->device_memory().front().opaque();
+    }
+
+   private:
+    ScopedHold external_reference_;
+  };
+  StatusOr<std::unique_ptr<ExternalReferenceHold>> AcquireExternalReference()
+      override;
+
+  StatusOr<absl::optional<std::shared_ptr<void>>> ReleaseDeviceMemoryOwnership(
+      bool wait_for_operations_to_complete) override;
 
   // Returns the buffer's value as an XLA Literal. If the value has previously
   // been prefetched to the host, then returns the prefetched version, otherwise
@@ -579,15 +854,16 @@ class PjRtBuffer {
   // cached copy of the literal (i.e. The reference to the host value will be
   // removed.) If a layout is passed than a literal with this layout will be
   // returned.
+  using PjRtBuffer::ToLiteral;
   StatusOr<std::shared_ptr<Literal>> ToLiteral(
-      bool discard_cached_copy = false,
-      absl::optional<xla::Layout> layout = {});
+      bool discard_cached_copy, absl::optional<xla::Layout> layout) override;
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
   // the transfer to complete. The value can be retrieved by a later call to
   // ToLiteral(). If a layout is passed then a cached copy with this layout will
   // be created.
-  Status CopyToHostAsync(absl::optional<xla::Layout> layout = {});
+  using PjRtBuffer::CopyToHostAsync;
+  Status CopyToHostAsync(absl::optional<xla::Layout> layout) override;
 
   // Drops the buffer's reference to its associated device memory, leaving the
   // buffer in an invalid state. The memory will be freed lazily when all async
@@ -598,27 +874,10 @@ class PjRtBuffer {
   // framework holds a reference to the TrackedDeviceBuffer via
   // GetBufferWithExternalReference, the memory will not be freed until the
   // external framework drops the reference.
-  void Delete();
-
-  // Similar to Delete, drops the buffer's reference to its associated device
-  // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedDeviceBuffer rather than freeing the device memory, so that another
-  // framework can take ownership of it. The buffer returned from Release may
-  // be safely dropped at any time even if it still has pending async
-  // operations. The client should call BlockHostUntilReady before calling
-  // Release with wait_for_operations_to_complete=false, to ensure that the host
-  // has synchronized past any outstanding write operations to the buffer. If
-  // wait_for_operations_to_complete=true the host will block until any
-  // potentially outstanding asynchronous operations have completed before
-  // returning, in which case it is safe to read or mutate the returned buffer.
-  // If the buffer was shared via an external reference it is the client's
-  // responsibility that accesses via that reference do not interfere with
-  // accesses via the buffer returned from Release.
-  StatusOr<std::shared_ptr<TrackedDeviceBuffer>> Release(
-      bool wait_for_operations_to_complete);
+  void Delete() override;
 
   // True if and only if Delete or Release has previously been called.
-  bool IsDeleted();
+  bool IsDeleted() override;
 
   // Returns a view of the PjRtBuffer device memory as a ShapedBuffer. The
   // PjRtBuffer retains ownership of the device buffers.
@@ -638,7 +897,8 @@ class PjRtBuffer {
   // `dst_device` is sharing the same Client, and performing a d2h and h2d copy
   // if `dst_device` lives on a different Client.
   // Returns an error if the buffer is already on dst_device.
-  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(PjRtDevice* dst_device);
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
+      PjRtDevice* dst_device) override;
 
   // Copies the buffer to the remote device encoded in serialized_descriptor.
   // This call must be preceded by a call to MakeCrossHostReceiveBuffers on the
@@ -649,14 +909,31 @@ class PjRtBuffer {
   // matching call to src->CopyToRemoteDevice on a remote host for a src buffer
   // of the corresponding shape. serialized_descriptor is the string returned by
   // the callback along with the corresponding destination buffer.
-  Status CopyToRemoteDevice(absl::string_view serialized_descriptor);
+  Status CopyToRemoteDevice(absl::string_view serialized_descriptor) override;
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.
-  Status BlockHostUntilReady();
+  Status BlockHostUntilReady() override;
 
   // Whether this buffer is on CPU and thus allows for certain optimizations.
-  bool IsOnCpu() const;
+  bool IsOnCpu() const override;
+
+  // Similar to Delete, drops the buffer's reference to its associated device
+  // memory, leaving the buffer in an invalid state, but returns the
+  // TrackedDeviceBuffer rather than freeing the device memory, so that another
+  // framework can take ownership of it. The buffer returned from Release may
+  // be safely dropped at any time even if it still has pending async
+  // operations. The client should call BlockHostUntilReady before calling
+  // Release with wait_for_operations_to_complete=false, to ensure that the host
+  // has synchronized past any outstanding write operations to the buffer. If
+  // wait_for_operations_to_complete=true the host will block until any
+  // potentially outstanding asynchronous operations have completed before
+  // returning, in which case it is safe to read or mutate the returned buffer.
+  // If the buffer was shared via an external reference it is the client's
+  // responsibility that accesses via that reference do not interfere with
+  // accesses via the buffer returned from Release.
+  StatusOr<std::shared_ptr<TrackedDeviceBuffer>> Release(
+      bool wait_for_operations_to_complete);
 
  private:
   friend class PjRtClient;
@@ -719,10 +996,10 @@ class PjRtBuffer {
                      se::Stream* transfer_stream,
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 
-  PjRtClient* const client_;
+  PjRtStreamExecutorClient* const client_;
   const Shape on_host_shape_;
   const Shape on_device_shape_;
-  PjRtDevice* const device_;
+  PjRtStreamExecutorDevice* const device_;
 
   mutable absl::Mutex mu_;
   std::shared_ptr<TrackedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
@@ -760,31 +1037,99 @@ struct ExecuteOptions {
 };
 
 // Represents a compiled computation that can be executed given handles to
-// device-allocated literals. Wraps one or more XLA LocalExecutables (one per
-// partition, as specified by the build options). If any input/output alias
-// has been specified in the computation, the parameter containing the input
-// buffer will be donated when passed to the execution.
+// device-allocated literals. If any input/output alias has been specified in
+// the computation, the parameter containing the input buffer will be donated
+// when passed to the execution.
 class PjRtExecutable {
  public:
-  PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
-                 bool parameter_is_tupled_arguments,
-                 std::shared_ptr<DeviceAssignment> device_assignment,
-                 std::vector<std::pair<int, int>> local_logical_device_ids,
-                 std::vector<PjRtDevice*> local_devices, PjRtClient* client);
-
   virtual ~PjRtExecutable() = default;
 
-  PjRtClient* client() const { return client_; }
+  virtual PjRtClient* client() const = 0;
 
-  int num_replicas() const {
+  // Unique name for this executable, e.g., HloModule name.
+  virtual const std::string& name() const = 0;
+
+  virtual int num_replicas() const = 0;
+
+  virtual int num_partitions() const = 0;
+
+  virtual int64 SizeOfGeneratedCodeInBytes() const = 0;
+
+  virtual const DeviceAssignment& device_assignment() const = 0;
+
+  // The replica and partition indices of device_assignment to be run by this
+  // client. On single-host platforms without partitioning, this is all replicas
+  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
+  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
+  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
+  struct LogicalDeviceIds {
+    int replica;
+    int partition;
+  };
+  virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
+      const = 0;
+
+  // An addressable_device is one which the client can issue commands to.
+  // addressable_devices()[i] is the Device to which
+  // addressable_device_logical_ids()[i] is assigned.
+  virtual absl::Span<PjRtDevice* const> addressable_devices() const = 0;
+
+  // Return an HloModule (optimized) per partition.
+  virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const = 0;
+
+  // Executes on devices addressable by the client. Requires executable has a
+  // device_assignment and all devices in the device_assignment are addressable
+  // by the client.
+  virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
+  Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+          const ExecuteOptions& options) const = 0;
+
+  // Execute the assigned replica/partition on a given `device`. Requires
+  // executable has a device_assignment, `device` is present in the
+  // device_assignment and addressable by the client.
+  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options) const = 0;
+
+  // Execute on a given `device`. Requires `device` to be addressable by client.
+  // Requires executable has exactly 1 replica and 1 partition and no
+  // device_assignment (thus portable).
+  virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options) const = 0;
+
+  // Asynchronously free resources after the last execution completes.
+  virtual void Delete() = 0;
+};
+
+// Wraps one or more XLA LocalExecutables (one per partition, as specified by
+// the build options).
+class PjRtStreamExecutorExecutable : public PjRtExecutable {
+ public:
+  PjRtStreamExecutorExecutable(
+      std::vector<std::unique_ptr<LocalExecutable>> executables,
+      bool parameter_is_tupled_arguments,
+      std::shared_ptr<DeviceAssignment> device_assignment,
+      std::vector<LogicalDeviceIds> addressable_device_logical_ids,
+      std::vector<PjRtDevice*> addressable_devices,
+      PjRtStreamExecutorClient* client);
+
+  ~PjRtStreamExecutorExecutable() override = default;
+
+  PjRtStreamExecutorClient* client() const override { return client_; }
+
+  const std::string& name() const override;
+
+  int num_replicas() const override {
     return executables_[0]->build_options().num_replicas();
   }
 
-  int num_partitions() const {
+  int num_partitions() const override {
     return executables_[0]->build_options().num_partitions();
   }
 
-  int64 SizeOfGeneratedCodeInBytes() const {
+  int64 SizeOfGeneratedCodeInBytes() const override {
     int64 size = 0;
     for (auto& executable : executables_) {
       size += executable->executable()->SizeOfGeneratedCodeInBytes();
@@ -792,45 +1137,40 @@ class PjRtExecutable {
     return size;
   }
 
-  const std::vector<std::shared_ptr<LocalExecutable>>& executables() const {
-    return executables_;
-  }
-
-  const DeviceAssignment& device_assignment() const {
+  const DeviceAssignment& device_assignment() const override {
     return *device_assignment_;
   }
 
-  const std::vector<std::pair<int, int>>& local_logical_device_ids() const {
-    return local_logical_device_ids_;
+  absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
+      const override {
+    return addressable_device_logical_ids_;
   }
 
-  const std::vector<PjRtDevice*>& local_devices() const {
-    return local_devices_;
+  absl::Span<PjRtDevice* const> addressable_devices() const override {
+    return addressable_devices_;
   }
-
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> Execute(
-      absl::Span<PjRtBuffer* const> argument_handles,
-      const ExecuteOptions& options) const;
-
-  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteOnLocalDevice(
-      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) const;
-
-  // Execute on local devices. Takes a sequence of argument lists (one argument
-  // list per local device) and returns a tuple of results (one result per local
-  // device). The number of argument lists must be equal to the local device
-  // count.
-  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
-  ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) const;
-
-  void Delete() { executables_.clear(); }
-
-  const string& name() const;
 
   // Return an HloModule per partition.
-  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules();
+  StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
+      const override;
+
+  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
+      const ExecuteOptions& options) const override;
+
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options) const override;
+
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
+      absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
+      const ExecuteOptions& options) const override;
+
+  void Delete() override { executables_.clear(); }
+
+  absl::Span<const std::shared_ptr<LocalExecutable>> executables() const {
+    return executables_;
+  }
 
  protected:
   bool parameter_is_tupled_arguments() const {
@@ -838,7 +1178,7 @@ class PjRtExecutable {
   }
 
  private:
-  friend class PjRtClient;
+  friend class PjRtStreamExecutorClient;
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(bool tuple_inputs);
@@ -849,14 +1189,14 @@ class PjRtExecutable {
   MakeExecutionInputsAndWaitForEvents(
       int device_ordinal, const ExecuteOptions& options,
       absl::Span<PjRtBuffer* const> argument_handles,
-      absl::Span<const PjRtBuffer::ScopedHold> device_buffers,
+      absl::Span<const PjRtStreamExecutorBuffer::ScopedHold> device_buffers,
       absl::flat_hash_set<BufferSequencingEvent*>& events) const;
 
   StatusOr<ScopedShapedBuffer> EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, PjRtDevice* device,
-      std::vector<PjRtBuffer::ScopedHold>* device_buffers,
+      std::vector<PjRtStreamExecutorBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment) const;
 
   virtual std::vector<std::unique_ptr<PjRtBuffer>> MakeOutputBuffers(
@@ -873,7 +1213,7 @@ class PjRtExecutable {
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the
   // executable itself.
-  PjRtClient* const client_;
+  PjRtStreamExecutorClient* const client_;
   // One executable per partition.
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
   // Per-executable set of parameters that have any aliased buffers and thus
@@ -887,17 +1227,15 @@ class PjRtExecutable {
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
-  // (i.e. local_logical_device_ids_[i] = (i, 0)), but this may not be the case
-  // on multi-host platforms.
-  // If there are 4 replicas and 2 partitions on a single host platform, size of
-  // local_logical_device_ids_ is 4*2 = 8.
-  std::vector<std::pair<int, int>> local_logical_device_ids_;
+  // (i.e. addressable_device_logical_ids_[i] = (i, 0)), but this may not be the
+  // case on multi-host platforms. If there are 4 replicas and 2 partitions on a
+  // single host platform, size of addressable_device_logical_ids_ is 4*2 = 8.
+  std::vector<LogicalDeviceIds> addressable_device_logical_ids_;
 
-  // local_devices_[i] is the Device to which local_logical_device_ids_[i] is
-  // assigned.
-  // shared_ptrs instead of unique_ptrs to play well with the Python bindings
-  // (see xla.cc).
-  std::vector<PjRtDevice*> local_devices_;
+  // addressable_devices_[i] is the Device to which
+  // addressable_device_logical_ids_[i] is assigned. shared_ptrs instead of
+  // unique_ptrs to play well with the Python bindings (see xla.cc).
+  std::vector<PjRtDevice*> addressable_devices_;
 };
 
 // Executables can donate buffers so that buffers can be aliased from inputs

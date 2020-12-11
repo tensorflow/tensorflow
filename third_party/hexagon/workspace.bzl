@@ -7,9 +7,9 @@ load("//third_party:repo.bzl", "third_party_http_archive")
 def repo():
     third_party_http_archive(
         name = "hexagon_nn",
-        sha256 = "2b0e29a061f389ad52054c12fcae38991b5f731d7a05770c7ac421433ed17cc2",
+        sha256 = "b94b653417a7eb871881438bb98cb2f4a652d4d92ff90f1faaa01a8ce82b2e3c",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_headers_v1.20.0.0.tgz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_headers_v1.20.0.1.tgz",
         ],
         build_file = "//third_party/hexagon:BUILD",
     )

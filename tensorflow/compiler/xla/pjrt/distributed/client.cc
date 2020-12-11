@@ -33,7 +33,12 @@ DistributedRuntimeClient::DistributedRuntimeClient(
       options_(options) {}
 
 DistributedRuntimeClient::~DistributedRuntimeClient() {
-  if (state_ == State::kConnected) {
+  bool connected;
+  {
+    absl::MutexLock lock(&mu_);
+    connected = (state_ == State::kConnected);
+  }
+  if (connected) {
     if (options_.shutdown_on_destruction) {
       Status status = Shutdown();
       if (!status.ok()) {
@@ -54,15 +59,20 @@ DistributedRuntimeClient::~DistributedRuntimeClient() {
       return "kNotConnected";
     case State::kConnected:
       return "kConnected";
+    case State::kShuttingDown:
+      return "kShuttingDown";
     case State::kClosed:
       return "kClosed";
   }
 }
 
 xla::Status DistributedRuntimeClient::Connect() {
-  if (state_ != State::kNotConnected) {
-    return xla::FailedPrecondition("Connect() called when client in state %s",
-                                   StateToString(state_));
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kNotConnected) {
+      return xla::FailedPrecondition("Connect() called when client in state %s",
+                                     StateToString(state_));
+    }
   }
   ConnectRequest request;
   request.set_protocol_version(kDistributedRuntimeProtocolVersion);
@@ -107,7 +117,10 @@ xla::Status DistributedRuntimeClient::Connect() {
                         FromGrpcStatus(status).ToString()));
   }
   VLOG(10) << "Connect() response: " << response.DebugString();
-  state_ = State::kConnected;
+  {
+    absl::MutexLock lock(&mu_);
+    state_ = State::kConnected;
+  }
   session_id_ = response.session_id();
 
   heartbeat_thread_.reset(options_.env->StartThread(
@@ -120,9 +133,12 @@ xla::Status DistributedRuntimeClient::Connect() {
 xla::Status DistributedRuntimeClient::EnumerateDevices(
     const LocalTopologyProto& local_topology,
     GlobalTopologyProto* global_topology) {
-  if (state_ != State::kConnected) {
-    return xla::FailedPrecondition(
-        "EnumerateDevices() called when client not connected.");
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kConnected) {
+      return xla::FailedPrecondition(
+          "EnumerateDevices() called when client not connected.");
+    }
   }
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
@@ -146,9 +162,13 @@ xla::Status DistributedRuntimeClient::EnumerateDevices(
 xla::Status DistributedRuntimeClient::Shutdown() {
   LOG(INFO) << "Waiting for all distributed JAX tasks to shut down.";
   ::grpc::ClientContext ctx;
-  if (state_ != State::kConnected) {
-    return xla::FailedPrecondition(
-        "Shutdown() called when client not connected.");
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kConnected) {
+      return xla::FailedPrecondition(
+          "Shutdown() called when client not connected.");
+    }
+    state_ = State::kShuttingDown;
   }
   ctx.set_fail_fast(false);
   ctx.set_deadline(absl::ToChronoTime(absl::Now() + options_.shutdown_timeout));
@@ -165,15 +185,19 @@ xla::Status DistributedRuntimeClient::Shutdown() {
     stop_heartbeats_.Notify();
   }
   VLOG(10) << "Shutdown() response: " << response.DebugString();
+  absl::MutexLock lock(&mu_);
   state_ = State::kClosed;
   return xla::Status::OK();
 }
 
 xla::StatusOr<std::string> DistributedRuntimeClient::BlockingKeyValueGet(
     std::string key, absl::Duration timeout) {
-  if (state_ != State::kConnected) {
-    return xla::FailedPrecondition(
-        "BlockingKeyValueGet() called when client not connected.");
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kConnected) {
+      return xla::FailedPrecondition(
+          "BlockingKeyValueGet() called when client not connected.");
+    }
   }
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
@@ -194,9 +218,12 @@ xla::StatusOr<std::string> DistributedRuntimeClient::BlockingKeyValueGet(
 
 xla::Status DistributedRuntimeClient::KeyValueSet(std::string key,
                                                   std::string value) {
-  if (state_ != State::kConnected) {
-    return xla::FailedPrecondition(
-        "KeyValueSet() called when client not connected.");
+  {
+    absl::MutexLock lock(&mu_);
+    if (state_ != State::kConnected) {
+      return xla::FailedPrecondition(
+          "KeyValueSet() called when client not connected.");
+    }
   }
   ::grpc::ClientContext ctx;
   ctx.set_fail_fast(false);
@@ -239,8 +266,14 @@ void DistributedRuntimeClient::HeartbeatLoop() {
       if (!stop_heartbeats_.HasBeenNotified() &&
           (!is_transient_error ||
            num_missing_heartbeats > options_.max_missing_heartbeats)) {
-        options_.missed_heartbeat_callback(FromGrpcStatus(status),
-                                           !is_transient_error);
+        // If we are shutting down, missed heartbeats are benign: they may
+        // simply mean that the server has shut down already before it saw
+        // the heartbeat request.
+        absl::MutexLock lock(&mu_);
+        if (state_ != State::kShuttingDown) {
+          options_.missed_heartbeat_callback(FromGrpcStatus(status),
+                                             !is_transient_error);
+        }
         return;
       }
     }

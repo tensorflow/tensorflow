@@ -57,8 +57,8 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   logic but is not intended to be exported as part of the Keras API.
 
   If desired, the user can call this layer's `adapt()` method on a data set,
-  which will analyze the data set, determine the frequency of individual string
-  values, and create a vocabulary from them. This vocabulary can have
+  which will analyze the data set, determine the frequency of individual
+  hashable values, and create a vocabulary from them. This vocabulary can have
   unlimited size or be capped, depending on the configuration options for this
   layer; if there are more unique values in the input than the maximum
   vocabulary size, the most frequent terms will be used to create the
@@ -343,6 +343,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_tokens, special_token_values)
+    return total_vocab_size
 
   def _set_inverse_vocabulary(self, vocab):
     """Sets vocabulary data for this layer when inverse is True."""
@@ -382,6 +383,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     if insert_special_tokens and num_special_tokens > 0:
       special_token_values = np.arange(num_special_tokens, dtype=np.int64)
       self._table_handler.insert(special_token_values, special_tokens)
+    return total_vocab_size
 
   def set_vocabulary(self, vocab):
     """Sets vocabulary data for this layer.
@@ -392,17 +394,17 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
     layer, this method will either replace it
 
     Arguments:
-      vocab: An array of string tokens.
+      vocab: An array of hashable tokens.
 
     Raises:
       ValueError: If there are too many inputs, the inputs do not match, or
         input data is missing.
     """
     if self.invert:
-      self._set_inverse_vocabulary(vocab)
+      vocab_size = self._set_inverse_vocabulary(vocab)
     else:
-      self._set_forward_vocabulary(vocab)
-    self.max_tokens = int(self._table_handler.vocab_size())
+      vocab_size = self._set_forward_vocabulary(vocab)
+    self.max_tokens = vocab_size
 
   def _set_state_variables(self, updates):
     if not self.built:

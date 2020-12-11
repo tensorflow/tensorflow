@@ -28,7 +28,8 @@ namespace reference_ops {
 template <typename T>
 inline void Densify(const TfLiteSparsity* sparsity,
                     const RuntimeShape& input_shape, const T* input_data,
-                    const RuntimeShape& output_shape, T* output_data) {
+                    const RuntimeShape& output_shape, T* output_data,
+                    TfLiteContext* context) {
   const int dims_count = output_shape.DimensionsCount();
   std::vector<int> vector_shape(dims_count);
   for (int i = 0; i < dims_count; i++) {
@@ -37,11 +38,8 @@ inline void Densify(const TfLiteSparsity* sparsity,
 
   tflite::optimize::sparsity::FormatConverter<T> converter(vector_shape,
                                                            *sparsity);
-  converter.SparseToDense(input_data);
-  const std::vector<T> out = converter.GetData();
-  for (int i = 0; i < out.size(); i++) {
-    output_data[i] = out[i];
-  }
+  converter.SparseToDense(input_data, output_shape.FlatSize(), output_data,
+                          context);
 }
 
 }  // namespace reference_ops

@@ -37,6 +37,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core/framework:allocator",
+        "//tensorflow/core/platform:casts",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/memory",

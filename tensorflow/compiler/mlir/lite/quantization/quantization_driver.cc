@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -709,10 +709,11 @@ void QuantizationDriver::PreprocessConstantOps() {
         // so the quantization parameter are propagated from or determined by
         // other values. Duplicate this constant in case it is shared by
         // different users.
-        if (indexed_use.index() > 0) {
-          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        if (uses.size() > 1) {
+          auto new_cst =
+              builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+          user->setOperand(operand_num, new_cst);
         }
-        user->setOperand(operand_num, cst);
       }
     }
   });
