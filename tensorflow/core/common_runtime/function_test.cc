@@ -401,9 +401,7 @@ TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
       return "DummyStackTrace";
     }
 
-    absl::optional<StackFrame> LastUserFrame() const override {
-      return absl::nullopt;
-    }
+    StackFrame LastUserFrame() const override { return StackFrame{}; }
   };
 
   FunctionDef func = test::function::XTimesTwo();

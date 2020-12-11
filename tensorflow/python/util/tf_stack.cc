@@ -135,15 +135,9 @@ class StackTraceWrapper : public AbstractStackTrace {
     return *stack_frames_cache_;
   }
 
-  absl::optional<StackFrame> LastUserFrame() const override {
-    GenerateCache();
-    for (int i = stack_frames_cache_->size() - 1; i >= 0; i--) {
-      const StackFrame& frame = stack_frames_cache_->at(i);
-      if (!IsInternalFrame(frame)) {
-        return frame;
-      }
-    }
-    return absl::nullopt;
+  StackFrame LastUserFrame() const override {
+    GenerateLastFrameCache();
+    return *last_stack_frame_cache_;
   }
 
   std::string ToString(const TracePrintingOptions& opts) const override {
@@ -165,7 +159,7 @@ class StackTraceWrapper : public AbstractStackTrace {
 
     std::vector<StackFrame> filtered_frames;
     for (const StackFrame& frame : *stack_frames_cache_) {
-      if (!IsInternalFrame(frame)) {
+      if (!IsInternalFrameForFilename(frame.file_name)) {
         filtered_frames.push_back(frame);
       }
     }
@@ -175,33 +169,43 @@ class StackTraceWrapper : public AbstractStackTrace {
   bool IsCacheGenerated() const { return stack_frames_cache_.has_value(); }
 
   void GenerateCache() const {
-    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
-    // 2) ToStackFrames and LineContents actually need it.
     if (stack_frames_cache_) {
       return;
     }
 
+    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
+    // 2) ToStackFrames and LineContents actually need it.
     PyGILState_STATE state = PyGILState_Ensure();
-    absl::flat_hash_map<std::pair<std::string, int>, StackFrame> m;
-    absl::flat_hash_set<std::string> f;
 
-    for (const std::pair<py::handle, py::handle>& p : *source_map_) {
-      const py::tuple& key = py::cast<py::tuple>(p.first);
-      const py::tuple& value = py::cast<py::tuple>(p.second);
-
-      m.emplace(std::make_pair(std::string(py::cast<py::str>(key[0])),
-                               py::cast<ssize_t>(key[1])),
-                StackFrame{std::string(py::cast<py::str>(value[0])),
-                           py::cast<py::int_>(value[1]),
-                           std::string(py::cast<py::str>(value[2]))});
-    }
-
-    for (const py::handle& h : *filtered_filenames_) {
-      f.emplace(py::cast<py::str>(h));
-    }
-
-    stack_frames_cache_ = captured_.ToStackFrames(m, f);
+    stack_frames_cache_ = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        [&](const char* f) { return StackTraceFiltering(f); });
     stack_frames_cache_->pop_back();  // Drop last stack frame.
+    PyGILState_Release(state);
+  }
+
+  void GenerateLastFrameCache() const {
+    if (last_stack_frame_cache_) {
+      return;
+    }
+
+    PyGILState_STATE state = PyGILState_Ensure();
+    auto f = [&](const char* file_name) -> bool {
+      return StackTraceFiltering(file_name) ||
+             IsInternalFrameForFilename(file_name);
+    };
+
+    std::vector<StackFrame> last_frame = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); }, f,
+        /*reverse_traversal=*/true,
+        /*limit=*/1);
+
+    if (last_frame.empty()) {
+      last_stack_frame_cache_ = StackFrame{};
+    } else {
+      DCHECK(last_frame.size() == 1);
+      last_stack_frame_cache_ = last_frame[0];
+    }
     PyGILState_Release(state);
   }
 
@@ -225,19 +229,43 @@ class StackTraceWrapper : public AbstractStackTrace {
         });
   }
 
-  static bool IsInternalFrame(const StackFrame& frame) {
+  static bool IsInternalFrameForFilename(absl::string_view file_name) {
     // Use a simple heuristic for now.
     // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
-    return absl::StrContains(frame.file_name, "tensorflow/python") &&
-           !absl::StrContains(frame.file_name, "keras") &&
-           !absl::StrContains(frame.file_name, "test.py");
+    return absl::StrContains(file_name, "tensorflow/python") &&
+           !absl::StrContains(file_name, "keras") &&
+           !absl::StrContains(file_name, "test.py");
   }
 
-  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  absl::optional<StackFrame> StackTraceMapping(
+      std::pair<const char*, int> p) const {
+    if (source_map_->empty()) {
+      return absl::nullopt;
+    }
+
+    auto key = py::make_tuple(py::str(p.first), py::int_(p.second));
+
+    if (source_map_->contains(key)) {
+      const py::tuple& value = (*source_map_)[key];
+      return StackFrame{std::string(py::cast<py::str>(value[0])),
+                        py::cast<py::int_>(value[1]),
+                        std::string(py::cast<py::str>(value[2]))};
+    }
+
+    return absl::nullopt;
+  }
+
+  bool StackTraceFiltering(const char* file_name) const {
+    return filtered_filenames_->contains(file_name);
+  }
+
   StackTrace captured_;
   // Using optional to force destruction while we hold a GIL.
   absl::optional<py::dict> source_map_;
   absl::optional<py::set> filtered_filenames_;
+
+  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  mutable absl::optional<StackFrame> last_stack_frame_cache_;
 };
 
 }  // namespace
@@ -336,12 +364,8 @@ PYBIND11_MODULE(_tf_stack, m) {
              self.GenerateCache();
              return py::str(self.ToString({}));
            })
-      .def("last_user_frame", [](const StackTraceWrapper& self) {
-        if (absl::optional<StackFrame> frame = self.LastUserFrame()) {
-          return *frame;
-        }
-        return StackFrame{};
-      });
+      .def("last_user_frame",
+           [](const StackTraceWrapper& self) { return self.LastUserFrame(); });
 
   m.def(
       "extract_stack_for_node",

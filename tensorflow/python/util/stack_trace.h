@@ -44,10 +44,10 @@ inline void DCheckPyGilStateForStackTrace() {
 
 // Maps filename/line_no combination into a stack frame.
 using StackTraceMap =
-    absl::flat_hash_map<std::pair<std::string, int>, StackFrame>;
+    std::function<absl::optional<StackFrame>(std::pair<const char*, int>)>;
 
-// Contains filenames which should be skipped.
-using StackTraceFilter = absl::flat_hash_set<std::string>;
+// Returns "true" on filenames which should be skipped.
+using StackTraceFilter = std::function<bool(const char*)>;
 
 // A class for capturing Python stack trace.
 class StackTrace final {
@@ -95,11 +95,14 @@ class StackTrace final {
 
   // Returns a structured representation of the captured stack trace.
   // `mapper` provides a custom mapping for translating stack frames, `filter`
-  // returns `true` for the stack frames which should be omitted, and if
-  // `drop_last` is set, the last stack frame is dropped.
-  std::vector<StackFrame> ToStackFrames(
-      const StackTraceMap& mapper = {},
-      const StackTraceFilter& filtered = {}) const;
+  // returns `true` for the stack frames which should be omitted.
+  //
+  // `reverse_traversal` changes the traversal order of the stack trace, and
+  // `limit` bounds the number of returned frames (after filtering).
+  std::vector<StackFrame> ToStackFrames(const StackTraceMap& mapper = {},
+                                        const StackTraceFilter& filtered = {},
+                                        bool reverse_traversal = false,
+                                        int limit = -1) const;
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
