@@ -901,10 +901,17 @@ def central_crop(image, central_fraction):
   """
   with ops.name_scope(None, 'central_crop', [image]):
     image = ops.convert_to_tensor(image, name='image')
-    if central_fraction <= 0.0 or central_fraction > 1.0:
-      raise ValueError('central_fraction must be within (0, 1]')
-    if central_fraction == 1.0:
-      return image
+    central_fraction_static = tensor_util.constant_value(central_fraction)
+    if central_fraction_static is not None:
+      if central_fraction_static <= 0.0 or central_fraction_static > 1.0:
+        raise ValueError('central_fraction must be within (0, 1]')
+      if central_fraction_static == 1.0:
+        return image
+    else:
+      assert_ops = _assert(
+          math_ops.logical_or(central_fraction > 0.0, central_fraction <= 1.0),
+          ValueError, 'central_fraction must be within (0, 1]')
+      image = control_flow_ops.with_dependencies(assert_ops, image)
 
     _AssertAtLeast3DImage(image)
     rank = image.get_shape().ndims
@@ -932,24 +939,29 @@ def central_crop(image, central_fraction):
       img_w, dynamic_w = _get_dim(image, 2)
       img_d = image.get_shape()[3]
 
+    dynamic_h = dynamic_h or (central_fraction_static is None)
+    dynamic_w = dynamic_w or (central_fraction_static is None)
+
     # Compute the bounding boxes for the crop. The type and value of the
     # bounding boxes depend on the `image` tensor's rank and whether / not the
     # dimensions are statically defined.
     if dynamic_h:
       img_hd = math_ops.cast(img_h, dtypes.float64)
-      bbox_h_start = math_ops.cast((img_hd - img_hd * central_fraction) / 2,
-                                   dtypes.int32)
+      bbox_h_start = math_ops.cast(
+          (img_hd - img_hd * math_ops.cast(
+              central_fraction, dtypes.float64)) / 2, dtypes.int32)
     else:
       img_hd = float(img_h)
-      bbox_h_start = int((img_hd - img_hd * central_fraction) / 2)
+      bbox_h_start = int((img_hd - img_hd * central_fraction_static) / 2)
 
     if dynamic_w:
       img_wd = math_ops.cast(img_w, dtypes.float64)
-      bbox_w_start = math_ops.cast((img_wd - img_wd * central_fraction) / 2,
-                                   dtypes.int32)
+      bbox_w_start = math_ops.cast(
+          (img_wd - img_wd * math_ops.cast(
+              central_fraction, dtypes.float64)) / 2, dtypes.int32)
     else:
       img_wd = float(img_w)
-      bbox_w_start = int((img_wd - img_wd * central_fraction) / 2)
+      bbox_w_start = int((img_wd - img_wd * central_fraction_static) / 2)
 
     bbox_h_size = img_h - bbox_h_start * 2
     bbox_w_size = img_w - bbox_w_start * 2
