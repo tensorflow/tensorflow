@@ -755,7 +755,7 @@ void MoveOutsideCompiledOps(
     // If there is no replication/data parallelism, it is assumed the device
     // ordinal is always 0 (e.g. /device:TPU:0). In that case, a constant 0
     // attribute can be used instead for _XlaSendFromHost/_XlaRecvAtHost ops.
-    if (tpu_cluster.getParentOfType<tf_device::ReplicateOp>()) {
+    if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
       auto device_ordinal_op =
           builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
               host_launch_op.getLoc(),

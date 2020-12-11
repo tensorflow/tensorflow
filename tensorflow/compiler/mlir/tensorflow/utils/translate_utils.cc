@@ -38,7 +38,8 @@ void PopulateTfVersions(mlir::ModuleOp module, const VersionDef& versions) {
 mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
                                       VersionDef* versions) {
   versions->Clear();
-  auto version_attr = module.getAttrOfType<mlir::DictionaryAttr>("tf.versions");
+  auto version_attr =
+      module->getAttrOfType<mlir::DictionaryAttr>("tf.versions");
   if (!version_attr) return mlir::failure();
 
   auto producer =
@@ -66,7 +67,7 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
 
 ::stream_executor::port::StatusOr<int64_t> GetTfGraphProducerVersion(
     mlir::ModuleOp module) {
-  auto versions = module.getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
+  auto versions = module->getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
   if (!versions) {
     return errors::Internal(
         "Missing 'tf.versions' attribute on the module, abort.\n");

@@ -125,6 +125,33 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // accelerator. This should only be enabled if the target device supports
     // dynamic dimensions of the model.
     bool allow_dynamic_dimensions = false;
+
+    // When set to true, the delegate will allocate device memory for state
+    // tensors to reduce data copying and transformation overhead. In such a
+    // case, the user must explicitly specify whether they would like to sync
+    // states between host and device before and after each invocation by
+    // SetSyncStatesToDevice and SetSyncStatesFromDevice. The following code
+    // snippet demonstrates the usage:
+    //
+    //   StatefulNnapiDelegate::Options options;
+    //   options.use_device_memory_for_state_tensors = true;
+    //   ...
+    //
+    //   for (int i = 0; i < sequence_size; i++) {
+    //     ...
+    //
+    //     // Push initial states to the device before the first invocation.
+    //     delegate->SetSyncStatesToDevice(i == 0);
+    //
+    //     // Get states data back to the host CPU buffer after the final
+    //     // invocation.
+    //     delegate->SetSyncStatesFromDevice(i == sequence_size - 1);
+    //
+    //     interpreter->Invoke();
+    //   }
+    //
+    // WARNING: This is an experimental interface that is subject to change.
+    bool use_device_memory_for_state_tensors = false;
   };
 
   // Uses default options.
@@ -186,7 +213,23 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // (i.e. when calling interpreter.ModifyGraphWithDelegate(delegate)).
   int GetNnApiErrno() const;
 
+  // Specifies whether the device memories should be initialized from the
+  // content of CPU buffers of state tensors before the execution or not.
+  // Will return an error if the delegate is not initialized with
+  // use_device_memory_for_state_tensors set to true.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus SetSyncStatesToDevice(bool sync_states_to_device);
+
+  // Specifies whether the device memories should be copied to the content of
+  // CPU buffers of state tensors after the execution or not.
+  // Will return an error if the delegate is not initialized with
+  // use_device_memory_for_state_tensors set to true.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus SetSyncStatesFromDevice(bool sync_states_from_device);
+
  private:
+  friend NNAPIDelegateKernel;
+
   // Encapsulates all delegate data.
   struct Data {
     // Pointer to NNAPI implementation to be used by this delegate as
@@ -235,6 +278,17 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     uint64_t max_execution_loop_timeout_duration_ns = 0;
     // Whether to allow dynamic dimension sizes without re-compilation.
     bool allow_dynamic_dimensions = false;
+    // When set to true, the delegate will allocate device memories for state
+    // tensors to reduce data copying and transformation overhead.
+    bool use_device_memory_for_state_tensors = false;
+    // When set to true, the device memories will be initialized from the
+    // content of CPU buffers of state tensors before the execution.
+    bool sync_states_to_device = false;
+    // When set to true, the device memories will be copied to the content of
+    // CPU buffers of state tensors after the execution.
+    bool sync_states_from_device = false;
+    // Whether the model is fully supported by the delegate.
+    bool single_partition_delegated = false;
 
     explicit Data(const NnApi* nnapi);
     ~Data();
@@ -247,6 +301,9 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     NNAPIDelegateKernel* MaybeGetCachedDelegateKernel(
         const TfLiteDelegateParams* delegate_params);
   };
+
+  // Returns the delegate data.
+  static const Data& GetData(TfLiteDelegate* delegate);
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate
   // documentation for more info.

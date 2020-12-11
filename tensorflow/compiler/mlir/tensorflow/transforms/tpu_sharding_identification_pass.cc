@@ -211,7 +211,7 @@ void IdentifyXlaShardingForComputationOutputs(
 void IdentifyXlaShardingForTPUComputation(
     Builder* builder, tf_device::ClusterFuncOp cluster_func) {
   // Look up function definition from module.
-  FuncOp func = cluster_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
+  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       cluster_func.func());
 
   // By default inputs/outputs have maximal sharding and are assigned to logical

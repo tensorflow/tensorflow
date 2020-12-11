@@ -163,7 +163,7 @@ FetchOp GraphOp::GetFetch() { return llvm::cast<FetchOp>(GetBody().back()); }
 namespace {
 
 LogicalResult Verify(GraphOp graph) {
-  auto *executorDialect = graph.getDialect();
+  auto *executorDialect = graph->getDialect();
 
   if (graph.GetBody().empty())
     return graph.emitOpError() << "expects a non-empty body";
@@ -461,7 +461,7 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
 namespace {
 
 LogicalResult Verify(SwitchNOp switchn) {
-  IntegerAttr num_outs = switchn.getAttrOfType<IntegerAttr>("num_outs");
+  IntegerAttr num_outs = switchn->getAttrOfType<IntegerAttr>("num_outs");
   if (!num_outs)
     return switchn.emitOpError() << "expects a `num_outs` integer attribute";
 

@@ -133,6 +133,12 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(
     absl::string_view op_name, absl::string_view op_type) {
   return absl::StrCat(op_name, ":", op_type);
 }
+
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(const char* op_name,
+                                                        const char* op_type) {
+  return absl::StrCat(op_name, ":", op_type);
+}
+
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(
     std::string&& op_name, absl::string_view op_type) {
   absl::StrAppend(&op_name, ":", op_type);

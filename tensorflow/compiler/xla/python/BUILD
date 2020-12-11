@@ -187,6 +187,7 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -211,6 +212,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",  # TODO(zhangqiaorjc): Remove after adding a factory method for PjRtBuffer.
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:platform",

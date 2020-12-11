@@ -194,7 +194,7 @@ typedef void* (*MyCreateFuncWithAttr)(TF_OpKernelConstruction*);
 class TestKernelAttr : public ::testing::Test {
  public:
   TestKernelAttr() {}
-  ~TestKernelAttr() {}
+  ~TestKernelAttr() override {}
 
   std::unique_ptr<OpKernel> GetFakeKernelWithAttr(const char* op_name,
                                                   AttrValue v, Status* status) {
@@ -207,8 +207,8 @@ class TestKernelAttr : public ::testing::Test {
                           status);
   }
 
-  void SetAttr(MyCreateFuncWithAttr MyCreateFuncAttr, const char* op_name,
-               AttrValue& v) {
+  void CreateAndCallKernelWithAttr(MyCreateFuncWithAttr MyCreateFuncAttr,
+                                   const char* op_name, AttrValue& v) {
     TF_KernelBuilder* builder = TF_NewKernelBuilder(
         op_name, "FakeDevice", MyCreateFuncAttr, &MyComputeFunc, &MyDeleteFunc);
     {
@@ -249,7 +249,7 @@ TEST_F(TestKernelAttr, String) {
 
   AttrValue v;
   v.set_s("bunny");
-  SetAttr(my_create_func, "TestKernelAttrString", v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrString", v);
 }
 
 TEST_F(TestKernelAttr, StringList) {
@@ -285,9 +285,9 @@ TEST_F(TestKernelAttr, StringList) {
   };
 
   AttrValue v;
-  auto attr_in = gtl::ArraySlice<StringPiece>({"bugs", "bunny", "duck"});
-  SetAttrValue(attr_in, &v);
-  SetAttr(my_create_func, "TestKernelAttrStringList", v);
+  std::string attr_in[] = {"bugs", "bunny", "duck"};
+  SetAttrValue(gtl::ArraySlice<std::string>(attr_in, 3), &v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrStringList", v);
 }
 
 TEST_F(TestKernelAttr, Int) {
@@ -309,7 +309,7 @@ TEST_F(TestKernelAttr, Int) {
 
   AttrValue v;
   v.set_i(1234);
-  SetAttr(my_create_func, "TestKernelAttrInt", v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrInt", v);
 }
 
 TEST_F(TestKernelAttr, IntList) {
@@ -335,9 +335,9 @@ TEST_F(TestKernelAttr, IntList) {
   };
 
   AttrValue v;
-  auto attr_in = gtl::ArraySlice<int64>({1, 2, 3, 4});
-  SetAttrValue(attr_in, &v);
-  SetAttr(my_create_func, "TestKernelAttrIntList", v);
+  int64 attr_in[] = {1, 2, 3, 4};
+  SetAttrValue(gtl::ArraySlice<int64>(attr_in, 4), &v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrIntList", v);
 }
 
 TEST_F(TestKernelAttr, Float) {
@@ -359,7 +359,7 @@ TEST_F(TestKernelAttr, Float) {
 
   AttrValue v;
   v.set_f(2.718);
-  SetAttr(my_create_func, "TestKernelAttrFloat", v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrFloat", v);
 }
 
 TEST_F(TestKernelAttr, FloatList) {
@@ -385,9 +385,9 @@ TEST_F(TestKernelAttr, FloatList) {
   };
 
   AttrValue v;
-  auto attr_in = gtl::ArraySlice<float>({1.414, 2.718, 3.1415});
-  SetAttrValue(attr_in, &v);
-  SetAttr(my_create_func, "TestKernelAttrFloatList", v);
+  float attr_in[] = {1.414, 2.718, 3.1415};
+  SetAttrValue(gtl::ArraySlice<float>(attr_in, 3), &v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrFloatList", v);
 }
 
 TEST_F(TestKernelAttr, Bool) {
@@ -408,8 +408,8 @@ TEST_F(TestKernelAttr, Bool) {
   };
 
   AttrValue v;
-  v.set_b(1);
-  SetAttr(my_create_func, "TestKernelAttrBool", v);
+  v.set_b(true);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrBool", v);
 }
 
 TEST_F(TestKernelAttr, BoolList) {
@@ -435,9 +435,9 @@ TEST_F(TestKernelAttr, BoolList) {
   };
 
   AttrValue v;
-  auto attr_in = gtl::ArraySlice<bool>({1, 0, 1, 0});
-  SetAttrValue(attr_in, &v);
-  SetAttr(my_create_func, "TestKernelAttrBoolList", v);
+  bool attr_in[] = {true, false, true, false};
+  SetAttrValue(gtl::ArraySlice<bool>(attr_in, 4), &v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrBoolList", v);
 }
 
 TEST_F(TestKernelAttr, Type) {
@@ -459,7 +459,7 @@ TEST_F(TestKernelAttr, Type) {
 
   AttrValue v;
   v.set_type(DT_FLOAT);
-  SetAttr(my_create_func, "TestKernelAttrType", v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrType", v);
 }
 
 TEST_F(TestKernelAttr, TypeList) {
@@ -485,10 +485,9 @@ TEST_F(TestKernelAttr, TypeList) {
   };
 
   AttrValue v;
-  auto attr_in =
-      gtl::ArraySlice<DataType>({DT_FLOAT, DT_DOUBLE, DT_HALF, DT_COMPLEX128});
-  SetAttrValue(attr_in, &v);
-  SetAttr(my_create_func, "TestKernelAttrTypeList", v);
+  DataType attr_in[] = {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_COMPLEX128};
+  SetAttrValue(gtl::ArraySlice<DataType>(attr_in, 4), &v);
+  CreateAndCallKernelWithAttr(my_create_func, "TestKernelAttrTypeList", v);
 }
 #undef EXPECT_TF_SIZE
 

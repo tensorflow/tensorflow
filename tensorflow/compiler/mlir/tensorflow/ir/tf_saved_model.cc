@@ -79,7 +79,7 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
 
 static LogicalResult Verify(SessionInitializerOp session_initializer) {
   mlir::SymbolTable symbol_table(
-      session_initializer.getParentOfType<ModuleOp>());
+      session_initializer->getParentOfType<ModuleOp>());
 
   for (auto sym_ref : session_initializer.initializers()) {
     auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
@@ -327,7 +327,7 @@ static LogicalResult VerifySavedModelModule(
 
 LogicalResult VerifyExportedFunc(FuncOp func) {
   bool reached_bound_inputs = false;
-  auto module = func.getParentOfType<ModuleOp>();
+  auto module = func->getParentOfType<ModuleOp>();
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
     if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
       reached_bound_inputs = true;
@@ -455,7 +455,7 @@ class OptimizeSessionInitializerPattern
 
   LogicalResult matchAndRewrite(SessionInitializerOp op,
                                 PatternRewriter &rewriter) const override {
-    SymbolTable symbol_table(op.getParentOfType<ModuleOp>());
+    SymbolTable symbol_table(op->getParentOfType<ModuleOp>());
 
     SmallVector<FuncOp, 2> to_remove;
     SmallVector<mlir::Attribute, 2> to_keep;

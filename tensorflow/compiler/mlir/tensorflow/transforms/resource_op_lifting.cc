@@ -1106,7 +1106,7 @@ LogicalResult HandlePartitionedCallOpCallee(
 
   // Clone the callee before making changes.
   SmallString<64> name_base = callee.getName();
-  auto module = callee.getParentOfType<ModuleOp>();
+  auto module = callee->getParentOfType<ModuleOp>();
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
@@ -1376,7 +1376,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
   if (failed(HoistForControlFlow(
-          &function.front(), cast<ModuleOp>(function.getParentOp()),
+          &function.front(), cast<ModuleOp>(function->getParentOp()),
           /*vars_initialized=*/false, &lifted_partitioned_call_callees)))
     return failure();
 

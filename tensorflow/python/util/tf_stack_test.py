@@ -63,6 +63,11 @@ class TFStackTest(test.TestCase):
     self.assertEqual(frame1, frame2)
     self.assertEqual(hash(tuple(frame1)), hash(tuple(frame2)))
 
+  def testLastUserFrame(self):
+    trace = tf_stack.extract_stack()  # COMMENT
+    frame = trace.last_user_frame()
+    self.assertRegex(frame.line, "# COMMENT")
+
 
 def extract_stack(limit=None):
   # Both defined on the same line to produce identical stacks.

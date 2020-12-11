@@ -224,26 +224,24 @@ struct PerDeviceCollector {
 
     std::vector<Annotation> annotation_stack =
         ParseAnnotationStack(event.annotation);
-    // If multiple metadata have the same key name, show the values from the top
-    // of the stack (innermost annotation). Concatenate the values from
-    // "hlo_op".
-    absl::flat_hash_set<absl::string_view> key_set;
-    std::vector<absl::string_view> hlo_op_names;
-    for (auto annotation = annotation_stack.rbegin();
-         annotation != annotation_stack.rend(); ++annotation) {
-      for (const Annotation::Metadata& metadata : annotation->metadata) {
-        if (metadata.key == "tf_op") {
-          continue;  // ignored, obtained from HLO proto via DebugInfoMap
-        } else if (key_set.insert(metadata.key).second) {
-          xevent.ParseAndAddStatValue(
-              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
-        }
-      }
-    }
     if (!annotation_stack.empty()) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
           *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
+    }
+    // If multiple metadata have the same key name, show the values from the top
+    // of the stack (innermost annotation). Concatenate the values from
+    // "hlo_op".
+    absl::flat_hash_set<absl::string_view> key_set;
+
+    for (auto annotation = annotation_stack.rbegin();
+         annotation != annotation_stack.rend(); ++annotation) {
+      for (const Annotation::Metadata& metadata : annotation->metadata) {
+        if (key_set.insert(metadata.key).second) {
+          xevent.ParseAndAddStatValue(
+              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
+        }
+      }
     }
   }
 

@@ -616,6 +616,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     Node* clone = g->AddNode(ndef, &added_node);
     TF_CHECK_OK(added_node);
     node_map[n->id()] = clone;
+    clone->SetStackTrace(n->GetStackTrace());
 
     // If there is an input control node, and one of:
     // a) the node has no data or control inputs, or

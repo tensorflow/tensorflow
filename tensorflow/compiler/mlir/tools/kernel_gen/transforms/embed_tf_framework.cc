@@ -79,7 +79,7 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
     auto reuse_input_candidates = alloc.getAttrOfType<ArrayAttr>(
         TFAllocOp::kReuseInputCandidatesAttrName);
     auto reuse_output_index =
-        alloc.getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
+        alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
                                            operands, reuse_input_candidates,
                                            reuse_output_index);

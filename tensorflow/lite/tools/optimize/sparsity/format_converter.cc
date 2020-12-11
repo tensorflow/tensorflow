@@ -14,12 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
 
-#include <algorithm>
 #include <cstdint>
-#include <iostream>
 #include <vector>
-
-#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace optimize {

@@ -1728,7 +1728,6 @@ bzl_library(
         "//learning/brain/google/xla/tests:__pkg__",
         "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
         "//nlp/deleuze:__pkg__",
-        "//nlp/projects/minmt:__pkg__",
         "//tensorflow:__subpackages__",
     ],
 )

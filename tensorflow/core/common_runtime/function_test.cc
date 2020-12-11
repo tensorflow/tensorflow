@@ -400,6 +400,8 @@ TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
     std::string ToString(const TracePrintingOptions& opts) const override {
       return "DummyStackTrace";
     }
+
+    StackFrame LastUserFrame() const override { return StackFrame{}; }
   };
 
   FunctionDef func = test::function::XTimesTwo();

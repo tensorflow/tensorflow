@@ -33,8 +33,10 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
         "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
+        "//tensorflow/lite/delegates/gpu/metal/selectors:subgraph",
     ],
 )
 
@@ -163,6 +165,7 @@ objc_library(
         ":common",
         ":compute_task_descriptor",
         ":metal_arguments",
+        ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -211,6 +214,7 @@ objc_library(
         ":compiled_model",
         ":compute_task",
         ":compute_task_descriptor",
+        ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
 namespace tflite {
@@ -154,6 +155,18 @@ class NNFreeExecution {
   // NnApi instance to use. Not owned by this object.
   const NnApi* nnapi_;
 };
+// RAII NN API Memory Destructor for use with std::unique_ptr
+class NNFreeMemory {
+ public:
+  explicit NNFreeMemory(const NnApi* nnapi) : nnapi_(nnapi) {}
+  void operator()(ANeuralNetworksMemory* memory) {
+    nnapi_->ANeuralNetworksMemory_free(memory);
+  }
+
+ private:
+  // NnApi instance to use. Not owned by this object.
+  const NnApi* nnapi_;
+};
 
 // Manage NNAPI shared memory handle
 class NNMemory {
@@ -173,6 +186,19 @@ class NNMemory {
   size_t byte_size_ = 0;
   uint8_t* data_ptr_ = nullptr;
   ANeuralNetworksMemory* nn_memory_handle_ = nullptr;
+};
+
+// Basic info and NN device memory handles for state tensors.
+struct NNStateTensorInfo {
+  uint32_t nn_input_index = 0;
+  uint32_t nn_output_index = 0;
+  // The size of the NN state tensor after applying any potential data type
+  // conversion.
+  int tensor_size = 0;
+  std::unique_ptr<ANeuralNetworksMemory, NNFreeMemory> nn_input_memory_handle;
+  std::unique_ptr<ANeuralNetworksMemory, NNFreeMemory> nn_output_memory_handle;
+  // The shared memory used to sync the state from the device.
+  std::unique_ptr<NNMemory> nn_temp_buffer;
 };
 
 
@@ -339,6 +365,9 @@ class NNAPIDelegateKernel {
   // model_state_tfl_inputs_ for all tensors where we have to keep the output
   // data available for TFLite model users
   std::vector<std::tuple<int, int>> feedback_loops_;
+
+  // TfLite index -> state tensor info.
+  std::map<int, NNStateTensorInfo> nn_state_tensor_info_map_;
 
   std::unique_ptr<NNMemory> nn_input_memory_;
   std::unique_ptr<NNMemory> nn_output_memory_;
