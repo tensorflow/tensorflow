@@ -25,6 +25,7 @@ package_group(
     packages = [
         "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//third_party/iree/...",
     ],
 )
 
