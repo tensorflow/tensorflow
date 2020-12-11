@@ -2007,6 +2007,21 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           y = image_ops.central_crop(x_np, 1.0)
           self.assertTrue(y.op.name.startswith("central_crop"))
 
+  def testCentralFractionTensor(self):
+    # Test case for GitHub issue 45324.
+    x_shape = [240, 320, 3]
+    y_shape = [80, 106, 3]
+
+    @def_function.function(autograph=False)
+    def f(x, central_fraction):
+      return image_ops.central_crop(x, central_fraction)
+
+    x_np = np.zeros(x_shape, dtype=np.int32)
+    y_np = np.zeros(y_shape, dtype=np.int32)
+    y_tf = self.evaluate(f(x_np, constant_op.constant(0.33)))
+    self.assertAllEqual(y_tf, y_np)
+    self.assertAllEqual(y_tf.shape, y_np.shape)
+
 
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase,
                            parameterized.TestCase):
