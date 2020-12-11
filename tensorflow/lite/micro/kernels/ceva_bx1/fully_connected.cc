@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 
+#include "CEVA_TFLM_lib.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "CEVA_TFLM_lib.h"
 #ifdef MCPS_MEASUREMENT
 #include "..\CEVA_TFLM_lib\Src\header\mcps_macros.h"
 #endif
@@ -78,7 +78,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   return status;
 }
 
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
@@ -132,19 +131,25 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
       tflite::micro::GetTensorData<int32_t>(bias),
       tflite::micro::GetTensorShape(output),
       tflite::micro::GetTensorData<int8_t>(output));
-#else //ORIGINAL_IMPLEMENTATION
-  int input_shape_DimensionsCount = tflite::micro::GetTensorShape(input).DimensionsCount();
-  int weights_shape_DimensionsCount = tflite::micro::GetTensorShape(filter).DimensionsCount();
-  int *weights_shape_DimsData = (int*)tflite::micro::GetTensorShape(filter).DimsData();
-  int bias_shape_DimensionsCount = tflite::micro::GetTensorShape(bias).DimensionsCount();
-  int output_shape_DimensionsCount = tflite::micro::GetTensorShape(output).DimensionsCount();
-  int *output_shape_DimsData = (int*)tflite::micro::GetTensorShape(output).DimsData();
+#else  // ORIGINAL_IMPLEMENTATION
+  int input_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(input).DimensionsCount();
+  int weights_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(filter).DimensionsCount();
+  int* weights_shape_DimsData =
+      (int*)tflite::micro::GetTensorShape(filter).DimsData();
+  int bias_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(bias).DimensionsCount();
+  int output_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(output).DimensionsCount();
+  int* output_shape_DimsData =
+      (int*)tflite::micro::GetTensorShape(output).DimsData();
 
   void* params = (void*)&op_params;
-  int8_t *inputp = (int8_t*)tflite::micro::GetTensorData<int8_t>(input);
-  int8_t *filterp = (int8_t*)tflite::micro::GetTensorData<int8_t>(filter);
-  int32_t *biasp = (int32_t*)tflite::micro::GetTensorData<int32_t>(bias);
-  int8_t *outputp = (int8_t*)tflite::micro::GetTensorData<int8_t>(output);
+  int8_t* inputp = (int8_t*)tflite::micro::GetTensorData<int8_t>(input);
+  int8_t* filterp = (int8_t*)tflite::micro::GetTensorData<int8_t>(filter);
+  int32_t* biasp = (int32_t*)tflite::micro::GetTensorData<int32_t>(bias);
+  int8_t* outputp = (int8_t*)tflite::micro::GetTensorData<int8_t>(output);
 #ifdef MCPS_MEASUREMENT
   int batches = output_shape_DimsData[0];
   int output_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 2];
@@ -152,25 +157,22 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   MCPS_START_ONE;
 #endif
   CEVA_TFLM_FullyConnected_int8(
-	  params,
-	  input_shape_DimensionsCount,//GetTensorShape(input),
-	  inputp,
-	  weights_shape_DimensionsCount, //GetTensorShape(filter),
-	  weights_shape_DimsData,
-	  filterp,
-	  bias_shape_DimensionsCount,//GetTensorShape(bias), 
-	  biasp,
-	  output_shape_DimensionsCount,//GetTensorShape(output),
-	  output_shape_DimsData,
-	  outputp);
+      params,
+      input_shape_DimensionsCount,  // GetTensorShape(input),
+      inputp,
+      weights_shape_DimensionsCount,  // GetTensorShape(filter),
+      weights_shape_DimsData, filterp,
+      bias_shape_DimensionsCount,  // GetTensorShape(bias),
+      biasp,
+      output_shape_DimensionsCount,  // GetTensorShape(output),
+      output_shape_DimsData, outputp);
 #ifdef MCPS_MEASUREMENT
-  MCPS_STOP_ONE("Test params:Call CEVA_TFLM_FullyConnected_int8 inetrnal loop = %dx%dx%d",
-	  batches,
-	  output_depth,
-	  accum_depth);
+  MCPS_STOP_ONE(
+      "Test params:Call CEVA_TFLM_FullyConnected_int8 inetrnal loop = %dx%dx%d",
+      batches, output_depth, accum_depth);
 #endif
 
-#endif //ORIGINAL_IMPLEMENTATION
+#endif  // ORIGINAL_IMPLEMENTATION
 
   return kTfLiteOk;
 }
@@ -241,50 +243,54 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
       tflite::micro::GetTensorData<float>(bias),
       tflite::micro::GetTensorShape(output),
       tflite::micro::GetTensorData<float>(output));
-#else // ORIGINAL_IMPLEMENTATION
-  int input_shape_DimensionsCount = tflite::micro::GetTensorShape(input).DimensionsCount();
-  int weights_shape_DimensionsCount = tflite::micro::GetTensorShape(filter).DimensionsCount();
-  int *weights_shape_DimsData = (int*)tflite::micro::GetTensorShape(filter).DimsData();
-  int bias_shape_DimensionsCount = tflite::micro::GetTensorShape(bias).DimensionsCount();
-  int output_shape_DimensionsCount = tflite::micro::GetTensorShape(output).DimensionsCount();
-  int *output_shape_DimsData = (int*)tflite::micro::GetTensorShape(output).DimsData();
+#else  // ORIGINAL_IMPLEMENTATION
+  int input_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(input).DimensionsCount();
+  int weights_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(filter).DimensionsCount();
+  int* weights_shape_DimsData =
+      (int*)tflite::micro::GetTensorShape(filter).DimsData();
+  int bias_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(bias).DimensionsCount();
+  int output_shape_DimensionsCount =
+      tflite::micro::GetTensorShape(output).DimensionsCount();
+  int* output_shape_DimsData =
+      (int*)tflite::micro::GetTensorShape(output).DimsData();
 
   void* params = (void*)&op_params;
-  float *inputp = (float*)tflite::micro::GetTensorData<float>(input);
-  float *filterp = (float*)tflite::micro::GetTensorData<float>(filter);
-  float *biasp = (float*)tflite::micro::GetTensorData<float>(bias);
-  float *outputp = (float*)tflite::micro::GetTensorData<float>(output);
+  float* inputp = (float*)tflite::micro::GetTensorData<float>(input);
+  float* filterp = (float*)tflite::micro::GetTensorData<float>(filter);
+  float* biasp = (float*)tflite::micro::GetTensorData<float>(bias);
+  float* outputp = (float*)tflite::micro::GetTensorData<float>(output);
 
 #ifdef MCPS_MEASUREMENT
   int batches = 1;
   int i;
   for (i = 0; i < (output_shape_DimensionsCount - 1); i++)
-	  batches *= output_shape_DimsData[i];
+    batches *= output_shape_DimsData[i];
 
   int output_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 2];
   int accum_depth = weights_shape_DimsData[weights_shape_DimensionsCount - 1];
   MCPS_START_ONE;
 #endif
   CEVA_TFLM_FullyConnected_Float32(
-	  params,
-	  input_shape_DimensionsCount,//GetTensorShape(input),
-	  inputp,
-	  weights_shape_DimensionsCount, //GetTensorShape(filter),
-	  weights_shape_DimsData,
-	  filterp,
-	  bias_shape_DimensionsCount,//GetTensorShape(bias), 
-	  biasp,
-	  output_shape_DimensionsCount,//GetTensorShape(output),
-	  output_shape_DimsData,
-	  outputp);
+      params,
+      input_shape_DimensionsCount,  // GetTensorShape(input),
+      inputp,
+      weights_shape_DimensionsCount,  // GetTensorShape(filter),
+      weights_shape_DimsData, filterp,
+      bias_shape_DimensionsCount,  // GetTensorShape(bias),
+      biasp,
+      output_shape_DimensionsCount,  // GetTensorShape(output),
+      output_shape_DimsData, outputp);
 #ifdef MCPS_MEASUREMENT
-  MCPS_STOP_ONE("Test params:Call CEVA_TFLM_FullyConnected_Float32 inetrnal loop = %dx%dx%d",
-	  batches,
-	  output_depth,
-	  accum_depth);
+  MCPS_STOP_ONE(
+      "Test params:Call CEVA_TFLM_FullyConnected_Float32 inetrnal loop = "
+      "%dx%dx%d",
+      batches, output_depth, accum_depth);
 #endif
 
-#endif // ORIGINAL_IMPLEMENTATION
+#endif  // ORIGINAL_IMPLEMENTATION
 
   return kTfLiteOk;
 }
@@ -326,7 +332,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace 
+}  // namespace
 
 TfLiteRegistration Register_FULLY_CONNECTED() {
   return {/*init=*/Init,

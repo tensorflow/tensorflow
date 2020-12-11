@@ -15,190 +15,191 @@ limitations under the License.
 #ifndef CEVA_TYPES_H_
 #define CEVA_TYPES_H_
 
-#include <stdint.h>
 #include <stdbool.h>
-#include "CEVA_basic_op.h"
 #include <stddef.h>
+#include <stdint.h>
+#include "CEVA_basic_op.h"
 
-//typedef int8_t int8_t;
-//typedef int16_t int16;
-//typedef int32_t int32_t;
-//typedef uint8_t uint8;
-//typedef uint16_t uint16;
-//typedef uint32_t uint32;
+// typedef int8_t int8_t;
+// typedef int16_t int16;
+// typedef int32_t int32_t;
+// typedef uint8_t uint8;
+// typedef uint16_t uint16;
+// typedef uint32_t uint32;
 
 typedef float float_32;
-typedef unsigned long long	uint64;
-typedef long long	int64;
+typedef unsigned long long uint64;
+typedef long long int64;
 
 #if 1
-enum  BroadcastableOpCategory  {
-	kNone,
-	kNonBroadcast,               // Matching input shapes.
-	kFirstInputBroadcastsFast,   // Fivefold nested loops.
-	kSecondInputBroadcastsFast,  // Fivefold nested loops.
-	kGenericBroadcast,           // Fall-back.
+enum BroadcastableOpCategory {
+  kNone,
+  kNonBroadcast,               // Matching input shapes.
+  kFirstInputBroadcastsFast,   // Fivefold nested loops.
+  kSecondInputBroadcastsFast,  // Fivefold nested loops.
+  kGenericBroadcast,           // Fall-back.
 };
 
 #else
 enum class BroadcastableOpCategory : uint8_t {
-	kNone,
-	kNonBroadcast,               // Matching input shapes.
-	kFirstInputBroadcastsFast,   // Fivefold nested loops.
-	kSecondInputBroadcastsFast,  // Fivefold nested loops.
-	kGenericBroadcast,           // Fall-back.
+  kNone,
+  kNonBroadcast,               // Matching input shapes.
+  kFirstInputBroadcastsFast,   // Fivefold nested loops.
+  kSecondInputBroadcastsFast,  // Fivefold nested loops.
+  kGenericBroadcast,           // Fall-back.
 };
 #endif
 
-typedef struct  {
-	// Shape dependent / common to data / op types.
-	uint8_t broadcast_category;//BroadcastableOpCategory broadcast_category;
-	// uint8_t inference params.
-	int32_t input1_offset;
-	int32_t input2_offset;
-	int32_t output_offset;
-	int32_t output_multiplier;
-	int output_shift;
-	// Add / Sub, not Mul, uint8_t inference params.
-	int left_shift;
-	int32_t input1_multiplier;
-	int input1_shift;
-	int32_t input2_multiplier;
-	int input2_shift;
-	// uint8_t, etc, activation params.
-	int32_t quantized_activation_min;
-	int32_t quantized_activation_max;
-	// float activation params.
-	float float_activation_min;
-	float float_activation_max;
+typedef struct {
+  // Shape dependent / common to data / op types.
+  uint8_t broadcast_category;  // BroadcastableOpCategory broadcast_category;
+  // uint8_t inference params.
+  int32_t input1_offset;
+  int32_t input2_offset;
+  int32_t output_offset;
+  int32_t output_multiplier;
+  int output_shift;
+  // Add / Sub, not Mul, uint8_t inference params.
+  int left_shift;
+  int32_t input1_multiplier;
+  int input1_shift;
+  int32_t input2_multiplier;
+  int input2_shift;
+  // uint8_t, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
 
-	// Processed output dimensions.
-	// Let input "a" be the one that broadcasts in the faster-changing dimension.
-	// Then, after coalescing, for shapes {a0, a1, a2, a3, a4} and
-	// {b0, b1, b2, b3, b4},
-	// broadcast_shape[4] = b0 = a0.
-	// broadcast_shape[3] = b1; a1 = 1.
-	// broadcast_shape[2] = b2 = a2.
-	// broadcast_shape[1] = a3; b3 = 1.
-	// broadcast_shape[0] = b4 = a4.
-	int broadcast_shape[5];
+  // Processed output dimensions.
+  // Let input "a" be the one that broadcasts in the faster-changing dimension.
+  // Then, after coalescing, for shapes {a0, a1, a2, a3, a4} and
+  // {b0, b1, b2, b3, b4},
+  // broadcast_shape[4] = b0 = a0.
+  // broadcast_shape[3] = b1; a1 = 1.
+  // broadcast_shape[2] = b2 = a2.
+  // broadcast_shape[1] = a3; b3 = 1.
+  // broadcast_shape[0] = b4 = a4.
+  int broadcast_shape[5];
 } ArithmeticParams_ceva;
 
-
 struct SoftmaxParams_ceva {
-	// beta is not really used (not a Tensorflow parameter) and not implemented
-	// for LogSoftmax.
-	double beta;
-	// uint8_t inference params.  Used even when beta defaults to 1.0.
-	int32_t input_multiplier;
-	int32_t input_left_shift;
-	// Reverse scaling is only used by LogSoftmax.
-	int32_t reverse_scaling_divisor;
-	int32_t reverse_scaling_right_shift;
-	int diff_min;
-	int32_t zero_point;
-	float scale;
-	float* table;
-	int16_t* exp_lut;
-	int16_t* one_over_one_plus_x_lut;
-	uint8_t* uint8_table1;
-	uint8_t* uint8_table2;
+  // beta is not really used (not a Tensorflow parameter) and not implemented
+  // for LogSoftmax.
+  double beta;
+  // uint8_t inference params.  Used even when beta defaults to 1.0.
+  int32_t input_multiplier;
+  int32_t input_left_shift;
+  // Reverse scaling is only used by LogSoftmax.
+  int32_t reverse_scaling_divisor;
+  int32_t reverse_scaling_right_shift;
+  int diff_min;
+  int32_t zero_point;
+  float scale;
+  float* table;
+  int16_t* exp_lut;
+  int16_t* one_over_one_plus_x_lut;
+  uint8_t* uint8_table1;
+  uint8_t* uint8_table2;
 };
 
-enum class FusedActivationFunctionType_ceva : uint8_t { kNone, kRelu6, kRelu1, kRelu };
-enum class PaddingType_ceva  : uint8_t { kNone, kSame, kValid };
-
+enum class FusedActivationFunctionType_ceva : uint8_t {
+  kNone,
+  kRelu6,
+  kRelu1,
+  kRelu
+};
+enum class PaddingType_ceva : uint8_t { kNone, kSame, kValid };
 
 struct PaddingValues_ceva {
-    int16_t width;
-    int16_t height;
-    // offset is used for calculating "remaining" padding, for example, `width`
-    // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
-    // 1 + 1 = 2.
-    int16_t width_offset;
-    // Same as width_offset except it's over the height dimension.
-    int16_t height_offset;
+  int16_t width;
+  int16_t height;
+  // offset is used for calculating "remaining" padding, for example, `width`
+  // is 1 and `width_offset` is 1, so padding_left is 1 while padding_right is
+  // 1 + 1 = 2.
+  int16_t width_offset;
+  // Same as width_offset except it's over the height dimension.
+  int16_t height_offset;
 };
 
 typedef struct {
-	int8_t start_indices_count;
-	int32_t start_indices[5];
-	int8_t stop_indices_count;
-	int32_t stop_indices[5];
-	int8_t strides_count;
-	int32_t strides[5];
+  int8_t start_indices_count;
+  int32_t start_indices[5];
+  int8_t stop_indices_count;
+  int32_t stop_indices[5];
+  int8_t strides_count;
+  int32_t strides[5];
 
-	int16_t begin_mask;
-	int16_t ellipsis_mask;
-	int16_t end_mask;
-	int16_t new_axis_mask;
-	int16_t shrink_axis_mask;
+  int16_t begin_mask;
+  int16_t ellipsis_mask;
+  int16_t end_mask;
+  int16_t new_axis_mask;
+  int16_t shrink_axis_mask;
 } StridedSliceParams_ceva;
 
-
 struct PoolParams_ceva {
-    FusedActivationFunctionType_ceva activation;
-    PaddingType_ceva padding_type;
-    PaddingValues_ceva padding_values;
-    int stride_height;
-    int stride_width;
-    int filter_height;
-    int filter_width;
-    // uint8, etc, activation params.
-    int32_t quantized_activation_min;
-    int32_t quantized_activation_max;
-    // float activation params.
-    float float_activation_min;
-    float float_activation_max;
+  FusedActivationFunctionType_ceva activation;
+  PaddingType_ceva padding_type;
+  PaddingValues_ceva padding_values;
+  int stride_height;
+  int stride_width;
+  int filter_height;
+  int filter_width;
+  // uint8, etc, activation params.
+  int32_t quantized_activation_min;
+  int32_t quantized_activation_max;
+  // float activation params.
+  float float_activation_min;
+  float float_activation_max;
 };
 
 inline size_t ReducedOutputOffset(const int num_dims, const int* dims,
-	const int* index, const int num_axis,
-	const int* axis) {
-	if (num_dims == 0) {
-		return 0;
-	}
-	//TFLITE_DCHECK(dims != nullptr);
-	//TFLITE_DCHECK(index != nullptr);
-	size_t offset = 0;
-	for (int idx = 0; idx < num_dims; ++idx) {
-		// if we need to skip this axis
-		bool is_axis = false;
-		if (axis != nullptr) {
-			for (int axis_idx = 0; axis_idx < num_axis; ++axis_idx) {
-				if (idx == axis[axis_idx]) {
-					is_axis = true;
-					break;
-				}
-			}
-		}
-		if (!is_axis) {
-			offset = offset * static_cast<size_t>(dims[idx]) +
-				static_cast<size_t>(index[idx]);
-		}
-	}
-	return offset;
+                                  const int* index, const int num_axis,
+                                  const int* axis) {
+  if (num_dims == 0) {
+    return 0;
+  }
+  // TFLITE_DCHECK(dims != nullptr);
+  // TFLITE_DCHECK(index != nullptr);
+  size_t offset = 0;
+  for (int idx = 0; idx < num_dims; ++idx) {
+    // if we need to skip this axis
+    bool is_axis = false;
+    if (axis != nullptr) {
+      for (int axis_idx = 0; axis_idx < num_axis; ++axis_idx) {
+        if (idx == axis[axis_idx]) {
+          is_axis = true;
+          break;
+        }
+      }
+    }
+    if (!is_axis) {
+      offset = offset * static_cast<size_t>(dims[idx]) +
+               static_cast<size_t>(index[idx]);
+    }
+  }
+  return offset;
 }
 inline bool NextIndex(const int num_dims, const int* dims, int* current) {
-	if (num_dims == 0) {
-		return false;
-	}
-	//TFLITE_DCHECK(dims != nullptr);
-	//TFLITE_DCHECK(current != nullptr);
-	int carry = 1;
-	for (int idx = num_dims - 1; idx >= 0; --idx) {
-		int current_val = current[idx] + carry;
-		//TFLITE_DCHECK_GE(dims[idx], current_val);
-		if (dims[idx] == current_val) {
-			current[idx] = 0;
-		}
-		else {
-			current[idx] = current_val;
-			carry = 0;
-			break;
-		}
-	}
-	return (carry == 0);
+  if (num_dims == 0) {
+    return false;
+  }
+  // TFLITE_DCHECK(dims != nullptr);
+  // TFLITE_DCHECK(current != nullptr);
+  int carry = 1;
+  for (int idx = num_dims - 1; idx >= 0; --idx) {
+    int current_val = current[idx] + carry;
+    // TFLITE_DCHECK_GE(dims[idx], current_val);
+    if (dims[idx] == current_val) {
+      current[idx] = 0;
+    } else {
+      current[idx] = current_val;
+      carry = 0;
+      break;
+    }
+  }
+  return (carry == 0);
 }
 
 #if 0
