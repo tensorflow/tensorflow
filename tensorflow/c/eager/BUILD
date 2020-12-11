@@ -248,6 +248,7 @@ cc_library(
         ":c_api_unified_internal",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
@@ -388,6 +389,7 @@ cc_library(
 
 cc_library(
     name = "gradient_checker",
+    testonly = 1,
     srcs = [
         "gradient_checker.cc",
     ],
@@ -398,28 +400,11 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        ":abstract_tensor_handle",
-        ":c_api_experimental",
-        ":c_api_unified_internal",
-        ":gradients_internal",
-        ":gradients_util",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/experimental/gradients:math_grad",
-        "//tensorflow/c/experimental/gradients:nn_grad",
-        "//tensorflow/c/experimental/ops:array_ops",
+        ":unified_api_testutil",
+        "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/experimental/ops:math_ops",
-        "//tensorflow/c/experimental/ops:nn_ops",
-        "//tensorflow/cc/profiler",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/lib/llvm_rtti",
-    ] + if_libtpu(
-        if_false = ["//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration"],
-        if_true = [],
-    ),
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -431,36 +416,17 @@ tf_cuda_cc_test(
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
-        "nomac",
         "no_cuda_asan",  # b/175330074
         "notap",  # b/175330074
     ],
     deps = [
-        ":abstract_tensor_handle",
-        ":c_api_experimental",
-        ":c_api_test_util",
-        ":c_api_unified_internal",
         ":gradient_checker",
-        ":gradients_internal",
-        ":gradients_util",
-        ":mnist_gradients_testutil",
-        "//tensorflow/c:c_api",
-        "//tensorflow/c:c_test_util",
+        ":unified_api_testutil",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/experimental/gradients:math_grad",
-        "//tensorflow/c/experimental/gradients:nn_grad",
-        "//tensorflow/c/experimental/ops:array_ops",
-        "//tensorflow/c/experimental/ops:math_ops",
-        "//tensorflow/c/experimental/ops:nn_ops",
-        "//tensorflow/cc/profiler",
-        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/lib/llvm_rtti",
-        "//tensorflow/core/platform:tensor_float_32_utils",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
