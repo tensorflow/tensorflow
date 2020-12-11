@@ -419,12 +419,12 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
       replicated_inputs, packed_inputs, cluster.getResultTypes());
   if (has_replicated_input_index)
-    replicate_op.setAttr(kReplicatedInputIndicesAttr,
-                         builder.getI64ArrayAttr(replicated_input_indices));
+    replicate_op->setAttr(kReplicatedInputIndicesAttr,
+                          builder.getI64ArrayAttr(replicated_input_indices));
 
   if (!mirrored_variable_indices.empty())
-    replicate_op.setAttr(kMirroredVariableIndicesAttr,
-                         builder.getI64ArrayAttr(mirrored_variable_indices));
+    replicate_op->setAttr(kMirroredVariableIndicesAttr,
+                          builder.getI64ArrayAttr(mirrored_variable_indices));
 
   // Replace replicated cluster results with replicate op results.
   for (auto result_and_idx : llvm::enumerate(cluster.getResults())) {
@@ -550,7 +550,7 @@ LogicalResult FormClustersInBlock(
       return failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
-    cluster.setAttrs(cluster_metadata->second);
+    cluster->setAttrs(cluster_metadata->second);
     // Exclude `num_replicas` as cluster should be replicated if necessary.
     cluster.removeAttr(kNumReplicasAttr);
   }

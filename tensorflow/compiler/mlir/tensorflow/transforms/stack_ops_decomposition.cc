@@ -307,7 +307,7 @@ LogicalResult HandlePartitionedCallOp(
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call.getAttrs());
-    new_call.setAttr(
+    new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (int64_t i = 0; i < call.getNumResults(); ++i) {

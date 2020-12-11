@@ -68,9 +68,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     return signalPassFailure();
   }
   ModuleOp outlined_module = ModuleOp::create(getOperation().getLoc());
-  outlined_module.setAttrs(getOperation().getAttrs());
-  outlined_module.setAttr(SymbolTable::getSymbolAttrName(),
-                          StringAttr::get(kNestedModule, ctx));
+  outlined_module->setAttrs(getOperation().getAttrs());
+  outlined_module->setAttr(SymbolTable::getSymbolAttrName(),
+                           StringAttr::get(kNestedModule, ctx));
   symbol_table.insert(outlined_module);
   SymbolTable outlined_symbol_table(outlined_module);
 

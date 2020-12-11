@@ -200,7 +200,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
   });
   // TODO(b/157276506): change type of strides to DenseElementsAttr
   auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
-  conv2d.setAttr("strides", strides);
+  conv2d->setAttr("strides", strides);
 }
 
 // Transforms input shape for the first convolution.

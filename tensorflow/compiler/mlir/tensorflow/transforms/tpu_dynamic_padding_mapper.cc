@@ -94,7 +94,7 @@ LogicalResult GetRemappedPaddings(
         .str();
   };
 
-  Attribute padding_map_attr = cluster_func.getAttr(kPaddingMapAttr);
+  Attribute padding_map_attr = cluster_func->getAttr(kPaddingMapAttr);
   if (!padding_map_attr) return success();
 
   auto padding_map = padding_map_attr.dyn_cast<ArrayAttr>();

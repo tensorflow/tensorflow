@@ -130,8 +130,8 @@ void IdentifyXlaShardingForComputationInputs(
     }
   }
 
-  cluster_func_op.setAttr(tensorflow::kInputShardingAttr,
-                          builder->getStrArrayAttr(sharding_for_args));
+  cluster_func_op->setAttr(tensorflow::kInputShardingAttr,
+                           builder->getStrArrayAttr(sharding_for_args));
 }
 
 // Finds XlaSharding op connected to a result value. XlaSharding op may be
@@ -202,8 +202,8 @@ void IdentifyXlaShardingForComputationOutputs(
     }
   }
 
-  cluster_func.setAttr(tensorflow::kOutputShardingAttr,
-                       builder->getStrArrayAttr(sharding_for_rets));
+  cluster_func->setAttr(tensorflow::kOutputShardingAttr,
+                        builder->getStrArrayAttr(sharding_for_rets));
 }
 
 // Extracts input/output sharding configuration of `cluster_func` by parsing

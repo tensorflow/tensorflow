@@ -1180,7 +1180,7 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_call = builder.create<CallOpType>(
       call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
       new_operands, call_op.getAttrs());
-  new_call.setAttr(
+  new_call->setAttr(
       "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);

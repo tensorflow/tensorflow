@@ -128,8 +128,8 @@ LogicalResult UpdateEmbeddingEnqueueOpInput(
     auto outside_compilation_attr =
         embedding_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr);
     if (outside_compilation_attr)
-      enqueue_mode.setAttr(kXlaOutsideCompilationAttr,
-                           outside_compilation_attr);
+      enqueue_mode->setAttr(kXlaOutsideCompilationAttr,
+                            outside_compilation_attr);
 
     mode_enqueue_operand.set(enqueue_mode);
   }

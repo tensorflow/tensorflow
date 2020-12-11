@@ -94,8 +94,8 @@ void RewriteTPUEmbeddingOps::runOnFunction() {
 
     auto new_send_op = AddOperandAndRewriteAs<_SendTPUEmbeddingGradientsOp>(
         send_op, dedup_op, &builder);
-    new_send_op.setAttr(new_send_op.getOperandSegmentSizeAttr(),
-                        operand_size_attr);
+    new_send_op->setAttr(new_send_op.getOperandSegmentSizeAttr(),
+                         operand_size_attr);
   }
 }
 
