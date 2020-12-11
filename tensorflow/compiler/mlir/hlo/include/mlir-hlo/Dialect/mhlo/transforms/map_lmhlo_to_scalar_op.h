@@ -172,7 +172,7 @@ inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
     StringRef comparison_direction) {
   return llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
-      .Case("NE", CmpFPredicate::ONE)
+      .Case("NE", CmpFPredicate::UNE)
       .Case("GE", CmpFPredicate::OGE)
       .Case("GT", CmpFPredicate::OGT)
       .Case("LE", CmpFPredicate::OLE)
