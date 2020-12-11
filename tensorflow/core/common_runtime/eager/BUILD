@@ -392,7 +392,6 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:annotated_traceme",
     "//tensorflow/core/profiler/lib:traceme",
-    "//tensorflow/core/grappler:grappler_item",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 

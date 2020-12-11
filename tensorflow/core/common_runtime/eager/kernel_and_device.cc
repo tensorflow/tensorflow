@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -190,8 +189,20 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
     }
-    grappler::GrapplerItem::OptimizationOptions optimization_options =
-        grappler::CreateOptOptionsForEager();
+    grappler::GrapplerItem::OptimizationOptions optimization_options;
+
+    // Tensorflow 2.0 in eager mode with automatic control dependencies will
+    // prune all nodes that are not in the transitive fanin of the fetch nodes.
+    // However because the function will be executed via FunctionLibraryRuntime,
+    // and current function implementation does not prune stateful and dataset
+    // ops, we rely on Grappler to do the correct graph pruning.
+    optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+    optimization_options.is_eager_mode = true;
+
+    // All the nested function calls will be executed and optimized via
+    // PartitionedCallOp, there is no need to optimize functions now.
+    optimization_options.optimize_function_library = false;
 
     options.optimize_graph_fn = std::bind(
         grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
@@ -204,10 +215,9 @@ Status KernelAndDeviceFunc::InstantiateFunc(const Context& ctx,
 
   // In Eager mode we always inline all functions into the top-level
   // function body graph, to get a single executable graph, that could be
-  // optimized across function boundaries (e.g. prune unused inputs and
-  // outputs in a function call chain). This is required to mimic graph mode
-  // execution, with aggressive pruning of nodes not in the transitive fanin
-  // of fetches.
+  // optimized across function boundaries (e.g. prune unused inputs and outputs
+  // in a function call chain). This is required to mimic graph mode execution,
+  // with aggressive pruning of nodes not in the transitive fanin of fetches.
   options.config_proto.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);

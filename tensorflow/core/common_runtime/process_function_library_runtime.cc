@@ -608,8 +608,6 @@ Status ValidateMultiDeviceOptions(
   return Status::OK();
 }
 
-}  // anonymous namespace
-
 Status GetGraphAndArgRets(
     const string& function_name, AttrSlice attrs, const FunctionDef* fdef,
     const FunctionLibraryDefinition* lib_def, std::unique_ptr<Graph>* graph,
@@ -645,6 +643,8 @@ Status GetGraphAndArgRets(
   }
   return Status::OK();
 }
+
+}  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     const string& function_name, AttrSlice attrs,
