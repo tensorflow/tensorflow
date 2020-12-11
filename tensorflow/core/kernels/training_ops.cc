@@ -2714,7 +2714,6 @@ REGISTER_KERNELS(GPU, double);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
 template <typename Device, typename T, typename Tindex, bool has_l2_shrinkage>
 class SparseApplyFtrlOp : public OpKernel {
  public:
@@ -2767,11 +2766,16 @@ class SparseApplyFtrlOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    // Note: The range checks on lr, l1, l2, and lr_power below are disabled
+    // for non-CPU devices because their values cannot be accessed directly from
+    // the host. The GPU kernel will not crash if these conditions are not met,
+    // it will simply produce a bogus answer (possibly inf/nan).
     const Tensor& lr = ctx->input(5);
     OP_REQUIRES(
         ctx,
         TensorShapeUtils::IsScalar(lr.shape()) &&
-            (lr.scalar<T>()() > static_cast<T>(0) ||
+            (!std::is_same<Device, CPUDevice>::value ||
+             lr.scalar<T>()() > static_cast<T>(0) ||
              (multiply_linear_by_lr_ && lr.scalar<T>()() >= static_cast<T>(0))),
         errors::InvalidArgument("lr is not a positive scalar (or zero if "
                                 "multiply_linear_by_lr is set): ",
@@ -2780,14 +2784,16 @@ class SparseApplyFtrlOp : public OpKernel {
     const Tensor& l1 = ctx->input(6);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l1.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(7);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l2.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -2795,7 +2801,8 @@ class SparseApplyFtrlOp : public OpKernel {
     const Tensor& lr_power = ctx->input(lr_power_index);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr_power.shape()) &&
-                    lr_power.scalar<T>()() <= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     lr_power.scalar<T>()() <= static_cast<T>(0)),
                 errors::InvalidArgument("lr_power is not a "
                                         "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
@@ -2822,7 +2829,8 @@ class SparseApplyFtrlOp : public OpKernel {
       OP_REQUIRES(
           ctx,
           TensorShapeUtils::IsScalar(l2_shrinkage->shape()) &&
-              l2_shrinkage->scalar<T>()() >= static_cast<T>(0),
+              (!std::is_same<Device, CPUDevice>::value ||
+               l2_shrinkage->scalar<T>()() >= static_cast<T>(0)),
           errors::InvalidArgument("l2 shrinkage regularization strength "
                                   "is not a non-negative scalar: ",
                                   l2_shrinkage->shape().DebugString()));
@@ -2849,22 +2857,22 @@ class SparseApplyFtrlOp : public OpKernel {
   bool multiply_linear_by_lr_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                         \
+#define REGISTER_KERNELS(D, T, Tindices)                                      \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("SparseApplyFtrl")                                                 \
-          .Device(DEVICE_CPU)                                                 \
+          .Device(DEVICE_##D)                                                 \
           .TypeConstraint<T>("T")                                             \
           .TypeConstraint<Tindices>("Tindices"),                              \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/false>); \
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/false>); \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ResourceSparseApplyFtrl")                                         \
-          .Device(DEVICE_CPU)                                                 \
+          .Device(DEVICE_##D)                                                 \
           .TypeConstraint<T>("T")                                             \
           .TypeConstraint<Tindices>("Tindices"),                              \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/false>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/false>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
@@ -2872,24 +2880,59 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                           \
+  template <>                                                                 \
+  Status SparseApplyFtrl<GPUDevice, T, Tindex, /*has_l2_shrinkage=*/false>::  \
+  operator()(                                                                 \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                     \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::Matrix linear,    \
+      typename TTypes<T>::ConstScalar lr, typename TTypes<T>::ConstScalar l1, \
+      typename TTypes<T>::ConstScalar l2,                                     \
+      typename TTypes<T>::ConstScalar l2_shrinkage,                           \
+      typename TTypes<T>::ConstScalar lr_power,                               \
+      typename TTypes<T>::ConstMatrix grad,                                   \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,             \
+      bool multiply_linear_by_lr);                                            \
+  extern template struct SparseApplyFtrl<GPUDevice, T, Tindex,                \
+                                         /*has_l2_shrinkage=*/false>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(T, Tindices)                                        \
+#define REGISTER_KERNELS(D, T, Tindices)                                     \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("SparseApplyFtrlV2")                                              \
-          .Device(DEVICE_CPU)                                                \
+          .Device(DEVICE_##D)                                                \
           .TypeConstraint<T>("T")                                            \
           .TypeConstraint<Tindices>("Tindices"),                             \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/true>); \
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/true>); \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("ResourceSparseApplyFtrlV2")                                      \
-          .Device(DEVICE_CPU)                                                \
+          .Device(DEVICE_##D)                                                \
           .TypeConstraint<T>("T")                                            \
           .TypeConstraint<Tindices>("Tindices"),                             \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/true>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/true>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
@@ -2897,6 +2940,41 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                           \
+  template <>                                                                 \
+  Status SparseApplyFtrl<GPUDevice, T, Tindex, /*has_l2_shrinkage=*/true>::   \
+  operator()(                                                                 \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                     \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::Matrix linear,    \
+      typename TTypes<T>::ConstScalar lr, typename TTypes<T>::ConstScalar l1, \
+      typename TTypes<T>::ConstScalar l2,                                     \
+      typename TTypes<T>::ConstScalar l2_shrinkage,                           \
+      typename TTypes<T>::ConstScalar lr_power,                               \
+      typename TTypes<T>::ConstMatrix grad,                                   \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,             \
+      bool multiply_linear_by_lr);                                            \
+  extern template struct SparseApplyFtrl<GPUDevice, T, Tindex,                \
+                                         /*has_l2_shrinkage=*/true>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>

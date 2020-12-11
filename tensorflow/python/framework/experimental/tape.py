@@ -40,10 +40,9 @@ class GradientTape(object):
   # TODO(srbs): Add support for unconnected_gradients.
   def gradient(self, targets, sources, output_gradients=None):
     ctx = context_stack.get_default()
-    vspace = _tape.TapeVSpace(ctx)
     flat_targets = nest.flatten(targets)
     flat_sources = nest.flatten(sources)
-    out_grads = self._c_tape.ComputeGradient(vspace, flat_targets, flat_sources,
+    out_grads = self._c_tape.ComputeGradient(ctx, flat_targets, flat_sources,
                                              output_gradients or [])
     return nest.pack_sequence_as(sources, out_grads)
 

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -200,6 +200,14 @@ class FuseConv2DBiasAdd
       });
       return false;
     }
+    // Verify the data type is supported.
+    if (!conv.T().isF32() && !conv.T().isF64()) {
+      rewriter.notifyMatchFailure(conv, [&](Diagnostic &diag) {
+        diag << "supported data types for _FusedConv2D are float and double, "
+             << " but got " << conv.T();
+      });
+      return false;
+    }
     return true;
   }
 };
@@ -214,7 +222,14 @@ class FuseMatMulBiasAdd
   bool AreFuseCompatible(MatMulOp matmul, BiasAddOp bias_add,
                          PatternRewriter &rewriter) const override {
     // FusedMatMul kernel supports limited set of data types.
-    return matmul.T().isF32() || matmul.T().isBF16();
+    if (!matmul.T().isF32() && !matmul.T().isBF16()) {
+      rewriter.notifyMatchFailure(matmul, [&](Diagnostic &diag) {
+        diag << "supported data types for _FusedMatMul are float and bfloat16, "
+             << " but got " << matmul.T();
+      });
+      return false;
+    }
+    return true;
   }
 };
 

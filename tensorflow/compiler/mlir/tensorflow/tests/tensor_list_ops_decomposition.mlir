@@ -549,12 +549,43 @@ func @callee() {
 
 // -----
 
+// Tests that the pass uses the result type to infer element shape.
+
+func @main(%arg0 : tensor<*xi32>)  -> () {
+  // 1-D element shape with dynamic size
+  %element_shape = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.EmptyTensorList
+  // CHECK: tf.BroadcastTo
+  // CHECK-SAME: tensor<10x16xf32>
+  %tl0 = "tf.EmptyTensorList"(%element_shape, %max_size) : (tensor<1xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<16xf32>>>
+  // CHECK-NOT: tf.TensorListReserve
+  // CHECK: tf.BroadcastTo
+  // CHECK-SAME: tensor<10x32xf32>
+  %tl1 = "tf.TensorListReserve"(%arg0, %max_size) : (tensor<*xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<32xf32>>>
+  return
+}
+
+// -----
+
 // Tests that the pass reports error on unknown maximum size.
 
 func @main(%arg0: tensor<i32>) -> () {
   %elem_shape = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // expected-error @+1 {{unknown max element count}}
   %tl = "tf.EmptyTensorList"(%elem_shape, %arg0) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+  return
+}
+
+// -----
+
+// Tests that the pass reports error on unknown element shape.
+
+func @main()  -> () {
+  %elem_shape = "tf.Const"() {value = dense<[-1, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{unknown tensor list element shape}}
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x1xf32>>>
   return
 }
 

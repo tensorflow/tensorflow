@@ -3776,6 +3776,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
@@ -4481,21 +4482,16 @@ cc_library(
     srcs = ["hlo_runner_interface.cc"],
     hdrs = ["hlo_runner_interface.h"],
     deps = [
-        ":compiler",
         ":computation_placer",
+        ":executable",
         ":hlo",
-        ":hlo_module_group",
         ":hlo_parser",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -5185,14 +5181,26 @@ cc_library(
     hdrs = ["collective_ops_utils.h"],
     deps = [
         ":computation_placer",
+        ":global_device_id",
         ":hlo",
+        ":pattern_matcher",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
-        "//tensorflow/stream_executor/lib",
+    ],
+)
+
+tf_cc_test(
+    name = "collective_ops_utils_test",
+    srcs = ["collective_ops_utils_test.cc"],
+    deps = [
+        ":collective_ops_utils",
+        ":computation_placer",
+        ":global_device_id",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )
 

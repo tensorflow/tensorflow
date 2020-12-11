@@ -57,7 +57,9 @@ class PyBuffer : public DeviceArrayBase {
   PjRtBuffer* buffer() const { return buffer_.get(); }
 
   ClientAndPtr<PjRtDevice> device() const;
-  const std::string& platform_name() const { return buffer_->platform_name(); }
+  const std::string& platform_name() const {
+    return buffer_->client()->platform_name();
+  }
   bool is_deleted() const { return buffer_->IsDeleted(); }
 
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(

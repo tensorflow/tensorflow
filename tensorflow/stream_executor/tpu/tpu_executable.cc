@@ -84,6 +84,8 @@ Status TpuExecutable::LoadProgramAndEnqueueToStream(
   params.arguments = arguments_bases;
   params.arguments_len = arguments.size();
   params.result = &result_base;
+  params.has_cross_program_prefetch_addr =
+      cross_program_prefetch_addr.has_value();
   params.cross_program_prefetch_addr =
       cross_program_prefetch_addr.has_value() ? &prefetch_base : nullptr;
   params.rng_seed = rng_seed;

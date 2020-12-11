@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_COMMON_H_
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace tensorflow {
@@ -29,12 +30,58 @@ enum class RowPartitionType {
   ROW_STARTS
 };
 
-std::string RowPartitionTypeToString(RowPartitionType row_partition_type);
+inline std::string RowPartitionTypeToString(
+    RowPartitionType row_partition_type) {
+  switch (row_partition_type) {
+    case RowPartitionType::FIRST_DIM_SIZE:
+      return "FIRST_DIM_SIZE";
+    case RowPartitionType::VALUE_ROWIDS:
+      return "VALUE_ROWIDS";
+    case RowPartitionType::ROW_LENGTHS:
+      return "ROW_LENGTHS";
+    case RowPartitionType::ROW_SPLITS:
+      return "ROW_SPLITS";
+    case RowPartitionType::ROW_LIMITS:
+      return "ROW_LIMITS";
+    case RowPartitionType::ROW_STARTS:
+      return "ROW_STARTS";
+    default:
+      return "UNKNOWN ROW PARTITION TYPE";
+  }
+}
 
-std::vector<RowPartitionType> GetRowPartitionTypesHelper(
-    const std::vector<std::string>& row_partition_type_strings);
+inline std::vector<RowPartitionType> GetRowPartitionTypesHelper(
+    const std::vector<std::string>& row_partition_type_strings) {
+  static const auto kStringToType =
+      new std::unordered_map<std::string, RowPartitionType>(
+          {{"FIRST_DIM_SIZE", RowPartitionType::FIRST_DIM_SIZE},
+           {"VALUE_ROWIDS", RowPartitionType::VALUE_ROWIDS},
+           {"ROW_LENGTHS", RowPartitionType::ROW_LENGTHS},
+           {"ROW_SPLITS", RowPartitionType::ROW_SPLITS},
+           {"ROW_LIMITS", RowPartitionType::ROW_LIMITS},
+           {"ROW_STARTS", RowPartitionType::ROW_STARTS}});
+  std::vector<RowPartitionType> result;
+  for (const auto& type_str : row_partition_type_strings) {
+    const auto iter = kStringToType->find(type_str);
+    if (iter == kStringToType->end()) {
+      break;
+    }
+    result.push_back(iter->second);
+  }
+  return result;
+}
 
-int GetRaggedRank(const std::vector<RowPartitionType>& row_partition_types);
+inline int GetRaggedRank(
+    const std::vector<RowPartitionType>& row_partition_types) {
+  if (row_partition_types.empty()) {
+    return 0;
+  }
+  if (row_partition_types[0] == RowPartitionType::FIRST_DIM_SIZE) {
+    return row_partition_types.size() - 1;
+  }
+  return row_partition_types.size();
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_RAGGED_TO_DENSE_UTIL_COMMON_H_

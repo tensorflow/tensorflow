@@ -152,6 +152,12 @@ Status MlirFunctionOptimizationPass::Run(
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
   import_config.upgrade_legacy = true;
+  // Disable shape inference during import as some TensorFlow op fails during
+  // shape inference with dynamic shaped operands. This in turn causes the
+  // import to fail. Shape inference during import is going to be removed and
+  // the shape inference pass is run early in the pass pipeline, shape inference
+  // during import is not necessary.
+  import_config.enable_shape_inference = false;
 
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);

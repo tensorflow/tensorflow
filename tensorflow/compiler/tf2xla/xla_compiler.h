@@ -291,7 +291,8 @@ class XlaCompiler {
 
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
-                          const FunctionBody** fbody);
+                          const FunctionBody** fbody,
+                          const ConfigProto** config_proto = nullptr);
 
  private:
   // Returns the optimized graph object in this function body.

@@ -1159,8 +1159,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
-        number of elements that will be buffered when prefetching.
-
+        number of elements that will be buffered when prefetching. If the value
+        `tf.data.AUTOTUNE` is used, then the buffer size is dynamically tuned.
     Returns:
       Dataset: A `Dataset`.
     """

@@ -108,7 +108,6 @@ ENTRY main {
 
 // -----
 
-
 HloModule Cholesky
 
 // CHECK-LABEL: func @main
@@ -120,4 +119,208 @@ ENTRY main {
                                 custom_call_target="__cusolver$cholesky",
                                 operand_layout_constraints={f32[3,3]},
                                 backend_config="{\"lower\":true}"
+}
+
+// -----
+
+HloModule Gemm
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.gemm"
+// CHECK-SAME: algorithm = 7 : i64
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
+// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK: (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+ENTRY main {
+  %A = f32[2,2]{1,0} parameter(0)
+  %B = f32[2,2]{1,0} parameter(1)
+  ROOT %sgemm = f32[2,2]{1,0} custom-call(f32[2,2]{1,0} %A, f32[2,2]{1,0} %B),
+                              custom_call_target="__cublas$gemm",
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"7\"}"
+}
+
+// -----
+
+HloModule GemmBias
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.gemm_bias"
+// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: beta = 1.000000e+00 : f64
+// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
+// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
+ENTRY main {
+  %A = f32[1,1]{1,0} parameter(0)
+  %B = f32[1,4]{1,0} parameter(1)
+  %C = f32[1,4]{1,0} parameter(2)
+  ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
+                                  custom_call_target="__cublas$gemm",
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+}
+
+// -----
+
+HloModule GemmBias
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.gemm_bias"
+// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: alpha_imag = 0.000000e+00 : f64
+// CHECK-SAME: alpha_real = 1.000000e+00 : f64
+// CHECK-SAME: batch_size = 1 : i64
+// CHECK-SAME: beta = 1.000000e+00 : f64
+// CHECK-SAME: lhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: lhs_contracting_dimensions = dense<1> : tensor<1xi64>
+// CHECK-SAME: rhs_batching_dimensions = dense<> : tensor<0xi64>
+// CHECK-SAME: rhs_contracting_dimensions = dense<0> : tensor<1xi64>
+// CHECK: (memref<1x1xf32>, memref<1x4xf32>, memref<1x4xf32>, memref<1x4xf32>)
+ENTRY main {
+  %A = f32[1,1]{1,0} parameter(0)
+  %B = f32[1,4]{1,0} parameter(1)
+  %C = f32[1,4]{1,0} parameter(2)
+  ROOT %sgemm_add = f32[1,4]{1,0} custom-call(f32[1,1]{0,1} %A, f32[1,4]{1,0} %B, f32[1,4]{1,0} %C),
+                                  custom_call_target="__cublas$gemm",
+  backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"batch_size\":\"1\",\"selected_algorithm\":\"0\"}"
+}
+
+// -----
+
+HloModule AllReduce
+
+// Test all-reduce
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+// CHECK-LABEL: func @test_all_reduce
+// CHECK-SAME:  ([[INPUT:%.*]]: memref<8xf32>
+%test_all_reduce {
+  input = f32[8] parameter(0)
+  // CHECK:  "lmhlo.all_reduce"([[INPUT]], {{.*}})
+  // CHECK:  ^bb0([[ARG0:%.*]]: tensor<f32>, [[ARG1:%.*]]: tensor<f32>):
+  // CHECK:    [[ADD:%.*]] = mhlo.add [[ARG0]], [[ARG1]]
+  // CHECK:    "mhlo.return"([[ADD]]) : (tensor<f32>) -> ()
+  // CHECK:  }) {
+  // CHECK-SAME:  channel_id = {handle = 1 : i64, type = 0 : i64}
+  // CHECK-SAME:  replica_groups = dense<{{\[\[}}0, 1, 2, 3], [5, 6, 7, 8]]> : tensor<2x4xi64>
+  ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0,1,2,3}, {5,6,7,8}}, to_apply=add
+}
+
+// -----
+
+HloModule ConvForward
+
+// CHECK-LABEL: func @main
+// CHECK: "lmhlo_gpu.conv_forward"
+// CHECK-SAME: algorithm = 2 : i64
+// CHECK-SAME: tensor_ops_enabled = false
+// CHECK-SAME: batch_group_count = 1 : i64
+// CHECK-SAME: input_batch_dimension = 0 : i64
+// CHECK-SAME: input_feature_dimension = 1 : i64
+// CHECK-SAME: input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: kernel_input_feature_dimension = 1 : i64,
+// CHECK_SAME: kernel_output_feature_dimension = 0 : i64,
+// CHECK-SAME: kernel_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: output_batch_dimension = 0 : i64
+// CHECK-SAME: output_feature_dimension = 1 : i64
+// CHECK-SAME: output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: feature_group_count = 1 : i64
+// CHECK-SAME: lhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: padding = dense<0> : tensor<2xi64>
+// CHECK_SAME: result_scale = 1.000000e+00 : f64
+// CHECK_SAME: rhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
+// CHECK: (memref<4x256x3x3xf32>, memref<256x256x2x2xf32>, memref<4x256x2x2xf32>, memref<65536xui8>)
+ENTRY main {
+  %input = f32[4,256,3,3]{3,2,1,0} parameter(0)
+  %filter = f32[256,256,2,2]{3,2,1,0} parameter(1)
+  ROOT %custom-call.1 = (f32[4,256,2,2]{3,2,1,0}, u8[65536]{0}) custom-call(f32[4,256,3,3]{3,2,1,0} %input, f32[256,256,2,2]{3,2,1,0} %filter),
+                        window={size=2x2}, dim_labels=bf01_oi01->bf01,
+                        custom_call_target="__cudnn$convForward",
+                        backend_config="{\"algorithm\":\"2\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
+}
+
+// -----
+
+// CHECK: func @main
+// CHECK: "lmhlo_gpu.conv_forward_fused"
+// CHECK-SAME: activation_mode = "Relu"
+// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: tensor_ops_enabled = false
+// CHECK-SAME: batch_group_count = 1 : i64
+// CHECK-SAME: input_batch_dimension = 0 : i64
+// CHECK-SAME: input_feature_dimension = 1 : i64
+// CHECK-SAME: input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: kernel_input_feature_dimension = 2 : i64
+// CHECK-SAME: kernel_output_feature_dimension = 3 : i64
+// CHECK-SAME: kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>
+// CHECK-SAME: output_batch_dimension = 0 : i64
+// CHECK-SAME: output_feature_dimension = 1 : i64
+// CHECK-SAME: output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: feature_group_count = 1 : i64
+// CHECK-SAME: lhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: padding = dense<1> : tensor<2xi64>
+// CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"]
+// CHECK-SAME: result_scale = 1.000000e+00 : f64
+// CHECK-SAME: rhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
+// CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
+
+HloModule FusedConvForward
+
+ENTRY main {
+  %input = f16[1,17,9,9]{1,3,2,0} parameter(0)
+  %filter = f16[3,3,17,32]{2,1,0,3} parameter(1)
+  %bias = f16[32]{0} parameter(2)
+  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":0}"
+}
+
+// -----
+
+// CHECK: func @main
+// CHECK: "lmhlo_gpu.conv_forward_fused_with_side_input"
+// CHECK-SAME: activation_mode = "Relu"
+// CHECK-SAME: algorithm = 0 : i64
+// CHECK-SAME: tensor_ops_enabled = false
+// CHECK-SAME: batch_group_count = 1 : i64
+// CHECK-SAME: input_batch_dimension = 0 : i64
+// CHECK-SAME: input_feature_dimension = 1 : i64
+// CHECK-SAME: input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: kernel_input_feature_dimension = 2 : i64
+// CHECK-SAME: kernel_output_feature_dimension = 3 : i64
+// CHECK-SAME: kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>
+// CHECK-SAME: output_batch_dimension = 0 : i64
+// CHECK-SAME: output_feature_dimension = 1 : i64
+// CHECK-SAME: output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>
+// CHECK-SAME: feature_group_count = 1 : i64
+// CHECK-SAME: lhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: padding = dense<1> : tensor<2xi64>
+// CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT", "DEFAULT", "DEFAULT"]
+// CHECK-SAME: result_scale = 1.000000e+00 : f64
+// CHECK-SAME: rhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: side_input_scale = 1.000000e+00
+// CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
+// CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
+
+HloModule FusedConvForwardSideInput
+
+ENTRY main {
+  %input = f16[1,17,9,9]{1,3,2,0} parameter(0)
+  %filter = f16[3,3,17,32]{2,1,0,3} parameter(1)
+  %bias = f16[32]{0} parameter(2)
+  %side = f16[32]{0} parameter(3)
+  ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias, f16[32]{0} %side), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":1}"
 }

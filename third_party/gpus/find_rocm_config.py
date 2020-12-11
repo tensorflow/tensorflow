@@ -144,9 +144,9 @@ def _find_rocblas_config(rocm_install_path):
     ]
     version_file = None
     for f in possible_version_files:
-      version_path = os.path.join(path, f)
-      if os.path.exists(version_path):
-        version_file = version_path
+      version_file_path = os.path.join(path, f)
+      if os.path.exists(version_file_path):
+        version_file = version_file_path
         break
     if not version_file:
       raise ConfigError(
@@ -291,7 +291,10 @@ def find_rocm_config():
   result.update(_find_rocfft_config(rocm_install_path))
   result.update(_find_roctracer_config(rocm_install_path))
   result.update(_find_hipsparse_config(rocm_install_path))
+<<<<<<< HEAD
   result.update(_find_rocsolver_config(rocm_install_path))
+=======
+>>>>>>> upstream/master
 
   return result
 

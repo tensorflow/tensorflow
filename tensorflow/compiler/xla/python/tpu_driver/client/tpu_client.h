@@ -32,13 +32,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/threadpool.h"
 
 namespace xla {
 
 constexpr char kTpuPlatform[] = "tpu";
 
-class TpuDevice : public PjRtDevice {
+class TpuDevice : public PjRtStreamExecutorDevice {
  public:
   TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
             int core_on_chip);

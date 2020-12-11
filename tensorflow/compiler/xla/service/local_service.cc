@@ -190,11 +190,12 @@ LocalService::CompileExecutables(
   // single partition computations are built using `BuildExecutables`, fix it,
   // and remove this special case (provided the performance if similar).
   if (build_options.num_partitions() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        std::unique_ptr<Executable> executable,
-        BuildExecutable(proto, std::move(module_config), execute_backend_.get(),
-                        executor, build_options.device_allocator(),
-                        build_options.run_backend_only()));
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                        BuildExecutable(proto, std::move(module_config),
+                                        execute_backend_.get(), executor,
+                                        {build_options.device_allocator(),
+                                         build_options.compile_thread_pool()},
+                                        build_options.run_backend_only()));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
     return executables;
@@ -206,10 +207,12 @@ LocalService::CompileExecutables(
     std::vector<se::StreamExecutor*> executors(build_options.num_partitions(),
                                                executor);
 
-    return BuildExecutables({&proto}, std::move(module_configs),
-                            execute_backend_.get(), {executors},
-                            build_options.device_allocator(),
-                            build_options.run_backend_only());
+    return BuildExecutables(
+        /*module_protos=*/{&proto}, std::move(module_configs),
+        execute_backend_.get(), {executors},
+        Compiler::CompileOptions{build_options.device_allocator(),
+                                 build_options.compile_thread_pool()},
+        build_options.run_backend_only());
   }
 }
 

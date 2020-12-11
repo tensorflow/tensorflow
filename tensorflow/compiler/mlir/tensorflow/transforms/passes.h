@@ -194,6 +194,13 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 // function will have a "tf.device" attribute which specifies the device
 // assignment of the result.
 std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
+
+// Creates a pass that adds the device attribute to every tf.Const op based on
+// the device attribute of the operations that read its result. If the result of
+// a tf.Const op is read by operations placed on multiple devices, then the pass
+// will replicate the tf.Const op once for each device.
+std::unique_ptr<OperationPass<ModuleOp>> CreateConstantOpDeviceAssignmentPass();
+
 }  // namespace TF
 
 namespace tf_executor {
@@ -265,11 +272,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass();
 // `tf_device.parallel_execute` island.
 std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass();
 
-// Create a pass to parallelize TPU embedding params assigned to different
-// shards using the parallel_execte op.
-std::unique_ptr<OperationPass<FuncOp>>
-CreateParallelizeEmbeddingParamsOpsPass();
-
 // Creates a pass that annotates whether a LaunchFuncOp's parameters have the
 // same data across replicas.
 std::unique_ptr<OperationPass<ModuleOp>>
@@ -279,6 +281,9 @@ CreateAnnotateParameterReplicationPass();
 // compilation.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass();
+
+// Creates a pass that merges control flow with similar predicates.
+std::unique_ptr<OperationPass<ModuleOp>> CreateMergeControlFlowPass();
 
 // Creates a pass that hoists a `tf_device.launch` body and assigns a `device`
 // attribute to each TensorFlow dialect op in the body based on the `device`

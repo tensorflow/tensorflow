@@ -28,7 +28,7 @@ namespace gpu {
 namespace metal {
 
 struct CompiledModel {
-  std::vector<ComputeTaskDescriptorPtr> tasks;
+  std::vector<NodeDescriptor> nodes;
   std::map<ValueId, BHWC> tensor_shapes;
 };
 

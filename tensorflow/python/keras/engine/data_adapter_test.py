@@ -1096,6 +1096,7 @@ class ListsOfScalarsDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle([]))
 
 
 class TestUtils(keras_parameterized.TestCase):

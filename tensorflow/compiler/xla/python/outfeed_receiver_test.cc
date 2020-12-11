@@ -43,8 +43,9 @@ Status CompileAndExecute(XlaBuilder* builder, XlaOp root, int device_id,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
                       client->Compile(computation, std::move(compile_options)));
   ExecuteOptions execute_options;
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<PjRtBuffer>> output_buffers,
-                      executable->Execute({}, execute_options));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> output_buffers,
+      executable->Execute({{}}, execute_options));
   return Status::OK();
 }
 

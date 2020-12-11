@@ -122,6 +122,7 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   SE_DeviceMemoryBase* arguments;
   size_t arguments_len;
   SE_DeviceMemoryBase* result;
+  bool has_cross_program_prefetch_addr;
   SE_DeviceMemoryBase* cross_program_prefetch_addr;
   int32_t rng_seed;
   XLA_DeviceAssignment* device_assignment;

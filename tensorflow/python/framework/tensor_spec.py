@@ -114,6 +114,7 @@ class DenseSpec(type_spec.TypeSpec):
 
 
 @tf_export("TensorSpec")
+@type_spec.register("tf.TensorSpec")
 class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec):
   """Describes a tf.Tensor.
 

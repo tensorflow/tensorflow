@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Function.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
@@ -42,11 +42,11 @@ namespace {
                       sep fn(SqrtOp) sep fn(TanhOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                           \
-  fn(AddOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp) sep fn(MaxOp) \
-      sep fn(MinOp) sep fn(MulOp) sep fn(PowOp) sep fn(RemOp)             \
-          sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp)              \
-              sep fn(ShiftRightLogicalOp) sep fn(SubOp)
+#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                            \
+  fn(AddOp) sep fn(AndOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp)  \
+      sep fn(MaxOp) sep fn(MinOp) sep fn(MulOp) sep fn(OrOp) sep fn(PowOp) \
+          sep fn(RemOp) sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp) \
+              sep fn(ShiftRightLogicalOp) sep fn(SubOp) sep fn(XorOp)
 
 // TODO(herhut): Generate these out of op definitions.
 #define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                         \

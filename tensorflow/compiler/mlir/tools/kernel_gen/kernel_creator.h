@@ -26,8 +26,8 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace tensorflow {
@@ -41,7 +41,8 @@ xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures = {"sm_75"},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
     llvm::ArrayRef<uint32_t> unroll_factors = {},
-    bool embed_memref_prints = false, bool generate_fatbin = true);
+    bool embed_memref_prints = false, bool generate_fatbin = true,
+    bool print_ptx = false);
 
 // Extracts gpu_binary from the converted module.
 xla::StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module);

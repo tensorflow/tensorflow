@@ -335,9 +335,6 @@ struct GpuInfo {
   GpuVendor vendor = GpuVendor::kUnknown;
   GpuApi gpu_api = GpuApi::kUnknown;
 
-  // Temporary
-  std::vector<int> max_work_group_size;
-
   std::vector<int> supported_subgroup_sizes;
 
   AdrenoInfo adreno_info;
@@ -360,12 +357,6 @@ struct GpuInfo {
   bool IsCL20OrHigher() const;
   bool IsCL30OrHigher() const;
 };
-
-inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.opengl_info.major_version == 3 &&
-          gpu_info.opengl_info.minor_version >= 1) ||
-         gpu_info.opengl_info.major_version > 3;
-}
 
 // Currently it initializes:
 // vendor

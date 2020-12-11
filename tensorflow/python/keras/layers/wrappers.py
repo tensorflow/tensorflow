@@ -555,17 +555,16 @@ class Bidirectional(Wrapper):
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     output_shape = self.forward_layer.compute_output_shape(input_shape)
-    if not isinstance(output_shape, tensor_shape.TensorShape):
-      output_shape = tensor_shape.TensorShape(output_shape)
-    output_shape = tuple(output_shape.as_list())
     if self.return_state:
-      state_shape = output_shape[1:]
-      output_shape = output_shape[0]
+      state_shape = tf_utils.convert_shapes(output_shape[1:], to_tuples=False)
+      output_shape = tf_utils.convert_shapes(output_shape[0], to_tuples=False)
+    else:
+      output_shape = tf_utils.convert_shapes(output_shape, to_tuples=False)
 
     if self.merge_mode == 'concat':
-      output_shape = list(output_shape)
+      output_shape = output_shape.as_list()
       output_shape[-1] *= 2
-      output_shape = tuple(output_shape)
+      output_shape = tensor_shape.TensorShape(output_shape)
     elif self.merge_mode is None:
       output_shape = [output_shape, copy.copy(output_shape)]
 

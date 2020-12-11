@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -109,6 +110,12 @@ class ImmediateExecutionContext : public AbstractContext {
   // be executed as an op. Return error if the function with the same name
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
+
+  // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
+  // the key of the function definition name (to be retrieved during function
+  // instantiation).
+  virtual Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) = 0;
 
   // Find and return a added function by its name.
   virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;

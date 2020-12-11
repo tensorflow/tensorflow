@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -46,11 +46,11 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
     pm.addPass(CreateBreakUpIslandsPass());
   };
 
-  pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
-  add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
+  add_pass(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateReplicateToIslandPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addNestedPass<FuncOp>(CreateTPUDevicePropagationPass());
   pm.addPass(createSymbolDCEPass());
 }
 

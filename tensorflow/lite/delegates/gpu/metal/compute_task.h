@@ -24,17 +24,18 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 @interface TFLComputeTask : NSObject
 
 /// Returns empty string or error if shader can't be compiled.
 - (absl::Status)compileWithDevice:(id<MTLDevice>)device
-                   taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
-                   runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
+                   taskDescriptor:(const tflite::gpu::metal::NodeDescriptor&)desc
+                        precision:(tflite::gpu::CalculationsPrecision)precision;
 
 /// Updates parameters for inputs/outputs/intermediate tensors
 - (absl::Status)updateParamsWithDevice:(id<MTLDevice>)device
@@ -59,12 +60,16 @@ limitations under the License.
 
 - (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids;
 
-- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
-
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder;
 
 - (std::vector<tflite::gpu::ValueId>)getOutputIds;
 - (std::vector<tflite::gpu::ValueId>)getInputIds;
+
+- (void)setSrcTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor withIndex:(int)index;
+
+- (void)setDstTensor:(const tflite::gpu::metal::MetalSpatialTensor&)tensor withIndex:(int)index;
+
+- (void)setDescription:(const std::string&)description;
 
 @end
 

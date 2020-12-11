@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_experimental.h"
 
+#include <string.h>
+
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/testing/util.h"
+
+using tflite::delegates::test_utils::TestDelegate;
 
 namespace {
 
@@ -157,6 +165,130 @@ TEST(CApiExperimentalTest, SetOpResolver) {
   TfLiteInterpreterDelete(interpreter);
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
+}
+
+void AllocateAndSetInputs(TfLiteInterpreter* interpreter) {
+  std::array<int, 1> input_dims = {2};
+  ASSERT_EQ(TfLiteInterpreterResizeInputTensor(
+                interpreter, 0, input_dims.data(), input_dims.size()),
+            kTfLiteOk);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  TfLiteTensor* input_tensor = TfLiteInterpreterGetInputTensor(interpreter, 0);
+  ASSERT_NE(input_tensor, nullptr);
+  std::array<float, 2> input = {1.f, 3.f};
+  ASSERT_EQ(TfLiteTensorCopyFromBuffer(input_tensor, input.data(),
+                                       input.size() * sizeof(float)),
+            kTfLiteOk);
+}
+
+void VerifyOutputs(TfLiteInterpreter* interpreter) {
+  const TfLiteTensor* output_tensor =
+      TfLiteInterpreterGetOutputTensor(interpreter, 0);
+  ASSERT_NE(output_tensor, nullptr);
+  std::array<float, 2> output;
+  ASSERT_EQ(TfLiteTensorCopyToBuffer(output_tensor, output.data(),
+                                     output.size() * sizeof(float)),
+            kTfLiteOk);
+  EXPECT_EQ(output[0], 3.f);
+  EXPECT_EQ(output[1], 9.f);
+}
+
+void CheckExecution(TfLiteInterpreterOptions* options,
+                    TfLiteStatus expected_first_result,
+                    TfLiteStatus expected_subsequent_results) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
+  ASSERT_NE(model, nullptr);
+
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+  ASSERT_NE(interpreter, nullptr);
+
+  AllocateAndSetInputs(interpreter);
+  for (int i = 0; i < 4; i++) {
+    bool result = TfLiteInterpreterInvoke(interpreter);
+    bool expected_result =
+        ((i == 0) ? expected_first_result : expected_subsequent_results);
+    EXPECT_EQ(result, expected_result);
+    if (result != kTfLiteError) {
+      VerifyOutputs(interpreter);
+    }
+  }
+
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+}
+
+TEST_F(TestDelegate, NoDelegate) {
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  // Execution without any delegate should succeed.
+  CheckExecution(options, kTfLiteOk, kTfLiteOk);
+  TfLiteInterpreterOptionsDelete(options);
+}
+
+TEST_F(TestDelegate, DelegateNodeInvokeFailure) {
+  // Initialize a delegate that will fail when invoked.
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0, 1}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
+      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/,
+      false /**automatic_shape_propagation**/, false /**custom_op**/));
+  // Create another interpreter with the delegate, without fallback.
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options,
+                                      delegate_->get_tf_lite_delegate());
+  // Execution with the delegate should fail.
+  CheckExecution(options, kTfLiteError, kTfLiteError);
+  TfLiteInterpreterOptionsDelete(options);
+}
+
+TEST_F(TestDelegate, DelegateNodeInvokeFailureFallback) {
+  // Initialize a delegate that will fail when invoked.
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0, 1}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
+      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/,
+      false /**automatic_shape_propagation**/, false /**custom_op**/));
+  // Create another interpreter with the delegate, with fallback enabled.
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options,
+                                      delegate_->get_tf_lite_delegate());
+  TfLiteInterpreterOptionsSetEnableDelegateFallback(options, true);
+  CheckExecution(options,
+                 // First execution will report DelegateError which indicates
+                 // that the delegate failed but fallback succeeded.
+                 kTfLiteDelegateError,
+                 // Subsequent executions will not use the delegate and
+                 // should therefore succeed.
+                 kTfLiteOk);
+  TfLiteInterpreterOptionsDelete(options);
+}
+
+TEST_F(TestDelegate, TestFallbackWithMultipleDelegates) {
+  // First delegate only supports node 0.
+  // This delegate should support dynamic tensors, otherwise the second won't be
+  // applied.
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0}, kTfLiteDelegateFlagsAllowDynamicTensors,
+      false /**fail_node_prepare**/, 0 /**min_ops_per_subset**/,
+      true /**fail_node_invoke**/, false /**automatic_shape_propagation**/,
+      false /**custom_op**/));
+  // Second delegate supports node 1, and makes the graph immutable.
+  delegate2_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {1}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
+      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/,
+      false /**automatic_shape_propagation**/, false /**custom_op**/));
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options,
+                                      delegate_->get_tf_lite_delegate());
+  TfLiteInterpreterOptionsAddDelegate(options,
+                                      delegate2_->get_tf_lite_delegate());
+  TfLiteInterpreterOptionsSetEnableDelegateFallback(options, true);
+  CheckExecution(options,
+                 // First execution will report DelegateError which indicates
+                 // that the delegate failed but fallback succeeded.
+                 kTfLiteDelegateError,
+                 // Subsequent executions will not use the delegate and
+                 // should therefore succeed.
+                 kTfLiteOk);
+  TfLiteInterpreterOptionsDelete(options);
 }
 
 }  // namespace
