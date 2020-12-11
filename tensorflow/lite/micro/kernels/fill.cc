@@ -23,50 +23,12 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
-namespace ops {
-namespace builtin {
-namespace fill {
 
 namespace {
 
 constexpr int kDimsTensor = 0;
 constexpr int kValueTensor = 1;
 constexpr int kOutputTensor = 0;
-
-template <typename T>
-TfLiteStatus ResizeOutputImpl(TfLiteContext* context, const TfLiteTensor* dims,
-                              TfLiteTensor* output) {
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(dims->dims->data[0]);
-  for (int i = 0; i < output_shape->size; ++i) {
-    T data = GetTensorData<T>(dims)[i];
-    if (data < 0) {
-      TfLiteIntArrayFree(output_shape);
-      context->ReportError(context, "Fill dimensions must be >= 0", dims->type);
-      return kTfLiteError;
-    }
-    output_shape->data[i] = data;
-  }
-  return context->ResizeTensor(context, output, output_shape);
-}
-
-TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* dims,
-                          TfLiteTensor* output) {
-  switch (dims->type) {
-    case kTfLiteInt32:
-      return ResizeOutputImpl<int32_t>(context, dims, output);
-    case kTfLiteInt64:
-      return ResizeOutputImpl<int64_t>(context, dims, output);
-    default:
-      context->ReportError(
-          context,
-          "Fill only currently supports int32, int64 for input 0, "
-          "got %d.",
-          dims->type);
-      return kTfLiteError;
-  }
-}
-
-}  // namespace
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
@@ -97,20 +59,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   } else {
     SetTensorToDynamic(output);
   }
-  return kTfLiteOk;
-}
-
-TfLiteStatus FillString(const TfLiteTensor* value, TfLiteTensor* output) {
-  DynamicBuffer buffer;
-  const auto string_ref = GetString(value, 0);
-  int n = 1;
-  for (int i = 0; i < output->dims->size; ++i) {
-    n *= output->dims->data[i];
-  }
-  for (int i = 0; i < n; ++i) {
-    buffer.AddString(string_ref.str, string_ref.len);
-  }
-  buffer.WriteToTensor(output, /*new_shape=*/nullptr);
   return kTfLiteOk;
 }
 
@@ -159,7 +107,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-}  // namespace fill
+}  // namespace
 
 TfLiteRegistration* Register_FILL() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
@@ -167,6 +115,4 @@ TfLiteRegistration* Register_FILL() {
   return &r;
 }
 
-}  // namespace builtin
-}  // namespace ops
 }  // namespace tflite
