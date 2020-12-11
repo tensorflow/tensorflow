@@ -101,7 +101,7 @@
 
 ## Known Caveats
   * `tf.keras.mixed_precision`
-    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the AttributeError "Tensor.op is meaningless when eager execution is enabled". To workaround this issue when using `Model.fit`, do not pass `run_eagerly=True` to `Model.compile`. To workound when using a custom training loop, call `Optimizer.apply_gradients` inside a `tf.function`.
+    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the AttributeError "Tensor.op is meaningless when eager execution is enabled". See issue https://github.com/tensorflow/tensorflow/issues/45536 for details and a workaround.
 
 ## Bug Fixes and Other Changes
 
