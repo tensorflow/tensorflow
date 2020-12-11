@@ -380,21 +380,6 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
-    name = "left_shift",
-    generate_ranked = False,
-    generate_unranked = True,
-    tile_size = "256,1,1",
-    types = [
-        "i8",
-        "i16",
-        "i32",
-        "i64",
-    ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
-)
-
-gen_kernel_library(
     name = "add_v2",
     generate_ranked = False,
     generate_unranked = True,
@@ -403,21 +388,6 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
-        "i64",
-    ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
-)
-
-gen_kernel_library(
-    name = "right_shift",
-    generate_ranked = False,
-    generate_unranked = True,
-    tile_size = "256,1,1",
-    types = [
-        "i8",
-        "i16",
-        "i32",
         "i64",
     ],
     # TODO(b/174543802): Enable once fusion heuristics is better.
@@ -449,6 +419,8 @@ gen_kernel_library(
         "bitwise_and",
         "bitwise_or",
         "bitwise_xor",
+        "left_shift",
+        "right_shift",
     ]
 ]
 
