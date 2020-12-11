@@ -2,7 +2,7 @@
 ifeq ($(TARGET), ceva_bx1)
 TARGET_ARCH := bx
 CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
-CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
+CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY -I./tensorflow/lite/micro/kernels/ceva_bx1
 
 
   PLATFORM_ARGS = \
@@ -29,6 +29,13 @@ CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
   LD_TOOL := ceva-elf-ld
   LD := ceva-elf-ld
 
+  MICROLITE_CC_HDRS += \
+  tensorflow/lite/micro/kernels/ceva_bx1/CEVA_TFLM_lib.h \
+  tensorflow/lite/micro/kernels/ceva_bx1/types.h \
+  tensorflow/lite/micro/kernels/ceva_bx1/CEVA_basic_op.h
+
+
+
   CXXFLAGS += $(PLATFORM_ARGS)
   CCFLAGS += $(PLATFORM_ARGS)
   LDFLAGS += \
@@ -42,6 +49,6 @@ CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 	__internal_code_size=256k \
 #-L/home/yaire/CEVA-ToolBox/V18/BX/cevatools/lib/clang/7.1.0/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1 \
 #	-lc++ -lc++abi -lc -lcompiler-rt
-    
+
 
 endif
