@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -292,10 +291,11 @@ class ParametricGpuBinaryOpsTest
         static_cast<T>(0.1),
         static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
     absl::InlinedVector<OutT, 10> expected;
-    for (auto inp : llvm::zip(input_1, input_2)) {
+    for (auto inp1 = input_1.begin(), inp2 = input_2.begin(),
+              end = input_1.end();
+         inp1 != end; ++inp1, ++inp2) {
       expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(std::get<0>(inp)),
-          static_cast<BaselineType>(std::get<1>(inp)))));
+          static_cast<BaselineType>(*inp1), static_cast<BaselineType>(*inp2))));
     }
     RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
                                          TensorShape{2, 3}, expected,
