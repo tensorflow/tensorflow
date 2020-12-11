@@ -264,7 +264,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // Only if `allow_soft_placement` attribute is true should we mark ops
     // for outside compilation.
     auto soft_placement_attr =
-        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
     if (!(soft_placement_attr && soft_placement_attr.getValue())) {
       return WalkResult::advance();
     }
@@ -281,7 +281,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // Only if `allow_soft_placement` attribute is true should we unmark ops
     // for outside compilation.
     auto soft_placement_attr =
-        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
     if (!(soft_placement_attr && soft_placement_attr.getValue())) {
       return;
     }

@@ -157,9 +157,7 @@ bool VerifyModel(const void* buf, size_t len) {
 
 }  // namespace
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 JNIEXPORT jobjectArray JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_getInputNames(JNIEnv* env,
@@ -646,6 +644,4 @@ JNIEXPORT void JNICALL Java_org_tensorflow_lite_NativeInterpreterWrapper_delete(
   }
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif

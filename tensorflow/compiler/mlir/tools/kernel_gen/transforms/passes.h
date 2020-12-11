@@ -31,7 +31,13 @@ namespace tf_framework {
 // * adds tf_framework::OpKernelContextType argument to the function
 // * std.alloc becomes tf_framework.alloc_raw
 // * std.dealloc becomes tf_framework.dealloc_raw
-std::unique_ptr<OperationPass<ModuleOp> > CreateEmbedTFFrameworkPass();
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateEmbedTFFrameworkFunctionAndAllocPass();
+
+// Pass to convert std.assert operations to calls to tf_framework.report_error
+// and create the required control flow to abort the function on failed
+// execution.
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedTFFrameworkAssertPass();
 
 }  // namespace tf_framework
 
@@ -41,7 +47,8 @@ namespace transforms {
 std::unique_ptr<FunctionPass> CreateBufferReusePass();
 
 // Pass for applying LLVM legalization patterns.
-std::unique_ptr<OperationPass<ModuleOp> > CreateTFKernelToLLVMPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
+    mlir::StringRef blob_annotation = {});
 
 // Pass to tranform shape computations in shape dialect to standard and scf
 // using memref descriptors.
@@ -63,7 +70,7 @@ std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
 // Pass to annotate GPU Module with its PTX.
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
-    mlir::StringRef blob_annotation = "",
+    mlir::StringRef blob_annotation = {},
     ArrayRef<std::string> architectures = {}, bool generate_fatbin = true,
     bool print_ptx = false);
 

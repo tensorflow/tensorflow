@@ -26,57 +26,17 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::AlignByN;
-using ::tflite::gpu::BHWC;
-using ::tflite::gpu::HalfBits;
-using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
-using ::tflite::gpu::metal::CreateComputeProgram;
-using ::tflite::gpu::metal::DispatchParamsFunction;
-using ::tflite::gpu::metal::RuntimeOptions;
-using ::tflite::gpu::metal::UniformsFunction;
-using ::tflite::gpu::uint3;
-using ::tflite::gpu::ValueId;
+namespace tflite {
+namespace gpu {
+namespace metal {
 
-namespace {
-
-struct InputBuffer {
-  ValueId uid;
-  id<MTLBuffer> metalHandle;
-};
-
-struct OutputBuffer {
-  ValueId uid;
-  id<MTLBuffer> metalHandle;
-};
-
-struct UniformBuffer {
-  std::vector<uint8_t> data;
-  UniformsFunction dataFunction;
-};
-
-}  // namespace
-
-@implementation TFLComputeTask {
-  id<MTLComputePipelineState> _program;
-  std::vector<InputBuffer> _inputBuffers;
-  std::vector<OutputBuffer> _outputBuffers;
-  std::vector<id<MTLBuffer>> _immutableBuffers;
-  std::vector<UniformBuffer> _uniformBuffers;
-  uint3 _groupsSize;
-  uint3 _groupsCount;
-  DispatchParamsFunction _resizeFunction;
-  std::string _description;
-  tflite::gpu::metal::MetalArguments _metal_args;
-}
-
-- (absl::Status)compileWithDevice:(id<MTLDevice>)device
-                   taskDescriptor:(ComputeTaskDescriptorPtr)desc
-                   runtimeOptions:(const RuntimeOptions&)options {
-  size_t offset = desc->input_buffers.size() + desc->uniform_buffers.size()
-                  + desc->immutable_buffers.size() + 1;
-  RETURN_IF_ERROR(_metal_args.Init(device, offset, &desc->args, &desc->shader_source));
+absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
+                                            const NodeDescriptor& desc,
+                                            CalculationsPrecision precision) {
+  size_t offset = desc.task->src_tensors_names.size() + desc.task->uniform_buffers.size()
+                  + desc.task->immutable_buffers.size() + 1;
+  RETURN_IF_ERROR(metal_args_.Init(device, offset, &desc.task->args, &desc.task->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
@@ -90,13 +50,13 @@ struct UniformBuffer {
   NSString* toAccumulatorType2 = @"";
   NSString* toAccumulatorType3 = @"";
   NSString* toAccumulatorType4 = @"";
-  if (options.storage_precision == RuntimeOptions::Precision::FP32) {
+  if (precision == CalculationsPrecision::F32) {
     storageType = @"float";
     accumulatorType = @"float";
   } else {
     // FP16
     storageType = @"half";
-    if (options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    if (precision == CalculationsPrecision::F32_F16) {
       accumulatorType = @"float";
       toAccumulatorType = @"float";
       toAccumulatorType2 = @"float2";
@@ -122,108 +82,82 @@ struct UniformBuffer {
     @"SIMDGROUP_BARRIER" : barrier,
   };
 
-  NSString* code = [NSString stringWithCString:desc->shader_source.c_str()
+  NSString* code = [NSString stringWithCString:desc.task->shader_source.c_str()
                                       encoding:[NSString defaultCStringEncoding]];
   id<MTLComputePipelineState> program;
   RETURN_IF_ERROR(CreateComputeProgram(device, code, @"ComputeFunction", macros, &program));
   if (!program) {
     return absl::InternalError("Unknown shader compilation error");
   }
-  for (auto& buffer : desc->input_buffers) {
-    _inputBuffers.emplace_back(InputBuffer{buffer.id, nil});
+  for (auto& id : desc.src_tensors_ids) {
+    input_buffers_.emplace_back(InputBuffer{id, nil});
   }
-  for (auto& uniform : desc->uniform_buffers) {
-    _uniformBuffers.emplace_back(UniformBuffer{{}, uniform.data_function});
+  for (auto& uniform : desc.task->uniform_buffers) {
+    uniform_buffers_.emplace_back(UniformBuffer{{}, uniform.data_function});
   }
-  _outputBuffers.emplace_back(OutputBuffer{desc->output_buffer.id, nil});
-  for (auto& immutable : desc->immutable_buffers) {
-    int padding =
-        4 * (options.storage_precision == RuntimeOptions::Precision::FP32 ? sizeof(float)
-                                                                          : sizeof(HalfBits));
+  output_buffers_.emplace_back(OutputBuffer{desc.dst_tensors_ids[0], nil});
+  const bool f32_storage = precision == CalculationsPrecision::F32;
+  for (auto& immutable : desc.task->immutable_buffers) {
+    int padding = 4 * (f32_storage ? sizeof(float) : sizeof(HalfBits));
     int paddedSize = AlignByN(immutable.data.size(), padding);
     immutable.data.resize(paddedSize);
     id<MTLBuffer> metalBuffer = [device newBufferWithBytes:immutable.data.data()
                                                     length:immutable.data.size()
                                                    options:MTLResourceStorageModeShared];
-    _immutableBuffers.emplace_back(metalBuffer);
+    immutable_buffers_.emplace_back(metalBuffer);
   }
-  _resizeFunction = desc->resize_function;
-  _program = program;
+  resize_function_ = desc.task->resize_function;
+  program_ = program;
   return absl::OkStatus();
 }
 
-- (absl::Status)
-    updateParamsWithDevice:(id<MTLDevice>)device
-              tensorShapes:(const std::map<tflite::gpu::ValueId, tflite::gpu::BHWC>&)tensorShapes {
+absl::Status ComputeTask::UpdateParamsWithDevice(
+      id<MTLDevice> device, const std::map<ValueId, BHWC>& tensor_shapes) {
   std::vector<BHWC> src_shapes;
   std::vector<BHWC> dst_shapes;
-  for (const auto& in_buf : _inputBuffers) {
-    auto it = tensorShapes.find(in_buf.uid);
-    if (it == tensorShapes.end()) {
+  for (const auto& in_buf : input_buffers_) {
+    auto it = tensor_shapes.find(in_buf.uid);
+    if (it == tensor_shapes.end()) {
       return absl::InvalidArgumentError("Missing tensor shape");
     }
     src_shapes.push_back(it->second);
   }
-  for (const auto& out_buf : _outputBuffers) {
-    auto it = tensorShapes.find(out_buf.uid);
-    if (it == tensorShapes.end()) {
+  for (const auto& out_buf : output_buffers_) {
+    auto it = tensor_shapes.find(out_buf.uid);
+    if (it == tensor_shapes.end()) {
       return absl::InvalidArgumentError("Missing tensor shape");
     }
     dst_shapes.push_back(it->second);
   }
-  for (auto& uniform : _uniformBuffers) {
-    uniform.data = uniform.dataFunction(src_shapes, dst_shapes);
+  for (auto& uniform : uniform_buffers_) {
+    uniform.data = uniform.data_function(src_shapes, dst_shapes);
   }
 
   // Dispatch parameters re-calculation
-  auto workGroups = _resizeFunction(src_shapes, dst_shapes);
-  _groupsSize = workGroups.first;
+  auto workGroups = resize_function_(src_shapes, dst_shapes);
+  groups_size_ = workGroups.first;
   MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
-  if (_groupsSize.x > threadsPerGroup.width || _groupsSize.y > threadsPerGroup.height ||
-      _groupsSize.z > threadsPerGroup.depth) {
+  if (groups_size_.x > threadsPerGroup.width || groups_size_.y > threadsPerGroup.height ||
+      groups_size_.z > threadsPerGroup.depth) {
     std::string error("Threads per working group: ");
-    error += std::to_string(_groupsSize.x) + ", " + std::to_string(_groupsSize.y) + ", " +
-             std::to_string(_groupsSize.z);
+    error += std::to_string(groups_size_.x) + ", " + std::to_string(groups_size_.y) + ", " +
+             std::to_string(groups_size_.z);
     error += "is larger than the MTLDevice can support: ";
     error += std::to_string(threadsPerGroup.width) + ", " + std::to_string(threadsPerGroup.height) +
              ", " + std::to_string(threadsPerGroup.depth);
     return absl::InvalidArgumentError(error);
   }
-  _groupsCount = workGroups.second;
+  groups_count_ = workGroups.second;
   return absl::OkStatus();
 }
 
-- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-               usageRecordIds:(const std::map<ValueId, size_t>&)usageRecordIds
-              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers {
-  for (auto& buffer : _outputBuffers) {
-    // If the buffer is intermediate: set its metalHandle from sharedBuffers
-    if (std::find(outputIds.begin(), outputIds.end(), buffer.uid) == outputIds.end()) {
-      auto usageRecordIt = usageRecordIds.find(buffer.uid);
-      if (usageRecordIt == usageRecordIds.end()) {
-        return absl::InternalError("TensorUsageRecord for intermediate tensor is not found.");
-      }
-      buffer.metalHandle = sharedBuffers.at(sharedBufferIds.at(usageRecordIt->second));
-      (*buffers)[buffer.uid] = buffer.metalHandle;
-    }
-  }
-
-  // Re-assign input buffers
-  for (auto& buffer : _inputBuffers) {
-    buffer.metalHandle = (*buffers)[buffer.uid];
-  }
-  return absl::OkStatus();
-}
-
-- (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids {
-  for (auto& buffer : _inputBuffers) {
+bool ComputeTask::HasInOutIds(const std::set<ValueId>& ids) const {
+  for (auto& buffer : input_buffers_) {
     if (ids.count(buffer.uid)) {
       return true;
     }
   }
-  for (auto& buffer : _outputBuffers) {
+  for (auto& buffer : output_buffers_) {
     if (ids.count(buffer.uid)) {
       return true;
     }
@@ -231,71 +165,66 @@ struct UniformBuffer {
   return false;
 }
 
-- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers {
-  for (auto& buffer : _inputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer != inputOutputBuffers.end()) {
-      buffer.metalHandle = externalBuffer->second;
-    }
-  }
-  for (auto& buffer : _outputBuffers) {
-    const auto externalBuffer = inputOutputBuffers.find(buffer.uid);
-    if (externalBuffer != inputOutputBuffers.end()) {
-      buffer.metalHandle = externalBuffer->second;
-    }
-  }
-}
-
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder {
+void ComputeTask::EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder) {
   // The dispatch call is intended to be skipped.
-  if (_groupsCount.x * _groupsCount.y * _groupsCount.z == 0) {
+  if (groups_count_.x * groups_count_.y * groups_count_.z == 0) {
     return;
   }
 
-  [encoder setComputePipelineState:_program];
+  [encoder setComputePipelineState:program_];
 
   int bindIndex = 0;
-  for (const auto& buffer : _outputBuffers) {
-    [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
+  for (const auto& buffer : output_buffers_) {
+    [encoder setBuffer:buffer.metal_handle offset:0 atIndex:bindIndex];
     bindIndex++;
   }
-  for (const auto& buffer : _inputBuffers) {
-    [encoder setBuffer:buffer.metalHandle offset:0 atIndex:bindIndex];
+  for (const auto& buffer : input_buffers_) {
+    [encoder setBuffer:buffer.metal_handle offset:0 atIndex:bindIndex];
     bindIndex++;
   }
-  for (auto& immutable : _immutableBuffers) {
+  for (auto& immutable : immutable_buffers_) {
     [encoder setBuffer:immutable offset:0 atIndex:bindIndex];
     bindIndex++;
   }
-  for (auto& uniform : _uniformBuffers) {
+  for (auto& uniform : uniform_buffers_) {
     [encoder setBytes:uniform.data.data() length:uniform.data.size() atIndex:bindIndex];
     bindIndex++;
   }
-  _metal_args.Encode(encoder, bindIndex);
+  metal_args_.Encode(encoder, bindIndex);
 
-  MTLSize groupsCount = MTLSizeMake(_groupsCount.x, _groupsCount.y, _groupsCount.z);
-  MTLSize groupsSize = MTLSizeMake(_groupsSize.x, _groupsSize.y, _groupsSize.z);
+  MTLSize groupsCount = MTLSizeMake(groups_count_.x, groups_count_.y, groups_count_.z);
+  MTLSize groupsSize = MTLSizeMake(groups_size_.x, groups_size_.y, groups_size_.z);
   [encoder dispatchThreadgroups:groupsCount threadsPerThreadgroup:groupsSize];
 }
 
-- (std::vector<tflite::gpu::ValueId>)getOutputIds {
+std::vector<ValueId> ComputeTask::GetOutputIds() const {
   std::vector<tflite::gpu::ValueId> result;
-  for (auto& buffer : _outputBuffers) {
+  for (auto& buffer : output_buffers_) {
     result.push_back(buffer.uid);
   }
   return result;
 }
 
-- (std::vector<tflite::gpu::ValueId>)getInputIds {
+std::vector<ValueId> ComputeTask::GetInputIds() const {
   std::vector<tflite::gpu::ValueId> result;
-  for (auto& buffer : _inputBuffers) {
+  for (auto& buffer : input_buffers_) {
     result.push_back(buffer.uid);
   }
   return result;
 }
 
-- (void)setDescription:(const std::string&)description {
-  _description = description;
+void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
+  input_buffers_[index].metal_handle = tensor.GetBufferHandle();
 }
 
-@end
+void ComputeTask::SetDstTensor(const MetalSpatialTensor& tensor, int index) {
+  output_buffers_[index].metal_handle = tensor.GetBufferHandle();
+}
+
+void ComputeTask::SetDescription(const std::string& description) {
+  description_ = description;
+}
+
+}  // namespace metal
+}  // namespace gpu
+}  // namespace tflite

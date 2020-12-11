@@ -385,6 +385,10 @@ cc_library(
     hdrs = ["quantization_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
@@ -457,6 +461,7 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/fill.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
@@ -550,6 +555,7 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/fill.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",

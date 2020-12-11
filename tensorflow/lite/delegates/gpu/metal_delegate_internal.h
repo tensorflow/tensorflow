@@ -35,10 +35,12 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
 
 // Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
 // into this encoder instead of the internal encoder.
-// The callback is a user-defined function to take control over encoder and
-// command buffer. Can be nullptr.
-bool TFLGpuDelegateSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
-    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder);
+bool TFLGpuDelegateSetCommandEncoder(TfLiteDelegate* delegate,
+                                     id<MTLComputeCommandEncoder> encoder);
+
+// Binds user-defined MTLCommandBuffer. The delegate puts all GPU tasks
+// into this buffer instead of the internal command buffer.
+bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
+                                    id<MTLCommandBuffer> command_buffer);
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_INTERNAL_H_

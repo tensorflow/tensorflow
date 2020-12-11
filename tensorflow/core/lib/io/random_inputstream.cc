@@ -55,9 +55,10 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
+  int64 current_size = result->size();
   Status s = file_->Read(pos_, bytes_to_read, result);
   if (s.ok() || errors::IsOutOfRange(s)) {
-    pos_ += result->size();
+    pos_ += result->size() - current_size;
   }
   return s;
 }

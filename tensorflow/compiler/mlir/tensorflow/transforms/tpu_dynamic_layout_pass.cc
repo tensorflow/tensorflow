@@ -109,7 +109,7 @@ bool IsSupportedInputOp(
   };
 
   // Check all generator aliases (ops or function argument) are on CPU.
-  FuncOp func = iterator_op.getParentOfType<FuncOp>();
+  FuncOp func = iterator_op->getParentOfType<FuncOp>();
   return llvm::all_of(aliases, [&](Value alias) {
     // Ignore non-generator aliases.
     if (!is_generator(alias)) return true;
@@ -230,7 +230,7 @@ void HandleCompileAndExecutes(
 
   bool metadata_updated = false;
   auto maybe_replicate =
-      execute_launches.front().getParentOfType<tf_device::ReplicateOp>();
+      execute_launches.front()->getParentOfType<tf_device::ReplicateOp>();
 
   for (auto execute_and_input_mapping :
        llvm::zip(execute_launches, input_mappings)) {
@@ -284,7 +284,7 @@ void TPUDynamicLayoutPass::runOnFunction(
   func.walk([&](TF::_TPUCompileMlirOp compile) {
     // Detect tf._TPUCompileMlir -> tf.TPUExecute(s).
     auto compile_launch =
-        llvm::dyn_cast<tf_device::LaunchOp>(compile.getParentOp());
+        llvm::dyn_cast<tf_device::LaunchOp>(compile->getParentOp());
     if (!compile_launch || !compile_launch.WrapsSingleOp()) return;
 
     llvm::SmallVector<tf_device::LaunchOp, 4> execute_launches;
@@ -295,7 +295,7 @@ void TPUDynamicLayoutPass::runOnFunction(
       auto execute = llvm::dyn_cast<TF::TPUExecuteOp>(user);
       if (!execute) return;
       auto execute_launch =
-          llvm::dyn_cast<tf_device::LaunchOp>(execute.getParentOp());
+          llvm::dyn_cast<tf_device::LaunchOp>(execute->getParentOp());
       if (!execute_launch || !execute_launch.WrapsSingleOp()) return;
       execute_launches.push_back(execute_launch);
     }

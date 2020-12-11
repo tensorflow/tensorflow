@@ -217,12 +217,12 @@ cc_library(
     ],
     deps = [
         ":abstract_context",
-        ":abstract_operation",
         ":abstract_tensor_handle",
         ":c_api_unified_internal",
         ":tape",
         "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -278,6 +278,7 @@ tf_cuda_cc_test(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:array_grad",
         "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:not_differentiable",
         "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/c/experimental/ops",
         "//tensorflow/cc/profiler",
@@ -429,7 +430,11 @@ tf_cuda_cc_test(
     ],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "no_cuda_asan",  # b/175330074
+        "notap",  # b/175330074
+    ],
     deps = [
         ":abstract_tensor_handle",
         ":c_api_experimental",
@@ -454,6 +459,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -468,7 +474,6 @@ tf_cuda_cc_test(
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
-        "nomac",
         "no_cuda_asan",  # b/173825513
     ],
     deps = [
@@ -493,6 +498,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/core/platform:tensor_float_32_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -501,6 +507,7 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "abstract_tensor_handle",
+    srcs = ["abstract_tensor_handle.cc"],
     hdrs = ["abstract_tensor_handle.h"],
     visibility = [
         "//tensorflow:internal",

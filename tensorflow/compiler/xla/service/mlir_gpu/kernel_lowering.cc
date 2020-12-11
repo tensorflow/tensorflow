@@ -162,18 +162,11 @@ class LowerToNVVMPass
     ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
-    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
-                                                   &getContext());
+    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns);
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
     ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
-    target.addIllegalDialect<::mlir::gpu::GPUDialect>();
-    target.addIllegalOp<::mlir::LLVM::ExpOp>();
-    target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
-    target.addLegalDialect<::mlir::NVVM::NVVMDialect>();
-    // TODO(csigg): Remove once we support replacing non-root ops.
-    target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
-                      ::mlir::gpu::YieldOp>();
+    ::mlir::configureGpuToNVVMConversionLegality(target);
     if (failed(mlir::applyFullConversion(m, target, std::move(patterns)))) {
       signalPassFailure();
     }
@@ -229,8 +222,7 @@ class LowerToROCDLPass
     ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
-    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
-                                                   &getContext());
+    ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns);
     ::mlir::populateGpuToROCDLConversionPatterns(converter, patterns);
     ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
 

@@ -50,8 +50,12 @@ absl::string_view ThunkKindToString(Thunk::Kind kind) {
       return "kCudnnBatchNormForwardTraining";
     case Thunk::kCustomCall:
       return "kCustomCall";
+    case Thunk::kNcclAllGather:
+      return "kNcclAllGather";
     case Thunk::kNcclAllReduce:
       return "kNcclAllReduce";
+    case Thunk::kNcclAllToAll:
+      return "kNcclAllToAll";
     case Thunk::kFft:
       return "kFft";
     case Thunk::kGemm:

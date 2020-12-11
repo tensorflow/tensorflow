@@ -60,7 +60,7 @@ class TensorDeviceCopyConversionPass
         arg_device = attr;
       }
 
-      StringAttr op_device = op.getAttrOfType<StringAttr>(kDeviceAttr);
+      StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
       if (!op_device) op_device = empty_string;
       // Skip the folding logic if the argument's device is different from the
       // operation's device.

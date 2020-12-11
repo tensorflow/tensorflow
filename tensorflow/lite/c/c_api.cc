@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/delegates/interpreter_utils.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
@@ -25,10 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/version.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
 
 namespace {
 class CallbackErrorReporter : public tflite::ErrorReporter {
@@ -83,6 +80,8 @@ class CallbackOpResolver : public ::tflite::OpResolver {
 };
 
 }  // namespace
+
+extern "C" {
 
 // LINT.IfChange
 
@@ -165,7 +164,12 @@ TfLiteStatus TfLiteInterpreterAllocateTensors(TfLiteInterpreter* interpreter) {
 }
 
 TfLiteStatus TfLiteInterpreterInvoke(TfLiteInterpreter* interpreter) {
-  return interpreter->impl->Invoke();
+  if (interpreter->enable_delegate_fallback) {
+    return tflite::delegates::InterpreterUtils::InvokeWithCPUFallback(
+        interpreter->impl.get());
+  } else {
+    return interpreter->impl->Invoke();
+  }
 }
 
 int32_t TfLiteInterpreterGetOutputTensorCount(
@@ -227,9 +231,7 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
 
 // LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus
 
 namespace tflite {
 namespace internal {
@@ -298,8 +300,12 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
     }
   }
 
+  bool enable_delegate_fallback =
+      optional_options != nullptr && optional_options->enable_delegate_fallback;
+
   return new TfLiteInterpreter{model->impl, std::move(optional_error_reporter),
-                               std::move(interpreter)};
+                               std::move(interpreter),
+                               enable_delegate_fallback};
 }
 
 }  // namespace internal

@@ -243,7 +243,8 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
     }
 
     // TODO: LHS dilation for deconvolution not supported yet.
-    if (op.lhs_dilation()) {
+    // TODO(jurahul): Window reversal is not supported yet.
+    if (op.lhs_dilation() || op.hasWindowReversal()) {
       return failure();
     }
 
@@ -733,22 +734,36 @@ class IotaConverter : public OpConversionPattern<OpTy> {
   }
 };
 
-class ConstConverter : public OpConversionPattern<lmhlo::ConstOp> {
+template <typename OpTy>
+class ConstConverter : public OpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern<lmhlo::ConstOp>::OpConversionPattern;
+  using OpConversionPattern<OpTy>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      lmhlo::ConstOp const_op, ArrayRef<Value> args,
+      OpTy const_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
-    auto loc = const_op.getLoc();
-    auto value_attr = const_op.value().cast<DenseElementsAttr>();
+    Location loc = const_op.getLoc();
+    auto value_attr = const_op.value().template cast<DenseElementsAttr>();
     if (value_attr.getType().getRank() != 0) return failure();
-    auto std_const_op =
-        rewriter.create<mlir::ConstantOp>(loc, value_attr.getValue({}));
-    rewriter.create<mlir::AffineStoreOp>(loc, std_const_op,
-                                         const_op.getOperand(), ValueRange());
-    rewriter.eraseOp(const_op);
+    ReplaceConstOp(loc, const_op, value_attr, rewriter);
     return success();
+  }
+
+ private:
+  void ReplaceConstOp(Location loc, mhlo::ConstOp op,
+                      DenseElementsAttr value_attr,
+                      ConversionPatternRewriter& rewriter) const {
+    Value std_tensor_const = rewriter.create<mlir::ConstantOp>(loc, value_attr);
+    rewriter.replaceOp(op, {std_tensor_const});
+  }
+  void ReplaceConstOp(Location loc, lmhlo::ConstOp op,
+                      DenseElementsAttr value_attr,
+                      ConversionPatternRewriter& rewriter) const {
+    Value std_scalar_const =
+        rewriter.create<mlir::ConstantOp>(loc, value_attr.getValue({}));
+    rewriter.create<mlir::AffineStoreOp>(loc, std_scalar_const, op.getOperand(),
+                                         llvm::None);
+    rewriter.eraseOp(op);
   }
 };
 
@@ -908,7 +923,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<BroadcastConverter<lmhlo::BroadcastOp>,
-                   ConstConverter,
+                   ConstConverter<lmhlo::ConstOp>,
                    ConvToLinalgConverter,
                    IotaConverter<lmhlo::IotaOp>,
                    LhloBroadcastInDimConverter,
@@ -927,22 +942,27 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::ExpOp>,
                    PointwiseToLinalgConverter<lmhlo::FloorOp>,
                    PointwiseToLinalgConverter<lmhlo::ImagOp>,
+                   PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
                    PointwiseToLinalgConverter<lmhlo::LogOp>,
                    PointwiseToLinalgConverter<lmhlo::MaxOp>,
                    PointwiseToLinalgConverter<lmhlo::MinOp>,
                    PointwiseToLinalgConverter<lmhlo::MulOp>,
                    PointwiseToLinalgConverter<lmhlo::NegOp>,
                    PointwiseToLinalgConverter<lmhlo::NotOp>,
+                   PointwiseToLinalgConverter<lmhlo::OrOp>,
                    PointwiseToLinalgConverter<lmhlo::RealOp>,
                    PointwiseToLinalgConverter<lmhlo::RemOp>,
                    PointwiseToLinalgConverter<lmhlo::RsqrtOp>,
                    PointwiseToLinalgConverter<lmhlo::SelectOp>,
+                   PointwiseToLinalgConverter<lmhlo::ShiftLeftOp>,
+                   PointwiseToLinalgConverter<lmhlo::ShiftRightArithmeticOp>,
+                   PointwiseToLinalgConverter<lmhlo::ShiftRightLogicalOp>,
                    PointwiseToLinalgConverter<lmhlo::SignOp>,
                    PointwiseToLinalgConverter<lmhlo::SinOp>,
                    PointwiseToLinalgConverter<lmhlo::SqrtOp>,
                    PointwiseToLinalgConverter<lmhlo::SubOp>,
                    PointwiseToLinalgConverter<lmhlo::TanhOp>,
-                   PointwiseToLinalgConverter<lmhlo::IsFiniteOp>,
+                   PointwiseToLinalgConverter<lmhlo::XorOp>,
                    ReduceConverter,
                    ReshapeOpConverter<lmhlo::ReshapeOp>,
                    ReverseConverter<lmhlo::ReverseOp>,
@@ -1024,7 +1044,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
   patterns
       ->insert<BroadcastConverter<mhlo::BroadcastOp, false>,
-               HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
+               ConstConverter<mhlo::ConstOp>, HloBroadcastInDimConverter,
+               IotaConverter<mhlo::IotaOp, false>,
                PointwiseToLinalgConverter<mhlo::AbsOp, false>,
                PointwiseToLinalgConverter<mhlo::AddOp, false>,
                PointwiseToLinalgConverter<mhlo::AndOp, false>,
@@ -1039,21 +1060,27 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::ExpOp, false>,
                PointwiseToLinalgConverter<mhlo::FloorOp, false>,
                PointwiseToLinalgConverter<mhlo::ImagOp, false>,
+               PointwiseToLinalgConverter<mhlo::IsFiniteOp, false>,
                PointwiseToLinalgConverter<mhlo::LogOp, false>,
                PointwiseToLinalgConverter<mhlo::MaxOp, false>,
                PointwiseToLinalgConverter<mhlo::MinOp, false>,
                PointwiseToLinalgConverter<mhlo::MulOp, false>,
                PointwiseToLinalgConverter<mhlo::NegOp, false>,
                PointwiseToLinalgConverter<mhlo::NotOp, false>,
+               PointwiseToLinalgConverter<mhlo::OrOp, false>,
                PointwiseToLinalgConverter<mhlo::RealOp, false>,
                PointwiseToLinalgConverter<mhlo::RemOp, false>,
                PointwiseToLinalgConverter<mhlo::RsqrtOp, false>,
                PointwiseToLinalgConverter<mhlo::SelectOp, false>,
+               PointwiseToLinalgConverter<mhlo::ShiftLeftOp, false>,
+               PointwiseToLinalgConverter<mhlo::ShiftRightArithmeticOp, false>,
+               PointwiseToLinalgConverter<mhlo::ShiftRightLogicalOp, false>,
+               PointwiseToLinalgConverter<mhlo::SignOp, false>,
                PointwiseToLinalgConverter<mhlo::SinOp, false>,
                PointwiseToLinalgConverter<mhlo::SqrtOp, false>,
                PointwiseToLinalgConverter<mhlo::SubOp, false>,
                PointwiseToLinalgConverter<mhlo::TanhOp, false>,
-               PointwiseToLinalgConverter<mhlo::IsFiniteOp, false>,
+               PointwiseToLinalgConverter<mhlo::XorOp, false>,
                ReshapeOpConverter<mhlo::ReshapeOp, false>,
                ReverseConverter<mhlo::ReverseOp, false>,
                TransposeConverter<mhlo::TransposeOp, false>>(context);

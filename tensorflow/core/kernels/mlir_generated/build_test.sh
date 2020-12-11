@@ -24,7 +24,7 @@ OUTPUT_FILE="${TEST_TMPDIR}/output.mlir"
 INPUT="$2"
 
 # Do something
-${TF_TO_KERNEL} --input=${INPUT} --output=${OUTPUT_FILE} --unroll_factors=4 --tile_sizes=256 --arch=sm_70,compute_75  || die "Failed to generate kernel"
+${TF_TO_KERNEL} --input=${INPUT} --output=${OUTPUT_FILE} --unroll_factors=4 --tile_sizes=256 --arch=sm_70,compute_75 "${@:3}"  || die "Failed to generate kernel"
 
 # Check something
 [ -s ${OUTPUT_FILE} ] || die "output file was empty"

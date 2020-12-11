@@ -1827,3 +1827,27 @@ func @convert_pad(%arg0: tensor<8x128xf32>, %arg1: tensor<f32>) -> tensor<11x131
   return %0 : tensor<11x131xf32>
 }
 
+// CHECK-LABEL:   func @convert_round(
+// CHECK-SAME:                        %[[VAL_0:.*]]: tensor<8x128xbf16>) -> tensor<8x128xbf16>
+// CHECK:           %[[VAL_1:.*]] = "tf.Round"(%[[VAL_0]]) : (tensor<8x128xbf16>) -> tensor<8x128xbf16>
+// CHECK:           return %[[VAL_1]]
+// CHECK:         }
+func @convert_round(%arg0: tensor<8x128xbf16>) -> tensor<8x128xbf16> {
+  %0 = mhlo.constant dense<2.000000e+00> : tensor<8x128xbf16>
+  %1 = mhlo.constant dense<5.000000e-01> : tensor<8x128xbf16>
+  %2 = mhlo.constant dense<1.000000e+00> : tensor<8x128xbf16>
+  %3 = "mhlo.floor"(%arg0) : (tensor<8x128xbf16>) -> tensor<8x128xbf16>
+  %4 = mhlo.subtract %arg0, %3 : tensor<8x128xbf16>
+  %5 = "mhlo.compare"(%4, %1) {comparison_direction = "GT"} : (tensor<8x128xbf16>, tensor<8x128xbf16>) -> tensor<8x128xi1>
+  %6 = "mhlo.compare"(%4, %1) {comparison_direction = "EQ"} : (tensor<8x128xbf16>, tensor<8x128xbf16>) -> tensor<8x128xi1>
+  %7 = mhlo.multiply %arg0, %1 : tensor<8x128xbf16>
+  %8 = "mhlo.floor"(%7) : (tensor<8x128xbf16>) -> tensor<8x128xbf16>
+  %9 = mhlo.multiply %8, %0 : tensor<8x128xbf16>
+  %10 = mhlo.subtract %3, %9 : tensor<8x128xbf16>
+  %11 = "mhlo.compare"(%10, %2) {comparison_direction = "EQ"} : (tensor<8x128xbf16>, tensor<8x128xbf16>) -> tensor<8x128xi1>
+  %12 = mhlo.and %6, %11 : tensor<8x128xi1>
+  %13 = mhlo.or %5, %12 : tensor<8x128xi1>
+  %14 = mhlo.add %3, %2 : tensor<8x128xbf16>
+  %15 = "mhlo.select"(%13, %14, %3) : (tensor<8x128xi1>, tensor<8x128xbf16>, tensor<8x128xbf16>) -> tensor<8x128xbf16>
+  return %15 : tensor<8x128xbf16>
+}

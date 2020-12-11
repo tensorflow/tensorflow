@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
@@ -299,27 +300,6 @@ inline bool IsBF16ShapedType(Type t) {
   return false;
 }
 
-// Performs const folding `calculate` with broadcast behavior on the two
-// attributes `operand1` and `operand2` and returns the result if possible.
-// The two operands are expected to both be scalar values.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOpScalarScalar(Type result_type, Attribute operand1,
-                                        Attribute operand2,
-                                        const CalculationT &calculate) {
-  auto lhs = operand1.cast<AttrElementT>();
-  auto rhs = operand2.cast<AttrElementT>();
-
-  assert(lhs.getType() == result_type && rhs.getType() == result_type &&
-         "values of incompatible types should be caught by op verification");
-
-  // TODO: Need to handle overflow/underflow cases.
-  return AttrElementT::get(result_type,
-                           calculate(lhs.getValue(), rhs.getValue()));
-}
-
 // Returns new shape with rank 'new_dims' with padded ones on the
 // left if needed.
 inline std::vector<int64_t> GetPaddedShape(ArrayRef<int64_t> old_shape,
@@ -389,25 +369,19 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
   }
 
   auto num_elements = type.getNumElements();
-  SmallVector<ElementValueT, 16> lhs_old_values;
-  SmallVector<ElementValueT, 16> rhs_old_values;
-  if (lhs_is_splat)
-    lhs_old_values.push_back(lhs.getSplatValue<ElementValueT>());
-  else
-    lhs_old_values = llvm::to_vector<16>(lhs.getValues<ElementValueT>());
-  if (rhs_is_splat)
-    rhs_old_values.push_back(rhs.getSplatValue<ElementValueT>());
-  else
-    rhs_old_values = llvm::to_vector<16>(rhs.getValues<ElementValueT>());
+
   SmallVector<ElementValueT, 16> new_values;
   new_values.reserve(num_elements);
   const auto result_shape = type.getShape();
   std::vector<int64_t> current_index(type.getRank(), 0);
   // Create the new shape with ones padded to the left.
-  std::vector<int64_t> lhs_new_shape =
+  const std::vector<int64_t> lhs_new_shape =
       GetPaddedShape(lhs.getType().getShape(), type.getRank());
-  std::vector<int64_t> rhs_new_shape =
+  const std::vector<int64_t> rhs_new_shape =
       GetPaddedShape(rhs.getType().getShape(), type.getRank());
+
+  auto lhs_old_values = lhs.getValues<ElementValueT>();
+  auto rhs_old_values = rhs.getValues<ElementValueT>();
 
   // Add each pair of the corresponding values in the dense elements
   // attributes.
@@ -416,16 +390,16 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
     // in the N-dimension tensor. GetElementIndex returns
     // the index in the flat representation of the original tensor
     // to use.
-    int64_t lhs_index =
+    const int64_t lhs_index =
         lhs_is_splat ? 0 : GetElementIndex(lhs_new_shape, current_index);
-    int64_t rhs_index =
+    const int64_t rhs_index =
         rhs_is_splat ? 0 : GetElementIndex(rhs_new_shape, current_index);
 
-    new_values.push_back(
-        calculate(lhs_old_values[lhs_index], rhs_old_values[rhs_index]));
+    new_values.push_back(calculate(*(lhs_old_values.begin() + lhs_index),
+                                   *(rhs_old_values.begin() + rhs_index)));
     IncrementIndex(result_shape, &current_index);
   }
-  return DenseElementsAttr::get(type, new_values);
+  return DenseElementsAttr::get(type, ArrayRef<ElementValueT>(new_values));
 }
 
 /// Performs const folding `calculate` with broadcast behavior on the two
@@ -437,16 +411,10 @@ template <class AttrElementT,
           class CalculationT =
               llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
-                            Attribute operand2, const CalculationT &calculate,
-                            bool is_commutative) {
-  if (operand1.dyn_cast_or_null<AttrElementT>()) {
-    // Scalar op scalar case
-    if (operand2.dyn_cast_or_null<AttrElementT>())
-      return ConstFoldBinaryOpScalarScalar<AttrElementT>(result_type, operand1,
-                                                         operand2, calculate);
-  } else if (operand1.dyn_cast_or_null<DenseElementsAttr>() &&
-             operand2.dyn_cast_or_null<DenseElementsAttr>()) {
-    return ConstFoldBinaryOpDenseDense<AttrElementT>(
+                            Attribute operand2, const CalculationT &calculate) {
+  if (operand1.dyn_cast_or_null<DenseElementsAttr>() &&
+      operand2.dyn_cast_or_null<DenseElementsAttr>()) {
+    return ConstFoldBinaryOpDenseDense<AttrElementT, ElementValueT>(
         result_type, operand1.cast<DenseElementsAttr>(),
         operand2.cast<DenseElementsAttr>(), calculate);
   }
@@ -463,8 +431,7 @@ Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
 Attribute ConstFoldBinaryOp(
     Type result_type, ArrayRef<Attribute> operands,
     llvm::function_ref<APFloat(APFloat, APFloat)> float_calculate,
-    llvm::function_ref<APInt(APInt, APInt)> int_calculate,
-    bool is_commutative) {
+    llvm::function_ref<APInt(APInt, APInt)> int_calculate) {
   // Note: All types are wrapped in tensor types in TFlite. E.g., f32 is
   // represented as tensor<f32>. So we are only handling tensor types here.
   auto type = result_type.dyn_cast<ShapedType>();
@@ -474,11 +441,11 @@ Attribute ConstFoldBinaryOp(
 
   if (elemType.isa<FloatType>())
     return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
-                                        float_calculate, is_commutative);
+                                        float_calculate);
 
   if (elemType.isSignlessInteger())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
-                                          int_calculate, is_commutative);
+                                          int_calculate);
 
   return {};
 }
@@ -557,7 +524,7 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a + b; },
-      [](APInt a, APInt b) { return a + b; }, getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a + b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -991,9 +958,30 @@ static LogicalResult Verify(ScatterNdOp op) {
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   // TODO(b/142478136): Handle fused ops.
   if (fused_activation_function() != "NONE") return {};
+
+  // This function is performance critical for op fusion patterns, e.g.
+  // FuseBinaryOpToPrecedingAffine and FuseMulOrDivWithConv2dOrDepthwiseConv2d.
+  // So a few specializations are provided to evaluate the math operation
+  // more efficiently.
+
+  // Specialization for f32 type.
+  if (getType().cast<ShapedType>().getElementType().isF32()) {
+    return ConstFoldBinaryOp<FloatAttr, float>(
+        getType(), operands[0], operands[1],
+        [](float a, float b) { return a * b; });
+  }
+
+  // Specialization for bf16 type.
+  if (getType().cast<ShapedType>().getElementType().isBF16()) {
+    return ConstFoldBinaryOp<FloatAttr, Eigen::bfloat16>(
+        getType(), operands[0], operands[1],
+        [](Eigen::bfloat16 a, Eigen::bfloat16 b) { return a * b; });
+  }
+
+  // Generic fallback with APFloat
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a * b; },
-      [](APInt a, APInt b) { return a * b; }, getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a * b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1005,8 +993,7 @@ OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a / b; },
-      [](APInt a, APInt b) { return a.sdiv(b); },
-      getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a.sdiv(b); });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1378,7 +1365,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a - b; },
-      [](APInt a, APInt b) { return a - b; }, getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a - b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -2460,6 +2447,8 @@ Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
   if (value.isa<OpaqueElementsAttr>() ||
       (value.isa<ElementsAttr>() && value.getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
   return nullptr;
 }
 

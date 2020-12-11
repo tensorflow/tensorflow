@@ -63,22 +63,31 @@ distribute_py_test(
     size = "medium",
     srcs = ["mnist_train_test.py"],
     data = [":mnist_ops_mlir"],
-    disable_mlir_bridge = False,
+    disable_v3 = True,  # Not needed. Save some resources and test time.
     python_version = "PY3",
     tags = [
-        "no_cuda_asan",  # b/173431253
-        "no_oss",
-        "notap",  # b/173661843
-        "notsan",  # b/173246447
+        "no_cuda_asan",  # Not needed, and there were issues with timeouts.
+        "no_oss",  # Avoid downloading mnist data set in oss.
+        "notap",  # The test is too long to run as part of llvm
+        # presubmits (b/173661843).
+        "notsan",  # Not needed, and there were issues with timeouts.
+        "nomultivm",  # Not needed. Save some resources and test time.
+
+        # TODO(b/172367622) Re-enable TPU test after issues with TPU are
+        # resolved.
+        "notpu",
     ],
-    xla_enable_strict_auto_jit = False,  # b/173254861
     deps = [
         ":mnist_train",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",
-        "@absl_py//absl/testing:parameterized",
+
+        # TODO(b/172367622) Switch to MLIR bridge after issues with MLIR bridge
+        # are resolved.
+        # "//tensorflow/python:is_mlir_bridge_test_true",
     ],
 )

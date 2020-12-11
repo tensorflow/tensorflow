@@ -1965,3 +1965,22 @@ tf_xla_py_test(
         "//tensorflow/python/compiler/xla:compiler_py",
     ],
 )
+
+tf_xla_py_test(
+    name = "risc_ops_test",
+    size = "small",
+    srcs = ["risc_ops_test.py"],
+    enabled_backends = ["cpu"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:is_mlir_bridge_test_true",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops/risc:risc_ops",
+    ],
+)

@@ -644,16 +644,17 @@ class Model {
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
   CollectTunableParameters(std::shared_ptr<Node> node);
 
-  // Collects "essential" parallelism parameters of transformations in the tree
-  // rooted in the given node. Which parameters are essential is determined by
-  // comparison the processing time spent in the corresponding transformation
-  // relative to other transformations. The collected parameters are returned
-  // as a mapping from a (unique) node name to a parallelism parameter.
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-  CollectEssentialParallelism(
-      std::shared_ptr<Node> node,
+  // Determines if we should stop the gradient descent optimization iterations
+  // based on number of increasable parameters, CPU budget, RAM budget and
+  // current resource usage.
+  bool ShouldStop(
+      int64 cpu_budget, int64 ram_budget,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
       const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
-          parameters);
+          parallelism_parameters,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+          buffer_size_parameters,
+      std::shared_ptr<Node> snapshot, bool* cpu_budget_reached);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the

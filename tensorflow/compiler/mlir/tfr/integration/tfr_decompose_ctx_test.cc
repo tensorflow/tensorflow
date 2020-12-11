@@ -82,6 +82,7 @@ tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
   tfr.return %res : !tfr.tensor
 }
 
+tfr.func @tf__my_add_n_(!tfr.tensor_list<N,T>, i64 {tfr.name="N"}) -> !tfr.tensor attributes{N,T}
 tfr.func @tf__risc_add_dummy_(!tfr.tensor<T>, !tfr.tensor<T>) -> !tfr.tensor<T> attributes{T}
 )";
 

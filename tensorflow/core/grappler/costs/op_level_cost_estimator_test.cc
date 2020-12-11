@@ -894,8 +894,8 @@ TEST_F(OpLevelCostEstimatorTest,
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ false,
       "NCHW", "HWIO"));
   EXPECT_EQ(Costs::Duration(825345), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355321038), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(356146383), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355321037), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(356146382), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -908,8 +908,8 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_HWIO) {
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW", "HWIO"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -922,8 +922,8 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_OIHW) {
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW", "OIHW"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -936,8 +936,8 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNHWC_HWIO) {
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NHWC", "HWIO"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -950,8 +950,8 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNHWC_OIHW) {
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NHWC", "OIHW"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -964,8 +964,8 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_VECT_C_OIHW) {
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW_VECT_C", "OIHW"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -978,8 +978,8 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_OIHW_VECT_I) {
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW", "OIHW_VECT_I"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -993,8 +993,8 @@ TEST_F(OpLevelCostEstimatorTest,
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW_VECT_C", "OIHW_VECT_I"));
   EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(355616768), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033576), cost.execution_time);
   EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
@@ -2255,9 +2255,14 @@ TEST_F(OpLevelCostEstimatorTest, CropAndResizeExecutionTime) {
   DescribeTensor4D(kNumBoxes, kOutputImageDim, kOutputImageDim, kChannelSize,
                    op_context.op_info.add_outputs());
 
+  // Note this is time [ns, default in Duration in Costs], not bytes;
+  // whereas memory bandwidth from SetCpuDevice() is 10GB/s.
   const int kExpectedMemoryTime =
-      (kImageDim * kImageDim + kNumBoxes * kOutputImageDim * kOutputImageDim) *
-      4;
+      (kImageDim * kImageDim * 4 +  // input image in float.
+       kNumBoxes * 4 * 8 / 10 +     // boxes (kNumBoxes x 4) in int64.
+       kNumBoxes * kOutputImageDim * kOutputImageDim * 4);  // output in float.
+  // Note that input image and output image has kChannelSize dim, which is 10,
+  // hence, no need to divide it by 10 (bandwidth).
 
   {
     // Cost of CropAndResize with bilinear interpolation.

@@ -115,17 +115,23 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
           uncompilable_node_info.emplace_back(info);
         }
       }
-      string message = absl::StrCat(
+      std::string message = absl::StrCat(
           "Function invoked by the following node is not compilable: ",
           SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
-      absl::StrAppend(&message, "Uncompilable nodes:");
+      absl::StrAppend(&message, "Uncompilable operations:");
       for (const auto& node_info : uncompilable_node_info) {
-        string node_message = absl::StrCat("\n", node_info.name, ": ",
-                                           node_info.uncompilable_reason, "\n",
-                                           "\tStacktrace:\n");
-        for (const auto& stack_frame : node_info.stack_trace) {
-          absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
-                                stack_frame.name, stack_frame.function_name);
+        std::string node_message = absl::StrCat(
+            "\n", node_info.name, ": ", node_info.uncompilable_reason, "\n",
+            "The op is created at:\n");
+        const Node* n = node_info.stack_trace.back().n;
+        if (n && n->GetStackTrace()) {
+          AbstractStackTrace::TracePrintingOptions opts;
+          opts.show_line_contents = true;
+          opts.filter_common_prefix = true;
+          opts.drop_internal_frames = true;
+          absl::StrAppend(&node_message, n->GetStackTrace()->ToString(opts));
+        } else {
+          absl::StrAppend(&node_message, "<Unavailable>\n");
         }
         absl::StrAppend(&message, node_message);
       }

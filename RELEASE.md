@@ -22,6 +22,7 @@
   * Added `profile_data_directory` to `EmbeddingConfigSpec` in
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
     gathered at runtime to be used in embedding layer partitioning decisions.
+* `tf.keras.metrics.AUC` now support logit predictions.
 
 ## Bug Fixes and Other Changes
 
@@ -41,18 +42,33 @@
         renamed `tf.function(jit_compile=True)`.
 
 *   `tf.lite`:
+    *   class `tflite::Subgraph`:
+        *   Removed the `tensors()` method and the non-const overload of the
+            `nodes_and_registration()` method, both of which were previously
+            documented as temporary and to be removed.
+            *   Uses of `tensors()` can be replaced by calling the existing
+                methods `tensors_size()` and `tensor(int)`.
+            *   Uses of the non-const overload of `nodes_and_registration`
+                can be replaced by calling the existing methods `nodes_size()`
+                and `context()`, and then calling the `GetNodeAndRegistration`
+                method in the `TfLiteContext` returned by `context()`.
     *   NNAPI
         *   Removed deprecated `Interpreter::UseNNAPI(bool)` C++ API.
             *   Use `NnApiDelegate()` and related delegate configuration methods
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
-    *   Added support for saved model's session initializer through
+    *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
-    *   Added dynamic range quantization support for the BatchMatMul op.
+    *  Added DEPTH_TO_SPACE support in Post training quantization.
+    *  Added dynamic range quantization support for the BatchMatMul op.
+        * Both symmetric and asymmetric quantized input tensor are supported.
     *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
        only supports float32 input.
-
+    *  TFLite Supports SingatureDef:
+        * TFLiteConverter exports models with SignatureDef
+        * Interpreter supports getting a list of signatures and getting callable
+          function for a given signaturedef.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
@@ -81,6 +97,11 @@
         value of `is_dynamic_op` is not True. We didn't use the value for
         `max_batch_size` for building TensorRT engines.
     *   Issue a warning when function get_tensorrt_rewriter_config is used.
+*   Other:
+    *   Add new enum value `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` to
+        `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
+        This runs the MLIR bridge only when an analysis of the graph only when
+        an analysis of the graph determines that it is safe to run.
 
 ## Thanks to our Contributors
 

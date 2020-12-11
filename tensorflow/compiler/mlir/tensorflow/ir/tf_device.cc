@@ -22,12 +22,14 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -512,22 +514,13 @@ LogicalResult Verify(ReplicateOp op) {
 
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
-        devices,
+    llvm::Optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
-  device_list.reserve(devices.size());
-  for (auto alias_and_devices : devices) {
-    NamedAttribute device_name_attr = builder->getNamedAttr(
-        alias_and_devices.getFirst(),
-        builder->getStrArrayAttr(alias_and_devices.getSecond()));
-    device_list.emplace_back(device_name_attr);
-  }
-  state->addAttribute("devices", builder->getDictionaryAttr(device_list));
+  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -565,6 +558,28 @@ void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
+  llvm::Optional<DictionaryAttr> devices_attr;
+  if (!devices.empty()) {
+    llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
+    device_list.reserve(devices.size());
+    for (auto alias_and_devices : devices) {
+      NamedAttribute device_name_attr = builder.getNamedAttr(
+          alias_and_devices.getFirst(),
+          builder.getStrArrayAttr(alias_and_devices.getSecond()));
+      device_list.emplace_back(device_name_attr);
+    }
+    devices_attr.emplace(builder.getDictionaryAttr(device_list));
+  }
+
+  BuildReplicateOp(&builder, &state, n, devices_attr, replicated_inputs,
+                   packed_inputs, replica_output_types);
+}
+
+void ReplicateOp::build(
+    OpBuilder& builder, OperationState& state, int n,
+    llvm::Optional<DictionaryAttr> devices,
     llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
     ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
@@ -629,6 +644,10 @@ Value ReplicateOp::GetReplicaOperandForBlockArgument(BlockArgument block_arg,
       GetReplicaOperandIndexForBlockArgument(block_arg, replica);
   return getOperand(operand_index);
 }
+
+// Checks if a tf_device.replicate wraps a single operation and the single
+// operation results are perfectly forwarded to the replicate return.
+bool ReplicateOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 
 //===----------------------------------------------------------------------===//
 // Canonicalization patterns

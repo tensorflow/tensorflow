@@ -21,13 +21,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -37,11 +37,17 @@ enum class ReductionKind { SUM, PRODUCT, MIN, MAX };
 absl::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
-// Figures out which devices (named by their replica-ids) are participating in
-// the collective subgroup that contains device_id.
-StatusOr<std::vector<int64>> GetParticipatingReplicas(
-    GlobalDeviceId device_id, absl::Span<const ReplicaGroup> replica_groups,
-    int64 total_replica_count, const DeviceAssignment& device_assn);
+// Figures out which replicas are participating in the collective subgroup.
+// An empty `replica_groups` indicates that all replicas are participating.
+StatusOr<std::vector<int>> GetParticipatingReplicas(
+    int replica_id, int total_replica_count,
+    absl::Span<const ReplicaGroup> replica_groups);
+
+// Figures out which devices are participating in the collective subgroup.
+// An empty `replica_groups` indicates that all replicas are participating.
+StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
+    GlobalDeviceId device_id, const DeviceAssignment& device_assignment,
+    int total_replica_count, absl::Span<const ReplicaGroup> replica_groups);
 
 // Key that identifies a particular Rendezvous object in our global hashtable.
 // This determines which calls to ExecuteOnStream communicate with each other.
@@ -202,11 +208,6 @@ template <typename I, typename O,
               std::enable_if_t<std::is_base_of<ParticipantData, I>::value>>
 class Rendezvous {
  public:
-  struct ParticipantImplOutput {
-    bool is_primary;
-    O custom_output;
-  };
-
   virtual ~Rendezvous() {}
   explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
@@ -235,13 +236,12 @@ class Rendezvous {
           "rendezvous: %p",
           rendezvous.get());
     });
-    return p.first;
+    return std::move(p.first);
   }
 
  protected:
   // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<ParticipantImplOutput> RunCollectiveOp(
-      const I& participant) = 0;
+  virtual StatusOr<O> RunCollectiveOp(const I& participant) = 0;
 
   // Initialize the rendezvous by the first ("primary") thread which reaches the
   // barrier. Returns whether this thread is primary.
@@ -253,8 +253,6 @@ class Rendezvous {
     }
     return false;
   }
-
-  virtual void CleanupImpl(O handle, bool is_primary) {}
 
   tensorflow::mutex mu_;
 
@@ -296,34 +294,14 @@ class Rendezvous {
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
-    StatusOr<ParticipantImplOutput> p_or = RunCollectiveOp(participant);
-
-    done_.DecrementCount();
-    if (!p_or.ok()) {
-      return p_or.status();
-    }
-    ParticipantImplOutput p = p_or.ValueOrDie();
-
-    // The primary owns the lock on the NCCL clique.  Hold it until all threads
-    // are done.  (We'll release it when we return from this function.)
-    if (p.is_primary) {
-      WaitAndLogIfStuck(&done_, [&] {
-        return absl::StrFormat(
-            "primary participant waiting for all other participants to "
-            "complete all-reduce %s",
-            key_.ToString());
-      });
-    }
-
-    CleanupImpl(p.custom_output, p.is_primary);
-
-    return std::make_pair(p.custom_output, returned_blocking_counter_);
+    TF_ASSIGN_OR_RETURN(O output, RunCollectiveOp(participant));
+    return std::make_pair(std::move(output), returned_blocking_counter_);
   }
+
   const RendezvousKey key_;
 
   tensorflow::BlockingCounter all_participants_present_{
       key_.num_local_participants};
-  tensorflow::BlockingCounter done_{key_.num_local_participants};
 
   // tensorflow::BlockingCounter returned by SubmitParticipant.
   std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{

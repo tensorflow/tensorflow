@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -297,36 +298,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::ConvDimensionNumbers input) {
-  xla::ConvolutionDimensionNumbers output;
-
-  output.set_input_batch_dimension(
-      input.input_batch_dimension().getValue().getSExtValue());
-  output.set_input_feature_dimension(
-      input.input_feature_dimension().getValue().getSExtValue());
-
-  for (int64 v : input.input_spatial_dimensions().getValues<int64>()) {
-    output.add_input_spatial_dimensions(v);
-  }
-
-  output.set_kernel_input_feature_dimension(
-      input.kernel_input_feature_dimension().getValue().getSExtValue());
-  output.set_kernel_output_feature_dimension(
-      input.kernel_output_feature_dimension().getValue().getSExtValue());
-
-  for (int64 v : input.kernel_spatial_dimensions().getValues<int64>()) {
-    output.add_kernel_spatial_dimensions(v);
-  }
-
-  output.set_output_batch_dimension(
-      input.output_batch_dimension().getValue().getSExtValue());
-  output.set_output_feature_dimension(
-      input.output_feature_dimension().getValue().getSExtValue());
-
-  for (int64 v : input.output_spatial_dimensions().getValues<int64>()) {
-    output.add_output_spatial_dimensions(v);
-  }
-
-  return output;
+  return xla::ConvertConvDimensionNumbers(input);
 }
 
 xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
@@ -497,11 +469,12 @@ class ConvertToHloModule {
   // Multiple return values are always converted to a tuple and returned as a
   // single value.
   explicit ConvertToHloModule(
-      mlir::ModuleOp module, bool use_tuple_args, bool return_tuple,
+      mlir::ModuleOp module, xla::XlaBuilder& module_builder,
+      bool use_tuple_args, bool return_tuple,
       tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
       MlirToHloConversionOptions options)
       : module_(module),
-        module_builder_("main"),
+        module_builder_(module_builder),
         use_tuple_args_(use_tuple_args),
         return_tuple_(return_tuple),
         shape_representation_fn_(shape_representation_fn),
@@ -515,6 +488,11 @@ class ConvertToHloModule {
   //
   // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
+    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    if (!main)
+      return module_.emitError(
+          "conversion requires module with `main` function");
+
     for (auto func : module_.getOps<FuncOp>()) {
       if (func.empty()) continue;
       if (failed(RunOnFunction(func))) return failure();
@@ -538,8 +516,11 @@ class ConvertToHloModule {
       xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
-    return lowered_computation_[module_.lookupSymbol<mlir::FuncOp>("main")]
-        .proto();
+    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    // This is an invariant check as Run returns failure if there is no main
+    // function and so the main proto shouldn't be consumed in that case.
+    CHECK(main) << "requires module to have main function";  // Crash Ok.
+    return lowered_computation_[main].proto();
   }
 
   // Lower function call to HLO call instruction
@@ -547,14 +528,14 @@ class ConvertToHloModule {
       mlir::CallOp call_op, xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering);
 
- private:
   LogicalResult Lower(
       mlir::Operation* inst, bool is_entry_function,
       llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
       xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering,
-      xla::XlaComputation* result);
+      xla::XlaOp* return_value);
 
+ private:
   LogicalResult SetEntryTupleShapesAndLeafReplication(
       Block* block, const std::vector<bool>& entry_args_same_across_replicas,
       llvm::SmallVectorImpl<xla::Shape>* arg_shapes,
@@ -569,7 +550,7 @@ class ConvertToHloModule {
   mlir::ModuleOp module_;
 
   // The top-level XlaBuilder.
-  xla::XlaBuilder module_builder_;
+  xla::XlaBuilder& module_builder_;
 
   // Map between function and lowered computation.
   FunctionLoweringMap lowered_computation_;
@@ -754,6 +735,26 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
 
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
+}
+
+LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating convolution instructions
+  // with window reversal.
+  if (op.hasWindowReversal()) return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::XlaOp xla_result = xla::ConvGeneralDilated(
+      lhs, rhs, Convert_window_strides(op.window_strides()),
+      Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
+      Convert_rhs_dilation(op.rhs_dilation()),
+      Convert_dimension_numbers(op.dimension_numbers()),
+      Convertuint64_t(op.feature_group_count()),
+      Convertuint64_t(op.batch_group_count()),
+      Unwrap(Convert_precision_config(op.precision_config())));
+  value_map[op] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
@@ -1189,7 +1190,9 @@ LogicalResult ConvertToHloModule::Lower(
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
     xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
-    xla::XlaComputation* result) {
+    xla::XlaOp* return_value) {
+  *return_value = xla::XlaOp();
+
   // See MlirToHloConversionOptions for more about layouts.
   auto propagate_layouts = [this](mlir::Operation* inst, xla::XlaOp xla_op) {
     if (options_.propagate_layouts) {
@@ -1253,11 +1256,10 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
-    // Construct the return value for the function. If there are multiple
-    // values returned, then create a tuple, else return value directly.
-    xla::XlaOp return_value;
+    // Construct the return value for the function. If there is a single value
+    // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
-    if ((return_tuple_ && is_entry_function) || num_return_values > 1) {
+    if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       const bool has_ret_shardings =
           !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
 
@@ -1291,24 +1293,16 @@ LogicalResult ConvertToHloModule::Lower(
         builder->SetSharding(sharding);
       }
 
-      return_value = xla::Tuple(builder, returns);
+      *return_value = xla::Tuple(builder, returns);
       builder->ClearSharding();
     } else if (num_return_values == 1) {
       xla::XlaOp operand;
       if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
         return failure();
 
-      return_value = operand;
+      *return_value = operand;
     }
 
-    // Build the XlaComputation and check for failures.
-    auto computation_or =
-        return_value.valid() ? builder->Build(return_value) : builder->Build();
-    if (!computation_or.ok()) {
-      inst->emitError(llvm::Twine(computation_or.status().error_message()));
-      return failure();
-    }
-    *result = std::move(computation_or.ValueOrDie());
     return success();
   }
 
@@ -1515,11 +1509,21 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     }
   }
 
+  xla::XlaOp return_value;
   for (auto& inst : *block)
     if (failed(Lower(&inst, is_entry_function, ret_shardings, builder,
-                     &lowering, result)))
+                     &lowering, &return_value)))
       return failure();
 
+  // Build the XlaComputation and check for failures.
+  auto computation_or =
+      return_value.valid() ? builder->Build(return_value) : builder->Build();
+  if (!computation_or.ok()) {
+    block->back().emitError(
+        llvm::Twine(computation_or.status().error_message()));
+    return failure();
+  }
+  *result = std::move(computation_or.ValueOrDie());
   return success();
 }
 
@@ -1704,7 +1708,8 @@ Status ConvertRegionToComputation(mlir::Region* region,
                                   xla::XlaComputation* func,
                                   MlirToHloConversionOptions options) {
   mlir::ModuleOp module;
-  ConvertToHloModule converter(module, true, true, {}, options);
+  xla::XlaBuilder module_builder("main");
+  ConvertToHloModule converter(module, module_builder, true, true, {}, options);
   if (failed(converter.LowerRegionAsComputation(region, func)))
     return tensorflow::errors::Internal(
         "failed to convert region to computation");
@@ -1717,14 +1722,55 @@ Status ConvertMlirHloToHlo(
     const tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     MlirToHloConversionOptions options) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  ConvertToHloModule converter(module, use_tuple_args, return_tuple,
-                               shape_representation_fn, options);
+  xla::XlaBuilder module_builder("main");
+  ConvertToHloModule converter(module, module_builder, use_tuple_args,
+                               return_tuple, shape_representation_fn, options);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
   if (failed(AddDynamicParameterBindings(
           module, hlo_proto->mutable_hlo_module(), use_tuple_args)))
     return diag_handler.ConsumeStatus();
+  return Status::OK();
+}
+
+Status BuildHloFromMlirHlo(mlir::Block& block, xla::XlaBuilder& builder,
+                           llvm::ArrayRef<xla::XlaOp> xla_params,
+                           std::vector<xla::XlaOp>& returns,
+                           MlirToHloConversionOptions options) {
+  auto module = block.getParentOp()->getParentOfType<mlir::ModuleOp>();
+  ConvertToHloModule converter(module, builder,
+                               /*use_tuple_args=*/false, /*return_tuple=*/false,
+                               /*shape_representation_fn=*/nullptr, options);
+
+  ConvertToHloModule::ValueLoweringMap lowering;
+  if (xla_params.size() != block.getArguments().size())
+    return tensorflow::errors::Internal(
+        "xla_params size != block arguments size");
+  for (BlockArgument& arg : block.getArguments()) {
+    auto num = arg.getArgNumber();
+    lowering[arg] = xla_params[num];
+  }
+
+  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  for (auto& inst : block) {
+    if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
+      returns.resize(inst.getNumOperands());
+      for (OpOperand& ret : inst.getOpOperands()) {
+        unsigned index = ret.getOperandNumber();
+        xla::XlaOp operand;
+        if (failed(GetXlaOp(ret.get(), lowering, &operand, &inst)))
+          return diag_handler.ConsumeStatus();
+        returns[index] = operand;
+      }
+    } else {
+      xla::XlaOp return_value;
+      if (failed(converter.Lower(&inst, /*is_entry_function=*/true,
+                                 /*ret_shardings=*/{}, &builder, &lowering,
+                                 &return_value)))
+        return diag_handler.ConsumeStatus();
+    }
+  }
 
   return Status::OK();
 }

@@ -134,11 +134,13 @@ cc_library(
     srcs = ["transforms/mhlo_to_lhlo_with_xla.cc"],
     hdrs = ["transforms/mhlo_to_lhlo_with_xla.h"],
     deps = [
+        ":attribute_importer",
         ":hlo_module_importer",
         ":hlo_utils",
         ":mlir_hlo_to_hlo",
         ":translate_cl_options",
         "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:hlo_ops_base_enums",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -149,6 +151,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/service/gpu:ir_emission_utils",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "@llvm-project//llvm:Support",
@@ -246,6 +249,7 @@ cc_library(
     ],
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
+        ":attribute_exporter",
         ":type_to_shape",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
@@ -335,6 +339,24 @@ cc_library(
 )
 
 cc_library(
+    name = "attribute_exporter",
+    srcs = ["attribute_exporter.cc"],
+    hdrs = ["attribute_exporter.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core/platform:types",
+        "//tensorflow/stream_executor:dnn",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "translate_cl_options",
     srcs = ["xla_mlir_translate_cl.cc"],
     hdrs = ["xla_mlir_translate_cl.h"],
@@ -353,6 +375,7 @@ cc_library(
         ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
         ":translate_cl_options",
+        ":type_to_shape",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/mlir/hlo",

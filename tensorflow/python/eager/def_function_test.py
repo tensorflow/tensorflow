@@ -956,6 +956,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       self.assertLen(logs.output, 1)
       self.assertIn('Tracing is expensive', logs.output[0])
 
+  def test_retracing_warning_limits(self):
+
+    @def_function.function
+    def my_func(x):
+      return x
+
+    with self.assertLogs(level='WARN') as logs:
+      for i in range(10):
+        my_func(i)
+
+      self.assertLen(logs.output, 2)
+
   def test_experimental_get_tracing_count_function(self):
 
     @def_function.function

@@ -377,6 +377,10 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       new_results.push_back(list_op.out());
     }
   }
+
+  // Copy all the allowed attributes to the new op.
+  if (failed(CopyNonSymbolRefAttrs(call_op, new_op))) return failure();
+
   rewriter.replaceOp(call_op, new_results);
   return success();
 }
@@ -450,9 +454,8 @@ void RaiseToTFOpsPass::runOnFunction() {
 
   OwningRewritePatternList patterns;
   patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs);
-  for (auto* op : ctx->getRegisteredOperations()) {
-    op->getCanonicalizationPatterns(patterns, ctx);
-  }
+
+  populateCanonicalizationPatterns(func, patterns);
 
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

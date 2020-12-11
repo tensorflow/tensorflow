@@ -27,6 +27,72 @@ typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
 
+template <typename T, typename Tindex, bool has_l2_shrinkage>
+__global__ void SparseApplyFtrlKernel(T* var, T* accum, T* linear, const T* lr,
+                                      const T* l1, const T* l2,
+                                      const T* l2_shrinkage, const T* lr_power,
+                                      const T* grad, const Tindex* indices,
+                                      Tindex param_rows, Tindex updates_size,
+                                      Tindex indices_size,
+                                      bool multiply_linear_by_lr) {
+  const Tindex col_size = updates_size / indices_size;
+  GPU_1D_KERNEL_LOOP(grad_index, updates_size) {
+    const Tindex indices_row = grad_index / col_size;
+    const Tindex param_row = indices[indices_row];
+    if (param_row < 0 || param_row >= param_rows) {
+      // Ignore indices that are out of range.
+      continue;
+    }
+
+    // Compute the index of var and accum.
+    const Tindex param_index = param_row * col_size + (grad_index % col_size);
+
+    // Read variables.
+    T var_i = var[param_index];
+    T accum_i = accum[param_index];
+    T linear_i = linear[param_index];
+    const T grad_i = grad[grad_index];
+    const T lr_t = *lr;
+    const T l1_t = *l1;
+    const T l2_t = *l2;
+    const T lr_power_t = *lr_power;
+
+    const T grad_shr_i =
+        has_l2_shrinkage ? grad_i + static_cast<T>(2) * (*l2_shrinkage) * var_i
+                         : grad_i;
+    const T new_accum_i = accum_i + grad_i * grad_i;
+    const bool lr_power_is_neg_half = lr_power_t == static_cast<T>(-0.5);
+    const T pow_new_accum = lr_power_is_neg_half
+                                ? sqrt(new_accum_i)
+                                : pow(new_accum_i, -lr_power_t);
+    const T pow_accum =
+        lr_power_is_neg_half ? sqrt(accum_i) : pow(accum_i, -lr_power_t);
+    T linear_change = grad_shr_i * lr_t - (pow_new_accum - pow_accum) * var_i;
+    if (!multiply_linear_by_lr) {
+      linear_change /= lr_t;
+    }
+    linear_i += linear_change;
+
+    T l1_mult = l1_t;
+    if (multiply_linear_by_lr) {
+      l1_mult *= lr_t;
+    }
+    const T l1_reg_adjust = max(min(linear_i, l1_mult), -l1_mult);
+    const T x = l1_reg_adjust - linear_i;
+    T y = pow_new_accum + static_cast<T>(2) * l2_t * lr_t;
+    if (!multiply_linear_by_lr) {
+      y /= lr_t;
+    }
+    var_i = x / y;
+    accum_i = new_accum_i;
+
+    // Write update back to variables.
+    var[param_index] = var_i;
+    accum[param_index] = accum_i;
+    linear[param_index] = linear_i;
+  }
+}
+
 template <typename T>
 __global__ __launch_bounds__(1024) void ApplyAdamKernel(
     int32 data_dim, T* var, T* m, T* v, const T* const beta1_power_,
@@ -573,6 +639,37 @@ struct ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T> {
   }
 };
 
+template <typename T, typename Tindex, bool has_l2_shrinkage>
+struct SparseApplyFtrl<GPUDevice, T, Tindex, has_l2_shrinkage> {
+  Status operator()(const GPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::Matrix linear,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar l1,
+                    typename TTypes<T>::ConstScalar l2,
+                    typename TTypes<T>::ConstScalar l2_shrinkage,
+                    typename TTypes<T>::ConstScalar lr_power,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
+                    bool multiply_linear_by_lr) {
+    const Tindex first_dim_size = var.dimension(0);
+    const Tindex grad_size = grad.size();
+    const Tindex indices_size = indices.size();
+    GpuLaunchConfig config = GetGpuLaunchConfig(grad_size, d);
+    return GpuLaunchKernel(
+        SparseApplyFtrlKernel<T, Tindex, has_l2_shrinkage>, config.block_count,
+        config.thread_per_block, 0, d.stream(), /*var=*/var.data(),
+        /*accum=*/accum.data(),
+        /*linear=*/linear.data(), /*lr=*/lr.data(), /*l1=*/l1.data(),
+        /*l2=*/l2.data(), /*l2_shrinkage=*/l2_shrinkage.data(),
+        /*lr_power=*/lr_power.data(), /*grad=*/grad.data(),
+        /*indices=*/indices.data(), /*param_rows=*/first_dim_size,
+        /*updates_size=*/grad_size,
+        /*indices_size=*/indices_size,
+        /*multiply_linear_by_lr=*/multiply_linear_by_lr);
+  }
+};
+
 template <typename T>
 struct ApplyMomentum<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
@@ -904,6 +1001,20 @@ template struct functor::ApplyFtrlV2<GPUDevice, double>;
 template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, Eigen::half>;
 template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, float>;
 template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, double>;
+
+#define EXPLICITLY_INSTANTIATE_FUNCTOR(T)                               \
+  template struct functor::SparseApplyFtrl<GPUDevice, T, int32,         \
+                                           /*has_l2_shrinkage=*/false>; \
+  template struct functor::SparseApplyFtrl<GPUDevice, T, int64,         \
+                                           /*has_l2_shrinkage=*/false>; \
+  template struct functor::SparseApplyFtrl<GPUDevice, T, int32,         \
+                                           /*has_l2_shrinkage=*/true>;  \
+  template struct functor::SparseApplyFtrl<GPUDevice, T, int64,         \
+                                           /*has_l2_shrinkage=*/true>
+EXPLICITLY_INSTANTIATE_FUNCTOR(Eigen::half);
+EXPLICITLY_INSTANTIATE_FUNCTOR(float);
+EXPLICITLY_INSTANTIATE_FUNCTOR(double);
+#undef EXPLICITLY_INSTANTIATE_FUNCTOR
 
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;

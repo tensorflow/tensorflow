@@ -244,8 +244,8 @@ std::vector<T> BuildSparsityParameterAttribute(
   tflite::optimize::sparsity::FormatConverter<T> format_converter(
       shape, traversal_order, format, b_size, b_map);
   format_converter.DenseToSparse(dense_buffer);
-  auto metadata = format_converter.GetDimMetadata();
-  auto compressed_data = format_converter.GetData();
+  const auto& metadata = format_converter.GetDimMetadata();
+  const auto& compressed_data = format_converter.GetData();
   const int dim_size = metadata.size() / 2;
   std::vector<Attribute> dim_metadata(traversal_order.size());
   for (int i = 0; i < dim_size; i++) {

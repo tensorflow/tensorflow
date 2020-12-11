@@ -251,7 +251,7 @@ class TpuCompiler : public Compiler {
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module,
       stream_executor::StreamExecutor* executor,
-      stream_executor::DeviceMemoryAllocator* device_allocator) override {
+      const CompileOptions& options) override {
     XLA_HloModule hlo_module;
     XLA_HloModule result;
     auto cleanup = xla::MakeCleanup([&hlo_module, &result]() {
@@ -261,7 +261,7 @@ class TpuCompiler : public Compiler {
     });
     hlo_module.module_config = HloModuleConfigToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
-    auto allocator = ApiConverter::ToC(device_allocator);
+    auto allocator = ApiConverter::ToC(options.device_allocator);
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunHloPassesFn(
         compiler_, &hlo_module,
@@ -279,7 +279,7 @@ class TpuCompiler : public Compiler {
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module,
       stream_executor::StreamExecutor* executor,
-      stream_executor::DeviceMemoryAllocator* device_allocator) override {
+      const CompileOptions& options) override {
     XLA_HloModule hlo_module;
     auto cleanup = xla::MakeCleanup([&hlo_module]() {
       stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
@@ -288,7 +288,7 @@ class TpuCompiler : public Compiler {
     SE_Executable* result;
     hlo_module.module_config = HloModuleConfigToC(module->config());
     hlo_module.proto = stream_executor::tpu::SerializeProto(module->ToProto());
-    auto allocator = ApiConverter::ToC(device_allocator);
+    auto allocator = ApiConverter::ToC(options.device_allocator);
 
     StatusHelper status;
     ExecutorApiFn()->TpuCompiler_RunBackendFn(
@@ -308,7 +308,7 @@ class TpuCompiler : public Compiler {
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<stream_executor::StreamExecutor*>> stream_exec,
-      stream_executor::DeviceMemoryAllocator* device_allocator) override {
+      const CompileOptions& options) override {
     XLA_HloModuleGroup se_module_group;
     se_module_group.proto =
         stream_executor::tpu::SerializeProto(module_group->ToProto());
@@ -339,7 +339,8 @@ class TpuCompiler : public Compiler {
       }
     }
 
-    SE_DeviceMemoryAllocator allocator = ApiConverter::ToC(device_allocator);
+    SE_DeviceMemoryAllocator allocator =
+        ApiConverter::ToC(options.device_allocator);
 
     SE_Executable** se_executables = new SE_Executable*[module_group->size()];
 

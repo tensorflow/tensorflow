@@ -138,7 +138,8 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::runOnFunction() {
     ShapedType shaped_type =
         variable_v2_op.getResult().getType().cast<ShapedType>();
     TensorType tensor_type = DropRefType(shaped_type).cast<TensorType>();
-    StringAttr device_attr = variable_v2_op.getAttrOfType<StringAttr>("device");
+    StringAttr device_attr =
+        variable_v2_op->getAttrOfType<StringAttr>("device");
     if (!device_attr) device_attr = builder.getStringAttr("");
     StringRef variable_name = GetNodeNameFromClassAttr(variable_v2_op);
     if (variable_name.empty()) {
