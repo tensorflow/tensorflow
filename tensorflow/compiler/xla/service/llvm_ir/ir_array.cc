@@ -527,27 +527,5 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
   return new_irarray;
 }
 
-bool IrArray::Index::ShapeIsCompatible(const Shape& a, const Shape& b) {
-  // Compute strides for two sides of the comparison. Sometimes different shapes
-  // give the same strides:
-  //   [10, 20, 30, 1]{3,2,1,0} vs [10, 20, 1, 30]{3,2,1,0}
-  // which should be considered compatible.
-  const auto get_strides = [](const Shape& shape) {
-    int rank = shape.dimensions().size();
-    int64 stride = 1;
-    std::vector<int64> strides;
-    for (int i = 0; i < rank; i++) {
-      auto dim = shape.dimensions(shape.layout().minor_to_major(i));
-      if (dim != 1) {
-        stride *= dim;
-        strides.push_back(stride);
-      }
-    }
-    return strides;
-  };
-
-  return get_strides(a) == get_strides(b);
-}
-
 }  // namespace llvm_ir
 }  // namespace xla

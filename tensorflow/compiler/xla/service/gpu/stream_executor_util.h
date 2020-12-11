@@ -49,8 +49,8 @@ StreamExecutorConvLayoutsToXlaLayouts(const ConvolutionDimensionNumbers& dnums,
 StatusOr<
     std::tuple<se::dnn::DataLayout, se::dnn::FilterLayout, se::dnn::DataLayout>>
 XlaConvLayoutsToStreamExecutorLayouts(const ConvolutionDimensionNumbers& dnums,
-                                      const Layout& input, const Layout& filter,
-                                      const Layout& output);
+                                      const Shape& input, const Shape& filter,
+                                      const Shape& output);
 
 // Generates and returns a unique lock per each provided executor.
 // Guarantees that blocks of code both holding a lock for the same provided
