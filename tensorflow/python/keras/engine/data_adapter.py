@@ -967,7 +967,7 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
     return generator_fn
 
   def get_size(self):
-    return self._size
+    return len(self._keras_sequence)
 
   def should_recreate_iterator(self):
     return True
