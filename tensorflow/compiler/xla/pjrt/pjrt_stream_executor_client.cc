@@ -89,6 +89,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/event_pool.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
+#include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
@@ -1582,60 +1583,6 @@ PjRtStreamExecutorExecutable::PjRtStreamExecutorExecutable(
   }
 }
 
-StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
-    const HloModule& module, bool tuple_inputs) {
-  HloComputation* computation = module.entry_computation();
-  int number_of_parameters = [&]() -> int {
-    if (tuple_inputs) {
-      CHECK_EQ(computation->num_parameters(), 1);
-      const Shape& input_tuple_shape =
-          computation->parameter_instruction(0)->shape();
-      CHECK(input_tuple_shape.IsTuple());
-      return input_tuple_shape.tuple_shapes_size();
-    } else {
-      return computation->num_parameters();
-    }
-  }();
-  // If any buffer in a parameter is aliased we will donate the entire input
-  // parameter.
-  absl::flat_hash_set<int> parameters_to_donate;
-  const HloInputOutputAliasConfig& config = module.input_output_alias_config();
-  TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
-      [&](const ShapeIndex& output_index,
-          const HloInputOutputAliasConfig::Alias& alias) {
-        if (tuple_inputs) {
-          if (alias.parameter_number != 0) {
-            return InvalidArgument(
-                "Unexpected parameter number %d in alias config with tupled "
-                "inputs",
-                alias.parameter_number);
-          }
-          const ShapeIndex& index = alias.parameter_index;
-          if (!index.empty()) {
-            int this_parameter = index.data()[0];
-            if (this_parameter >= number_of_parameters) {
-              return InvalidArgument(
-                  "Unexpected parameter index %s in alias config with tupled "
-                  "inputs and %d parameters",
-                  index.ToString(), number_of_parameters);
-            }
-            parameters_to_donate.insert(this_parameter);
-          }
-        } else {
-          int this_parameter = alias.parameter_number;
-          if (this_parameter >= number_of_parameters) {
-            return InvalidArgument(
-                "Unexpected parameter number %d in alias config without tupled "
-                "inputs and %d parameters",
-                this_parameter, number_of_parameters);
-          }
-          parameters_to_donate.insert(this_parameter);
-        }
-        return Status::OK();
-      }));
-  return parameters_to_donate;
-}
-
 Status PjRtStreamExecutorExecutable::SetUpDonation(bool tuple_inputs) {
   parameters_that_must_be_donated_.reserve(executables_.size());
   for (auto& executable : executables_) {
@@ -2141,93 +2088,6 @@ PjRtStreamExecutorExecutable::GetHloModules() const {
   }
   return std::move(modules);
 }
-
-namespace {
-
-StatusOr<Shape> GetShardedShape(const Shape& shape,
-                                const OpSharding& sharding) {
-  if (sharding.type() == OpSharding::TUPLE) {
-    if (!shape.IsTuple()) {
-      return InvalidArgument(
-          "Got tuple OpSharding (%s) for non-tuple shape (%s)",
-          sharding.DebugString(), shape.ToString());
-    }
-    if (sharding.tuple_shardings_size() != shape.tuple_shapes_size()) {
-      return InvalidArgument(
-          "Got mismatched OpSharding tuple size (%d) and shape tuple size (%d)."
-          " (OpSharding: %s, shape: %s)",
-          sharding.tuple_shardings_size(), shape.tuple_shapes_size(),
-          sharding.DebugString(), shape.ToString());
-    }
-    std::vector<Shape> sharded_subshapes;
-    for (int i = 0; i < shape.tuple_shapes_size(); ++i) {
-      TF_ASSIGN_OR_RETURN(
-          Shape sharded_subshape,
-          GetShardedShape(shape.tuple_shapes(i), sharding.tuple_shardings(i)));
-      sharded_subshapes.emplace_back(std::move(sharded_subshape));
-    }
-    return ShapeUtil::MakeTupleShape(sharded_subshapes);
-  }
-  TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
-                      HloSharding::FromProto(sharding));
-  return hlo_sharding.TileShape(shape);
-}
-
-StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {
-  const Shape unsharded_shape(instr.shape());
-  Shape sharded_shape;
-  if (instr.has_sharding()) {
-    TF_ASSIGN_OR_RETURN(sharded_shape,
-                        GetShardedShape(unsharded_shape, instr.sharding()));
-  } else {
-    sharded_shape = unsharded_shape;
-  }
-  LayoutUtil::ClearLayout(&sharded_shape);
-  return sharded_shape;
-}
-
-// Returns sharded (argument shapes, result shape) without layouts.
-StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
-    const XlaComputation& computation) {
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation.GetProgramShape());
-  std::vector<Shape> arg_shapes;
-  arg_shapes.resize(program_shape.parameters_size());
-  Shape result_shape;
-  for (const HloComputationProto& comp : computation.proto().computations()) {
-    if (comp.id() != computation.proto().entry_computation_id()) {
-      continue;
-    }
-    for (const HloInstructionProto& instr : comp.instructions()) {
-      if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter)) {
-        if (instr.parameter_number() >= program_shape.parameters_size()) {
-          return InvalidArgument(
-              "Got invalid parameter number %d, expected %d parameters",
-              instr.parameter_number(), program_shape.parameters_size());
-        }
-        TF_ASSIGN_OR_RETURN(arg_shapes[instr.parameter_number()],
-                            GetShardedShape(instr));
-      }
-      if (instr.id() == comp.root_id()) {
-        if (result_shape.element_type() != PRIMITIVE_TYPE_INVALID) {
-          return InvalidArgument("Found multiple root instructions");
-        }
-        TF_ASSIGN_OR_RETURN(result_shape, GetShardedShape(instr));
-      }
-    }
-  }
-  for (int i = 0; i < arg_shapes.size(); ++i) {
-    if (arg_shapes[i].element_type() == PRIMITIVE_TYPE_INVALID) {
-      return InvalidArgument("Couldn't find parameter %d", i);
-    }
-  }
-  if (result_shape.element_type() == PRIMITIVE_TYPE_INVALID) {
-    return InvalidArgument("Couldn't find root instruction");
-  }
-  return std::make_pair(arg_shapes, result_shape);
-}
-
-}  // namespace
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
