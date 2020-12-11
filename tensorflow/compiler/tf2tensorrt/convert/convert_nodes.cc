@@ -4740,15 +4740,22 @@ Status ConvertPad(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"tensor", false}, {"paddings", true}}));
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT8}));
 
   // Implement tensor binaryOp weight [channel wise] for now;
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const auto dims = tensor->getDimensions();
   // Restore implicit batch dimension
-  const int nb_dims = dims.nbDims + 1;
+  const int nb_dims =
+      params->use_implicit_batch ? dims.nbDims + 1 : dims.nbDims;
 
+  // TODO(tfeher): Support nb_dims < 4 by inserting extra dimensions to the
+  // original input.
+  if (nb_dims < 4) {
+    return errors::InvalidArgument("Convertpad requires at least 4D input, at ",
+                                   node_def.name());
+  }
   TRT_ShapedWeights pads = inputs.at(1).weights();
 
   TFAttrs attrs(node_def);
@@ -4758,9 +4765,9 @@ Status ConvertPad(OpConverterParams* params) {
   // TODO(jie): handle data type conversion for TRT?
 
   if (pads.shape_.d[0] != nb_dims || pads.shape_.d[1] != 2) {
-    return errors::InvalidArgument(
-        "Pad only supports explicit padding on 4 dimensional tensor, at ",
-        node_def.name());
+    return errors::InvalidArgument("Paddings at ", node_def.name(),
+                                   " must be a weight with shape [n, 2], "
+                                   "where n is the rank of input tensor");
   }
 
   // Only expect to handle INT32 as attributes for now
@@ -4769,60 +4776,88 @@ Status ConvertPad(OpConverterParams* params) {
   }
   auto pad_data = static_cast<int*>(pads.GetValues());
 
-  std::vector<int32_t> pad_index;
+  std::vector<int32_t> tf_pad_index;
   for (int i = 0; i < nb_dims; i++) {
     if (pad_data[2 * i] != 0 || pad_data[2 * i + 1] != 0) {
-      pad_index.push_back(i);
+      tf_pad_index.push_back(i);
     }
   }
 
   // No padding at all, we should exit
-  if (pad_index.empty()) {
+  if (tf_pad_index.empty()) {
     params->outputs->push_back(inputs.at(0));
     return Status::OK();
   }
 
-  // Only supports padding on less than 2 axis GIE-2579
-  if (pad_index.size() > 2) {
+  // TRT pad layer can only support padding on up to 2 dimensions (TRT-2579).
+  // TODO(tfeher): Use multiple TRT pad layers to support padding on more than 2
+  // dimensions.
+  if (tf_pad_index.size() > 2) {
     return errors::InvalidArgument(
         "Padding layer does not support padding on > 2");
   }
 
   // Padding on batch dimension is not supported
-  if (pad_index[0] == 0) {
+  if (params->use_implicit_batch && tf_pad_index[0] == 0) {
     return errors::InvalidArgument(
         "Padding layer does not support padding on batch dimension");
   }
 
-  // Not doing the legit thing here. ignoring padding on dim 1 and 3;
-  // TODO(jie): implement pad as uff parser
-  if (pad_index.size() == 2 && pad_index[0] == 0 && pad_index[1] == 3) {
-    return errors::Unimplemented(
-        "Padding layer does not support padding on dimension 1 and 3 yet");
-  }
   if (params->validation_only) return Status::OK();
 
-  bool legit_pad = true;
+  // TRT can only do the padding at the last two dimensions. We transpose the
+  // input tensor if needed.
+  bool transposed_pad = false;
+  std::vector<int> transpose_idx(nb_dims);
+  std::iota(transpose_idx.begin(), transpose_idx.end(), 0);
+
+  // trt_pad_index denotes the actual idx where the padding is performed by TRT.
+  std::vector<int> trt_pad_index{nb_dims - 2, nb_dims - 1};
+
+  // How many zeros are padded at the last two dimensions.
   nvinfer1::DimsHW pre_padding(0, 0);
   nvinfer1::DimsHW post_padding(0, 0);
 
-  std::vector<int32_t> permuted_pad_index(pad_index);
-  if (pad_index[0] == 1) {
-    legit_pad = false;
-    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        tensor, {0, 3, 2, 1}, &tensor, node_def, "to_pad"));
-    permuted_pad_index[0] = 3;
+  // Dimension to set in the pre_padding and post_padding array.
+  std::vector<int> trt_pre_post_padding_index{0, 1};
+
+  // Two special cases where we can avoid permutations.
+  if (tf_pad_index.size() == 1 && tf_pad_index[0] == nb_dims - 1) {
+    // Only one dimension needs to be padded. We store its index at
+    // trt_pad_index[0]. We ignore trt_pad_index[1].
+    trt_pad_index[0] = nb_dims - 1;
+    trt_pre_post_padding_index[0] = 1;
+  }
+  if (tf_pad_index.size() == 2 && tf_pad_index[1] == nb_dims - 2) {
+    // tf_pad_index only has two values that are in ascending order. If
+    // tf_pad_index[1] is nb_dims-2, then swapping the two values in
+    // trt_pad_index here makes it possible to only swap one pair of dimensions
+    // (swap tf_pad_index[0] with nb_dims-1) in the input tensor. Otherwise, we
+    // would have to swap two pairs of dimensions in the input tensor:
+    // (tf_pad_index[0] with nb_dims-2) and (tf_pad_index[1], with nb_dims-1).
+    // Here is an example for a 4D input tensor:
+    // tf_pad_index = [1, 2]
+    // trt_pad_index = [3, 2]
+    // transpose_idx = [0, 3, 2, 1]
+    std::swap(trt_pad_index[0], trt_pad_index[1]);
+    std::swap(trt_pre_post_padding_index[0], trt_pre_post_padding_index[1]);
   }
 
-  for (size_t i = 0; i < pad_index.size(); i++) {
-    int index = pad_index[i];
-    if (permuted_pad_index[i] == 2) {
-      pre_padding.h() = pad_data[index * 2];
-      post_padding.h() = pad_data[index * 2 + 1];
-    } else if (permuted_pad_index[i] == 3) {
-      pre_padding.w() = pad_data[index * 2];
-      post_padding.w() = pad_data[index * 2 + 1];
+  for (int i = 0; i < tf_pad_index.size(); i++) {
+    const int tf_index = tf_pad_index[i];
+    const int trt_index = trt_pad_index[i];
+    const int k = trt_pre_post_padding_index[i];
+    pre_padding.d[k] = pad_data[tf_index * 2];
+    post_padding.d[k] = pad_data[tf_index * 2 + 1];
+    if (tf_index != trt_index) {
+      transposed_pad = true;
+      std::swap(transpose_idx[tf_index], transpose_idx[trt_index]);
     }
+  }
+
+  if (transposed_pad) {
+    TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
+        tensor, transpose_idx, &tensor, node_def, "to_pad"));
   }
 
   nvinfer1::IPaddingLayer* layer = params->converter->network()->addPadding(
@@ -4832,9 +4867,9 @@ Status ConvertPad(OpConverterParams* params) {
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->converter->MarkQuantizationRangesAsInferrable(tensor, output_tensor);
 
-  if (!legit_pad) {
+  if (transposed_pad) {
     TF_RETURN_IF_ERROR(params->converter->TransposeTensor(
-        output_tensor, {0, 3, 2, 1}, &output_tensor, node_def, "from_pad"));
+        output_tensor, transpose_idx, &output_tensor, node_def, "from_pad"));
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -5383,9 +5418,10 @@ Status ConvertMatMulHelper(OpConverterParams* params,
 
   const auto get_matrix_op = [](nvinfer1::ITensor* in,
                                 bool transpose) -> nvinfer1::MatrixOperation {
-    return (in->getDimensions().nbDims < 2) ? nvinfer1::MatrixOperation::kVECTOR
-           : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
-                         : nvinfer1::MatrixOperation::kNONE;
+    return (in->getDimensions().nbDims < 2)
+               ? nvinfer1::MatrixOperation::kVECTOR
+               : (transpose) ? nvinfer1::MatrixOperation::kTRANSPOSE
+                             : nvinfer1::MatrixOperation::kNONE;
   };
 
   // If the MatMul operand is a constant, applies transposes at conversion-time
