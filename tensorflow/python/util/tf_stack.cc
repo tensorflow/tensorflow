@@ -177,11 +177,11 @@ class StackTraceWrapper : public AbstractStackTrace {
   void GenerateCache() const {
     // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
     // 2) ToStackFrames and LineContents actually need it.
-    PyGILState_STATE state = PyGILState_Ensure();
     if (stack_frames_cache_) {
       return;
     }
 
+    PyGILState_STATE state = PyGILState_Ensure();
     absl::flat_hash_map<std::pair<std::string, int>, StackFrame> m;
     absl::flat_hash_set<std::string> f;
 

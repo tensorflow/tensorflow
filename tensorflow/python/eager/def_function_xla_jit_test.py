@@ -172,6 +172,36 @@ class DefFunctionTest(xla_test.XLATestCase):
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
                                  'support stack traces')
+  def testPythonLocationInMetadata(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def fn(x, y):
+        return x + y
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      self.assertIn('def_function_xla_jit_test',
+                    fn.experimental_get_compiler_ir(inputs, inputs)())
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
+  def testPythonLocationNestedInMetadata(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x, y):
+        return x + y
+
+      @def_function.function(jit_compile=True)
+      def g(x, y):
+        return f(x, y)
+
+      inputs = constant_op.constant([1, 2, 2, 3, 3])
+      self.assertIn('def_function_xla_jit_test',
+                    g.experimental_get_compiler_ir(inputs, inputs)())
+
+  @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
+                                 'support stack traces')
   def testPythonStackTrace(self):
     if 'tpu' in self.device.lower():
       self.skipTest('XLA TPU supports tf.unique')
