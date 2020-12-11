@@ -172,6 +172,7 @@ tf_kernel_library(
         "unranked_op_gpu_logical_and.cc",
         "unranked_op_gpu_logical_or.cc",
         "unranked_op_gpu_not_equal.cc",
+        "unranked_op_gpu_right_shift.cc",
     ],
     tags = [
         "manual",
@@ -192,6 +193,7 @@ tf_kernel_library(
         ":maximum_unranked_kernels",
         ":minimum_unranked_kernels",
         ":not_equal_unranked_kernels",
+        ":right_shift_unranked_kernels",
         ":unranked_op_gpu_base",
         "//third_party/eigen3",
     ],
@@ -401,6 +403,21 @@ gen_kernel_library(
         "f16",
         "f32",
         "f64",
+        "i64",
+    ],
+    # TODO(b/174543802): Enable once fusion heuristics is better.
+    # unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "right_shift",
+    generate_ranked = False,
+    generate_unranked = True,
+    tile_size = "256,1,1",
+    types = [
+        "i8",
+        "i16",
+        "i32",
         "i64",
     ],
     # TODO(b/174543802): Enable once fusion heuristics is better.

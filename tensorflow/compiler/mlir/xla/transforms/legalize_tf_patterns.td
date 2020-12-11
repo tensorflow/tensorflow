@@ -101,7 +101,7 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 def LowerRightShiftSigned :
-  Pat<(TF_RightShiftOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+  Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
       (HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
        (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;

@@ -75,6 +75,15 @@ absl::optional<T> BitwiseAnd(T /*lhs*/, T /*rhs*/) {
   return absl::nullopt;
 }
 template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> RightShift(T lhs, T rhs) {
+  return lhs >> rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> RightShift(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
 absl::optional<T> BitwiseOr(T lhs, T rhs) {
   return lhs | rhs;
 }
@@ -396,6 +405,11 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "NotEqual") {
       return static_cast<BaselineOutT>(lhs != rhs);
     }
+    if (GetParam().op_name == "RightShift") {
+      if (auto val = RightShift(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
     // Add the logic for creating expected values for the kernel you want to
     // test here.
     // <PLACEHOLDER>
@@ -417,6 +431,7 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
     parameters.emplace_back("BitwiseOr", dt, dt);
     parameters.emplace_back("BitwiseXor", dt, dt);
     parameters.emplace_back("LeftShift", dt, dt);
+    parameters.emplace_back("RightShift", dt, dt);
   }
   for (DataType dt :
        {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8, DT_INT16, DT_INT64}) {
