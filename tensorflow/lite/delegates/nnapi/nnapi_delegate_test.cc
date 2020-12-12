@@ -2718,15 +2718,24 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
  public:
   RNNOpModel(int batches, int units, int size,
              const TensorType weights = TensorType_FLOAT32,
-             const TensorType recurrent_weights = TensorType_FLOAT32) {
-    Init(batches, units, size, weights, recurrent_weights);
-  }
-
-  RNNOpModel(const StatefulNnApiDelegate::Options& options, int batches,
-             int units, int size, const TensorType weights = TensorType_FLOAT32,
              const TensorType recurrent_weights = TensorType_FLOAT32)
-      : SingleOpModelWithNNAPI(options) {
-    Init(batches, units, size, weights, recurrent_weights);
+      : batches_(batches), units_(units), input_size_(size) {
+    input_ = AddInput(TensorType_FLOAT32);
+    weights_ = AddInput(weights);
+    recurrent_weights_ = AddInput(recurrent_weights);
+    bias_ = AddInput(TensorType_FLOAT32);
+    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
+    output_ = AddOutput(TensorType_FLOAT32);
+    SetBuiltinOp(
+        BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
+        CreateRNNOptions(builder_, ActivationFunctionType_RELU).Union());
+    BuildInterpreterWithNNAPI({
+        {batches_, input_size_},  // input tensor
+        {units_, input_size_},    // weights tensor
+        {units_, units_},         // recurrent weights tensor
+        {units_},                 // bias tensor
+        {batches_, units_}        // hidden state tensor
+    });
   }
 
   void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
@@ -2747,15 +2756,7 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
     PopulateTensor(input_, offset, begin, end);
   }
 
-  void SetHiddenState(const std::vector<float>& data) {
-    PopulateTensor(hidden_state_, data);
-  }
-
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
-
-  std::vector<float> GetHiddenState() {
-    return ExtractVector<float>(hidden_state_);
-  }
 
   int input_size() { return input_size_; }
   int num_units() { return units_; }
@@ -2772,49 +2773,7 @@ class RNNOpModel : public SingleOpModelWithNNAPI {
   int batches_;
   int units_;
   int input_size_;
-
- private:
-  // Performs initialization logic shared across all constructors.
-  void Init(int batches, int units, int size, const TensorType weights,
-            const TensorType recurrent_weights) {
-    batches_ = batches;
-    units_ = units;
-    input_size_ = size;
-    input_ = AddInput(TensorType_FLOAT32);
-    weights_ = AddInput(weights);
-    recurrent_weights_ = AddInput(recurrent_weights);
-    bias_ = AddInput(TensorType_FLOAT32);
-    hidden_state_ = AddVariableInput(TensorType_FLOAT32);
-    output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(
-        BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
-        CreateRNNOptions(builder_, ActivationFunctionType_RELU).Union());
-    BuildInterpreterWithNNAPI({
-        {batches_, input_size_},  // input tensor
-        {units_, input_size_},    // weights tensor
-        {units_, units_},         // recurrent weights tensor
-        {units_},                 // bias tensor
-        {batches_, units_}        // hidden state tensor
-    });
-  }
 };
-
-static void InvokeAndTestSingleRnnStep(int step_index, RNNOpModel* rnn) {
-  float* batch_start = rnn_input + step_index * rnn->input_size();
-  float* batch_end = batch_start + rnn->input_size();
-  rnn->SetInput(0, batch_start, batch_end);
-  rnn->SetInput(rnn->input_size(), batch_start, batch_end);
-
-  rnn->Invoke();
-
-  float* golden_start = rnn_golden_output + step_index * rnn->num_units();
-  float* golden_end = golden_start + rnn->num_units();
-  std::vector<float> expected;
-  expected.insert(expected.end(), golden_start, golden_end);
-  expected.insert(expected.end(), golden_start, golden_end);
-
-  EXPECT_THAT(rnn->GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
-}
 
 TEST(NNAPIDelegate, RnnBlackBoxTest) {
   RNNOpModel rnn(2, 16, 8);
@@ -2826,66 +2785,20 @@ TEST(NNAPIDelegate, RnnBlackBoxTest) {
                                   (rnn.input_size() * rnn.num_batches());
 
   for (int i = 0; i < input_sequence_size; i++) {
-    InvokeAndTestSingleRnnStep(i, &rnn);
-  }
-}
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    rnn.SetInput(0, batch_start, batch_end);
+    rnn.SetInput(rnn.input_size(), batch_start, batch_end);
 
-TEST(NNAPIDelegate, RnnDeviceMemoryBasicTest) {
-  StatefulNnApiDelegate::Options options;
-  options.use_device_memory_for_state_tensors = true;
+    rnn.Invoke();
 
-  RNNOpModel rnn(options, 2, 16, 8);
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
+    float* golden_start = rnn_golden_output + i * rnn.num_units();
+    float* golden_end = golden_start + rnn.num_units();
+    std::vector<float> expected;
+    expected.insert(expected.end(), golden_start, golden_end);
+    expected.insert(expected.end(), golden_start, golden_end);
 
-  auto* delegate = rnn.GetDelegate();
-  const int input_sequence_size = sizeof(rnn_input) / sizeof(float) /
-                                  (rnn.input_size() * rnn.num_batches());
-
-  // Only sync the state to device in the first invocation, all subsequent
-  // states are kept inside the driver.
-  for (int i = 0; i < input_sequence_size; i++) {
-    delegate->SetSyncStatesToDevice(i == 0);
-    InvokeAndTestSingleRnnStep(i, &rnn);
-  }
-}
-
-TEST(NNAPIDelegate, RnnDeviceMemorySyncTest) {
-  StatefulNnApiDelegate::Options options;
-  options.use_device_memory_for_state_tensors = true;
-
-  RNNOpModel rnn(options, 2, 16, 8);
-  rnn.SetWeights(rnn_weights);
-  rnn.SetBias(rnn_bias);
-  rnn.SetRecurrentWeights(rnn_recurrent_weights);
-
-  auto* delegate = rnn.GetDelegate();
-  const int input_sequence_size = sizeof(rnn_input) / sizeof(float) /
-                                  (rnn.input_size() * rnn.num_batches());
-  const int sync_output_index = input_sequence_size / 2;
-
-  // The following steps test SetSyncStatesFromDevice and SetSyncStatesToDevice:
-  // 1. Invoke RNN sequence until sync_output_index;
-  // 2. Extract the hidden output state at sync_output_index by
-  //    SetSyncStatesFromDevice(true);
-  // 3. Continue RNN sequence until the end;
-  // 4. Reset the hidden state by SetSyncStatesToDevice(true), the state should
-  //    go back to sync_output_index;
-  // 5. Continue RNN sequence from sync_output_index + 1 until the end.
-  std::vector<float> hidden_state_data;
-  for (int i = 0; i < input_sequence_size; i++) {
-    delegate->SetSyncStatesToDevice(i == 0);
-    delegate->SetSyncStatesFromDevice(i == sync_output_index);
-    InvokeAndTestSingleRnnStep(i, &rnn);
-    if (i == sync_output_index) {
-      hidden_state_data = rnn.GetHiddenState();
-    }
-  }
-  rnn.SetHiddenState(hidden_state_data);
-  for (int i = sync_output_index + 1; i < input_sequence_size; i++) {
-    delegate->SetSyncStatesToDevice(i == (sync_output_index + 1));
-    InvokeAndTestSingleRnnStep(i, &rnn);
+    EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
   }
 }
 
