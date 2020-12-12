@@ -117,6 +117,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "prelu.cc",
+        "quantize_common.cc",
         "reduce.cc",
         "reshape.cc",
         "resize_nearest_neighbor.cc",
@@ -147,6 +148,7 @@ cc_library(
     }),
     hdrs = [
         "micro_ops.h",
+        "quantize.h",
         "svdf.h",
     ],
     copts = micro_copts(),
