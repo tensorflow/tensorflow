@@ -38,8 +38,8 @@
   * A **major refactoring** of the internals of the Keras Functional API may affect code that
   is relying on certain internal details:
     * Code that uses `isinstance(x, tf.Tensor)` instead of `tf.is_tensor` when checking Keras symbolic inputs/outputs should switch to using `tf.is_tensor`.
-    * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as         unique identifiers instead of using `tensor.ref()`, etc.)
-    * Code that uses `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly and tracing the       `TensorSpec` objects.
+    * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as         unique identifiers instead of using `tensor.ref()`, etc.) may break. 
+    * Code that uses full path for `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly         and tracing the `TensorSpec` objects.
     * Code that relies on the exact number and names of the op layers that TensorFlow operations  were converted into may have changed.
     * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and  happens to work before TF 2.4. These will explicitly be unsupported           now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly  or being silently buggy.
     * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to  return a static or symbolic value depending on if the input       had a fully static shape or not. Now these ops always return symbolic values.
@@ -52,8 +52,7 @@
       that are meant to be dynamic). You can also disable the input checking entirely by setting `model.input_spec = None`.
   * Several changes have been made to `tf.keras.mixed_precision.experimental`. Note that it is now recommended to use the non-experimental          `tf.keras.mixed_precision` API.
    * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the dtype it will be casted to.
-   * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a
-     float16 or bfloat16 tensor instead of a float32 tensor.
+   * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a float16 or bfloat16 tensor instead of a float32 tensor.
    * The property `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is now a tensor, not a `LossScale` object. This means to get a loss scale      of a `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale`instead of `opt.loss_scale()`.
    * The property `should_cast_variables` has been removed from `tf.keras.mixed_precision.experimental.Policy`
    * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the `DynamicLossScale`'s        multiplier must be 2.
@@ -68,7 +67,7 @@
   
 * `tf.distribute`:
   * Removes `tf.distribute.Strategy.experimental_make_numpy_dataset`. Please use `tf.data.Dataset.from_tensor_slices` instead.
-  * Renames `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`, `tf.distribute.StrategyExtended.batch_reduce_to`,      `tf.distribute.ReplicaContext.all_reduce` to `options`:
+  * Renames `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`, `tf.distribute.StrategyExtended.batch_reduce_to`,      `tf.distribute.ReplicaContext.all_reduce` to `options`.
   * Renames `tf.distribute.experimental.CollectiveHints` to `tf.distribute.experimental.CommunicationOptions`.
   * Renames `tf.distribute.experimental.CollectiveCommunication` to `tf.distribute.experimental.CommunicationImplementation`.
   * Renames `tf.distribute.Strategy.experimental_distribute_datasets_from_function` to `distribute_datasets_from_function` as it is no longer experimental. 
@@ -150,6 +149,8 @@
     * Replaces the existing `tf.distribute.experimental.ParameterServerStrategy` symbol with a new class that is for parameter server training in TF2. Usage of
       the old symbol, usually with Estimator API, should be **replaced** with [`tf.compat.v1.distribute.experimental.ParameterServerStrategy`].
     * Added `tf.distribute.experimental.coordinator.*` namespace, including the main API `ClusterCoordinator` for coordinating the training cluster, the related       data structure `RemoteValue` and `PerWorkerValue`.
+  * `MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer          considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on 
+     [Multi-worer training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).    
   * Adds `tf.distribute.Strategy.gather` and `tf.distribute.ReplicaContext.all_gather` APIs to support gathering dense distributed values.
   * Fixes various issues with saving a distributed model.
 
