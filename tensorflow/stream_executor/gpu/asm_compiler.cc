@@ -118,18 +118,22 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
                         compilation_options.ToTuple()};
   auto it = ptx_cache.find(cache_key);
   if (it == ptx_cache.end()) {
-    auto compiled = CompileGpuAsm(device_ordinal, ptx, compilation_options);
+    PtxCompilerResult compiled = CompileGpuAsm(device_ordinal, ptx,
+                                               compilation_options);
     it = ptx_cache.emplace(cache_key, std::move(compiled)).first;
   }
 
   CHECK(it != ptx_cache.end());
- 
+
   // Failed compilation attempts are cached.
+  // Use separate status check and ValueOrDie invocation on ptx_cache
+  // entry to avoid value moving introduced by TF_ASSIGN_OR_RETURN.
+
   if (TF_PREDICT_FALSE(!it->second.ok())) {
     return it->second.status();
   }
 
-  TF_ASSIGN_OR_RETURN(const std::vector<uint8>& compiled, it->second);
+  const std::vector<uint8>& compiled = it->second.ValueOrDie();
   return absl::MakeSpan(compiled);
 }
 
