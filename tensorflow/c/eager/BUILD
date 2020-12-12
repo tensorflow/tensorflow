@@ -416,9 +416,7 @@ tf_cuda_cc_test(
     ],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # b/175330074
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":abstract_tensor_handle",
         ":c_api_experimental",
