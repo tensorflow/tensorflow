@@ -34,7 +34,7 @@
   * XLA:CPU and XLA:GPU devices are no longer registered by default. Use `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them, but this flag will eventually be removed in subsequent releases.
 
 * `tf.keras`:  
-  * The `steps_per_execution` argument in `compile()` is no longer experimental; if you were passing `experimental_steps_per_execution`, rename it to         `steps_per_execution` in your code. This argument controls the number of batches to run during each `tf.function` call when calling `fit()`. Running multiple   batches inside a single `tf.function` call can greatly improve performance on TPUs or small models with a large Python overhead.
+  * The `steps_per_execution` argument in `model.compile()` is no longer experimental; if you were passing `experimental_steps_per_execution`, rename it to `steps_per_execution` in your code. This argument controls the number of batches to run during each `tf.function` call when calling `model.fit()`. Running multiple batches inside a single `tf.function` call can greatly improve performance on TPUs or small models with a large Python overhead.
   * A **major refactoring** of the internals of the Keras Functional API may affect code that
   is relying on certain internal details:
     * Code that uses `isinstance(x, tf.Tensor)` instead of `tf.is_tensor` when checking Keras symbolic inputs/outputs should switch to using `tf.is_tensor`.
