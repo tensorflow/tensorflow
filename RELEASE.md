@@ -173,8 +173,7 @@
   * In `Attention` and `AdditiveAttention` layers, the `call()` method now accepts a `return_attention_scores` argument. When set to
     True, the layer returns the attention scores as an additional output argument.
   * Adds `tf.metrics.log_cosh` and `tf.metrics.logcosh` API entrypoints with the same implementation as their `tf.losses` equivalent.
-  * For Keras model, the individual call of `Model.evaluate` uses no cached data for evaluation, while `Model.fit` uses cached data when
-    `validation_data` arg is provided for better performance.
+  * For Keras model, the individual call of `Model.evaluate` uses no cached data for evaluation, while `Model.fit` uses cached data when `validation_data` arg is provided for better performance.
   * Adds a `save_traces` argument to `model.save`/ `tf.keras.models.save_model` which determines whether the SavedModel format stores the Keras model/layer call     functions. The traced functions allow Keras to revive custom models and layers without the original class definition, but if this isn't required the tracing     can be disabled with the added option.
   * The `tf.keras.mixed_precision` API is now non-experimental. The non-experimental API differs from the experimental API in several ways.
     * `tf.keras.mixed_precision.Policy` no longer takes in a `tf.mixed_precision.experimental.LossScale` in the constructor, and no longer has a `LossScale`           associated with it. Instead, `Model.compile` will automatically wrap the optimizer with a `LossScaleOptimizer` using dynamic loss scaling if `Policy.name`       is "mixed_float16".
