@@ -30,7 +30,7 @@
   * The byte layout for string tensors across the C-API has been updated to match TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
   * C-API functions `TF_StringDecode`, `TF_StringEncode`, and `TF_StringEncodedSize` are no longer relevant and have been removed; see `core/platform/ctstring.h` for  string access/modification in C.
   * `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are now hidden. These modules are not part of TensorFlow public API.
-  * `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type `tf.complex64` or `tf.complex128`, because the behavior of these ops is not well           defined for complex types.
+  * `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type `tf.complex64` or `tf.complex128`, because the behavior of these ops is not well defined for complex types.
   * XLA:CPU and XLA:GPU devices are no longer registered by default. Use `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them, but this flag will eventually be removed in subsequent releases.
 
 * `tf.keras`:  
