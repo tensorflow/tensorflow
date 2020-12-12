@@ -14,18 +14,26 @@ limitations under the License.
 ==============================================================================*/
 
 // This file contains legalizations common to mapping both TensorFlow and
-// TensorFlow Lite to TOSA.
+// TensorFlow Lite to TOSA. It operates generically on ops and does not have
+// a hard reference on either dialect.
 //
 // Conversion functions return llvm::None on a legalization failure or a
 // legalized value on success.  Callers must check for presence of an
 // llvm::Optional value after each call.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
+
 #include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+
+#include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
 namespace mlir {
