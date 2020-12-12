@@ -39,7 +39,7 @@
   is relying on certain internal details:
     * Code that uses `isinstance(x, tf.Tensor)` instead of `tf.is_tensor` when checking Keras symbolic inputs/outputs should switch to using `tf.is_tensor`.
     * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as         unique identifiers instead of using `tensor.ref()`, etc.) may break. 
-    * Code that uses full path for `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly         and tracing the `TensorSpec` objects.
+    * Code that uses full path for `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly and tracing the `TensorSpec` objects.
     * Code that relies on the exact number and names of the op layers that TensorFlow operations  were converted into may have changed.
     * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and  happens to work before TF 2.4. These will explicitly be unsupported           now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly  or being silently buggy.
     * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to  return a static or symbolic value depending on if the input       had a fully static shape or not. Now these ops always return symbolic values.
