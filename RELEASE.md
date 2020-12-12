@@ -149,7 +149,7 @@
     * Replaces the existing `tf.distribute.experimental.ParameterServerStrategy` symbol with a new class that is for parameter server training in TF2. Usage of
       the old symbol, usually with Estimator API, should be **replaced** with [`tf.compat.v1.distribute.experimental.ParameterServerStrategy`].
     * Added `tf.distribute.experimental.coordinator.*` namespace, including the main API `ClusterCoordinator` for coordinating the training cluster, the related data structure `RemoteValue` and `PerWorkerValue`.
-  * `MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer          considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on 
+  * `MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on 
      [Multi-worer training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).    
   * Adds `tf.distribute.Strategy.gather` and `tf.distribute.ReplicaContext.all_gather` APIs to support gathering dense distributed values.
   * Fixes various issues with saving a distributed model.
