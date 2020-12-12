@@ -166,8 +166,7 @@
       clearer and easier to understand.
   * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape` as an alternative to accepting a `callable` loss.
   * Adds `beta` hyperparameter to [FTRL](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl) optimizer classes (Keras and others) to match [FTRL paper](https://research.google.com/pubs/archive/41159.pdf).  
-  * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for customization of how gradients are aggregated across devices, as well as
-     `gradients_transformers` to allow for custom gradient transformations (such as gradient clipping).
+  * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for customization of how gradients are aggregated across devices, as well as `gradients_transformers` to allow for custom gradient transformations (such as gradient clipping).
   * Improvements to Keras preprocessing layers:
     * TextVectorization can now accept a vocabulary list or file as an init arg.
     * Normalization can now accept mean and variance values as init args.
