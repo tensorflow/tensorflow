@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
@@ -227,7 +228,6 @@ def _check_trt_version_compatibility():
         "This is supported because TensorRT " +
         " minor/patch upgrades are backward compatible")
 
-
 def _get_tensorrt_rewriter_config(conversion_params,
                                   is_dynamic_op=None,
                                   max_batch_size=None,
@@ -271,11 +271,14 @@ def _get_tensorrt_rewriter_config(conversion_params,
     # need to run constant folding again.
     rewriter_config_with_trt.optimizers.extend(
         ["constfold", "layout", "constfold"])
+
   rewriter_config_with_trt.meta_optimizer_iterations = (
       rewriter_config_pb2.RewriterConfig.ONE)
   optimizer = rewriter_config_with_trt.custom_optimizers.add()
-  # Add a constfold optimizer to cleanup the unused Const nodes.
-  rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
+
+  if not disable_non_trt_optimizers:
+    # Add a constfold optimizer to cleanup the unused Const nodes.
+    rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
 
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map[
@@ -295,25 +298,13 @@ def _get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map["max_batch_size"].i = max_batch_size
   optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
 
-  # Disabling optimizers should happen after CopyFrom the template
+  # Disabling optimizers should happen after defining the TF-TRT grappler pass
   # otherwise the template can overwrite the disablement.
   if disable_non_trt_optimizers:
-    off = rewriter_config_pb2.RewriterConfig.OFF
-    rewriter_config_with_trt.layout_optimizer = off
-    rewriter_config_with_trt.constant_folding = off
-    rewriter_config_with_trt.shape_optimization = off
-    rewriter_config_with_trt.remapping = off
-    rewriter_config_with_trt.arithmetic_optimization = off
-    rewriter_config_with_trt.dependency_optimization = off
-    rewriter_config_with_trt.loop_optimization = off
-    rewriter_config_with_trt.function_optimization = off
-    rewriter_config_with_trt.debug_stripper = off
-    rewriter_config_with_trt.disable_model_pruning = True
-    rewriter_config_with_trt.scoped_allocator_optimization = off
-    rewriter_config_with_trt.memory_optimization = (
-        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-    rewriter_config_with_trt.pin_to_host_optimization = off
-    rewriter_config_with_trt.auto_parallel.enable = False
+    rewriter_config_with_trt = \
+        trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+            rewriter_config_with_trt
+        )
 
   return rewriter_config_with_trt
 
@@ -652,10 +643,23 @@ class TrtGraphConverter(object):
           return_elements=fetch_names,
           name="")
 
+    calibrate_rewriter_cfg = rewriter_config_pb2.RewriterConfig()
+    if self._test_only_disable_non_trt_optimizers:
+        calibrate_rewriter_cfg = \
+            trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+                calibrate_rewriter_cfg
+            )
+
     # Set allow_soft_placement=True to run the graph for calibration so that
     # OPs supported by TensorRT but don't have a GPU implementation are allowed
     # to execute on CPU.
-    calibrate_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    calibrate_config = config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        graph_options=config_pb2.GraphOptions(
+            rewrite_options=calibrate_rewriter_cfg
+        )
+    )
+
     with session.Session(
         graph=self._calibration_graph,
         config=calibrate_config) as calibration_sess:
