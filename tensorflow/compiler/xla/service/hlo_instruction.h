@@ -1601,8 +1601,19 @@ class HloInstruction {
   const PrecisionConfig& precision_config() const;
   PrecisionConfig* mutable_precision_config();
 
-  // Sets the debug metadata for this instruction.
-  void set_metadata(const OpMetadata& metadata) { metadata_ = metadata; }
+  // Sets the debug metadata for this instruction, excluding creation_pass_id,
+  // which should never be copied anywhere.
+  void set_metadata(const OpMetadata& metadata) {
+    int64 creation_pass_id = metadata_.creation_pass_id();
+    metadata_ = metadata;
+    metadata_.set_creation_pass_id(creation_pass_id);
+  }
+  void set_creation_pass_id(int64 pass_id) {
+    metadata_.set_creation_pass_id(pass_id);
+  }
+  void set_metadata_op_name(const std::string& name) {
+    metadata_.set_op_name(name);
+  }
   const OpMetadata& metadata() const { return metadata_; }
 
   // Set/get the computation containing this instruction. set_parent should only
