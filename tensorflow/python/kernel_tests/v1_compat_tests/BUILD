@@ -42,15 +42,3 @@ cuda_py_test(
         "//tensorflow/python:session_ops",
     ],
 )
-
-cuda_py_test(
-    name = "array_ops_test",
-    size = "small",
-    srcs = ["array_ops_test.py"],
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-    ],
-)
