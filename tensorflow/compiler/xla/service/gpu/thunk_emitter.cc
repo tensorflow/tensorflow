@@ -258,8 +258,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
             /*output_data=*/output_data,
             /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev,
-            /*output_tuple=*/GetAllocationSlice(*custom_call)));
+            /*output_inv_stddev=*/output_inv_stddev));
     return Status::OK();
   }
 
@@ -295,8 +294,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
         /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
         /*output_grad_data=*/output_grad_data,
         /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset,
-        /*output_tuple=*/GetAllocationSlice(*custom_call)));
+        /*output_grad_offset=*/output_grad_offset));
     return Status::OK();
   }
 

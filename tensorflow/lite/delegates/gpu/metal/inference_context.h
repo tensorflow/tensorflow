@@ -60,16 +60,30 @@ limitations under the License.
 
 /// Inserts all GPU compute tasks into the command encoder.
 /// @param inputOutputBuffers Must be created and passed into the method with pairs ID:buffer
-/// @param encoderBlock User-defined block to take control over command encoder. Can be nil.
-///             The block can be used, for example, for fine-grained benchmarking where end encoding
-///             is performed and command buffer is committed with completion block. A new command
-///             buffer must be created and new command encoder must be returned by the block.
-///             The block is called after every dispatch encoding.
 /// @discussion No GPU synchronization functions are used inside. All GPU resources must be created
 ///             with the same device which has been used in compileModelWithDevice() method.
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
-       inputOutputBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers
-             encoderBlock:(id<MTLComputeCommandEncoder> (^)(bool isLast))encoderBlock;
+       inputOutputBuffers:
+           (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+
+/// Inserts all GPU compute tasks into the command buffer. For every task will be used separate
+///   encoder.
+/// @param inputOutputBuffers Must be created and passed into the method with pairs ID:buffer
+/// @discussion No GPU synchronization functions are used inside. All GPU resources must be created
+///             with the same device which has been used in compileModelWithDevice() method.
+- (void)encodeWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+             inputOutputBuffers:
+                 (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+
+/// Adds all GPU compute tasks to the command queue. For every task will be used separate
+///   encoder. Few encoders(flushPeriod) batched into compute buffer that sent for execution.
+/// @param inputOutputBuffers Must be created and passed into the method with pairs ID:buffer
+/// @discussion No GPU synchronization functions are used inside. All GPU resources must be created
+///             with the same device which has been used in compileModelWithDevice() method.
+- (void)encodeWithCommandQueue:(id<MTLCommandQueue>)commandQueue
+            inputOutputBuffers:
+                (const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers
+             flushPeriodically:(int)flushPeriod;
 
 @end
 

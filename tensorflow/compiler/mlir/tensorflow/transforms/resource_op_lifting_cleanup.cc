@@ -117,7 +117,7 @@ void EliminateUnusedResults(
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
 FuncOp CloneFunctionIfNeeded(FuncOp func) {
-  ModuleOp module = func.getParentOfType<ModuleOp>();
+  ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;

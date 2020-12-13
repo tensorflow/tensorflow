@@ -83,8 +83,8 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
   CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
-                      GpuVersion gpu_version,
-                      se::StreamExecutor* stream_exec) = 0;
+                      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
+                      bool relocatable) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
@@ -95,6 +95,10 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
+
+  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
+      const HloModule& module, std::unique_ptr<llvm::Module> llvm_module,
+      se::StreamExecutor* stream_exec, const CompileOptions& options);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
@@ -115,6 +119,12 @@ class GpuCompiler : public LLVMCompiler {
   }
 
  private:
+  virtual StatusOr<std::vector<uint8>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8>> modules) {
+    return Unimplemented("LinkModules is not implemented.");
+  }
+
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.

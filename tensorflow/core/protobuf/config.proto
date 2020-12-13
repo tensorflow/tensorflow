@@ -593,6 +593,11 @@ message ConfigProto {
       MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
       // Disabling the MLIR bridge disables it for all graphs in this session.
       MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
+      // Enable the MLIR bridge on a per graph basis based on an analysis of
+      // the features used in the graph. If the features used by the graph are
+      // supported by the MLIR bridge, the MLIR bridge will be used to run the
+      // graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
     }
     // This field is underdevelopment, for now use enable_mlir_bridge
     // (b/166038521).
@@ -620,6 +625,11 @@ message ConfigProto {
     // The XLA fusion autotuner can improve performance by executing a heuristic
     // search on the compiler parameters.
     int64 xla_fusion_autotuner_thresh = 15;
+
+    // Whether runtime execution uses TFRT.
+    bool use_tfrt = 18;
+
+    // Next: 19
   }
 
   Experimental experimental = 16;
@@ -685,6 +695,12 @@ message RunOptions {
       int64 priority = 1;
     }
     RunHandlerPoolOptions run_handler_pool_options = 3;
+
+    // If true, always track kernel execution cost. This allows the executor to
+    // transit kernels from "inexpensive" to "expensive" during the execution.
+    // This is a temporary flag for validating this feature. We will remove this
+    // flag once the feature is validated.
+    bool always_track_kernel_execution_cost = 4;
   }
 
   Experimental experimental = 8;

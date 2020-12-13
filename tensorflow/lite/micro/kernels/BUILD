@@ -126,6 +126,7 @@ cc_library(
         "split_v.cc",
         "strided_slice.cc",
         "sub.cc",
+        "svdf_common.cc",
         "tanh.cc",
         "unpack.cc",
     ] + select({
@@ -144,7 +145,10 @@ cc_library(
             "xtensa/svdf.cc",
         ],
     }),
-    hdrs = ["micro_ops.h"],
+    hdrs = [
+        "micro_ops.h",
+        "svdf.h",
+    ],
     copts = micro_copts(),
     visibility = [
         # Needed for micro:op_resolvers but visibility can not be finer-grained
@@ -678,6 +682,7 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
+    tags = ["nomsan"],  # b/175133159
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

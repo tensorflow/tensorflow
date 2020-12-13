@@ -58,9 +58,11 @@
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
-    *   Added support for saved model's session initializer through
+    *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
-    *   Added dynamic range quantization support for the BatchMatMul op.
+    *  Added DEPTH_TO_SPACE support in Post training quantization.
+    *  Added dynamic range quantization support for the BatchMatMul op.
+        * Both symmetric and asymmetric quantized input tensor are supported.
     *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
        only supports float32 input.
     *  TFLite Supports SingatureDef:
@@ -95,6 +97,11 @@
         value of `is_dynamic_op` is not True. We didn't use the value for
         `max_batch_size` for building TensorRT engines.
     *   Issue a warning when function get_tensorrt_rewriter_config is used.
+*   Other:
+    *   Add new enum value `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` to
+        `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
+        This runs the MLIR bridge only when an analysis of the graph only when
+        an analysis of the graph determines that it is safe to run.
 
 ## Thanks to our Contributors
 

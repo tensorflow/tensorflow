@@ -208,7 +208,7 @@ void CreateFunctions(ModuleOp module_op,
           StringAttr::get(metadata.result_devices[i], context));
     }
 
-    func_op.setAttr(kHostAttr, StringAttr::get(host, context));
+    func_op->setAttr(kHostAttr, StringAttr::get(host, context));
     func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 
@@ -291,7 +291,7 @@ class ClusterTFOpsByHostPass
   void runOnFunction() override {
     MLIRContext *context = &getContext();
     FuncOp func_op = getOperation();
-    ModuleOp module_op = func_op.getParentOfType<mlir::ModuleOp>();
+    ModuleOp module_op = func_op->getParentOfType<mlir::ModuleOp>();
 
     llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
         GetFunctionMetadatas(func_op);

@@ -27,10 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/version.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
 namespace {
 class CallbackErrorReporter : public tflite::ErrorReporter {
  public:
@@ -84,6 +80,8 @@ class CallbackOpResolver : public ::tflite::OpResolver {
 };
 
 }  // namespace
+
+extern "C" {
 
 // LINT.IfChange
 
@@ -233,9 +231,7 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
 
 // LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus
 
 namespace tflite {
 namespace internal {

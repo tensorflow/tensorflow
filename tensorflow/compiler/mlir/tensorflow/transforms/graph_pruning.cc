@@ -40,7 +40,7 @@ namespace {
 // "tf.entry_function" attribute defined.
 bool CanPruneGraph(FuncOp func) {
   return func.getName() != "main" ||
-         func.getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
+         func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
 }
 
 // Visits an op's operand if it is an output of an Operation in the same

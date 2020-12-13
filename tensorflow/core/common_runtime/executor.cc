@@ -73,6 +73,13 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
+
+// Temporary flag for controlling whether to always track kernel execution
+// costs.
+static bool always_track_kernel_execution_cost = false;
+void EnableAlwaysTrackKernelExecutionCost() {
+  always_track_kernel_execution_cost = true;
+}
 namespace {
 
 // 1-D, 0 element tensor.
@@ -179,12 +186,6 @@ class ExecutorImpl : public Executor {
     // Updates the dynamic cost estimate, which is used to determine whether the
     // given node is expensive. The new cost estimate is a weighted average of
     // the old cost estimate and the latest cost.
-    //
-    // NOTE: We currently only expect updates to the cost estimate when
-    // `is_expensive_[node.node_id]` is true (or at least, it *was* true, when
-    // we started to execute the kernel. As a result, we expect that a kernel
-    // can only ever transition from "expensive" to "inexpensive", but not vice
-    // versa.
     void UpdateCostEstimate(const NodeItem& node, uint64 elapsed_cycles) {
       // N.B. Updates to `cost_estimate` are atomic but unlocked.  Simultaneous
       // updates may result in one or more updates being ignored.  This does not
@@ -195,9 +196,10 @@ class ExecutorImpl : public Executor {
                                 kCostDecay +
                             (elapsed_cycles / kCostDecay);
       cost_estimate.store(new_estimate, std::memory_order_relaxed);
-      if (new_estimate < kOpIsExpensiveThresholdCycles) {
-        is_expensive_[node.node_id].store(false, std::memory_order_relaxed);
-      }
+
+      bool new_is_expensive = (new_estimate >= kOpIsExpensiveThresholdCycles);
+      is_expensive_[node.node_id].store(new_is_expensive,
+                                        std::memory_order_relaxed);
     }
 
    private:
@@ -573,6 +575,15 @@ Status ExecutorState<PropagatorStateType>::ProcessSync(
       KernelTimer timer;
       device->Compute(op_kernel, &ctx);
       kernel_stats_->UpdateCostEstimate(item, timer.ElapsedCycles());
+    } else if (always_track_kernel_execution_cost) {
+      KernelTimer timer;
+      device->Compute(op_kernel, &ctx);
+      // If always_track_kernel_execution_cost is set, update the cost estimate
+      // for inexpensive kernels with ~1/8 probability. This assumes that the
+      // last 3 bits of the CPU cycle count is uniformly distributed.
+      constexpr int kKernelExecutionTrackingInvocationSkipCount = 8;
+      if (timer.start_cycles % kKernelExecutionTrackingInvocationSkipCount == 0)
+        kernel_stats_->UpdateCostEstimate(item, timer.ElapsedCycles());
     } else {
       device->Compute(op_kernel, &ctx);
     }

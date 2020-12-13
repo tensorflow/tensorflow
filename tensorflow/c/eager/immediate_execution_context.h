@@ -111,11 +111,11 @@ class ImmediateExecutionContext : public AbstractContext {
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
-  // Same as `AddFunctionDef`, and additionally saves a pointer to the Graph
-  // which has nodes containing stack traces for the nodes in `fdef`. Assumes
-  // `graph` is alive while the function is alive.
-  virtual Status AddFunctionDefWithDebugInfo(const FunctionDef& fdef,
-                                             const Graph* graph) = 0;
+  // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
+  // the key of the function definition name (to be retrieved during function
+  // instantiation).
+  virtual Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) = 0;
 
   // Find and return a added function by its name.
   virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;

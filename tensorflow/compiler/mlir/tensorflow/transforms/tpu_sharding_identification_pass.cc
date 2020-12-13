@@ -130,8 +130,8 @@ void IdentifyXlaShardingForComputationInputs(
     }
   }
 
-  cluster_func_op.setAttr(tensorflow::kInputShardingAttr,
-                          builder->getStrArrayAttr(sharding_for_args));
+  cluster_func_op->setAttr(tensorflow::kInputShardingAttr,
+                           builder->getStrArrayAttr(sharding_for_args));
 }
 
 // Finds XlaSharding op connected to a result value. XlaSharding op may be
@@ -202,8 +202,8 @@ void IdentifyXlaShardingForComputationOutputs(
     }
   }
 
-  cluster_func.setAttr(tensorflow::kOutputShardingAttr,
-                       builder->getStrArrayAttr(sharding_for_rets));
+  cluster_func->setAttr(tensorflow::kOutputShardingAttr,
+                        builder->getStrArrayAttr(sharding_for_rets));
 }
 
 // Extracts input/output sharding configuration of `cluster_func` by parsing
@@ -211,7 +211,7 @@ void IdentifyXlaShardingForComputationOutputs(
 void IdentifyXlaShardingForTPUComputation(
     Builder* builder, tf_device::ClusterFuncOp cluster_func) {
   // Look up function definition from module.
-  FuncOp func = cluster_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
+  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       cluster_func.func());
 
   // By default inputs/outputs have maximal sharding and are assigned to logical

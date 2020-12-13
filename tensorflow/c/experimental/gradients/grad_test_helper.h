@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_GRAD_TEST_HELPER_H_
 #define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_GRAD_TEST_HELPER_H_
 
-#include "tensorflow/c/eager/gradients_util.h"
+#include "tensorflow/c/eager/unified_api_testutil.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -24,7 +24,7 @@ namespace internal {
 void CompareNumericalAndAutodiffGradients(
     Model model, Model grad_model, AbstractContext* ctx,
     absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
-    const GradientRegistry& registry, double abs_error = 1e-2);
+    double abs_error = 1e-2);
 
 }  // namespace internal
 }  // namespace gradients

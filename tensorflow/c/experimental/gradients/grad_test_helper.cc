@@ -24,11 +24,11 @@ namespace internal {
 void CompareNumericalAndAutodiffGradients(
     Model model, Model grad_model, AbstractContext* ctx,
     absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
-    const GradientRegistry& registry, double abs_error) {
+    double abs_error) {
   auto num_inputs = inputs.size();
   std::vector<AbstractTensorHandle*> outputs(num_inputs);
   auto s = RunModel(grad_model, ctx, inputs, absl::MakeSpan(outputs),
-                    /*use_function=*/use_function, registry);
+                    /*use_function=*/use_function);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   for (int i = 0; i < num_inputs; ++i) {

@@ -103,7 +103,8 @@ func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf6
     precision_config = [],
     result_scale = 1.000000e+00 : f64,
     rhs_dilation = dense<1> : tensor<2xi64>,
-    window_strides = dense<1> : tensor<2xi64>}
+    window_strides = dense<1> : tensor<2xi64>,
+    window_reversal = dense<true>: tensor<2xi1>}
   : (memref<4x5x16x16xf64>, memref<5x3x7x7xf64>, memref<4x3x16x16xf64>, memref<32xui8>) -> ()
   return
 }

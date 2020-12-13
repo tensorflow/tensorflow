@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace xla {
 namespace gpu {
@@ -299,7 +300,8 @@ StatusOr<std::pair<std::string, std::vector<uint8>>>
 NVPTXCompiler::CompileTargetBinary(const HloModule* module,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec) {
+                                   se::StreamExecutor* stream_exec,
+                                   bool relocatable) {
   std::pair<int, int> compute_capability =
       absl::get<std::pair<int, int>>(gpu_version);
 
@@ -338,7 +340,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability.first, compute_capability.second,
-      module->config());
+      module->config(), relocatable);
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));
@@ -346,7 +348,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
 
 std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
-    int cc_minor, const HloModuleConfig& hlo_module_config) {
+    int cc_minor, const HloModuleConfig& hlo_module_config, bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
   tensorflow::profiler::TraceMe activity(
       "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
@@ -361,7 +363,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     tensorflow::mutex_lock lock(mutex_);
     std::tie(iter, inserted) = compilation_cache_.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(ptx, cc_major, cc_minor),
+        std::forward_as_tuple(ptx, cc_major, cc_minor, relocatable),
         std::forward_as_tuple());
     cache_ptx = &iter->first.ptx;
     cache_value = &iter->second;
@@ -375,9 +377,13 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        StatusOr<std::vector<uint8>> maybe_cubin =
-            se::CompileGpuAsm(stream_exec->device_ordinal(), cache_ptx->c_str(),
-                              PtxOptsFromConfig(hlo_module_config));
+        auto ptxas_config = PtxOptsFromConfig(hlo_module_config);
+        if (relocatable) {
+          ptxas_config.extra_flags.push_back("-c");
+        }
+        StatusOr<std::vector<uint8>> maybe_cubin = se::CompileGpuAsm(
+            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()
@@ -443,6 +449,18 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);
   return cache_value->cubin_data;
+}
+
+StatusOr<std::vector<uint8>> NVPTXCompiler::LinkModules(
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8>> modules) {
+  std::vector<stream_executor::CubinOrPTXImage> images;
+  images.reserve(modules.size());
+  for (auto& module : modules) {
+    images.push_back({"", std::move(module)});
+  }
+  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
+                        stream_exec->implementation()->GpuContextHack()),
+                    images);
 }
 
 }  // namespace gpu

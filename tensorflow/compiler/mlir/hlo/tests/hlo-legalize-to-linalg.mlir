@@ -232,6 +232,20 @@ func @float_cmp(%lhs: tensor<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @float_cmp_ne
+func @float_cmp_ne(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "NE"}
+          : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf "une", %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
 // CHECK-LABEL: func @int_cmp
 func @int_cmp(%lhs: tensor<2x2xi32>,
               %rhs: tensor<2x2xi32>) -> tensor<2x2xi1> {
@@ -696,3 +710,14 @@ func @shift_right_logical(%lhs: tensor<2x2xi32>,
 // CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = shift_right_unsigned %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @constant
+func @constant() {
+  %result = "mhlo.constant"() {
+    value = dense<10> : tensor<i32>
+  } : () -> (tensor<i32>)
+  return
+}
+// CHECK: %[[CONSTANT:.*]] = constant dense<10> : tensor<i32>

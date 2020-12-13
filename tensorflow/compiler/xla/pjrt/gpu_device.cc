@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 
 #ifdef NCCL_ENABLED
 #include "third_party/nccl/nccl.h"
@@ -35,9 +36,9 @@ namespace xla {
 namespace {
 
 // A custom PjRtClient that overrides the device assignment method.
-class GpuClient : public xla::PjRtClient {
+class GpuClient : public xla::PjRtStreamExecutorClient {
  public:
-  using xla::PjRtClient::PjRtClient;
+  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
 
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -55,7 +56,8 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
     return assignment;
   }
   // Fallback to default global device assignment if we can't run locally.
-  return PjRtClient::GetDefaultDeviceAssignment(num_replicas, num_partitions);
+  return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
+                                                              num_partitions);
 }
 
 // Builds an xla::LocalClient for the GPU platform.
@@ -225,9 +227,9 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(
   return result.first->second;
 }
 
-std::vector<std::unique_ptr<PjRtDevice>> BuildLocalDevices(
+std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
-  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   for (auto& local_device : local_device_states) {
     int device_ordinal = local_device->device_ordinal();
     const se::DeviceDescription& description =
@@ -243,7 +245,7 @@ std::vector<std::unique_ptr<PjRtDevice>> BuildLocalDevices(
 Status BuildDistributedDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    std::vector<std::unique_ptr<PjRtDevice>>* devices,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>* devices,
     gpu::GpuExecutableRunOptions* gpu_executable_run_options) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
@@ -322,7 +324,7 @@ StatusOr<std::unique_ptr<PjRtClient>> GetGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.front()->executor());
 
-  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   auto gpu_run_options = absl::make_unique<gpu::GpuExecutableRunOptions>();
   if (distributed_client) {
     TF_RETURN_IF_ERROR(BuildDistributedDevices(

@@ -110,16 +110,15 @@ class RangeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, output.status());
 
     if (type == DT_INT32 || type == DT_INT64) {
-      // If input has dynamic dimension (value is -1), propagate the dynamic
-      // dimension to output using set-dimension-size.
-      ctx->set_dynamic_dimension_is_minus_one(true);
-      OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &limit));
+      bool limit_is_dynamic = false;
+      OP_REQUIRES_OK(ctx,
+                     ctx->ResolveInputDynamismIntoPred(1, &limit_is_dynamic));
       if (type == DT_INT32) {
-        if (limit.Get<int32>({}) == -1) {
+        if (limit_is_dynamic) {
           output = xla::SetDimensionSize(output.ValueOrDie(), ctx->Input(1), 0);
         }
       } else {
-        if (limit.Get<int64>({}) == -1) {
+        if (limit_is_dynamic) {
           output = xla::SetDimensionSize(
               output.ValueOrDie(),
               xla::ConvertElementType(ctx->Input(1), xla::S32), 0);

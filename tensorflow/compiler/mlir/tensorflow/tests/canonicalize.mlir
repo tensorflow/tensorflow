@@ -904,6 +904,20 @@ func @testRankOfRankedTensor(%arg0 : tensor<4x3x2xf32>) -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: testRankOfRankedTensorUnrankedOutput
+func @testRankOfRankedTensorUnrankedOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<*xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// CHECK-LABEL: testRankOfRankedTensorDynamicShapeOutput
+func @testRankOfRankedTensorDynamicShapeOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<?xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
 // CHECK-LABEL: @foldFill
 func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   %0 = "tf.Const"() {value = dense<[3, 2, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1327,3 +1341,16 @@ func @testVariableToVariableV2() {
   return
 }
 
+// CHECK-LABEL: testUnpackAndCwiseUnary
+func @testUnpackAndCwiseUnary(%arg0: tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+
+  // CHECK: %[[NEG:.*]] = "tf.Neg"(%arg0)
+  // CHECK: %[[UNPACK:.*]]:2 = "tf.Unpack"(%[[NEG]])
+  %unpacked:2 = "tf.Unpack"(%arg0) {axis = 1 : i64, device = ""}
+                : (tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  %0 = "tf.Neg"(%unpacked#0): (tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tf.Neg"(%unpacked#1): (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return %[[UNPACK]]#0, %[[UNPACK]]#1
+  return %0, %1 : tensor<?xf32>, tensor<?xf32>
+}

@@ -21,40 +21,15 @@ limitations under the License.
 #include <iterator>
 #include <numeric>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"
-#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Matchers.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
-#include "mlir/IR/TypeUtilities.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
 #define PASS_NAME "tosa-fuse-bias-tf"
 #define DEBUG_TYPE PASS_NAME
-
-// TODO: remove macro when replacing common function return types with
-// llvm::Optional<> Helper macros for checking the return value of a common
-// legalization function that returns a single tensor.
-// Packs the result in a list.
-#define TOSA_REPLACE_LOWERED_OP(REWRITER, OP, LOWERED_OP)   \
-  if (LOWERED_OP) {                                         \
-    REWRITER.replaceOp((OP), {(LOWERED_OP)->getResults()}); \
-    return success();                                       \
-  } else {                                                  \
-    return failure();                                       \
-  }
 
 namespace mlir {
 
@@ -118,13 +93,17 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
   // Bias tensor that feeds into tosa.conv2d must be rank 1
   if (bias_shape.size() != 1) return failure();
 
-  auto lowered_op = convertTFConv2DCommon(
+  auto result = convertTFConv2DCommon(
       rewriter, op, output_type, tf_conv2d_op.input(), tf_conv2d_op.filter(),
       bias, tf_conv2d_op.strides(), tf_conv2d_op.dilations(),
       tf_conv2d_op.explicit_paddings(), tf_conv2d_op.padding(),
       tf_conv2d_op.data_format());
 
-  TOSA_REPLACE_LOWERED_OP(rewriter, op, lowered_op);
+  if (!result) return failure();
+
+  rewriter.replaceOp(op, {result.getValue()});
+
+  return success();
 }
 
 void FuseBiasTF::runOnFunction() {

@@ -108,10 +108,15 @@ StatusOr<std::pair<std::string, std::vector<uint8>>>
 AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version,
-                                    se::StreamExecutor* stream_exec) {
+                                    se::StreamExecutor* stream_exec,
+                                    bool relocatable) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
     rocdl_dir_ = GetROCDLDir(module->config());
+  }
+
+  if (relocatable) {
+    return Unimplemented("relocatable target binary is not implemented");
   }
 
   std::vector<uint8> hsaco;
