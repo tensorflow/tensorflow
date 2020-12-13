@@ -361,6 +361,128 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(self.evaluate(m.count), 1)
 
 
+class HarmonicMeanTest(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_all_keras_modes
+  def test_harmonic_mean(self):
+    m = metrics.HarmonicMean(name='my_hmean')
+
+    # check config
+    self.assertEqual(m.name, 'my_hmean')
+    self.assertTrue(m.stateful)
+    self.assertEqual(m.dtype, dtypes.float32)
+    self.assertEqual(len(m.variables), 2)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # check initial state
+    self.assertEqual(self.evaluate(m.total), 0)
+    self.assertEqual(self.evaluate(m.count), 0)
+
+    # check __call__()
+    self.assertEqual(self.evaluate(m(10)), 10)
+    self.assertEqual(self.evaluate(m.total), 0.1)
+    self.assertEqual(self.evaluate(m.count), 1)
+
+    # check update_state() and result() + state accumulation + tensor input
+    update_op = m.update_state([
+        ops.convert_to_tensor_v2_with_dispatch(1),
+        ops.convert_to_tensor_v2_with_dispatch(5)
+    ])
+    self.evaluate(update_op)
+    self.assertAlmostEqual(self.evaluate(m.result()), 3 / 1.3, 5)
+    self.assertEqual(self.evaluate(m.total), 1.3)
+    self.assertEqual(self.evaluate(m.count), 3)
+
+    # check reset_states()
+    m.reset_states()
+    self.assertEqual(self.evaluate(m.total), 0)
+    self.assertEqual(self.evaluate(m.count), 0)
+
+    # Check save and restore config
+    m2 = metrics.HarmonicMean.from_config(m.get_config())
+    self.assertEqual(m2.name, 'my_hmean')
+    self.assertTrue(m2.stateful)
+    self.assertEqual(m2.dtype, dtypes.float32)
+    self.assertEqual(len(m2.variables), 2)
+
+  @testing_utils.run_v2_only
+  def test_function_wrapped_reset_state(self):
+    m = metrics.HarmonicMean(name='my_hmean')
+
+    # check reset_states in function.
+    @def_function.function
+    def reset_in_fn():
+      m.reset_states()
+      return m.update_state(100)
+
+    for _ in range(5):
+      self.evaluate(reset_in_fn())
+    self.assertEqual(self.evaluate(m.count), 1)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_harmonic_mean_with_sample_weight(self):
+    m = metrics.HarmonicMean(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
+    self.evaluate(variables.variables_initializer(m.variables))
+
+    # check scalar weight
+    result_t = m(10, sample_weight=2)
+    self.assertEqual(self.evaluate(result_t), 10)
+    self.assertEqual(self.evaluate(m.total), 0.2)
+    self.assertEqual(self.evaluate(m.count), 2)
+    m.reset_states()
+
+    # check weights not scalar and weights rank matches values rank
+    result_t = m([1, 4, 4], sample_weight=[1, 0.2, 0.5])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 1.4468086, 5)
+    self.assertAlmostEqual(self.evaluate(m.total), 1.175000, 5)
+    self.assertEqual(self.evaluate(m.count), 1.7)
+    m.reset_states()
+
+    # check weights broadcast
+    result_t = m([1, 2], sample_weight=0.5)
+    self.assertAlmostEqual(self.evaluate(result_t), 1.3333334, 5)
+    self.assertAlmostEqual(self.evaluate(m.total), 0.7500000, 5)
+    self.assertEqual(self.evaluate(m.count), 1.0)
+    m.reset_states()
+
+    # check weights squeeze
+    result_t = m([1, 5], sample_weight=[[1], [0.2]])
+    self.assertAlmostEqual(self.evaluate(result_t), 1.1538463, 5)
+    self.assertAlmostEqual(self.evaluate(m.total), 1.040000, 5)
+    self.assertEqual(self.evaluate(m.count), 1.2, 5)
+    m.reset_states()
+
+    # check weights expand
+    result_t = m([[1], [5]], sample_weight=[1, 0.2])
+    self.assertAlmostEqual(self.evaluate(result_t), 1.1538463, 5)
+    self.assertAlmostEqual(self.evaluate(m.total), 1.0400000, 5)
+    self.assertEqual(self.evaluate(m.count), 1.2)
+    m.reset_states()
+
+    # check values reduced to the dimensions of weight
+    result_t = m([[[1., 2.], [3., 2.], [0.5, 4.]]], sample_weight=[0.5])
+    self.assertAlmostEqual(self.evaluate(result_t), 1.309091, 5)
+    self.assertAlmostEqual(self.evaluate(m.total), 0.381944, 5)
+    self.assertEqual(self.evaluate(m.count), 0.5)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_harmonic_mean_graph_with_placeholder(self):
+    with ops.get_default_graph().as_default(), self.cached_session() as sess:
+      m = metrics.HarmonicMean(dtype=dtypes.float64)
+      v = array_ops.placeholder(dtypes.float32)
+      w = array_ops.placeholder(dtypes.float32)
+      self.evaluate(variables.variables_initializer(m.variables))
+
+      # check __call__()
+      result_t = m(v, sample_weight=w)
+      result = sess.run(result_t, feed_dict=({v: 10, w: 2}))
+      self.assertAlmostEqual(self.evaluate(m.total), 0.2)
+      self.assertEqual(self.evaluate(m.count), 2)
+      self.assertEqual(result, 10)
+
+
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class KerasAccuracyTest(test.TestCase):
 

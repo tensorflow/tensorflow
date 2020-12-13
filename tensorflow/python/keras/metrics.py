@@ -516,6 +516,42 @@ class Mean(Reduce):
         reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
 
 
+@keras_export('keras.metrics.HarmonicMean')
+class HarmonicMean(Reduce):
+  """Computes Harmonic Mean.
+
+  The harmonic mean is a kind of mean. It can be expressed as the reciprocal
+  of the arithmetic mean of the reciprocals of the given set of numbers.
+
+  Args:
+      name: (Optional) String name of the metric instance.
+      dtype: (Optional) Data type of the metric result.
+
+  Standalone usage:
+
+  >>> metric = tf.keras.metrics.HarmonicMean()
+  >>> metric.update_state([1, 4, 4])
+  >>> metric.result().numpy()
+  2.0
+  """
+
+  def __init__(self, name='harmonic_mean', dtype=None):
+    super(HarmonicMean, self).__init__(
+        reduction=metrics_utils.Reduction.WEIGHTED_MEAN, name=name, dtype=dtype)
+
+  def update_state(self, values, sample_weight=None):
+    values = math_ops.cast(values, self._dtype)
+    if sample_weight is not None:
+      sample_weight = math_ops.cast(sample_weight, self._dtype)
+    values = math_ops.reciprocal_no_nan(values)
+    super().update_state(values, sample_weight)
+
+  def result(self):
+    return (
+        math_ops.reciprocal_no_nan(math_ops.div_no_nan(self.total, self.count))
+    )
+
+
 @keras_export('keras.metrics.MeanRelativeError')
 class MeanRelativeError(Mean):
   """Computes the mean relative error by normalizing with the given values.
