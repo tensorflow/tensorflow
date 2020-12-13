@@ -74,7 +74,7 @@ class NodeIter;         // Declared below
 enum class ConstructionContext {
   kNotTracked,     // Not tracked.
   kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
-  kFunctionDef,    // From `FunctionDef`, @tf.function.
+  kEagerRuntime,   // Registered from TF2 eager runtime.
 };
 
 class Node {

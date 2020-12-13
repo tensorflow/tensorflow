@@ -243,7 +243,8 @@ struct ConvToLinalgConverter : public OpConversionPattern<lmhlo::ConvOp> {
     }
 
     // TODO: LHS dilation for deconvolution not supported yet.
-    if (op.lhs_dilation()) {
+    // TODO(jurahul): Window reversal is not supported yet.
+    if (op.lhs_dilation() || op.hasWindowReversal()) {
       return failure();
     }
 

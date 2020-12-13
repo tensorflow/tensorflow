@@ -25,10 +25,10 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -755,7 +755,7 @@ void MoveOutsideCompiledOps(
     // If there is no replication/data parallelism, it is assumed the device
     // ordinal is always 0 (e.g. /device:TPU:0). In that case, a constant 0
     // attribute can be used instead for _XlaSendFromHost/_XlaRecvAtHost ops.
-    if (tpu_cluster.getParentOfType<tf_device::ReplicateOp>()) {
+    if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
       auto device_ordinal_op =
           builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
               host_launch_op.getLoc(),

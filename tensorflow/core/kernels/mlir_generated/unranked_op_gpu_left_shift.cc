@@ -12,18 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
-#include "tensorflow/compiler/mlir/tosa/tosa_passpipes.h"
+namespace tensorflow {
 
-namespace mlir {
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i8, DT_INT8, int8);
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i16, DT_INT16, int16);
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i32, DT_INT32, int32);
+GENERATE_AND_REGISTER_BINARY_KERNEL(LeftShift, i64, DT_INT64, int64);
 
-namespace tosa {
-
-static mlir::PassPipelineRegistration<TOSALegalizationPipelineOptions>
-    tf_tosa_pipeline("tf-to-tosa-pipeline",
-                     "TensorFlow to TOSA legalization pipeline",
-                     createTFtoTOSALegalizationPipeline);
-
-}  // namespace tosa
-
-}  // namespace mlir
+}  // namespace tensorflow

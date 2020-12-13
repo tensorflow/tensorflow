@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
-#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -75,6 +74,15 @@ absl::optional<T> BitwiseAnd(T /*lhs*/, T /*rhs*/) {
   return absl::nullopt;
 }
 template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> RightShift(T lhs, T rhs) {
+  return lhs >> rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> RightShift(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
 absl::optional<T> BitwiseOr(T lhs, T rhs) {
   return lhs | rhs;
 }
@@ -90,6 +98,15 @@ absl::optional<T> BitwiseXor(T lhs, T rhs) {
 template <typename T,
           std::enable_if_t<!std::is_integral<T>::value, bool> = true>
 absl::optional<T> BitwiseXor(T /*lhs*/, T /*rhs*/) {
+  return absl::nullopt;
+}
+template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
+absl::optional<T> LeftShift(T lhs, T rhs) {
+  return lhs << rhs;
+}
+template <typename T,
+          std::enable_if_t<!std::is_integral<T>::value, bool> = true>
+absl::optional<T> LeftShift(T /*lhs*/, T /*rhs*/) {
   return absl::nullopt;
 }
 template <typename T, std::enable_if_t<std::is_integral<T>::value, bool> = true>
@@ -274,10 +291,11 @@ class ParametricGpuBinaryOpsTest
         static_cast<T>(0.1),
         static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
     absl::InlinedVector<OutT, 10> expected;
-    for (auto inp : llvm::zip(input_1, input_2)) {
+    for (auto inp1 = input_1.begin(), inp2 = input_2.begin(),
+              end = input_1.end();
+         inp1 != end; ++inp1, ++inp2) {
       expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(std::get<0>(inp)),
-          static_cast<BaselineType>(std::get<1>(inp)))));
+          static_cast<BaselineType>(*inp1), static_cast<BaselineType>(*inp2))));
     }
     RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
                                          TensorShape{2, 3}, expected,
@@ -357,14 +375,16 @@ class ParametricGpuBinaryOpsTest
     if (GetParam().op_name == "Equal") {
       return static_cast<BaselineOutT>(lhs == rhs);
     }
-    if (GetParam().op_name == "NotEqual") {
-      return static_cast<BaselineOutT>(lhs != rhs);
-    }
     if (GetParam().op_name == "Greater") {
       return static_cast<BaselineOutT>(lhs > rhs);
     }
     if (GetParam().op_name == "GreaterEqual") {
       return static_cast<BaselineOutT>(lhs >= rhs);
+    }
+    if (GetParam().op_name == "LeftShift") {
+      if (auto val = LeftShift(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
     }
     if (GetParam().op_name == "Less") {
       return static_cast<BaselineOutT>(lhs < rhs);
@@ -379,6 +399,14 @@ class ParametricGpuBinaryOpsTest
     }
     if (GetParam().op_name == "LogicalOr") {
       if (auto val = LogicalOr(lhs, rhs)) {
+        return static_cast<BaselineOutT>(val.value());
+      }
+    }
+    if (GetParam().op_name == "NotEqual") {
+      return static_cast<BaselineOutT>(lhs != rhs);
+    }
+    if (GetParam().op_name == "RightShift") {
+      if (auto val = RightShift(lhs, rhs)) {
         return static_cast<BaselineOutT>(val.value());
       }
     }
@@ -402,6 +430,8 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
     parameters.emplace_back("BitwiseAnd", dt, dt);
     parameters.emplace_back("BitwiseOr", dt, dt);
     parameters.emplace_back("BitwiseXor", dt, dt);
+    parameters.emplace_back("LeftShift", dt, dt);
+    parameters.emplace_back("RightShift", dt, dt);
   }
   for (DataType dt :
        {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8, DT_INT16, DT_INT64}) {

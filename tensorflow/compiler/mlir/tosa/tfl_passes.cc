@@ -13,23 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tosa/tosa_passpipes.h"
+#include "tensorflow/compiler/mlir/tosa/tfl_passes.h"
 
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Pass/PassRegistry.h"
-#include "mlir/Transforms/Passes.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
+#include "mlir/Dialect/Tosa/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
 
 namespace mlir {
-
 namespace tosa {
 
-void addPreOptMlirPasses(mlir::OpPassManager& pm) {
+void createTFLtoTOSALegalizationPipeline(
+    OpPassManager& pm, const TOSATFLLegalizationPipelineOptions& opts) {
+  //----------------------------------------------------------------------------
+  // Prepare TFL module for conversion
+  //----------------------------------------------------------------------------
   // Inline all functions into main and then delete the functions themselves.
   pm.addPass(mlir::createInlinerPass());
 
@@ -39,9 +36,16 @@ void addPreOptMlirPasses(mlir::OpPassManager& pm) {
 
   pm.addPass(mlir::createLoopFusionPass());
   pm.addPass(mlir::createMemRefDataFlowOptPass());
-}
 
-void addPostOptMlirPasses(mlir::OpPassManager& pm) {
+  //----------------------------------------------------------------------------
+  // Perform main conversion.
+  //----------------------------------------------------------------------------
+  pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
+  pm.addPass(mlir::tosa::createLegalizeTFLPass());
+
+  //----------------------------------------------------------------------------
+  // Post conversion cleanup.
+  //----------------------------------------------------------------------------
   pm.addPass(mlir::tosa::createTosaMakeBroadcastablePass());
   // Inline the call/return basic blocks within TOSA control flow ops.
   pm.addPass(mlir::createInlinerPass());
@@ -49,26 +53,10 @@ void addPostOptMlirPasses(mlir::OpPassManager& pm) {
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-void createTFtoTOSALegalizationPipeline(
-    OpPassManager& pm, const TOSALegalizationPipelineOptions& opts) {
-  addPreOptMlirPasses(pm);
-
-  pm.addPass(mlir::tosa::createFuseBiasTFPass());
-  pm.addPass(mlir::tosa::createLegalizeTFPass());
-
-  addPostOptMlirPasses(pm);
-}
-
-void createTFLtoTOSALegalizationPipeline(
-    OpPassManager& pm, const TOSALegalizationPipelineOptions& opts) {
-  addPreOptMlirPasses(pm);
-
-  pm.addPass(mlir::tosa::createConvertTFLUint8Pass());
-  pm.addPass(mlir::tosa::createLegalizeTFLPass());
-
-  addPostOptMlirPasses(pm);
-}
+static mlir::PassPipelineRegistration<TOSATFLLegalizationPipelineOptions>
+    tfl_tosa_pipeline("tfl-to-tosa-pipeline",
+                      "TensorFlow Lite to TOSA legalization pipeline",
+                      createTFLtoTOSALegalizationPipeline);
 
 }  // namespace tosa
-
 }  // namespace mlir

@@ -12,23 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EAGER_GRADIENT_CHECKER_H_
+#define TENSORFLOW_C_EAGER_GRADIENT_CHECKER_H_
+
 #include <memory>
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_unified_experimental.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
-#include "tensorflow/c/eager/gradients.h"
-#include "tensorflow/c/eager/gradients_internal.h"
-#include "tensorflow/c/eager/gradients_util.h"
-#include "tensorflow/c/experimental/gradients/math_grad.h"
-#include "tensorflow/c/experimental/gradients/nn_grad.h"
-#include "tensorflow/c/experimental/ops/array_ops.h"
-#include "tensorflow/c/tf_status_helper.h"
-#include "tensorflow/c/tf_tensor.h"
-#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/c/eager/unified_api_testutil.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -51,3 +42,5 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
 }  // namespace gradients
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_EAGER_GRADIENT_CHECKER_H_

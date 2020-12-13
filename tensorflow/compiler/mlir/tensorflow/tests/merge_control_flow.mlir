@@ -355,3 +355,44 @@ func @same_predicate_3_ifregions() {
   }) {cluster_attr = "cluster_attr"} : () -> ()
   return
 }
+
+// Check that 3 IfRegions with same predicates where 2nd and 3rd IfRegions
+// can be merged but not 1st IfRegion.
+
+// CHECK-LABEL: func @same_predicate_3_ifregions_only_merge2
+func @same_predicate_3_ifregions_only_merge2() {
+  // CHECK:      tf_device.cluster
+  // CHECK:        "tf.IfRegion"
+  // CHECK:          "tf.A"
+  // CHECK:        "tf.D"
+  // CHECK-NEXT    "tf.IfRegion"
+  // CHECK:          "tf.E"
+  // CHECK-NEXT:     "tf.G"
+  // CHECK-NOT:    "tf.IfRegion"
+  "tf_device.cluster"() ( {
+    %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+    %1 = "tf.IfRegion"(%0) ( {
+      %2 = "tf.A"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+      }, {
+      %2 = "tf.C"() : () -> (tensor<f32>)
+      "tf.Yield"(%2) : (tensor<f32>) -> ()
+     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
+    %3 = "tf.D"(%1) : (tensor<f32>) -> (tensor<f32>)
+    "tf.IfRegion"(%0) ( {
+      %4 = "tf.E"(%3) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+      }, {
+      %4 = "tf.F"() : () -> (tensor<f32>)
+      "tf.Yield"(%4) : (tensor<f32>) -> ()
+     }) { is_stateless = true } : (tensor<i1>) -> (tensor<f32>)
+    "tf.IfRegion"(%0) ( {
+      %5 = "tf.G"(%3) : (tensor<f32>) -> (tensor<f32>)
+      "tf.Yield"() : () -> ()
+      }, {
+      "tf.Yield"() : () -> ()
+     }) { is_stateless = true } : (tensor<i1>) -> ()
+    tf_device.return
+  }) {cluster_attr = "cluster_attr"} : () -> ()
+  return
+}

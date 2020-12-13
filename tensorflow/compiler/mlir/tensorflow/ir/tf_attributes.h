@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {

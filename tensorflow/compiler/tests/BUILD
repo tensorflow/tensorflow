@@ -1972,6 +1972,9 @@ tf_xla_py_test(
     srcs = ["risc_ops_test.py"],
     enabled_backends = ["cpu"],
     python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework",

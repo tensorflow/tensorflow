@@ -166,11 +166,13 @@ tf_kernel_library(
         "unranked_op_gpu_equal.cc",
         "unranked_op_gpu_greater.cc",
         "unranked_op_gpu_greater_equal.cc",
+        "unranked_op_gpu_left_shift.cc",
         "unranked_op_gpu_less.cc",
         "unranked_op_gpu_less_equal.cc",
         "unranked_op_gpu_logical_and.cc",
         "unranked_op_gpu_logical_or.cc",
         "unranked_op_gpu_not_equal.cc",
+        "unranked_op_gpu_right_shift.cc",
     ],
     tags = [
         "manual",
@@ -183,6 +185,7 @@ tf_kernel_library(
         ":equal_unranked_kernels",
         ":greater_equal_unranked_kernels",
         ":greater_unranked_kernels",
+        ":left_shift_unranked_kernels",
         ":less_equal_unranked_kernels",
         ":less_unranked_kernels",
         ":logical_and_unranked_kernels",
@@ -190,6 +193,7 @@ tf_kernel_library(
         ":maximum_unranked_kernels",
         ":minimum_unranked_kernels",
         ":not_equal_unranked_kernels",
+        ":right_shift_unranked_kernels",
         ":unranked_op_gpu_base",
         "//third_party/eigen3",
     ],
@@ -315,7 +319,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "1",
 )
 
 gen_kernel_library(
@@ -349,7 +352,6 @@ gen_kernel_library(
     generate_unranked = True,
     tile_size = "256",
     types = ["i1"],
-    unroll_factors = "1",
 )
 
 gen_kernel_library(
@@ -360,7 +362,6 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    unroll_factors = "1",
 )
 
 gen_kernel_library(
@@ -418,6 +419,8 @@ gen_kernel_library(
         "bitwise_and",
         "bitwise_or",
         "bitwise_xor",
+        "left_shift",
+        "right_shift",
     ]
 ]
 
@@ -572,7 +575,6 @@ gen_kernel_library(
             "f32",
             "f64",
         ],
-        unroll_factors = "1",
     )
     for name in [
         "cos",

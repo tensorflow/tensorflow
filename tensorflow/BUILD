@@ -3,7 +3,7 @@
 # learning applications.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
+load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "bool_setting")
 load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -401,11 +401,18 @@ config_setting(
     define_values = {"using_cuda_clang": "true"},
 )
 
-# Flag to indicate open source build, .bazelrc always has it set to be true
+# Config setting to use in select()s to distinguish open source build from
+# google internal build on configurable attributes.
 config_setting(
     name = "oss",
-    define_values = {"open_source_build": "true"},
+    flag_values = {":oss_setting": "True"},
     visibility = ["//visibility:public"],
+)
+
+# Fixed setting to indicate open source build.
+bool_setting(
+    name = "oss_setting",
+    build_setting_default = True,
 )
 
 config_setting(
@@ -416,12 +423,12 @@ config_setting(
     },
 )
 
-config_setting(
+selects.config_setting_group(
     name = "build_oss_using_cuda_clang",
-    define_values = {
-        "using_cuda_clang": "true",
-        "open_source_build": "true",
-    },
+    match_all = [
+        ":using_cuda_clang",
+        ":oss",
+    ],
 )
 
 # Setting to use when loading kernels dynamically
@@ -447,12 +454,12 @@ config_setting(
     },
 )
 
-config_setting(
+selects.config_setting_group(
     name = "build_oss_using_cuda_nvcc",
-    define_values = {
-        "using_cuda_nvcc": "true",
-        "open_source_build": "true",
-    },
+    match_all = [
+        ":using_cuda_nvcc",
+        ":oss",
+    ],
 )
 
 config_setting(

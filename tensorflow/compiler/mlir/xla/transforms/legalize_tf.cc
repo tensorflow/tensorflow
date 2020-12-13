@@ -4265,6 +4265,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
                                    &rewriter),
         /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
+        /*window_reversal=*/nullptr,
         ConvDimensionNumbers::get(
             /*input_batch_dimension=*/batch_dim_attr,
             /*input_feature_dimension=*/feature_dim_attr,
@@ -4479,6 +4480,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         GetI64ElementsAttrForValue(/*size=*/num_spatial_dims, /*val=*/1,
                                    &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
+        /*window_reversal=*/nullptr,
         ConvDimensionNumbers::get(
             // Swap batch_dim and feature_dim in the activations.
             /*input_batch_dimension=*/feature_dim_attr,
