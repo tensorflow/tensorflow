@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -123,6 +124,17 @@ class SparseReorderTest(test.TestCase):
             input_val.values.shape,
             x_init_value=input_val.values)
         self.assertLess(err, 1e-11)
+
+  def testShapeOverflow(self):
+    # Test case for GitHub issue 45392
+    sp_input = sparse_tensor.SparseTensor(
+        indices=[[0, 0, 0, 0, 0, 0]], values=[0.0],
+        dense_shape=[4096, 4096, 4096, 4096, 4096, 4096])
+    self.assertAllEqual(
+        (4096, 4096, 4096, 4096, 4096, 4096), sp_input.get_shape())
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
+                                "Shape would have more than"):
+        sp_output = sparse_ops.sparse_reorder(sp_input)
 
 
 if __name__ == "__main__":
