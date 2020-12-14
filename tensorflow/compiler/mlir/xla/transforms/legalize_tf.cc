@@ -4637,11 +4637,11 @@ class ConvertInfeedDequeueTupleOp
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
             ::xla::sharding_builder::AssignDevice(0);
-        data_and_token.setAttr(
+        data_and_token->setAttr(
             kShardingAttr,
             rewriter.getStringAttr(sharding_proto.SerializeAsString()));
       } else {
-        data_and_token.setAttr(kShardingAttr, op._XlaShardingAttr());
+        data_and_token->setAttr(kShardingAttr, op._XlaShardingAttr());
       }
     }
 
@@ -5157,7 +5157,7 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr(kShardingAttr, op._XlaShardingAttr());
+    custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 
     return success();

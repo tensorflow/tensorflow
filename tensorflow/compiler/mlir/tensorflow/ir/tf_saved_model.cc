@@ -342,7 +342,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       continue;
     }
     if (func.getArgAttr(i, "tf.resource_name")) {
-      if (module.getAttr("tf_saved_model.under_construction")) continue;
+      if (module->getAttr("tf_saved_model.under_construction")) continue;
       return func.emitError() << "'tf.resource_name' attribute is not allowed "
                                  "unless it is being under construction";
     }
@@ -355,7 +355,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
     if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
             i, "tf_saved_model.bound_input")) {
       if (!unique_bound_inputs.insert(attr.getValue()).second) {
-        if (module.getAttr("tf_saved_model.under_construction")) continue;
+        if (module->getAttr("tf_saved_model.under_construction")) continue;
         return func.emitError()
                << "duplicate 'tf_saved_model.bound_input' binding";
       }
@@ -431,7 +431,7 @@ bool IsExported(Operation *op) {
 }
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
-  return module.getAttr("tf_saved_model.semantics") != nullptr;
+  return module->getAttr("tf_saved_model.semantics") != nullptr;
 }
 
 Operation *LookupBoundInput(FuncOp func, int arg_index,
@@ -483,7 +483,7 @@ class OptimizeSessionInitializerPattern
     if (to_keep.empty())
       rewriter.eraseOp(op);
     else
-      op.setAttr("initializers", rewriter.getArrayAttr(to_keep));
+      op->setAttr("initializers", rewriter.getArrayAttr(to_keep));
 
     return success();
   }

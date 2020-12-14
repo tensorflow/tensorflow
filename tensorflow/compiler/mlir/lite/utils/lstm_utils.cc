@@ -438,7 +438,7 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::InitializeFromFuncAttributes() {
-  auto attr = fused_func_op_.getAttrOfType<StringAttr>(kTFImplements);
+  auto attr = fused_func_op_->getAttrOfType<StringAttr>(kTFImplements);
   if (!attr) {
     return fused_func_op_.emitError()
            << "Invalid function attribute, expected " << kTFImplements
@@ -639,7 +639,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   // TFL lstm only supports time-majored inputs, so if it's not time-majored,
   // we will transpose the inputs and outputs.
-  auto time_major_attr = func_op.getAttrOfType<BoolAttr>("tf.time_major");
+  auto time_major_attr = func_op->getAttrOfType<BoolAttr>("tf.time_major");
   if (time_major_attr == nullptr) return failure();
 
   bool time_majored = time_major_attr.getValue();
@@ -654,7 +654,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   // Handle go_backwards:
   // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
-  auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
+  auto go_backwards_attr = func_op->getAttrOfType<BoolAttr>("tf.go_backwards");
 
   if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
     int time_dim = time_majored ? 0 : 1;

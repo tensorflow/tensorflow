@@ -111,7 +111,7 @@ LogicalResult DecomposeTFOpsPass::RewriteUnregisteredTFOps() {
   FuncOp func = getFunction();
   SymbolTable table(external_tfr_module.hasValue()
                         ? *external_tfr_module
-                        : func.getParentOfType<ModuleOp>());
+                        : func->getParentOfType<ModuleOp>());
   OpBuilder builder(func);
   bool changed = false;
   func.walk([&table, &builder, &changed](Operation* op) {
@@ -244,7 +244,7 @@ LogicalResult DecomposeTFOpsPass::InlineTFRFuncCalls() {
   FuncOp func = getFunction();
   SymbolTable table(external_tfr_module.hasValue()
                         ? *external_tfr_module
-                        : func.getParentOfType<ModuleOp>());
+                        : func->getParentOfType<ModuleOp>());
 
   // The inliner only inlines the TFR call op.
   bool changed = false;

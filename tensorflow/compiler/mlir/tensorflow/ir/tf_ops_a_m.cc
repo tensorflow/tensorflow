@@ -1479,9 +1479,10 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   return success();
 }
@@ -1553,9 +1554,10 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
@@ -1618,9 +1620,10 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   // Permute input sizes operand.
   OpBuilder builder(getOperation());

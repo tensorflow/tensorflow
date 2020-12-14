@@ -401,7 +401,7 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
   auto module = op->template getParentOfType<ModuleOp>();
-  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
+  SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
       dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
