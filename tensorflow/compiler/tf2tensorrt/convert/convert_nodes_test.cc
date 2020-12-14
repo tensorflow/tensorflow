@@ -1893,27 +1893,28 @@ class ParameterizedOpConverterTestBase
 //   how TRT handles the precision inside the TRT network, but should not matter
 //   for the TF -> TRT conversion. Therefore it should be sufficient to test
 //   for FP32.
-class OpConverterTest1 : public ParameterizedOpConverterTestBase {};
+class OpConverter_FP32_Test : public ParameterizedOpConverterTestBase {};
+// Base class for tests that need to be tested for both FP32 and FP16.
+class OpConverter_FP32_FP16_Test : public ParameterizedOpConverterTestBase {};
+// Base class for tests that need to be tested for FP32, FP16, and INT32
+class OpConverter_FP32_FP16_INT32_Test
+    : public ParameterizedOpConverterTestBase {};
 
-// Instantiate parameter combinations to OpConverterTest1
+// Instantiate parameter combinations to OpConverter_<DT_X...>_Test
 INSTANTIATE_TEST_CASE_P(
-    OpConvTestInstantiation, OpConverterTest1,
+    OpConvTestInstantiation, OpConverter_FP32_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
-// Base class for tests that need to be tested for both FP32 and FP16.
-class OpConverterTest2 : public ParameterizedOpConverterTestBase {};
 INSTANTIATE_TEST_CASE_P(
-    OpConvTestInstantiation, OpConverterTest2,
+    OpConvTestInstantiation, OpConverter_FP32_FP16_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF),
                        ::testing::Values(TrtPrecisionMode::FP32)));
 
-// Base class for tests that need to be tested for FP32, FP16, and INT32
-class OpConverterTest3 : public ParameterizedOpConverterTestBase {};
 INSTANTIATE_TEST_CASE_P(
-    OpConvTestInstantiation3, OpConverterTest3,
+    OpConvTestInstantiation, OpConverter_FP32_FP16_INT32_Test,
     ::testing::Combine(::testing::ValuesIn(ValidTrtModes),
                        ::testing::Values(DT_FLOAT, DT_HALF, DT_INT32),
                        ::testing::Values(TrtPrecisionMode::FP32)));
@@ -2078,7 +2079,7 @@ NodeDef CreateFusedBatchNormOp(DataType tf_type, std::string data_format,
       ->def();
 }
 
-TEST_P(OpConverterTest1, ConvertFusedBatchNorm) {
+TEST_P(OpConverter_FP32_Test, ConvertFusedBatchNorm) {
   using OpFunc = std::function<NodeDef(DataType, std::string, bool, float)>;
   std::vector<OpFunc> get_node_def_vec{
       CreateFusedBatchNormOp<ops::FusedBatchNorm>,
@@ -2191,7 +2192,7 @@ TEST_P(OpConverterTest1, ConvertFusedBatchNorm) {
   }
 }
 
-TEST_P(OpConverterTest1, ConvertTranspose) {
+TEST_P(OpConverter_FP32_Test, ConvertTranspose) {
   // Get the NodeDef for Transpose.
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
@@ -2349,7 +2350,7 @@ TEST_F(OpConverterTest, ConvertReshape) {
   }
 }
 
-TEST_P(OpConverterTest1, ConvertShape) {
+TEST_P(OpConverter_FP32_Test, ConvertShape) {
   // Get the NodeDef for Shape op.
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
@@ -2637,7 +2638,7 @@ TEST_F(OpConverterTest, ConvertBatchMatMul) {
   TestMatMulHelper(this, get_batch_matmul_nodedef, "BatchMatMul");
 }
 
-TEST_P(OpConverterTest2, ConvertBiasAdd) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertBiasAdd) {
   // Note that kINT32 is not supported by IScaleLayer, so we don't test
   // DT_INT32 type here. DT_FLOAT and DT_HALF are tested.
   // Get the NodeDef for BiasAdd.
@@ -2710,7 +2711,7 @@ NodeDef GetBinaryOpNodeDef(DataType dtype) {
   return op.operation.node()->def();
 }
 
-TEST_P(OpConverterTest2, ConvertBinary) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertBinary) {
   {
     AttrValue dtype;
     dtype.set_type(tf_type_);
@@ -2974,7 +2975,7 @@ TEST_F(OpConverterTest, ConvertQuantize) {
   }
 }
 
-TEST_P(OpConverterTest2, ConvertSquare) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertSquare) {
   {
     // Input is weights, should fail.
     Reset();
@@ -3127,7 +3128,7 @@ NodeDef CreateUnaryOp<ops::internal::LeakyRelu>(DataType tf_type) {
       ->def();
 }
 
-TEST_P(OpConverterTest1, ConvertActivation) {
+TEST_P(OpConverter_FP32_Test, ConvertActivation) {
   {
     // Input is weights, should fail.
     Reset();
@@ -3213,7 +3214,7 @@ TEST_P(OpConverterTest1, ConvertActivation) {
   }
 }
 
-TEST_P(OpConverterTest1, ConvertExpandDims) {
+TEST_P(OpConverter_FP32_Test, ConvertExpandDims) {
   // Get the NodeDef for ExpandDims.
   Scope s = Scope::NewRootScope();
   auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
@@ -3290,7 +3291,7 @@ TEST_P(OpConverterTest1, ConvertExpandDims) {
   }
 }
 
-TEST_P(OpConverterTest1, ConvertSqueeze) {
+TEST_P(OpConverter_FP32_Test, ConvertSqueeze) {
   const bool use_implicit_batch = (trt_mode_ == TrtTestMode::kImplicitBatch);
   // Get the NodeDef for Squeeze.
   auto get_squeeze_nodedef = [](std::vector<int> axes,
@@ -4141,7 +4142,7 @@ TEST_F(OpConverterTest, ConvertSlice) {
   }
 }
 
-TEST_P(OpConverterTest1, ConvertConv2D) {
+TEST_P(OpConverter_FP32_Test, ConvertConv2D) {
   // Get nodedef for Conv2D layer.
   DataType tf_type = tf_type_;
   auto get_conv2d_nodedef =
@@ -4835,7 +4836,7 @@ NodeDef CreatePoolOp(DataType tf_type, std::vector<int> ksize,
       .operation.node()
       ->def();
 }
-TEST_P(OpConverterTest1, ConvertPool) {
+TEST_P(OpConverter_FP32_Test, ConvertPool) {
   // Get nodedef for MaxPool and AvgPool layers (2D or 3D).
   auto get_pool_nodedef =
       [](DataType tf_type, int nDim, std::vector<int> ksize = {},
@@ -5049,7 +5050,7 @@ TEST_F(OpConverterTest, ConvertTopK) {
   }
 }
 
-TEST_P(OpConverterTest3, ConvertGather) {
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertGather) {
   // Get the NodeDef for GatherV2.
   Scope s = Scope::NewRootScope();
   auto params = ops::Placeholder(s.WithOpName("params"), tf_type_);
@@ -5302,7 +5303,7 @@ std::vector<float> CalcReduce(string op_name, std::vector<float> input, int m,
   }
   return output;
 }
-TEST_P(OpConverterTest1, ConvertReduce) {
+TEST_P(OpConverter_FP32_Test, ConvertReduce) {
   {
     // Input is weights, should fail.
     Reset();
@@ -5428,7 +5429,7 @@ NodeDef CreateCastOp(DataType tf_type) {
       ->def();
 }
 
-TEST_P(OpConverterTest1, ConvertUnary) {
+TEST_P(OpConverter_FP32_Test, ConvertUnary) {
   {
     // Input is weights, should fail.
     Reset();
@@ -6041,9 +6042,9 @@ NodeDef GetPackNodeDef(DataType dtype, int num_inputs, int axis) {
 }
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
-TEST_P(OpConverterTest3, ConvertPack) {
+TEST_P(OpConverter_FP32_FP16_INT32_Test, ConvertPack) {
 #else
-TEST_P(OpConverterTest2, ConvertPack) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertPack) {
 #endif
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
@@ -6725,7 +6726,7 @@ NodeDef GetSquaredDifferenceNodeDef(DataType dtype) {
   return squared_diff.operation.node()->def();
 }
 
-TEST_P(OpConverterTest2, ConvertSquaredDifference) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertSquaredDifference) {
   {
     // Input is a weight, should fail.
     Reset();

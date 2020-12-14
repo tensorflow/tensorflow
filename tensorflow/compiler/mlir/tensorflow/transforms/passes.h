@@ -401,6 +401,9 @@ CreateTPUCompileOpReplicationPass();
 
 }  // namespace TFTPU
 
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_PASSES_H_

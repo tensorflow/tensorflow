@@ -242,13 +242,14 @@ HloModule ConvForward
 // CHECK-SAME: padding = dense<0> : tensor<2xi64>
 // CHECK_SAME: result_scale = 1.000000e+00 : f64
 // CHECK_SAME: rhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: window_reversal = dense<true> : tensor<2xi1>
 // CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
 // CHECK: (memref<4x256x3x3xf32>, memref<256x256x2x2xf32>, memref<4x256x2x2xf32>, memref<65536xui8>)
 ENTRY main {
   %input = f32[4,256,3,3]{3,2,1,0} parameter(0)
   %filter = f32[256,256,2,2]{3,2,1,0} parameter(1)
   ROOT %custom-call.1 = (f32[4,256,2,2]{3,2,1,0}, u8[65536]{0}) custom-call(f32[4,256,3,3]{3,2,1,0} %input, f32[256,256,2,2]{3,2,1,0} %filter),
-                        window={size=2x2}, dim_labels=bf01_oi01->bf01,
+                        window={size=2x2 rhs_reversal=1x1}, dim_labels=bf01_oi01->bf01,
                         custom_call_target="__cudnn$convForward",
                         backend_config="{\"algorithm\":\"2\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"0\",\"side_input_scale\":0}"
 }
@@ -276,6 +277,7 @@ ENTRY main {
 // CHECK-SAME: precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"]
 // CHECK-SAME: result_scale = 1.000000e+00 : f64
 // CHECK-SAME: rhs_dilation = dense<1> : tensor<2xi64>
+// CHECK-SAME: window_reversal = dense<false> : tensor<2xi1>
 // CHECK-SAME: window_strides = dense<1> : tensor<2xi64>
 // CHECK-SAME: (memref<1x17x9x9xf16, #map{{.*}}>, memref<3x3x17x32xf16, #map{{.*}}>, memref<32xf16>, memref<1x32x9x9xf16, #{{.*}}>, memref<0xui8>) -> ()
 

@@ -87,29 +87,6 @@ cc_library(
 )
 
 tf_cc_binary(
-    name = "tf_to_gpu_binary",
-    srcs = [
-        "crash_handler.h",
-        "tf_to_gpu_binary.cc",
-    ],
-    visibility = [
-        "//tensorflow/compiler/mlir/tools/kernel_gen/tests/tf_to_gpu_binary:__pkg__",
-        "//tensorflow/core/kernels/mlir_generated:__pkg__",
-    ],
-    deps = [
-        ":kernel_creator",
-        "//tensorflow/compiler/mlir:init_mlir",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform",
-        "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Pass",
-    ],
-)
-
-tf_cc_binary(
     name = "tf_to_kernel",
     srcs = ["tf_to_kernel.cc"],
     visibility = [

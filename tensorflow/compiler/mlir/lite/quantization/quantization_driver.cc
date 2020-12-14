@@ -532,7 +532,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   // quantization pass. These ops can be removed without losing original
   // program accuracy.
   // TODO(fengliuai): make the attribute being part of op definition.
-  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+  quantize->setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
 
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards

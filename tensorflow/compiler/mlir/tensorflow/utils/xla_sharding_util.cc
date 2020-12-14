@@ -92,8 +92,9 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
       location, output_types, split_dimension_op.output(), src_input);
-  split_op->setAttr(kNumSplitAttr, builder->getIntegerAttr(
-                                       builder->getIntegerType(32), num_split));
+  (*split_op)->setAttr(
+      kNumSplitAttr,
+      builder->getIntegerAttr(builder->getIntegerType(32), num_split));
   return mlir::success();
 }
 

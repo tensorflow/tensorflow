@@ -1052,13 +1052,6 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
                 mlir::lmhlo_gpu::ConvForwardFusedSideInputOp,
                 mlir::lmhlo_gpu::ConvBackwardFilterOp,
                 mlir::lmhlo_gpu::ConvBackwardInputOp>(input.op)) {
-    // TODO(jurahul): Window reveral is not yet supported in HLO. Fallback to
-    // HLO based thunk for that case.
-    if (absl::c_any_of(
-            custom_call->window().dimensions(),
-            [](const WindowDimension& dim) { return dim.window_reversal(); })) {
-      return ThunkEmitter(this).HandleCustomCall(custom_call);
-    }
     return EmitConvolutionThunkFromMlir(input);
   }
 
@@ -1109,6 +1102,7 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
     mlir::DenseIntElementsAttr padding = op.padding().getValue();
     mlir::DenseIntElementsAttr lhs_dilation = op.lhs_dilation().getValue();
     mlir::DenseIntElementsAttr rhs_dilation = op.rhs_dilation().getValue();
+    mlir::DenseElementsAttr window_reversal = op.window_reversal().getValue();
     for (auto index : llvm::seq<int>(0, window_strides.getNumElements())) {
       WindowDimension* dim = descriptor.window.add_dimensions();
       // Window size for a convolution is the same as the kernel size.
@@ -1122,6 +1116,7 @@ Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
       dim->set_padding_high(padding.getValue<int64>(index));
       dim->set_base_dilation(lhs_dilation.getValue<int64>(index));
       dim->set_window_dilation(rhs_dilation.getValue<int64>(index));
+      dim->set_window_reversal(window_reversal.getValue<bool>(index));
     }
     descriptor.feature_group_count = op.feature_group_count();
     descriptor.backend_config.set_algorithm(

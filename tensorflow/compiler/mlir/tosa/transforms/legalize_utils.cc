@@ -15,13 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
 // Implements legalization and post-legalization optimization helper functions
 
 namespace mlir {
-
 namespace tosa {
 
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode

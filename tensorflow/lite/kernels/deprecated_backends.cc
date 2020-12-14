@@ -13,17 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tosa/tosa_passpipes.h"
+namespace tflite {
 
-namespace mlir {
+// Include this target as a dependency in order to define this function for
+// CpuBackendContext. Its use is to control execution of deprecated paths
+// by providing a symbol definition for otherwise "weak" symbol
+// declarations in CpuBackendContext.
+extern bool UseGemmlowpOnX86() { return true; }
 
-namespace tosa {
-
-static mlir::PassPipelineRegistration<TOSALegalizationPipelineOptions>
-    tf_tosa_pipeline("tf-to-tosa-pipeline",
-                     "TensorFlow to TOSA legalization pipeline",
-                     createTFtoTOSALegalizationPipeline);
-
-}  // namespace tosa
-
-}  // namespace mlir
+}  // namespace tflite
