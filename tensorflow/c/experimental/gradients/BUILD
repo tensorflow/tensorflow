@@ -180,7 +180,7 @@ tf_cuda_cc_test(
     ],
     args = ["--heap_check=local"],  # TODO(b/174752220): Remove
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["no_cuda_asan"],  # b/173654156,
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":grad_test_helper",
         ":nn_grad",
