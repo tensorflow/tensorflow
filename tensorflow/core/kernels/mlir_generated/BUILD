@@ -78,20 +78,6 @@ filegroup(
     compatible_with = get_compatible_with_cloud(),
 )
 
-filegroup(
-    name = "unary_kernel_srcs",
-    srcs = if_mlir_unranked_kernels_enabled(
-        if_false = [
-            "cwise_op_gpu_abs.cc",
-            "cwise_op_gpu_base.cc",
-            "cwise_op_gpu_base.h",
-            "cwise_op_gpu_tanh.cc",
-        ],
-        if_true = [":unary_unranked_kernel_srcs"],
-    ),
-    compatible_with = get_compatible_with_cloud(),
-)
-
 cc_library(
     name = "unranked_op_gpu_base",
     srcs = ["unranked_op_gpu_base.cc"],
@@ -111,49 +97,36 @@ cc_library(
 
 tf_kernel_library(
     name = "cwise_unary_op",
-    srcs = [":unary_kernel_srcs"],
+    srcs = [":unary_unranked_kernel_srcs"],
     tags = [
         "manual",
     ],
-    deps = if_mlir_unranked_kernels_enabled(
-        if_false = [
-            ":abs_kernels",
-            ":tanh_kernels",
-            "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/synchronization",
-            "@com_google_absl//absl/types:span",
-            "//third_party/eigen3",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core/platform:stream_executor",
-        ],
-        if_true = [
-            # Technically we only need to depend on the kernel libraries for the
-            # unranked kernels which are enabled by default. But this would
-            # make our BUILD target structure uglier. We already need to make
-            # sure that those targets can be built, so it should not hurt to
-            # link them in even if they are currently not needed yet.
-            ":abs_unranked_kernels",
-            ":ceil_unranked_kernels",
-            ":conj_unranked_kernels",
-            ":cos_unranked_kernels",
-            ":exp_unranked_kernels",
-            ":floor_unranked_kernels",
-            ":imag_unranked_kernels",
-            ":is_inf_unranked_kernels",
-            ":log_unranked_kernels",
-            ":logical_not_unranked_kernels",
-            ":neg_unranked_kernels",
-            ":real_unranked_kernels",
-            ":rsqrt_unranked_kernels",
-            ":sign_unranked_kernels",
-            ":sin_unranked_kernels",
-            ":sqrt_unranked_kernels",
-            ":tanh_unranked_kernels",
-            ":unranked_op_gpu_base",
-            "//third_party/eigen3",
-        ],
-    ),
+    deps = [
+        # Technically we only need to depend on the kernel libraries for the
+        # unranked kernels which are enabled by default. But this would
+        # make our BUILD target structure uglier. We already need to make
+        # sure that those targets can be built, so it should not hurt to
+        # link them in even if they are currently not needed yet.
+        ":abs_unranked_kernels",
+        ":ceil_unranked_kernels",
+        ":conj_unranked_kernels",
+        ":cos_unranked_kernels",
+        ":exp_unranked_kernels",
+        ":floor_unranked_kernels",
+        ":imag_unranked_kernels",
+        ":is_inf_unranked_kernels",
+        ":log_unranked_kernels",
+        ":logical_not_unranked_kernels",
+        ":neg_unranked_kernels",
+        ":real_unranked_kernels",
+        ":rsqrt_unranked_kernels",
+        ":sign_unranked_kernels",
+        ":sin_unranked_kernels",
+        ":sqrt_unranked_kernels",
+        ":tanh_unranked_kernels",
+        ":unranked_op_gpu_base",
+        "//third_party/eigen3",
+    ],
 )
 
 tf_kernel_library(
