@@ -36,9 +36,6 @@ class ShapeInference : public TensorFlowShapeInferencePassBase<ShapeInference> {
   }
 };
 
-PassRegistration<ShapeInference> pass(
-    "tf-shape-inference", "Simple Shape Inference on TensorFlow Dialect");
-
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTFShapeInferencePass() {

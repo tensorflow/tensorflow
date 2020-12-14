@@ -21,7 +21,7 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   let summary = "Simple Shape Inference on TensorFlow Dialect";
   // TODO(jpienaar): Write `description`.
 
-  let constructor = "CreateTFShapeInferencePass()";
+  let constructor = "TF::CreateTFShapeInferencePass()";
 
   let options = [
     Option<"max_iterations_", "max-iterations", "int64_t", /*default=*/"10",

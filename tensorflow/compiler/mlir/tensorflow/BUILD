@@ -639,6 +639,7 @@ cc_library(
         ":tensorflow_tfrt_ops_inc_gen",
         ":tensorflow_traits",
         ":tensorflow_types",
+        ":tf_pass_inc_gen",
         ":tf_saved_model_inc_gen",
         "//tensorflow/compiler/mlir/lite:validators",
         "//tensorflow/core:framework",
