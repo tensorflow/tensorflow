@@ -47,7 +47,6 @@ tensorflow/lite/micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/
   -e Makefile \
   -e "\.bzl" \
   -e "\.cmd" \
-  -e "\.cmd" \
   -e "\.conf" \
   -e "\.defaults" \
   -e "\.h5" \
