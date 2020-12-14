@@ -25,9 +25,9 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-LogicalResult ConstantFoldFallbackHook(Operation *inst,
-                                       ArrayRef<Attribute> operands,
-                                       SmallVectorImpl<OpFoldResult> &results);
+LogicalResult ConstantFoldFallbackHook(
+    Operation *inst, ArrayRef<Attribute> operands,
+    SmallVectorImpl<OpFoldResult> &results);  // NOLINT
 
 }  // namespace TF
 }  // namespace mlir

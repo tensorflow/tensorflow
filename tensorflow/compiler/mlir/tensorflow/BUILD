@@ -1107,6 +1107,7 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":tensorflow",
         ":tensorflow_attributes",
+        ":tensorflow_passes",
         ":tensorflow_types",
         ":tf_saved_model_passes",
         ":translate_utils",
@@ -1450,21 +1451,27 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_constant_fallback_hook",
+    name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
+        "transforms/decode_attributes_hook.cc",
     ],
     hdrs = [
         "transforms/constant_fold.h",
     ],
     deps = [
+        ":convert_tensor",
         ":decode_constant_pass",
         ":eval_util",
         ":tensorflow",
         ":tensorflow_traits",
         ":tensorflow_types",
         "//tensorflow/c:tf_status",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:SideEffects",
@@ -1474,37 +1481,11 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_decode_attributes_hook",
-    srcs = [
-        "transforms/decode_attributes_hook.cc",
-    ],
+    name = "tf_dialect_lib",
     deps = [
-        ":convert_tensor",
-        ":decode_constant_pass",
-        ":tensorflow",
-        "//tensorflow/core:framework",
-        "//tensorflow/stream_executor",
-        "//tensorflow/stream_executor/lib",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "tf_dialect_hooks",
-    deps = [
-        ":tf_constant_fallback_hook",
-        ":tf_decode_attributes_hook",
+        ":tf_dialect_passes",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
     ],
-)
-
-# TODO(jpienaar): Remove post updating all.
-alias(
-    name = "tf_dialect_lib",
-    actual = ":tf_dialect_hooks",
 )
 
 cc_library(
@@ -1722,8 +1703,8 @@ cc_library(
     name = "compile_mlir_util",
     hdrs = ["utils/compile_mlir_util.h"],
     deps = COMPILE_MLIR_UTIL_DEPS + [
-        ":compile_mlir_util_no_tf_dialect_passes",
-        ":tf_dialect_hooks",
+        "compile_mlir_util_no_tf_dialect_passes",
+        ":tf_dialect_passes",
     ],
 )
 
