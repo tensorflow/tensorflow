@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -27,12 +28,15 @@ namespace xla {
 
 // Describes the abstract shape and dtype of an argument.
 struct ArgSignature {
+  ArgSignature(PrimitiveType dtype, absl::Span<const int64> shape,
+               bool weak_type)
+      : dtype(dtype), shape(shape.begin(), shape.end()), weak_type(weak_type) {}
   // This is the XLA dtype of the object.
-  xla::PrimitiveType dtype;
+  const PrimitiveType dtype;
+  const absl::InlinedVector<int64, 4> shape;
   // JAX arguments can be of weak type, if and only if they are Python scalars
   // or `DeviceArray` values such that `aval.weak_type` is true.
-  bool weak_type;
-  absl::InlinedVector<int64, 4> shape;
+  const bool weak_type;
   bool operator==(const ArgSignature& other) const {
     return std::tie(dtype, weak_type, shape) ==
            std::tie(other.dtype, other.weak_type, other.shape);
@@ -104,6 +108,31 @@ H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
 
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s);
+
+struct DevicePutResult {
+  explicit DevicePutResult(PjRtBuffer* b, bool weak_type)
+      : buffer(b), weak_type(weak_type), owned_buffer(nullptr) {}
+  DevicePutResult(std::unique_ptr<PjRtBuffer> new_buffer, bool weak_type)
+      : buffer(new_buffer.get()),
+        weak_type(weak_type),
+        owned_buffer(std::move(new_buffer)) {}
+
+  PjRtBuffer* buffer;
+  bool weak_type;
+  std::unique_ptr<PjRtBuffer> owned_buffer;
+};
+
+// Moves a device-like object to be on device.
+// - If the object is already on device, `owned_buffer` will be nullptr.
+// - If it's not, a new buffer will be created and returned using
+//   `owned_buffer`.
+// In all cases, `buffer` will point to the already existing or newly created
+// buffer.
+// If `obj` is not convertible to a `PjRtBuffer` from C++, an error will be
+// returned; float0 dtype and `_DeviceArray` with non-trivial LazyExpr are not
+// supported yet.
+StatusOr<DevicePutResult> DevicePut(pybind11::handle obj, PjRtDevice* to_device,
+                                    bool jax_enable_x64, PyClient& pyclient);
 
 // The function to call in `xla.cc` to add the bindings for this module.
 void BuildJaxjitSubmodule(pybind11::module& m);

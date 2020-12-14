@@ -88,7 +88,7 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
   return result;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
+StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
     const pybind11::object& argument, PjRtDevice* device, bool force_copy,
     PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
@@ -120,6 +120,15 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
                                     c->buf_ptr, c->shape, host_buffer_semantics,
                                     std::move(py_buffer_ref), device));
   }
+  return buffer;
+}
+StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
+    const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+    PjRtClient::HostBufferSemantics host_buffer_semantics) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      PjRtBufferFromPyval(argument, device, force_copy, host_buffer_semantics));
+
   auto traceback = Traceback::Get();
   return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
                                     std::move(traceback));
