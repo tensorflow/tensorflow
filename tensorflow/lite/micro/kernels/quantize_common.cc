@@ -27,8 +27,7 @@ namespace tflite {
 
 TfLiteStatus EvalQuantizeReference(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
-  auto* data =
-      static_cast<OpDataQuantizeReference*>(node->user_data);
+  auto* data = static_cast<OpDataQuantizeReference*>(node->user_data);
 
   const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
