@@ -58,114 +58,39 @@ namespace py = pybind11;
 // TODO(phawkins): Add support for Tracers.
 // TODO(jblespiau): Use absl Status.
 
-namespace {
-
-thread_local bool disable_jit;
-void SetDisableJit(bool disable_jit_) { disable_jit = disable_jit_; }
-bool GetDisableJit() { return disable_jit; }
-
-// Describes the abstract shape and dtype of an argument.
-struct ArgSignature {
-  // This is the XLA dtype of the object.
-  xla::PrimitiveType dtype;
-  // JAX arguments can be of weak type, if and only if they are Python scalars
-  // or `DeviceArray` values such that `aval.weak_type` is true.
-  bool weak_type;
-  absl::InlinedVector<int64, 4> shape;
-  bool operator==(const ArgSignature& other) const {
-    return std::tie(dtype, weak_type, shape) ==
-           std::tie(other.dtype, other.weak_type, other.shape);
+std::string ArgSignature::DebugString() const {
+  std::string result = "";
+  if (weak_type) {
+    absl::StrAppend(&result, "weak_");
   }
-  bool operator!=(const ArgSignature& other) const { return !(*this == other); }
-
-  std::string DebugString() const {
-    std::string result = "";
-    if (weak_type) {
-      absl::StrAppend(&result, "weak_");
-    }
-    absl::StrAppend(&result, xla::PrimitiveType_Name(dtype));
-    absl::StrAppend(&result, "[", absl::StrJoin(shape, ","), "]");
-    return result;
-  }
-};
-
-template <typename H>
-H AbslHashValue(H h, const ArgSignature& s) {
-  h = H::combine(std::move(h), s.dtype);
-  h = H::combine_contiguous(std::move(h), s.shape.data(), s.shape.size());
-  return h;
+  absl::StrAppend(&result, xla::PrimitiveType_Name(dtype));
+  absl::StrAppend(&result, "[", absl::StrJoin(shape, ","), "]");
+  return result;
 }
 
-// The signature of Python jitted function call, partitioned into:
-// - dynamic positional arguments (i.e. positional args which are not static)
-// - static positional arguments (i.e. the args associated to static_argnums)
-// - keyword arguments
-// The CallSignature should unambiguously identify a function call, thus,
-// equality is based on:
-// (a) Same PyTree for all dynamic positional arguments and keyword arguments
-// (a) equality of the arguments and keyword arguments ArgSignature
-// (a) equality (delegated to Python) of the static arguments.
-struct CallSignature {
-  struct KwargEntry {
-    // To avoid comparing strings, we intern the kwargs strings.
-    // The compilation cache holds a reference to all the keys.
-    py::handle key;
-    PyTreeDef value_treedef;
-    bool operator==(const KwargEntry& other) const {
-      return key.ptr() == other.key.ptr() &&
-             value_treedef == other.value_treedef;
-    }
-    bool operator!=(const KwargEntry& other) const { return !(*this == other); }
-  };
-
-  // Only contains the arguments associated to `static_argnums`, sorted in the
-  // order of their argnum index.
-  std::vector<py::object> static_args;
-  // A PyTreeDef for each positional dynamic (i.e. not static) argument.
-  std::vector<PyTreeDef> dynamic_positional_args_treedef;
-  // Keyword arguments. Sorted by the keyword name.
-  std::vector<KwargEntry> keyword_args;
-  // Shape and dtype for both the dynamic positional arguments and the keyword
-  // arguments (sorted by keyword name).
-  std::vector<ArgSignature> dynamic_args_signatures;
-  PjRtDevice* device;
-
-  bool operator==(const CallSignature& other) const {
-    return std::tie(dynamic_positional_args_treedef, keyword_args,
-                    dynamic_args_signatures, device) ==
-               std::tie(other.dynamic_positional_args_treedef,
-                        other.keyword_args, other.dynamic_args_signatures,
-                        other.device) &&
-           // `==` on py:objects is the Python `is`. We need equal.
-           std::equal(
-               static_args.begin(), static_args.end(),
-               other.static_args.begin(), other.static_args.end(),
-               [](const py::object& a, const py::object& b) {
-                 try {
-                   return a.equal(b);
-                 } catch (const py::error_already_set& e) {
-                   throw std::invalid_argument(absl::StrCat(
-                       "static arguments should be comparable using __eq__."
-                       "The following error was raised when comparing two "
-                       "objects of types ",
-                       py::cast<std::string>(py::str(py::type::of(a))), " and ",
-                       py::cast<std::string>(py::str(py::type::of(b))),
-                       ". The error was:\n", e.what()));
-                 }
-               });
-  }
-  bool operator!=(const CallSignature& other) const {
-    return !(*this == other);
-  }
-
-  // To be used when we want to keep ownership of Python values referenced by
-  // the `CallSignature` (i.e. when we insert an entry).
-  void IncRef() const;
-  // The destructor of the cache should call this on all entries.
-  void DecRef() const;
-
-  std::string DebugString() const;
-};
+bool CallSignature::operator==(const CallSignature& other) const {
+  return std::tie(dynamic_positional_args_treedef, keyword_args,
+                  dynamic_args_signatures, device) ==
+             std::tie(other.dynamic_positional_args_treedef, other.keyword_args,
+                      other.dynamic_args_signatures, other.device) &&
+         // `==` on py:objects is the Python `is`. We need equal.
+         std::equal(
+             static_args.begin(), static_args.end(), other.static_args.begin(),
+             other.static_args.end(),
+             [](const py::object& a, const py::object& b) {
+               try {
+                 return a.equal(b);
+               } catch (const py::error_already_set& e) {
+                 throw std::invalid_argument(absl::StrCat(
+                     "static arguments should be comparable using __eq__."
+                     "The following error was raised when comparing two "
+                     "objects of types ",
+                     py::cast<std::string>(py::str(py::type::of(a))), " and ",
+                     py::cast<std::string>(py::str(py::type::of(b))),
+                     ". The error was:\n", e.what()));
+               }
+             });
+}
 
 void CallSignature::IncRef() const {
   for (const auto& kw : keyword_args) {
@@ -179,38 +104,13 @@ void CallSignature::DecRef() const {
   }
 }
 
-template <typename H>
-H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
-  h = H::combine(std::move(h), kw.key.ptr(), kw.value_treedef);
-  return h;
-}
+namespace {
 
-template <typename H>
-H AbslHashValue(H h, const CallSignature& s) {
-  h = H::combine_contiguous(std::move(h),
-                            s.dynamic_positional_args_treedef.data(),
-                            s.dynamic_positional_args_treedef.size());
-  h = H::combine_contiguous(std::move(h), s.keyword_args.data(),
-                            s.keyword_args.size());
-  h = H::combine_contiguous(std::move(h), s.dynamic_args_signatures.data(),
-                            s.dynamic_args_signatures.size());
-  h = H::combine(std::move(h), s.device);
-  for (const auto& static_arg : s.static_args) {
-    ssize_t hash;
-    try {
-      hash = py::hash(static_arg);
-    } catch (const py::error_already_set& e) {
-      throw std::invalid_argument(absl::StrCat(
-          "Non-hashable static arguments are not supported. An error occured "
-          "while trying to hash an object of type ",
-          py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
-          py::cast<std::string>(py::str(static_arg)), ". The error was:\n",
-          e.what(), "\n"));
-    }
-    h = H::combine(std::move(h), hash);
-  }
-  return h;
-}
+thread_local bool disable_jit;
+void SetDisableJit(bool disable_jit_) { disable_jit = disable_jit_; }
+bool GetDisableJit() { return disable_jit; }
+
+}  // namespace
 
 std::string CallSignature::DebugString() const {
   std::vector<std::string> static_args_str;
@@ -247,6 +147,35 @@ std::string CallSignature::DebugString() const {
       absl::StrJoin(signature_str, ", "), "\n   - ",
       absl::StrJoin(tree_def_str, " | "));
 }
+
+template <typename H>
+H AbslHashValue(H h, const CallSignature& s) {
+  h = H::combine_contiguous(std::move(h),
+                            s.dynamic_positional_args_treedef.data(),
+                            s.dynamic_positional_args_treedef.size());
+  h = H::combine_contiguous(std::move(h), s.keyword_args.data(),
+                            s.keyword_args.size());
+  h = H::combine_contiguous(std::move(h), s.dynamic_args_signatures.data(),
+                            s.dynamic_args_signatures.size());
+  h = H::combine(std::move(h), s.device);
+  for (const auto& static_arg : s.static_args) {
+    ssize_t hash;
+    try {
+      hash = py::hash(static_arg);
+    } catch (const py::error_already_set& e) {
+      throw std::invalid_argument(absl::StrCat(
+          "Non-hashable static arguments are not supported. An error occured "
+          "while trying to hash an object of type ",
+          py::cast<std::string>(py::str(py::type::of(static_arg))), ", ",
+          py::cast<std::string>(py::str(static_arg)), ". The error was:\n",
+          e.what(), "\n"));
+    }
+    h = H::combine(std::move(h), hash);
+  }
+  return h;
+}
+
+namespace {
 
 struct CacheEntry {
   std::shared_ptr<xla::PyExecutable> executable;
