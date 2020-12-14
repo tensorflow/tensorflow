@@ -33,6 +33,36 @@ if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
   exit 1
 fi
 
+# explicitly call third_party_downloads since we need pigweed for the license
+# and clang-format checks.
+make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
+
+# Check for license with the necessary exclusions.
+tensorflow/lite/micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
+  tensorflow/lite/micro \
+  -p copyright_notice \
+  -e micro/tools/make/targets/ecm3531 \
+  -e BUILD\
+  -e leon_commands \
+  -e Makefile \
+  -e "\.bzl" \
+  -e "\.cmd" \
+  -e "\.cmd" \
+  -e "\.conf" \
+  -e "\.defaults" \
+  -e "\.h5" \
+  -e "\.ipynb" \
+  -e "\.inc" \
+  -e "\.lcf" \
+  -e "\.ld" \
+  -e "\.lds" \
+  -e "\.projbuild" \
+  -e "\.properties" \
+  -e "\.resc" \
+  -e "\.robot" \
+  -e "\.txt" \
+  -e "\.tpl" \
+  --output-directory /tmp
 
 # We are moving away from having the downloads and installations be part of the
 # Makefile. As a result, we need to manually add the downloads in this script.
