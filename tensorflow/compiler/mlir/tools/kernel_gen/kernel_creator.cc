@@ -90,27 +90,17 @@ struct RemoveUnusedTensorToMemrefOperations
 };
 }  // end anonymous namespace
 
-Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
-                    llvm::ArrayRef<uint32_t> tile_sizes,
+Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
                     llvm::ArrayRef<uint32_t> unroll_factors,
                     bool embed_memref_prints) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
-  if (gpu_binary_only) {
-    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-        /*allow_partial_conversion=*/false, /*legalize_chlo=*/true));
-    pm.addNestedPass<mlir::FuncOp>(
-        mlir::kernel_gen::transforms::CreateMaterializeBroadcastsPass());
-    pm.addNestedPass<mlir::FuncOp>(
-        mlir::kernel_gen::transforms::CreateUnfuseBatchNormPass());
-  } else {
-    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
-        /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
-    pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
-    pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  }
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/false, /*legalize_chlo=*/false));
+  pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
@@ -139,12 +129,10 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   pm.addPass(mlir::kernel_gen::transforms::CreateHloBufferizePass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  if (!gpu_binary_only) {
-    // Find candidates for buffer reuse. This is only successful if buffer size
-    // equality can be determined based on `linalg.generic` operations.
-    pm.addNestedPass<mlir::FuncOp>(
-        mlir::kernel_gen::transforms::CreateBufferReusePass());
-  }
+  // Find candidates for buffer reuse. This is only successful if buffer size
+  // equality can be determined based on `linalg.generic` operations.
+  pm.addNestedPass<mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateBufferReusePass());
   pm.addNestedPass<mlir::FuncOp>(
       mlir::createLinalgTilingToParallelLoopsPass((tiling_for_unrolling)));
   // Transform the Linalg ops inside of the loop nest into parallel loops.
@@ -188,15 +176,13 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
       std::make_unique<RemoveUnusedTensorToMemrefOperations>());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-  if (!gpu_binary_only) {
-    // Before inserting more allocs, map the ones we already have to the
-    // tf runtime. That ensures that all allocations for the actual computation
-    // end up on the device, whereas allocations for shape computation and host
-    // side things remain on the host.
-    // Longer term, this should be handled by proper device placement.
-    pm.addPass(mlir::kernel_gen::tf_framework::
-                   CreateEmbedTFFrameworkFunctionAndAllocPass());
-  }
+  // Before inserting more allocs, map the ones we already have to the
+  // tf runtime. That ensures that all allocations for the actual computation
+  // end up on the device, whereas allocations for shape computation and host
+  // side things remain on the host.
+  // Longer term, this should be handled by proper device placement.
+  pm.addPass(mlir::kernel_gen::tf_framework::
+                 CreateEmbedTFFrameworkFunctionAndAllocPass());
   pm.addPass(mlir::kernel_gen::transforms::CreateFinalBufferizePass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createPromoteBuffersToStackPass(64));
   // TODO(herhut): Depends on https://bugs.llvm.org/show_bug.cgi?id=48385.
@@ -223,11 +209,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, bool gpu_binary_only,
   // Take launches to launches with kernels.
   pm.addPass(::mlir::createGpuKernelOutliningPass());
 
-  if (gpu_binary_only) {
-    // Make kernel signature deterministic so that we can call it externally.
-    pm.addNestedPass<::mlir::FuncOp>(
-        xla::mlir_gpu::createRewriteKernelSignaturePass());
-  }
   pm.addPass(::mlir::createLowerAffinePass());
   // Constraints are removed as late as possible and before lowering to CFG.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createConvertShapeConstraintsPass());
@@ -295,7 +276,7 @@ Status LowerHostSideToFinalForm(mlir::ModuleOp module) {
 }  // namespace
 
 StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
-    mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
+    mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<uint32_t> tile_sizes,
     llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
@@ -304,8 +285,8 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
-  TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), gpu_binary_only, tile_sizes,
-                                  unroll_factors, embed_memref_prints));
+  TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), tile_sizes, unroll_factors,
+                                  embed_memref_prints));
 #if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
   return InternalError(
       "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
@@ -321,9 +302,7 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
   TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
                                         architectures, generate_fatbin,
                                         print_ptx));
-  if (!gpu_binary_only) {
-    TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
-  }
+  TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
   return module;
 }
 

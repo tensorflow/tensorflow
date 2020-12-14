@@ -261,7 +261,6 @@ tf_cuda_cc_test(
 
 gen_kernel_library(
     name = "abs",
-    generate_unranked = True,
     tile_size = "256",
     types = [
         "f16",
@@ -275,7 +274,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "conj",
-    generate_unranked = True,
     tile_size = "256",
     types = [
         "f32",
@@ -286,7 +284,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "imag",
-    generate_unranked = True,
     tile_size = "256",
     types = [
         "f32",
@@ -296,7 +293,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "invert",
-    generate_unranked = True,
     tile_size = "256",
     types = [
         "i8",
@@ -309,8 +305,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "is_inf",
-    generate_ranked = False,
-    generate_unranked = True,
     tile_size = "256",
     types = [
         "f16",
@@ -322,14 +316,12 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "logical_not",
-    generate_unranked = True,
     tile_size = "256",
     types = ["i1"],
 )
 
 gen_kernel_library(
     name = "real",
-    generate_unranked = True,
     tile_size = "256",
     types = [
         "f32",
@@ -339,7 +331,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "sign",
-    generate_unranked = True,
     tile_size = "256",
     types = [
         # TODO(b/162577610): Add bf16, c64 and c128.
@@ -354,8 +345,6 @@ gen_kernel_library(
 
 gen_kernel_library(
     name = "add_v2",
-    generate_ranked = False,
-    generate_unranked = True,
     tile_size = "256,1,1",
     types = [
         "f16",
@@ -371,8 +360,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_ranked = False,
-        generate_unranked = True,
         tile_size = "256,1,1",
         types = [
             "i8",
@@ -401,8 +388,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_ranked = False,
-        generate_unranked = True,
         tile_size = "256,1,1",
         types = [
             "i1",
@@ -419,8 +404,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_ranked = False,
-        generate_unranked = True,
         tile_size = "256,1,1",
         types = [
             "f16",
@@ -444,8 +427,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_ranked = False,
-        generate_unranked = True,
         tile_size = "256,1,1",
         types = [
             "f16",
@@ -470,8 +451,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_ranked = False,
-        generate_unranked = True,
         tile_size = "256,1,1",
         types = [
             "f16",
@@ -494,7 +473,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_unranked = True,
         tile_size = "256",
         types = [
             "f16",
@@ -516,7 +494,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_unranked = True,
         tile_size = "256",
         types = [
             "f16",
@@ -541,7 +518,6 @@ gen_kernel_library(
 [
     gen_kernel_library(
         name = name,
-        generate_unranked = True,
         tile_size = "256",
         types = [
             "f16",

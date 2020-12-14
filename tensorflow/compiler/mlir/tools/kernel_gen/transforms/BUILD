@@ -77,20 +77,16 @@ cc_library(
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
-        "materialize_broadcasts_pass.cc",
         "parallel_loops_to_sequential.cc",
         "same_shape_propagation.cc",
         "shape_to_descriptors_pass.cc",
         "tensorflow_abi_knowledge_propagation.cc",
         "tf_kernel_to_llvm_pass.cc",
-        "unfuse_batch_norm_pass.cc",
     ],
     hdrs = ["passes.h"],
     copts = if_cuda_is_configured(["-DGOOGLE_CUDA=1"]) + if_rocm_is_configured(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "@llvm-project//mlir:Affine",
-        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",

@@ -33,11 +33,9 @@ limitations under the License.
 namespace tensorflow {
 namespace kernel_gen {
 
-// Converts TF code to LLVM/NVVM. If `gpu_binary_only` is true, then the
-// conversion stops after gpu_binary blob is generated. If `gpu_binary_only` is
-// false, lowers the host side to LLVM Dialect.
+// Converts TF code to LLVM/NVVM. Lowers the host side to LLVM Dialect.
 xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
-    mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
+    mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures = {"sm_75"},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
     llvm::ArrayRef<uint32_t> unroll_factors = {},
