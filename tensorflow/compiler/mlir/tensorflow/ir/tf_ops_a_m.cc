@@ -1549,9 +1549,9 @@ static LogicalResult inferConvReturnTypes(
   return_shape[GetTensorBatchDimIndex(num_dims, format)] =
       input_ty.getShape()[GetTensorBatchDimIndex(num_dims, format)];
   return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
-      filter_ty.getShape()[GetFilterTensorInnerInputChannelsDimIndex(
-          num_dims, tensorflow::FilterTensorFormat::FORMAT_HWIO)];
-
+      filter_ty.getShape()[GetFilterTensorOutputChannelsDimIndex(
+          num_dims, tensorflow::FORMAT_HWIO)];
+          
   inferredReturnTypes.assign(
       {RankedTensorType::get(return_shape, input_ty.getElementType())});
   return success();
