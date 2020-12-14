@@ -498,6 +498,11 @@ ifneq ($(DISABLE_DOWNLOADS), true)
     $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
   endif
 
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/pigweed_download.sh ${MAKEFILE_DIR}/downloads)
+  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+    $(error Something went wrong with the pigweed download: $(DOWNLOAD_RESULT))
+  endif
+
   include $(MAKEFILE_DIR)/third_party_downloads.inc
   THIRD_PARTY_DOWNLOADS :=
   $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
