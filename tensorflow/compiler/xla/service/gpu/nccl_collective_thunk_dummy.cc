@@ -19,7 +19,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-struct NcclCollectiveConfig::AuxData {};
+struct NcclClique {};
 
 NcclCollectiveConfig::NcclCollectiveConfig() = default;
 NcclCollectiveConfig::NcclCollectiveConfig(NcclCollectiveConfig &&) = default;
