@@ -282,6 +282,8 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateDropWhileShapeInvariantPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  // Guarantee all functions have one use, which enables shape inference.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run shape inference pass before tensorlist decomposition to get buffer
   // shape of uninitialized TensorLists.
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
@@ -292,8 +294,6 @@ void CreateConvertMlirToXlaHloPipeline(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
   pm.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   pm.addPass(mlir::createSymbolDCEPass());
-  // Guarantee all functions have one use, which enables shape inference.
-  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
   // TODO(b/171426148): We cannot completely remove region to functional control
   // flow conversion from this pipeline yet as it causes some unit tests to
