@@ -176,6 +176,62 @@ H AbslHashValue(H h, const CallSignature& s) {
   return h;
 }
 
+// Filter out static arguments, flatten and concatenate other arguments (i.e.
+// dynamic positional and keyword arguments), filling `arguments` in place.
+void ParseArguments(const py::args& args, const py::kwargs& py_kwargs,
+                    absl::Span<int const> static_argnums,
+                    ParsedArgumentsAsBuffers& arguments) {
+  arguments.flat_dynamic_args.reserve(args.size() + py_kwargs.size() -
+                                      static_argnums.size());
+  arguments.signature.dynamic_positional_args_treedef.reserve(
+      args.size() - static_argnums.size());
+
+  // Positional arguments.
+  for (size_t i = 0; i < args.size(); ++i) {
+    if (std::find(static_argnums.begin(), static_argnums.end(), i) ==
+        static_argnums.end()) {
+      PyTreeDef pytree_def;
+      pytree_def.FlattenInto(args[i], arguments.flat_dynamic_args);
+      arguments.signature.dynamic_positional_args_treedef.push_back(pytree_def);
+    } else {
+      arguments.signature.static_args.emplace_back(
+          // borrow is mandatory here.
+          py::reinterpret_borrow<py::object>(args[i]));
+    }
+  }
+
+  // Keyword arguments.
+  std::vector<std::pair<py::handle, py::handle>> kwargs(py_kwargs.begin(),
+                                                        py_kwargs.end());
+  // We first intern the keys, then sort them (by name, as in the Python path)
+  // (see also PyTreeDef::Flatten) and then create the signatures.
+  // TODO(jblespiau): We should be able to sort the keys by interned-key
+  // pointers, but this requires the Python compilation to do the same.
+  arguments.signature.keyword_args.resize(kwargs.size());
+  for (size_t i = 0; i < kwargs.size(); ++i) {
+    // Intern the key if not already interned.
+    if (!PyUnicode_CHECK_INTERNED(kwargs[i].first.ptr())) {
+      PyObject* key = kwargs[i].first.ptr();
+      kwargs[i].first.inc_ref();
+      PyUnicode_InternInPlace(&key);
+      arguments.keep_alive_objects.push_back(
+          py::reinterpret_steal<py::object>(key));
+      kwargs[i].first = py::handle(key);
+    }
+  }
+
+  std::sort(kwargs.begin(), kwargs.end(),
+            [](const std::pair<py::handle, py::handle>& a,
+               const std::pair<py::handle, py::handle>& b) {
+              return a.first < b.first;
+            });
+  for (size_t i = 0; i < kwargs.size(); ++i) {
+    arguments.signature.keyword_args[i].key = kwargs[i].first;
+    arguments.signature.keyword_args[i].value_treedef.FlattenInto(
+        kwargs[i].second, arguments.flat_dynamic_args);
+  }
+}
+
 namespace {
 const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
   static const auto* int64_dt = new py::dtype("int64");
@@ -501,87 +557,6 @@ CompiledFunction::~CompiledFunction() {
   }
 }
 
-namespace {
-
-// The resulting information of the parsing and conversion of the arguments.
-struct ParsedArgumentsAsBuffers {
-  // The call signature will be filled during 2 steps:
-  // - `FlattenArguments` will fill the static arguments and the pytree
-  //    structures
-  // - the shapes and dtypes are filled later, by `ParseAndTransferArguments`.
-  CallSignature signature;
-  // The concatenation of the dynamic positional arguments and the sorted
-  // keyword arguments. We do not need ownership, thus the py::handle.
-  // TODO(jblespiau): We do not need py::object here and py::handle suffice and
-  // will prevent any counter increment.
-  std::vector<py::object> flat_dynamic_args;
-  std::vector<py::object> keep_alive_objects;
-
-  // The following is only valid if the parsing succeeds.
-  std::vector<xla::PjRtBuffer*> arg_buffers;
-  // We may need to keep these objects around, because:
-  // (a) we need to extend the lifetime of objects created within
-  //    `ConvertArgsToBuffers`
-  // (b) `arg_buffers` do not maintain ownership
-  std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
-};
-
-// Filter out static arguments, flatten and concatenate other arguments (i.e.
-// dynamic positional and keyword arguments), filling `arguments` in place.
-void FlattenArguments(const py::args& args, const py::kwargs& py_kwargs,
-                      absl::Span<int const> static_argnums,
-                      ParsedArgumentsAsBuffers& arguments) {
-  arguments.flat_dynamic_args.reserve(args.size() + py_kwargs.size() -
-                                      static_argnums.size());
-  arguments.signature.dynamic_positional_args_treedef.reserve(
-      args.size() - static_argnums.size());
-
-  // Positional arguments.
-  for (size_t i = 0; i < args.size(); ++i) {
-    if (std::find(static_argnums.begin(), static_argnums.end(), i) ==
-        static_argnums.end()) {
-      PyTreeDef pytree_def;
-      pytree_def.FlattenInto(args[i], arguments.flat_dynamic_args);
-      arguments.signature.dynamic_positional_args_treedef.push_back(pytree_def);
-    } else {
-      arguments.signature.static_args.emplace_back(
-          // borrow is mandatory here.
-          py::reinterpret_borrow<py::object>(args[i]));
-    }
-  }
-
-  // Keyword arguments.
-  std::vector<std::pair<py::handle, py::handle>> kwargs(py_kwargs.begin(),
-                                                        py_kwargs.end());
-  // We first intern the keys, then sort them (by name, as in the Python path)
-  // (see also PyTreeDef::Flatten) and then create the signatures.
-  // TODO(jblespiau): We should be able to sort the keys by interned-key
-  // pointers, but this requires the Python compilation to do the same.
-  arguments.signature.keyword_args.resize(kwargs.size());
-  for (size_t i = 0; i < kwargs.size(); ++i) {
-    // Intern the key if not already interned.
-    if (!PyUnicode_CHECK_INTERNED(kwargs[i].first.ptr())) {
-      PyObject* key = kwargs[i].first.ptr();
-      kwargs[i].first.inc_ref();
-      PyUnicode_InternInPlace(&key);
-      arguments.keep_alive_objects.push_back(
-          py::reinterpret_steal<py::object>(key));
-      kwargs[i].first = py::handle(key);
-    }
-  }
-
-  std::sort(kwargs.begin(), kwargs.end(),
-            [](const std::pair<py::handle, py::handle>& a,
-               const std::pair<py::handle, py::handle>& b) {
-              return a.first < b.first;
-            });
-  for (size_t i = 0; i < kwargs.size(); ++i) {
-    arguments.signature.keyword_args[i].key = kwargs[i].first;
-    arguments.signature.keyword_args[i].value_treedef.FlattenInto(
-        kwargs[i].second, arguments.flat_dynamic_args);
-  }
-}
-
 // Converts flattened arguments contained in ParsedArgumentsAsBuffers in
 // place. If arguments are `DeviceArray`, they must all be on the same `Device`.
 //
@@ -668,8 +643,6 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   }
   return Status::OK();
 }
-
-}  // namespace
 
 CacheEntry* CompiledFunction::GetCacheEntryIfPresent(
     const CallSignature& signature) {
@@ -791,7 +764,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
     return fun_(*args, **kwargs);
   }
   ParsedArgumentsAsBuffers arguments;
-  FlattenArguments(args, kwargs, static_argnums_, arguments);
+  ParseArguments(args, kwargs, static_argnums_, arguments);
 
   // The C++ jit do not support Tracers arguments inputs yet. The Python-based
   // jit function will be called if any of the dynamic arguments is unsupported.

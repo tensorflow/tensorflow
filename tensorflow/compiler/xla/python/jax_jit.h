@@ -109,6 +109,34 @@ H AbslHashValue(H h, const CallSignature::KwargEntry& kw) {
 template <typename H>
 H AbslHashValue(H h, const CallSignature& s);
 
+// The resulting information of the parsing and conversion of the arguments.
+struct ParsedArgumentsAsBuffers {
+  // The call signature will be filled during 2 steps:
+  // - `ParseArguments` will fill the static arguments and the pytree
+  //    structures
+  // - the shapes and dtypes are filled later, by `ParseAndTransferArguments`.
+  CallSignature signature;
+  // The concatenation of the dynamic positional arguments and the sorted
+  // keyword arguments.
+  std::vector<pybind11::object> flat_dynamic_args;
+  std::vector<pybind11::object> keep_alive_objects;
+
+  // The following is only valid if the parsing succeeds.
+  std::vector<xla::PjRtBuffer*> arg_buffers;
+  // We may need to keep these objects around, because:
+  // (a) we need to extend the lifetime of objects created within
+  //    `ConvertArgsToBuffers`
+  // (b) `arg_buffers` do not maintain ownership
+  std::vector<std::unique_ptr<xla::PjRtBuffer>> keep_alive;
+};
+
+// Filter out static arguments, flatten and concatenate other arguments (i.e.
+// dynamic positional and keyword arguments), filling `arguments` in place.
+void ParseArguments(const pybind11::args& args,
+                    const pybind11::kwargs& py_kwargs,
+                    absl::Span<int const> static_argnums,
+                    ParsedArgumentsAsBuffers& arguments);
+
 struct DevicePutResult {
   explicit DevicePutResult(PjRtBuffer* b, bool weak_type)
       : buffer(b), weak_type(weak_type), owned_buffer(nullptr) {}
