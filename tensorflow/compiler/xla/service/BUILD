@@ -936,6 +936,7 @@ cc_library(
         ":hlo_evaluator",
         ":hlo_execution_profile",
         ":hlo_module_config",
+        ":hlo_module_util",
         ":hlo_proto_util",
         ":platform_util",
         ":source_map_util",
@@ -977,6 +978,7 @@ cc_library(
         ":hlo",
         ":hlo_execution_profile",
         ":hlo_module_config",
+        ":hlo_module_util",
         ":platform_util",
         ":service",
         ":shaped_buffer",
@@ -1525,6 +1527,21 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "hlo_module_util",
+    srcs = ["hlo_module_util.cc"],
+    hdrs = ["hlo_module_util.h"],
+    deps = [
+        ":compiler",
+        ":hlo_module_config",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
