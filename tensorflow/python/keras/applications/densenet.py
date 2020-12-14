@@ -325,10 +325,11 @@ def DenseNet121(include_top=True,
                 input_tensor=None,
                 input_shape=None,
                 pooling=None,
-                classes=1000):
+                classes=1000,
+                classifier_activation='softmax'):
   """Instantiates the Densenet121 architecture."""
   return DenseNet([6, 12, 24, 16], include_top, weights, input_tensor,
-                  input_shape, pooling, classes)
+                  input_shape, pooling, classes, classifier_activation)
 
 
 @keras_export('keras.applications.densenet.DenseNet169',
@@ -338,10 +339,11 @@ def DenseNet169(include_top=True,
                 input_tensor=None,
                 input_shape=None,
                 pooling=None,
-                classes=1000):
+                classes=1000,
+                classifier_activation='softmax'):
   """Instantiates the Densenet169 architecture."""
   return DenseNet([6, 12, 32, 32], include_top, weights, input_tensor,
-                  input_shape, pooling, classes)
+                  input_shape, pooling, classes, classifier_activation)
 
 
 @keras_export('keras.applications.densenet.DenseNet201',
@@ -351,10 +353,11 @@ def DenseNet201(include_top=True,
                 input_tensor=None,
                 input_shape=None,
                 pooling=None,
-                classes=1000):
+                classes=1000,
+                classifier_activation='softmax'):
   """Instantiates the Densenet201 architecture."""
   return DenseNet([6, 12, 48, 32], include_top, weights, input_tensor,
-                  input_shape, pooling, classes)
+                  input_shape, pooling, classes, classifier_activation)
 
 
 @keras_export('keras.applications.densenet.preprocess_input')

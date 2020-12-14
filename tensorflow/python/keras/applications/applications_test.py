@@ -35,6 +35,7 @@ from tensorflow.python.keras.applications import vgg16
 from tensorflow.python.keras.applications import vgg19
 from tensorflow.python.keras.applications import xception
 from tensorflow.python.platform import test
+from tensorflow.python.keras.activations import linear, softmax
 
 
 MODEL_LIST_NO_NASNET = [
@@ -113,6 +114,13 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
     output_shape = _get_output_shape(
         lambda: app(weights=None, include_top=False, pooling='avg'))
     self.assertShapeEqual(output_shape, (None, last_dim))
+
+  @parameterized.parameters(MODEL_LIST)
+  def test_application_classifier_activation(self, app, last_dim):
+      model = app(classifier_activation="softmax", weights=None)
+      self.assertTrue(model.layers[-1].activation is softmax)
+      model = app(classifier_activation="linear", weights=None)
+      self.assertTrue(model.layers[-1].activation is linear)
 
   @parameterized.parameters(*MODEL_LIST_NO_NASNET)
   def test_application_variable_input_channels(self, app, last_dim):
