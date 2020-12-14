@@ -1759,13 +1759,14 @@ Optional<std::string> Translator::TranslateInternal() {
     std::string err;
     if (!failed_flex_ops_.empty())
       err +=
-          "Ops that can be supported by the flex runtime (enabled via setting "
-          "the -emit-select-tf-ops flag):\n" +
+          "Some ops are not supported by the native TFLite runtime, you can "
+          "enable TF kernels fallback using TF Select. See instructions: "
+          "https://www.tensorflow.org/lite/guide/ops_select" +
           failed_flex_ops_summary;
     if (!failed_custom_ops_.empty())
       err +=
-          "Ops that need custom implementation (enabled via setting the "
-          "-emit-custom-ops flag):\n" +
+          "Some ops in the model are custom ops, See instructions to implement "
+          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom" +
           failed_custom_ops_summary;
 
     auto& failed_region = named_regions[first_failed_func];
