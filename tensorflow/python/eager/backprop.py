@@ -1344,9 +1344,13 @@ class GradientTape(object):
                                  parallel_iterations=parallel_iterations)
     new_shape = array_ops.concat([target_shape, source_shape[1:]], axis=0)
     if output is None:
-      output = array_ops.zeros(new_shape)
-      if rewrap_as_ndarray:
-        output = np_arrays.tensor_to_ndarray(output)
+      if not experimental_use_pfor and target_row_size == 0:
+        # Since we can't actually run the loop function in this case, we don't
+        # know whether gradients are unconnected or not. We'll return a numeric
+        # tensor (with zero elements).
+        output = array_ops.zeros(new_shape, target.dtype)
+        if rewrap_as_ndarray:
+          output = np_arrays.tensor_to_ndarray(output)
       return output
     else:
       output = array_ops.reshape(output,

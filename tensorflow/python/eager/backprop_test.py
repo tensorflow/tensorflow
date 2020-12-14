@@ -1961,6 +1961,28 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       f = def_function.function(f)
     self.assertAllEqual([1, 0, 0], array_ops.shape(f(array_ops.zeros([1, 0]))))
 
+  @parameterized.parameters((True,), (False))
+  def test_respects_disconnected_gradients(self, use_pfor):
+    @def_function.function
+    def f(x):
+      del x
+      return constant_op.constant([[1.]], dtype=dtypes.float64)
+
+    with backprop.GradientTape(persistent=True) as tape:
+      x = constant_op.constant([[2.]], dtype=dtypes.float64)
+      tape.watch(x)
+      y = f(x)
+    self.assertIsNone(tape.batch_jacobian(y, x, experimental_use_pfor=use_pfor))
+
+    with backprop.GradientTape(persistent=True) as tape:
+      x = constant_op.constant([[2.]], dtype=dtypes.float64)
+      tape.watch(x)
+      y = f(x)
+    jac = tape.batch_jacobian(y, x, unconnected_gradients='zero',
+                              experimental_use_pfor=use_pfor)
+    self.assertEqual(dtypes.float64, jac.dtype)
+    self.assertAllClose([[[0.]]], jac)
+
 
 class AggregateIndexedSlicesGradientsTest(test_util.TensorFlowTestCase):
 
