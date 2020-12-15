@@ -26,6 +26,10 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 # and clang-format checks.
 make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
 
+# Explicitly disable exit on error so that we can properly clean up the
+# temporary git repository even when one of the scripts fail with an error code.
+set +e
+
 # The pigweed scripts only work from a git repository and the Tensorflow CI
 # infrastructure does not always guarantee that. As an ugly workaround, we
 # create our own git repo when running on the CI servers.
@@ -35,14 +39,14 @@ if [[ ${1} == "PRESUBMIT" ]]; then
   git config user.email "tflm@google.com"
   git config user.name "TensorflowLite Micro"
   git add *
-  git commit -a -m "Commit for a temporary repository."
+  git commit -a -m "Commit for a temporary repository." > /dev/null
 fi
 
 # Check for license with the necessary exclusions.
 tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
   . \
   -p copyright_notice \
-  -e micro/tools/make/targets/ecm3531 \
+  -e tools/make/targets/ecm3531 \
   -e BUILD\
   -e leon_commands \
   -e Makefile \
@@ -65,6 +69,8 @@ tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
   -e "\.tpl" \
   --output-directory /tmp
 
+LICENSE_CHECK_RESULT=$?
+
 # Check that the TFLM-only code is clang-formatted We are currently ignoring
 # Python files (with yapf as the formatter) because that needs additional setup.
 tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
@@ -72,8 +78,17 @@ tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
   -e "\.inc" \
   -e "\.py"
 
+CLANG_FORMAT_RESULT=$?
+
 popd
 if [[ ${1} == "PRESUBMIT" ]]; then
   rm -rf tensorflow/lite/micro/.git
 fi
 
+# Re-enable exit on error now that we are done with the temporary git repo.
+set -e
+
+if [[ ${LICENSE_CHECK_RESULT} != 0 || ${CLANG_FORMAT_RESULT} != 0 ]]
+then
+  exit 1
+fi
