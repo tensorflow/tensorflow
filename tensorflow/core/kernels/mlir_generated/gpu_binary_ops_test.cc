@@ -402,6 +402,9 @@ class ParametricGpuBinaryOpsTest
         return static_cast<BaselineOutT>(val.value());
       }
     }
+    if (GetParam().op_name == "Mul") {
+      return static_cast<BaselineOutT>(lhs * rhs);
+    }
     if (GetParam().op_name == "NotEqual") {
       return static_cast<BaselineOutT>(lhs != rhs);
     }
@@ -437,6 +440,10 @@ std::vector<BinaryTestParam> GetBinaryTestParameters() {
        {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_BOOL, DT_INT8, DT_INT16, DT_INT64}) {
     parameters.emplace_back("Equal", dt, DT_BOOL);
     parameters.emplace_back("NotEqual", dt, DT_BOOL);
+  }
+  for (DataType dt :
+       {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT8, DT_INT16, DT_INT64}) {
+    parameters.emplace_back("Mul", dt, dt);
   }
   for (DataType dt :
        {DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT8, DT_INT16, DT_INT64}) {
