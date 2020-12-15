@@ -55,6 +55,7 @@ tensorflow/lite/micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/
   -e "\.lcf" \
   -e "\.ld" \
   -e "\.lds" \
+  -e "\.patch" \
   -e "\.projbuild" \
   -e "\.properties" \
   -e "\.resc" \
