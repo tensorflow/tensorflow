@@ -33,6 +33,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_mac"],
 )
 
 tf_py_test(
@@ -47,6 +48,7 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:resources",
     ],
+    tags = ["no_mac"],
 )
 
 tf_py_test(
@@ -77,6 +79,7 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:resources",
     ],
+    tags = ["no_mac"],
 )
 
 tf_py_test(
