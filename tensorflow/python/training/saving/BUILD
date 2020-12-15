@@ -16,7 +16,7 @@ py_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],
     deps = [
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
