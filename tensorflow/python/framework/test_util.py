@@ -616,12 +616,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(self, *args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
