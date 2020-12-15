@@ -196,9 +196,7 @@ size_t TfLiteTensorByteSize(const TfLiteTensor* tensor) {
   return tensor->bytes;
 }
 
-void* TfLiteTensorData(const TfLiteTensor* tensor) {
-  return static_cast<void*>(tensor->data.raw);
-}
+void* TfLiteTensorData(const TfLiteTensor* tensor) { return tensor->data.raw; }
 
 const char* TfLiteTensorName(const TfLiteTensor* tensor) {
   return tensor->name;
