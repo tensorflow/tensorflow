@@ -103,12 +103,12 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       return i + variable_b, c
 
     rets = remote_output(constant_op.constant([1]))
+    self.assertAllEqual(rets[0].numpy(), [2])
+    self.assertAllEqual(rets[1].numpy(), 2)
     self.assertEqual(rets[0].backing_device,
                      '/job:localhost/replica:0/task:0/device:CPU:0')
     self.assertEqual(rets[1].backing_device,
                      '/job:worker/replica:0/task:0/device:CPU:0')
-    self.assertAllEqual(rets[0].numpy(), [2])
-    self.assertAllEqual(rets[1].numpy(), 2)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
 
