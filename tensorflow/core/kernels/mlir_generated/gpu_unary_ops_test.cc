@@ -515,27 +515,34 @@ T expected_sign(T x) {
   return 1;
 }
 
-// TODO(b/162577610): Enable these tests when our generated kernels handle 0.0
-// and -0.0 correctly.
-TEST_F(GpuUnaryOpTest, DISABLED_SignFloat) {
+TEST_F(GpuUnaryOpTest, SignFloat) {
   Run<float>(DefaultInputShape(), DefaultInput<float>(),
              /*op_name=*/"Sign",
              /*expected_callback=*/expected_sign,
              /*expect_equal=*/true);
 }
 
-TEST_F(GpuUnaryOpTest, DISABLED_SignDouble) {
+TEST_F(GpuUnaryOpTest, SignDouble) {
   Run<double>(DefaultInputShape(), DefaultInput<double>(),
               /*op_name=*/"Sign",
               /*expected_callback=*/expected_sign,
               /*expect_equal=*/true);
 }
 
-TEST_F(GpuUnaryOpTest, DISABLED_SignHalf) {
+TEST_F(GpuUnaryOpTest, SignHalf) {
   Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
                           /*op_name=*/"Sign",
                           /*expected_callback=*/expected_sign,
-                          /*expect_equal=*/true);
+                          // TODO(b/162577610): We should actually use true
+                          // here. This requires returning 0.0 for input -0.0.
+                          /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, SignInt64) {
+  Run<int64>(DefaultInputShape(), DefaultInput<int64>(),
+             /*op_name=*/"Sign",
+             /*expected_callback=*/expected_sign,
+             /*expect_equal=*/true);
 }
 
 /// Test `tf.Sin`.

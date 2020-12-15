@@ -539,14 +539,22 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto float_type = element_type.dyn_cast<FloatType>()) {
     bool ignored;
-    APFloat one_apfloat(1.0f);
-    one_apfloat.convert(float_type.getFloatSemantics(),
-                        APFloat::rmNearestTiesToEven, &ignored);
-    Value one = b->create<mlir::ConstantFloatOp>(loc, one_apfloat, float_type);
+    APFloat zero_apfloat(0.0f);
+    zero_apfloat.convert(float_type.getFloatSemantics(),
+                         APFloat::rmNearestTiesToEven, &ignored);
+    Value zero =
+        b->create<mlir::ConstantFloatOp>(loc, zero_apfloat, float_type);
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      one = b->create<::mlir::SplatOp>(loc, vec_type, one);
+      zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
     }
-    return b->create<::mlir::CopySignOp>(loc, result_types, one, args[0]);
+    Value ne0_i1 =
+        b->create<::mlir::CmpFOp>(loc, CmpFPredicate::ONE, args[0], zero);
+    Value ne0_float = b->create<::mlir::UIToFPOp>(loc, ne0_i1, float_type);
+    Value copy_sign =
+        b->create<::mlir::CopySignOp>(loc, result_types, ne0_float, args[0]);
+    auto is_nan =
+        b->create<::mlir::CmpFOp>(loc, CmpFPredicate::UNO, args[0], args[0]);
+    return b->create<::mlir::SelectOp>(loc, is_nan, args[0], copy_sign);
   } else if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
     // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
     Value zero =
