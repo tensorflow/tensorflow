@@ -708,6 +708,8 @@ class IrEmitterUnnested : public IrEmitter,
 
   Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const override;
 
+  Status AssertNonDeterminismIsOkay(const string& op_name);
+
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
