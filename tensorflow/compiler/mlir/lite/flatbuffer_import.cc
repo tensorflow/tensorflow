@@ -1012,7 +1012,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "outputs", func_outputs));
     }
-    func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   } else {
     func.setPrivate();
   }
@@ -1170,11 +1170,11 @@ OwningModuleRef tflite::FlatBufferToMlir(
   auto module = mlir::ModuleOp::create(base_loc);
   // We currently don't use this to make decisions, but we could
   // use it in exports or if there are breaking changes
-  module.setAttr("tfl.schema_version",
-                 builder.getI32IntegerAttr(model->version));
+  module->setAttr("tfl.schema_version",
+                  builder.getI32IntegerAttr(model->version));
   if (!model->description.empty()) {
-    module.setAttr("tfl.description",
-                   builder.getStringAttr(model->description));
+    module->setAttr("tfl.description",
+                    builder.getStringAttr(model->description));
   }
 
   for (auto e : llvm::enumerate(model->subgraphs)) {

@@ -111,7 +111,7 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
       "effective_hidden_scale_intermediate"};
 
   QuantizedType getIntermediateType(SourceOp op, int intermediate_index) const {
-    TypeAttr attr = op.template getAttrOfType<TypeAttr>(
+    TypeAttr attr = op->template getAttrOfType<TypeAttr>(
         intermediate_attributes[intermediate_index]);
     if (!attr) {
       return nullptr;
@@ -173,7 +173,7 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
       }
 
       TypeAttr attr =
-          op.template getAttrOfType<TypeAttr>(intermediate_attributes[index]);
+          op->template getAttrOfType<TypeAttr>(intermediate_attributes[index]);
       auto quant_type = getIntermediateType(op, index);
       if (!quant_type) {
         // intermediate tensor 4 is optional, unless the LSTM uses projection.

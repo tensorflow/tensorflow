@@ -650,7 +650,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
-      auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
+      auto padding = fc_op->template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
       // The fusion of add/sub is actually applying the following

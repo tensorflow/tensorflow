@@ -70,8 +70,8 @@ class ConvertEmbeddedLookupFunc {
   explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
-    func_.setAttr(kTFImplements,
-                  StringAttr::get("embedding_lookup", func_.getContext()));
+    func_->setAttr(kTFImplements,
+                   StringAttr::get("embedding_lookup", func_.getContext()));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);
@@ -326,20 +326,21 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
     // 2) tf._implements, with proto attributes.
     // 3) tf.api_implements.
     // We need to handle them separately.
-    auto tf_implements_attr_str = func.getAttrOfType<StringAttr>(kTFImplements);
+    auto tf_implements_attr_str =
+        func->getAttrOfType<StringAttr>(kTFImplements);
     if (tf_implements_attr_str) {
       ConvertTFImplements(func, tf_implements_attr_str);
       continue;
     }
 
-    auto tf_implements_attr = func.getAttrOfType<FuncAttr>(kTFImplements);
+    auto tf_implements_attr = func->getAttrOfType<FuncAttr>(kTFImplements);
     if (tf_implements_attr) {
       ConvertTFImplementsWithAttributes(func, tf_implements_attr);
       continue;
     }
 
     auto tf_api_implements_attr =
-        func.getAttrOfType<StringAttr>(kTFAPIImplements);
+        func->getAttrOfType<StringAttr>(kTFAPIImplements);
     if (tf_api_implements_attr) {
       // TODO(b/147536816): Keras lstm should set up the correct attributes.
       ConvertTFAPIImplements(func, tf_api_implements_attr, module);

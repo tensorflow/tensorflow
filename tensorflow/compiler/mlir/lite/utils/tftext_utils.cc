@@ -133,7 +133,7 @@ LogicalResult ConvertWhitespaceTokenizer(FuncOp func, llvm::StringRef api,
                                          FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
-  func.setAttr(kTFImplements, attr);
+  func->setAttr(kTFImplements, attr);
   OpBuilder builder(func.getBody());
   std::string empty_option_buffer;
   auto op = builder.create<CustomOp>(
@@ -256,7 +256,7 @@ LogicalResult CreateNgramsCustomOption(FuncOp func, DictionaryAttr attrs,
 LogicalResult ConvertNgrams(FuncOp func, llvm::StringRef api, FuncAttr attr) {
   func.eraseBody();
   func.addEntryBlock();
-  func.setAttr(kTFImplements, attr);
+  func->setAttr(kTFImplements, attr);
   OpBuilder builder(func.getBody());
   std::string custom_option_buffer;
   if (failed(CreateNgramsCustomOption(func, attr.GetAttrs(),
@@ -336,7 +336,7 @@ LogicalResult ConvertSgnnProjection(FuncOp func, llvm::StringRef api,
   // See more details in tensorflow_models/sequence_projection/sgnn/sgnn.py
   func.eraseBody();
   func.addEntryBlock();
-  func.setAttr(kTFImplements, attr);
+  func->setAttr(kTFImplements, attr);
   OpBuilder builder(func.getBody());
   std::string custom_option_buffer;
   if (failed(CreateSgnnProjectionCustomOption(func, attr.GetAttrs(),
