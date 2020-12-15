@@ -612,6 +612,12 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
                                             ArrayRef<int64_t> s1_shape,
                                             SmallVectorImpl<int64_t> &r0,
                                             SmallVectorImpl<int64_t> &r1) {
+  r0.clear();
+  r1.clear();
+
+  // No broadcasting is required if both the shapes are equal.
+  if (s0_shape == s1_shape) return;
+
   for (int i = bcasted_shape.size(); i > 0; --i) {
     int idx = bcasted_shape.size() - i;
     int s0_idx = i > s0_shape.size() ? -1 : s0_shape.size() - i;
@@ -628,6 +634,12 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
       else
         r1.push_back(idx);
     } else if (s0_shape[s0_idx] == 1) {
+      // This op is used to compute the gradient dimensions requiring reduction
+      // to match the input dimensions. In case both the dimensions are one,
+      // reducing the dimension has no effect. We choose to reduce such
+      // dimensions to match the TensorFlow kernel behavior. However, note that
+      // the TF behavior in this case is inconsistent with the case with the
+      // same shapes.
       r0.push_back(idx);
       r1.push_back(idx);
     }
