@@ -2802,6 +2802,7 @@ class MeanIoU(Metric):
       This value must be provided, since a confusion matrix of dimension =
       [num_classes, num_classes] will be allocated.
     name: (Optional) string name of the metric instance.
+    from_logits: (Optional) Whether `y_pred` is expected to be a logits tensor.
     dtype: (Optional) data type of the metric result.
 
   Standalone usage:
@@ -2832,9 +2833,10 @@ class MeanIoU(Metric):
   ```
   """
 
-  def __init__(self, num_classes, name=None, dtype=None):
+  def __init__(self, num_classes, name=None, from_logits=False, dtype=None):
     super(MeanIoU, self).__init__(name=name, dtype=dtype)
     self.num_classes = num_classes
+    self.from_logits = from_logits
 
     # Variable to accumulate the predictions in the confusion matrix.
     self.total_cm = self.add_weight(
@@ -2855,6 +2857,8 @@ class MeanIoU(Metric):
     Returns:
       Update op.
     """
+    if self.from_logits:
+      y_pred = math_ops.argmax(y_pred, axis=-1)
 
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
