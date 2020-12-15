@@ -31,6 +31,7 @@ limitations under the License.
 #include "fsl_sai_edma.h"      // NOLINT
 #include "mbed.h"              // NOLINT
 
+// clang-format off
 // Compiler pragma for alignment of data to make efficient use of DMA
 #if (defined(__ICCARM__))
 #if ((!(defined(FSL_FEATURE_HAS_NO_NONCACHEABLE_SECTION) && \
@@ -68,6 +69,7 @@ limitations under the License.
 #error Toolchain not supported.
 #define AT_NONCACHEABLE_SECTION_ALIGN(var, alignbytes) var
 #endif
+// clang-format on
 
 namespace {
 
@@ -243,7 +245,9 @@ status_t Da7212WriteRegister(uint8_t register_address, uint8_t register_data) {
   i2c_data.direction = kI2C_Write;
   i2c_data.subaddress = register_address;
   i2c_data.subaddressSize = 1;
+  // clang-format off
   i2c_data.data = (uint8_t* volatile)data;
+  // clang-format on
   i2c_data.dataSize = 1;
   i2c_data.flags = kI2C_TransferDefaultFlag;
   return I2C_MasterTransferBlocking(I2C1, &i2c_data);
