@@ -799,6 +799,7 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
+    tags = ["no_mac"],
 )
 
 tf_py_test(
