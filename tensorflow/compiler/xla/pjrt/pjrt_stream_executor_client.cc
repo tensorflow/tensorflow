@@ -2101,88 +2101,23 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
   int num_replicas;
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
-  if (options.compile_portable_executable) {
-    if (build_options.has_device_assignment()) {
-      return InvalidArgument(
-          "CompileOptions requests portable executable but "
-          "ExecutableBuildOptions includes a device assignment");
-    }
-    num_replicas = 1;
-    num_partitions = 1;
-  } else {
-    if (!build_options.has_device_assignment()) {
-      VLOG(2) << "PjRtStreamExecutorClient::Compile using default "
-                 "device_assignment.";
-      TF_ASSIGN_OR_RETURN(
-          DeviceAssignment device_assignment,
-          GetDefaultDeviceAssignment(build_options.num_replicas(),
-                                     build_options.num_partitions()));
-      build_options.set_device_assignment(device_assignment);
-    }
-    VLOG(2) << "PjRtStreamExecutorClient::Compile device_assignment:\n"
-            << build_options.device_assignment().ToString();
-    num_replicas = build_options.device_assignment().replica_count();
-    num_partitions = build_options.device_assignment().computation_count();
-    device_assignment =
-        std::make_shared<DeviceAssignment>(build_options.device_assignment());
-  }
+  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [this](int num_replicas, int num_partitions) {
+        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
 
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation.GetProgramShape());
-  if (!options.argument_layouts) {
-    options.argument_layouts = program_shape.parameters();
-    for (Shape& shape : *options.argument_layouts) {
-      LayoutUtil::ClearLayout(&shape);
-    }
-  } else if (options.argument_layouts->size() !=
-             program_shape.parameters_size()) {
-    return InvalidArgument(
-        "CompileOptions specify %d argument layouts, but computation has %d "
-        "arguments",
-        options.argument_layouts->size(), program_shape.parameters_size());
-  }
   std::vector<const Shape*> argument_layout_pointers;
-  argument_layout_pointers.reserve(options.argument_layouts->size());
-
-  // Assign a default layout based on `sharded_shape` to any array subshapes in
-  // `dst_shape` that are missing layouts.
-  auto assign_layouts = [local_client = client()](const Shape& sharded_shape,
-                                                  Shape* dst_shape) {
-    return ShapeUtil::ForEachMutableSubshapeWithStatus(
-        dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
-          if (subshape->IsArray() && !subshape->has_layout()) {
-            CHECK(ShapeUtil::IndexIsValid(sharded_shape, idx));
-            const Shape& sharded_subshape =
-                ShapeUtil::GetSubshape(sharded_shape, idx);
-            LayoutUtil::SetToDefaultLayout(subshape);
-            TF_ASSIGN_OR_RETURN(Shape layout, local_client->backend()
-                                                  .transfer_manager()
-                                                  ->ChooseCompactLayoutForShape(
-                                                      sharded_subshape));
-            *subshape->mutable_layout() = layout.layout();
-          }
-          return Status::OK();
-        });
-  };
-  TF_ASSIGN_OR_RETURN(auto sharded_shapes,
-                      GetShardedProgramShapes(computation));
-
-  CHECK_EQ(sharded_shapes.first.size(), options.argument_layouts->size());
-  for (int i = 0; i < options.argument_layouts->size(); ++i) {
-    Shape* layout = &(*options.argument_layouts)[i];
-    argument_layout_pointers.push_back(layout);
-    TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.first[i], layout));
-  }
-
-  Shape result_layout;
-  if (build_options.result_layout()) {
-    result_layout = *build_options.result_layout();
-  } else {
-    result_layout = program_shape.result();
-    LayoutUtil::ClearLayout(&result_layout);
-  }
-  TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
-  build_options.set_result_layout(result_layout);
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
 
   // Find devices that are addressable by this client/task.
   std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;

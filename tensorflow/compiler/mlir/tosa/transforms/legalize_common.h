@@ -16,39 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H
 #define TENSORFLOW_COMPILER_MLIR_TOSA_TRANSFORMS_LEGALIZE_COMMON_H
 
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+
 // This file contains legalizations common to mapping both TensorFlow and
 // TensorFlow Lite to TOSA.
 //
-// Conversion functions return nullptr on a lowerization failure or a lowered
-// operator on success.   Callers must check and return a LogicalResult failure
-// on nullptr.
+// Conversion functions return None on a failure or result value on success.
+// Callers must check and return a LogicalResult failure on nullptr.
 //
 // For these functions, the framework-specific operands/attributes/defaults
 // are already extracted and placed in a common form for lowering.
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"
-#include "mlir/Dialect/Quant/UniformSupport.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"
-#include "mlir/Dialect/Tosa/Utils/QuantUtils.h"
-#include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/Matchers.h"
-#include "mlir/IR/Operation.h"
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
-#include "mlir/IR/TypeUtilities.h"
-#include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Support/LLVM.h"
-#include "mlir/Transforms/DialectConversion.h"
-#include "llvm/ADT/APInt.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringSwitch.h"
-#include "llvm/Support/FormatVariadic.h"
 
 namespace mlir {
 namespace tosa {

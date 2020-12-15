@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1990,14 +1990,24 @@ OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
     return nullptr;
   }
 
-  const bool is_input_unsigned = operand_element_type.isUnsigned();
+  const bool is_unsigned = operand_element_type.isUnsigned();
+  const bool involves_bool = operand_element_type.getWidth() == 1 ||
+                             result_element_type.getWidth() == 1;
   const int output_bitwidth = result_element_type.getWidth();
   // The integer cast op is the same as C integer cast. Depends on the operand
   // type's signedness, we will determine whether or not sign extension is
   // needed.
   auto cast = [&](APInt value) {
-    return is_input_unsigned ? value.zextOrTrunc(output_bitwidth)
-                             : value.sextOrTrunc(output_bitwidth);
+    if (involves_bool) {
+      // Handle boolean inputs or outputs explicitly as it doesn't have the same
+      // behavior as extension or truncation.
+      // true input should always be cast to 1 and not -1 as the sign extension
+      // would do for signed outputs. Similarly, non-zero inputs should be cast
+      // to true. Truncating even numbers to one bit will result in `false`.
+      return APInt(result_element_type.getWidth(), value != 0);
+    }
+    return is_unsigned ? value.zextOrTrunc(output_bitwidth)
+                       : value.sextOrTrunc(output_bitwidth);
   };
 
   return elements_attr.mapValues(result_element_type, cast);

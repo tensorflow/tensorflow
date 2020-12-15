@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -92,36 +93,6 @@ absl::optional<const OpMetadata*> ParameterMetadata(
     }
   }
   return absl::nullopt;
-}
-
-ExecutionOptions CreateExecutionOptions(
-    const ExecutableBuildOptions& build_options,
-    const ProgramShape* program_shape) {
-  ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (build_options.has_debug_options()) {
-    *execution_options.mutable_debug_options() = build_options.debug_options();
-  }
-  if (build_options.result_layout() != nullptr) {
-    *execution_options.mutable_shape_with_output_layout() =
-        build_options.result_layout()->ToProto();
-  } else {
-    Shape result_shape(program_shape->result());
-    LayoutUtil::SetToDefaultLayout(&result_shape);
-    *execution_options.mutable_shape_with_output_layout() =
-        result_shape.ToProto();
-  }
-  execution_options.set_num_replicas(build_options.num_replicas());
-  execution_options.set_num_partitions(build_options.num_partitions());
-  execution_options.set_use_spmd_partitioning(
-      build_options.use_spmd_partitioning());
-  execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
-  if (build_options.has_device_assignment()) {
-    TF_CHECK_OK(build_options.device_assignment().Serialize(
-        execution_options.mutable_device_assignment()));
-  }
-  execution_options.set_alias_passthrough_params(
-      build_options.alias_passthrough_params());
-  return execution_options;
 }
 
 }  // namespace

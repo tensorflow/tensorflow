@@ -13,17 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tosa/tosa_passpipes.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_TOSA_TFL_PASSES_H_
+#define TENSORFLOW_COMPILER_MLIR_TOSA_TFL_PASSES_H_
+
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassOptions.h"  // from @llvm-project
 
 namespace mlir {
-
 namespace tosa {
 
-static mlir::PassPipelineRegistration<TOSALegalizationPipelineOptions>
-    tfl_tosa_pipeline("tfl-to-tosa-pipeline",
-                      "TensorFlow Lite to TOSA legalization pipeline",
-                      createTFLtoTOSALegalizationPipeline);
+struct TOSATFLLegalizationPipelineOptions
+    : public PassPipelineOptions<TOSATFLLegalizationPipelineOptions> {};
+
+// Legalizes TFL (TensorFlow lite) dialect(s) to Tosa.
+void createTFLtoTOSALegalizationPipeline(
+    OpPassManager& pm, const TOSATFLLegalizationPipelineOptions& opts);
 
 }  // namespace tosa
-
 }  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_TOSA_TFL_PASSES_H_

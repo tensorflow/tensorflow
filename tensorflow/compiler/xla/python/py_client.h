@@ -123,6 +123,9 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
     return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
+  StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBufferFromPyval(
+      const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+      PjRtClient::HostBufferSemantics host_buffer_semantics);
   StatusOr<std::unique_ptr<PyBuffer>> BufferFromPyval(
       const pybind11::object& argument, PjRtDevice* device, bool force_copy,
       PjRtClient::HostBufferSemantics host_buffer_semantics);

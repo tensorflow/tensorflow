@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_NCCL_COLLECTIVE_THUNK_H_
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -27,6 +28,8 @@ using ncclComm_t = ncclComm*;
 
 namespace xla {
 namespace gpu {
+
+struct NcclClique;
 
 struct NcclCollectiveConfig {
   NcclCollectiveConfig();
@@ -41,12 +44,6 @@ struct NcclCollectiveConfig {
   std::vector<ReplicaGroup> replica_groups;
   RendezvousKey::CollectiveOpKind collective_op_kind;
   int64 op_id;
-  // Extra data stored in NcclCollectiveConfig whose types we don't want exposed
-  // in the header file.  (This is mainly because the implementation of
-  // NcclCollectiveConfig is different depending on whether CUDA is enabled in
-  // the build, and we don't want to expose *that* mess in the header.)
-  struct AuxData;
-  std::unique_ptr<AuxData> aux_data;
 };
 
 NcclCollectiveConfig GetNcclCollectiveConfig(const HloInstruction* hlo,
@@ -65,12 +62,19 @@ class NcclCollectiveThunk : public Thunk {
   // error.
   static bool NcclIsEnabled();
 
-  Status ExecuteOnStream(const ExecuteParams& params) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override
+      ABSL_LOCKS_EXCLUDED(mu_);
 
  protected:
   virtual Status RunNcclCollective(const ExecuteParams& params,
                                    ncclComm_t comm) = 0;
   virtual const NcclCollectiveConfig& config() const = 0;
+
+ private:
+  // Creating NCCL cliques is expensive, so we cache them.
+  absl::Mutex mu_;
+  absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques_
+      ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace gpu

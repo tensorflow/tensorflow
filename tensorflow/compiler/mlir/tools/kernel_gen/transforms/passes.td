@@ -61,16 +61,6 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
-def MaterializeBroadcastsPass : FunctionPass<"materialize-broadcast"> {
-  let summary = "Pass to materialize broadcasts";
-  let constructor = "transforms::CreateMaterializeBroadcastsPass()";
-}
-
-def UnfuseBatchNormPass : FunctionPass<"unfuse-batch-norm"> {
-  let summary = "Pass to unfuse batch norm";
-  let constructor = "transforms::CreateUnfuseBatchNormPass()";
-}
-
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [

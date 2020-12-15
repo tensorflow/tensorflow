@@ -141,6 +141,12 @@ class ExecutableBuildOptions {
   tensorflow::thread::ThreadPool* compile_thread_pool_ = nullptr;
 };
 
+// Creates an ExecutionOptions based on a given ExecutableBuildOptions and
+// ProgramShape.
+ExecutionOptions CreateExecutionOptions(
+    const ExecutableBuildOptions& build_options,
+    const ProgramShape* program_shape);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_EXECUTABLE_BUILD_OPTIONS_H_

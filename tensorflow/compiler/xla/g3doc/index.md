@@ -4,9 +4,10 @@ XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
 algebra that can accelerate TensorFlow models with potentially no source code
 changes.
 
-The results are improvements in speed and memory usage: most internal benchmarks
-run ~1.15x faster after XLA is enabled. The dataset below is evaluated on a
-single NVidia V100 GPU:
+The results are improvements in speed and memory usage: e.g. in BERT
+[MLPerf](https://blog.tensorflow.org/2020/07/tensorflow-2-mlperf-submissions.html)
+submission using 8 Volta V100 GPUs using XLA has achieved a ~7x performance
+improvement and ~5x batch size improvement:
 
 <div style="width:90%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:90%" src="./images/tf_xla_performance.png">

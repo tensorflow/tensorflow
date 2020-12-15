@@ -31,17 +31,16 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -298,7 +297,36 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::ConvDimensionNumbers input) {
-  return xla::ConvertConvDimensionNumbers(input);
+  xla::ConvolutionDimensionNumbers output;
+
+  output.set_input_batch_dimension(
+      input.input_batch_dimension().getValue().getSExtValue());
+  output.set_input_feature_dimension(
+      input.input_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.input_spatial_dimensions().getValues<int64>()) {
+    output.add_input_spatial_dimensions(v);
+  }
+
+  output.set_kernel_input_feature_dimension(
+      input.kernel_input_feature_dimension().getValue().getSExtValue());
+  output.set_kernel_output_feature_dimension(
+      input.kernel_output_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.kernel_spatial_dimensions().getValues<int64>()) {
+    output.add_kernel_spatial_dimensions(v);
+  }
+
+  output.set_output_batch_dimension(
+      input.output_batch_dimension().getValue().getSExtValue());
+  output.set_output_feature_dimension(
+      input.output_feature_dimension().getValue().getSExtValue());
+
+  for (int64 v : input.output_spatial_dimensions().getValues<int64>()) {
+    output.add_output_spatial_dimensions(v);
+  }
+
+  return output;
 }
 
 xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {

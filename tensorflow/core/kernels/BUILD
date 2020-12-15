@@ -632,6 +632,7 @@ cc_library(
     srcs = ["batch_kernels.cc"],
     deps = [
         ":ops_util_hdrs",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

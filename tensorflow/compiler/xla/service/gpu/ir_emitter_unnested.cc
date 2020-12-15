@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
-#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -63,7 +62,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/collective_permute_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
@@ -1047,19 +1045,8 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return EmitGemmThunkFromMlir(input);
   }
 
-  if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp,
-                mlir::lmhlo_gpu::ConvForwardFusedOp,
-                mlir::lmhlo_gpu::ConvForwardFusedSideInputOp,
-                mlir::lmhlo_gpu::ConvBackwardFilterOp,
-                mlir::lmhlo_gpu::ConvBackwardInputOp>(input.op)) {
-    // TODO(jurahul): Window reveral is not yet supported in HLO. Fallback to
-    // HLO based thunk for that case.
-    if (absl::c_any_of(
-            custom_call->window().dimensions(),
-            [](const WindowDimension& dim) { return dim.window_reversal(); })) {
-      return ThunkEmitter(this).HandleCustomCall(custom_call);
-    }
-    return EmitConvolutionThunkFromMlir(input);
+  if (IsCustomCallToDnnConvolution(*custom_call)) {
+    return ThunkEmitter(this).HandleCustomCall(custom_call);
   }
 
 #if GOOGLE_CUDA
@@ -1070,103 +1057,6 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
 
   return Unimplemented("No registered implementation for custom call to \"%s\"",
                        custom_call->custom_call_target());
-}
-
-Status IrEmitterUnnested::EmitConvolutionThunkFromMlir(MlirEmitterInput input) {
-  using mlir::dyn_cast;
-  using mlir::lmhlo_gpu::Activation;
-  using mlir::lmhlo_gpu::ConvBackwardFilterOp;
-  using mlir::lmhlo_gpu::ConvBackwardInputOp;
-  using mlir::lmhlo_gpu::ConvForwardFusedOp;
-  using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
-  using mlir::lmhlo_gpu::ConvForwardOp;
-
-  // Last 2 operands of the convolution operation are the result and scratch.
-  std::vector<BufferAllocation::Slice> operand_slices;
-  int64 num_operands = input.op->getNumOperands();
-  operand_slices.reserve(num_operands - 2);
-  for (mlir::Value operand : input.op->getOperands().drop_back(2)) {
-    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(operand));
-    operand_slices.push_back(slice);
-  }
-
-  mlir::Value conv_result = input.op->getOperand(num_operands - 2);
-  mlir::Value scratch_result = input.op->getOperand(num_operands - 1);
-  TF_ASSIGN_OR_RETURN(auto conv_result_slice,
-                      GetAllocationSliceForMlir(conv_result));
-  TF_ASSIGN_OR_RETURN(auto scratch_slice,
-                      GetAllocationSliceForMlir(scratch_result));
-
-  GpuConvDescriptor descriptor;
-  descriptor.operand0_shape = TypeToShape(input.op->getOperand(0).getType());
-  descriptor.operand1_shape = TypeToShape(input.op->getOperand(1).getType());
-  descriptor.result_shape = TypeToShape(conv_result.getType());
-  descriptor.scratch_size = scratch_slice.size();
-
-  auto fill_conv_descriptor = [&](auto op) {
-    descriptor.dnums = ConvertConvDimensionNumbers(op.dimension_numbers());
-    mlir::DenseIntElementsAttr window_strides = op.window_strides().getValue();
-    mlir::DenseIntElementsAttr padding = op.padding().getValue();
-    mlir::DenseIntElementsAttr lhs_dilation = op.lhs_dilation().getValue();
-    mlir::DenseIntElementsAttr rhs_dilation = op.rhs_dilation().getValue();
-    for (auto index : llvm::seq<int>(0, window_strides.getNumElements())) {
-      WindowDimension* dim = descriptor.window.add_dimensions();
-      // Window size for a convolution is the same as the kernel size.
-      // Kernel size of the convolution is operand1_shape. We need to look at
-      // the convolution dimension numbers kernel spatial dimensions to get
-      // the window size.
-      int kernel_dim = descriptor.dnums.kernel_spatial_dimensions(index);
-      dim->set_size(descriptor.operand0_shape.dimensions(kernel_dim));
-      dim->set_stride(window_strides.getValue<int64>(index));
-      dim->set_padding_low(padding.getValue<int64>(index));
-      dim->set_padding_high(padding.getValue<int64>(index));
-      dim->set_base_dilation(lhs_dilation.getValue<int64>(index));
-      dim->set_window_dilation(rhs_dilation.getValue<int64>(index));
-    }
-    descriptor.feature_group_count = op.feature_group_count();
-    descriptor.backend_config.set_algorithm(
-        op.backend_config().algorithm().getInt());
-    descriptor.backend_config.set_tensor_ops_enabled(
-        op.backend_config().tensor_ops_enabled().getValue());
-    descriptor.backend_config.set_conv_result_scale(
-        op.result_scale().convertToDouble());
-  };
-
-  auto set_activation_mode = [&](auto op) -> Status {
-    TF_ASSIGN_OR_RETURN(stream_executor::dnn::ActivationMode activation_mode,
-                        ConvertConvActivationMode(op.activation_mode()));
-    descriptor.backend_config.set_activation_mode(
-        static_cast<int64>(activation_mode));
-    return Status::OK();
-  };
-
-  if (auto op = dyn_cast<ConvForwardOp>(input.op)) {
-    descriptor.kind = CudnnConvKind::kForward;
-    fill_conv_descriptor(op);
-  } else if (auto op = dyn_cast<ConvBackwardInputOp>(input.op)) {
-    descriptor.kind = CudnnConvKind::kBackwardInput;
-    fill_conv_descriptor(op);
-  } else if (auto op = dyn_cast<ConvBackwardFilterOp>(input.op)) {
-    descriptor.kind = CudnnConvKind::kBackwardFilter;
-    fill_conv_descriptor(op);
-  } else if (auto op = dyn_cast<ConvForwardFusedOp>(input.op)) {
-    descriptor.kind = CudnnConvKind::kForwardActivation;
-    fill_conv_descriptor(op);
-    TF_RETURN_IF_ERROR(set_activation_mode(op));
-  } else if (auto op = dyn_cast<ConvForwardFusedSideInputOp>(input.op)) {
-    descriptor.kind = CudnnConvKind::kForwardActivation;
-    fill_conv_descriptor(op);
-    TF_RETURN_IF_ERROR(set_activation_mode(op));
-    descriptor.backend_config.set_side_input_scale(
-        op.side_input_scale().convertToDouble());
-  } else {
-    return InternalError("Unexpected operation");
-  }
-  TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
-  AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
-      input.thunk_info, std::move(config), std::move(operand_slices),
-      conv_result_slice, scratch_slice));
-  return Status::OK();
 }
 
 Status IrEmitterUnnested::EmitGemmThunkFromMlir(MlirEmitterInput input) {

@@ -115,9 +115,9 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/false,
-                              architectures, tile_sizes, unroll_factors,
-                              embed_memref_prints, /*generate_fatbin=*/true,
+      GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
+                              unroll_factors, embed_memref_prints,
+                              /*generate_fatbin=*/true,
                               /*print_ptx=*/print_ptx));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));

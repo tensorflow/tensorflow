@@ -70,6 +70,12 @@ tensorflow::Status SetTpuOpsStructFns(void* library_handle) {
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_DestroyCompilationCacheKey);
   TFTPU_SET_FN(ops_api_fn, TpuCompile_CreateGuaranteedConstFingerprint);
+  
+  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Create);
+  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Free);
+  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Start);
+  TFTPU_SET_FN(ops_api_fn, TpuProfiler_Stop);
+  TFTPU_SET_FN(ops_api_fn, TpuProfiler_CollectData);
 
   return tensorflow::Status::OK();
 }

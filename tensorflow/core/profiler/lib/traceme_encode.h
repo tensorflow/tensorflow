@@ -145,6 +145,17 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOp(
   return op_name;
 }
 
+// Concatenates op_name and op_type.
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOpOverride(
+    absl::string_view op_name, absl::string_view op_type) {
+  return absl::StrCat("#tf_op=", op_name, ":", op_type, "#");
+}
+
+TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeOpOverride(
+    const char* op_name, const char* op_type) {
+  return absl::StrCat("#tf_op=", op_name, ":", op_type, "#");
+}
+
 }  // namespace profiler
 }  // namespace tensorflow
 

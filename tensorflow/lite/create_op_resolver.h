@@ -21,8 +21,7 @@ limitations under the License.
 
 namespace tflite {
 
-std::unique_ptr<OpResolver> CreateOpResolver();
-
+std::unique_ptr<MutableOpResolver> CreateOpResolver();
 }
 
 #endif  // TENSORFLOW_LITE_CREATE_OP_RESOLVER_H_

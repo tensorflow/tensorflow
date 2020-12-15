@@ -110,13 +110,12 @@ class IrArray {
 
     bool LinearValidOnShape(const Shape& a) const;
 
-    static bool ShapeIsCompatible(const Shape& a, const Shape& b) {
-      return ShapeUtil::ElementsIn(a) == ShapeUtil::ElementsIn(b) &&
-             ShapeUtil::ReshapeIsBitcast(a, b);
-    }
+    static bool ShapeIsCompatible(const Shape& a, const Shape& b);
 
     bool ShapeIsCompatible(const Shape& a) const {
-      return ShapeUtil::ShapeIsComatibleWithLayout(a, layout_);
+      return ShapeIsCompatible(
+          a, ShapeUtil::MakeShapeWithLayout(a.element_type(), dims_,
+                                            layout_.minor_to_major()));
     }
 
     // Given that "this" is the target index of a reshape from `input_shape`

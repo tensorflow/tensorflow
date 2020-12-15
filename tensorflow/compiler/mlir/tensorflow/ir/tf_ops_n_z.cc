@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
@@ -54,7 +55,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -401,7 +401,7 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
   auto module = op->template getParentOfType<ModuleOp>();
-  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
+  SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
       dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));

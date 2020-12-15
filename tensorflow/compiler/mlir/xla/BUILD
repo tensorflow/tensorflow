@@ -249,7 +249,6 @@ cc_library(
     ],
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
-        ":attribute_exporter",
         ":type_to_shape",
         "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
@@ -334,24 +333,6 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core/platform:types",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
-    name = "attribute_exporter",
-    srcs = ["attribute_exporter.cc"],
-    hdrs = ["attribute_exporter.h"],
-    deps = [
-        "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo_gpu",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core/platform:types",
-        "//tensorflow/stream_executor:dnn",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
     ],
 )

@@ -400,8 +400,9 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
+        ":abstract_tensor_handle",
         ":unified_api_testutil",
-        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/experimental/ops:math_ops",
         "@com_google_absl//absl/types:span",
     ],
@@ -417,14 +418,15 @@ tf_cuda_cc_test(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "no_cuda_asan",  # b/175330074
-        "notap",  # b/175330074
     ],
     deps = [
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
         ":gradient_checker",
         ":unified_api_testutil",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/c/eager:abstract_tensor_handle",
-        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/experimental/ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/types:span",
