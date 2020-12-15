@@ -1510,7 +1510,6 @@ def single_batch_iterator(strategy,
   else:
     data = (x, y, sample_weight)
 
-  _check_data_cardinality(data)
   dataset = dataset_ops.DatasetV2.from_tensors(data)
   if class_weight:
     dataset = dataset.map(_make_class_weight_map_fn(class_weight))
