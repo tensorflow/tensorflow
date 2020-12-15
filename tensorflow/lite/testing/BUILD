@@ -12,7 +12,6 @@ load("//tensorflow/lite/testing:tflite_model_test.bzl", "tflite_model_test")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",  # @unused
     "tf_cc_binary",
     "tf_cc_test",
 )
