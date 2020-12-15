@@ -655,12 +655,14 @@ static LogicalResult Verify(BroadcastGradientArgsOp op) {
   GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
                                          r1);
 
-  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
-  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
-  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getShape()[0] != r0.size())
+  // Verify that output types are of rank one and matches the computed result
+  // shape.
+  auto r0_ty = op.r0().getType().cast<RankedTensorType>();
+  auto r1_ty = op.r1().getType().cast<RankedTensorType>();
+  if (r0_ty.hasStaticShape() && r0_ty.getDimSize(0) != r0.size())
     return op.emitOpError() << "requires dimension 0 size of 'r0' to be "
                             << r0.size() << " but got " << r0_ty.getShape()[0];
-  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getShape()[0] != r1.size())
+  if (r1_ty.hasStaticShape() && r1_ty.getDimSize(0) != r1.size())
     return op.emitOpError() << "requires dimension 0 size of 'r1' to be "
                             << r1.size() << " but got " << r1_ty.getShape()[0];
 
