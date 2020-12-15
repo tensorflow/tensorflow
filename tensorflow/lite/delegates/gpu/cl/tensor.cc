@@ -470,8 +470,7 @@ cl_mem Tensor::GetMemoryPtr() const {
 
 cl_mem Tensor::GetMemoryPtrForWriting() const { return memory_; }
 
-absl::Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
-                                    CLCommandQueue* queue) {
+absl::Status Tensor::WriteDataBHWDC(const float* in, CLCommandQueue* queue) {
   void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
@@ -483,13 +482,11 @@ absl::Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
   if (descriptor_.data_type == DataType::FLOAT32) {
     data_f.reset(new float[elements_count]);
     data_ptr = data_f.get();
-    DataFromBHWDC(in, shape_, descriptor_,
-                  absl::MakeSpan(data_f.get(), elements_count));
+    DataFromBHWDC(in, shape_, descriptor_, data_f.get());
   } else {
     data_h.reset(new half[elements_count]);
     data_ptr = data_h.get();
-    DataFromBHWDC(in, shape_, descriptor_,
-                  absl::MakeSpan(data_h.get(), elements_count));
+    DataFromBHWDC(in, shape_, descriptor_, data_h.get());
   }
 
   switch (descriptor_.storage_type) {
@@ -514,29 +511,28 @@ absl::Status Tensor::WriteDataBHWDC(absl::Span<const float> in,
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
                                const TensorFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+  return WriteDataBHWDC(src.data.data(), queue);
 }
 
 absl::Status Tensor::WriteData(
     CLCommandQueue* queue,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+  return WriteDataBHWDC(src.data.data(), queue);
 }
 
 absl::Status Tensor::WriteData(
     CLCommandQueue* queue,
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+  return WriteDataBHWDC(src.data.data(), queue);
 }
 
 absl::Status Tensor::WriteData(CLCommandQueue* queue,
                                const Tensor5DFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data), queue);
+  return WriteDataBHWDC(src.data.data(), queue);
 }
 
-absl::Status Tensor::ReadDataBHWDC(absl::Span<float> out,
-                                   CLCommandQueue* queue) const {
+absl::Status Tensor::ReadDataBHWDC(float* out, CLCommandQueue* queue) const {
   void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
@@ -569,11 +565,9 @@ absl::Status Tensor::ReadDataBHWDC(absl::Span<float> out,
   }
 
   if (descriptor_.data_type == DataType::FLOAT32) {
-    DataToBHWDC(absl::MakeConstSpan(data_f.get(), elements_count), shape_,
-                descriptor_, out);
+    DataToBHWDC(data_f.get(), shape_, descriptor_, out);
   } else {
-    DataToBHWDC(absl::MakeConstSpan(data_h.get(), elements_count), shape_,
-                descriptor_, out);
+    DataToBHWDC(data_h.get(), shape_, descriptor_, out);
   }
 
   return absl::OkStatus();
@@ -581,13 +575,13 @@ absl::Status Tensor::ReadDataBHWDC(absl::Span<float> out,
 
 absl::Status Tensor::ReadData(CLCommandQueue* queue, TensorFloat32* dst) const {
   RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(absl::MakeSpan(dst->data), queue);
+  return ReadDataBHWDC(dst->data.data(), queue);
 }
 
 absl::Status Tensor::ReadData(CLCommandQueue* queue,
                               Tensor5DFloat32* dst) const {
   RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(absl::MakeSpan(dst->data), queue);
+  return ReadDataBHWDC(dst->data.data(), queue);
 }
 
 absl::Status Tensor::CreateFromDescriptor(const TensorDescriptor& desc,
