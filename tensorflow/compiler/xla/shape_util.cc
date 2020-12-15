@@ -1394,16 +1394,6 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
          check_input_unit_indices(output_shape, input_shape);
 }
 
-/* static */ bool ShapeUtil::ShapeIsComatibleWithLayout(const Shape& shape,
-                                                        const Layout& layout) {
-  if (shape.rank() != layout.minor_to_major_size()) {
-    return false;
-  }
-  Shape new_shape = shape;
-  *new_shape.mutable_layout() = layout;
-  return ShapeUtil::ReshapeIsBitcast(shape, new_shape);
-}
-
 /* static */ absl::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(input_shape.IsArray());
