@@ -119,7 +119,7 @@ class ExecutableBuildOptions {
   tensorflow::thread::ThreadPool* compile_thread_pool() const {
     return compile_thread_pool_;
   }
-  ExecutableBuildOptions& set_run_backend_only(
+  ExecutableBuildOptions& set_compile_thread_pool(
       tensorflow::thread::ThreadPool* compile_thread_pool) {
     compile_thread_pool_ = compile_thread_pool;
     return *this;

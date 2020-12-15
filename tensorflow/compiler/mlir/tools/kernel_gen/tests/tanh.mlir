@@ -1,8 +1,4 @@
-// RUN: tf-opt %s --xla-legalize-tf | \
-// RUN: mlir-hlo-opt --transform-unranked-hlo --hlo-legalize-to-linalg  | \
-// RUN: kernel-gen-opt -allow-unregistered-dialect --hlo-bufferize \
-// RUN: --canonicalize --shape-to-descriptors --canonicalize --final-bufferize \
-// RUN: | FileCheck %s
+// RUN: tf-opt %s --xla-legalize-tf | mlir-hlo-opt --transform-unranked-hlo | kernel-gen-opt -allow-unregistered-dialect --hlo-bufferize --shape-to-descriptors --canonicalize --final-bufferize | FileCheck %s
 
 // Test whether all shape computations required for tanh can be lowered to
 // the standard dialect, scf and descriptors. We check for a sparse pattern here,
@@ -17,7 +13,7 @@ func @tanh(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: scf.for
   // CHECK-NOT: tensor_from_elements
   // CHECK: memref_reshape
-  // CHECK: linalg.generic
+  // CHECK: lmhlo.tanh
   // CHECK: memref_reshape
   %0 = "tf.Tanh"(%arg0) { } : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>

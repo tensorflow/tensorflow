@@ -282,6 +282,9 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateDropWhileShapeInvariantPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  // The SCCP pass performs constant propagation across the IR, which, for
+  // example, propagates constant arguments into callee functions.
+  pm.addPass(mlir::createSCCPPass());
   // Guarantee all functions have one use, which enables shape inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run shape inference pass before tensorlist decomposition to get buffer
@@ -303,9 +306,6 @@ void CreateConvertMlirToXlaHloPipeline(
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
-  // The SCCP pass performs constant propagation across the IR, which, for
-  // example, propagates constant arguments into callee functions.
-  pm.addPass(mlir::createSCCPPass());
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
