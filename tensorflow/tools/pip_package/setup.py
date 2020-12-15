@@ -73,6 +73,8 @@ REQUIRED_PACKAGES = [
     # functools comes with python3, need to install the backport for python2
     'functools32 >= 3.2.3;python_version<"3"',
     'six >= 1.12.0',
+    # Pin h5py to at most 2.10.0 as newer versions break old keras tests
+    'h5py <= 2.10.0',
 ]
 
 if sys.byteorder == 'little':
