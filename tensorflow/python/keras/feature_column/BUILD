@@ -45,10 +45,10 @@ py_library(
     deps = [
         ":base_feature_layer",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python/feature_column:feature_column_v2",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -61,8 +61,8 @@ py_library(
         ":base_feature_layer",
         ":dense_features",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -125,9 +125,9 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/feature_column:feature_column_v2",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

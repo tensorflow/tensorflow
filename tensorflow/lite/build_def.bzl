@@ -930,6 +930,7 @@ def tflite_custom_c_library(
         deps = [
             op_resolver_deps,
             "//tensorflow/lite/c:common",
+            "//tensorflow/lite/c:c_api_types",
             "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite:framework",
             "//tensorflow/lite:version",
