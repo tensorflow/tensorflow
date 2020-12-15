@@ -794,6 +794,7 @@ tf_py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
     ],
+    tags = ["no_mac"],
 )
 
 tf_py_test(
