@@ -4462,16 +4462,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "stateless_random_gamma_op",
-    prefix = "stateless_random_gamma_op",
-    deps = [
-        ":stateless_random_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_kernel_library(
     name = "stateless_random_ops",
     prefix = "stateless_random_ops",
     deps = [
