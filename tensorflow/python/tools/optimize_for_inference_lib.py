@@ -544,44 +544,84 @@ def fuse_decomposed_batch_norm(input_graph_def):
   transforms the graph by replacing those individual ops with FusedBatchNorm op.
   This will provide the opportunity to further fold the FusedBatchNorm with
   convolution ops to reduce the computation steps during inference.
-  This function currently only recognizes batch normalization pattern described
-  below, this could be extended if newer patterns are seen.
+  This function currently only recognizes batch normalization patterns described
+  below, this could be extended if newer patterns are seen. Also, only target
+  for NHWC formatted graph.
 
   Computation function:
     (X * multiplier) + (Beta - Mean * multiplier)
-      where multiplier =  rsqrt (Variance + Epsilon) * Gamma
+      where multiplier = rsqrt (Variance + Epsilon) * Gamma
+                    OR = rsqrt (Variance + Epsilon) when Gamma is 1
 
   Subgraph:
   {"Add"
-      {"Mul"          // mul_0
-          {"*",       // input to apply batch normalization
-           "Mul"      // mul_1, same op is used inside the Sub block
-              {"Rsqrt"
+      {{"Mul"          // mul_0
+          {{"*"},     // input to apply batch normalization
+           {"Mul"      // mul_1, same op is used inside the Sub block
+              {{"Rsqrt"
                   {"Add"
-                      {"Const",  //Variance
-                       "Const"   //Epsilon
+                      {{"Const"},  //Variance
+                       {"Const"}   //Epsilon
                       }
-                  },
-               "Const" - Gamma
-              } // end - mul_1
-          },    // end - mul_0
-       "Sub"
-          {"Const",  //Beta
-           "Mul"        // mul_3
-              {"Const",  //Mean
-               "Mul"        //same mul_1 op as in previous block
-                  {"Rsqrt"
+                  }
+                }, // end - Rsqrt
+                {"Const"}  //Gamma
+              }
+            } // end - mul_1
+          }
+       }, // end - mul_0
+       {"Sub"
+          {{"Const"},   //Beta
+           {"Mul"        // mul_3
+              {{"Const"},  //Mean
+               {"Mul"        //same mul_1 op as in previous block
+                  {{"Rsqrt"
                       {"Add"
-                         {"Const",  //Variance
-                          "Const"   //Epsilon
-                         }
-                      },
-                   "Const" - Gamma
-                  } //end - mul_1
-              } // end - mul_3
-          } //end - Sub
-      }  //end - Add
-  }
+                          {{"Const"},  //Variance
+                           {"Const"}   //Epsilon
+                          }
+                      }
+                   }, // end - Rsqrt
+                   {"Const"} //Gamma
+                  }
+                } //end - mul_1
+              }
+            } // end - mul_3
+          }
+        } //end - Sub
+      }
+  } //end - Add
+
+  Subgraph pattern when gamma value is 1 and the gamma scaling Mul is skipped
+  {"Add"
+      {{"Mul"           // mul_0
+          {{"*"},       // input to apply batch normalization
+           {"Rsqrt"     // same Rsqrt op used in Sub block
+              {"Add"
+                 {{"Const"},  //Variance
+                  {"Const"}   //Epsilon
+                 }
+              }
+            } // end - Rsqrt
+          }
+        }, // end - mul_0
+        {"Sub"
+          {{"Const"},    //Beta
+           {"Mul"        // mul_1
+              {{"Const"},  //Mean
+               {"Rsqrt"    //same Rsqrt op as in previous mul_0 block
+                  {"Add"
+                    {{"Const"},  //Variance
+                     {"Const"}   //Epsilon
+                    }
+                  }
+                } // end - Rsqrt
+              }
+           } // end - mul_1
+          }
+        } // end - Sub
+      }
+  } // end - Add
 
   Args:
     input_graph_def: A GraphDef containing a model.
@@ -599,6 +639,18 @@ def fuse_decomposed_batch_norm(input_graph_def):
       input_node_map[node.name] = node
     else:
       raise ValueError("Duplicate node names detected for ", node.name)
+
+  # Check for data format and only proceed for NHWC or format not set case
+  data_format = None
+  for node in input_graph_def.node:
+    if "data_format" in node.attr.keys():
+      data_format = node.attr["data_format"]
+      break
+
+  if data_format is not None and data_format.s != b"NHWC":
+    tf_logging.warn("%s is not candidate for fusing decomposed batchnorm ops"
+                    % (data_format.s))
+    return input_graph_def
 
   nodes_to_skip = {}
   new_ops = []
@@ -621,15 +673,18 @@ def fuse_decomposed_batch_norm(input_graph_def):
 
     # Mul (input, Mul)
     input_data_op = node_from_map(input_node_map, data_scale_mul_op.input[0])
-    scale_mul_op = node_from_map(input_node_map, data_scale_mul_op.input[1])
+    scale_op = node_from_map(input_node_map, data_scale_mul_op.input[1])
 
-    if scale_mul_op.op != "Mul":
-      continue
-
-    # Mul (Rsqrt, Constant_gamma)
-    rsqrt_op = node_from_map(input_node_map, scale_mul_op.input[0])
-    gamma_op = node_from_map(input_node_map, scale_mul_op.input[1])
-    if rsqrt_op.op != "Rsqrt" or gamma_op.op != "Const":
+    if scale_op.op == "Rsqrt":
+      gamma_op = None
+      rsqrt_op = scale_op
+    elif scale_op.op == "Mul":
+      # Mul (Rsqrt, Constant_gamma)
+      rsqrt_op = node_from_map(input_node_map, scale_op.input[0])
+      gamma_op = node_from_map(input_node_map, scale_op.input[1])
+      if rsqrt_op.op != "Rsqrt" or gamma_op.op != "Const":
+        continue
+    else:
       continue
 
     # Sub (Constant_beta, Mul)
@@ -638,8 +693,9 @@ def fuse_decomposed_batch_norm(input_graph_def):
     if mean_scale_mul_op.op != "Mul" or beta_op.op != "Const":
       continue
 
-    if scale_mul_op != node_from_map(input_node_map,
-                                     mean_scale_mul_op.input[1]):
+    # Common scale applies to both input and running mean
+    if scale_op != node_from_map(input_node_map,
+                                 mean_scale_mul_op.input[1]):
       continue
 
     mean_op = node_from_map(input_node_map, mean_scale_mul_op.input[0])
@@ -667,9 +723,27 @@ def fuse_decomposed_batch_norm(input_graph_def):
     nodes_to_skip[data_scale_mul_op.name] = True
     nodes_to_skip[bias_mean_sub_op.name] = True
     nodes_to_skip[mean_scale_mul_op.name] = True
-    nodes_to_skip[scale_mul_op.name] = True
-    nodes_to_skip[rsqrt_op.name] = True
+    nodes_to_skip[scale_op.name] = True
+    if scale_op.op != "Rsqrt":
+      nodes_to_skip[rsqrt_op.name] = True
     nodes_to_skip[variance_epsilon_add_op.name] = True
+
+    if gamma_op is None:
+      gamma_op = node_def_pb2.NodeDef()
+      gamma_op.op = "Const"
+      # Assign name with same root of Rsqrt op's name plus "gamma"
+      m = re.search(r"(.*)/(.*)", scale_op.name)
+      if m:
+        gamma_op.name = m.group(1) + "/gamma"
+      else:
+        gamma_op.name = scale_op.name + "/gamma"
+      gamma_op.attr["dtype"].CopyFrom(beta_op.attr["dtype"])
+      beta_value = values_from_const(beta_op)
+      gamma_op.attr["value"].CopyFrom(
+          attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
+              1, beta_value.dtype.type, beta_value.shape,
+              allow_broadcast=True)))
+      new_ops.extend([gamma_op])
 
     new_fused_batchnorm_op = node_def_pb2.NodeDef()
     new_fused_batchnorm_op.op = "FusedBatchNorm"
@@ -679,6 +753,8 @@ def fuse_decomposed_batch_norm(input_graph_def):
         attr_value_pb2.AttrValue(b=False))
     new_fused_batchnorm_op.attr["epsilon"].CopyFrom(
         attr_value_pb2.AttrValue(f=epsilon.tolist()))
+    if data_format is not None:
+      new_fused_batchnorm_op.attr["data_format"].CopyFrom(data_format)
     new_fused_batchnorm_op.input.extend([input_data_op.name, gamma_op.name,
                                          beta_op.name, mean_op.name,
                                          variance_op.name])
