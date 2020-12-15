@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-#
-# Tests the microcontroller code using native x86 execution.
 
 set -e
 
@@ -34,6 +32,8 @@ make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
 pushd tensorflow/lite/micro/
 if [[ ${1} == "PRESUBMIT" ]]; then
   git init .
+  git config user.email "tflm@google.com"
+  git config user.name "TensorflowLite Micro"
   git add *
   git commit -a -m "Commit for a temporary repository."
 fi
@@ -76,5 +76,4 @@ popd
 if [[ ${1} == "PRESUBMIT" ]]; then
   rm -rf tensorflow/lite/micro/.git
 fi
-
 

@@ -25,17 +25,14 @@ cd "${ROOT_DIR}"
 pwd
 
 make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
-
-
 make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn clean DISABLE_DOWNLOADS=true
 if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
   echo "ERROR: Downloads directory should not exist, but it does."
   exit 1
 fi
 
-
-echo "Running formatting and license checks at `date`"
-tensorflow/lite/micro/tools/ci_build/test_with_pigweed.sh PRESUBMIT
+echo "Running code style checks at `date`"
+tensorflow/lite/micro/tools/ci_build/test_code_style.sh PRESUBMIT
 
 # We are moving away from having the downloads and installations be part of the
 # Makefile. As a result, we need to manually add the downloads in this script.
