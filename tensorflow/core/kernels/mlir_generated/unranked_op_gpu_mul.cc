@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/debug_log.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/kernels/mlir_generated/unranked_op_gpu_base.h"
 
-extern "C" void DebugLog(const char* s) {
-  asm("mov r0, #0x04\n"  // SYS_WRITE0
-      "mov r1, %[str]\n"
-      "bkpt #0xAB\n"
-      :
-      : [str] "r"(s)
-      : "r0", "r1");
-}
+namespace tensorflow {
+
+GENERATE_AND_REGISTER_BINARY_KERNEL(Mul, f16, DT_HALF, Eigen::half);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Mul, f32, DT_FLOAT, float);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Mul, f64, DT_DOUBLE, double);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Mul, i8, DT_INT8, int8);
+// TODO(b/25387198): We cannot use a regular GPU kernel for int32.
+GENERATE_AND_REGISTER_BINARY_KERNEL(Mul, i16, DT_INT16, int16);
+GENERATE_AND_REGISTER_BINARY_KERNEL(Mul, i64, DT_INT64, int64);
+
+}  // namespace tensorflow

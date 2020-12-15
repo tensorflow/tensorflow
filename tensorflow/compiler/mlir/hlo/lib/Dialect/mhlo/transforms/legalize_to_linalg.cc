@@ -30,12 +30,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -813,7 +813,8 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
         /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(),
         /*initTensors=*/ValueRange{}, maps, types);
-    linalg_op.region().takeBody(reduce_op.body());
+    rewriter.inlineRegionBefore(reduce_op.body(), linalg_op.region(),
+                                linalg_op.region().end());
     {
       OpBuilder::InsertionGuard region_guard(rewriter);
       Block* block = linalg_op.getBody();

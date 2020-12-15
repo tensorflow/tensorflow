@@ -40,25 +40,15 @@ class BufferizeConstantOp : public OpConversionPattern<ConstantOp> {
     // We only need to bufferize tensor constants.
     Location loc = op.getLoc();
     auto result_type = op.getType().dyn_cast<RankedTensorType>();
-    int64_t result_rank = result_type.getRank();
-    if (!result_type || !result_type.hasStaticShape() || result_rank > 1)
+    if (!result_type || !result_type.hasStaticShape() ||
+        result_type.getRank() != 1)
       return failure();
 
-    auto memref_type =
-        MemRefType::get(result_type.getShape(), result_type.getElementType());
-    auto elements_attr = op.value().cast<DenseElementsAttr>();
-
-    if (result_rank == 0) {
-      Value buffer = rewriter.create<AllocOp>(loc, memref_type);
-      Value constant =
-          rewriter.create<ConstantOp>(loc, elements_attr.getValue({}));
-      rewriter.create<StoreOp>(loc, constant, buffer);
-      rewriter.replaceOp(op, {buffer});
-      return success();
-    }
-
+    auto memref_type = MemRefType::get({result_type.getNumElements()},
+                                       result_type.getElementType());
     Value buffer = rewriter.create<AllocaOp>(loc, memref_type);
 
+    auto elements_attr = op.getValue().dyn_cast<DenseElementsAttr>();
     bool all_same_elems = elements_attr.isSplat();
     Value value;
     if (all_same_elems)
@@ -102,8 +92,8 @@ class BufferizeRankOp : public OpConversionPattern<RankOp> {
 void populateExtraStdBufferizePattern(MLIRContext *context,
                                       BufferizeTypeConverter *converter,
                                       OwningRewritePatternList *patterns) {
-  patterns->insert<BufferizeConstantOp, BufferizeDimOp, BufferizeRankOp>(
-      *converter, context);
+  patterns->insert<BufferizeConstantOp, BufferizeDimOp,
+                   BufferizeRankOp>(*converter, context);
 }
 
 }  // namespace transforms
