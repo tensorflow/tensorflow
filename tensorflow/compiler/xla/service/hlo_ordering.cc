@@ -34,21 +34,6 @@ namespace xla {
 
 bool HloOrdering::ExecutesBefore(const HloInstruction* a,
                                  const HloInstruction* b) const {
-  switch (GetExecutionConstraint(a, b)) {
-    case ExecutionConstraint::kIsSame:  // a and b are the same instruction;
-      return false;
-    case ExecutionConstraint::kRunBefore:
-    case ExecutionConstraint::kRunExclusiveBefore:
-      return true;
-    case ExecutionConstraint::kRunExclusiveAfter:
-    case ExecutionConstraint::kRunAfter:
-    case ExecutionConstraint::kUnordered:
-      return false;
-  }
-}
-
-HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
-    const HloInstruction* a, const HloInstruction* b) const {
   // 'a' and 'b' may be in different computations. In this case, find the
   // callgraph ancestor instructions which call (potentially transitively) the
   // computations containing 'a' and 'b' and use these ancestor instructions to
@@ -62,7 +47,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
   if (a_ancestor == nullptr) {
     // Ancestors in a common computation could not be found so consider the
     // instructions 'a' and 'b' to be unordered.
-    return ExecutionConstraint::kUnordered;
+    return false;
   }
   // a_ancestor and b_ancestor must be either both null or both non-null.
   CHECK_NE(b_ancestor, nullptr);
@@ -77,7 +62,7 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
     const HloComputation* condition = a_ancestor->while_condition();
     if (call_graph_->InstructionIsNestedIn(a, condition) &&
         call_graph_->InstructionIsNestedIn(b, body)) {
-      return ExecutionConstraint::kRunBefore;
+      return true;
     }
   }
 
@@ -100,40 +85,17 @@ HloOrdering::ExecutionConstraint HloOrdering::GetExecutionConstraint(
         b_branch = j;
       }
     }
-    // If neither a nor b is inside the branches they both are the ancestor.
-    if (a_branch == -1 && b_branch == -1) {
-      CHECK_EQ(a, a_ancestor);
-      CHECK_EQ(b, b_ancestor);
-      CHECK_EQ(a, b);
-      return ExecutionConstraint::kIsSame;
+    if (a_branch != -1 && a_branch < b_branch) {
+      return true;
     }
     // If 'b' is the conditional ancestor, and 'a' is within a branch
     // computation, 'a' executes before 'b'.
-    if (b_branch == -1) {
-      CHECK_EQ(b, a_ancestor);
-      return ExecutionConstraint::kRunBefore;
-    }
-    if (a_branch == -1) {
-      CHECK_EQ(a, a_ancestor);
-      return ExecutionConstraint::kRunAfter;
-    }
-    if (a_branch < b_branch) {
-      return ExecutionConstraint::kRunExclusiveBefore;
-    }
-    if (b_branch < a_branch) {
-      return ExecutionConstraint::kRunExclusiveAfter;
+    if (b == a_ancestor && a_branch != -1) {
+      return true;
     }
   }
 
-  if (ExecutesBeforeInSameComputation(a_ancestor, b_ancestor)) {
-    return ExecutionConstraint::kRunBefore;
-  }
-  if (ExecutesBeforeInSameComputation(b_ancestor, a_ancestor)) {
-    return ExecutionConstraint::kRunAfter;
-  }
-  VLOG(1) << "Cannot determine order between:" << a_ancestor->ToString() << "\n"
-          << "and " << b_ancestor->ToString() << "\n";
-  return ExecutionConstraint::kUnordered;
+  return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
 }
 
 bool HloOrdering::IsDefinedBefore(const HloValue& a, const HloValue& b) const {
