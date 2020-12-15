@@ -118,7 +118,8 @@ class Subgraph {
     }
     return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
                                         dims.data(), quantization, is_variable,
-                                        dims_signature.size(), dims_signature.data());
+                                        dims_signature.size(),
+                                        dims_signature.data());
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
