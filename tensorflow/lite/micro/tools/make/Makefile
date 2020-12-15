@@ -369,6 +369,7 @@ $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/c/c_api_types.h \
 tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
