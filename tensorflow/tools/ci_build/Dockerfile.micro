@@ -5,7 +5,14 @@ FROM python:3.9.0-buster
 
 LABEL maintainer="Pete Warden <petewarden@google.com>"
 
-RUN apt-get update && apt-get install -y zip xxd
+RUN echo deb http://apt.llvm.org/buster/ llvm-toolchain-buster main > /etc/apt/sources.list.d/llvm.list
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
+
+RUN apt-get update
+
+RUN apt-get install -y zip xxd
+RUN apt-get install -y clang-format
+
 RUN pip install six
 # Install Renode test dependencies
 RUN pip install pyyaml requests psutil robotframework==3.1
