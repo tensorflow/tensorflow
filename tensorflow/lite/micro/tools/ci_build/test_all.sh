@@ -63,6 +63,14 @@ tensorflow/lite/micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/
   -e "\.tpl" \
   --output-directory /tmp
 
+# Check that the TFLM-only code is clang-formatted We are currently ignoring
+# Python files (with yapf as the formatter) because that needs additional setup.
+tensorflow/lite/micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
+  tensorflow/lite/micro \
+  -e "\.inc" \
+  -e "\.py"
+
+
 # We are moving away from having the downloads and installations be part of the
 # Makefile. As a result, we need to manually add the downloads in this script.
 # Once we move more than the renode downloads out of the Makefile, we should
