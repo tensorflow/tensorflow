@@ -82,9 +82,8 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   }
 
   // Reduce sum the output on all dimensions.
-  TF_RETURN_IF_ERROR(ops::Sum(ctx, {model_out.get(), sum_dims.get()},
-                              absl::MakeSpan(model_outputs), "sum_output"));
-  outputs[0] = model_outputs[0];
+  TF_RETURN_IF_ERROR(
+      ops::Sum(ctx, {model_out.get(), sum_dims.get()}, outputs, "sum_output"));
   return Status::OK();
 }
 // ========================= End Helper Functions==============================
