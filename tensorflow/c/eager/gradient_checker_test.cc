@@ -34,13 +34,18 @@ void CompareNumericalAndManualGradients(
     absl::Span<AbstractTensorHandle* const> inputs, int input_index,
     float* expected_grad, int num_grad, bool use_function,
     double abs_error = 1e-2) {
-  AbstractTensorHandle* numerical_grad;
-  Status s = CalcNumericalGrad(ctx, model, inputs, input_index, use_function,
-                               &numerical_grad);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  Status s;
+  AbstractTensorHandlePtr numerical_grad;
+  {
+    AbstractTensorHandle* numerical_grad_raw;
+    s = CalcNumericalGrad(ctx, model, inputs, input_index, use_function,
+                          &numerical_grad_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    numerical_grad.reset(numerical_grad_raw);
+  }
 
   TF_Tensor* numerical_tensor;
-  s = GetValue(numerical_grad, &numerical_tensor);
+  s = GetValue(numerical_grad.get(), &numerical_tensor);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   auto num_elem_numerical = TF_TensorElementCount(numerical_tensor);
   ASSERT_EQ(num_elem_numerical, num_grad);
