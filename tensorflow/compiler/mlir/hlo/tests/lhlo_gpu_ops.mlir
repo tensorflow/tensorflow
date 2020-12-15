@@ -56,7 +56,113 @@ func @conv_forward(%input : memref<1x1x8x8xf16>, %filter: memref<1x1x2x2xf16>, %
   return
 }
 
-// -----
+// CHECK-LABEL: func @conv_backfilter
+func @conv_backfilter(%input : memref<3x56x56x16xf64>, %filter: memref<3x3x3x64xf64>, %output: memref<54x54x16x64xf64>) {
+  %scratch = alloc() : memref<23328xui8>
+  "lmhlo_gpu.conv_backwardfilter"(%input, %filter, %output, %scratch)
+    { backend_config = {algorithm = 1 : i64, tensor_ops_enabled = false},
+      batch_group_count = 1 : i64,
+      dimension_numbers = {input_batch_dimension = 0 : i64,
+                           input_feature_dimension = 3 : i64,
+                           input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+                           kernel_input_feature_dimension = 2 : i64,
+                           kernel_output_feature_dimension = 3 : i64,
+                           kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+                           output_batch_dimension = 0 : i64,
+                           output_feature_dimension = 3 : i64,
+                           output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>},
+      feature_group_count = 1 : i64,
+      lhs_dilation = dense<1> : tensor<2xi64>,
+      padding = dense<0> : tensor<2xi64>,
+      precision_config = [],
+      result_scale = 1.000000e+00 : f64,
+      rhs_dilation = dense<1> : tensor<2xi64>,
+      window_strides = dense<1> : tensor<2xi64>}
+   : (memref<3x56x56x16xf64>, memref<3x3x3x64xf64>, memref<54x54x16x64xf64>, memref<23328xui8>) -> ()
+  return
+}
+
+// CHECK-LABEL: func @conv_backinput
+func @conv_backinput(%input : memref<4x5x16x16xf64>, %filter : memref<5x3x7x7xf64>, %output : memref<4x3x16x16xf64>) {
+  %scratch = alloc() : memref<32xui8>
+  "lmhlo_gpu.conv_backwardinput"(%input, %filter, %output, %scratch)
+  { backend_config = {algorithm = 1 : i64, tensor_ops_enabled = false},
+    batch_group_count = 1 : i64,
+    dimension_numbers = {input_batch_dimension = 0 : i64,
+                         input_feature_dimension = 1 : i64,
+                         input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>,
+                         kernel_input_feature_dimension = 1 : i64,
+                         kernel_output_feature_dimension = 0 : i64,
+                         kernel_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>,
+                         output_batch_dimension = 0 : i64,
+                         output_feature_dimension = 1 : i64,
+                         output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>},
+    feature_group_count = 1 : i64,
+    lhs_dilation = dense<1> : tensor<2xi64>,
+    padding = dense<3> : tensor<2xi64>,
+    precision_config = [],
+    result_scale = 1.000000e+00 : f64,
+    rhs_dilation = dense<1> : tensor<2xi64>,
+    window_strides = dense<1> : tensor<2xi64>,
+    window_reversal = dense<true>: tensor<2xi1>}
+  : (memref<4x5x16x16xf64>, memref<5x3x7x7xf64>, memref<4x3x16x16xf64>, memref<32xui8>) -> ()
+  return
+}
+
+// CHECK-LABEL: func @conv_fused
+func @conv_fused(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>, %bias : memref<32xf16>, %output : memref<1x32x9x9xf16>) {
+  %scratch = alloc() : memref<32xui8>
+  "lmhlo_gpu.conv_forward_fused"(%input, %filter, %bias, %output, %scratch)
+    {activation_mode = "Relu",
+     backend_config = {algorithm = 0 : i64, tensor_ops_enabled = false},
+     batch_group_count = 1 : i64,
+     dimension_numbers = {input_batch_dimension = 0 : i64,
+       input_feature_dimension = 1 : i64,
+       input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>,
+       kernel_input_feature_dimension = 2 : i64,
+       kernel_output_feature_dimension = 3 : i64,
+       kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+       output_batch_dimension = 0 : i64,
+       output_feature_dimension = 1 : i64,
+       output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>},
+     feature_group_count = 1 : i64,
+     lhs_dilation = dense<1> : tensor<2xi64>,
+     padding = dense<1> : tensor<2xi64>,
+     precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"],
+     result_scale = 1.000000e+00 : f64,
+     rhs_dilation = dense<1> : tensor<2xi64>,
+     window_strides = dense<1> : tensor<2xi64>}
+  : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<32xui8>) -> ()
+  return
+}
+
+// CHECK-LABEL: func @conv_fused_side_input
+func @conv_fused_side_input(%input : memref<1x17x9x9xf16>, %filter : memref<3x3x17x32xf16>, %bias : memref<32xf16>, %side_input:  memref<32xf16>, %output : memref<1x32x9x9xf16>) {
+  %scratch = alloc() : memref<0xui8>
+  "lmhlo_gpu.conv_forward_fused_with_side_input"(%input, %filter, %bias, %side_input, %output, %scratch)
+    {activation_mode = "Relu",
+     backend_config = {algorithm = 0 : i64, tensor_ops_enabled = false},
+     batch_group_count = 1 : i64,
+     dimension_numbers = {input_batch_dimension = 0 : i64,
+       input_feature_dimension = 1 : i64,
+       input_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>,
+       kernel_input_feature_dimension = 2 : i64,
+       kernel_output_feature_dimension = 3 : i64,
+       kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+       output_batch_dimension = 0 : i64,
+       output_feature_dimension = 1 : i64,
+       output_spatial_dimensions = dense<[2, 3]> : tensor<2xi64>},
+     feature_group_count = 1 : i64,
+     lhs_dilation = dense<1> : tensor<2xi64>,
+     padding = dense<1> : tensor<2xi64>,
+     precision_config = ["DEFAULT", "DEFAULT", "DEFAULT"],
+     result_scale = 1.000000e+00 : f64,
+     rhs_dilation = dense<1> : tensor<2xi64>,
+     side_input_scale = 1.000000e+00 : f64,
+     window_strides = dense<1> : tensor<2xi64>}
+   : (memref<1x17x9x9xf16>, memref<3x3x17x32xf16>, memref<32xf16>, memref<32xf16>, memref<1x32x9x9xf16>, memref<0xui8>) -> ()
+  return
+}
 
 // CHECK-LABEL: func @gemm
 func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>) {
@@ -65,7 +171,8 @@ func @gemm(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>, %output:memref<5x5xf32>
        rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
        lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
        rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha = 0.5,
+       alpha_real = 0.5,
+       alpha_imag = 0.0,
        batch_size = 1,
        algorithm = 0}
     : (memref<5x4xf32>, memref<4x5xf32>, memref<5x5xf32>) -> ()
@@ -81,7 +188,8 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
        rhs_batching_dimensions = dense<[1,1]> : tensor<2xi64>,
        lhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>,
        rhs_contracting_dimensions = dense<[1,1]> : tensor<2xi64>},
-       alpha = 0.5,
+       alpha_real = 0.5,
+       alpha_imag = 0.0,
        beta = 1.0,
        batch_size = 1,
        algorithm = 0}
@@ -93,7 +201,7 @@ func @gemm_bias(%lhs: memref<5x4xf32>, %rhs: memref<4x5xf32>,
 func @cholesky(%arg : memref<10x10xf32>, %out: memref<10x10xf32>) {
   %scratch = alloc() : memref<32xi8>
   %info = alloc() : memref<32xi32>
-  "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_upper = true }
+  "lmhlo_gpu.cholesky"(%arg, %out, %scratch, %info) { is_lower = true }
       : (memref<10x10xf32>, memref<10x10xf32>, memref<32xi8>, memref<32xi32>) -> ()
   return
 }

@@ -52,9 +52,10 @@ KernelRunner::KernelRunner(const TfLiteRegistration& registration,
   node_.builtin_data = builtin_data;
 }
 
-TfLiteStatus KernelRunner::InitAndPrepare(const char* init_data) {
+TfLiteStatus KernelRunner::InitAndPrepare(const char* init_data,
+                                          size_t length) {
   if (registration_.init) {
-    node_.user_data = registration_.init(&context_, init_data, /*length=*/0);
+    node_.user_data = registration_.init(&context_, init_data, length);
   }
   if (registration_.prepare) {
     TF_LITE_ENSURE_STATUS(registration_.prepare(&context_, &node_));

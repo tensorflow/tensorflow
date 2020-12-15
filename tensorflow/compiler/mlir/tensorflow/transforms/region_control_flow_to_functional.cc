@@ -23,8 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -211,8 +210,8 @@ using ArgMatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   if (first.getNumOperands() != second.getNumOperands()) return false;
 
-  Region& first_region = *first.getParentRegion();
-  Region& second_region = *second.getParentRegion();
+  Region& first_region = *first->getParentRegion();
+  Region& second_region = *second->getParentRegion();
 
   for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
     // Get the defining Op, skipping over casts.

@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
 namespace tflite {
@@ -74,27 +74,28 @@ absl::Status SingleOpModel::Invoke() {
   }
   std::vector<ValueId> output_ids;
   output_ids.reserve(outputs_.size());
+  std::map<ValueId, BHWC> output_dimensions;
   for (const auto& output : outputs_) {
     output_ids.push_back(output.id);
+    output_dimensions[output.id] = output.shape;
   }
 
   id<MTLDevice> device = MTLCreateSystemDefaultDevice();
   std::string device_name = std::string([[device name] UTF8String]);
   GpuInfo gpu_info;
   GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
-  RuntimeOptions options;
-  options.storage_precision = RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = RuntimeOptions::Precision::FP32;
+  CalculationsPrecision precision = CalculationsPrecision::F32;
   CompiledModel compiled_model;
-  RETURN_IF_ERROR(Compile(graph_, gpu_info, options, &compiled_model));
+  RETURN_IF_ERROR(Compile(graph_, gpu_info, precision, &compiled_model));
   CompiledModel optimized_model;
   RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
   TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
   RETURN_IF_ERROR([graph compileModelWithDevice:device
-                                taskDescriptors:optimized_model
+                                          model:optimized_model
+                                 inputBufferIDs:input_ids
                                 outputBufferIDs:output_ids
-                                 runtimeOptions:options]);
+                                      precision:precision]);
   std::map<ValueId, BHWC> input_dimensions;
   std::map<ValueId, id<MTLBuffer>> input_buffers;
   for (auto& input : inputs_) {
@@ -111,13 +112,6 @@ absl::Status SingleOpModel::Invoke() {
     input_buffers[input.id] = input_buffer;
   }
 
-  // Allocate internal buffers. Graph is ready to be executed.
-  // Fills the output buffer IDs and dimensions.
-  std::map<ValueId, BHWC> output_dimensions;
-  [graph setInputDimensions:input_dimensions
-           outputDimensions:&output_dimensions
-            taskDescriptors:optimized_model];
-
   std::map<ValueId, id<MTLBuffer>> output_buffers;
   for (const auto& outputDimension : output_dimensions) {
     // Uninitialized output buffer.
@@ -133,7 +127,7 @@ absl::Status SingleOpModel::Invoke() {
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> command_encoder = [command_buffer computeCommandEncoder];
-  [graph encodeWithEncoder:command_encoder inputOutputBuffers:inout_buffers encoderBlock:nil];
+  [graph encodeWithEncoder:command_encoder inputOutputBuffers:inout_buffers];
   [command_encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -170,7 +164,7 @@ absl::Status CompareVectors(const std::vector<float>& reference, const std::vect
   return absl::OkStatus();
 }
 
-absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice> device,
+absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> device,
                       const std::map<ValueId, TensorFloat32>& inputs,
                       std::map<ValueId, TensorFloat32>* outputs) {
   std::vector<ValueId> inputBufferIDs;
@@ -183,18 +177,28 @@ absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTL
   for (const auto& output : *outputs) {
     outputBufferIDs.push_back(output.first);
   }
-  std::vector<ComputeTaskDescriptorPtr> model;
-  RETURN_IF_ERROR(ValidateOptimizeModel(inputBufferIDs, outputBufferIDs, nodes, &model));
+  std::map<ValueId, BHWC> outputDimensions;
+  CompiledModel raw_model;
+  raw_model.nodes = nodes;
+  for(const auto& input : inputs) {
+    raw_model.tensor_shapes[input.first] = input.second.shape;
+  }
+  for(const auto& output : *outputs) {
+    outputDimensions[output.first] = output.second.shape;
+    raw_model.tensor_shapes[output.first] = output.second.shape;
+  }
+  CompiledModel optimized_model;
+  RETURN_IF_ERROR(
+      ValidateOptimizeModel(inputBufferIDs, outputBufferIDs, raw_model, &optimized_model));
 
-  RuntimeOptions options;
-  options.storage_precision = RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = RuntimeOptions::Precision::FP32;
+  CalculationsPrecision precision = CalculationsPrecision::F32;
 
   TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
   RETURN_IF_ERROR([graph compileModelWithDevice:device
-                                taskDescriptors:model
+                                          model:optimized_model
+                                 inputBufferIDs:inputBufferIDs
                                 outputBufferIDs:outputBufferIDs
-                                 runtimeOptions:options]);
+                                      precision:precision]);
   std::map<ValueId, BHWC> inputDimensions;
   std::map<ValueId, std::vector<float>> inputBuffersCPU;
   std::map<ValueId, id<MTLBuffer>> inputBuffersGPU;
@@ -212,13 +216,6 @@ absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTL
                                      options:MTLResourceStorageModeShared];
     inputBuffersGPU[input.first] = inputBuffer;
   }
-
-  // Allocate internal buffers. Graph is ready to be executed.
-  // Fills the output buffer IDs and dimensions.
-  std::map<ValueId, BHWC> outputDimensions;
-  [graph setInputDimensions:inputDimensions
-           outputDimensions:&outputDimensions
-            taskDescriptors:model];
 
   std::map<ValueId, id<MTLBuffer>> outputBuffers;
   for (const auto& outputDimension : outputDimensions) {
@@ -238,7 +235,7 @@ absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTL
   id<MTLCommandQueue> commandQueue = [device newCommandQueue];
   id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
   id<MTLComputeCommandEncoder> commandEncoder = [commandBuffer computeCommandEncoder];
-  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers encoderBlock:nil];
+  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers];
   [commandEncoder endEncoding];
   [commandBuffer commit];
   [commandBuffer waitUntilCompleted];

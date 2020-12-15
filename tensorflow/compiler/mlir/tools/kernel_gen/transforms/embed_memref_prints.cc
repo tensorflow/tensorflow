@@ -18,9 +18,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -37,9 +37,8 @@ namespace {
 
 using tf_framework::TFFrameworkDialect;
 
-Operation* emitCallToFunc(Location loc, StringRef func_name,
-                          ArrayRef<Type> return_types, ValueRange args,
-                          OpBuilder* b) {
+Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
+                           OpBuilder* b) {
   auto caller_func =
       b->getInsertionBlock()->getParent()->getParentOfType<FuncOp>();
   auto callee_func =
@@ -49,12 +48,12 @@ Operation* emitCallToFunc(Location loc, StringRef func_name,
 
     auto module = caller_func.getParentOfType<ModuleOp>();
     b->setInsertionPointToStart(module.getBody());
-    auto func_type =
-        FunctionType::get(args.getTypes(), return_types, b->getContext());
+    auto func_type = FunctionType::get(arg.getType(), /*results=*/llvm::None,
+                                       b->getContext());
     callee_func = b->create<FuncOp>(module.getLoc(), func_name, func_type);
     callee_func.setPrivate();
   }
-  return b->create<CallOp>(loc, callee_func, args);
+  return b->create<CallOp>(loc, callee_func, arg);
 }
 
 void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
@@ -70,28 +69,32 @@ void EmitPrint(Operation* op, Liveness& liveness, OpBuilder* b) {
       liveness.getLiveness(op->getBlock())->getEndOperation(memref, op);
   b->setInsertionPoint(end_op);
 
+  if (element_type.isIndex()) {
+    element_type = b->getI64Type();
+    memref_type = MemRefType::get(memref_type.getShape(), element_type,
+                                  memref_type.getAffineMaps(),
+                                  memref_type.getMemorySpace());
+    memref = b->create<IndexCastOp>(loc, memref, memref_type);
+  }
+
   auto unranked_type =
       UnrankedMemRefType::get(element_type, memref_type.getMemorySpace());
   Value unranked_memref = b->create<MemRefCastOp>(loc, memref, unranked_type);
 
   if (element_type.isF32()) {
-    emitCallToFunc(loc, "print_memref_f32", {}, {unranked_memref}, b);
+    emitCallToPrint(loc, "print_memref_f32", unranked_memref, b);
     return;
   }
   if (element_type.isF64()) {
-    emitCallToFunc(loc, "print_memref_f64", {}, {unranked_memref}, b);
-    return;
-  }
-  if (element_type.isIndex()) {
-    emitCallToFunc(loc, "print_memref_index", {}, {unranked_memref}, b);
+    emitCallToPrint(loc, "print_memref_f64", unranked_memref, b);
     return;
   }
   if (element_type.isInteger(32)) {
-    emitCallToFunc(loc, "print_memref_i32", {}, {unranked_memref}, b);
+    emitCallToPrint(loc, "print_memref_i32", unranked_memref, b);
     return;
   }
-  if (element_type.isInteger(64)) {
-    emitCallToFunc(loc, "print_memref_i64", {}, {unranked_memref}, b);
+  if (element_type.isInteger(64) || element_type.isIndex()) {
+    emitCallToPrint(loc, "print_memref_i64", unranked_memref, b);
     return;
   }
 }

@@ -26,6 +26,7 @@ limitations under the License.
 #endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
+#include "tensorflow/lite/kernels/parse_example/parse_example.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
@@ -369,9 +370,8 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
-    buildinop_resolver_->AddCustom("RFFT2D",
-                                   tflite::ops::custom::Register_RFFT2D());
     tflite::ops::custom::AddHashtableOps(buildinop_resolver_);
+    tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
   }
 
   switch (delegate_type) {

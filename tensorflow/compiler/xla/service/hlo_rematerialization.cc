@@ -161,9 +161,9 @@ struct Item {
 // through a bitcast).
 struct ItemUse {
   Item* user;
-  int operand_number;
+  int64 operand_number;
 
-  ItemUse(Item* user, int op_num) : user(user), operand_number(op_num) {}
+  ItemUse(Item* user, int64 op_num) : user(user), operand_number(op_num) {}
   bool operator==(const ItemUse& other) const {
     return user == other.user && operand_number == other.operand_number;
   }
@@ -690,8 +690,6 @@ class MemoryUsageTracker {
     return absl::c_linear_search(in_progress_uses, buffer_id);
   }
 
-  // Returns whether the given buffer is live at the current program
-  // point.
   bool IsCurrentlyLive(BufferId buffer_id) const {
     const Buffer& buffer = buffers_[buffer_id];
     return (buffer.defining_instruction->placed &&
@@ -1516,7 +1514,7 @@ StatusOr<int64> RematerializeInstructions(
       if (!memory_tracker->IsPlaced(user.user->instruction)) {
         VLOG(2) << "  Replacing use of " << best->name() << " in "
                 << user.user->instruction->name() << " with " << remat->name();
-        const int op_idx = user.operand_number;
+        const int64 op_idx = user.operand_number;
         auto* remat_use = remat;
         if (user.user->instruction->operand(op_idx)->shape() !=
             remat->shape()) {
@@ -1576,12 +1574,22 @@ StatusOr<int64> RematerializeInstructions(
     for (auto* bitcast : bitcasts) {
       instruction_list->InsertBeforeInstructions(bitcast, place_before);
     }
+    // Helper function that looks through bitcasts when determining if there
+    // is an active user for an HloInstruction.
+    std::function<bool(HloInstruction*)> uses_empty = [&](HloInstruction* i) {
+      for (auto* u : i->users()) {
+        if (u->opcode() != HloOpcode::kBitcast || !uses_empty(u)) {
+          return false;
+        }
+      }
+      return true;
+    };
     // If the rematerialized instruction is dead then rematerialization is
     // essentially a move. Don't delete the instruction now because we don't
     // want duplicate HloInstruction* values during the course of the
     // transformation because we keep maps with HloInstruction* values as
     // keys.
-    if (best->users().empty()) {
+    if (uses_empty(best)) {
       VLOG(2) << best->name() << " is now dead";
       if (ContainsKey(*remat_move_instructions, best)) {
         // Previously, 'best' was a rematerialization which killed the

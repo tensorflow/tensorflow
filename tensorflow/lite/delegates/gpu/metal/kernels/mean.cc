@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -69,7 +68,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   c += "    for (int s_x = local_x; s_x < params.src_size.x; s_x += " + wg_x +
        ") {\n";
   c += "      int src_index = src_offset + s_y * params.src_size.x + s_x;\n";
-  c += "      accum[local_id] += float4(src_buffer[src_index]);\n";
+  c += "      accum[local_id] += float4(src_tensor[src_index]);\n";
   c += "    }\n";
   c += "  }\n";
   c += "  accum[local_id] *= params.inv_multipliers.x;\n";
@@ -96,15 +95,14 @@ std::string GetMeanCode(const int3& work_group_size) {
   c += R"(
   const int linear_index = static_cast<int>(gid.z);
   $2
-  dst_buffer[linear_index] = value;
+  dst_tensor[linear_index] = value;
 }
 )";
   return c;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
-                                           ValueId output_id,
-                                           const MeanAttributes& attr) {
+ComputeTaskDescriptor Mean(const OperationDef& definition,
+                           const MeanAttributes& attr) {
   if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
     // Mean calculation is supported only for height and width
     return {};
@@ -112,26 +110,18 @@ std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
 
   const int3 work_group_size = int3(16, 16, 1);
 
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+  ComputeTaskDescriptor desc(definition);
   std::string code = GetMeanCode(work_group_size);
-  desc->shader_source = code;
+  desc.shader_source = code;
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           const auto& input_dimension =
-                               buffers.find(input_id)->second;
-                           return BHWC(1, 1, 1, input_dimension.c);
-                         }};
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, work_group_size](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_id)->second;
+       [work_group_size](const std::vector<BHWC>& src_shapes,
+                         const std::vector<BHWC>& dst_shapes) {
+         const auto& src_shape = src_shapes[0];
          const int src_slices = DivideRoundUp(src_shape.c, 4);
          struct uniforms {
            int4 src_size;
@@ -149,14 +139,14 @@ std::vector<ComputeTaskDescriptorPtr> Mean(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [output_id, work_group_size](
-                              const std::map<ValueId, BHWC>& buffers) {
-    BHWC dst_shape = buffers.find(output_id)->second;
-    const int dst_slices = DivideRoundUp(dst_shape.c, 4);
+  desc.resize_function = [work_group_size](
+                             const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes) {
+    const int dst_slices = DivideRoundUp(dst_shapes[0].c, 4);
     const int groups_z = DivideRoundUp(dst_slices, work_group_size.z);
     return std::make_pair(work_group_size, uint3{1, 1, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

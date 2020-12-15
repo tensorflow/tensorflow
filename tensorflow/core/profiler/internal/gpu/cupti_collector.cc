@@ -113,7 +113,7 @@ struct PerDeviceCollector {
     }
 
     stats.occupancy_pct =
-        occ_result.activeBlocksPerMultiprocessor * params.block_size;
+        occ_result.activeBlocksPerMultiprocessor * params.block_size * 100;
     stats.occupancy_pct /= device_properties.maxThreadsPerMultiprocessor;
 
     status = cudaOccMaxPotentialOccupancyBlockSize(
@@ -184,7 +184,7 @@ struct PerDeviceCollector {
       params.dynamic_smem_size = event.kernel_info.dynamic_shared_memory_usage;
 
       OccupancyStats& occ_stats = occupancy_cache[params];
-      if (occ_stats.occupancy_pct == 0) {
+      if (occ_stats.occupancy_pct == 0.0) {
         occ_stats = GetOccupancy(params);
       }
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
@@ -224,26 +224,24 @@ struct PerDeviceCollector {
 
     std::vector<Annotation> annotation_stack =
         ParseAnnotationStack(event.annotation);
-    // If multiple metadata have the same key name, show the values from the top
-    // of the stack (innermost annotation). Concatenate the values from
-    // "hlo_op".
-    absl::flat_hash_set<absl::string_view> key_set;
-    std::vector<absl::string_view> hlo_op_names;
-    for (auto annotation = annotation_stack.rbegin();
-         annotation != annotation_stack.rend(); ++annotation) {
-      for (const Annotation::Metadata& metadata : annotation->metadata) {
-        if (metadata.key == "tf_op") {
-          continue;  // ignored, obtained from HLO proto via DebugInfoMap
-        } else if (key_set.insert(metadata.key).second) {
-          xevent.ParseAndAddStatValue(
-              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
-        }
-      }
-    }
     if (!annotation_stack.empty()) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
           *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
+    }
+    // If multiple metadata have the same key name, show the values from the top
+    // of the stack (innermost annotation). Concatenate the values from
+    // "hlo_op".
+    absl::flat_hash_set<absl::string_view> key_set;
+
+    for (auto annotation = annotation_stack.rbegin();
+         annotation != annotation_stack.rend(); ++annotation) {
+      for (const Annotation::Metadata& metadata : annotation->metadata) {
+        if (key_set.insert(metadata.key).second) {
+          xevent.ParseAndAddStatValue(
+              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
+        }
+      }
     }
   }
 
@@ -369,7 +367,7 @@ struct PerDeviceCollector {
             std::string details = absl::StrCat(
                 activity_name, " bytes:", event.memcpy_info.num_bytes);
             if (event.memcpy_info.async) {
-              absl::StrAppend(&details, " aync");
+              absl::StrAppend(&details, " async");
             }
             if (event.memcpy_info.destination != event.device_id) {
               absl::StrAppend(&details,

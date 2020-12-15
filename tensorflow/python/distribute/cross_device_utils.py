@@ -259,7 +259,7 @@ class CollectiveReplicaLauncher(object):
 
   _prefer_scoped_allocator = True
   _prefer_collective_v2 = True
-  _prefer_ordering_token = False
+  _prefer_ordering_token = True
 
   def __init__(self,
                group_key,
@@ -344,6 +344,10 @@ class CollectiveReplicaLauncher(object):
     if self._use_ordering_token() and communication_hint == 'NCCL':
       return self._ordering_token.handle
     return None
+
+  def can_order_nccl(self):
+    """Whether this launcher can order NCCL operations."""
+    return self._use_ordering_token()
 
   def all_reduce(self,
                  input_tensor,

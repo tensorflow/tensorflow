@@ -48,7 +48,10 @@ cc_library(
     hdrs = FRAMEWORK_LIB_HDRS + CC_API_HDRS,
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:arena_planner",
@@ -104,21 +107,26 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     hdrs = [
-        "builtin_op_kernels.h",
-        "fully_connected.h",
-        "register.h",
+        "cc/kernels/register.h",
+        "//tensorflow/lite/kernels:builtin_op_kernels.h",
+        "//tensorflow/lite/kernels:fully_connected.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = [
-        ":builtin_ops_impl",
-        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
 
 build_test(
     name = "cc_api_build_test",
     targets = [
+        ":builtin_ops",
         ":cc_api",
         ":framework",
     ],
@@ -132,7 +140,10 @@ cc_library(
     hdrs = ["c/c_api.h"],
     compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = ["//tensorflow/lite/c:c_api"],
 )
 
@@ -141,7 +152,10 @@ cc_library(
     hdrs = ["c/c_api_experimental.h"],
     compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = ["//tensorflow/lite/c:c_api_experimental"],
 )
 
@@ -150,7 +164,10 @@ cc_library(
     hdrs = ["c/common.h"],
     compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = ["//tensorflow/lite/c:common"],
 )
 
@@ -159,7 +176,10 @@ cc_library(
     hdrs = ["c/builtin_op_data.h"],
     compatible_with = get_compatible_with_portable(),
     copts = TFLITE_DEFAULT_COPTS,
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = ["//tensorflow/lite/c:common"],
 )
 

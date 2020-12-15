@@ -1343,4 +1343,60 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     return %1 : tensor<?xi32>
   }
+
+  // Verifies that ops in between outside compile ops and depending on results
+  // from the host are moved after the host compute op so that dominance is not
+  // violated. tf.C op in this case.
+  // CHECK-LABEL: func @device_op_dominance
+  func @device_op_dominance() -> () {
+    // CHECK: tf._XlaRecvAtHost
+    // CHECK: tf.B
+    // CHECK: tf.D
+    // CHECK: tf._XlaSendFromHost
+
+    // CHECK: tf.A
+    // CHECK: tf._XlaHostComputeMlir
+    // CHECK: tf.C
+    // CHECK: tf.E
+
+    "tf_device.cluster"() ( {
+      %0 = "tf.A"() : () -> (tensor<i32>)
+      %1 = "tf.B"() {_xla_outside_compilation = "cluster0"} : () -> (tensor<i32>)
+      "tf.C"(%1) : (tensor<i32>) -> ()
+      "tf.D"(%1, %0) {_xla_outside_compilation = "cluster0"} : (tensor<i32>, tensor<i32>) -> ()
+      "tf.E"(%0, %1) : (tensor<i32>, tensor<i32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+    return
+  }
+
+  // Verifies that ops indirectly depending on results from the host are also
+  // moved after the host compute op. tf.E op in this case.
+
+  // CHECK-LABEL: func @device_op_dominance_with_indirect_dependency
+  func @device_op_dominance_with_indirect_dependency() -> () {
+    // CHECK: tf._XlaRecvAtHost
+    // CHECK: tf.B
+    // CHECK: tf.F
+    // CHECK: tf._XlaSendFromHost
+
+    // CHECK: tf.A
+    // CHECK: tf.D
+    // CHECK: tf._XlaHostComputeMlir
+    // CHECK: tf.C
+    // CHECK: tf.E
+    // CHECK: tf.G
+
+    "tf_device.cluster"() ( {
+      %0 = "tf.A"() : () -> (tensor<i32>)
+      %1 = "tf.B"() {_xla_outside_compilation = "cluster0"} : () -> (tensor<i32>)
+      %2 = "tf.C"(%1) : (tensor<i32>) -> (tensor<i32>)
+      %3 = "tf.D"() : () -> (tensor<i32>)
+      "tf.E"(%2, %3) : (tensor<i32>, tensor<i32>) -> ()
+      "tf.F"(%1, %0) {_xla_outside_compilation = "cluster0"} : (tensor<i32>, tensor<i32>) -> ()
+      "tf.G"(%0, %1) : (tensor<i32>, tensor<i32>) -> ()
+      tf_device.return
+    }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+    return
+  }
 }

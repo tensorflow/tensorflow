@@ -320,6 +320,18 @@ cc_library(
     }),
 )
 
+# Provide a library for clients to link to if they need to stay on deprecated
+# arithmetic backends. Include as a dependency of cpu_backend_gemm to start.
+# TODO(b/168923364): Move to dependent targets.
+cc_library(
+    name = "deprecated_backends",
+    srcs = [
+        "deprecated_backends.cc",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    alwayslink = 1,
+)
+
 cc_library(
     name = "cpu_backend_context",
     srcs = [
@@ -337,6 +349,7 @@ cc_library(
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
     deps = [
+        ":deprecated_backends",  # TODO(b/168923364): Move to dependent targets.
         ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.
@@ -345,6 +358,7 @@ cc_library(
         "@ruy//ruy:context",
         "@gemmlowp",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:external_cpu_backend_context",
         "//tensorflow/lite/kernels/internal:compatibility",
     ] + select({
@@ -621,6 +635,7 @@ BUILTIN_KERNEL_SRCS = [
     "where.cc",
     "while.cc",
     "zeros_like.cc",
+    "rfft2d.cc",
 ]
 
 BUILTIN_KERNEL_DEPS = [
@@ -669,10 +684,12 @@ cc_library(
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = BUILTIN_KERNEL_DEPS + [
+        "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite:string",
         "@farmhash_archive//:farmhash",
+        "//third_party/fft2d:fft2d_headers",
     ],
 )
 
@@ -713,7 +730,6 @@ cc_library(
         "complex_support.cc",
         "multinomial.cc",
         "random_standard_normal.cc",
-        "rfft2d.cc",
     ],
     hdrs = ["custom_ops_register.h"],
     copts = tflite_copts(),
@@ -722,8 +738,6 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
-        "//third_party/fft2d:fft2d_headers",
-        "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -1141,14 +1155,17 @@ cc_test(
     srcs = ["numeric_verify_test.cc"],
     tags = ["tflite_nnapi"],
     deps = [
+        ":kernel_util",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:reference",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -2187,13 +2204,9 @@ cc_test(
     size = "small",
     srcs = ["rfft2d_test.cc"],
     deps = [
-        ":custom_ops",
         ":test_main",
         ":test_util",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )

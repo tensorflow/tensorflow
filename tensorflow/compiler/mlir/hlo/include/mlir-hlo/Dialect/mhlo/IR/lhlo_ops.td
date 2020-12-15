@@ -85,6 +85,8 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 def LHLO_BitcastConvertOp:
     LHLO_UnaryElementwiseOp<"bitcast_convert", LHLO_Buffer, [SameOperandsShape]>, BASE_HLO_BitcastConvertOp;
 
+def LHLO_CbrtOp: LHLO_UnaryElementwiseOp<"cbrt", LHLO_FpBuffer>, BASE_HLO_CbrtOp;
+
 def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil", LHLO_FpBuffer>, BASE_HLO_CeilOp;
 
 def LHLO_ClzOp: LHLO_UnaryElementwiseOp<"count_leading_zeros", LHLO_IntBuffer>, BASE_HLO_ClzOp;
@@ -415,7 +417,7 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []>, BASE_HLO_ConvOp {
        Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
        Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output),
-    ConvolutionAttributes<LHLO_Dialect>.attributes);
+    ConvolutionAttributes.attributes);
 }
 
 def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]>, BASE_HLO_CopyOp {
@@ -654,8 +656,46 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
+     OpBuilderDAG<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
   ];
+
+  let extraClassDeclaration = [{
+    SmallVector<Value, 4> getInputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getOutputBuffers() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.memref());
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionParameters() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorLoadOp load) {
+        if (load.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(load);
+      });
+      return buffers;
+    }
+
+    SmallVector<Value, 4> getFusionResults() {
+      SmallVector<Value, 4> buffers;
+      this->region().walk([&](TensorStoreOp store) {
+        if (store.memref().getParentRegion()->isProperAncestor(&region()))
+          buffers.push_back(store.tensor());
+      });
+      return buffers;
+    }
+  }];
 }
 
 def TerminatorOp :

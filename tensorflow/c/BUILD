@@ -78,7 +78,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
+        "//tensorflow/python:__subpackages__",
     ],
 )
 
@@ -522,6 +522,7 @@ cc_library(
         ":tf_datatype",
         ":tf_status",
         ":tf_tensor",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
     ],
 )
 
@@ -542,13 +543,17 @@ tf_cuda_library(
     ] + select({
         "//tensorflow:android": [
             ":c_api_internal",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_hdrs",
             "//tensorflow/core:portable_tensorflow_lib_lite",
         ],
         "//conditions:default": [
             ":c_api_internal",
             ":tf_tensor",
+            "//tensorflow/stream_executor:stream",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_lite",
+            "//tensorflow/c/experimental/stream_executor:stream_executor",
+            "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         ],
     }),
 )
@@ -679,7 +684,10 @@ tf_cc_test(
     name = "c_api_experimental_test",
     size = "medium",
     srcs = ["c_api_experimental_test.cc"],
-    data = ["testdata/tf_record"],
+    data = [
+        "testdata/tf_record",
+        "//tensorflow/c/experimental/stream_executor/test:test_pluggable_device.so",
+    ],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -699,6 +707,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/types:optional",
     ],
 )

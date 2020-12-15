@@ -918,7 +918,11 @@ Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
   // function, and that they would be correlated to the same TF op. This might
   // not always be correct since HLO optimizations can cross TF op boundaries.
   // But still this seems to be better than nothing.
-  if (new_instruction->metadata().op_name().empty()) {
+  bool overwrite_dummy_name =
+      absl::StartsWith(new_instruction->metadata().op_name(), "DUMMY") &&
+      !old_instruction->metadata().op_name().empty() &&
+      !absl::StartsWith(old_instruction->metadata().op_name(), "DUMMY");
+  if (new_instruction->metadata().op_name().empty() || overwrite_dummy_name) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
   if (new_instruction->frontend_attributes().map().empty()) {

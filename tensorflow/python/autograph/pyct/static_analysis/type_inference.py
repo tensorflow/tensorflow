@@ -31,7 +31,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import Any, Callable, Tuple
+import itertools
+
+from typing import Any, Callable, Dict, Set
 
 import gast
 
@@ -39,6 +41,7 @@ from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
+from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
@@ -118,12 +121,20 @@ class Resolver(object):
     """Resolves the return type of a unary operation."""
     raise NotImplementedError('subclasses must implement')
 
-  def res_binop(self, ns, types_ns, node, left, right):
+  def res_unop(self, ns, types_ns, node, opnd):
     """Resolves the return type of a unary operation."""
     raise NotImplementedError('subclasses must implement')
 
+  def res_binop(self, ns, types_ns, node, left, right):
+    """Resolves the return type of a binary operation."""
+    raise NotImplementedError('subclasses must implement')
 
-class _SymbolTable(object):
+  def res_list_literal(self, ns, elt_types):
+    """Resolves the type of a list literal from its elements."""
+    raise NotImplementedError('subclasses must implement')
+
+
+class _TypeMap(object):
   """Abstraction for the state of the CFG walk for type inference.
 
   This is a value type. Only implements the strictly necessary operators.
@@ -135,7 +146,7 @@ class _SymbolTable(object):
 
   def __init__(self, init_from=None):
     if init_from:
-      assert isinstance(init_from, _SymbolTable)
+      assert isinstance(init_from, _TypeMap)
       self.types = {
           s: set(other_types) for s, other_types in init_from.types.items()
       }
@@ -152,8 +163,8 @@ class _SymbolTable(object):
     return not self.__eq__(other)
 
   def __or__(self, other):
-    assert isinstance(other, _SymbolTable)
-    result = _SymbolTable(self)
+    assert isinstance(other, _TypeMap)
+    result = _TypeMap(self)
     for s, other_types in other.types.items():
       if s not in result.types:
         self_types = set()
@@ -192,13 +203,22 @@ class StmtInferrer(gast.NodeVisitor):
     print(a)  # a = int; side effect of f() accounted for
   """
 
-  def __init__(self, resolver, scope, namespace, closure_types, types_in):
+  def __init__(self,
+               resolver: Resolver,
+               scope: activity.Scope,
+               namespace: Dict[qual_names.QN, Any],
+               closure_types: Dict[qual_names.QN, Set[Any]],
+               types_in: _TypeMap):
     self.resolver = resolver
     self.scope = scope
     self.namespace = namespace
     self.closure_types = closure_types
     self.types_in = types_in
     self.new_symbols = {}
+
+    # rvalue type. This property is set when encountering an assign operation,
+    # so that visiting nodes with Store ctx (typically found on left side of
+    # assignments) can infer the type they should receive.
     self.rtype = None
 
   def visit(self, node):
@@ -221,36 +241,36 @@ class StmtInferrer(gast.NodeVisitor):
       self._check_set(types)
     return types
 
-  def visit_Tuple(self, node):
-    if isinstance(node.ctx, gast.Load):
-      for elt in node.elts:
-        self.visit(elt)
-      # TODO(mdan): Parameterize it.
-      return {Tuple}
-
+  def _apply_unpacking(self, node):
     assert isinstance(node.ctx, gast.Store)
-
     if self.rtype is not None:
       original_stype = self.rtype
       # TODO(mdan): Find a better way to express unpacking.
       i_type = self.resolver.res_value(self.namespace, 0)
       for i, elt in enumerate(node.elts):
-        self.rtype = self.resolver.res_subscript(
+        self.rtype = self.resolver.res_slice(
             self.namespace, self.types_in.types, i, original_stype, i_type)
         self.visit(elt)
       self.rtype = original_stype
       return original_stype
-
     return None
+
+  def visit_Tuple(self, node):
+    if isinstance(node.ctx, gast.Load):
+      elt_types = ()
+      for elt in node.elts:
+        types_ = self.visit(elt)
+        if types_ is None:
+          return None
+        elt_types += (types_,)
+      return set(itertools.product(*elt_types))
+    return self._apply_unpacking(node)
 
   def visit_List(self, node):
     if isinstance(node.ctx, gast.Load):
-      el_types = []
-      for elt in node.elts:
-        el_types.append(self.visit(elt))
-      return {list}
-
-    raise NotImplementedError('list unpacking')
+      elt_types = tuple(self.visit(elt) for elt in node.elts)
+      return self.resolver.res_list_literal(self.namespace, elt_types)
+    return self._apply_unpacking(node)
 
   def visit_Set(self, node):
     raise NotImplementedError()
@@ -442,7 +462,7 @@ class StmtInferrer(gast.NodeVisitor):
     if val_types is None or slice_types is None:
       return None
 
-    types = self.resolver.res_subscript(
+    types = self.resolver.res_slice(
         self.namespace, self.types_in.types, node, val_types, slice_types)
 
     if __debug__:
@@ -480,6 +500,20 @@ class StmtInferrer(gast.NodeVisitor):
 
     return types
 
+  def visit_UnaryOp(self, node):
+    opnd_types = self.visit(node.operand)
+
+    if opnd_types is None:
+      return None
+
+    types = self.resolver.res_unop(
+        self.namespace, self.types_in.types, node, opnd_types)
+
+    if __debug__:
+      self._check_set(types)
+
+    return types
+
 
 class Analyzer(cfg.GraphVisitor):
   """CFG visitor that propagates type information across statements."""
@@ -504,13 +538,13 @@ class Analyzer(cfg.GraphVisitor):
         n: t for n, t in closure_types.items() if n not in scope.bound
     }
     if context_types:
-      self.context_types = _SymbolTable()
+      self.context_types = _TypeMap()
       self.context_types.types = context_types
     else:
       self.context_types = None
 
   def init_state(self, _):
-    return _SymbolTable()
+    return _TypeMap()
 
   def _update_closure_types(self, ast_node, types):
     existing_types = anno.Static.CLOSURE_TYPES.of(ast_node, None)
@@ -528,13 +562,13 @@ class Analyzer(cfg.GraphVisitor):
   def visit_node(self, node):
     prev_types_out = self.out[node]
 
-    types_in = _SymbolTable()
+    types_in = _TypeMap()
     for n in node.prev:
       types_in |= self.out[n]
     if (self.context_types is not None) and (node is self.graph.entry):
       types_in |= self.context_types
 
-    types_out = _SymbolTable(types_in)
+    types_out = _TypeMap(types_in)
     ast_node = node.ast_node
 
     inferrer = StmtInferrer(self.resolver, self.scope, self.namespace,

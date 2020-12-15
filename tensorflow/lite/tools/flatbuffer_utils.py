@@ -126,6 +126,8 @@ def strip_strings(model):
     subgraph.name = None
     for tensor in subgraph.tensors:
       tensor.name = None
+  # We clear all signature_def structure, since without names it is useless.
+  model.signatureDefs = None
 
 
 def randomize_weights(model, random_seed=0):

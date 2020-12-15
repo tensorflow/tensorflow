@@ -172,6 +172,8 @@ def TFL_FpTensor : TFL_TensorOf<[F32]>;
 def TFL_I32OrI64Tensor : TFL_TensorOf<[TFL_Int32Or64]>;
 def TFL_I32Tensor : TFL_TensorOf<[I32]>;
 def TFL_I64Tensor : TFL_TensorOf<[I64]>;
+def TFL_Complex64Tensor : TFL_TensorOf<[Complex<F<32>>]>;
+
 // TODO(jpienaar): Expand to all int types.
 def TFL_IntTensor : TypeAlias<TFL_I32Tensor, "tensor of any integer type">;
 
@@ -347,10 +349,14 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
             "quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
 
-// This is a quantization-aware version of TCresVTEtIsSameAsOp
-class TFL_TCopVTEtAreSameAt<int i, int j> : Or<[
+def TFL_SameFirstOperandAndFirstResultElementType :
+  PredOpTrait<"values and output must have same element type",
+              TFL_TCresVTEtIsSameAsOp<0, 0>>;
+
+// This is a quantization-aware version of TCopVTEtAreSameAt
+class TFL_TCopVTEtAreSameAt<int i, int j, int num=8> : Or<[
   TCopVTEtAreSameAt<[i, j]>,
-  TFL_TFOperandTypesWithSameBits<i, j, 8>,
+  TFL_TFOperandTypesWithSameBits<i, j, num>,
   And<[
     SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
       quant_QuantizedType.predicate>,
@@ -715,8 +721,7 @@ def TFL_CeilOp: TFL_Op<"ceil", [
 def TFL_ConcatenationOp : TFL_Op<"concatenation",
   [
     NoSideEffect,
-    PredOpTrait<"values and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_SameFirstOperandAndFirstResultElementType,
     SameOperandsAndResultsScale
   ]> {
   let summary = "Concatenation operator";
@@ -1454,6 +1459,7 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
+    NoSideEffect,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
@@ -2275,8 +2281,7 @@ def TFL_NegOp: TFL_Op<"neg", [
 }
 
 def TFL_PackOp : TFL_Op<"pack", [
-    PredOpTrait<"values and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_SameFirstOperandAndFirstResultElementType,
     NoSideEffect,
     SameOperandsAndResultsScale]> {
   let summary = "Packs a list of tensors along a dimension into one tensor";
@@ -2628,7 +2633,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 }
 
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
-                                  SameOperandsAndResultType,
+                                  TFL_SameFirstOperandAndFirstResultElementType,
                                   SameOperandsAndResultShape,
                                   NoQuantizableResult]> {
   let summary = "Reciprocal of square root operator";
@@ -2637,9 +2642,9 @@ def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
     Computes element-wise reverse square root of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -2917,11 +2922,10 @@ def TFL_SubOp : TFL_Op<"sub", [
   let hasOptions = 1;
 }
 
-// TODO(jpienaar): Expand the kernel implementation to support all types besides
-// I32 and F32.
 def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    SameOperandsAndResultElementType,
+    BinaryOpSameElementTypeConstraint,
+    TFL_SameFirstOperandAndFirstResultElementType,
     ResultsBroadcastableShape,
     NoSideEffect,
     NoQuantizableResult]> {
@@ -2932,10 +2936,10 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32]>:$lhs,
-    TFL_TensorOf<[F32, I32]>:$rhs);
+    ins TFL_TensorOf<[F32, I32, QI8]>:$lhs,
+    TFL_TensorOf<[F32, I32, QI8]>:$rhs);
 
-  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QI8]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -3303,14 +3307,14 @@ def TFL_ResizeBilinearOp: TFL_Op<"resize_bilinear", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$input,
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$input,
     TFL_I32Tensor:$size,
     BoolAttr:$align_corners,
     DefaultValuedAttr<BoolAttr, "false">:$half_pixel_centers
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output
+    TFL_TensorOf<[F32, TFL_Quint8, QUI8, QI8, QI16]>:$output
   );
 
   let hasOptions = 1;
@@ -3673,7 +3677,8 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
-  TCopVTEtAreSameAt<[9, 10, 11]>>;
+  And<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
+       TFL_TCopVTEtAreSameAt<9, 11, 16>]>>;
 
 def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
@@ -3979,6 +3984,7 @@ def BidiLstmMandatoryInputsConstraint : PredOpTrait<
                        30, 31, 32, 35, 36, 37, 38]>,
     Neg<TypeIsPred<"input", F32>>]>>;
 
+// TODO(b/172517537): support quantized types
 def BidiLstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
   TCopVTEtAreSameAt<[9, 10, 11, 26, 27, 28]>>;
@@ -4478,6 +4484,33 @@ subsequent operation and then be optimized away, however.)
 
   let results = (outs
     TFL_TensorOf<[F32, I32, I1, I8, QI8, UI8, QUI8, I16, QI16, I64, Complex<F<32>>]>:$output
+  );
+}
+
+def TFL_RFFT2dOp : TFL_Op<"RFFT2D", [NoSideEffect, NoQuantizableResult]> {
+  let summary = "2D real-valued fast Fourier transform.";
+
+  let description = [{
+Computes the 2-dimensional discrete Fourier transform of a real-valued signal
+over the inner-most 2 dimensions of `input`.
+
+Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
+`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
+of `output`: the zero-frequency term, followed by the `fft_length / 2`
+positive-frequency terms.
+
+Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+  }];
+
+  let arguments = (ins
+    TFL_FpTensor:$input,
+    TFL_I32Tensor:$fft_length
+  );
+
+  let results = (outs
+    TFL_Complex64Tensor:$output
   );
 }
 

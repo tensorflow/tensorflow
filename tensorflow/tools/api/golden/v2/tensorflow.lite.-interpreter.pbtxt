@@ -19,6 +19,14 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_signature_list"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_signature_runner"
+    argspec: "args=[\'self\', \'method_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "get_tensor"
     argspec: "args=[\'self\', \'tensor_index\'], varargs=None, keywords=None, defaults=None"
   }

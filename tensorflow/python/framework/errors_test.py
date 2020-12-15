@@ -23,10 +23,10 @@ import pickle
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
-from tensorflow.python import _pywrap_file_io
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.lib.io import _pywrap_file_io
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 

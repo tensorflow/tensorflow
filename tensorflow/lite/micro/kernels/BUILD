@@ -77,6 +77,22 @@ cc_library(
 )
 
 cc_library(
+    name = "ethosu",
+    srcs = [
+        "ethosu.cc",
+    ],
+    hdrs = ["ethosu.h"],
+    copts = micro_copts(),
+    visibility = [
+        # Kernel variants need to be visible to the examples and benchmarks.
+        ":micro",
+    ],
+    deps = [
+        "//tensorflow/lite/c:common",
+    ],
+)
+
+cc_library(
     name = "micro_ops",
     srcs = [
         "activations.cc",
@@ -88,8 +104,8 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "dequantize.cc",
+        "detection_postprocess.cc",
         "elementwise.cc",
-        "ethosu.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
@@ -101,6 +117,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "prelu.cc",
+        "quantize_common.cc",
         "reduce.cc",
         "reshape.cc",
         "resize_nearest_neighbor.cc",
@@ -111,6 +128,7 @@ cc_library(
         "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
+        "svdf_common.cc",
         "tanh.cc",
         "unpack.cc",
     ] + select({
@@ -129,7 +147,11 @@ cc_library(
             "xtensa/svdf.cc",
         ],
     }),
-    hdrs = ["micro_ops.h"],
+    hdrs = [
+        "micro_ops.h",
+        "quantize.h",
+        "svdf.h",
+    ],
     copts = micro_copts(),
     visibility = [
         # Needed for micro:op_resolvers but visibility can not be finer-grained
@@ -153,6 +175,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
+        "@flatbuffers",
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
@@ -202,6 +225,32 @@ tflite_micro_cc_test(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+cc_library(
+    name = "flexbuffers_generated_data",
+    srcs = [
+        "flexbuffers_generated_data.cc",
+    ],
+    hdrs = [
+        "flexbuffers_generated_data.h",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "detection_postprocess_test",
+    srcs = [
+        "detection_postprocess_test.cc",
+    ],
+    deps = [
+        ":flexbuffers_generated_data",
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "@flatbuffers",
     ],
 )
 
@@ -636,6 +685,7 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
+    tags = ["nomsan"],  # b/175133159
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

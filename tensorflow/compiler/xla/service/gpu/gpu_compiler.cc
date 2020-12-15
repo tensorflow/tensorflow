@@ -24,12 +24,16 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "llvm/AsmParser/Parser.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "llvm/Transforms/Utils/SplitModule.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -114,11 +118,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/subprocess.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
@@ -470,14 +476,14 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
   tensorflow::profiler::TraceMe activity(
       [&] { return absl::StrCat("HLO Transforms:", module->name()); },
       tensorflow::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+      OptimizeHloModule(module.get(), stream_exec, options.device_allocator));
 
   TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
@@ -494,10 +500,10 @@ StatusOr<
     std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
 GpuCompiler::RunHloPassesAndBufferAssignement(
     std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* executor,
-    se::DeviceMemoryAllocator* device_allocator, bool optimize) {
+    bool optimize, const CompileOptions& options) {
   if (optimize) {
-    TF_ASSIGN_OR_RETURN(hlo_module, RunHloPasses(std::move(hlo_module),
-                                                 executor, device_allocator));
+    TF_ASSIGN_OR_RETURN(hlo_module,
+                        RunHloPasses(std::move(hlo_module), executor, options));
   }
 
   std::unique_ptr<StreamAssignment> stream_assignment =
@@ -641,24 +647,149 @@ static Status CompileModuleToLlvmIrImpl(
   return Status::OK();
 }
 
+StatusOr<std::pair<std::string, std::vector<uint8>>>
+GpuCompiler::CompileToTargetBinary(const HloModule& module,
+                                   std::unique_ptr<llvm::Module> llvm_module,
+                                   se::StreamExecutor* stream_exec,
+                                   const CompileOptions& options) {
+  using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
+
+  const auto compile_single_module =
+      [this, stream_exec, &module](
+          llvm::Module* llvm_module,
+          bool relocatable) -> StatusOr<BackendCompileResult> {
+    {
+      XLA_SCOPED_LOGGING_TIMER(
+          "GpuCompiler::RunBackend - Running LLVM verifier");
+
+      std::string err;
+      llvm::raw_string_ostream err_stream(err);
+
+      // verifyModule() returns true if the module is broken.
+      TF_RET_CHECK(!llvm::verifyModule(*llvm_module, &err_stream))
+          << "Invalid LLVM IR before optimizations:\n"
+          << err_stream.str()
+          << "\nThis probably indicates a bug in the HLO -> LLVM IR "
+             "lowering. "
+             "Rerun with --xla_dump_to to get the IR and looks for files "
+             "with "
+             "name containing: *"
+          << FilenameFor(module, "", "") << "*";
+    }
+    GpuVersion gpu_version = GetGpuVersion(stream_exec);
+    return CompileTargetBinary(&module, llvm_module, gpu_version, stream_exec,
+                               relocatable);
+  };
+
+  tensorflow::thread::ThreadPool* thread_pool = options.thread_pool;
+
+  absl::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
+  if (module.config().debug_options().xla_gpu_force_compilation_parallelism() !=
+      0) {
+    overriding_thread_pool.emplace(
+        tensorflow::Env::Default(), "",
+        module.config()
+            .debug_options()
+            .xla_gpu_force_compilation_parallelism());
+    thread_pool = &*overriding_thread_pool;
+  }
+
+  if (!thread_pool) {
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false);
+  }
+
+  // Test whether LinkModules is supported.
+  if (this->LinkModules(stream_exec, {}).status().code() ==
+      tensorflow::error::Code::UNIMPLEMENTED) {
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false);
+  }
+
+  std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
+  int num_functions = 0;
+  for (llvm::Function& func : llvm_module->functions()) {
+    if (!func.isDeclaration() &&
+        func.getLinkage() == llvm::GlobalValue::LinkageTypes::ExternalLinkage) {
+      num_functions++;
+    }
+  }
+
+  llvm::SplitModule(
+      std::move(llvm_module),
+      std::max<unsigned>(
+          1, std::min<unsigned>(thread_pool->NumThreads(), num_functions)),
+      [&](std::unique_ptr<llvm::Module> module) {
+        llvm_modules.push_back(std::move(module));
+      },
+      /*PreserveLocals=*/true);
+
+  std::vector<StatusOr<BackendCompileResult>> compile_results(
+      llvm_modules.size());
+  tensorflow::BlockingCounter counter(llvm_modules.size());
+  for (int i = 0; i < llvm_modules.size(); i++) {
+    thread_pool->Schedule([&compile_results, compile_single_module, i,
+                           &llvm_modules, &counter] {
+      llvm::Module* original_module = llvm_modules[i].get();
+      llvm::LLVMContext context;
+      std::string buffer;
+      llvm::raw_string_ostream error(buffer);
+      llvm::DiagnosticPrinterRawOStream printer(error);
+      auto DiagnosticHandler = [](const llvm::DiagnosticInfo& diag_info,
+                                  void* Context) {
+        auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
+        diag_info.print(*printer);
+      };
+      context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
+
+      std::unique_ptr<llvm::Module> new_llvm_module;
+      // Switch to a new context by dumping and re-parsing LLVM IR. Each thread
+      // has its own context to avoid race conditions.
+      {
+        std::string ir;
+        {
+          llvm::raw_string_ostream os(ir);
+          original_module->print(os, nullptr);
+        }
+        llvm::SMDiagnostic err;
+        new_llvm_module = llvm::parseAssemblyString(ir, err, context);
+      }
+
+      compile_results[i] =
+          compile_single_module(new_llvm_module.get(), /*relocatable=*/true);
+      counter.DecrementCount();
+    });
+  }
+  counter.Wait();
+
+  std::string ptx_snippets;
+  std::vector<std::vector<uint8>> submodule_compile_results;
+  for (auto& maybe_result : compile_results) {
+    TF_ASSIGN_OR_RETURN(auto result, maybe_result);
+    if (result.second.empty()) {
+      continue;
+    }
+    ptx_snippets += result.first;
+    ptx_snippets += "\n";
+    submodule_compile_results.push_back(result.second);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<uint8> backend_result,
+      this->LinkModules(stream_exec, std::move(submodule_compile_results)));
+
+  return std::make_pair(ptx_snippets, backend_result);
+}
+
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
-  auto slow_compile_alarm = SlowCompilationAlarm();
+  std::string slow_compilation_msg =
+      absl::StrCat("Compiling module ", module->name());
+  auto slow_compile_alarm = SlowCompilationAlarm(slow_compilation_msg);
 
   TF_RET_CHECK(stream_exec != nullptr);
 
   llvm::LLVMContext llvm_context;
-  std::string buffer;
-  llvm::raw_string_ostream error(buffer);
-  llvm::DiagnosticPrinterRawOStream printer(error);
-  auto DiagnosticHandler = [](const llvm::DiagnosticInfo& diag_info,
-                              void* Context) {
-    auto printer = static_cast<llvm::DiagnosticPrinterRawOStream*>(Context);
-    diag_info.print(*printer);
-  };
-  llvm_context.setDiagnosticHandlerCallBack(DiagnosticHandler, &printer);
 
   GpuDeviceInfo gpu_device_info;
   gpu_device_info.threads_per_block_limit =
@@ -724,34 +855,16 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/false);
 
-  {
-    XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend - Running LLVM verifier");
-
-    std::string err;
-    llvm::raw_string_ostream err_stream(err);
-
-    // verifyModule() returns true if the module is broken.
-    TF_RET_CHECK(!llvm::verifyModule(*llvm_module, &err_stream))
-        << "Invalid LLVM IR before optimizations:\n"
-        << err_stream.str()
-        << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_to to get the IR and looks for files with "
-           "name containing: *"
-        << FilenameFor(*module, "", "") << "*";
-  }
-
-  GpuVersion gpu_version = GetGpuVersion(stream_exec);
-
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
   TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
-                      CompileTargetBinary(module.get(), llvm_module.get(),
-                                          gpu_version, stream_exec));
-
+                      CompileToTargetBinary(*module, std::move(llvm_module),
+                                            stream_exec, options));
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
   }
 
+  GpuVersion gpu_version = GetGpuVersion(stream_exec);
   auto* gpu_executable = new GpuExecutable(
       backend_result.first, backend_result.second, gpu_version,
       std::move(thunk_schedule), std::move(module),

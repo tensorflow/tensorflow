@@ -149,7 +149,6 @@ upper_tabs:
         path: /lite/performance/hexagon_delegate
       - title: "Core ML delegate"
         path: /lite/performance/coreml_delegate
-        status: experimental
       - title: "Implementing a delegate"
         path: /lite/performance/implementing_delegate
         status: experimental
@@ -180,6 +179,9 @@ upper_tabs:
         path: /lite/guide/build_arm64
       - title: "Build for Raspberry Pi"
         path: /lite/guide/build_rpi
+      - title: "Build with CMake"
+        path: /lite/guide/build_cmake
+        status: experimental
       - title: "Reduce binary size"
         path: /lite/guide/reduce_binary_size
         status: experimental
@@ -214,6 +216,8 @@ upper_tabs:
         path: /lite/models/segmentation/overview
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
+      - title: "Super resolution"
+        path: /lite/models/super_resolution/overview
       - heading: "Text"
       - title: "BERT Question Answer"
         path: /lite/models/bert_qa/overview

@@ -52,9 +52,12 @@ function patch_to_avoid_strtod() {
   head -n ${case_string_line} ${input_flexbuffers_path} > ${temp_flexbuffers_path}
 
   echo "#if 1" >> ${temp_flexbuffers_path}
+  echo "#pragma GCC diagnostic push" >> ${temp_flexbuffers_path}
+  echo "#pragma GCC diagnostic ignored \"-Wnull-dereference\"" >> ${temp_flexbuffers_path}
   echo "          // TODO(b/173239141): Patched via micro/tools/make/flexbuffers_download.sh" >> ${temp_flexbuffers_path}
   echo "          // Introduce a segfault for an unsupported code path for TFLM." >> ${temp_flexbuffers_path}
   echo "          return *(static_cast<double*>(nullptr));" >> ${temp_flexbuffers_path}
+  echo "#pragma GCC diagnostic pop" >> ${temp_flexbuffers_path}
   echo "#else" >> ${temp_flexbuffers_path}
   echo "          // This is the original code" >> ${temp_flexbuffers_path}
   sed -n -e $((${string_to_num_line} -  1)),$((${string_to_num_line} + 1))p ${input_flexbuffers_path} >> ${temp_flexbuffers_path}
@@ -64,6 +67,15 @@ function patch_to_avoid_strtod() {
   sed -n -e $((${string_to_num_line} + 2)),${total_num_lines}p ${input_flexbuffers_path} >> ${temp_flexbuffers_path}
   mv ${input_flexbuffers_path} ${input_flexbuffers_path}.orig
   mv ${temp_flexbuffers_path} ${input_flexbuffers_path}
+}
+
+# The BUILD files in the downloaded folder result in an error with:
+#  bazel build tensorflow/lite/micro/...
+#
+# Parameters:
+#   $1 - path to the downloaded flatbuffers code.
+function delete_build_files() {
+  rm -f `find ${1} -name BUILD`
 }
 
 DOWNLOADED_FLATBUFFERS_PATH=${DOWNLOADS_DIR}/flatbuffers
@@ -88,6 +100,8 @@ else
   mv /tmp/flatbuffers-${ZIP_PREFIX} ${DOWNLOADED_FLATBUFFERS_PATH}
 
   patch_to_avoid_strtod ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
+  delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}
+
 fi
 
 echo "SUCCESS"

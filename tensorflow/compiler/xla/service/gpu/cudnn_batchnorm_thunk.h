@@ -82,8 +82,7 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
       const BufferAllocation::Slice& offset,
       const BufferAllocation::Slice& output_data,
       const BufferAllocation::Slice& output_mean,
-      const BufferAllocation::Slice& output_inv_stddev,
-      const BufferAllocation::Slice& output_tuple);
+      const BufferAllocation::Slice& output_inv_stddev);
 
   CudnnBatchNormForwardTrainingThunk(
       const CudnnBatchNormForwardTrainingThunk&) = delete;
@@ -100,22 +99,19 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
   BufferAllocation::Slice output_data_;
   BufferAllocation::Slice output_mean_;
   BufferAllocation::Slice output_inv_stddev_;
-  BufferAllocation::Slice output_tuple_;
 };
 
 class CudnnBatchNormBackwardThunk : public Thunk {
  public:
-  CudnnBatchNormBackwardThunk(ThunkInfo thunk_info,
-                              CudnnBatchNormConfig&& config,
-                              const BufferAllocation::Slice& operand,
-                              const BufferAllocation::Slice& scale,
-                              const BufferAllocation::Slice& mean,
-                              const BufferAllocation::Slice& inv_stddev,
-                              const BufferAllocation::Slice& grad_output,
-                              const BufferAllocation::Slice& output_grad_data,
-                              const BufferAllocation::Slice& output_grad_scale,
-                              const BufferAllocation::Slice& output_grad_offset,
-                              const BufferAllocation::Slice& output_tuple);
+  CudnnBatchNormBackwardThunk(
+      ThunkInfo thunk_info, CudnnBatchNormConfig&& config,
+      const BufferAllocation::Slice& operand,
+      const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
+      const BufferAllocation::Slice& inv_stddev,
+      const BufferAllocation::Slice& grad_output,
+      const BufferAllocation::Slice& output_grad_data,
+      const BufferAllocation::Slice& output_grad_scale,
+      const BufferAllocation::Slice& output_grad_offset);
 
   CudnnBatchNormBackwardThunk(const CudnnBatchNormBackwardThunk&) = delete;
   CudnnBatchNormBackwardThunk& operator=(const CudnnBatchNormBackwardThunk&) =
@@ -133,7 +129,6 @@ class CudnnBatchNormBackwardThunk : public Thunk {
   BufferAllocation::Slice output_grad_data_;
   BufferAllocation::Slice output_grad_scale_;
   BufferAllocation::Slice output_grad_offset_;
-  BufferAllocation::Slice output_tuple_;
 };
 
 }  // namespace gpu

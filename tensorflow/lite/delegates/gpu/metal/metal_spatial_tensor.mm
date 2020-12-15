@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
+#include <memory>
+
 namespace tflite {
 namespace gpu {
 namespace metal {
@@ -234,25 +236,23 @@ int MetalSpatialTensor::GetAlignedChannels() const {
              : AlignByN(shape_.c, 4);
 }
 
-absl::Status MetalSpatialTensor::WriteDataBHWDC(absl::Span<const float> in) {
+absl::Status MetalSpatialTensor::WriteDataBHWDC(const float* in) {
   void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
       shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
 
   const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::vector<float> data_f;
-  std::vector<half> data_h;
+  std::unique_ptr<float[]> data_f;
+  std::unique_ptr<half[]> data_h;
   if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.resize(elements_count);
-    data_ptr = data_f.data();
-    DataFromBHWDC(in, shape_, descriptor_,
-                  absl::MakeSpan(data_f.data(), data_f.size()));
+    data_f.reset(new float[elements_count]);
+    data_ptr = data_f.get();
+    DataFromBHWDC(in, shape_, descriptor_, data_f.get());
   } else {
-    data_h.resize(elements_count);
-    data_ptr = data_h.data();
-    DataFromBHWDC(in, shape_, descriptor_,
-                  absl::MakeSpan(data_h.data(), data_h.size()));
+    data_h.reset(new half[elements_count]);
+    data_ptr = data_h.get();
+    DataFromBHWDC(in, shape_, descriptor_, data_h.get());
   }
 
   switch (descriptor_.storage_type) {
@@ -273,38 +273,38 @@ absl::Status MetalSpatialTensor::WriteDataBHWDC(absl::Span<const float> in) {
 
 absl::Status MetalSpatialTensor::WriteData(const TensorFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data));
+  return WriteDataBHWDC(src.data.data());
 }
 
 absl::Status MetalSpatialTensor::WriteData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data));
+  return WriteDataBHWDC(src.data.data());
 }
 
 absl::Status MetalSpatialTensor::WriteData(
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data));
+  return WriteDataBHWDC(src.data.data());
 }
 
 absl::Status MetalSpatialTensor::WriteData(const Tensor5DFloat32& src) {
   RETURN_IF_ERROR(IsValid(src.shape));
-  return WriteDataBHWDC(absl::MakeConstSpan(src.data));
+  return WriteDataBHWDC(src.data.data());
 }
 
-absl::Status MetalSpatialTensor::ReadDataBHWDC(absl::Span<float> out) const {
+absl::Status MetalSpatialTensor::ReadDataBHWDC(float* out) const {
   void* data_ptr = nullptr;
   const int aligned_channels = GetAlignedChannels();
   const int elements_count =
       shape_.b * shape_.w * shape_.h * shape_.d * aligned_channels;
   const size_t data_size = elements_count * SizeOf(descriptor_.data_type);
-  std::vector<float> data_f;
-  std::vector<half> data_h;
+  std::unique_ptr<float[]> data_f;
+  std::unique_ptr<half[]> data_h;
   if (descriptor_.data_type == DataType::FLOAT32) {
-    data_f.resize(elements_count);
-    data_ptr = data_f.data();
+    data_f.reset(new float[elements_count]);
+    data_ptr = data_f.get();
   } else {
-    data_h.resize(elements_count);
-    data_ptr = data_h.data();
+    data_h.reset(new half[elements_count]);
+    data_ptr = data_h.get();
   }
 
   switch (descriptor_.storage_type) {
@@ -321,11 +321,9 @@ absl::Status MetalSpatialTensor::ReadDataBHWDC(absl::Span<float> out) const {
   }
 
   if (descriptor_.data_type == DataType::FLOAT32) {
-    DataToBHWDC(absl::MakeConstSpan(data_f.data(), data_f.size()), shape_,
-                descriptor_, out);
+    DataToBHWDC(data_f.get(), shape_, descriptor_, out);
   } else {
-    DataToBHWDC(absl::MakeConstSpan(data_h.data(), data_h.size()), shape_,
-                descriptor_, out);
+    DataToBHWDC(data_h.get(), shape_, descriptor_, out);
   }
 
   return absl::OkStatus();
@@ -333,12 +331,12 @@ absl::Status MetalSpatialTensor::ReadDataBHWDC(absl::Span<float> out) const {
 
 absl::Status MetalSpatialTensor::ReadData(TensorFloat32* dst) const {
   RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(absl::MakeSpan(dst->data));
+  return ReadDataBHWDC(dst->data.data());
 }
 
 absl::Status MetalSpatialTensor::ReadData(Tensor5DFloat32* dst) const {
   RETURN_IF_ERROR(IsValid(dst->shape));
-  return ReadDataBHWDC(absl::MakeSpan(dst->data));
+  return ReadDataBHWDC(dst->data.data());
 }
 
 absl::Status MetalSpatialTensor::CreateFromDescriptor(const TensorDescriptor& desc, id<MTLDevice> device) {
@@ -357,6 +355,14 @@ absl::Status MetalSpatialTensor::CreateFromDescriptor(const TensorDescriptor& de
   return absl::OkStatus();
 }
 
+void MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
+  memory_ = buffer;
+}
+
+id<MTLBuffer> MetalSpatialTensor::GetBufferHandle() const {
+  return memory_;
+}
+
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
                           const TensorDescriptor& descriptor, MetalSpatialTensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
@@ -366,6 +372,19 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
                           const TensorDescriptor& descriptor, MetalSpatialTensor* result) {
   return CreateTensor(device, shape, descriptor, nullptr, result);
+}
+
+MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
+                                            const BHWC& shape,
+                                            const TensorDescriptor& descriptor) {
+  const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
+  return MetalSpatialTensor(buffer, false, shape5D, descriptor);
+}
+
+MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& descriptor) {
+  return MetalSpatialTensor(buffer, false, shape, descriptor);
 }
 
 }  // namespace metal

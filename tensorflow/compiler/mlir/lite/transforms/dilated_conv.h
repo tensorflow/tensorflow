@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -185,7 +185,12 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.block_shape(), bts_op.block_shape(), rewriter);
   if (!dilations_attr.hasValue()) return failure();
-  op.setAttr("dilations", dilations_attr.getValue());
+
+  if (expand_op) {
+    if (stb_op.input().getType().dyn_cast<RankedTensorType>() == nullptr) {
+      return failure();
+    }
+  }
 
   // TODO(b/149936532): Check that the input width & height are multiples of
   // dilation rate.
@@ -233,6 +238,9 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       }
     }
   }
+
+  // Set dilations
+  op.setAttr("dilations", dilations_attr.getValue());
 
   if (expand_op) {
     // If there is `expand_op`, we need to rewire the inputs to bypass the

@@ -26,9 +26,11 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 namespace tensorflow {
 
@@ -40,10 +42,17 @@ inline void DCheckPyGilStateForStackTrace() {
 #endif
 }
 
+// Maps filename/line_no combination into a stack frame.
+using StackTraceMap =
+    std::function<absl::optional<StackFrame>(std::pair<const char*, int>)>;
+
+// Returns "true" on filenames which should be skipped.
+using StackTraceFilter = std::function<bool(const char*)>;
+
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
-  static constexpr int kDefaultStackTraceInitialSize = 10;
+  static constexpr int kStackTraceInitialSize = 10;
 
   StackTrace() {}
 
@@ -65,8 +74,7 @@ class StackTrace final {
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);
-      result.code_objs_.push_back(code_obj);
-      result.last_instructions_.push_back(frame->f_lasti);
+      result.code_objs_.push_back(std::make_pair(code_obj, frame->f_lasti));
     }
     return result;
   }
@@ -75,36 +83,38 @@ class StackTrace final {
   ABSL_ATTRIBUTE_HOT
   ~StackTrace() { Clear(); }
 
-  StackTrace(StackTrace&& other) {
-    code_objs_ = std::move(other.code_objs_);
-    last_instructions_ = std::move(other.last_instructions_);
-    other.code_objs_ = {};
-  }
+  StackTrace(StackTrace&& other) { std::swap(code_objs_, other.code_objs_); }
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
   StackTrace& operator=(StackTrace&& other) {
     Clear();
-
-    code_objs_ = other.code_objs_;
-    last_instructions_ = other.last_instructions_;
-    other.code_objs_ = {};
+    std::swap(code_objs_, other.code_objs_);
     return *this;
   }
 
   // Returns a structured representation of the captured stack trace.
-  std::vector<StackFrame> ToStackFrames() const;
-
- private:
-  absl::InlinedVector<PyCodeObject*, kDefaultStackTraceInitialSize> code_objs_;
-  absl::InlinedVector<int, kDefaultStackTraceInitialSize> last_instructions_;
+  // `mapper` provides a custom mapping for translating stack frames, `filter`
+  // returns `true` for the stack frames which should be omitted.
+  //
+  // `reverse_traversal` changes the traversal order of the stack trace, and
+  // `limit` bounds the number of returned frames (after filtering).
+  std::vector<StackFrame> ToStackFrames(const StackTraceMap& mapper = {},
+                                        const StackTraceFilter& filtered = {},
+                                        bool reverse_traversal = false,
+                                        int limit = -1) const;
 
   // Python GIL must be acquired beforehand.
   ABSL_ATTRIBUTE_HOT
   void Clear() {
-    DCheckPyGilStateForStackTrace();
-    for (PyCodeObject* obj : code_objs_) Py_DECREF(obj);
+    if (!code_objs_.empty()) DCheckPyGilStateForStackTrace();
+    for (const auto& p : code_objs_) Py_DECREF(p.first);
+    code_objs_.clear();
   }
+
+ private:
+  absl::InlinedVector<std::pair<PyCodeObject*, int>, kStackTraceInitialSize>
+      code_objs_;
 
   StackTrace(const StackTrace&) = delete;
   StackTrace& operator=(const StackTrace&) = delete;
@@ -146,9 +156,9 @@ extern StackTraceManager* const stack_trace_manager;
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
-inline AbstractStackTrace GetStackTrace(int limit) {
+inline ManagedStackTrace GetStackTrace(int limit) {
   DCheckPyGilStateForStackTrace();
-  return AbstractStackTrace(stack_trace_manager->Capture(limit), [](int id) {
+  return ManagedStackTrace(stack_trace_manager->Capture(limit), [](int id) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     std::vector<StackFrame> result =
         stack_trace_manager->Get(id)->ToStackFrames();

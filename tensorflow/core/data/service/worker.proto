@@ -14,6 +14,15 @@ message ProcessTaskResponse {}
 message GetElementRequest {
   // The task to fetch an element from.
   int64 task_id = 1;
+  // Optional index to indentify the consumer.
+  oneof optional_consumer_index {
+    int64 consumer_index = 2;
+  }
+  // Optional round index, indicating which round of round-robin the consumer
+  // wants to read from. This is used to keep consumers in sync.
+  oneof optional_round_index {
+    int64 round_index = 3;
+  }
 }
 
 message GetElementResponse {

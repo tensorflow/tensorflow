@@ -19,11 +19,11 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -211,24 +211,25 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   // change, so replace with new while op.
   if (extra_operands.empty()) return;
 
-  Operation* op = while_op.getOperation();
+  const int operands_size = while_op.getNumOperands() + extra_operands.size();
   SmallVector<Value, 4> operands;
+  operands.reserve(operands_size);
+  operands.append(while_op.getOperands().begin(), while_op.getOperands().end());
+  operands.append(extra_operands.begin(), extra_operands.end());
   SmallVector<Type, 4> new_types;
-  operands.reserve(types.size());
-  new_types.reserve(operands.size());
-  auto add_operand = [&](Value v) {
-    operands.push_back(v);
-    new_types.push_back(v.getType());
-  };
-  for (auto operand : op->getOperands()) add_operand(operand);
-  for (auto operand : extra_operands) add_operand(operand);
+  new_types.reserve(operands_size);
+  new_types.append(while_op.getResultTypes().begin(),
+                   while_op.getResultTypes().end());
+  for (auto extra_operand : extra_operands)
+    new_types.push_back(extra_operand.getType());
 
-  Operation* new_op = OpBuilder(op).insert(Operation::create(
-      op->getLoc(), op->getName(), new_types, operands, op->getAttrs(),
-      /*successors=*/{}, /*numRegions=*/2));
-  for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
-  op->replaceAllUsesWith(new_op->getResults().take_front(op->getNumResults()));
-  op->erase();
+  auto new_while_op = OpBuilder(while_op).create<WhileOp>(
+      while_op.getLoc(), new_types, operands, while_op.getAttrs());
+  new_while_op.cond().takeBody(while_op.cond());
+  new_while_op.body().takeBody(while_op.body());
+  while_op.replaceAllUsesWith(
+      new_while_op.getResults().take_front(while_op.getNumResults()));
+  while_op.erase();
 }
 
 void WhileOutlinePass::runOnOperation() {

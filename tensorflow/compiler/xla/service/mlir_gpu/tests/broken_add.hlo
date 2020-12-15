@@ -4,7 +4,7 @@ HloModule Add
 ENTRY %Add (x: f32[2,2,2], y: f32[2,2,2]) -> f32[2,2,2] {
   %x = f32[2,2,2]{2,1,0} parameter(0)
   %y = f32[2,2,2]{2,1,0} parameter(1)
-  ROOT %add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y)
+  ROOT %add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y), metadata={op_name="original_tf_op"}
 }
 
-// CHECK: ERRORS FOUND: [%add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y): failed for testing: lmhlo.add; failed for testing: std.return]
+// CHECK: ERRORS FOUND: [%add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y), metadata={op_name="original_tf_op"}: failed for testing: lmhlo.add; failed for testing: std.return]

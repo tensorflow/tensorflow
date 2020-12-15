@@ -19,9 +19,9 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <numeric>
-#include <type_traits>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -49,18 +49,21 @@ class GpuUnaryOpTest : public OpsTestBase {
   // function. In most cases it is enough to just provide the input type,
   // because all the types are the same.
   template <typename T, typename RT = T, typename OutT = T, typename ROutT = RT>
-  void Run(std::vector<int64> input_shape, std::vector<T> input,
+  void Run(std::vector<int64> input_shape, absl::InlinedVector<T, 10> input,
            const std::string op_name, ROutT (*expected_callback)(RT),
-           bool expect_equal = true) {
+           bool expect_equal = true, bool add_tout = false,
+           bool expect_buffer_reuse = true, bool add_t = true) {
     assert(std::accumulate(input_shape.begin(), input_shape.end(), 1,
                            std::multiplies<int64>()) == input.size() &&
            "Expected input length to equal to shape's number of elements.");
 
     TensorShape shape(input_shape);
     NodeDefBuilder builder("some_name", op_name);
-    builder.Input(FakeInput(DataTypeToEnum<T>::v()))
-        .Attr("T", DataTypeToEnum<T>::v());
-    if (!std::is_same_v<OutT, T>) {
+    builder.Input(FakeInput(DataTypeToEnum<T>::v()));
+    if (add_t) {
+      builder.Attr("T", DataTypeToEnum<T>::v());
+    }
+    if (add_tout) {
       builder.Attr("Tout", DataTypeToEnum<OutT>::v());
     }
     TF_ASSERT_OK(builder.Finalize(node_def()));
@@ -69,8 +72,16 @@ class GpuUnaryOpTest : public OpsTestBase {
     AddInputFromArray<T>(shape, input);
     TF_ASSERT_OK(RunOpKernel());
 
+    // Assert buffer reuse if expected.
+    if (expect_buffer_reuse) {
+      void* arg_ptr_on_device = context_->input(0).data();
+      void* result_ptr_on_device = context_->mutable_output(0)->data();
+      ASSERT_EQ(arg_ptr_on_device, result_ptr_on_device);
+    }
+
+    // Assert expected results.
     Tensor expected_tensor(allocator(), DataTypeToEnum<OutT>::value, shape);
-    std::vector<OutT> expected;
+    absl::InlinedVector<OutT, 14> expected;
     expected.reserve(input.size());
     for (const T& inp : input) {
       expected.push_back(
@@ -89,15 +100,15 @@ class GpuUnaryOpTest : public OpsTestBase {
   std::vector<int64> DefaultInputShape() { return std::vector<int64>{2, 7}; }
 
   template <typename T>
-  std::vector<T> DefaultInput() {
+  absl::InlinedVector<T, 10> DefaultInput() {
     return InputAsVector<T>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3,
                              0.5, 0.7, 0.9, 9.0, 18.0});
   }
 
   template <typename T>
-  std::vector<std::complex<T>> DefaultComplexInput() {
+  absl::InlinedVector<std::complex<T>, 10> DefaultComplexInput() {
     auto input = DefaultInput<T>();
-    std::vector<std::complex<T>> complex_input;
+    absl::InlinedVector<std::complex<T>, 10> complex_input;
     for (T value : input) {
       complex_input.emplace_back(value, -value);
     }
@@ -105,21 +116,22 @@ class GpuUnaryOpTest : public OpsTestBase {
   }
 
   template <typename T>
-  std::vector<T> DefaultInputGreaterThanZero() {
+  absl::InlinedVector<T, 10> DefaultInputGreaterThanZero() {
     return InputAsVector<T>({18.0, 9.0, 1e-6, 1.0, 0.1, 1e-6, 0.1, 0.2, 0.3,
                              0.5, 0.7, 0.9, 9.0, 18.0});
   }
 
   template <typename T>
-  std::vector<T> DefaultInputGreaterOrEqualToZero() {
+  absl::InlinedVector<T, 10> DefaultInputGreaterOrEqualToZero() {
     return InputAsVector<T>({18.0, 9.0, 1e-6, 0.0, 0.1, 1e-6, 0.1, 0.2, 0.3,
                              0.5, 0.7, 0.9, 9.0, 18.0});
   }
 
  private:
   template <typename T>
-  std::vector<T> InputAsVector(std::initializer_list<double> input) {
-    std::vector<T> result;
+  absl::InlinedVector<T, 10> InputAsVector(
+      std::initializer_list<double> input) {
+    absl::InlinedVector<T, 10> result;
     result.reserve(input.size());
     for (const auto& value : input) {
       result.push_back(static_cast<T>(value));
@@ -210,6 +222,28 @@ TEST_F(GpuUnaryOpTest, CeilHalf) {
                           /*expect_equal=*/true);
 }
 
+/// Test `tf.Conj`.
+
+TEST_F(GpuUnaryOpTest, ConjFloat) {
+  Run<std::complex<float>, const std::complex<float>&, std::complex<float>,
+      std::complex<float>>(DefaultInputShape(), DefaultComplexInput<float>(),
+                           /*op_name=*/"Conj",
+                           /*expected_callback=*/std::conj,
+                           /*expect_equal=*/false,
+                           /*add_tout=*/false,
+                           /*expect_buffer_reuse=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, ConjDouble) {
+  Run<std::complex<double>, const std::complex<double>&, std::complex<double>,
+      std::complex<double>>(DefaultInputShape(), DefaultComplexInput<double>(),
+                            /*op_name=*/"Conj",
+                            /*expected_callback=*/std::conj,
+                            /*expect_equal=*/false,
+                            /*add_tout=*/false,
+                            /*expect_buffer_reuse=*/false);
+}
+
 /// Test `tf.Cos`.
 
 TEST_F(GpuUnaryOpTest, CosFloat) {
@@ -282,23 +316,52 @@ TEST_F(GpuUnaryOpTest, FloorHalf) {
 /// Test `tf.Imag`.
 
 TEST_F(GpuUnaryOpTest, ImagFloat) {
-  Run<std::complex<float>, std::complex<float>, float, float>(
+  Run<std::complex<float>, const std::complex<float>&, float, float>(
       DefaultInputShape(), DefaultComplexInput<float>(),
       /*op_name=*/"Imag",
-      // We cannot directly use std::imag here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<float> v) { return std::imag(v); },
-      /*expect_equal=*/false);
+      /*expected_callback=*/std::imag,
+      /*expect_equal=*/false,
+      /*add_tout=*/true,
+      /*expect_buffer_reuse=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, ImagDouble) {
-  Run<std::complex<double>, std::complex<double>, double, double>(
+  Run<std::complex<double>, const std::complex<double>&, double, double>(
       DefaultInputShape(), DefaultComplexInput<double>(),
       /*op_name=*/"Imag",
-      // We cannot directly use std::imag here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<double> v) { return std::imag(v); },
-      /*expect_equal=*/false);
+      /*expected_callback=*/std::imag,
+      /*expect_equal=*/false,
+      /*add_tout=*/true,
+      /*expect_buffer_reuse=*/false);
+}
+
+/// Test `tf.IsInf`.
+
+// TODO(b/162575339): The tests currently still fails with CUDA_ILLEGAL_ADDRESS
+// when run with unranked kernels.
+TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
+  Run<float, float, bool, bool>(DefaultInputShape(), DefaultInput<float>(),
+                                /*op_name=*/"IsInf",
+                                /*expected_callback=*/std::isinf,
+                                /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
+  // Workaround for gcc bug, it would fail with "unresolved overloaded function
+  // type" if passing std::isinf with type double. So we use type float for
+  // comparing expected values.
+  Run<double, float, bool, bool>(DefaultInputShape(), DefaultInput<double>(),
+                                 /*op_name=*/"IsInf",
+                                 /*expected_callback=*/std::isinf,
+                                 /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
+  Run<Eigen::half, float, bool, bool>(DefaultInputShape(),
+                                      DefaultInput<Eigen::half>(),
+                                      /*op_name=*/"IsInf",
+                                      /*expected_callback=*/std::isinf,
+                                      /*expect_equal=*/true);
 }
 
 /// Test `tf.Log`.
@@ -326,12 +389,24 @@ TEST_F(GpuUnaryOpTest, LogHalf) {
                           /*expect_equal=*/false);
 }
 
+/// Test `tf.LogicalNot`
+
+TEST_F(GpuUnaryOpTest, LogicalNot) {
+  Run<bool, bool, bool, bool>(
+      DefaultInputShape(), DefaultInput<bool>(),
+      /*op_name=*/"LogicalNot",
+      /*expected_callback=*/[](bool v) { return !v; },
+      /*expect_equal=*/true,
+      /*add_tout=*/false,
+      /*expect_buffer_reuse=*/true,
+      /*add_t=*/false);
+}
+
 /// Test `tf.Neg`.
 
 /// Reference implementation.
 template <typename T>
 T expected_neg(T x) {
-  if (x == 0) return 0;
   return -x;
 }
 
@@ -339,43 +414,64 @@ TEST_F(GpuUnaryOpTest, NegFloat) {
   Run<float>(DefaultInputShape(), DefaultInput<float>(),
              /*op_name=*/"Neg",
              /*expected_callback=*/expected_neg,
-             /*expect_equal=*/true);
+             /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, NegDouble) {
   Run<double>(DefaultInputShape(), DefaultInput<double>(),
               /*op_name=*/"Neg",
               /*expected_callback=*/expected_neg,
-              /*expect_equal=*/true);
+              /*expect_equal=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, NegHalf) {
   Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
                           /*op_name=*/"Neg",
                           /*expected_callback=*/expected_neg,
-                          /*expect_equal=*/true);
+                          /*expect_equal=*/false);
+}
+
+TEST_F(GpuUnaryOpTest, NegInt8) {
+  Run<int8>(DefaultInputShape(), DefaultInput<int8>(),
+            /*op_name=*/"Neg",
+            /*expected_callback=*/expected_neg,
+            /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, NegInt16) {
+  Run<int16>(DefaultInputShape(), DefaultInput<int16>(),
+             /*op_name=*/"Neg",
+             /*expected_callback=*/expected_neg,
+             /*expect_equal=*/true);
+}
+
+TEST_F(GpuUnaryOpTest, NegInt64) {
+  Run<int64>(DefaultInputShape(), DefaultInput<int64>(),
+             /*op_name=*/"Neg",
+             /*expected_callback=*/expected_neg,
+             /*expect_equal=*/true);
 }
 
 /// Test `tf.Real`.
 
 TEST_F(GpuUnaryOpTest, RealFloat) {
-  Run<std::complex<float>, std::complex<float>, float, float>(
+  Run<std::complex<float>, const std::complex<float>&, float, float>(
       DefaultInputShape(), DefaultComplexInput<float>(),
       /*op_name=*/"Real",
-      // We cannot directly use std::real here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<float> v) { return std::real(v); },
-      /*expect_equal=*/false);
+      /*expected_callback=*/std::real,
+      /*expect_equal=*/false,
+      /*add_tout=*/true,
+      /*expect_buffer_reuse=*/false);
 }
 
 TEST_F(GpuUnaryOpTest, RealDouble) {
-  Run<std::complex<double>, std::complex<double>, double, double>(
+  Run<std::complex<double>, const std::complex<double>&, double, double>(
       DefaultInputShape(), DefaultComplexInput<double>(),
       /*op_name=*/"Real",
-      // We cannot directly use std::real here, because its signature has a
-      // const reference parameter.
-      /*expected_callback=*/[](std::complex<double> v) { return std::real(v); },
-      /*expect_equal=*/false);
+      /*expected_callback=*/std::real,
+      /*expect_equal=*/false,
+      /*add_tout=*/true,
+      /*expect_buffer_reuse=*/false);
 }
 
 /// Test `tf.Rsqrt`.

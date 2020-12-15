@@ -24,8 +24,15 @@ ROOT_DIR=${SCRIPT_DIR}/../../../../..
 cd "${ROOT_DIR}"
 pwd
 
-make -f tensorflow/lite/micro/tools/make/Makefile \
-  clean clean_downloads
+make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
+
+
+make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn clean DISABLE_DOWNLOADS=true
+if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
+  echo "ERROR: Downloads directory should not exist, but it does."
+  exit 1
+fi
+
 
 # We are moving away from having the downloads and installations be part of the
 # Makefile. As a result, we need to manually add the downloads in this script.
@@ -48,8 +55,10 @@ tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
 echo "Running bluepill tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
 
-echo "Running mbed tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
+# TODO(b/174189223): Skipping mbed tests due to:
+# https://github.com/tensorflow/tensorflow/issues/45164
+# echo "Running mbed tests at `date`"
+# tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
 
 echo "Running Sparkfun tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh

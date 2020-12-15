@@ -271,6 +271,10 @@ message OpMetadata {
   //
   // This name is often unique within a computation. Note: some frameworks
   // add auto-generated names if the user does not provide one.
+  //
+  // A dummy name may be assigned if op_name is empty in order to keep track of
+  // where op_name first became empty. Dummy names begin with "DUMMY_" and may
+  // include the current HloPassMetadata.pass_id.
   string op_name = 2;
   // Indicate a file and line that this op is associated to in a user's program.
   //
@@ -279,6 +283,11 @@ message OpMetadata {
   int32 source_line = 4;
 
   repeated ProfileType profile_type = 5;
+
+  // HloPassMetadata.pass_id of the pass that created this HLO instruction
+  // object. Should never be copied between HLO instructions. Zero if unset and
+  // -1 if the instruction was created before HLO passes began.
+  int64 creation_pass_id = 6;
 }
 
 // Profile data from the execution of a computation.
@@ -626,6 +635,9 @@ message OpSharding {
     TUPLE = 2;
     // None of the above; tile_shape and tile_assignment are both used.
     OTHER = 3;
+    // This op is manually sharded: the shapes are already partitioned and the
+    // partitioner should not change this op.
+    MANUAL = 4;
   }
   Type type = 1;
   // The shape of the sharded tile.

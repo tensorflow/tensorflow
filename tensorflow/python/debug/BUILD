@@ -734,7 +734,10 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_mac",  # TODO(b/175322370): Detected Infinity or NaN in output 0 of graph op "RealDiv"
+        "no_windows",
+    ],
     deps = [
         ":check_numerics_callback",
         "//tensorflow/python:framework_test_lib",

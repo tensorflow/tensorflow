@@ -178,6 +178,10 @@ class Sequential(functional.Functional):
       origin_layer = layer._keras_history[0]
       if isinstance(origin_layer, input_layer.InputLayer):
         layer = origin_layer
+        logging.warning(
+            'Please add `keras.layers.InputLayer` instead of `keras.Input` to '
+            'Sequential model. `keras.Input` is intended to be used by '
+            'Functional model.')
 
     if isinstance(layer, module.Module):
       if not isinstance(layer, base_layer.Layer):

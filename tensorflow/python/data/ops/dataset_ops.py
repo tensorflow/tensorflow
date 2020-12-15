@@ -1159,8 +1159,8 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
-        number of elements that will be buffered when prefetching.
-
+        number of elements that will be buffered when prefetching. If the value
+        `tf.data.AUTOTUNE` is used, then the buffer size is dynamically tuned.
     Returns:
       Dataset: A `Dataset`.
     """
@@ -1784,6 +1784,12 @@ name=None))
     ...     num_parallel_calls=tf.data.AUTOTUNE,
     ...     deterministic=False)
 
+    The order of elements yielded by this transformation is deterministic if
+    `deterministic=True`. If `map_func` contains stateful operations and
+    `num_parallel_calls > 1`, the order in which that state is accessed is
+    undefined, so the values of output elements may not be deterministic
+    regardless of the `deterministic` flag value.
+
     Args:
       map_func: A function mapping a dataset element to another dataset element.
       num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
@@ -1792,11 +1798,10 @@ name=None))
         `tf.data.AUTOTUNE` is used, then the number of parallel
         calls is set dynamically based on available CPU.
       deterministic: (Optional.) A boolean controlling whether determinism
-        should be traded for performance by allowing elements to be produced out
+        should be traded for performance by allowing elements to be yielded out
         of order.  If `deterministic` is `None`, the
         `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+        default) is used to decide whether to run deterministically.
 
     Returns:
       Dataset: A `Dataset`.
@@ -1925,8 +1930,7 @@ name=None))
         should be traded for performance by allowing elements to be produced out
         of order.  If `deterministic` is `None`, the
         `tf.data.Options.experimental_deterministic` dataset option (`True` by
-        default) is used to decide whether to produce elements
-        deterministically.
+        default) is used to decide whether to run deterministically.
 
     Returns:
       Dataset: A `Dataset`.

@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
-
 namespace tensorflow {
 namespace gradients {
 namespace internal {
@@ -47,29 +46,19 @@ Status AddGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry) {
-  TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
+  tape->Watch(inputs[0]);  // Watch x.
+  tape->Watch(inputs[1]);  // Watch y.
   std::vector<AbstractTensorHandle*> add_outputs(1);
   AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
   TF_RETURN_IF_ERROR(
       ops::Add(tape_ctx.get(), inputs, absl::MakeSpan(add_outputs), "Add"));
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  std::vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(add_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads,
-      /*build_default_zeros_grads=*/false));
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx, /*targets=*/add_outputs,
+                                           /*sources=*/inputs,
+                                           /*output_gradients=*/{}, outputs));
   for (auto add_output : add_outputs) {
     add_output->Unref();
   }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
   delete tape;
   return Status::OK();
 }
@@ -81,10 +70,9 @@ Status MatMulGradModel(AbstractContext* ctx,
                        absl::Span<AbstractTensorHandle* const> inputs,
                        absl::Span<AbstractTensorHandle*> outputs,
                        const GradientRegistry& registry) {
-  TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch x.
-  tape->Watch(ToId(inputs[1]));  // Watch y.
+  tape->Watch(inputs[0]);  // Watch x.
+  tape->Watch(inputs[1]);  // Watch y.
   vector<AbstractTensorHandle*> mm_outputs(1);
   AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
   TF_RETURN_IF_ERROR(ops::MatMul(tape_ctx.get(), inputs,
@@ -92,21 +80,12 @@ Status MatMulGradModel(AbstractContext* ctx,
                                  /*transpose_a=*/false,
                                  /*transpose_b=*/false));  // Compute x*y.
 
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads,
-      /*build_default_zeros_grads=*/false));
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx, /*targets=*/mm_outputs,
+                                           /*sources=*/inputs,
+                                           /*output_gradients=*/{}, outputs));
   for (auto mm_output : mm_outputs) {
     mm_output->Unref();
   }
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
   delete tape;
   return Status::OK();
 }
@@ -138,39 +117,32 @@ Status MNISTForwardModel(AbstractContext* ctx,
   AbstractTensorHandle* W2 = inputs[2];
   AbstractTensorHandle* y_labels = inputs[3];
 
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(W1));  // Watch W1.
-  tape->Watch(ToId(W2));  // Watch W2.
   vector<AbstractTensorHandle*> temp_outputs(1);
 
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::MatMul(tape_ctx.get(), {X, W1},
-                                 absl::MakeSpan(temp_outputs), "matmul0",
+  TF_RETURN_IF_ERROR(ops::MatMul(ctx, {X, W1}, absl::MakeSpan(temp_outputs),
+                                 "matmul0",
                                  /*transpose_a=*/false,
                                  /*transpose_b=*/false));  // Compute X*W1
 
-  TF_RETURN_IF_ERROR(ops::Relu(tape_ctx.get(), {temp_outputs[0]},
+  TF_RETURN_IF_ERROR(ops::Relu(ctx, {temp_outputs[0]},
                                absl::MakeSpan(temp_outputs),
                                "relu"));  // Compute Relu(X*W1)
 
   TF_RETURN_IF_ERROR(ops::MatMul(
-      tape_ctx.get(), {temp_outputs[0], W2}, absl::MakeSpan(temp_outputs),
-      "matmul1",
+      ctx, {temp_outputs[0], W2}, absl::MakeSpan(temp_outputs), "matmul1",
       /*transpose_a=*/false, /*transpose_b=*/false));  // Compute W2*Relu(X*W1)
 
   AbstractTensorHandle* scores = temp_outputs[0];
 
   temp_outputs.resize(2);
   TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      tape_ctx.get(), {scores, y_labels}, absl::MakeSpan(temp_outputs),
+      ctx, {scores, y_labels}, absl::MakeSpan(temp_outputs),
       "softmax_loss"));  // Compute Softmax(Scores,labels)
 
   AbstractTensorHandle* loss_vals = temp_outputs[0];
 
   outputs[0] = scores;
   outputs[1] = loss_vals;
-  delete tape;
   return Status::OK();
 }
 
@@ -181,21 +153,9 @@ Status MatMulTransposeModel(AbstractContext* ctx,
   AbstractTensorHandle* X = inputs[0];
   AbstractTensorHandle* W1 = inputs[1];
 
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(X));
-  tape->Watch(ToId(W1));
-  vector<AbstractTensorHandle*> temp_outputs(1);
-
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::MatMul(tape_ctx.get(), {X, W1},
-                                 absl::MakeSpan(temp_outputs), "matmul0",
+  TF_RETURN_IF_ERROR(ops::MatMul(ctx, {X, W1}, outputs, "matmul0",
                                  /*transpose_a=*/true,
                                  /*transpose_b=*/false));  // Compute X*W1
-
-  outputs[0] = temp_outputs[0];
-
-  delete tape;
   return Status::OK();
 }
 
@@ -203,60 +163,22 @@ Status ReluGradModel(AbstractContext* ctx,
                      absl::Span<AbstractTensorHandle* const> inputs,
                      absl::Span<AbstractTensorHandle*> outputs,
                      const GradientRegistry& registry) {
-  TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch X
+  tape->Watch(inputs[0]);  // Watch X
   vector<AbstractTensorHandle*> relu_outputs(1);
   AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
   TF_RETURN_IF_ERROR(ops::Relu(tape_ctx.get(), inputs,
                                absl::MakeSpan(relu_outputs),
                                "relu0"));  // Relu(X)
 
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(relu_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads,
-      /*build_default_zeros_grads=*/false));
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx, /*targets=*/relu_outputs,
+                                           /*sources=*/inputs,
+                                           /*output_gradients=*/{}, outputs));
 
   for (auto relu_output : relu_outputs) {
     relu_output->Unref();
   }
 
-  outputs[0] = out_grads[0];
-  delete tape;
-  return Status::OK();
-}
-
-Status SoftmaxLossGradModel(AbstractContext* ctx,
-                            absl::Span<AbstractTensorHandle* const> inputs,
-                            absl::Span<AbstractTensorHandle*> outputs,
-                            const GradientRegistry& registry) {
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(ToId(inputs[0]));  // Watch scores.
-  tape->Watch(ToId(inputs[1]));  // Watch labels.
-  vector<AbstractTensorHandle*> sm_outputs(2);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      tape_ctx.get(), inputs, absl::MakeSpan(sm_outputs), "softmax0"));
-
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(
-      vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
-      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-      source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads,
-      /*build_default_zeros_grads=*/false));
-
-  outputs[0] = out_grads[0];
-  outputs[1] = out_grads[1];
   delete tape;
   return Status::OK();
 }
@@ -270,11 +192,10 @@ Status MNISTGradModel(AbstractContext* ctx,
   AbstractTensorHandle* W2 = inputs[2];
   AbstractTensorHandle* y_labels = inputs[3];
 
-  TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/true);
-  tape->Watch(ToId(X));   // Watch X.
-  tape->Watch(ToId(W1));  // Watch W1.
-  tape->Watch(ToId(W2));  // Watch W1.
+  tape->Watch(X);   // Watch X.
+  tape->Watch(W1);  // Watch W1.
+  tape->Watch(W2);  // Watch W1.
   vector<AbstractTensorHandle*> temp_outputs(1);
   AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
   TF_RETURN_IF_ERROR(ops::MatMul(tape_ctx.get(), {X, W1},
@@ -303,24 +224,14 @@ Status MNISTGradModel(AbstractContext* ctx,
 
   AbstractTensorHandle* loss = temp_outputs[0];
 
-  std::unordered_map<tensorflow::int64, TapeTensor>
-      source_tensors_that_are_targets;
-
-  vector<AbstractTensorHandle*> out_grads;
-  TF_RETURN_IF_ERROR(
-      tape->ComputeGradient(vspace, /*target_tensor_ids=*/{ToId(loss)},
-                            /*source_tensor_ids=*/{ToId(W1), ToId(W2)},
-                            source_tensors_that_are_targets,
-                            /*output_gradients=*/{}, &out_grads,
-                            /*build_default_zeros_grads=*/false));
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx, /*targets=*/{loss},
+                                           /*sources=*/{W1, W2},
+                                           /*output_gradients=*/{},
+                                           outputs.subspan(0, 2)));
 
   // Only release 2nd temp output as first holds loss values.
   temp_outputs[1]->Unref();
-
-  outputs[0] = out_grads[0];  // dW1
-  outputs[1] = out_grads[1];  // dW2
   outputs[2] = loss;
-
   delete tape;
   return Status::OK();
 }
@@ -329,83 +240,25 @@ Status ScalarMulModel(AbstractContext* ctx,
                       absl::Span<AbstractTensorHandle* const> inputs,
                       absl::Span<AbstractTensorHandle*> outputs,
                       const GradientRegistry& registry) {
-  AbstractTensorHandle* eta = inputs[0];
-  AbstractTensorHandle* A = inputs[1];
-
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  vector<AbstractTensorHandle*> temp_outputs(1);
-
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::Mul(tape_ctx.get(), {eta, A},
-                              absl::MakeSpan(temp_outputs),
-                              "scalarMul0"));  // Compute eta*A
-
-  outputs[0] = temp_outputs[0];
-
-  delete tape;
-  return Status::OK();
+  return ops::Mul(ctx, inputs, outputs,
+                  "scalarMul0");  // Compute eta*A
 }
 
 Status MatMulModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs,
                    const GradientRegistry& registry) {
-  AbstractTensorHandle* X = inputs[0];
-  AbstractTensorHandle* W1 = inputs[1];
-
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::MatMul(tape_ctx.get(), {X, W1},
-                                 absl::MakeSpan(temp_outputs), "matmul0",
-                                 /*transpose_a=*/false,
-                                 /*transpose_b=*/false));  // Compute X*W1
-
-  outputs[0] = temp_outputs[0];
-  delete tape;
-  return Status::OK();
+  return ops::MatMul(ctx, inputs, outputs, "matmul0",
+                     /*transpose_a=*/false,
+                     /*transpose_b=*/false);  // Compute X*W1
 }
 
 Status MulModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs,
                 const GradientRegistry& registry) {
-  AbstractTensorHandle* x = inputs[0];
-  AbstractTensorHandle* y = inputs[1];
-
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::Mul(tape_ctx.get(), {x, y},
-                              absl::MakeSpan(temp_outputs),
-                              "mul0"));  // Compute x*y
-
-  outputs[0] = temp_outputs[0];
-  delete tape;
-  return Status::OK();
-}
-
-Status SoftmaxModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  AbstractTensorHandle* x = inputs[0];
-  AbstractTensorHandle* labels = inputs[1];
-
-  TapeVSpace vspace(ctx);
-  auto tape = new Tape(/*persistent=*/false);
-  std::vector<AbstractTensorHandle*> temp_outputs(2);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      tape_ctx.get(), {x, labels}, absl::MakeSpan(temp_outputs), "sm_loss"));
-
-  outputs[0] = temp_outputs[0];  // loss values
-
-  delete tape;
-  return Status::OK();
+  return ops::Mul(ctx, inputs, outputs,
+                  "mul0");  // Compute x*y
 }
 
 // ============================= End Models ================================

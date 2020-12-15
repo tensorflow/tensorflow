@@ -37,8 +37,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -351,10 +351,10 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         // to properly broadcast the scalar to `{num_channels}` shape.
 
         // Get the number of channels if possible.
-        auto filter_type = filter.getType().cast<ShapedType>();
+        auto filter_type = filter.getType().dyn_cast<RankedTensorType>();
         // Filter must be a `2D` tensor with `{num_channels, num_features}`
         // shape. The following check is rejecting unknown rank (-1).
-        if (filter_type.getRank() != 2) {
+        if (filter_type == nullptr || filter_type.getRank() != 2) {
           return failure();
         }
         int num_channels = filter_type.getShape()[0];

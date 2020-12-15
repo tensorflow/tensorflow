@@ -61,6 +61,12 @@ class HloModuleMetadata {
     module_metadata_.add_partitioned_module_ids(id);
   }
 
+  StatusOr<int64> current_pass_id() {
+    TF_ASSIGN_OR_RETURN(HloPassMetadata * pass_metadata,
+                        GetCurrentHloPassMetadata());
+    return pass_metadata->pass_id();
+  }
+
   // Setters for the current HloPassMetadata.
   Status set_current_pass_name(const std::string& pass_name) {
     return MutateCurrentHloPassMetadata(
