@@ -5,7 +5,8 @@ FROM python:3.9.0-buster
 
 LABEL maintainer="Pete Warden <petewarden@google.com>"
 
-RUN apt-get update && apt-get install -y zip xxd clang-format
+RUN apt-get update && apt-get install -y zip xxd
+RUN pip install clang-format
 RUN pip install six
 # Install Renode test dependencies
 RUN pip install pyyaml requests psutil robotframework==3.1
