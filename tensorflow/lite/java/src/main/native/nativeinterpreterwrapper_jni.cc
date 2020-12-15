@@ -31,7 +31,7 @@ limitations under the License.
 
 namespace tflite {
 // This is to be provided at link-time by a library.
-extern std::unique_ptr<OpResolver> CreateOpResolver();
+extern std::unique_ptr<MutableOpResolver> CreateOpResolver();
 }  // namespace tflite
 
 using tflite::jni::BufferErrorReporter;
