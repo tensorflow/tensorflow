@@ -813,7 +813,8 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
         /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(),
         /*initTensors=*/ValueRange{}, maps, types);
-    linalg_op.region().takeBody(reduce_op.body());
+    rewriter.inlineRegionBefore(reduce_op.body(), linalg_op.region(),
+                                linalg_op.region().end());
     {
       OpBuilder::InsertionGuard region_guard(rewriter);
       Block* block = linalg_op.getBody();
