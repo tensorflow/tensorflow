@@ -41,20 +41,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   SqueezeContext op_context(context, node);
-  int input_num_dims = NumDimensions(op_context.input);
-  int num_squeeze_dims = op_context.params->num_squeeze_dims;
+  const int input_num_dims = NumDimensions(op_context.input);
+  const int num_squeeze_dims = op_context.params->num_squeeze_dims;
 
   // Determines number of dimensions of output tensor after squeeze.
   const TfLiteIntArray* input_dims = op_context.input->dims;
+  const TfLiteIntArray* output_dims = op_context.output->dims;
   const int* squeeze_dims = op_context.params->squeeze_dims;
-  TF_LITE_ENSURE(context, input_num_dims <= 8);
-  bool should_squeeze[8] = {false};
-  int num_squeezed_dims = 0;
+
+  constexpr int max_squeeze_dims = 8;
+  TF_LITE_ENSURE(context, input_num_dims <= max_squeeze_dims);
+  bool should_squeeze[max_squeeze_dims] = {};
+
   if (num_squeeze_dims == 0) {
     for (int idx = 0; idx < input_num_dims; ++idx) {
       if (input_dims->data[idx] == 1) {
         should_squeeze[idx] = true;
-        ++num_squeezed_dims;
       }
     }
   } else {
@@ -63,8 +65,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                           : squeeze_dims[idx];
       TF_LITE_ENSURE(context, current >= 0 && current < input_num_dims &&
                                   input_dims->data[current] == 1);
-      if (!should_squeeze[current]) ++num_squeezed_dims;
       should_squeeze[current] = true;
+    }
+  }
+
+  // Ensure output dimensions are big enough.
+  for (int in_idx = 0, out_idx = 0; in_idx < input_num_dims; ++in_idx) {
+    if (!should_squeeze[in_idx]) {
+      TFLITE_CHECK_GE(output_dims->data[out_idx++],
+                      input_dims->data[in_idx]);
+
     }
   }
 
@@ -90,14 +100,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 
 TfLiteRegistration Register_SQUEEZE() {
-  return TfLiteRegistration{nullptr,
-                            nullptr,
-                            Prepare,
-                            Eval,
-                            /*profiling_string=*/nullptr,
-                            /*builtin_code=*/0,
-                            /*custom_name=*/nullptr,
-                            /*version=*/0};
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/Prepare,
+          /*invoke=*/Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace tflite

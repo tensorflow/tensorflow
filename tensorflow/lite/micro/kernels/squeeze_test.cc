@@ -87,10 +87,11 @@ TF_LITE_MICRO_TEST(SqueezeAll) {
 TF_LITE_MICRO_TEST(SqueezeSelectedAxis) {
   int output_data[24];
   TfLiteSqueezeParams squeeze_params = {{2}, 1};
+  const int output_dims_data_common[] = {2, 1, 24};
 
   tflite::testing::TestSqueezeOp(tflite::testing::input_dims_data_common,
                                  tflite::testing::input_data_common,
-                                 tflite::testing::output_dims_data_common,
+                                 output_dims_data_common,
                                  output_data, tflite::testing::golden_common,
                                  tflite::testing::expected_output_size_common,
                                  &squeeze_params);
