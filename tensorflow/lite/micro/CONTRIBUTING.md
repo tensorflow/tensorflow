@@ -4,22 +4,22 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
 
 <!--ts-->
+   * [Contributing Guidelines](#contributing-guidelines)
+      * [General Pull Request Guidelines](#general-pull-request-guidelines)
+      * [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
+         * [Bug Fixes](#bug-fixes)
+         * [Reference Kernel Implementations](#reference-kernel-implementations)
+         * [Optimized Kernel Implementations](#optimized-kernel-implementations)
+         * [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
+         * [New Features](#new-features)
+   * [Development Workflow Notes](#development-workflow-notes)
+      * [Before submitting your PR](#before-submitting-your-pr)
+      * [During the PR review](#during-the-pr-review)
+      * [Reviewer notes](#reviewer-notes)
+      * [Python notes](#python-notes)
+   * [Continuous Integration System](#continuous-integration-system)
 
-*   [Contributing Guidelines](#contributing-guidelines)
-    *   [General Pull Request Guidelines](#general-pull-request-guidelines)
-    *   [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
-        *   [Bug Fixes](#bug-fixes)
-        *   [Reference Kernel Implementations](#reference-kernel-implementations)
-        *   [Optimized Kernel Implementations](#optimized-kernel-implementations)
-        *   [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
-        *   [New Features](#new-features)
-*   [Development Workflow Notes](#development-workflow-notes)
-    *   [Before submitting your PR](#before-submitting-your-pr)
-    *   [During the PR review](#during-the-pr-review)
-    *   [Reviewer notes](#reviewer-notes)
-    *   [Python notes](#python-notes)
-
-<!-- Added by: advaitjain, at: Mon 05 Oct 2020 02:38:02 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 15 Dec 2020 03:06:29 PM PST -->
 
 <!--te-->
 
@@ -305,3 +305,31 @@ that can be expanded and improved as necessary.
     ```
     yapf log_parser.py -i --style='{based_on_style: pep8, indent_width: 2}'
     ```
+# Continuous Integration System
+
+ * As a contributor, please make sure that the TfLite Micro build is green. You
+   can click on the details link to see what the errors are:
+
+   [![TfLite Micro Build](docs/images/tflm_continuous_integration_1.png)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.html)
+
+
+ * Most of the tests that are run as part of the CI are with the
+ [micro/tools/ci_build/test_all.sh](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/tools/ci_build/test_all.sh) script.
+
+     * There are a few additional tests that use bazel that are not captured by the
+       `test_all.sh` script.
+
+ * If an error is not reproducible on your development machine, you can recreate
+   the docker container that is used on the CI servers with the following
+   commands (run from the root of the tensorflow github repo):
+
+   ```
+   mkdir /tmp/tflm-docker
+   docker build -f tensorflow/tools/ci_build/Dockerfile.micro -t tflm /tmp/tflm-docker
+   docker run -v `pwd`:/tensorflow -it tflm bash
+   ```
+
+   The `docker run` command is mounting the tensorflow repository on your
+   machine to the docker containter. As a result, any changes made within the
+   docker container will also be reflected in the directory in the host machine.
+
