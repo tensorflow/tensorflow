@@ -35,7 +35,7 @@ fi
 
 
 echo "Running formatting and license checks at `date`"
-tensorflow/lite/micro/tools/ci_build/test_withpigweed.sh PRESUBMIT
+tensorflow/lite/micro/tools/ci_build/test_with_pigweed.sh PRESUBMIT
 
 # We are moving away from having the downloads and installations be part of the
 # Makefile. As a result, we need to manually add the downloads in this script.
