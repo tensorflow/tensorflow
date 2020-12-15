@@ -68,9 +68,9 @@ tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
 # Check that the TFLM-only code is clang-formatted We are currently ignoring
 # Python files (with yapf as the formatter) because that needs additional setup.
 tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
-  . \
-  -e "\.inc" \
-  -e "\.py"
+  . \
+  -e "\.inc" \
+  -e "\.py"
 
 popd
 if [[ ${1} == "PRESUBMIT" ]]; then
