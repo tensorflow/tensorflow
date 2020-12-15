@@ -1426,6 +1426,10 @@ void ProcessFunctionLibraryRuntime::Run(
                                       InternalArgs* comp_args) -> Status {
       // "Index"s of _Arg nodes are unique when all arguments are local Tensors.
       for (const auto& it : comp_data.arg_indices) {
+        if (it.index >= args.size()) {
+          return errors::InvalidArgument(
+              "index ", it.index, " is out of range [0, ", args.size(), ")");
+        }
         if (it.sub_index >= 0) {
           const Tensor& t = args[it.index];
           if (t.dtype() != DT_RESOURCE) {
