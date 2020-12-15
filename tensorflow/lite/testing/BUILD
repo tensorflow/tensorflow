@@ -240,6 +240,7 @@ cc_library(
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/kernels:test_delegate_providers_lib",
         "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/parse_example:parse_example",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [],
