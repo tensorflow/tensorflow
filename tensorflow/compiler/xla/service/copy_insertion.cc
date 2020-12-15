@@ -881,7 +881,16 @@ class CopyRemover {
       return ordering_.IsDefinedBefore(*a.value, *b.value);
     }
     return absl::c_all_of(a.uses, [&](const HloUse* use) {
-      return ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_);
+      switch (ordering_.GetExecutionConstraint(use->instruction,
+                                               b.value->instruction())) {
+        case HloOrdering::ExecutionConstraint::kIsSame:
+        case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
+        case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
+          return true;
+        default:
+          return ordering_.UseIsBeforeValueDefinition(*use, *b.value,
+                                                      dataflow_);
+      }
     });
   }
 
