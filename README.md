@@ -14,7 +14,7 @@ for machine learning. It has a comprehensive, flexible ecosystem of
 [tools](https://www.tensorflow.org/resources/tools),
 [libraries](https://www.tensorflow.org/resources/libraries-extensions), and
 [community](https://www.tensorflow.org/community) resources that lets
-researchers push the state-of-the-art in ML and developers easily build and
+researchers push the state-of-the-art in Machine Learning(ML) and developers easily build and
 deploy ML-powered applications.
 
 TensorFlow was originally developed by researchers and engineers working on the
@@ -169,7 +169,7 @@ Container Type                                                    | Status | Art
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 
 Learn more about the
-[TensorFlow community](https://www.tensorflow.org/community) and how to
+[TensorFlow community](https://www.tensorflow.org/community) and how can you 
 [contribute](https://www.tensorflow.org/community/contribute).
 
 ## License
