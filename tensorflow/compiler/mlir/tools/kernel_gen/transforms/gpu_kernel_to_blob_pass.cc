@@ -99,7 +99,9 @@ class GpuKernelToBlobPass
     llvmModule->setModuleIdentifier("acme");
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(true);
+    config.set_debug_options(options);
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
     std::vector<tensorflow::se::HsacoImage> images;
@@ -148,7 +150,9 @@ class GpuKernelToBlobPass
     llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(true);
+    config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
       target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
