@@ -470,7 +470,7 @@ class RandomTranslation(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
-    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+    fill_value: a float or a 1-D tensor of shape `(channels)`, represents
       the value to be filled outside the boundaries when `fill_mode` is
       "constant".
 
@@ -802,7 +802,7 @@ class RandomRotation(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
-    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+    fill_value: a float or a 1-D tensor of shape `(channels)`, represents
       the value to be filled outside the boundaries when `fill_mode` is
       "constant".
 
@@ -925,7 +925,7 @@ class RandomZoom(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
-    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+    fill_value: a float or a 1-D tensor of shape `(channels)`, represents
       the value to be filled outside the boundaries when `fill_mode` is
       "constant".
 
