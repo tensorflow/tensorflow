@@ -3468,7 +3468,6 @@ cc_library(
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestShapeDialect",
         "@llvm-project//mlir/test:TestTransforms",
-        "@llvm-project//mlir/test:TestTypeDialect",
     ],
 )
 
@@ -3619,7 +3618,6 @@ cc_binary(
         "@llvm-project//mlir/test:TestSPIRV",
         "@llvm-project//mlir/test:TestTosaDialect",
         "@llvm-project//mlir/test:TestTransforms",
-        "@llvm-project//mlir/test:TestTypeDialect",
     ],
 )
 
