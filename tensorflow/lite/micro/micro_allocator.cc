@@ -58,7 +58,11 @@ struct AllocationInfo {
 
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
+#if defined(__s390x__)
+constexpr int kBufferAlignment = 8;
+#else
 constexpr int kBufferAlignment = 16;
+#endif
 constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
 const TfLiteIntArray kZeroLengthIntArray = {};
 
