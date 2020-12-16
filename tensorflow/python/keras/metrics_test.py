@@ -1396,6 +1396,7 @@ class MeanIoUTest(test.TestCase):
     expected_result = (0 / (1 + 0 - 0) + 2 / (2 + 2 - 2) + 1 / (1 + 2 - 1)) / 3
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
+
 class MeanTensorTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
