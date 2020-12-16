@@ -349,9 +349,7 @@ cc_library(
         "//conditions:default": ["-DTFLITE_HAVE_CPUINFO"],
     }),
     deps = [
-        # TODO(b/168923364): Remove deprecated_backends after it is added to all
-        # necessary targets.
-        ":deprecated_backends",
+        ":deprecated_backends",  # TODO(b/168923364): Move to dependent targets.
         ":tflite_with_ruy",
         ":op_macros",
         # For now this unconditionally depends on both ruy and gemmlowp.

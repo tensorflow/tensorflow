@@ -135,7 +135,6 @@ cc_test(
         ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:deprecated_backends",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
