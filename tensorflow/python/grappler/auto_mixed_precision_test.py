@@ -839,7 +839,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_ingraph_train_loop(self, mode):
     """Tests a graph containing a while loop around a training update.
