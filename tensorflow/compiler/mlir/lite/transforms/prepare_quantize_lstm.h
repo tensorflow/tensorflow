@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
@@ -93,7 +94,22 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
     const auto lstm_property =
         operator_property::GetOperatorProperty(lstm_variant);
 
-    // TODO(b/172517537): use same scale for input 18 and output
+    // Use same scale for input and output specified in restrict_scale.
+    for (const std::vector<int>& tensors : lstm_property.restrict_scale) {
+      if (tensors.empty()) {
+        continue;
+      }
+      if (tensors.size() != 2) {
+        op.emitError(
+            "Unexpected restricted_scale from operator property."
+            " Should only have a pair of indices.");
+        return failure();
+      }
+      if (failed(processRestrictScale(op, tensors[0], tensors[1], rewriter))) {
+        return failure();
+      }
+    }
+
     if (failed(processIntermediates(op, lstm_variant, lstm_property)) ||
         failed(processInputs(op, lstm_variant, lstm_property, rewriter))) {
       return failure();
@@ -380,6 +396,61 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
     Type result_type = quant_type.castFromExpressedType(stats_op.getType());
     auto q = rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.arg());
     rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
+    return success();
+  }
+
+  // For LSTM's recurrent input activation and output, they are quantized with
+  // the collective range of both tensors, because theoretically the input
+  // activation value for the very first inference is not reflected in the
+  // output and the input activation is not captured.
+  LogicalResult processRestrictScale(SourceOp op, int input_index,
+                                     int output_index,
+                                     PatternRewriter& rewriter) const {
+    assert(output_index == 0);
+    if (!op.getResult().hasOneUse()) {
+      op.emitError()
+          << "output " << output_index
+          << " should have only one use, which should be quant.stats.";
+      return failure();
+    }
+
+    llvm::SmallVector<quant::StatisticsOp, 2> stats_ops = {
+        llvm::dyn_cast_or_null<quant::StatisticsOp>(
+            op.getOperand(input_index).getDefiningOp()),
+        llvm::dyn_cast_or_null<quant::StatisticsOp>(
+            *op.getResult().getUsers().begin()),
+    };
+
+    if (!stats_ops[0] || !stats_ops[1]) {
+      return failure();  // Already converted to Q-DQ pair.
+    }
+
+    llvm::SmallVector<llvm::APFloat, 4> min_max_values;
+
+    for (auto& stats_op : stats_ops) {
+      auto values = stats_op.layerStats()
+                        .dyn_cast<DenseFPElementsAttr>()
+                        .getValues<llvm::APFloat>();
+      min_max_values.insert(min_max_values.end(), values.begin(), values.end());
+    }
+
+    // min and max values of two stats are already the same.
+    if (min_max_values[0] == min_max_values[2] &&
+        min_max_values[1] == min_max_values[3]) {
+      return success();
+    }
+
+    mlir::ElementsAttr layer_stats = mlir::DenseFPElementsAttr::get(
+        mlir::RankedTensorType::get({2}, rewriter.getF32Type()),
+        {llvm::minimum(min_max_values[0], min_max_values[2]),
+         llvm::maximum(min_max_values[1], min_max_values[3])});
+    mlir::ElementsAttr axis_stats;
+    mlir::IntegerAttr axis;
+    for (auto& stats_op : stats_ops) {
+      rewriter.setInsertionPointAfter(stats_op);
+      rewriter.replaceOpWithNewOp<quant::StatisticsOp>(
+          stats_op, stats_op.arg(), layer_stats, axis_stats, axis);
+    }
     return success();
   }
 };
