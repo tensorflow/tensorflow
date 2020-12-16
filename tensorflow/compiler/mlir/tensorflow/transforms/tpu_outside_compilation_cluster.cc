@@ -124,6 +124,9 @@ class OutsideCompiledCluster {
   }
 
  private:
+  // TODO(hinsu): Consider using GraphCycles data structure available in xla
+  // directory to avoid potentially full traversal for each new op and cluster
+  // pair.
   // Checks if it is safe for `op` to be merged into this cluster.
   bool IsSafeToAdd(Operation* op,
                    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
@@ -131,7 +134,7 @@ class OutsideCompiledCluster {
 
     // If there is an intermediate data or side effect dependency between the op
     // and ops in the cluster, it's not safe to add.
-    llvm::SmallSetVector<Operation*, 4> op_stack;
+    std::vector<Operation*> dependencies;
 
     // Materialize data dependencies as the llvm::concat doesn't support
     // non-materialized iteration.
@@ -139,17 +142,22 @@ class OutsideCompiledCluster {
     llvm::SmallVector<Operation*, 4> control_deps =
         side_effect_analysis.DirectControlSuccessors(op);
     for (auto* dep : llvm::concat<Operation*>(data_deps, control_deps)) {
-      if (!host_cluster_ops_.contains(dep)) op_stack.insert(dep);
+      if (!host_cluster_ops_.contains(dep)) dependencies.push_back(dep);
     }
 
-    while (!op_stack.empty()) {
-      auto* next_op = op_stack.pop_back_val();
+    llvm::SmallPtrSet<Operation*, 4> visited;
+    while (!dependencies.empty()) {
+      Operation* next_op = dependencies.back();
+      dependencies.pop_back();
+      if (visited.count(next_op)) continue;
+      visited.insert(next_op);
+
       auto data_deps = llvm::to_vector<4>(next_op->getUsers());
       llvm::SmallVector<Operation*, 4> control_deps =
           side_effect_analysis.DirectControlSuccessors(next_op);
       for (auto* dep : llvm::concat<Operation*>(data_deps, control_deps)) {
         if (host_cluster_ops_.contains(dep)) return false;
-        op_stack.insert(dep);
+        dependencies.push_back(dep);
       }
     }
 
