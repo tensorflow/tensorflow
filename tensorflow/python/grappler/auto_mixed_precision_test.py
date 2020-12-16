@@ -460,7 +460,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv3d_bn(self, mode):
     """Test graph with convolution followed by batch norm."""
@@ -486,7 +486,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv3d(self, mode):
     """Test grad ops with convolution3d graph."""
@@ -519,7 +519,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   # MKL
   @parameterized.parameters(['cuda'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn_dropout(self, mode):
     """Test dropout precision of convolution batch norm graph."""
@@ -579,7 +579,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   # TODO(benbarsdell): This test has not been tried with MKL.
   @parameterized.parameters(['cuda'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_depthwise_conv2d(self, mode):
     """Test grad ops with depthwise convolution2d graph."""
@@ -615,7 +615,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_simple_loop(self, mode):
     """Test graph with while loop."""
@@ -637,7 +637,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_loop_with_vars_intertwined(self, mode):
     """Test graph with intertwined while loops."""
@@ -662,7 +662,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_multi_paths(self, mode):
     """Test graph with multiple paths."""
@@ -692,7 +692,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_multi_paths_2(self, mode):
     """Test graph with multiple paths."""
@@ -726,7 +726,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda'])  # MKL doesn't support bf16 Sigmoid
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_recurrent_lstm(self, mode):
     """Test graph with recurrent lstm."""
@@ -754,63 +754,63 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('v1 loop test')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_1(self, mode):
     self._run_simple_loop_test(mode, 'W', 'C', 'C')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('v1 loop test')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_2(self, mode):
     self._run_simple_loop_test(mode, 'C', 'C', 'W')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('v1 loop test')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_3(self, mode):
     self._run_simple_loop_test(mode, 'W', 'G', 'W')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('v1 loop test')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_4(self, mode):
     self._run_simple_loop_test(mode, 'W', 'gbg', 'W')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_5(self, mode):
     self._run_simple_loop_test(mode, 'b', 'gWC', 'c')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_6(self, mode):
     self._run_simple_loop_test(mode, 'b', 'CWCG', 'C')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_7(self, mode):
     self._run_simple_loop_test(mode, 'C', 'GWCG', 'C')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_v1_only('b/138749235')
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_propagation_through_simple_loop_8(self, mode):
     self._run_simple_loop_test(mode, 'C', 'CgbgWC', 'g')
 
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
-  @test_util.disable_nonAVX512f('test will fail with AVX512f e.g. brodwell')
+  @test_util.disable_nonAVX512f('Test will fail on machines without AVX512f, e.g., Broadwell')
   @test_util.disable_xla('This test does not pass with XLA')
   def test_noninlined_funcdef(self, mode):
     """Test graph with non-inlined function subgraph.
