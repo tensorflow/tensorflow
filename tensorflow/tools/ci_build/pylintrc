@@ -20,7 +20,7 @@ persistent=yes
 # List of plugins (as comma separated values of python modules names) to load,
 # usually to register additional checkers.
 load-plugins=pylint.extensions.docparams
-
+accept-no-param-doc=no
 
 [MESSAGES CONTROL]
 
