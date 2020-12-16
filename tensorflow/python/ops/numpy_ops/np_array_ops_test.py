@@ -674,10 +674,12 @@ class ArrayMethodsTest(test.TestCase):
     def run_test(arr, *args, **kwargs):
       for fn in self.array_transforms:
         arg = fn(arr)
-        self.match(
-            np_array_ops.imag(arg, *args, **kwargs),
-            # np.imag may return a scalar so we convert to a np.ndarray.
-            np.array(np.imag(arg, *args, **kwargs)))
+        actual = np_array_ops.imag(arg, *args, **kwargs)
+        expected = np.imag(arg, *args, **kwargs)
+        if isinstance(arg, (int, float, complex)):
+          self.assertEqual(actual, expected)
+        else:
+          self.match(actual, np.array(expected))
 
     run_test(1)
     run_test(5.5)
@@ -855,9 +857,12 @@ class ArrayMethodsTest(test.TestCase):
     def run_test(arr, *args, **kwargs):
       for fn in self.array_transforms:
         arg = fn(arr)
-        self.match(
-            np_array_ops.real(arg, *args, **kwargs),
-            np.array(np.real(arg, *args, **kwargs)))
+        actual = np_array_ops.real(arg, *args, **kwargs)
+        expected = np.real(arg, *args, **kwargs)
+        if isinstance(arg, (int, float, complex)):
+          self.assertEqual(actual, expected)
+        else:
+          self.match(actual, np.array(expected))
 
     run_test(1)
     run_test(5.5)
