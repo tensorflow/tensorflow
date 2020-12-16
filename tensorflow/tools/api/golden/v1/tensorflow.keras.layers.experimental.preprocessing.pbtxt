@@ -80,4 +80,8 @@ tf_module {
     name: "TextVectorization"
     mtype: "<type \'type\'>"
   }
+  member_method {
+    name: "transform"
+    argspec: "args=[\'images\', \'transforms\', \'fill_mode\', \'fill_value\', \'interpolation\', \'output_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'reflect\', \'0.0\', \'bilinear\', \'None\', \'None\'], "
+  }
 }
