@@ -91,8 +91,8 @@ def create_dummy_table_variables(tpu_embedding):
     if table_gradients:
       raise RuntimeError(
           'tpu_embedding_gradients_table_{} is not empty.'.format(table_id))
-    num_features = len(tpu_embedding.table_to_features_dict[table])
-    table_gradients.extend([None for _ in range(num_features)])
+    table_gradients.extend(
+        [None] * len(tpu_embedding.table_to_features_dict[table]))
 
   return (dummy_table_variables,
           variables.variables_initializer(
