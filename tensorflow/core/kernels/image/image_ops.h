@@ -20,10 +20,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -124,13 +124,14 @@ class ProjectiveGenerator {
   typename TTypes<T, 4>::ConstTensor input_;
   typename TTypes<float>::ConstMatrix transforms_;
   const Interpolation interpolation_;
-  const T fill_value_;
+  const gtl::InlinedVector<T, 4> fill_value_;
 
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
   ProjectiveGenerator(typename TTypes<T, 4>::ConstTensor input,
                       typename TTypes<float>::ConstMatrix transforms,
-                      const Interpolation interpolation, const T fill_value)
+                      const Interpolation interpolation,
+                      const gtl::InlinedVector<T, 4>& fill_value)
       : input_(input),
         transforms_(transforms),
         interpolation_(interpolation),
@@ -138,17 +139,20 @@ class ProjectiveGenerator {
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const array<DenseIndex, 4>& coords) const {
-    const int64 output_y = coords[1];
-    const int64 output_x = coords[2];
+    const DenseIndex output_y = coords[1];
+    const DenseIndex output_x = coords[2];
+    const DenseIndex channels = coords[3];
     const float* transform =
         transforms_.dimension(0) == 1
             ? transforms_.data()
             : &transforms_.data()[transforms_.dimension(1) * coords[0]];
     float projection = transform[6] * output_x + transform[7] * output_y + 1.f;
+    T fill_value =
+        fill_value_.size() == 1 ? fill_value_[0] : fill_value_[channels];
     if (projection == 0) {
       // Return the fill value for infinite coordinates,
       // which are outside the input image
-      return fill_value_;
+      return fill_value;
     }
     const float input_x =
         (transform[0] * output_x + transform[1] * output_y + transform[2]) /
@@ -163,16 +167,15 @@ class ProjectiveGenerator {
     const float y = map_functor(input_y, input_.dimension(1));
 
     const DenseIndex batch = coords[0];
-    const DenseIndex channels = coords[3];
     switch (interpolation_) {
       case NEAREST:
-        return nearest_interpolation(batch, y, x, channels, fill_value_);
+        return nearest_interpolation(batch, y, x, channels, fill_value);
       case BILINEAR:
-        return bilinear_interpolation(batch, y, x, channels, fill_value_);
+        return bilinear_interpolation(batch, y, x, channels, fill_value);
     }
     // Unreachable; ImageProjectiveTransform only uses INTERPOLATION_NEAREST
     // or INTERPOLATION_BILINEAR.
-    return fill_value_;
+    return fill_value;
   }
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
@@ -245,7 +248,8 @@ struct FillProjectiveTransform {
   EIGEN_ALWAYS_INLINE
   void operator()(const Device& device, OutputType* output,
                   const InputType& images, const TransformsType& transform,
-                  const Mode fill_mode, const T fill_value) const {
+                  const Mode fill_mode,
+                  const gtl::InlinedVector<T, 4>& fill_value) const {
     switch (fill_mode) {
       case Mode::FILL_REFLECT:
         output->device(device) =

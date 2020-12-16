@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -85,14 +86,24 @@ void DoImageProjectiveTransformOp(OpKernelContext* ctx,
     out_width = images_t.shape().dim_size(2);
   }
 
-  T fill_value(0);
+  gtl::InlinedVector<T, 4> fill_value{0};
   // Kernel is shared by "ImageProjectiveTransformV2" with 3 args.
   if (ctx->num_inputs() >= 4) {
     const Tensor& fill_value_t = ctx->input(3);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(fill_value_t.shape()),
-                errors::InvalidArgument("fill_value must be a scalar",
-                                        fill_value_t.shape().DebugString()));
-    fill_value = static_cast<T>(*(fill_value_t.scalar<float>().data()));
+    OP_REQUIRES(
+        ctx,
+        TensorShapeUtils::IsScalar(fill_value_t.shape()) ||
+            (TensorShapeUtils::IsVector(fill_value_t.shape()) &&
+             fill_value_t.NumElements() == images_t.shape().dim_size(3)),
+        errors::InvalidArgument(
+            "fill_value must be a scalar or a vector of length images.shape[3]"
+            ", but get fill_value of shape ",
+            fill_value_t.shape().DebugString(), ", and image of shape ",
+            images_t.shape().DebugString()));
+    fill_value.resize(fill_value_t.NumElements());
+    for (int i = 0; i < fill_value_t.NumElements(); ++i) {
+      fill_value[i] = static_cast<T>(fill_value_t.flat<float>()(i));
+    }
   }
 
   Tensor* output_t;
@@ -202,7 +213,7 @@ namespace functor {
   void FillProjectiveTransform<GPUDevice, TYPE>::operator()(                \
       const GPUDevice& device, OutputType* output, const InputType& images, \
       const TransformsType& transform, const Mode fill_mode,                \
-      const TYPE fill_value) const;                                         \
+      const gtl::InlinedVector<TYPE, 4>& fill_value) const;                 \
   extern template struct FillProjectiveTransform<GPUDevice, TYPE>
 
 TF_CALL_uint8(DECLARE_PROJECT_FUNCTOR);
