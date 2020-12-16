@@ -321,7 +321,9 @@ bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
-using PrepareLstmQuantStats =
+using PrepareLstmQuantStats = TFL::ConvertLstmStatsToQDQs<TFL::LSTMOp>;
+
+using PrepareUnidirectionalLstmQuantStats =
     TFL::ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp>;
 
 void PrepareQuantizePass::runOnFunction() {
@@ -360,6 +362,7 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns_1;
   if (quant_specs_.post_training_quantization) {
     patterns_1.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
+    patterns_1.insert<PrepareUnidirectionalLstmQuantStats>(ctx, quant_specs_);
   }
   applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
