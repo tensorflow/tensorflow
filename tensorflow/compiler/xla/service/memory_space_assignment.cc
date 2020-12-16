@@ -2004,13 +2004,17 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   }
 
   if (required_assignment_at_start) {
-    if (!allocation_sequence->empty() &&
-        required_assignment_at_start->memory_space == MemorySpace::kAlternate) {
+    if (!allocation_sequence->empty()) {
       const auto& prev_allocation = allocation_sequence->back();
       CHECK(prev_allocation->memory_space() ==
             required_assignment_at_start->memory_space);
-      CHECK_EQ(GetAliasedOffset(*prev_allocation),
-               required_assignment_at_start->offset);
+      if (required_assignment_at_start->memory_space ==
+          MemorySpace::kAlternate) {
+        // We expect the required assignment offset to match the offset of the
+        // previous allocation.
+        CHECK_EQ(GetAliasedOffset(*prev_allocation),
+                 required_assignment_at_start->offset);
+      }
       prev_allocation->Extend(request.start_time);
     } else {
       absl::optional<Chunk> aliased_chunk = absl::nullopt;
