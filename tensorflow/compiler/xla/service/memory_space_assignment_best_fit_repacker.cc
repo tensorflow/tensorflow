@@ -57,12 +57,14 @@ class BestFitRepacker
   }
 
   bool Repack() {
-    Finish();
-    bool success = result_.heap_size <= max_size_;
+    const HeapSimulator::Result<AllocationBlock>& results = Finish();
+    const HeapSimulator::HeapResult<AllocationBlock>& result =
+      results.heap_results.at(0);
+    bool success = result.heap_size <= max_size_;
     if (success) {
       for (AllocationBlock* block : allocation_blocks_) {
-        auto chunk_it = result_.chunk_map.find(block);
-        if (chunk_it != result_.chunk_map.end()) {
+        auto chunk_it = result.chunk_map.find(block);
+        if (chunk_it != result.chunk_map.end()) {
           block->offset = chunk_it->second.offset;
         }
       }
