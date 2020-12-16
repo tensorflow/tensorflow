@@ -22,6 +22,8 @@ namespace custom {
 extern "C" void AddPerceptionOps(::tflite::MutableOpResolver* resolver) {
   resolver->AddCustom("MaxUnpooling2D",
                       tflite::ops::custom::RegisterMaxUnpooling2D());
+  resolver->AddCustom("MaxPoolWithArgmax",
+                      tflite::ops::custom::RegisterMaxPoolWithArgmax());
 }
 
 }  // namespace custom
