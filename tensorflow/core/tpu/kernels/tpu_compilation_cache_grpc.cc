@@ -66,12 +66,9 @@ grpc::TpuCompilationCacheService::Stub::Stub(
 grpc::TpuCompilationCacheService::Stub::AsyncGetTpuProgramRaw(
     ::grpc::ClientContext* context, const RequestType& request,
     ::grpc::CompletionQueue* cq) {
-  ::grpc::ClientAsyncResponseReader<
-      grpc::TpuCompilationCacheService::ResponseType>* result =
-      ::grpc::internal::ClientAsyncResponseReaderHelper::Create<ResponseType>(
-          channel_.get(), cq, rpcmethod_get_tpu_program_, context, request);
-  result->StartCall();
-  return result;
+  return ::grpc::internal::ClientAsyncResponseReaderFactory<
+      ResponseType>::Create(channel_.get(), cq, rpcmethod_get_tpu_program_,
+                            context, request, true);
 }
 
 ::grpc::ClientAsyncResponseReader<
@@ -79,9 +76,9 @@ grpc::TpuCompilationCacheService::Stub::AsyncGetTpuProgramRaw(
 grpc::TpuCompilationCacheService::Stub::PrepareAsyncGetTpuProgramRaw(
     ::grpc::ClientContext* context, const RequestType& request,
     ::grpc::CompletionQueue* cq) {
-  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create<
-      ResponseType>(channel_.get(), cq, rpcmethod_get_tpu_program_, context,
-                    request);
+  return ::grpc::internal::ClientAsyncResponseReaderFactory<
+      ResponseType>::Create(channel_.get(), cq, rpcmethod_get_tpu_program_,
+                            context, request, false);
 }
 
 grpc::TpuCompilationCacheService::Service::Service() {
