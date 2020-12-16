@@ -209,6 +209,7 @@ absl::Status GlInteropFabric::Start() {
   //   c) EglSync->CLEvent or GlSync->CLEvent mapping
   //      Fast, as it allows to map sync to CL event and use it as a dependency
   //      later without stalling GPU pipeline.
+  CLEvent inbound_event;
   std::vector<cl_event> inbound_events;
   if (is_egl_sync_supported_) {
     EglSync sync;
@@ -216,7 +217,6 @@ absl::Status GlInteropFabric::Start() {
     if (is_egl_to_cl_mapping_supported_) {
       // (c) EglSync->CLEvent or GlSync->CLEvent mapping
       glFlush();
-      CLEvent inbound_event;
       RETURN_IF_ERROR(CreateClEventFromEglSync(context_, sync, &inbound_event));
       inbound_events.push_back(inbound_event.event());
     } else {
