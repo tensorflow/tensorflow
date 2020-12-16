@@ -470,8 +470,9 @@ class RandomTranslation(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
+    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+      the value to be filled outside the boundaries when `fill_mode` is
+      "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -645,8 +646,9 @@ def transform(images,
       not backpropagated into transformation parameters.
     fill_mode: Points outside the boundaries of the input are filled according
       to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
+    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+      the value to be filled outside the boundaries when `fill_mode` is
+      "constant".
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     output_shape: Output dimesion after the transform, [height, width]. If None,
       output is the same size as input image.
@@ -800,8 +802,9 @@ class RandomRotation(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
+    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+      the value to be filled outside the boundaries when `fill_mode` is
+      "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -922,8 +925,9 @@ class RandomZoom(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
+    fill_value: a float or a 1-D tensor of shape `(num_channels)`, represents
+      the value to be filled outside the boundaries when `fill_mode` is
+      "constant".
 
   Example:
 

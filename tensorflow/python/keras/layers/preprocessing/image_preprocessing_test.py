@@ -691,8 +691,10 @@ class RandomTransformTest(keras_parameterized.TestCase):
                                       expected_output,
                                       mode,
                                       fill_value=0.0,
-                                      interpolation='bilinear'):
-    inp = np.arange(15).reshape((1, 5, 3, 1)).astype(np.float32)
+                                      interpolation='bilinear',
+                                      channels=1):
+    inp = np.arange(15 * channels).reshape(
+        (1, 5, 3, channels)).astype(np.float32)
     with self.cached_session(use_gpu=True):
       output = image_preprocessing.transform(
           inp,
@@ -978,6 +980,119 @@ class RandomTransformTest(keras_parameterized.TestCase):
       transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
       self._run_random_transform_with_mock(
           transform_matrix, expected_output, 'constant', fill_value=1.0)
+
+  def test_random_translation_constant_vector_fill_value(self):
+    """Test fill_value of shape [channels]."""
+    fill_value = np.asarray([-1.0, -2.0, -3.0]).astype(np.float32)
+    # Test down shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[[-1, -2, -3],
+          [-1, -2, -3],
+          [-1, -2, -3]],
+         [[ 0,  1,  2],
+          [ 3,  4,  5],
+          [ 6,  7,  8]],
+         [[ 9, 10, 11],
+          [12, 13, 14],
+          [15, 16, 17]],
+         [[18, 19, 20],
+          [21, 22, 23],
+          [24, 25, 26]],
+         [[27, 28, 29],
+          [30, 31, 32],
+          [33, 34, 35]]]).reshape((1, 5, 3, 3)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+    self._run_random_transform_with_mock(
+        transform_matrix, expected_output, 'constant',
+        fill_value=fill_value, channels=3)
+
+    # Test up shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[[ 9, 10, 11],
+          [12, 13, 14],
+          [15, 16, 17]],
+         [[18, 19, 20],
+          [21, 22, 23],
+          [24, 25, 26]],
+         [[27, 28, 29],
+          [30, 31, 32],
+          [33, 34, 35]],
+         [[36, 37, 38],
+          [39, 40, 41],
+          [42, 43, 44]],
+         [[-1, -2, -3],
+          [-1, -2, -3],
+          [-1, -2, -3]]]).reshape((1, 5, 3, 3)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+    self._run_random_transform_with_mock(
+        transform_matrix, expected_output, 'constant',
+        fill_value=fill_value, channels=3)
+
+    # Test left shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[[ 3,  4,  5],
+          [ 6,  7,  8],
+          [-1, -2, -3]],
+         [[12, 13, 14],
+          [15, 16, 17],
+          [-1, -2, -3]],
+         [[21, 22, 23],
+          [24, 25, 26],
+          [-1, -2, -3]],
+         [[30, 31, 32],
+          [33, 34, 35],
+          [-1, -2, -3]],
+         [[39, 40, 41],
+          [42, 43, 44],
+          [-1, -2, -3]]]).reshape((1, 5, 3, 3)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+    self._run_random_transform_with_mock(
+        transform_matrix, expected_output, 'constant',
+        fill_value=fill_value, channels=3)
+
+    # Test right shift by 1.
+    # pyformat: disable
+    expected_output = np.asarray(
+        [[[-1, -2, -3],
+          [ 0,  1,  2],
+          [ 3,  4,  5]],
+         [[-1, -2, -3],
+          [ 9, 10, 11],
+          [12, 13, 14]],
+         [[-1, -2, -3],
+          [18, 19, 20],
+          [21, 22, 23]],
+         [[-1, -2, -3],
+          [27, 28, 29],
+          [30, 31, 32]],
+         [[-1, -2, -3],
+          [36, 37, 38],
+          [39, 40, 41]]]).reshape((1, 5, 3, 3)).astype(np.float32)
+    # pyformat: enable
+    transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+    self._run_random_transform_with_mock(
+        transform_matrix, expected_output, 'constant',
+        fill_value=fill_value, channels=3)
+
+  @parameterized.named_parameters(
+      ("4", (4,)), ("2x3", (2, 3)))
+  def test_invalid_fill_value_shape(self, shape):
+    """Test invalid fill_value."""
+    fill_value = np.arange(np.prod(shape)).reshape(shape).astype(np.float32)
+    expected_output = np.arange(45).reshape(1, 5, 3, 3).astype(np.float32)
+    transform_matrix = np.asarray([[1., 0., 0., 0., 1., 0., 0., 0.]])
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"fill_value must be a scalar or a vector of length images.shape\[3\]"):
+      self._run_random_transform_with_mock(
+          transform_matrix, expected_output, 'constant',
+          fill_value=fill_value, channels=3)
 
   def test_random_translation_nearest_interpolation(self):
     # nearest output is (aaaa|abcd|dddd)
