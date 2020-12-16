@@ -29,6 +29,53 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
+def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
+  let summary = "Prunes unreachable ops in a tf_executor.graph";
+
+  let description = [{
+This pass removes ops from a `tf_executor.graph` that are not transitively, via
+data or control dependencies, connected to the associated `tf_executor.fetch`
+op. The order of ops will be preserved. Functions named `main` with no
+`tf.entry_function` attribute will not be pruned, as such graphs/functions may
+have been imported from a V1 TensorFlow graph, where feeds/fetches/targets are
+not provided at certain stages of IR transformation (e.g. pre-placement).
+
+For example, the following:
+
+```mlir
+func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %graph = tf_executor.graph {
+    %transitive_reachable_data:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    %reachable_data:2 = tf_executor.island wraps "tf.Identity"(%transitive_reachable_data#0) : (tensor<i32>) -> tensor<i32>
+    %unreachable_data:2 = tf_executor.island wraps "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %transitive_reachable_control = tf_executor.island wraps "tf.NoOp"() : () -> ()
+    %reachable_control = tf_executor.island(%transitive_reachable_control) wraps "tf.NoOp"() : () -> ()
+    %unreachable_control = tf_executor.island wraps "tf.NoOp"() : () -> tensor<i32>
+    tf_executor.fetch %reachable_data#0, %reachable_control : tensor<i32>, !tf_executor.control
+  }
+  return %graph : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %graph = tf_executor.graph {
+    %transitive_reachable_data:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    %reachable_data:2 = tf_executor.island wraps "tf.Identity"(%transitive_reachable_data#0) : (tensor<i32>) -> tensor<i32>
+    %transitive_reachable_control = tf_executor.island wraps "tf.NoOp"() : () -> ()
+    %reachable_control = tf_executor.island(%transitive_reachable_control) wraps "tf.NoOp"() : () -> ()
+    tf_executor.fetch %reachable_data#0, %reachable_control : tensor<i32>, !tf_executor.control
+  }
+  return %graph : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "tf_executor::CreateTFExecutorGraphPruningPass()";
+}
+
 def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-conversion"> {
   let summary = "Lifts tf_executor.island inner ops from a tf_executor.graph";
 
@@ -72,7 +119,7 @@ func @my_fn(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
-  let summary = "Form clusters from operations assigned to the same TPU computation";
+  let summary = "Forms clusters from operations assigned to the same TPU computation";
 
   let description = [{
 TPU computations from the frontend are composed of a `tf.TPUReplicateMetadata`
