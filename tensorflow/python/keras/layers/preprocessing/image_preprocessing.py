@@ -622,6 +622,7 @@ def get_translation_matrix(translations, name=None):
         axis=1)
 
 
+@keras_export('keras.layers.experimental.preprocessing.transform')
 def transform(images,
               transforms,
               fill_mode='reflect',
