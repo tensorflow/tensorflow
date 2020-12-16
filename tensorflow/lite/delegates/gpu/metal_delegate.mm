@@ -442,12 +442,8 @@ class Delegate {
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
-    inference_context_ = [[TFLInferenceContext alloc] init];
-    RETURN_IF_ERROR([inference_context_ compileModelWithDevice:metal_device_
-                                                         model:optimized_model
-                                                inputBufferIDs:input_ids
-                                               outputBufferIDs:output_ids
-                                                     precision:precision]);
+    RETURN_IF_ERROR(inference_context_.CompileModelWithDevice(metal_device_, optimized_model,
+                                                              input_ids, output_ids, precision));
     return absl::OkStatus();
   }
 
@@ -497,19 +493,15 @@ class Delegate {
     if (external_command_encoder_ != nil ||
         options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
       // encoder == external_command_encoder_
-      [inference_context_ encodeWithEncoder:encoder
-                         inputOutputBuffers:bphwc4_buffers_];
+      inference_context_.EncodeWithEncoder(encoder, bphwc4_buffers_);
     } else {
       if (flush) {
-        [inference_context_ encodeWithCommandQueue:command_queue_
-                                inputOutputBuffers:bphwc4_buffers_
-                                 flushPeriodically:flush_period];
+        inference_context_.EncodeWithCommandQueue(command_queue_, bphwc4_buffers_, flush_period);
         command_buffer = [command_queue_ commandBuffer];
         encoder = [command_buffer computeCommandEncoder];
       } else {
         [encoder endEncoding];
-        [inference_context_ encodeWithCommandBuffer:command_buffer
-                                 inputOutputBuffers:bphwc4_buffers_];
+        inference_context_.EncodeWithCommandBuffer(command_buffer, bphwc4_buffers_);
         encoder = [command_buffer computeCommandEncoder];
       }
     }
@@ -619,7 +611,7 @@ class Delegate {
   // model_builder - and vice versa.
   absl::flat_hash_map<int, int> quant_conversion_map_;
 
-  TFLInferenceContext* inference_context_;
+  InferenceContext inference_context_;
   // input and output buffers are passed into Metal inference engine
   std::map<::tflite::gpu::ValueId, id<MTLBuffer>> input_output_buffers_;
   std::map<::tflite::gpu::ValueId, id<MTLBuffer>> bphwc4_buffers_;
