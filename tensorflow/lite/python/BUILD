@@ -45,6 +45,7 @@ py_test(
     ],
     deps = [
         ":interpreter",
+        "//tensorflow/lite/kernels:deprecated_backends",
         "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
