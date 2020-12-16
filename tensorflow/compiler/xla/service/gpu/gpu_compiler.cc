@@ -421,7 +421,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   if (RequireDeterminism() ||
-      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions() ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_ops()) {
     pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
   }
 

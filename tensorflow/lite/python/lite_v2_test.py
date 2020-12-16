@@ -28,6 +28,7 @@ from six.moves import zip
 import tensorflow as tf
 
 from tensorflow.lite.kernels.hashtable import pywrap_hashtable_ops as hashtable_ops_registerer
+from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
@@ -38,6 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
@@ -1262,6 +1264,18 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data['x'], input_data['b']])[0]
     self.assertAllClose(expected_value, actual_value)
+
+  @test_util.run_v2_only
+  def testConverterErrorOnControlFlowV1Ops(self):
+    filename = resource_loader.get_path_to_datafile(
+        'testdata/control_flow_v1_saved_model')
+    converter = lite.TFLiteConverterV2.from_saved_model(filename)
+    with self.assertRaises(convert.ConverterError) as error:
+      converter.convert()
+    self.assertIn(
+        'Failed to functionalize Control Flow V1 ops. Consider using Control '
+        'Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/'
+        'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
 
   @test_util.run_v2_only
   def testStaticRnn(self):

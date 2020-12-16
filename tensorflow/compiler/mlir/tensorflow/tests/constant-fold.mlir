@@ -512,6 +512,19 @@ func @DontFoldNoConstantFold() -> tensor<8xf32> {
   return %2 : tensor<8xf32>
 }
 
+// CHECK-LABEL: func @testBroadcastGradientArgsSameShape
+func @testBroadcastGradientArgsSameShape() -> (tensor<0xi32>, tensor<0xi32>) {
+  %s0 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<2xi32>, tensor<2xi32>) -> (tensor<0xi32>, tensor<0xi32>)
+
+  // CHECK-DAG: %[[R:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R]], %[[R]]
+
+  return %r0, %r1 : tensor<0xi32>, tensor<0xi32>
+}
+
 // CHECK-LABEL: func @testBroadcastGradientArgs1
 func @testBroadcastGradientArgs1() -> (tensor<1xi32>, tensor<0xi32>) {
   %s0 = "tf.Const"() {value = dense<[4]> : tensor<1xi32>} : () -> tensor<1xi32>

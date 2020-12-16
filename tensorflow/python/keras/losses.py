@@ -658,9 +658,9 @@ class CategoricalCrossentropy(LossFunctionWrapper):
         default, we assume that `y_pred` encodes a probability distribution.
         **Note - Using from_logits=True is more numerically stable.**
       label_smoothing: Float in [0, 1]. When > 0, label values are smoothed,
-        meaning the confidence on label values are relaxed. e.g.
-        `label_smoothing=0.2` means that we will use a value of `0.1` for label
-        `0` and `0.9` for label `1`"
+        meaning the confidence on label values are relaxed. For example, if
+        `0.1`, use `0.1 / num_classes` for non-target labels and 
+        `0.9 + 0.1 / num_classes` for target labels.
       reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to
         loss. Default value is `AUTO`. `AUTO` indicates that the reduction
         option will be determined by the usage context. For almost all cases
@@ -1526,7 +1526,9 @@ def categorical_crossentropy(y_true,
     y_pred: Tensor of predicted targets.
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
-    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels. For
+      example, if `0.1`, use `0.1 / num_classes` for non-target labels
+      and `0.9 + 0.1 / num_classes` for target labels.
 
   Returns:
     Categorical crossentropy loss value.
@@ -1597,7 +1599,9 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
     y_pred: The predicted values. shape = `[batch_size, d0, .. dN]`.
     from_logits: Whether `y_pred` is expected to be a logits tensor. By default,
       we assume that `y_pred` encodes a probability distribution.
-    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels.
+    label_smoothing: Float in [0, 1]. If > `0` then smooth the labels by 
+      squeezing them towards 0.5 That is, using `1. - 0.5 * label_smoothing`
+      for the target class and `0.5 * label_smoothing` for the non-target class.
 
   Returns:
     Binary crossentropy loss value. shape = `[batch_size, d0, .. dN-1]`.

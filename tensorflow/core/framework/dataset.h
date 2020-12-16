@@ -1061,6 +1061,12 @@ class DatasetBaseIterator : public IteratorBase {
     }
   }
 
+  // Returns whether work is currently being recorded, i.e. whether we are
+  // currently between a `RecordStart` and a `RecordStop`.
+  bool IsRecording(IteratorContext* ctx) {
+    return collect_resource_usage(ctx) && node_->is_recording();
+  }
+
  private:
   bool collect_resource_usage(IteratorContext* ctx) {
     auto model = ctx->model();

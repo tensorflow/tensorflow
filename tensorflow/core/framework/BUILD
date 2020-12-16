@@ -1245,6 +1245,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 

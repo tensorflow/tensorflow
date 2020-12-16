@@ -168,7 +168,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status EmitConvolutionThunkFromMlir(MlirEmitterInput input);
   Status EmitGemmThunkFromMlir(MlirEmitterInput input);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
@@ -708,6 +707,8 @@ class IrEmitterUnnested : public IrEmitter,
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
   Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const override;
+
+  Status AssertNonDeterminismIsOkay(const string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

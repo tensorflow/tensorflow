@@ -695,12 +695,6 @@ message RunOptions {
       int64 priority = 1;
     }
     RunHandlerPoolOptions run_handler_pool_options = 3;
-
-    // If true, always track kernel execution cost. This allows the executor to
-    // transit kernels from "inexpensive" to "expensive" during the execution.
-    // This is a temporary flag for validating this feature. We will remove this
-    // flag once the feature is validated.
-    bool always_track_kernel_execution_cost = 4;
   }
 
   Experimental experimental = 8;

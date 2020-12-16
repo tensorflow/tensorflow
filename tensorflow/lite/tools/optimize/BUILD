@@ -321,6 +321,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",
+        "//tensorflow/lite/tools/optimize:testdata/fc_qat.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated2.bin",
         "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",

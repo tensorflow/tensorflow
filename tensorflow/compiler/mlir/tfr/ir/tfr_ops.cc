@@ -231,7 +231,7 @@ static LogicalResult Verify(TFRFuncOp func) {
   // Collect all the undefined attributes used in the inputs.
   llvm::SmallVector<StringAttr, 4> undefined_attrs;
   for (auto attr : input_used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }
@@ -295,7 +295,7 @@ static LogicalResult Verify(TFRFuncOp func) {
 
   // Collect all the undefined attributes used in the outputs.
   for (auto attr : output_used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }

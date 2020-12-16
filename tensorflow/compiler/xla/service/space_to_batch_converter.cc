@@ -922,6 +922,11 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
            absl::c_linear_search(reduce_dims, space_dim);
   }
 
+  if (consumer->opcode() == HloOpcode::kReduceWindow &&
+      consumer->shape().IsTuple()) {
+    // TODO (b/73062247) variadic reduce window is not yet supported.
+    return false;
+  }
   if (consumer->opcode() == HloOpcode::kReduceWindow ||
       consumer->opcode() == HloOpcode::kSelectAndScatter) {
     auto first_operand = consumer->mutable_operand(0);

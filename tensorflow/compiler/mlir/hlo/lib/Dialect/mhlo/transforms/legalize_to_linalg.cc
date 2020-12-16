@@ -30,12 +30,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -49,17 +49,17 @@ SmallVector<StringRef, 3> GetNParallelLoopsAttrs(unsigned nParallelLoops) {
 }
 
 template <bool isLHLO = true>
-Value getResultValue(Operation* op) {
+Value GetResultValue(Operation* op) {
   return isLHLO ? op->getOperand(op->getNumOperands() - 1) : op->getResult(0);
 }
 
 template <bool isLHLO = true>
-ShapedType getHloOpResultType(Operation* op) {
-  return getResultValue<isLHLO>(op).getType().template cast<ShapedType>();
+ShapedType GetHloOpResultType(Operation* op) {
+  return GetResultValue<isLHLO>(op).getType().template cast<ShapedType>();
 }
 
 template <bool isLHLO = true>
-bool verifyHloOpBufferOrTensorSemantics(Operation* op) {
+bool VerifyHloOpBufferOrTensorSemantics(Operation* op) {
   auto verify_type = [&](Value val) -> bool {
     return (isLHLO && val.getType().isa<MemRefType>()) ||
            (!isLHLO && val.getType().isa<RankedTensorType>());
@@ -293,8 +293,8 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyHloOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
-    auto result_type = getHloOpResultType<isLHLO>(op);
+    if (!VerifyHloOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
+    auto result_type = GetHloOpResultType<isLHLO>(op);
 
     SmallVector<AffineMap, 2> indexing_maps =
         Derived::getIndexingMaps(op, &rewriter);
@@ -331,7 +331,7 @@ class BroadcastConverter
     ShapedType input_type =
         broadcast_op.operand().getType().template cast<ShapedType>();
     unsigned input_rank = input_type.getRank();
-    unsigned nloops = getHloOpResultType<isLHLO>(broadcast_op).getRank();
+    unsigned nloops = GetHloOpResultType<isLHLO>(broadcast_op).getRank();
 
     // BroadcastOp prepends the dimensions in the `broadcast_sizes` attribute to
     // the input's dimensions.
@@ -365,7 +365,7 @@ class HloBroadcastInDimConverter
 
   static SmallVector<AffineMap, 2> getIndexingMaps(
       mhlo::BroadcastInDimOp broadcast_op, Builder* b) {
-    auto result_type = getHloOpResultType<false>(broadcast_op);
+    auto result_type = GetHloOpResultType<false>(broadcast_op);
     auto operand_type =
         broadcast_op.operand().getType().template cast<ShapedType>();
     unsigned nloops = result_type.getRank();
@@ -563,7 +563,7 @@ class TransposeConverter
                                 isLHLO>::DataMovementOpConverter;
   static SmallVector<AffineMap, 2> getIndexingMaps(OpTy op, Builder* b) {
     auto result_type =
-        getHloOpResultType<isLHLO>(op).template cast<ShapedType>();
+        GetHloOpResultType<isLHLO>(op).template cast<ShapedType>();
     auto nloops = result_type.getRank();
     SmallVector<AffineExpr, 2> input_exprs;
     input_exprs.resize(result_type.getRank());
@@ -587,11 +587,11 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy reshape_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyHloOpBufferOrTensorSemantics<isLHLO>(reshape_op))
+    if (!VerifyHloOpBufferOrTensorSemantics<isLHLO>(reshape_op))
       return failure();
     ShapedType operand_type =
         reshape_op.operand().getType().template cast<ShapedType>();
-    ShapedType result_type = getHloOpResultType<isLHLO>(reshape_op);
+    ShapedType result_type = GetHloOpResultType<isLHLO>(reshape_op);
 
     if (!operand_type.hasStaticShape() || !result_type.hasStaticShape())
       return failure();
@@ -696,7 +696,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
   LogicalResult matchAndRewrite(
       OpTy iota_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    ShapedType result_shaped_type = getHloOpResultType<isLHLO>(iota_op);
+    ShapedType result_shaped_type = GetHloOpResultType<isLHLO>(iota_op);
     if (!result_shaped_type) return failure();
 
     auto result_element_type = result_shaped_type.getElementType();
@@ -813,7 +813,8 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
         /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(),
         /*initTensors=*/ValueRange{}, maps, types);
-    linalg_op.region().takeBody(reduce_op.body());
+    rewriter.inlineRegionBefore(reduce_op.body(), linalg_op.region(),
+                                linalg_op.region().end());
     {
       OpBuilder::InsertionGuard region_guard(rewriter);
       Block* block = linalg_op.getBody();
@@ -867,7 +868,7 @@ class ReverseConverter
                                 isLHLO>::DataMovementOpConverter;
   static SmallVector<AffineMap, 2> getIndexingMaps(OpTy op, Builder* b) {
     auto result_type =
-        getHloOpResultType<isLHLO>(op).template cast<ShapedType>();
+        GetHloOpResultType<isLHLO>(op).template cast<ShapedType>();
     auto nloops = result_type.getRank();
     SmallVector<AffineExpr, 2> input_exprs;
     input_exprs.reserve(nloops);

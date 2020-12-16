@@ -1366,16 +1366,25 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       if (!window) {
         window.emplace();
       }
+      if (operands.size() % 2) {
+        auto loc = lexer_.GetLoc();
+        return Error(loc, StrCat("expects an even number of operands, but has ",
+                                 operands.size(), " operands"));
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
-          shape, /*operand=*/operands[0], /*init_value=*/operands[1], *window,
-          *reduce_computation));
+          shape, /*operands=*/
+          absl::Span<HloInstruction* const>(operands).subspan(
+              0, operands.size() / 2),
+          /*init_values=*/
+          absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
+                                                              2),
+          *window, *reduce_computation));
       break;
     }
     case HloOpcode::kConvolution: {
@@ -3585,7 +3594,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
-// The string looks like "dim_labels=0bf_0io->0bf".
+// Thestring looks like "dim_labels=0bf_0io->0bf".
 bool HloParserImpl::ParseConvolutionDimensionNumbers(
     ConvolutionDimensionNumbers* dnums) {
   if (lexer_.GetKind() != TokKind::kDimLabels) {

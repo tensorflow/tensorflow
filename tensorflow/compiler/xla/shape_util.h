@@ -645,15 +645,6 @@ class ShapeUtil {
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
 
-  // Returns true if changing the layout of the given shape from its existing
-  // one to 'layout' does not change the underlying layout of the elements
-  // in physical memory. As an example the shape 'f16[1,1,1,8]{1,2,3,0}' is
-  // compatible with layout '{2,1,3,0}', since the shape 'f16[1,1,1,8]{2,1,3,0}'
-  // and the shape f16[1,1,1,8]{1,2,3,0} has the same layout of elements in
-  // memory.
-  static bool ShapeIsComatibleWithLayout(const Shape& shape,
-                                         const Layout& layout);
-
   // Find a physical layout for 'output_shape' such that
   // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns
   // true (where 'output_shape_with_layout' is 'output_shape' with the found

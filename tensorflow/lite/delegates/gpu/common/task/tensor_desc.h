@@ -169,16 +169,16 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
 
-  void UploadData(absl::Span<const float> src);
+  void UploadData(const float* src);
 };
 
 template <typename T>
-void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
-                   const TensorDescriptor& desc, absl::Span<T> dst);
+void DataFromBHWDC(const float* src, const BHWDC& shape,
+                   const TensorDescriptor& desc, T* dst);
 
 template <typename T>
-void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
-                 const TensorDescriptor& desc, absl::Span<float> dst);
+void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
+                 float* dst);
 
 std::string ToString(TensorStorageType type);
 

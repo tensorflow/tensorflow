@@ -450,7 +450,7 @@ void RaiseToTFOpsPass::runOnFunction() {
   MLIRContext* ctx = &getContext();
   SymbolTable table(external_tfr_module.hasValue()
                         ? *external_tfr_module
-                        : func.getParentOfType<ModuleOp>());
+                        : func->getParentOfType<ModuleOp>());
 
   OwningRewritePatternList patterns;
   patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs);

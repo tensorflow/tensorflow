@@ -3415,6 +3415,10 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
+  // TODO(b/73062247) Variadic reduce window not yet supported in partitioner.
+  if (hlo->shape().IsTuple()) {
+    return DefaultAction(hlo);
+  }
   auto& operand = GetPartitionedHlo(hlo->operand(0));
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);

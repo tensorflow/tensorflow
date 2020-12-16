@@ -449,6 +449,41 @@ TEST_F(HloCostAnalysisTest, ReduceWindow) {
   EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 2 * 4);
 }
 
+TEST_F(HloCostAnalysisTest, ReduceWindowVariadic) {
+  XlaBuilder builder("reduce_window_variadic");
+  auto elem_shape = ShapeUtil::MakeShape(F32, {});
+  auto p2 = Parameter(&builder, 0, elem_shape, "x0");
+  auto p3 = Parameter(&builder, 1, elem_shape, "x1");
+  auto p4 = Parameter(&builder, 2, elem_shape, "y0");
+  auto p5 = Parameter(&builder, 3, elem_shape, "y1");
+  absl::InlinedVector<XlaOp, 2> compute_vec = {Min(p2, p4), Min(p3, p5)};
+  Tuple(&builder, compute_vec);
+  TF_ASSERT_OK_AND_ASSIGN(auto compute_tuple, builder.Build());
+  auto input1 =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 20}), "input1");
+  auto input2 =
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {10, 20}), "input2");
+  auto init = ConstantR0<float>(&builder, 0);
+  ReduceWindow({input1, input2}, {init, init}, compute_tuple, {4, 5}, {4, 5},
+               Padding::kValid);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Each of [2x4] output elements are generated from reducing [4x5] elements.
+  EXPECT_EQ(analysis.flop_count(), 2 * 4 * 2 * (4 * 5 - 1));
+
+  EXPECT_EQ(analysis.bytes_accessed(), sizeof(float) * (10 * 20 * 2 + 2 * 3));
+
+  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 1), sizeof(float) * 10 * 20);
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), sizeof(float) * 10 * 20);
+  EXPECT_EQ(analysis.output_bytes_accessed(*root), sizeof(float) * 4);
+}
+
 TEST_F(HloCostAnalysisTest, SelectAndScatter) {
   XlaBuilder builder("select_and_scatter");
   auto operand =

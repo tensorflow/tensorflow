@@ -274,6 +274,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 
@@ -460,6 +461,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     alwayslink = 1,
 )
@@ -474,6 +476,7 @@ cc_library(
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     deps = [
         "//tensorflow/core/platform:status",

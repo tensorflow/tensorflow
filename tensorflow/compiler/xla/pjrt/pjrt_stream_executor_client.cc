@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 
 #include <cstddef>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
@@ -98,6 +99,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mem.h"
@@ -185,6 +187,19 @@ class CpuAllocator : public tensorflow::Allocator {
   }
 };
 
+static int DefaultThreadPoolSize() {
+  // Google's CI system exposes an environment variable NPROC that describes
+  // a CPU reservation for tests.
+  // TODO(phawkins): expose a better thought-out set of knobs to control
+  // parallelism.
+  const char* nproc_str = std::getenv("NPROC");
+  int nproc = 0;
+  if (nproc_str && absl::SimpleAtoi(nproc_str, &nproc)) {
+    return std::max(0, nproc);
+  }
+  return tensorflow::port::MaxParallelism();
+}
+
 PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::string platform_name, LocalClient* client,
     std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int host_id,
@@ -202,8 +217,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
-      h2d_transfer_pool_(tensorflow::Env::Default(), "py_xla_h2d_transfer",
-                         client->device_count()) {
+      thread_pool_(
+          tensorflow::Env::Default(), "pjrt_thread_pool",
+          std::max<int>(DefaultThreadPoolSize(), client->device_count())) {
   if (owned_allocator_ != nullptr) {
     allocator_ = owned_allocator_.get();
   } else {
@@ -523,7 +539,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
     se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
     bool reference_held) {
   CHECK(ok());
-  CHECK(type_ == kUsage);
+  CHECK_EQ(type_, kUsage);
   parent_->ConvertUsageHold(buffer().get(), usage_stream, std::move(event),
                             reference_held);
   SetState(kConverted);
@@ -531,7 +547,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
 
 void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation() {
   CHECK(ok());
-  CHECK(type_ == kDonation);
+  CHECK_EQ(type_, kDonation);
   parent_->ConfirmDonation(buffer().get());
   SetState(kDonated);
 }
@@ -545,7 +561,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
   if (type_ == kDonation) {
     buffer()->AddToInputAsDonated(iterator, end, execution_input, allocator);
   } else {
-    CHECK(type_ == kUsage);
+    CHECK_EQ(type_, kUsage);
     buffer()->AddToInputAsImmutable(iterator, end);
   }
 }
@@ -745,11 +761,11 @@ PjRtStreamExecutorClient::BufferFromHostBuffer(
         std::make_pair(std::move(buffer_reference), std::move(staging_buffer)));
   };
   if (is_cpu_platform) {
-    // Using the h2d_transfer_pool would be a double thread hop; the code
+    // Using the thread_pool would be a double thread hop; the code
     // already defers its work onto a stream (= thread on CPU).
     transfer_h2d();
   } else {
-    h2d_transfer_pool()->Schedule(transfer_h2d);
+    thread_pool()->Schedule(transfer_h2d);
   }
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
 }
@@ -844,7 +860,7 @@ PjRtStreamExecutorClient::BufferFromHostLiteral(const LiteralSlice& literal,
         .IgnoreError();  // Can return error::Unimplemented
     QCHECK(h2d_stream->ok());
   };
-  h2d_transfer_pool()->Schedule(transfer_h2d);
+  thread_pool()->Schedule(transfer_h2d);
   return std::unique_ptr<PjRtBuffer>(std::move(py_buffer));
 }
 
@@ -943,16 +959,14 @@ int64 PjRtStreamExecutorBuffer::OnDeviceSizeInBytes() const {
 }
 
 void PjRtStreamExecutorBuffer::WaitForOutstandingUsageHolds() {
-  auto not_in_usage_hold = [&]() {
-    mu_.AssertHeld();
+  auto not_in_usage_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return holds_[ScopedHold::kUsage] == 0;
   };
   mu_.Await(absl::Condition(&not_in_usage_hold));
 }
 
 void PjRtStreamExecutorBuffer::WaitForOutstandingDonationHold() {
-  auto not_in_donation_hold = [&]() {
-    mu_.AssertHeld();
+  auto not_in_donation_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return holds_[ScopedHold::kDonation] == 0;
   };
   mu_.Await(absl::Condition(&not_in_donation_hold));
@@ -2094,6 +2108,9 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
   tensorflow::profiler::TraceMe traceme("PjRtStreamExecutorClient::Compile");
 
   ExecutableBuildOptions& build_options = options.executable_build_options;
+  if (!build_options.compile_thread_pool()) {
+    build_options.set_compile_thread_pool(thread_pool());
+  }
   if (!build_options.device_allocator()) {
     build_options.set_device_allocator(allocator());
   }
@@ -2101,88 +2118,23 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtStreamExecutorClient::Compile(
   int num_replicas;
   int num_partitions;
   std::shared_ptr<DeviceAssignment> device_assignment;
-  if (options.compile_portable_executable) {
-    if (build_options.has_device_assignment()) {
-      return InvalidArgument(
-          "CompileOptions requests portable executable but "
-          "ExecutableBuildOptions includes a device assignment");
-    }
-    num_replicas = 1;
-    num_partitions = 1;
-  } else {
-    if (!build_options.has_device_assignment()) {
-      VLOG(2) << "PjRtStreamExecutorClient::Compile using default "
-                 "device_assignment.";
-      TF_ASSIGN_OR_RETURN(
-          DeviceAssignment device_assignment,
-          GetDefaultDeviceAssignment(build_options.num_replicas(),
-                                     build_options.num_partitions()));
-      build_options.set_device_assignment(device_assignment);
-    }
-    VLOG(2) << "PjRtStreamExecutorClient::Compile device_assignment:\n"
-            << build_options.device_assignment().ToString();
-    num_replicas = build_options.device_assignment().replica_count();
-    num_partitions = build_options.device_assignment().computation_count();
-    device_assignment =
-        std::make_shared<DeviceAssignment>(build_options.device_assignment());
-  }
+  TF_RETURN_IF_ERROR(ParseDeviceAssignmentCompileOptions(
+      options.compile_portable_executable, &options.executable_build_options,
+      [this](int num_replicas, int num_partitions) {
+        return this->GetDefaultDeviceAssignment(num_replicas, num_partitions);
+      },
+      &num_replicas, &num_partitions, &device_assignment));
 
-  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
-                      computation.GetProgramShape());
-  if (!options.argument_layouts) {
-    options.argument_layouts = program_shape.parameters();
-    for (Shape& shape : *options.argument_layouts) {
-      LayoutUtil::ClearLayout(&shape);
-    }
-  } else if (options.argument_layouts->size() !=
-             program_shape.parameters_size()) {
-    return InvalidArgument(
-        "CompileOptions specify %d argument layouts, but computation has %d "
-        "arguments",
-        options.argument_layouts->size(), program_shape.parameters_size());
-  }
   std::vector<const Shape*> argument_layout_pointers;
-  argument_layout_pointers.reserve(options.argument_layouts->size());
-
-  // Assign a default layout based on `sharded_shape` to any array subshapes in
-  // `dst_shape` that are missing layouts.
-  auto assign_layouts = [local_client = client()](const Shape& sharded_shape,
-                                                  Shape* dst_shape) {
-    return ShapeUtil::ForEachMutableSubshapeWithStatus(
-        dst_shape, [&](Shape* subshape, const ShapeIndex& idx) {
-          if (subshape->IsArray() && !subshape->has_layout()) {
-            CHECK(ShapeUtil::IndexIsValid(sharded_shape, idx));
-            const Shape& sharded_subshape =
-                ShapeUtil::GetSubshape(sharded_shape, idx);
-            LayoutUtil::SetToDefaultLayout(subshape);
-            TF_ASSIGN_OR_RETURN(Shape layout, local_client->backend()
-                                                  .transfer_manager()
-                                                  ->ChooseCompactLayoutForShape(
-                                                      sharded_subshape));
-            *subshape->mutable_layout() = layout.layout();
-          }
-          return Status::OK();
-        });
-  };
-  TF_ASSIGN_OR_RETURN(auto sharded_shapes,
-                      GetShardedProgramShapes(computation));
-
-  CHECK_EQ(sharded_shapes.first.size(), options.argument_layouts->size());
-  for (int i = 0; i < options.argument_layouts->size(); ++i) {
-    Shape* layout = &(*options.argument_layouts)[i];
-    argument_layout_pointers.push_back(layout);
-    TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.first[i], layout));
-  }
-
-  Shape result_layout;
-  if (build_options.result_layout()) {
-    result_layout = *build_options.result_layout();
-  } else {
-    result_layout = program_shape.result();
-    LayoutUtil::ClearLayout(&result_layout);
-  }
-  TF_RETURN_IF_ERROR(assign_layouts(sharded_shapes.second, &result_layout));
-  build_options.set_result_layout(result_layout);
+  TF_RETURN_IF_ERROR(DetermineArgumentLayoutsFromCompileOptions(
+      computation,
+      [local_client = client()](Shape shape) {
+        return local_client->backend()
+            .transfer_manager()
+            ->ChooseCompactLayoutForShape(shape);
+      },
+      options.argument_layouts, &options.executable_build_options,
+      &argument_layout_pointers));
 
   // Find devices that are addressable by this client/task.
   std::vector<PjRtExecutable::LogicalDeviceIds> addressable_device_logical_ids;

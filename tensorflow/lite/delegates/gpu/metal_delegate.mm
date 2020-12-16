@@ -230,10 +230,6 @@ class Delegate {
     return absl::NotFoundError("Couldn't find tensor: " + std::to_string(tensor_index));
   }
 
-  void SetCommandEncoder(id<MTLComputeCommandEncoder> encoder) {
-    external_command_encoder_ = encoder;
-  }
-
   void SetCommandBuffer(id<MTLCommandBuffer> command_buffer) {
     external_command_buffer_ = command_buffer;
   }
@@ -442,12 +438,8 @@ class Delegate {
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
-    inference_context_ = [[TFLInferenceContext alloc] init];
-    RETURN_IF_ERROR([inference_context_ compileModelWithDevice:metal_device_
-                                                         model:optimized_model
-                                                inputBufferIDs:input_ids
-                                               outputBufferIDs:output_ids
-                                                     precision:precision]);
+    RETURN_IF_ERROR(inference_context_.CompileModelWithDevice(metal_device_, optimized_model,
+                                                              input_ids, output_ids, precision));
     return absl::OkStatus();
   }
 
@@ -458,14 +450,10 @@ class Delegate {
     // memory each time.
     __block volatile bool buffer_completed = false;
     id<MTLCommandBuffer> command_buffer = external_command_buffer_;
-    id<MTLComputeCommandEncoder> encoder = external_command_encoder_;
-    if (external_command_buffer_ == nil && external_command_encoder_ == nil) {
+    if (external_command_buffer_ == nil) {
       command_buffer = [command_queue_ commandBuffer];
     }
-    if (external_command_encoder_ == nil) {
-      encoder = [command_buffer computeCommandEncoder];
-    }
-    const bool flush = external_command_encoder_ == nil && external_command_buffer_ == nil &&
+    const bool flush = external_command_buffer_ == nil &&
         (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive ||
          options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive);
     const int flush_period = 8;
@@ -484,47 +472,36 @@ class Delegate {
       void* gpu_ptr = [input_output_buffers_[input.id] contents];
       std::memcpy(gpu_ptr, tensor->data.f, input.shape.DimensionsProduct() * sizeof(float));
       if (input_output_buffers_[input.id] == bphwc4_buffers_[input.id]) continue;
-      [converter_to_BPHWC4_ convertWithEncoder:encoder
+      id<MTLComputeCommandEncoder> input_encoder = [command_buffer computeCommandEncoder];
+      [converter_to_BPHWC4_ convertWithEncoder:input_encoder
                                          shape:input.shape
                                   sourceBuffer:input_output_buffers_[input.id]
                                convertedBuffer:bphwc4_buffers_[input.id]];
-    }
-    if (flush) {
-      [encoder endEncoding];
-      [command_buffer commit];
+      [input_encoder endEncoding];
     }
 
-    if (external_command_encoder_ != nil ||
-        options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive) {
-      // encoder == external_command_encoder_
-      [inference_context_ encodeWithEncoder:encoder
-                         inputOutputBuffers:bphwc4_buffers_];
-    } else {
+    @autoreleasepool {
       if (flush) {
-        [inference_context_ encodeWithCommandQueue:command_queue_
-                                inputOutputBuffers:bphwc4_buffers_
-                                 flushPeriodically:flush_period];
+        [command_buffer commit];
+        inference_context_.EncodeWithCommandQueue(command_queue_, bphwc4_buffers_, flush_period);
         command_buffer = [command_queue_ commandBuffer];
-        encoder = [command_buffer computeCommandEncoder];
       } else {
-        [encoder endEncoding];
-        [inference_context_ encodeWithCommandBuffer:command_buffer
-                                 inputOutputBuffers:bphwc4_buffers_];
-        encoder = [command_buffer computeCommandEncoder];
+        inference_context_.EncodeWithCommandBuffer(command_buffer, bphwc4_buffers_);
       }
     }
 
     for (const auto& output : graph_outputs_) {
       if (output.set_externally) continue;
       if (bphwc4_buffers_[output.id] == input_output_buffers_[output.id]) continue;
-      [converter_from_BPHWC4_ convertWithEncoder:encoder
+      id<MTLComputeCommandEncoder> output_encoder = [command_buffer computeCommandEncoder];
+      [converter_from_BPHWC4_ convertWithEncoder:output_encoder
                                            shape:output.shape
                                     sourceBuffer:bphwc4_buffers_[output.id]
                                  convertedBuffer:input_output_buffers_[output.id]];
+      [output_encoder endEncoding];
     }
 
-    if (external_command_encoder_ == nil && external_command_buffer_ == nil) {
-      [encoder endEncoding];
+    if (external_command_buffer_ == nil) {
       if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeActive) {
         [command_buffer addCompletedHandler:^(id<MTLCommandBuffer>) {
           buffer_completed = true;
@@ -560,14 +537,9 @@ class Delegate {
         }
       }
     } else {
-      if (external_command_buffer_ != nil) {
-        [encoder endEncoding];
-        // External command buffer must be set before every invoke call.
-        external_command_buffer_ = nil;
-      }
-      // External command encoder must be set before every invoke call.
-      external_command_encoder_ = nil;
-      // External command encoder is assigned so all output buffers are controlled by a user.
+      // External command buffer must be set before every invoke call.
+      external_command_buffer_ = nil;
+      // External command buffer is assigned so all output buffers are controlled by a user.
       for (const auto& output : graph_outputs_) {
         if (!output.set_externally) {
           return absl::InternalError(
@@ -619,7 +591,7 @@ class Delegate {
   // model_builder - and vice versa.
   absl::flat_hash_map<int, int> quant_conversion_map_;
 
-  TFLInferenceContext* inference_context_;
+  InferenceContext inference_context_;
   // input and output buffers are passed into Metal inference engine
   std::map<::tflite::gpu::ValueId, id<MTLBuffer>> input_output_buffers_;
   std::map<::tflite::gpu::ValueId, id<MTLBuffer>> bphwc4_buffers_;
@@ -635,7 +607,6 @@ class Delegate {
   std::vector<BufferDescriptor> graph_inputs_;
   std::vector<BufferDescriptor> graph_outputs_;
 
-  id<MTLComputeCommandEncoder> external_command_encoder_ = nil;
   id<MTLCommandBuffer> external_command_buffer_ = nil;
   id<MTLCommandQueue> command_queue_;
   std::unique_ptr<GpuAlarmClock> gpu_alarm_clock_;
@@ -728,14 +699,6 @@ bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_
 
 // Note: This function is not exposed in `metal_delegate.h`, but it's exposed in
 // `metal_delegate_internal.h`.
-bool TFLGpuDelegateSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder) {
-  auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);
-  if (!metal_delegate) return false;
-  metal_delegate->SetCommandEncoder(encoder);
-  return true;
-}
-
 bool TFLGpuDelegateSetCommandBuffer(TfLiteDelegate* delegate,
                                     id<MTLCommandBuffer> command_buffer) {
   auto* metal_delegate = ::tflite::gpu::metal::GetMetalDelegate(delegate);

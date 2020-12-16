@@ -34,14 +34,18 @@ void CompareNumericalAndAutodiffGradients(
   for (int i = 0; i < num_inputs; ++i) {
     if (!outputs[i]) continue;
 
-    AbstractTensorHandle* g;  // Will contain numerical approximation data.
-    s = CalcNumericalGrad(ctx, model, inputs,
-                          /*input_index=*/i,
-                          /*use_function=*/use_function, &g);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    AbstractTensorHandlePtr numerical_grad;
+    {
+      AbstractTensorHandle* numerical_grad_raw;
+      s = CalcNumericalGrad(ctx, model, inputs,
+                            /*input_index=*/i, use_function,
+                            &numerical_grad_raw);
+      ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+      numerical_grad.reset(numerical_grad_raw);
+    }
 
     TF_Tensor* numerical_tensor;
-    s = GetValue(g, &numerical_tensor);
+    s = GetValue(numerical_grad.get(), &numerical_tensor);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     auto num_elem_numerical = TF_TensorElementCount(numerical_tensor);
 

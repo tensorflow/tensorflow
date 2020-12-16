@@ -162,6 +162,86 @@ struct ApplyAdagradV2<CPUDevice, T> {
   }
 };
 
+template <typename T, typename Tindex, bool has_epsilon>
+struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
+  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar epsilon,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
+                    bool update_slots) {
+    const Tindex N = static_cast<Tindex>(indices.dimension(0));
+    if (N == 0) return Status::OK();
+    const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
+    const T lr_scalar = lr();
+    const int in_bytes = inner_dim * sizeof(T) * 3;
+    const int out_bytes = inner_dim * sizeof(T) * 2;
+    const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
+                                    Eigen::TensorOpCost::MulCost<T>() * 2);
+    const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
+
+    if (inner_dim > 1) {
+      for (Tindex i = 0; i < N; ++i) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+      }
+
+      const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
+        for (Tindex i = start_idx; i < end_idx; ++i) {
+          const Tindex index = internal::SubtleMustCopy(indices(i));
+          auto a = accum.template chip<0>(index);
+          auto g = grad.template chip<0>(i);
+          auto v = var.template chip<0>(index);
+          if (update_slots) {
+            a += g.square();
+          }
+          if (has_epsilon) {
+            v -= g.constant(lr_scalar) * g / (a.sqrt() + a.constant(epsilon()));
+          } else {
+            v -= g.constant(lr_scalar) * g * a.rsqrt();
+          }
+        }
+      };
+
+      d.parallelFor(N, cost, shard);
+    } else {
+      for (Tindex i = 0; i < N; ++i) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+      }
+
+      const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
+        for (Tindex i = start_idx; i < end_idx; ++i) {
+          const Tindex index = internal::SubtleMustCopy(indices(i));
+          T& a = accum(index);
+          const T& g = grad(i);
+          if (update_slots) {
+            a += g * g;
+          }
+          if (has_epsilon) {
+            var(index) -= lr_scalar * g / (Eigen::numext::sqrt(a) + epsilon());
+          } else {
+            var(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
+          }
+        }
+      };
+
+      d.parallelFor(N, cost, shard);
+    }
+
+    return Status::OK();
+  }
+};
+
 template <typename T>
 struct ApplyProximalAdagrad<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -187,6 +267,78 @@ struct ApplyProximalAdagrad<CPUDevice, T> {
       var.device(d) =
           prox_var / (var.constant(1.0) + var.constant(l2()) * learning_rate);
     }
+  }
+};
+
+template <typename T, typename Tindex>
+struct SparseApplyProximalAdagrad<CPUDevice, T, Tindex> {
+  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar l1,
+                    typename TTypes<T>::ConstScalar l2,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices,
+                    int64 inner_dim) {
+    const Tindex N = static_cast<Tindex>(indices.dimension(0));
+    if (N == 0) return Status::OK();
+    const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
+    const T lr_scalar = lr();
+    const T l1_scalar = l1();
+    const T l2_scalar = l2();
+    if (inner_dim > 1) {
+      for (Tindex i = 0; i < N; i++) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+        auto a = accum.template chip<0>(index);
+        auto g = grad.template chip<0>(i);
+        auto v = var.template chip<0>(index);
+        a += g.square();
+        // compute learning_rate for current step.
+        auto learning_rate = a.constant(lr_scalar) * a.rsqrt();
+        auto prox_v = v;
+        // v = w - g * learning_rate.
+        prox_v -= g * learning_rate;
+        if (l1_scalar > 0) {
+          // compute sign(v) * max(|v|, 0)
+          v = prox_v.sign() *
+              (prox_v.abs() - learning_rate * prox_v.constant(l1_scalar))
+                  .cwiseMax(static_cast<T>(0.0)) /
+              (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
+        } else {
+          v = prox_v /
+              (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
+        }
+      }
+    } else {
+      for (Tindex i = 0; i < N; i++) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+        T& a = accum(index);
+        const T& g = grad(i);
+        a += g * g;
+        auto learning_rate = lr_scalar / std::sqrt(a);
+        auto prox_v = var(index);
+        prox_v -= learning_rate * g;
+        if (l1_scalar > 0) {
+          var(index) = sgn(prox_v) *
+                       std::max(std::abs(prox_v) - learning_rate * l1_scalar,
+                                static_cast<T>(0.0)) /
+                       (1.0 + l2_scalar * learning_rate);
+        } else {
+          var(index) = prox_v / (1.0 + l2_scalar * learning_rate);
+        }
+      }
+    }
+    return Status::OK();
   }
 };
 
@@ -1694,8 +1846,7 @@ REGISTER_KERNELS(GPU, double);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex>
 class SparseApplyAdagradOp : public OpKernel {
  public:
   explicit SparseApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -1705,13 +1856,13 @@ class SparseApplyAdagradOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -1755,78 +1906,14 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
-    // This op is implemented only for CPU device.
-    const auto& d = ctx->eigen_cpu_device();
-
-    if (N > 0) {
-      const int in_bytes = inner_dim * sizeof(T) * 3;
-      const int out_bytes = inner_dim * sizeof(T) * 2;
-      const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
-                                      Eigen::TensorOpCost::MulCost<T>() * 2);
-      const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
-
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        T lr_scalar = lr.scalar<T>()();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            auto a = accum_flat.template chip<0>(index);
-            auto g = grad_flat.template chip<0>(i);
-            auto v = var_flat.template chip<0>(index);
-            if (update_slots_) {
-              a += g.square();
-            }
-            v -= g.constant(lr_scalar) * g * a.rsqrt();
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-
-      } else {
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            T& a = accum_flat(index);
-            const T& g = grad_flat(i);
-            if (update_slots_) {
-              a += g * g;
-            }
-            var_flat(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyAdagrad<Device, T, Tindex,
+                                         /*has_epsilon = */ false>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 // Note: Passing lr as a placeholder for unused epsilon.
+                 lr.scalar<T>(), lr.scalar<T>(), grad.flat_outer_dims<T>(),
+                 indices.vec<Tindex>(), inner_dim, update_slots_));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -1836,20 +1923,20 @@ class SparseApplyAdagradOp : public OpKernel {
   bool update_slots_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagrad")                 \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradOp<T, Tindices>);        \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagrad")         \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradOp<T, Tindices>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+#define REGISTER_KERNELS(D, T, Tindices)                                 \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagrad")                     \
+                              .Device(DEVICE_##D)                        \
+                              .TypeConstraint<T>("T")                    \
+                              .TypeConstraint<Tindices>("Tindices"),     \
+                          SparseApplyAdagradOp<D##Device, T, Tindices>); \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagrad")             \
+                              .Device(DEVICE_##D)                        \
+                              .TypeConstraint<T>("T")                    \
+                              .TypeConstraint<Tindices>("Tindices"),     \
+                          SparseApplyAdagradOp<D##Device, T, Tindices>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
@@ -1857,8 +1944,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex>
 class SparseApplyAdagradV2Op : public OpKernel {
  public:
   explicit SparseApplyAdagradV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -1868,13 +1954,13 @@ class SparseApplyAdagradV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -1922,82 +2008,13 @@ class SparseApplyAdagradV2Op : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
-    // This op is implemented only for CPU device.
-    const auto& d = ctx->eigen_cpu_device();
-
-    if (N > 0) {
-      const int in_bytes = inner_dim * sizeof(T) * 3;
-      const int out_bytes = inner_dim * sizeof(T) * 2;
-      const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
-                                      Eigen::TensorOpCost::MulCost<T>() * 2);
-      const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
-
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        const T lr_scalar = lr.scalar<T>()();
-        const T epsilon_scalar = epsilon.scalar<T>()();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            auto a = accum_flat.template chip<0>(index);
-            auto g = grad_flat.template chip<0>(i);
-            auto v = var_flat.template chip<0>(index);
-            if (update_slots_) {
-              a += g.square();
-            }
-            v -= g.constant(lr_scalar) * g /
-                 (a.sqrt() + a.constant(epsilon_scalar));
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-
-      } else {
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        const T epsilon_scalar = epsilon.scalar<T>()();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            T& a = accum_flat(index);
-            const T& g = grad_flat(i);
-            if (update_slots_) {
-              a += g * g;
-            }
-            var_flat(index) -=
-                lr_scalar * g / (Eigen::numext::sqrt(a) + epsilon_scalar);
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyAdagrad<Device, T, Tindex,
+                                         /*has_epsilon = */ true>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 lr.scalar<T>(), epsilon.scalar<T>(), grad.flat_outer_dims<T>(),
+                 indices.vec<Tindex>(), inner_dim, update_slots_));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2007,20 +2024,20 @@ class SparseApplyAdagradV2Op : public OpKernel {
   bool update_slots_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagradV2")               \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradV2Op<T, Tindices>);      \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagradV2")       \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradV2Op<T, Tindices>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+#define REGISTER_KERNELS(D, T, Tindices)                                   \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagradV2")                     \
+                              .Device(DEVICE_##D)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<Tindices>("Tindices"),       \
+                          SparseApplyAdagradV2Op<D##Device, T, Tindices>); \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagradV2")             \
+                              .Device(DEVICE_##D)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<Tindices>("Tindices"),       \
+                          SparseApplyAdagradV2Op<D##Device, T, Tindices>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
@@ -2028,8 +2045,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex>
 class SparseApplyProximalAdagradOp : public OpKernel {
  public:
   explicit SparseApplyProximalAdagradOp(OpKernelConstruction* ctx)
@@ -2039,13 +2055,13 @@ class SparseApplyProximalAdagradOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -2066,20 +2082,23 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     const Tensor& lr = ctx->input(2);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     lr.scalar<T>()() > static_cast<T>(0)),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l1.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l2.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -2106,77 +2125,12 @@ class SparseApplyProximalAdagradOp : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
-    if (N > 0) {
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-          auto a = accum_flat.template chip<0>(index);
-          auto g = grad_flat.template chip<0>(i);
-          auto v = var_flat.template chip<0>(index);
-          a += g.square();
-          // compute learning_rate for current step.
-          auto learning_rate = a.constant(lr_scalar) * a.rsqrt();
-          auto prox_v = v;
-          // v = w - g * learning_rate.
-          prox_v -= g * learning_rate;
-          if (l1_scalar > 0) {
-            // compute sign(v) * max(|v|, 0)
-            v = prox_v.sign() *
-                (prox_v.abs() - learning_rate * prox_v.constant(l1_scalar))
-                    .cwiseMax(static_cast<T>(0.0)) /
-                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
-          } else {
-            v = prox_v /
-                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
-          }
-        }
-      } else {
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-          T& a = accum_flat(index);
-          const T& g = grad_flat(i);
-          a += g * g;
-          auto learning_rate = lr_scalar / std::sqrt(a);
-          auto prox_v = var_flat(index);
-          prox_v -= learning_rate * g;
-          if (l1_scalar > 0) {
-            var_flat(index) =
-                sgn(prox_v) *
-                std::max(std::abs(prox_v) - learning_rate * l1_scalar,
-                         static_cast<T>(0.0)) /
-                (1.0 + l2_scalar * learning_rate);
-          } else {
-            var_flat(index) = prox_v / (1.0 + l2_scalar * learning_rate);
-          }
-        }
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyProximalAdagrad<Device, T, Tindex>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+                 grad.flat_outer_dims<T>(), indices.vec<Tindex>(), inner_dim));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2185,22 +2139,25 @@ class SparseApplyProximalAdagradOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                 \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyProximalAdagrad")          \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<T>("T")                 \
-                              .TypeConstraint<Tindices>("Tindices"),  \
-                          SparseApplyProximalAdagradOp<T, Tindices>); \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyProximalAdagrad")  \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<T>("T")                 \
-                              .TypeConstraint<Tindices>("Tindices"),  \
-                          SparseApplyProximalAdagradOp<T, Tindices>);
+#define REGISTER_KERNELS(D, T, Tindices)                     \
+  REGISTER_KERNEL_BUILDER(                                   \
+      Name("SparseApplyProximalAdagrad")                     \
+          .Device(DEVICE_##D)                                \
+          .TypeConstraint<T>("T")                            \
+          .TypeConstraint<Tindices>("Tindices"),             \
+      SparseApplyProximalAdagradOp<D##Device, T, Tindices>); \
+  REGISTER_KERNEL_BUILDER(                                   \
+      Name("ResourceSparseApplyProximalAdagrad")             \
+          .Device(DEVICE_##D)                                \
+          .TypeConstraint<T>("T")                            \
+          .TypeConstraint<Tindices>("Tindices"),             \
+      SparseApplyProximalAdagradOp<D##Device, T, Tindices>);
 
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(float, int64);
-REGISTER_KERNELS(double, int32);
-REGISTER_KERNELS(double, int64);
+REGISTER_KERNELS(CPU, float, int32);
+REGISTER_KERNELS(CPU, float, int64);
+REGISTER_KERNELS(CPU, double, int32);
+REGISTER_KERNELS(CPU, double, int64);
+
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>

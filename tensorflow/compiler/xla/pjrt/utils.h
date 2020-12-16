@@ -17,17 +17,33 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_UTILS_H_
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
-// Extract from XlaComputation the sharded program shapes (argument shapes,
-// result shape) without layouts.
-StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
-    const XlaComputation& computation);
+// Returns the num_replicas, num_partitions and device assignment given a
+// ExecutableBuildOptions and whether we want a portable executable.
+Status ParseDeviceAssignmentCompileOptions(
+    bool compile_portable_executable, ExecutableBuildOptions* build_options,
+    std::function<StatusOr<DeviceAssignment>(int, int)>
+        GetDefaultDeviceAssignmentFunction,
+    int* num_replicas, int* num_partitions,
+    std::shared_ptr<DeviceAssignment>* device_assignment);
+
+// Returns pointers to the argument layouts given an XlaComputation and
+// ExecutableBuildOptions.
+Status DetermineArgumentLayoutsFromCompileOptions(
+    const XlaComputation& computation,
+    std::function<StatusOr<Shape>(Shape)>
+        choose_compact_layout_for_shape_function,
+    absl::optional<std::vector<Shape>>& argument_layouts,
+    ExecutableBuildOptions* build_options,
+    std::vector<const Shape*>* argument_layout_pointers);
 
 // Executables can donate buffers so that buffers can be aliased from inputs
 // to outputs. This function returns the list of parameters that must be
