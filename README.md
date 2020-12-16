@@ -168,9 +168,8 @@ Container Type                                                    | Status | Art
 *   [TensorFlow White Papers](https://www.tensorflow.org/about/bib)
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 
-Learn more about the
-[TensorFlow community](https://www.tensorflow.org/community) and how can you 
-[contribute](https://www.tensorflow.org/community/contribute).
+Learn more about the [TensorFlow community](https://www.tensorflow.org/community) and
+how can you [contribute](https://www.tensorflow.org/community/contribute).
 
 ## License
 
