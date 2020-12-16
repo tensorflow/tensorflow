@@ -199,6 +199,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 // assignment of the result.
 std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
 
+// Creates function pass to insert tf_device.send and tf_device.receive ops to
+// make sure any argument of any op is on the same host of the op itself.
+std::unique_ptr<FunctionPass> CreateCrossHostTransferPass();
+
 // Creates a pass that adds the device attribute to every tf.Const op based on
 // the device attribute of the operations that read its result. If the result of
 // a tf.Const op is read by operations placed on multiple devices, then the pass
