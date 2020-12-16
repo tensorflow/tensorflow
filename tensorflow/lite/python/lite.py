@@ -473,7 +473,10 @@ class TFLiteConverterBase(object):
 
     if self._experimental_calibrate_only:
       return calibrated
-    elif self._experimental_new_quantizer:
+    elif self._experimental_new_quantizer and (
+        activations_type != _dtypes.int16):
+      # TODO(b/175659372): remove the activations_type restriction and enable
+      # it for all the activation types.
       return _mlir_quantize(calibrated)
     else:
       return calibrate_quantize.calibrate_and_quantize(
