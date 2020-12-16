@@ -260,6 +260,22 @@ func @build_const_list() -> !tfr.attr {
 
 // -----
 
+// CHECK-LABEL: build_high_dim_const_list
+// CANON-LABEL: build_high_dim_const_list
+func @build_high_dim_const_list() -> !tfr.attr {
+  %0 = "std.constant"() {value = 42 : i32} : () -> i32
+  %1 = "std.constant"() {value = 41 : i32} : () -> i32
+  %2 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
+  %3 = "tfr.build_list"(%0, %1) : (i32, i32) -> !tfr.attr
+  %4 = "tfr.build_list"(%2, %3) : (!tfr.attr, !tfr.attr) -> !tfr.attr
+  return %4 : !tfr.attr
+
+// CANON-NEXT: %[[c:.*]] = tfr.constant {{\[}}[42 : i32, 41 : i32], [42 : i32, 41 : i32]] -> !tfr.attr
+// CANON-NEXT: return %[[c]] : !tfr.attr
+}
+
+// -----
+
 // CHECK-LABEL: get_length
 // CANON-LABEL: get_length
 func @get_length(%arg0: !tfr.tensor<A>, %arg1: !tfr.tensor<B>) -> index {
