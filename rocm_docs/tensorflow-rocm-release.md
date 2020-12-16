@@ -7,6 +7,8 @@ This document is to list the ROCm compatibility for tensorflow-rocm and tensorfl
 
 | tensorflow-rocm |  ROCm base  |  Installation Instruction  |
 | ------ | ------ |  -------- |
+|   2.4.0RC3  | ROCm3.10  | <https://pypi.org/project/tensorflow-rocm/2.4.0rc3> |
+|   2.3.3  | ROCm3.10  | <https://pypi.org/project/tensorflow-rocm/2.3.3> |
 |   2.3.2  | ROCm3.9  | <https://pypi.org/project/tensorflow-rocm/2.3.2> |
 |   2.3.1  | ROCm3.8  | <https://pypi.org/project/tensorflow-rocm/2.3.1> |
 |   2.3.0  | ROCm3.7  | <https://pypi.org/project/tensorflow-rocm/2.3.0> |
@@ -15,6 +17,7 @@ This document is to list the ROCm compatibility for tensorflow-rocm and tensorfl
 |   2.2.0RC4  | ROCm3.0  | <https://pypi.org/project/tensorflow-rocm/2.2.0rc4> |
 |   2.2.0RC3  | ROCm3.0  | <https://pypi.org/project/tensorflow-rocm/2.2.0rc3> |
 |   2.2.0RC2  | ROCm3.0  | <https://pypi.org/project/tensorflow-rocm/2.2.0rc2> |
+|   2.1.6  | ROCm3.10  | <https://pypi.org/project/tensorflow-rocm/2.1.6> |
 |   2.1.5  | ROCm3.9  | <https://pypi.org/project/tensorflow-rocm/2.1.5> |
 |   2.1.4  | ROCm3.8  | <https://pypi.org/project/tensorflow-rocm/2.1.4> |
 |   2.1.3  | ROCm3.7  | <https://pypi.org/project/tensorflow-rocm/2.1.3> |
@@ -31,6 +34,7 @@ This document is to list the ROCm compatibility for tensorflow-rocm and tensorfl
 |   2.0.0b3    |   ROCm2.7     | <https://pypi.org/project/tensorflow-rocm/2.0.0b3> |
 |   2.0.0b2    |   ROCm2.6     | <https://pypi.org/project/tensorflow-rocm/2.0.0b2> |
 |   2.0.0b1    |  ROCm2.6    | <https://pypi.org/project/tensorflow-rocm/2.0.0b1> |
+|   1.15.8    |  ROCm3.10      | <https://pypi.org/project/tensorflow-rocm/1.15.8> |
 |   1.15.7    |  ROCm3.9      | <https://pypi.org/project/tensorflow-rocm/1.15.7> |
 |   1.15.6    |  ROCm3.8      | <https://pypi.org/project/tensorflow-rocm/1.15.6> |
 |   1.15.5    |  ROCm3.7      | <https://pypi.org/project/tensorflow-rocm/1.15.5> |
@@ -63,9 +67,11 @@ This document is to list the ROCm compatibility for tensorflow-rocm and tensorfl
 
 | tensorflow-rocm-enhanced |  ROCm base  |  Installation Instruction  |
 | ------ | ------ |  -------- |
+|   2.3.3  | ROCm3.10  | <https://pypi.org/project/tensorflow-rocm-enhanced/2.3.3> |
 |   2.3.2  | ROCm3.9  | <https://pypi.org/project/tensorflow-rocm-enhanced/2.3.2> |
 |   2.3.1  | ROCm3.8  | <https://pypi.org/project/tensorflow-rocm-enhanced/2.3.1> |
 |   2.3.0  | ROCm3.7  | <https://pypi.org/project/tensorflow-rocm-enhanced/2.3.0> |
+|   1.15.4    |  ROCm3.10      | <https://pypi.org/project/tensorflow-rocm-enhanced/1.15.4> |
 |   1.15.3    |  ROCm3.9      | <https://pypi.org/project/tensorflow-rocm-enhanced/1.15.3> |
 |   1.15.2    |  ROCm3.8      | <https://pypi.org/project/tensorflow-rocm-enhanced/1.15.2> |
 |   1.15.1    |  ROCm3.7      | <https://pypi.org/project/tensorflow-rocm-enhanced/1.15.1> |
