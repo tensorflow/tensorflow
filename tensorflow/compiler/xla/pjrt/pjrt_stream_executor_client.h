@@ -686,15 +686,15 @@ class PjRtStreamExecutorExecutable : public PjRtExecutable {
 
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options) const override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options) const override;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) override;
+      const ExecuteOptions& options) const override;
 
   void Delete() override { executables_.clear(); }
 
