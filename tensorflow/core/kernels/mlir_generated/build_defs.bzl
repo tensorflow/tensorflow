@@ -62,22 +62,19 @@ _gen_mlir_op_rule = rule(
         "template": attr.label(mandatory = True, allow_single_file = True),
         "type": attr.string(mandatory = True),
         "out": attr.output(mandatory = True),
-        "unranked": attr.bool(mandatory = True),
     },
 )
 
-def _gen_mlir_op(name, type, unranked):
-    tmpl_name = name.replace("_unranked", "") if unranked else name
+def _gen_mlir_op(name, type):
     _gen_mlir_op_rule(
         name = "generate_{name}_{type}_mlir".format(name = name, type = type),
-        template = "op_definitions/{name}.mlir.tmpl".format(name = tmpl_name),
+        template = "op_definitions/{name}.mlir.tmpl".format(name = name),
         type = type,
         out = "{name}_{type}.mlir".format(name = name, type = type),
-        unranked = unranked,
     )
 
 ################################################################################
-# Unranked kernels build rules.
+# Kernels build rules.
 ################################################################################
 
 def if_mlir_unranked_kernels_enabled(if_true, if_false = []):
@@ -86,7 +83,7 @@ def if_mlir_unranked_kernels_enabled(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
-def _gen_unranked_kernel_fatbin_impl(ctx):
+def _gen_kernel_fatbin_impl(ctx):
     cc_toolchain = find_cpp_toolchain(ctx)
     feature_configuration = cc_common.configure_features(
         ctx = ctx,
@@ -131,7 +128,7 @@ def _gen_unranked_kernel_fatbin_impl(ctx):
     )
     return [CcInfo(linking_context = linking_context)]
 
-_gen_unranked_kernel_fatbin_rule = rule(
+_gen_kernel_fatbin_rule = rule(
     attrs = {
         "mlir_op": attr.label(mandatory = True, allow_single_file = True),
         "tile_size": attr.string(mandatory = True),
@@ -153,11 +150,11 @@ _gen_unranked_kernel_fatbin_rule = rule(
     },
     fragments = ["cpp"],
     outputs = {"kernel": "%{name}_kernel.o"},
-    implementation = _gen_unranked_kernel_fatbin_impl,
+    implementation = _gen_kernel_fatbin_impl,
 )
 
-def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = []):
-    """ Generate a library with unranked kernels for a specific tensorflow op.
+def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = []):
+    """ Generate a library with kernels for a specific tensorflow op.
 
     Args:
       name: The name of the tensorflow op.
@@ -173,9 +170,8 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
             _gen_mlir_op(
                 name = name,
                 type = type,
-                unranked = True,
             )
-            _gen_unranked_kernel_fatbin_rule(
+            _gen_kernel_fatbin_rule(
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
                 gpu_archs = rocm_gpu_architectures() if rocm_is_configured() else cuda_gpu_architectures(),
@@ -206,14 +202,4 @@ def gen_unranked_kernel_library(name, types, tile_size, tags = [], unroll_factor
         deps = if_gpu_is_configured([":{name}_{type}_kernel_generator".format(name = name, type = type) for type in types]),
         linkstatic = 1,
         tags = tags,
-    )
-
-def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None, extra_args = []):
-    gen_unranked_kernel_library(
-        name = name + "_unranked",
-        types = types,
-        tile_size = tile_size,
-        tags = tags,
-        unroll_factors = unroll_factors,
-        extra_args = extra_args,
     )
