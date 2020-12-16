@@ -64,6 +64,7 @@ tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
   -e "\.projbuild" \
   -e "\.properties" \
   -e "\.resc" \
+  -e "\.resource" \
   -e "\.robot" \
   -e "\.txt" \
   -e "\.tpl" \
