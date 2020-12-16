@@ -33,6 +33,10 @@ limitations under the License.
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#endif
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #endif
 
@@ -374,7 +378,10 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
     return Status::OK();
   }
+#endif
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
           custom_call->custom_call_target(), std::string(platform_name()))) {
     auto get_slices_for_instr = [&](const HloInstruction* instr) {
