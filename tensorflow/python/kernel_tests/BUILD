@@ -790,6 +790,7 @@ tf_py_test(
     name = "parsing_ops_test",
     size = "medium",
     srcs = ["parsing_ops_test.py"],
+    tags = ["no_mac"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -801,7 +802,6 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
-    tags = ["no_mac"],
 )
 
 tf_py_test(
