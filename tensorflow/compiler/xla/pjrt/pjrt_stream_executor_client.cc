@@ -217,9 +217,9 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
       should_stage_host_to_device_transfers_(
           should_stage_host_to_device_transfers),
       gpu_run_options_(std::move(gpu_run_options)),
-      thread_pool_(tensorflow::Env::Default(), "pjrt_thread_pool",
-                   std::max<int>(DefaultThreadPoolSize(),
-                                 client->device_count())) {
+      thread_pool_(
+          tensorflow::Env::Default(), "pjrt_thread_pool",
+          std::max<int>(DefaultThreadPoolSize(), client->device_count())) {
   if (owned_allocator_ != nullptr) {
     allocator_ = owned_allocator_.get();
   } else {
@@ -539,7 +539,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
     se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
     bool reference_held) {
   CHECK(ok());
-  CHECK(type_ == kUsage);
+  CHECK_EQ(type_, kUsage);
   parent_->ConvertUsageHold(buffer().get(), usage_stream, std::move(event),
                             reference_held);
   SetState(kConverted);
@@ -547,7 +547,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::ConvertUsageHold(
 
 void PjRtStreamExecutorBuffer::ScopedHold::ConfirmDonation() {
   CHECK(ok());
-  CHECK(type_ == kDonation);
+  CHECK_EQ(type_, kDonation);
   parent_->ConfirmDonation(buffer().get());
   SetState(kDonated);
 }
@@ -561,7 +561,7 @@ void PjRtStreamExecutorBuffer::ScopedHold::AddToInput(
   if (type_ == kDonation) {
     buffer()->AddToInputAsDonated(iterator, end, execution_input, allocator);
   } else {
-    CHECK(type_ == kUsage);
+    CHECK_EQ(type_, kUsage);
     buffer()->AddToInputAsImmutable(iterator, end);
   }
 }
@@ -959,16 +959,14 @@ int64 PjRtStreamExecutorBuffer::OnDeviceSizeInBytes() const {
 }
 
 void PjRtStreamExecutorBuffer::WaitForOutstandingUsageHolds() {
-  auto not_in_usage_hold = [&]() {
-    mu_.AssertHeld();
+  auto not_in_usage_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return holds_[ScopedHold::kUsage] == 0;
   };
   mu_.Await(absl::Condition(&not_in_usage_hold));
 }
 
 void PjRtStreamExecutorBuffer::WaitForOutstandingDonationHold() {
-  auto not_in_donation_hold = [&]() {
-    mu_.AssertHeld();
+  auto not_in_donation_hold = [&]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return holds_[ScopedHold::kDonation] == 0;
   };
   mu_.Await(absl::Condition(&not_in_donation_hold));
