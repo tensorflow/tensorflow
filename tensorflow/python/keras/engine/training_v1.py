@@ -55,6 +55,7 @@ from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -229,7 +230,7 @@ class Model(training_lib.Model):
     """
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not training_lib._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+          (not saving_utils.is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
