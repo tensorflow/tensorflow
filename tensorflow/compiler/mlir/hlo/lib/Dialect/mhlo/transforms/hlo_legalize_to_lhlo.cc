@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Bufferize.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 
 namespace mlir {
 namespace mhlo {
@@ -62,7 +64,7 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
     if (shape_element.value() != ShapedType::kDynamicSize) continue;
     Value index = rewriter->create<ConstantIndexOp>(loc, shape_element.index());
     Value alloc_operand =
-        rewriter->create<ExtractElementOp>(loc, shape_operand, index);
+        rewriter->create<tensor::ExtractOp>(loc, shape_operand, index);
     if (!alloc_operand.getType().isIndex()) {
       alloc_operand = rewriter->create<IndexCastOp>(loc, alloc_operand,
                                                     rewriter->getIndexType());
@@ -292,7 +294,7 @@ class HloToLhloDynamicBroadcastInDimOpConverter
     for (int i = 0; i < result_rank; ++i) {
       Value i_val = b->create<ConstantIndexOp>(loc, i);
       Value result_dim_size =
-          b->create<ExtractElementOp>(loc, op.output_dimensions(), i_val);
+          b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
       if (!result_dim_size.getType().isIndex()) {
         result_dim_size =
             b->create<IndexCastOp>(loc, result_dim_size, b->getIndexType());
@@ -567,6 +569,7 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
+    target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addIllegalDialect<mhlo::MhloDialect>();

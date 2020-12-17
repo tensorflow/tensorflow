@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 
 #define DEBUG_TYPE "mhlo-control-flow-to-scf"
 
@@ -119,7 +120,7 @@ void MatchAndRewrite(WhileOp whileOp) {
   auto tensorIndexType = RankedTensorType::get({}, b.getIndexType());
   auto getAsIndex = [&](Value val) {
     auto loc = whileOp.getLoc();
-    return b.create<ExtractElementOp>(
+    return b.create<tensor::ExtractOp>(
         loc, b.create<IndexCastOp>(loc, tensorIndexType, val), ValueRange());
   };
 

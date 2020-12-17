@@ -315,6 +315,18 @@ cc_library(
 )
 
 cc_library(
+    name = "TestTypeDialect",
+    srcs = glob([
+        "lib/Dialect/LLVMIR/*.cpp",
+    ]),
+    deps = [
+        ":TestDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+cc_library(
     name = "TestTosaDialect",
     srcs = glob([
         "lib/Dialect/Tosa/*.cpp",

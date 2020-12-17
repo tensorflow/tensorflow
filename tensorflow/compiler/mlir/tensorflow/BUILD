@@ -1011,6 +1011,7 @@ cc_library(
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
