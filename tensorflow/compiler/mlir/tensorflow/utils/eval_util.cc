@@ -55,6 +55,26 @@ static bool IsOk(const Status& s) {
   return false;
 }
 
+// Update node_def's device attribute (if any) to use a local device, that is
+// /job:localhost/replica:0/task:0/{DEVICE_TYPE}:{DEVICE_ID}.
+// This is because EvaluateOperation only has access to local devices but the
+// given node may carry a device assignment to a remote device. In that case,
+// evaluation would fail even if we have a device of same type locally. By
+// altering device assignment to a local one, we could successfully evaluate in
+// that case.
+void ForceUseLocalhostDevice(NodeDef* node_def) {
+  DeviceNameUtils::ParsedName parsed_name;
+
+  if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name)) return;
+
+  if (parsed_name.has_job) parsed_name.job = "localhost";
+  if (parsed_name.has_replica) parsed_name.replica = 0;
+  if (parsed_name.has_task) parsed_name.task = 0;
+
+  *node_def->mutable_device() =
+      DeviceNameUtils::ParsedNameToString(parsed_name);
+}
+
 mlir::LogicalResult EvaluateOperation(
     mlir::Operation* inst, llvm::ArrayRef<mlir::ElementsAttr> operands,
     TFE_Context* context, llvm::SmallVectorImpl<mlir::Attribute>* results) {
@@ -84,14 +104,13 @@ mlir::LogicalResult EvaluateOperation(
   RETURN_FAILURE_IF_ERROR(node_def_or.status());
   const auto& node_def = node_def_or.ValueOrDie();
 
-  // Note that we don't set device for this op based on the assigned device
-  // attribute of the op. We want to evaluate operation on the host CPU as the
-  // assigned device might be remote, not available yet or compilation only
-  // on demand device which may create a recursion. The eager runtime executes
-  // the op on the device input tensors are placed which is host CPU here.
+  ForceUseLocalhostDevice(node_def.get());
+
   TFE_Op* op = TFE_NewOp(context, node_def->op().c_str(), status);
   RETURN_FAILURE_IF_ERROR(status);
   auto clean_op = MakeCleanup([op] { TFE_DeleteOp(op); });
+  TFE_OpSetDevice(op, node_def->device().c_str(), status);
+  RETURN_FAILURE_IF_ERROR(status);
   for (const auto& attr : node_def->attr()) {
     SetOpAttrValueScalar(context, op, attr.second, attr.first.c_str(), status);
     RETURN_FAILURE_IF_ERROR(status);

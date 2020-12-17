@@ -300,6 +300,19 @@ func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
 // CHECK-NEXT: return %[[CST]], %[[CST1]]
 }
 
+// Tests ops that have non-local device assignment but with local device with
+// same type (CPU) are correctly evaluated.
+// CHECK-LABEL: func @testRemoteDevice() -> tensor<2x2xi32>
+func @testRemoteDevice() -> tensor<2x2xi32> {
+^bb0:
+  %0 = constant dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>
+  %1 = constant dense<1> : tensor<2xi32>
+  %2 = "tf.Add"(%0, %1) {device = "/job:remote_worker/replica:123/task:456/CPU:0", name = "add"} : (tensor<2x2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[\[}}1, 2], {{\[}}3, 4]]> : tensor<2x2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
+  return %2: tensor<2x2xi32>
+}
+
 // Tests ops that variable shapes are correctly evaluated on static types.
 // CHECK-LABEL: func @testVariableShape
 func @testVariableShape(%arg0: tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32> {
