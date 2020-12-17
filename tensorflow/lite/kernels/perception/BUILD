@@ -39,7 +39,6 @@ cc_test(
         "max_pool_with_argmax_test.cc",
         "max_unpooling_2d_test.cc",
     ],
-    tags = ["nomsan"],  # b/175817632
     deps = [
         ":perception_ops",
         "//tensorflow/lite:framework",

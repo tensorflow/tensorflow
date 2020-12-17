@@ -117,6 +117,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   OpData* op_data = new OpData;
   op_data->params.computed.padding = TfLitePaddingValues{0, 0, 0, 0};
   op_data->include_batch_in_index = m[kIncludeBatchStr].AsBool();
+  op_data->params.activation = kTfLiteActNone;
 
   const std::string padding = m[kPaddingStr].AsString().str();
   if (padding == kPaddingValidStr) {
