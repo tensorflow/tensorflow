@@ -1,3 +1,7 @@
+# Release 2.3.2
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.3.1
 
 ## Bug Fixes and Other Changes
