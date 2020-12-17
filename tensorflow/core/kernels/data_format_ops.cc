@@ -185,7 +185,7 @@ class DataFormatVecPermuteOp : public OpKernel {
                   errors::InvalidArgument(
                       "Format specifier must contain H and W for 2D case"));
     }
-    ComputeDstIndex(src_format_str, dst_format_str, input.dims(), &dst_idx);
+    ComputeDstIndex(input.dims(), &dst_idx);
 
     functor::DataFormatVecPermute<Device, T>()(context->eigen_device<Device>(),
                                                input.flat<T>(),
