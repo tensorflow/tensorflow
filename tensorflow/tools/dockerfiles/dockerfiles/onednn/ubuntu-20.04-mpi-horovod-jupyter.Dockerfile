@@ -95,6 +95,7 @@ ARG HOROVOD_VERSION=
 
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     build-essential \
+    cmake \
     g++-8 \
     gcc-8 \
     ${PYTHON}-dev
