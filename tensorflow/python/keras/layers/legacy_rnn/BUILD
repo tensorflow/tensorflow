@@ -41,7 +41,6 @@ py_library(
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/keras/utils:tf_utils",
         "//tensorflow/python/training/tracking:base",
     ],

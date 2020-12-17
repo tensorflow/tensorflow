@@ -346,12 +346,6 @@ class RNNCell(base_layer.Layer):
   def get_config(self):  # pylint: disable=useless-super-delegation
     return super(RNNCell, self).get_config()
 
-  @property
-  def _use_input_spec_as_call_signature(self):
-    # We do not store the shape information for the state argument in the call
-    # function for legacy RNN cells, so do not generate an input signature.
-    return False
-
 
 class LayerRNNCell(RNNCell):
   """Subclass of RNNCells that act like proper `tf.Layer` objects.
