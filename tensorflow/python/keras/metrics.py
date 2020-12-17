@@ -2802,7 +2802,6 @@ class MeanIoU(Metric):
       This value must be provided, since a confusion matrix of dimension =
       [num_classes, num_classes] will be allocated.
     name: (Optional) string name of the metric instance.
-    from_logits: (Optional) Whether `y_pred` is expected to be a logits tensor.
     dtype: (Optional) data type of the metric result.
 
   Standalone usage:
@@ -2825,7 +2824,7 @@ class MeanIoU(Metric):
 
   When passing `y_pred` as a logits tensor:
 
-  >>> m = tf.keras.metrics.MeanIoU(num_classes=3, from_logits=True)
+  >>> m = tf.keras.metrics.MeanIoU(num_classes=3)
   >>> y_true = [2, 0, 1, 1]
   >>> y_pred = [[2.5, 0.2, 2.7], [-1.4, 0.7, 1.2], [2., 3., 1.4], [2.2, 2.4, 1.5]]
   >>> m.update_state(y_true, y_pred)
@@ -2842,10 +2841,9 @@ class MeanIoU(Metric):
   ```
   """
 
-  def __init__(self, num_classes, name=None, from_logits=False, dtype=None):
+  def __init__(self, num_classes, name=None, dtype=None):
     super(MeanIoU, self).__init__(name=name, dtype=dtype)
     self.num_classes = num_classes
-    self.from_logits = from_logits
 
     # Variable to accumulate the predictions in the confusion matrix.
     self.total_cm = self.add_weight(
@@ -2866,11 +2864,13 @@ class MeanIoU(Metric):
     Returns:
       Update op.
     """
-    if self.from_logits:
-      y_pred = math_ops.argmax(y_pred, axis=-1)
 
     y_true = math_ops.cast(y_true, self._dtype)
     y_pred = math_ops.cast(y_pred, self._dtype)
+
+    # If y_pred is passed as a logits tensor, or a probability tensor
+    if len(K.int_shape(y_true)) == len(K.int_shape(y_pred)) - 1:
+      y_pred = math_ops.argmax(y_pred, axis=-1)
 
     # Flatten the input if its rank > 1.
     if y_pred.shape.ndims > 1:
