@@ -31,11 +31,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -765,6 +765,26 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating convolution instructions
+  // with window reversal.
+  if (op.hasWindowReversal()) return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::XlaOp xla_result = xla::ConvGeneralDilated(
+      lhs, rhs, Convert_window_strides(op.window_strides()),
+      Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
+      Convert_rhs_dilation(op.rhs_dilation()),
+      Convert_dimension_numbers(op.dimension_numbers()),
+      Convertuint64_t(op.feature_group_count()),
+      Convertuint64_t(op.batch_group_count()),
+      Unwrap(Convert_precision_config(op.precision_config())));
+  value_map[op] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp operand;
@@ -1264,10 +1284,10 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
-    // Construct the return value for the function. If there are multiple
-    // values returned, then create a tuple, else return value directly.
+    // Construct the return value for the function. If there is a single value
+    // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
-    if ((return_tuple_ && is_entry_function) || num_return_values > 1) {
+    if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       const bool has_ret_shardings =
           !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
 

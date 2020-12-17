@@ -112,6 +112,10 @@ cc_library(
         "//tensorflow/lite/kernels:fully_connected.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
     deps = [
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite/c:common",

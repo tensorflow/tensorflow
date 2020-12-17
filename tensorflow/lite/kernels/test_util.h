@@ -225,8 +225,8 @@ class SingleOpModel {
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
-    const auto dim_metadata = converter.GetDimMetadata();
-    const auto sparse_data = converter.GetData();
+    const auto& dim_metadata = converter.GetDimMetadata();
+    const auto& sparse_data = converter.GetData();
 
     // Build sparsity parameter.
     std::vector<flatbuffers::Offset<DimensionMetadata>> fb_dim_metadata(

@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "third_party/llvm/llvm-project/llvm/include/llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -33,22 +33,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-// Tests are parametrized with the kernel name, the input data type and the
-// output data type.
-struct BinaryTestParam {
-  std::string op_name;
-  DataType input_type;
-  DataType output_type;
-  BinaryTestParam(const std::string& name, DataType input, DataType output)
-      : op_name(name), input_type(input), output_type(output) {}
-};
-
-// To add additional tests for other kernels, search for PLACEHOLDER in this
-// file.
-
-class ParametricGpuBinaryOpsTest
-    : public OpsTestBase,
-      public ::testing::WithParamInterface<BinaryTestParam> {
+class GpuBinaryOpTest : public OpsTestBase {
  protected:
   void SetUp() override {
     std::unique_ptr<tensorflow::Device> device_gpu(
@@ -57,348 +42,619 @@ class ParametricGpuBinaryOpsTest
     SetDevice(tensorflow::DEVICE_GPU, std::move(device_gpu));
   }
 
-  template <typename T>
-  void SetOp(const absl::InlinedVector<T, 10>& input_1,
-             const TensorShape& shape_1,
-             const absl::InlinedVector<T, 10>& input_2,
-             const TensorShape& shape_2) {
-    TF_ASSERT_OK(NodeDefBuilder("some_name", GetParam().op_name)
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Input(FakeInput(DataTypeToEnum<T>::v()))
-                     .Attr("T", DataTypeToEnum<T>::v())
-                     .Finalize(node_def()));
+  template <typename T, typename OutT>
+  void SetOpKernel(const std::string& op_name, const TensorShape& lhs_shape,
+                   const absl::InlinedVector<T, 10>& lhs_input,
+                   const TensorShape& rhs_shape,
+                   const absl::InlinedVector<T, 10>& rhs_input,
+                   bool use_constraint) {
+    auto builder = NodeDefBuilder("some_name", op_name)
+                       .Input(FakeInput(DataTypeToEnum<T>::v()))
+                       .Input(FakeInput(DataTypeToEnum<T>::v()));
+    if (use_constraint) {
+      builder.Attr("T", DataTypeToEnum<T>::v());
+    }
+    TF_ASSERT_OK(builder.Finalize(node_def()));
 
     TF_ASSERT_OK(InitOp());
-    inputs_.clear();
-    AddInputFromArray<T>(shape_1, input_1);
-    AddInputFromArray<T>(shape_2, input_2);
+    AddInputFromArray<T>(lhs_shape, lhs_input);
+    AddInputFromArray<T>(rhs_shape, rhs_input);
   }
 
-  template <typename T, typename BaselineType, typename OutT>
-  void RunAndCompare(const absl::InlinedVector<T, 10>& input_1,
-                     const TensorShape& shape_1,
-                     const absl::InlinedVector<T, 10>& input_2,
-                     const TensorShape& shape_2,
-                     const absl::InlinedVector<OutT, 10>& output,
-                     const TensorShape& output_shape) {
-    SetOp<T>(input_1, shape_1, input_2, shape_2);
+  // Run fully specified tests.
+
+  template <typename T, typename OutT>
+  void RunAndExpectResult(const std::string& op_name,
+                          const TensorShape& lhs_shape,
+                          const absl::InlinedVector<T, 10>& lhs_input,
+                          const TensorShape& rhs_shape,
+                          const absl::InlinedVector<T, 10>& rhs_input,
+                          const TensorShape& expected_shape,
+                          const absl::InlinedVector<OutT, 10>& expected_output,
+                          bool use_constraint = true) {
+    SetOpKernel<T, OutT>(op_name, lhs_shape, lhs_input, rhs_shape, rhs_input,
+                         use_constraint);
     TF_ASSERT_OK(RunOpKernel());
+
+    // Compare output to expectation.
     Tensor expected_tensor(allocator(), DataTypeToEnum<OutT>::value,
-                           output_shape);
-    test::FillValues<OutT>(&expected_tensor, output);
+                           expected_shape);
+    test::FillValues<OutT>(&expected_tensor, expected_output);
     test::ExpectEqual(expected_tensor, *GetOutput(0));
   }
 
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestBroadcastingExpand() {
-    auto input_1 = absl::InlinedVector<T, 10>{static_cast<T>(10)};
-    auto input_2 = absl::InlinedVector<T, 10>{
-        static_cast<T>(1), static_cast<T>(2), static_cast<T>(3),
-        static_cast<T>(4), static_cast<T>(5), static_cast<T>(6)};
-    absl::InlinedVector<OutT, 10> expected{
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[0]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[1]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[2]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[3]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[4]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[5]))),
-    };
-    auto expected_shape = TensorShape({6});
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape({1}), input_2,
-                                         TensorShape({6}), expected,
-                                         expected_shape);
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestBroadcastingInDim() {
-    auto input_1 = absl::InlinedVector<T, 10>{
-        static_cast<T>(10), static_cast<T>(20), static_cast<T>(30)};
-    auto input_2 = absl::InlinedVector<T, 10>{
-        static_cast<T>(1), static_cast<T>(2), static_cast<T>(3),
-        static_cast<T>(4), static_cast<T>(5), static_cast<T>(6)};
-    absl::InlinedVector<OutT, 10> expected{
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[0]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[1]),
-            static_cast<BaselineType>(input_2[1]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[2]),
-            static_cast<BaselineType>(input_2[2]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[3]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[1]),
-            static_cast<BaselineType>(input_2[4]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[2]),
-            static_cast<BaselineType>(input_2[5]))),
-    };
-    auto expected_shape = TensorShape({2, 3});
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape({3}), input_2,
-                                         TensorShape({2, 3}), expected,
-                                         expected_shape);
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestBroadcasting() {
-    auto input_1 =
-        absl::InlinedVector<T, 10>{static_cast<T>(10), static_cast<T>(20)};
-    auto input_2 = absl::InlinedVector<T, 10>{
-        static_cast<T>(1), static_cast<T>(2), static_cast<T>(3)};
-    absl::InlinedVector<OutT, 10> expected{
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[0]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[1]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[0]),
-            static_cast<BaselineType>(input_2[2]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[1]),
-            static_cast<BaselineType>(input_2[0]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[1]),
-            static_cast<BaselineType>(input_2[1]))),
-        static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-            static_cast<BaselineType>(input_1[1]),
-            static_cast<BaselineType>(input_2[2]))),
-    };
-    auto expected_shape = TensorShape({2, 3});
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape({2, 1}), input_2,
-                                         TensorShape({3}), expected,
-                                         expected_shape);
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void RunOp() {
-    auto input_1 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    auto input_2 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
-      expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(inp), static_cast<BaselineType>(inp))));
-    }
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
-                                         TensorShape{2, 3}, expected,
-                                         TensorShape{2, 3});
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestEqualShapes() {
-    auto input_1 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    auto input_2 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
-      expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(inp), static_cast<BaselineType>(inp))));
-    }
-    RunAndCompare<T, BaselineType, OutT>(input_1, TensorShape{2, 3}, input_2,
-                                         TensorShape{2, 3}, expected,
-                                         TensorShape{2, 3});
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestOneIsScalar() {
-    auto input_1 = static_cast<T>(42);
-    auto input_2 = {
-        static_cast<T>(-std::numeric_limits<BaselineType>::infinity()),
-        static_cast<T>(-0.1),
-        static_cast<T>(-0.0),
-        static_cast<T>(0.0),
-        static_cast<T>(0.1),
-        static_cast<T>(std::numeric_limits<BaselineType>::infinity())};
-    absl::InlinedVector<OutT, 10> expected;
-    for (const T& inp : input_2) {
-      expected.push_back(static_cast<OutT>(Expected<BaselineType, BaselineOutT>(
-          static_cast<BaselineType>(input_1), static_cast<BaselineType>(inp))));
-    }
-    RunAndCompare<T, BaselineType, OutT>({input_1}, TensorShape{}, input_2,
-                                         TensorShape{2, 3}, expected,
-                                         TensorShape{2, 3});
-  }
-
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestIncompatibleShapes() {
-    auto input_1 = {static_cast<T>(-0.1), static_cast<T>(-0.0),
-                    static_cast<T>(0.0)};
-    auto input_2 = {static_cast<T>(-0.1), static_cast<T>(0.0)};
-
-    SetOp<T>(input_1, TensorShape{3}, input_2, TensorShape{2});
+  template <typename T, typename OutT>
+  void RunAndExpectInvalidArgument(const std::string& op_name,
+                                   const TensorShape& lhs_shape,
+                                   const absl::InlinedVector<T, 10>& lhs_input,
+                                   const TensorShape& rhs_shape,
+                                   const absl::InlinedVector<T, 10>& rhs_input,
+                                   bool use_constraint = true) {
+    SetOpKernel<T, OutT>(op_name, lhs_shape, lhs_input, rhs_shape, rhs_input,
+                         use_constraint);
     auto status = RunOpKernel();
     EXPECT_FALSE(status.ok());
     EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
   }
 
-  template <typename T, typename BaselineType, typename OutT,
-            typename BaselineOutT>
-  void TestEmptyShapeWithBroadcasting() {
-    TensorShape input_shape_a{2, 0, 1};
-    TensorShape input_shape_b{2, 0, 5};
-    TensorShape expected_shape{2, 0, 5};
-    absl::InlinedVector<T, 10> empty_input = {};
-    absl::InlinedVector<OutT, 10> expected_result = {};
-    RunAndCompare<T, BaselineType, OutT>(empty_input, input_shape_a,
-                                         empty_input, input_shape_b,
-                                         expected_result, expected_shape);
-    RunAndCompare<T, BaselineType, OutT>(empty_input, input_shape_b,
-                                         empty_input, input_shape_a,
-                                         expected_result, expected_shape);
+  // Run common test cases.
+
+  template <typename T, typename OutT>
+  void TestIncompatibleShapes(const std::string& op_name,
+                              const absl::InlinedVector<T, 10>& lhs_input,
+                              const absl::InlinedVector<T, 10>& rhs_input,
+                              bool use_constraint = true) {
+    // Prepare incompatibly shaped inputs.
+    TensorShape lhs_shape{3};
+    TensorShape rhs_shape{2};
+    auto repeated_lhs_input =
+        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+    auto repeated_rhs_input =
+        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+
+    RunAndExpectInvalidArgument<T, OutT>(op_name, lhs_shape, repeated_lhs_input,
+                                         rhs_shape, repeated_rhs_input,
+                                         use_constraint);
   }
 
-  template <typename BaselineType, typename BaselineOutT>
-  BaselineOutT Expected(BaselineType lhs, BaselineType rhs) {
-    if (GetParam().op_name == "AddV2") {
-      return static_cast<BaselineOutT>(lhs + rhs);
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void TestEqualShapes(const std::string& op_name, const TensorShape& shape,
+                       const absl::InlinedVector<T, 10>& lhs_input,
+                       const absl::InlinedVector<T, 10>& rhs_input,
+                       BaselineOutT (*baseline_callback)(BaselineT, BaselineT),
+                       bool use_constraint = true) {
+    // Prepare inputs.
+    int input_size = shape.num_elements();
+    auto repeated_lhs_input = RepeatInputToMatchShape(lhs_input, input_size);
+    auto repeated_rhs_input = RepeatInputToMatchShape(rhs_input, input_size);
+
+    // Compute expected results.
+    absl::InlinedVector<OutT, 10> expected_output;
+    for (auto it_lhs = repeated_lhs_input.begin(),
+              it_rhs = repeated_rhs_input.begin(),
+              end = repeated_lhs_input.end();
+         it_lhs != end; ++it_lhs, ++it_rhs) {
+      auto lhs = static_cast<BaselineT>(*it_lhs);
+      auto rhs = static_cast<BaselineT>(*it_rhs);
+      auto result = static_cast<OutT>(baseline_callback(lhs, rhs));
+      expected_output.push_back(result);
     }
-    // Add the logic for creating expected values for the kernel you want to
-    // test here.
-    // <PLACEHOLDER>
-    LOG(FATAL) << "Cannot generate expected result for op "
-               << GetParam().op_name;
-    return static_cast<BaselineOutT>(lhs);
+
+    RunAndExpectResult<T, OutT>(op_name, shape, repeated_lhs_input, shape,
+                                repeated_rhs_input, shape, expected_output,
+                                use_constraint);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void TestOneScalar(const std::string& op_name, T scalar_input,
+                     const TensorShape& other_shape,
+                     const absl::InlinedVector<T, 10>& other_input,
+                     BaselineOutT (*baseline_callback)(BaselineT, BaselineT),
+                     bool use_constraint = true) {
+    // Prepare inputs.
+    TensorShape scalar_shape{};
+    auto repeated_other_input =
+        RepeatInputToMatchShape(other_input, other_shape.num_elements());
+
+    // Compute expected results.
+    absl::InlinedVector<OutT, 10> expected_output;
+    for (auto it = repeated_other_input.begin(),
+              end = repeated_other_input.end();
+         it != end; ++it) {
+      auto scalar = static_cast<BaselineT>(scalar_input);
+      auto other_value = static_cast<BaselineT>(*it);
+      auto result = static_cast<OutT>(baseline_callback(scalar, other_value));
+      expected_output.push_back(result);
+    }
+
+    auto scalar_input_vector = InputAsVector<T>({scalar_input});
+    RunAndExpectResult<T, OutT>(op_name, scalar_shape, scalar_input_vector,
+                                other_shape, repeated_other_input,
+                                /*expected_shape=*/other_shape, expected_output,
+                                use_constraint);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void TestBroadcastingExpand(const std::string& op_name,
+                              const absl::InlinedVector<T, 10>& lhs_input,
+                              const absl::InlinedVector<T, 10>& rhs_input,
+                              BaselineOutT (*baseline_callback)(BaselineT,
+                                                                BaselineT),
+                              bool use_constraint = true) {
+    // Prepare inputs.
+    TensorShape lhs_shape{1};
+    TensorShape rhs_shape{6};
+    auto repeated_lhs_input =
+        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+    auto repeated_rhs_input =
+        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+
+    // Compute expected results.
+    std::vector<int> lhs_indices = {0, 0, 0, 0, 0, 0};
+    std::vector<int> rhs_indices = {0, 1, 2, 3, 4, 5};
+    auto expected_output =
+        ComputeExpectedOutput<T, BaselineT, OutT, BaselineOutT>(
+            lhs_indices, repeated_lhs_input, rhs_indices, repeated_rhs_input,
+            baseline_callback);
+
+    RunAndExpectResult<T, OutT>(
+        op_name, lhs_shape, repeated_lhs_input, rhs_shape, repeated_rhs_input,
+        /*expected_shape=*/rhs_shape, expected_output, use_constraint);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void TestBroadcastingInDim(const std::string& op_name,
+                             const absl::InlinedVector<T, 10>& lhs_input,
+                             const absl::InlinedVector<T, 10>& rhs_input,
+                             BaselineOutT (*baseline_callback)(BaselineT,
+                                                               BaselineT),
+                             bool use_constraint = true) {
+    // Prepare inputs.
+    TensorShape lhs_shape{3};
+    TensorShape rhs_shape{2, 3};
+    auto repeated_lhs_input =
+        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+    auto repeated_rhs_input =
+        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+
+    // Compute expected results.
+    std::vector<int> lhs_indices = {0, 1, 2, 0, 1, 2};
+    std::vector<int> rhs_indices = {0, 1, 2, 3, 4, 5};
+    auto expected_output =
+        ComputeExpectedOutput<T, BaselineT, OutT, BaselineOutT>(
+            lhs_indices, repeated_lhs_input, rhs_indices, repeated_rhs_input,
+            baseline_callback);
+
+    RunAndExpectResult<T, OutT>(
+        op_name, lhs_shape, repeated_lhs_input, rhs_shape, repeated_rhs_input,
+        /*expected_shape=*/rhs_shape, expected_output, use_constraint);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void TestBroadcasting(const std::string& op_name,
+                        const absl::InlinedVector<T, 10>& lhs_input,
+                        const absl::InlinedVector<T, 10>& rhs_input,
+                        BaselineOutT (*baseline_callback)(BaselineT, BaselineT),
+                        bool use_constraint = true) {
+    // Prepare inputs.
+    TensorShape lhs_shape{2, 1};
+    TensorShape rhs_shape{3};
+    auto repeated_lhs_input =
+        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+    auto repeated_rhs_input =
+        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+
+    // Compute expected results.
+    TensorShape expected_shape{2, 3};
+    std::vector<int> lhs_indices = {0, 0, 0, 1, 1, 1};
+    std::vector<int> rhs_indices = {0, 1, 2, 0, 1, 2};
+    auto expected_output =
+        ComputeExpectedOutput<T, BaselineT, OutT, BaselineOutT>(
+            lhs_indices, repeated_lhs_input, rhs_indices, repeated_rhs_input,
+            baseline_callback);
+
+    RunAndExpectResult<T, OutT>(op_name, lhs_shape, repeated_lhs_input,
+                                rhs_shape, repeated_rhs_input, expected_shape,
+                                expected_output, use_constraint);
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void TestEmptyShapeBroadcasting(const std::string& op_name,
+                                  const absl::InlinedVector<T, 10>& lhs_input,
+                                  const absl::InlinedVector<T, 10>& rhs_input,
+                                  bool use_constraint = true) {
+    // Prepare inputs.
+    TensorShape lhs_shape{2, 0, 1};
+    TensorShape rhs_shape{2, 0, 5};
+    absl::InlinedVector<T, 10> empty_input = {};
+
+    // Define expected result.
+    TensorShape expected_shape{2, 0, 5};
+    absl::InlinedVector<OutT, 10> expected_output = {};
+
+    RunAndExpectResult<T, OutT>(op_name, lhs_shape, empty_input, rhs_shape,
+                                empty_input, expected_shape, expected_output,
+                                use_constraint);
+  }
+
+ private:
+  template <typename T>
+  absl::InlinedVector<T, 10> RepeatInputToMatchShape(
+      absl::InlinedVector<T, 10> input, int size) {
+    absl::InlinedVector<T, 10> result;
+    for (int i = 0; i < size; i++) {
+      auto value = input[i % input.size()];
+      result.push_back(value);
+    }
+    return result;
+  }
+
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
+      std::vector<int> lhs_indices, absl::InlinedVector<T, 10> lhs_input,
+      std::vector<int> rhs_indices, absl::InlinedVector<T, 10> rhs_input,
+      BaselineOutT (*baseline_callback)(BaselineT, BaselineT)) {
+    absl::InlinedVector<OutT, 10> expected_output;
+    for (int i = 0; i < lhs_indices.size(); i++) {
+      auto lhs = static_cast<BaselineT>(lhs_input[lhs_indices[i]]);
+      auto rhs = static_cast<BaselineT>(rhs_input[rhs_indices[i]]);
+      auto result = static_cast<OutT>(baseline_callback(lhs, rhs));
+      expected_output.push_back(result);
+    }
+    return expected_output;
+  }
+
+  // Helper functions to get default input values.
+
+ protected:
+  TensorShape DefaultInputShape() { return TensorShape{3, 4}; }
+
+  template <typename T>
+  T DefaultScalarInput() {
+    return static_cast<T>(2.0);
+  }
+
+  template <typename T>
+  absl::InlinedVector<T, 10> InfZeroInput() {
+    return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
+                                     -0.1, -0.0, 0.0, 0.1,
+                                     std::numeric_limits<float>::infinity()});
+  }
+
+  template <
+      typename T,
+      std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
+                       bool> = true>
+  absl::InlinedVector<T, 10> DefaultInput() {
+    return InputAsVector<T, int>(
+        {-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
+  }
+
+  template <
+      typename T,
+      std::enable_if_t<llvm::is_one_of<T, Eigen::half, float, double>::value,
+                       bool> = true>
+  absl::InlinedVector<T, 10> DefaultInput() {
+    return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
+                                     0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
+  }
+
+  template <typename T,
+            std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
+  absl::InlinedVector<T, 10> DefaultInput() {
+    return InputAsVector<T, bool>({true, false, true, true, false});
+  }
+
+  template <typename T, typename LiteralT>
+  absl::InlinedVector<T, 10> InputAsVector(
+      std::initializer_list<LiteralT> input) {
+    absl::InlinedVector<T, 10> result;
+    result.reserve(input.size());
+    for (const LiteralT& value : input) {
+      result.push_back(static_cast<T>(value));
+    }
+    return result;
   }
 };
 
-std::vector<BinaryTestParam> GetBinaryTestParameters() {
-  std::vector<BinaryTestParam> parameters;
-  for (DataType dt :
-       std::vector<DataType>{DT_FLOAT, DT_DOUBLE, DT_HALF, DT_INT64}) {
-    parameters.emplace_back("AddV2", dt, dt);
+// Macros to easily generate common test cases. For specific inputs, please
+// define your own test fixtures.
+
+#define GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, BaselineT, OutT,       \
+                                 BaselineOutT, baseline_callback,              \
+                                 use_constraint)                               \
+  TEST_F(GpuBinaryOpTest, op_name##EqShapes##test_name) {                      \
+    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                         \
+        #op_name, /*shape=*/DefaultInputShape(),                               \
+        /*lhs_input=*/DefaultInput<T>(), /*rhs_input=*/DefaultInput<T>(),      \
+        baseline_callback, use_constraint);                                    \
+  }                                                                            \
+                                                                               \
+  TEST_F(GpuBinaryOpTest, op_name##OneScalar##test_name) {                     \
+    TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                           \
+        #op_name, /*scalar_input=*/DefaultScalarInput<T>(),                    \
+        /*other_shape=*/DefaultInputShape(),                                   \
+        /*other_input=*/DefaultInput<T>(), baseline_callback, use_constraint); \
+  }                                                                            \
+                                                                               \
+  TEST_F(GpuBinaryOpTest, op_name##IncompatibleShapes##test_name) {            \
+    TestIncompatibleShapes<T, OutT>(#op_name, /*lhs_input=*/DefaultInput<T>(), \
+                                    /*rhs_input=*/DefaultInput<T>(),           \
+                                    use_constraint);                           \
+  }                                                                            \
+                                                                               \
+  TEST_F(GpuBinaryOpTest, op_name##BroadcastingExpand##test_name) {            \
+    TestBroadcastingExpand<T, BaselineT, OutT, BaselineOutT>(                  \
+        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
+        /*rhs_input=*/DefaultInput<T>(), baseline_callback, use_constraint);   \
+  }                                                                            \
+                                                                               \
+  TEST_F(GpuBinaryOpTest, op_name##BroadcastingInDim##test_name) {             \
+    TestBroadcastingInDim<T, BaselineT, OutT, BaselineOutT>(                   \
+        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
+        /*rhs_input=*/DefaultInput<T>(), baseline_callback, use_constraint);   \
+  }                                                                            \
+                                                                               \
+  TEST_F(GpuBinaryOpTest, op_name##Broadcasting##test_name) {                  \
+    TestBroadcasting<T, BaselineT, OutT, BaselineOutT>(                        \
+        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
+        /*rhs_input=*/DefaultInput<T>(), baseline_callback, use_constraint);   \
+  }                                                                            \
+                                                                               \
+  TEST_F(GpuBinaryOpTest, op_name##EmptyShapeBroadcasting##test_name) {        \
+    TestEmptyShapeBroadcasting<T, BaselineT, OutT, BaselineOutT>(              \
+        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
+        /*rhs_input=*/DefaultInput<T>(), use_constraint);                      \
   }
-  // Add the parameters (kernel name and data types to test) here.
-  // <PLACEHOLDER>
-  return parameters;
+
+#define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback) \
+  GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, T, OutT, OutT,               \
+                           baseline_callback, /*use_constraint=*/false)
+
+#define GENERATE_DEFAULT_TESTS_SAME_INPUT_AND_OUTPUT_TYPE( \
+    op_name, test_name, T, baseline_callback)              \
+  GENERATE_DEFAULT_TESTS(op_name, test_name, T, T, baseline_callback)
+
+/// Test `tf.AddV2`.
+
+template <typename T>
+T baseline_add(T lhs, T rhs) {
+  return lhs + rhs;
 }
 
-#define GENERATE_DATA_TYPE_SWITCH_CASE(dt, nt, code)           \
-  switch (dt) {                                                \
-    case DT_FLOAT: {                                           \
-      using nt = EnumToDataType<DT_FLOAT>::Type;               \
-      code;                                                    \
-      break;                                                   \
-    }                                                          \
-    case DT_DOUBLE: {                                          \
-      using nt = EnumToDataType<DT_DOUBLE>::Type;              \
-      code;                                                    \
-      break;                                                   \
-    }                                                          \
-    case DT_HALF: {                                            \
-      using nt = EnumToDataType<DT_HALF>::Type;                \
-      code;                                                    \
-      break;                                                   \
-    }                                                          \
-    case DT_INT64: {                                           \
-      using nt = EnumToDataType<DT_INT64>::Type;               \
-      code;                                                    \
-      break;                                                   \
-    }                                                          \
-    case DT_BOOL: {                                            \
-      using nt = EnumToDataType<DT_BOOL>::Type;                \
-      code;                                                    \
-      break;                                                   \
-    }                                                          \
-    default:                                                   \
-      LOG(FATAL) << "Unsupported type: " << DataType_Name(dt); \
-  }
+GENERATE_DEFAULT_TESTS(AddV2,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2,
+                       /*test_name=*/Float, float, float, baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2,
+                       /*test_name=*/Double, double, double, baseline_add)
+GENERATE_DEFAULT_TESTS(AddV2,
+                       /*test_name=*/Int64, int64, int64, baseline_add)
 
-#define COMMA ,
+/// Test `tf.BitwiseAnd`.
 
-#define GENERATE_TEST_CALL(test_fn)                                           \
-  GENERATE_DATA_TYPE_SWITCH_CASE(                                             \
-      GetParam().input_type, NativeInT,                                       \
-      GENERATE_DATA_TYPE_SWITCH_CASE(                                         \
-          GetParam().output_type, NativeOutT,                                 \
-          if (GetParam().input_type == DT_HALF) {                             \
-            if (GetParam().output_type == DT_HALF) {                          \
-              test_fn<NativeInT COMMA float COMMA NativeOutT COMMA float>();  \
-            } else {                                                          \
-              test_fn<                                                        \
-                  NativeInT COMMA float COMMA NativeOutT COMMA NativeOutT>(); \
-            }                                                                 \
-          } else {                                                            \
-            test_fn<NativeInT COMMA NativeInT COMMA NativeOutT COMMA          \
-                        NativeOutT>();                                        \
-          }))
-
-TEST_P(ParametricGpuBinaryOpsTest, RunOp) { GENERATE_TEST_CALL(RunOp); }
-
-TEST_P(ParametricGpuBinaryOpsTest, EqShapes) {
-  GENERATE_TEST_CALL(TestEqualShapes);
+template <typename T>
+T baseline_bitwise_and(T lhs, T rhs) {
+  return lhs & rhs;
 }
 
-TEST_P(ParametricGpuBinaryOpsTest, Scalar) {
-  GENERATE_TEST_CALL(TestOneIsScalar);
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int8, int8, int8, baseline_bitwise_and)
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int16, int16, int16, baseline_bitwise_and)
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int32, int32, int32, baseline_bitwise_and)
+GENERATE_DEFAULT_TESTS(BitwiseAnd,
+                       /*test_name=*/Int64, int64, int64, baseline_bitwise_and)
+
+/// Test `tf.BitwiseOr`.
+
+template <typename T>
+T baseline_bitwise_or(T lhs, T rhs) {
+  return lhs | rhs;
 }
 
-TEST_P(ParametricGpuBinaryOpsTest, BCastExpand) {
-  GENERATE_TEST_CALL(TestBroadcastingExpand);
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int8, int8, int8, baseline_bitwise_or)
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int16, int16, int16, baseline_bitwise_or)
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int32, int32, int32, baseline_bitwise_or)
+GENERATE_DEFAULT_TESTS(BitwiseOr,
+                       /*test_name=*/Int64, int64, int64, baseline_bitwise_or)
+
+/// Test `tf.BitwiseXor`.
+
+template <typename T>
+T baseline_bitwise_xor(T lhs, T rhs) {
+  return lhs ^ rhs;
 }
 
-TEST_P(ParametricGpuBinaryOpsTest, BCastInDim) {
-  GENERATE_TEST_CALL(TestBroadcastingInDim);
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int8, int8, int8, baseline_bitwise_xor)
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int16, int16, int16, baseline_bitwise_xor)
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int32, int32, int32, baseline_bitwise_xor)
+GENERATE_DEFAULT_TESTS(BitwiseXor,
+                       /*test_name=*/Int64, int64, int64, baseline_bitwise_xor)
+
+/// Test `tf.LeftShift`.
+
+// TODO(b/175714068): Enable when fixed.
+// template <typename T>
+// T baseline_left_shift(T lhs, T rhs) {
+//   return lhs << rhs;
+// }
+
+// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int8, int8, int8,
+//                        baseline_left_shift)
+// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int16, int16, int16,
+//                        baseline_left_shift)
+// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int32, int32, int32,
+//                        baseline_left_shift)
+// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int64, int64, int64,
+//                        baseline_left_shift)
+
+/// Test `tf.RightShift`.
+
+// TODO(b/175772820): Enable when fixed.
+// template <typename T>
+// T baseline_right_shift(T lhs, T rhs) {
+//   return lhs >> rhs;
+// }
+
+// GENERATE_DEFAULT_TESTS(RightShift,
+//                        /*test_name=*/Int8, int8, int8, baseline_right_shift)
+// GENERATE_DEFAULT_TESTS(RightShift,
+//                        /*test_name=*/Int16, int16, int16,
+//                        baseline_right_shift)
+// GENERATE_DEFAULT_TESTS(RightShift,
+//                        /*test_name=*/Int32, int32, int32,
+//                        baseline_right_shift)
+// GENERATE_DEFAULT_TESTS(RightShift,
+//                        /*test_name=*/Int64, int64, int64,
+//                        baseline_right_shift)
+
+/// Test `tf.Equal`.
+
+template <typename T>
+bool baseline_equal(T lhs, T rhs) {
+  return lhs == rhs;
 }
 
-TEST_P(ParametricGpuBinaryOpsTest, BCast) {
-  GENERATE_TEST_CALL(TestBroadcasting);
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Half, Eigen::half, bool,
+                       baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Float, float, bool, baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Double, double, bool,
+                       baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Bool, bool, bool, baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int8, int8, bool, baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int16, int16, bool, baseline_equal)
+GENERATE_DEFAULT_TESTS(Equal, /*test_name=*/Int64, int64, bool, baseline_equal)
+
+/// Test `tf.NotEqual`.
+
+template <typename T>
+bool baseline_not_equal(T lhs, T rhs) {
+  return lhs != rhs;
 }
 
-TEST_P(ParametricGpuBinaryOpsTest, IncompatibleShapes) {
-  GENERATE_TEST_CALL(TestIncompatibleShapes);
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Half, Eigen::half, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Float, float, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Double, double, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Bool, bool, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int8, int8, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int16, int16, bool,
+                       baseline_not_equal)
+GENERATE_DEFAULT_TESTS(NotEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_not_equal)
+
+/// Test `tf.Greater`.
+
+template <typename T>
+bool baseline_greater(T lhs, T rhs) {
+  return lhs > rhs;
 }
 
-TEST_P(ParametricGpuBinaryOpsTest, EmptyShapeBCast) {
-  GENERATE_TEST_CALL(TestEmptyShapeWithBroadcasting);
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Half, Eigen::half, bool,
+                       baseline_greater)
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Float, float, bool,
+                       baseline_greater)
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Double, double, bool,
+                       baseline_greater)
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Int8, int8, bool,
+                       baseline_greater)
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Int16, int16, bool,
+                       baseline_greater)
+GENERATE_DEFAULT_TESTS(Greater, /*test_name=*/Int64, int64, bool,
+                       baseline_greater)
+
+/// Test `tf.GreaterEqual`.
+
+template <typename T>
+bool baseline_greater_equal(T lhs, T rhs) {
+  return lhs >= rhs;
 }
 
-INSTANTIATE_TEST_SUITE_P(GpuBinaryOpsTests, ParametricGpuBinaryOpsTest,
-                         ::testing::ValuesIn(GetBinaryTestParameters()));
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Half, Eigen::half, bool,
+                       baseline_greater_equal)
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Float, float, bool,
+                       baseline_greater_equal)
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Double, double, bool,
+                       baseline_greater_equal)
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Int8, int8, bool,
+                       baseline_greater_equal)
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Int16, int16, bool,
+                       baseline_greater_equal)
+GENERATE_DEFAULT_TESTS(GreaterEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_greater_equal)
+
+/// Test `tf.Less`.
+
+template <typename T>
+bool baseline_less(T lhs, T rhs) {
+  return lhs < rhs;
+}
+
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Half, Eigen::half, bool,
+                       baseline_less)
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Float, float, bool, baseline_less)
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Double, double, bool, baseline_less)
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Int8, int8, bool, baseline_less)
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Int16, int16, bool, baseline_less)
+GENERATE_DEFAULT_TESTS(Less, /*test_name=*/Int64, int64, bool, baseline_less)
+
+/// Test `tf.LessEqual`.
+
+template <typename T>
+bool baseline_less_equal(T lhs, T rhs) {
+  return lhs <= rhs;
+}
+
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Half, Eigen::half, bool,
+                       baseline_less_equal)
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Float, float, bool,
+                       baseline_less_equal)
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Double, double, bool,
+                       baseline_less_equal)
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Int8, int8, bool,
+                       baseline_less_equal)
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Int16, int16, bool,
+                       baseline_less_equal)
+GENERATE_DEFAULT_TESTS(LessEqual, /*test_name=*/Int64, int64, bool,
+                       baseline_less_equal)
+
+/// Test `tf.LogicalAnd`.
+
+bool baseline_logical_and(bool lhs, bool rhs) { return lhs && rhs; }
+
+GENERATE_DEFAULT_TESTS_2(LogicalAnd, /*test_name=*/Bool, /*T=*/bool,
+                         /*BaselineT=*/bool, /*OutT=*/bool,
+                         /*BaselineOutT=*/bool, baseline_logical_and,
+                         /*use_constraint=*/false)
+
+/// Test `tf.LogicalOr`.
+
+bool baseline_logical_or(bool lhs, bool rhs) { return lhs || rhs; }
+
+GENERATE_DEFAULT_TESTS_2(LogicalOr, /*test_name=*/Bool, /*T=*/bool,
+                         /*BaselineT=*/bool, /*OutT=*/bool,
+                         /*BaselineOutT=*/bool, baseline_logical_or,
+                         /*use_constraint=*/false)
+
 }  // namespace
 }  // end namespace tensorflow

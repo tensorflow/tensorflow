@@ -949,6 +949,15 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
 INSTANTIATE_TEST_SUITE_P(Test, OptimizeZeroRamBudgetTest,
                          ::testing::Values(0, 1));
 
+TEST(RecordTimeTest, RecordTimeTest) {
+  std::shared_ptr<Node> source = model::MakeSourceNode({});
+  EXPECT_FALSE(source->is_recording());
+  source->record_start(100);
+  EXPECT_TRUE(source->is_recording());
+  source->record_stop(200);
+  EXPECT_FALSE(source->is_recording());
+}
+
 }  // namespace
 }  // namespace model
 }  // namespace data

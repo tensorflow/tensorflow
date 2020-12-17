@@ -22,6 +22,22 @@ py_library(
     deps = [":xla_extension"],
 )
 
+cc_library(
+    name = "absl_casters",
+    hdrs = ["absl_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
 pyx_library(
     name = "custom_call_for_test",
     testonly = True,
@@ -104,6 +120,7 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":absl_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -187,6 +204,7 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -211,6 +229,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",  # TODO(zhangqiaorjc): Remove after adding a factory method for PjRtBuffer.
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:platform",
@@ -349,12 +368,14 @@ cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
     hdrs = ["pytree.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",

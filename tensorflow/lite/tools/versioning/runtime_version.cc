@@ -61,6 +61,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
               {{BuiltinOperator_BATCH_MATMUL, 1}, "2.3.0"},
               {{BuiltinOperator_BATCH_MATMUL, 2}, "2.3.0"},
               {{BuiltinOperator_BATCH_MATMUL, 3}, "2.4.0"},
+              {{BuiltinOperator_BATCH_MATMUL, 4}, kPendingReleaseVersion},
               // The version one of broadcast to op won't be not supported since
               // the version one was rollbacked and the builtin op code number
               // has been changed because of builtin op code shortage problem.

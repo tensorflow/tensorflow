@@ -1422,9 +1422,25 @@ Status SpmdPartitioningVisitor::HandleConcatenate(HloInstruction* hlo) {
   // temp_output_shape is the output shape where the concatenate dimension
   // is changed to the full (and padded to shard count) dimension size.
   auto temp_output_shape = MakePartitionedShape(hlo->shape(), sharding);
+  auto last_operand_padded_shape =
+      MakePartitionedShape(hlo->operands().back()->shape(), sharding);
+  // If the last operand has more padding than the temp_output padding, needs to
+  // add extra padding to avoid dynamic update slice out of bound.
+  int last_operand_padding =
+      last_operand_padded_shape.dimensions(dimension) *
+          sharding.tile_assignment().dim(dimension) -
+      hlo->operands().back()->shape().dimensions(dimension);
+  int temp_output_padding = temp_output_shape.dimensions(dimension) *
+                                sharding.tile_assignment().dim(dimension) -
+                            hlo->shape().dimensions(dimension);
+  int padding_for_last_operand =
+      last_operand_padding < temp_output_padding
+          ? 0
+          : last_operand_padding - temp_output_padding;
   temp_output_shape.set_dimensions(
       dimension, temp_output_shape.dimensions(dimension) *
-                     sharding.tile_assignment().dim(dimension));
+                         sharding.tile_assignment().dim(dimension) +
+                     padding_for_last_operand);
   auto temp_output = CreateZero(temp_output_shape, &b_);
 
   // Offset of each operand along the concatenate dimension.
@@ -3399,6 +3415,10 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
 }
 
 Status SpmdPartitioningVisitor::HandleReduceWindow(HloInstruction* hlo) {
+  // TODO(b/73062247) Variadic reduce window not yet supported in partitioner.
+  if (hlo->shape().IsTuple()) {
+    return DefaultAction(hlo);
+  }
   auto& operand = GetPartitionedHlo(hlo->operand(0));
   if (hlo->sharding().IsTileMaximal()) {
     return DefaultAction(hlo);

@@ -17,11 +17,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif  // __cplusplus
-
 using namespace tflite;
+
+extern "C" {
 
 JNIEXPORT jlong JNICALL
 Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
@@ -87,6 +85,4 @@ Java_org_tensorflow_lite_nnapi_NnApiDelegate_deleteDelegate(JNIEnv* env,
   delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
 }
 
-#ifdef __cplusplus
 }  // extern "C"
-#endif  // __cplusplus

@@ -157,7 +157,7 @@ class IrEmitterUnnested : public IrEmitter,
   }
 
   Status DefaultAction(HloInstruction* hlo) override;
-  Status DefaultActionForMlir(MlirEmitterInput input);
+  Status EmitUsingElementalIrEmitter(MlirEmitterInput input);
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
@@ -175,7 +175,7 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(MlirEmitterInput input,
-                                const Shape& output_shape, int unroll_factor);
+                                const Shape& output_shape);
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
@@ -707,6 +707,8 @@ class IrEmitterUnnested : public IrEmitter,
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
   Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const override;
+
+  Status AssertNonDeterminismIsOkay(const string& op_name);
 
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;

@@ -1,4 +1,5 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -357,8 +358,9 @@ int SelectDetectionsAboveScoreThreshold(const float* values, int size,
   int counter = 0;
   for (int i = 0; i < size; i++) {
     if (values[i] >= threshold) {
-      keep_values[counter++] = values[i];
-      keep_indices[i] = i;
+      keep_values[counter] = values[i];
+      keep_indices[counter] = i;
+      counter++;
     }
   }
   return counter;

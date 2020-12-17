@@ -687,3 +687,42 @@ func @cast_identity(%arg0 : tensor<7xf32>) -> tensor<7xf32> {
   // CHECK: return %arg0 : tensor<7xf32>
 }
 
+// CHECK-LABEL: @cast_i1_to_i8
+func @cast_i1_to_i8() -> tensor<2xi8> {
+  %cst = constant dense<[false, true]> : tensor<2xi1>
+  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xi8>
+  return %0 : tensor<2xi8>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, 1]> : tensor<2xi8>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i1_to_ui8
+func @cast_i1_to_ui8() -> tensor<2xui8> {
+  %cst = constant dense<[false, true]> : tensor<2xi1>
+  %0 = "tfl.cast"(%cst) : (tensor<2xi1>) -> tensor<2xui8>
+  return %0 : tensor<2xui8>
+
+// CHECK: %[[CST:.*]] = constant dense<[0, 1]> : tensor<2xui8>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_i8_to_i1
+func @cast_i8_to_i1() -> tensor<4xi1> {
+  %cst = constant dense<[0, 1, 2, -1]> : tensor<4xi8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xi8>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+
+// CHECK: %[[CST:.*]] = constant dense<[false, true, true, true]> : tensor<4xi1>
+// CHECK:  return %[[CST]]
+}
+
+// CHECK-LABEL: @cast_ui8_to_i1
+func @cast_ui8_to_i1() -> tensor<4xi1> {
+  %cst = constant dense<[0, 127, 128, 255]> : tensor<4xui8>
+  %0 = "tfl.cast"(%cst) : (tensor<4xui8>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+
+// CHECK: %[[CST:.*]] = constant dense<[false, true, true, true]> : tensor<4xi1>
+// CHECK:  return %[[CST]]
+}

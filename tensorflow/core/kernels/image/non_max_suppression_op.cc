@@ -320,12 +320,6 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     }
   }
 
-  // Copy class_boxes_data to a tensor
-  TensorShape boxesShape({num_boxes, 4});
-  Tensor boxes(DT_FLOAT, boxesShape);
-  std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
-              boxes.unaligned_flat<float>().data());
-
   // Do NMS, get the candidate indices of form vector<int>
   // Data structure for selection candidate in NMS.
   struct Candidate {
@@ -347,9 +341,10 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   Candidate next_candidate;
 
   std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
-  const Tensor const_boxes = boxes;
-  typename TTypes<float, 2>::ConstTensor boxes_data_t =
-      const_boxes.tensor<float, 2>();
+  // Move class_boxes_data to a tensor
+  Eigen::array<Eigen::DenseIndex, 2> boxesShape = {num_boxes, 4};
+  typename TTypes<float, 2>::ConstTensor boxes_data_t(class_boxes_data.data(),
+                                                      boxesShape);
   int candidate_idx = 0;
   float iou;
   while (selected.size() < size_per_class &&

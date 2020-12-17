@@ -1562,9 +1562,8 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
        ++i) {
     absl::flat_hash_map<string, double> gradients;
     new_output_time = OutputTime(snapshot, model_input_time, &gradients);
-    // We terminate once the improvement of the output latency is too small or
-    // the essential transformations' parallelism reaches the CPU budget or the
-    // worst-case total buffer size exceeds the memory budget.
+    // We also terminate once the improvement of the output latency is too
+    // small.
     if (std::abs(output_time - new_output_time) < kOptimizationPrecision) {
       break;
     }

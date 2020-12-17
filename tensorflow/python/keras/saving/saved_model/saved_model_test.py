@@ -1159,6 +1159,22 @@ class MetricTest(test.TestCase, parameterized.TestCase):
       self._test_metric_save_and_load(
           metric, self._save_model_dir(), 1, test_sample_weight=False)
 
+  @keras_parameterized.run_with_all_model_types
+  def test_custom_metric_model(self):
+
+    class CustomMetric(keras.metrics.MeanSquaredError):
+      pass
+
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(loss='mse', optimizer='rmsprop', metrics=[CustomMetric()])
+
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'custom_objects'):
+      keras_load.load(saved_model_dir)
+
+    keras_load.load(saved_model_dir, compile=False)
+
 
 if __name__ == '__main__':
   test.main()

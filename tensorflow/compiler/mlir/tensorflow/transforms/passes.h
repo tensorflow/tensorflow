@@ -39,6 +39,10 @@ std::unique_ptr<OperationPass<FuncOp>>
 CreateExecutorDialectToFunctionalConversionPass();
 
 namespace TF {
+// Creates a pass that drops `shape_invariant` attribute from While/WhileRegion
+// ops.
+std::unique_ptr<OperationPass<FuncOp>> CreateDropWhileShapeInvariantPass();
+
 // Transforms functional control flow operations in the TensorFlow dialect to
 // MLIR Control Flow Graph (CFG) form.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG();
@@ -194,6 +198,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
 // function will have a "tf.device" attribute which specifies the device
 // assignment of the result.
 std::unique_ptr<FunctionPass> CreateClusterTFOpsByHostPass();
+
+// Creates function pass to insert tf_device.send and tf_device.receive ops to
+// make sure any argument of any op is on the same host of the op itself.
+std::unique_ptr<FunctionPass> CreateCrossHostTransferPass();
 
 // Creates a pass that adds the device attribute to every tf.Const op based on
 // the device attribute of the operations that read its result. If the result of
@@ -396,6 +404,9 @@ std::unique_ptr<OperationPass<mlir::ModuleOp>>
 CreateTPUCompileOpReplicationPass();
 
 }  // namespace TFTPU
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
 }  // namespace mlir
 

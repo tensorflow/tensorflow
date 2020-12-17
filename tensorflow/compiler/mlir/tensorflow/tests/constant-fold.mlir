@@ -512,17 +512,93 @@ func @DontFoldNoConstantFold() -> tensor<8xf32> {
   return %2 : tensor<8xf32>
 }
 
-// CHECK-LABEL: func @testBroadcastGradientArgs
-func @testBroadcastGradientArgs() -> (tensor<1xi32>, tensor<0xi32>) {
+// CHECK-LABEL: func @testBroadcastGradientArgsSameShape
+func @testBroadcastGradientArgsSameShape() -> (tensor<0xi32>, tensor<0xi32>) {
+  %s0 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %s1 = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<2xi32>, tensor<2xi32>) -> (tensor<0xi32>, tensor<0xi32>)
+
+  // CHECK-DAG: %[[R:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R]], %[[R]]
+
+  return %r0, %r1 : tensor<0xi32>, tensor<0xi32>
+}
+
+// CHECK-LABEL: func @testBroadcastGradientArgs1
+func @testBroadcastGradientArgs1() -> (tensor<1xi32>, tensor<0xi32>) {
   %s0 = "tf.Const"() {value = dense<[4]> : tensor<1xi32>} : () -> tensor<1xi32>
   %s1 = "tf.Const"() {value = dense<[2, 4]> : tensor<2xi32>} : () -> tensor<2xi32>
   %r0, %r1 = "tf.BroadcastGradientArgs"(%s0, %s1) {} : (tensor<1xi32>, tensor<2xi32>) -> (tensor<1xi32>, tensor<0xi32>)
+  // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R0]], %[[R1]]
+
+  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+}
+
+// CHECK-LABEL: func @testBroadcastGradientArgs2
+func @testBroadcastGradientArgs2() -> (tensor<1xi32>, tensor<3xi32>) {
+  %s2 = "tf.Const"() {value = dense<[501, 1, 32, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %s3 = "tf.Const"() {value = dense<[  1, 1,  1, 1280]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %r2, %r3 = "tf.BroadcastGradientArgs"(%s2, %s3) {} : (tensor<4xi32>, tensor<4xi32>) -> (tensor<1xi32>, tensor<3xi32>)
+  // CHECK-DAG: %[[R2:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-DAG: %[[R3:.*]] = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R2]], %[[R3]]
+
+  return %r2, %r3 : tensor<1xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: func @testBroadcastGradientArgs3
+func @testBroadcastGradientArgs3() -> (tensor<3xi32>, tensor<3xi32>) {
+  %s4 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %s5 = "tf.Const"() {value = dense<[1, 1, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %r4, %r5 = "tf.BroadcastGradientArgs"(%s4, %s5) {} : (tensor<0xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+  // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R0]], %[[R0]]
+
+  return %r4, %r5 : tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: func @testBroadcastGradientArgs4
+func @testBroadcastGradientArgs4() -> (tensor<2xi32>, tensor<3xi32>) {
+  %s4 = "tf.Const"() {value = dense<[1, 2, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %s5 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %r4, %r5 = "tf.BroadcastGradientArgs"(%s4, %s5) {} : (tensor<3xi32>, tensor<0xi32>) -> (tensor<2xi32>, tensor<3xi32>)
+  // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<[0, 1, 2]> : tensor<3xi32>} : () -> tensor<3xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R0]], %[[R1]]
+
+  return %r4, %r5 : tensor<2xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: func @testBroadcastGradientArgs5
+func @testBroadcastGradientArgs5() -> (tensor<1xi32>, tensor<1xi32>) {
+  %s4 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %s5 = "tf.Const"() {value = dense<[1]> : tensor<1xi32>} : () -> tensor<1xi32>
+  %r4, %r5 = "tf.BroadcastGradientArgs"(%s4, %s5) {} : (tensor<0xi32>, tensor<1xi32>) -> (tensor<1xi32>, tensor<1xi32>)
+  // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NOT: tf.BroadcastGradientArgs
+  // CHECK: return %[[R0]], %[[R0]]
+
+  return %r4, %r5 : tensor<1xi32>, tensor<1xi32>
+}
+
+// CHECK-LABEL: func @testBroadcastGradientArgs6
+func @testBroadcastGradientArgs6() -> (tensor<1xi32>, tensor<0xi32>) {
+  %s4 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %s5 = "tf.Const"() {value = dense<[2]> : tensor<1xi32>} : () -> tensor<1xi32>
+  %r4, %r5 = "tf.BroadcastGradientArgs"(%s4, %s5) {} : (tensor<0xi32>, tensor<1xi32>) -> (tensor<1xi32>, tensor<0xi32>)
   // CHECK: %[[R0:.*]] = "tf.Const"() {value = dense<0> : tensor<1xi32>} : () -> tensor<1xi32>
   // CHECK: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
-  return %r0, %r1 : tensor<1xi32>, tensor<0xi32>
+  return %r4, %r5 : tensor<1xi32>, tensor<0xi32>
 }
 
 // CHECK-LABEL: func @testBroadcastGradientArgsHigherRank

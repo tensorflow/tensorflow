@@ -91,7 +91,7 @@ class CategoricalOp : public XlaOpKernel {
     xla::PrimitiveType type;
     OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(input_type(0), &type));
     xla::XlaOp log_uniforms = GetLogUniforms(uniform_shape, type, ctx);
-    bool num_samples_is_dynamic;
+    bool num_samples_is_dynamic = false;
     OP_REQUIRES_OK(
         ctx, ctx->ResolveInputDynamismIntoPred(1, &num_samples_is_dynamic));
     if (num_samples_is_dynamic && num_samples != 1) {

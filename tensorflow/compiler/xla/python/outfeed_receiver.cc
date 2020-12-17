@@ -18,6 +18,7 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <memory>
+#include <queue>
 #include <sstream>
 
 #include "absl/container/flat_hash_map.h"
@@ -230,8 +231,8 @@ OutfeedReceiverImpl::OutfeedReceiverImpl(
   callback_ = callback;
   max_callback_queue_size_bytes_ = max_callback_queue_size_bytes;
   for (const auto& client : clients) {
-    for (const auto& device : client->devices()) {
-      devices_.push_back(device.get());
+    for (auto device : client->devices()) {
+      devices_.push_back(device);
     }
   }
   CHECK_GT(devices_.size(), 0);

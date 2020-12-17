@@ -43,7 +43,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -82,6 +81,7 @@ from tensorflow.python.platform import _pywrap_stacktrace_handler
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import _pywrap_util_port
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -616,12 +616,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(self, *args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old

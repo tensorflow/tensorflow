@@ -1,4 +1,4 @@
-[//tensorflow/python:cpp_python_util] # util tfe
+[//tensorflow/python/util:cpp_python_util] # util tfe
 tensorflow::swig::IsSequence
 tensorflow::swig::IsSequenceOrComposite
 tensorflow::swig::IsCompositeTensor

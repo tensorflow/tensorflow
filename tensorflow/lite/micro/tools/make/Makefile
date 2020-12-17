@@ -325,6 +325,7 @@ tensorflow/lite/micro/kernels/pad.cc \
 tensorflow/lite/micro/kernels/pooling.cc \
 tensorflow/lite/micro/kernels/prelu.cc \
 tensorflow/lite/micro/kernels/quantize.cc \
+tensorflow/lite/micro/kernels/quantize_common.cc \
 tensorflow/lite/micro/kernels/reduce.cc \
 tensorflow/lite/micro/kernels/reshape.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
@@ -336,6 +337,7 @@ tensorflow/lite/micro/kernels/split_v.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \
 tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
+tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
 tensorflow/lite/micro/kernels/unpack.cc
 
@@ -367,6 +369,7 @@ $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/c/c_api_types.h \
 tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
@@ -495,6 +498,11 @@ ifneq ($(DISABLE_DOWNLOADS), true)
   DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
   ifneq ($(DOWNLOAD_RESULT), SUCCESS)
     $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+  endif
+
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/pigweed_download.sh ${MAKEFILE_DIR}/downloads)
+  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+    $(error Something went wrong with the pigweed download: $(DOWNLOAD_RESULT))
   endif
 
   include $(MAKEFILE_DIR)/third_party_downloads.inc

@@ -38,12 +38,17 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   if (!IsEnabled()) return Status::OK();
   // This can be the default cpu device.
   if (orig_op->Device() != kVariantDeviceNull) return Status::OK();
+  if (orig_op->is_function()) return Status::OK();
+
   // TODO(fengliuai): We need a better condition to skip the rewrite. Currently,
   // The rewrite is enabled for all the tf ops and it is a no-op if the tf op
-  // isn't a composite op. "VarHandleOp" is explicitly skipped here because its
-  // roundtrip fails due to some unknown reasons.
-  if (orig_op->is_function()) return Status::OK();
-  if (absl::StartsWith(orig_op->op_name(), "VarHandleOp")) return Status::OK();
+  // isn't a composite op. The following ops are explicitly skipped here because
+  // their "no-op" expansion is known to cause problems in some cases.
+  static const char* kOpsToSkip[] = {"IdentityOp", "NoOp", "OptionalHasValue",
+                                     "OptionalGetValue", "VarHandleOp"};
+  for (const char* skip : kOpsToSkip) {
+    if (absl::StartsWith(orig_op->op_name(), skip)) return Status::OK();
+  }
 
   tf_core_op_expansion_node_counter->GetCell()->IncrementBy(1);
 

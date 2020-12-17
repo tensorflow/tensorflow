@@ -28,11 +28,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -154,6 +154,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::IgammaOp>(),
     TypeID::get<TF::IgammacOp>(),
     TypeID::get<TF::IgammaGradAOp>(),
+    TypeID::get<TF::InplaceAddOp>(),
     TypeID::get<TF::InTopKV2Op>(),
     TypeID::get<TF::InvertOp>(),
     TypeID::get<TF::InvOp>(),
@@ -351,7 +352,8 @@ LogicalResult Tf2XlaRewriter::PrepareParams() {
   // XlaCompiler within the context is only used by the functional ops to
   // compile functions. We are not handling those at the moment so XlaCompiler
   // is not required.
-  context_ = new tensorflow::XlaContext(/*compiler=*/nullptr, &hlo_builder_);
+  context_ = new tensorflow::XlaContext(/*compiler=*/nullptr, &hlo_builder_,
+                                        /*graph=*/nullptr);
   context_->Ref();
 
   device_mgr_ = CreateDeviceMgr(device_type_);

@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -92,8 +92,9 @@ mlir::LogicalResult CreateSplitOp(const int num_split,
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
   *split_op = builder->create<mlir::TF::SplitOp>(
       location, output_types, split_dimension_op.output(), src_input);
-  split_op->setAttr(kNumSplitAttr, builder->getIntegerAttr(
-                                       builder->getIntegerType(32), num_split));
+  (*split_op)->setAttr(
+      kNumSplitAttr,
+      builder->getIntegerAttr(builder->getIntegerType(32), num_split));
   return mlir::success();
 }
 

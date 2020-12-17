@@ -27,13 +27,13 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
@@ -681,6 +681,15 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
         GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
           return static_cast<int64_t>(dim.window_dilation());
         }));
+    // Setup window reversal.
+    auto window_reversal = llvm::to_vector<4>(llvm::map_range(
+        window.dimensions(), [](const ::xla::WindowDimension& dim) {
+          return dim.window_reversal();
+        }));
+    auto type = RankedTensorType::get(op.window_strides()->getType().getShape(),
+                                      builder_.getIntegerType(/*width=*/1));
+    op.window_reversalAttr(DenseElementsAttr::get(type, window_reversal));
+
     op.dimension_numbersAttr(xla::ConvertConvDimensionNumbers(
         custom_call->convolution_dimension_numbers(), &builder_));
     op.feature_group_countAttr(

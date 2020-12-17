@@ -339,12 +339,19 @@ class AbstractStackTrace {
 
     // Drop the common largest prefix of all filenames in stack frames.
     bool filter_common_prefix = false;
+
+    // Do not show internal frames.
+    bool drop_internal_frames = false;
   };
 
   virtual ~AbstractStackTrace() {}
 
   // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
+
+  // Returns the last stack frame from user code, attempting to ignore the
+  // framework code. Returns an empty frame if no such stack frame was found.
+  virtual StackFrame LastUserFrame() const = 0;
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
 };
 

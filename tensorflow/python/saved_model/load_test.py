@@ -292,6 +292,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       imported_tensor = imported.f()
       with monitored_session.MonitoredSession() as sess:
         imported_output = sess.run(imported_tensor)
+        self.assertLen(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS), 1)
         self.assertNotEqual(original_output, imported_output)
         with open(imported_output, "r") as f:
           self.assertEqual("contents", f.read())

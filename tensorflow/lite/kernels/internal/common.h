@@ -178,8 +178,12 @@ inline int32_t MultiplyByQuantizedMultiplier(int64_t x,
   // - input x is in the range -(1<<47) <= x < (1<<47)
   assert(quantized_multiplier >= 0);
   assert(shift >= -31 && shift < 8);
+  assert(x >= -(static_cast<int64_t>(1) << 47) &&
+         x < (static_cast<int64_t>(1) << 47));
 
-  int32_t reduced_multiplier = (quantized_multiplier + (1 << 15)) >> 16;
+  int32_t reduced_multiplier = (quantized_multiplier < 0x7FFF0000)
+                                   ? ((quantized_multiplier + (1 << 15)) >> 16)
+                                   : 0x7FFF;
   int total_shift = 15 - shift;
   x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
   int32_t result = x >> total_shift;
@@ -297,10 +301,11 @@ inline void gen_lut(double (*func)(double), double min, double max,
         TfLiteRound(func(min + i * step + half_step) * 32768.0);
     double midpoint_err = midpoint_interp_val - midpoint_val;
     double bias = TfLiteRound(midpoint_err / 2.0);
-    table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
+    table[i] = std::min<double>(std::max<double>(sample_val - bias, -32768.0),
+                                32767.0);
   }
-  table[num - 1] =
-      std::min(std::max(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
+  table[num - 1] = std::min<double>(
+      std::max<double>(TfLiteRound(func(max) * 32768.0), -32768.0), 32767.0);
 }
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
@@ -325,10 +330,11 @@ inline void gen_lut(float (*func)(float), float min, float max, int16_t* table,
         TfLiteRound(func(min + i * step + half_step) * 32768.0f);
     float midpoint_err = midpoint_interp_val - midpoint_val;
     float bias = TfLiteRound(midpoint_err / 2.0f);
-    table[i] = std::min(std::max(sample_val - bias, -32768.0f), 32767.0f);
+    table[i] = std::min<float>(std::max<float>(sample_val - bias, -32768.0f),
+                               32767.0f);
   }
-  table[num - 1] = std::min(
-      std::max(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
+  table[num - 1] = std::min<float>(
+      std::max<float>(TfLiteRound(func(max) * 32768.0f), -32768.0f), 32767.0f);
 }
 
 // int16_t func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax

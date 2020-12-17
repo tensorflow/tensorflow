@@ -37,6 +37,7 @@ template <>
 struct LhloToScalarOp<lmhlo::AddOp> {
   using FOp = ::mlir::AddFOp;
   using IOp = ::mlir::AddIOp;
+  using COp = ::mlir::AddCFOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::CompareOp> {
@@ -62,20 +63,18 @@ template <>
 struct LhloToScalarOp<lmhlo::SubOp> {
   using FOp = ::mlir::SubFOp;
   using IOp = ::mlir::SubIOp;
-};
-
-template <typename LhloBinaryOpTy>
-struct ScalarOp {
-  using FOp = typename LhloToScalarOp<LhloBinaryOpTy>::FOp;
-  using IOp = typename LhloToScalarOp<LhloBinaryOpTy>::IOp;
+  using COp = ::mlir::SubCFOp;
 };
 
 // Alias for the map from LHLO binary op type to STD floating-point op type.
 template <typename LhloOp>
-using ScalarFOp = typename ScalarOp<LhloOp>::FOp;
+using ScalarFOp = typename LhloToScalarOp<LhloOp>::FOp;
 // Alias for the map from LHLO binary op type to STD integer op type.
 template <typename LhloOp>
-using ScalarIOp = typename ScalarOp<LhloOp>::IOp;
+using ScalarIOp = typename LhloToScalarOp<LhloOp>::IOp;
+// Alias for the map from LHLO binary op type to STD complex op type.
+template <typename LhloOp>
+using ScalarCOp = typename LhloToScalarOp<LhloOp>::COp;
 
 template <typename... Args>
 struct MapLhloOpToStdScalarOpImpl {
@@ -143,6 +142,16 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::AbsOp>(Location loc,
   }
   return nullptr;
 }
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::AddOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ScalarIOp<lmhlo::AddOp>,
+                                    FloatType, ScalarFOp<lmhlo::AddOp>,
+                                    ComplexType, ScalarCOp<lmhlo::AddOp>>{}(
+      loc, result_types, args, b);
+}
 
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::AndOp>(Location loc,
@@ -172,7 +181,7 @@ inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
     StringRef comparison_direction) {
   return llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
-      .Case("NE", CmpFPredicate::ONE)
+      .Case("NE", CmpFPredicate::UNE)
       .Case("GE", CmpFPredicate::OGE)
       .Case("GT", CmpFPredicate::OGT)
       .Case("LE", CmpFPredicate::OLE)
@@ -577,6 +586,17 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SqrtOp>(Location loc,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::SqrtOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::SubOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ScalarIOp<lmhlo::SubOp>,
+                                    FloatType, ScalarFOp<lmhlo::SubOp>,
+                                    ComplexType, ScalarCOp<lmhlo::SubOp>>{}(
       loc, result_types, args, b);
 }
 

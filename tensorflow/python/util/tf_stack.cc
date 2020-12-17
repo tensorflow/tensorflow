@@ -135,6 +135,11 @@ class StackTraceWrapper : public AbstractStackTrace {
     return *stack_frames_cache_;
   }
 
+  StackFrame LastUserFrame() const override {
+    GenerateLastFrameCache();
+    return *last_stack_frame_cache_;
+  }
+
   std::string ToString(const TracePrintingOptions& opts) const override {
     GenerateCache();
     std::vector<std::string> files_to_find_prefix;
@@ -147,44 +152,60 @@ class StackTraceWrapper : public AbstractStackTrace {
         opts.filter_common_prefix
             ? io::CommonPathPrefix(files_to_find_prefix).size()
             : 0;
-    return absl::StrJoin(
-        *stack_frames_cache_, "\n",
-        [&](std::string* out, const StackFrame& frame) {
-          absl::StrAppend(out,
-                          StackFrameToString(frame, opts, shared_prefix_size));
-        });
+
+    if (!opts.drop_internal_frames) {
+      return ToStringHelper(*stack_frames_cache_, opts, shared_prefix_size);
+    }
+
+    std::vector<StackFrame> filtered_frames;
+    for (const StackFrame& frame : *stack_frames_cache_) {
+      if (!IsInternalFrameForFilename(frame.file_name)) {
+        filtered_frames.push_back(frame);
+      }
+    }
+    return ToStringHelper(filtered_frames, opts, shared_prefix_size);
   }
 
   bool IsCacheGenerated() const { return stack_frames_cache_.has_value(); }
 
   void GenerateCache() const {
-    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
-    // 2) ToStackFrames and LineContents actually need it.
-    PyGILState_STATE state = PyGILState_Ensure();
     if (stack_frames_cache_) {
       return;
     }
 
-    absl::flat_hash_map<std::pair<std::string, int>, StackFrame> m;
-    absl::flat_hash_set<std::string> f;
+    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
+    // 2) ToStackFrames and LineContents actually need it.
+    PyGILState_STATE state = PyGILState_Ensure();
 
-    for (const std::pair<py::handle, py::handle>& p : *source_map_) {
-      const py::tuple& key = py::cast<py::tuple>(p.first);
-      const py::tuple& value = py::cast<py::tuple>(p.second);
-
-      m.emplace(std::make_pair(std::string(py::cast<py::str>(key[0])),
-                               py::cast<ssize_t>(key[1])),
-                StackFrame{std::string(py::cast<py::str>(value[0])),
-                           py::cast<py::int_>(value[1]),
-                           std::string(py::cast<py::str>(value[2]))});
-    }
-
-    for (const py::handle& h : *filtered_filenames_) {
-      f.emplace(py::cast<py::str>(h));
-    }
-
-    stack_frames_cache_ = captured_.ToStackFrames(m, f);
+    stack_frames_cache_ = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        [&](const char* f) { return StackTraceFiltering(f); });
     stack_frames_cache_->pop_back();  // Drop last stack frame.
+    PyGILState_Release(state);
+  }
+
+  void GenerateLastFrameCache() const {
+    if (last_stack_frame_cache_) {
+      return;
+    }
+
+    PyGILState_STATE state = PyGILState_Ensure();
+    auto f = [&](const char* file_name) -> bool {
+      return StackTraceFiltering(file_name) ||
+             IsInternalFrameForFilename(file_name);
+    };
+
+    std::vector<StackFrame> last_frame = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); }, f,
+        /*reverse_traversal=*/true,
+        /*limit=*/1);
+
+    if (last_frame.empty()) {
+      last_stack_frame_cache_ = StackFrame{};
+    } else {
+      DCHECK(last_frame.size() == 1);
+      last_stack_frame_cache_ = last_frame[0];
+    }
     PyGILState_Release(state);
   }
 
@@ -198,11 +219,53 @@ class StackTraceWrapper : public AbstractStackTrace {
   }
 
  private:
-  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  static std::string ToStringHelper(absl::Span<StackFrame const> stack_frames,
+                                    const TracePrintingOptions& opts,
+                                    int shared_prefix_size) {
+    return absl::StrJoin(
+        stack_frames, "\n", [&](std::string* out, const StackFrame& frame) {
+          absl::StrAppend(out,
+                          StackFrameToString(frame, opts, shared_prefix_size));
+        });
+  }
+
+  static bool IsInternalFrameForFilename(absl::string_view file_name) {
+    // Use a simple heuristic for now.
+    // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
+    return absl::StrContains(file_name, "tensorflow/python") &&
+           !absl::StrContains(file_name, "keras") &&
+           !absl::StrContains(file_name, "test.py");
+  }
+
+  absl::optional<StackFrame> StackTraceMapping(
+      std::pair<const char*, int> p) const {
+    if (source_map_->empty()) {
+      return absl::nullopt;
+    }
+
+    auto key = py::make_tuple(py::str(p.first), py::int_(p.second));
+
+    if (source_map_->contains(key)) {
+      const py::tuple& value = (*source_map_)[key];
+      return StackFrame{std::string(py::cast<py::str>(value[0])),
+                        py::cast<py::int_>(value[1]),
+                        std::string(py::cast<py::str>(value[2]))};
+    }
+
+    return absl::nullopt;
+  }
+
+  bool StackTraceFiltering(const char* file_name) const {
+    return filtered_filenames_->contains(file_name);
+  }
+
   StackTrace captured_;
   // Using optional to force destruction while we hold a GIL.
   absl::optional<py::dict> source_map_;
   absl::optional<py::set> filtered_filenames_;
+
+  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  mutable absl::optional<StackFrame> last_stack_frame_cache_;
 };
 
 }  // namespace
@@ -296,10 +359,13 @@ PYBIND11_MODULE(_tf_stack, m) {
              self.GenerateCache();
              return py::hash(py::str(self.ToString({})));
            })
-      .def("__repr__", [](const StackTraceWrapper& self) {
-        self.GenerateCache();
-        return py::str(self.ToString({}));
-      });
+      .def("__repr__",
+           [](const StackTraceWrapper& self) {
+             self.GenerateCache();
+             return py::str(self.ToString({}));
+           })
+      .def("last_user_frame",
+           [](const StackTraceWrapper& self) { return self.LastUserFrame(); });
 
   m.def(
       "extract_stack_for_node",
