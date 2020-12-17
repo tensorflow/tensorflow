@@ -74,6 +74,39 @@ void CompareNumericalAndAutodiffGradients(
   }
 }
 
+void CompareManualAndAutodiffGradients(
+    Model grad_model, AbstractContext* ctx,
+    absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<const float> manuals, bool use_function, double abs_error) {
+  auto num_inputs = inputs.size();
+  std::vector<AbstractTensorHandle*> outputs(num_inputs);
+  auto s = RunModel(grad_model, ctx, inputs, absl::MakeSpan(outputs),
+                    /*use_function=*/use_function);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  int current_index_manual = 0;
+  for (int i = 0; i < num_inputs; ++i) {
+    if (!outputs[i]) continue;
+
+    TF_Tensor* analytical_tensor;
+    s = GetValue(outputs[i], &analytical_tensor);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    auto num_elem_analytical = TF_TensorElementCount(analytical_tensor);
+
+    float* danalytical = new float[num_elem_analytical]{0};
+    memcpy(&danalytical[0], TF_TensorData(analytical_tensor),
+           TF_TensorByteSize(analytical_tensor));
+
+    for (int j = 0; j < num_elem_analytical; j++) {
+      ASSERT_NEAR(manuals[current_index_manual], danalytical[j], abs_error);
+      ++current_index_manual;
+    }
+    TF_DeleteTensor(analytical_tensor);
+    delete[] danalytical;
+    outputs[i]->Unref();
+  }
+}
+
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow
