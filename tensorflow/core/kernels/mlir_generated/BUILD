@@ -219,6 +219,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # b/173033461
     ],
     deps = [
+        ":gpu_ops_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
@@ -233,6 +234,23 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "gpu_ops_test_util",
+    testonly = 1,
+    srcs = [
+        "gpu_ops_test_util.cc",
+        "gpu_ops_test_util.h",
+    ],
+    hdrs = [
+        "gpu_ops_test_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/container:inlined_vector",
         "@llvm-project//llvm:Support",
     ],
 )

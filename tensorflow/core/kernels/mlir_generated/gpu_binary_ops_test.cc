@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/mlir_generated/gpu_ops_test_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -108,9 +109,9 @@ class GpuBinaryOpTest : public OpsTestBase {
     TensorShape lhs_shape{3};
     TensorShape rhs_shape{2};
     auto repeated_lhs_input =
-        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+        test::RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
     auto repeated_rhs_input =
-        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+        test::RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
 
     RunAndExpectInvalidArgument<T, OutT>(op_name, lhs_shape, repeated_lhs_input,
                                          rhs_shape, repeated_rhs_input,
@@ -126,8 +127,10 @@ class GpuBinaryOpTest : public OpsTestBase {
                        bool use_constraint = true) {
     // Prepare inputs.
     int input_size = shape.num_elements();
-    auto repeated_lhs_input = RepeatInputToMatchShape(lhs_input, input_size);
-    auto repeated_rhs_input = RepeatInputToMatchShape(rhs_input, input_size);
+    auto repeated_lhs_input =
+        test::RepeatInputToMatchShape(lhs_input, input_size);
+    auto repeated_rhs_input =
+        test::RepeatInputToMatchShape(rhs_input, input_size);
 
     // Compute expected results.
     absl::InlinedVector<OutT, 10> expected_output;
@@ -156,7 +159,7 @@ class GpuBinaryOpTest : public OpsTestBase {
     // Prepare inputs.
     TensorShape scalar_shape{};
     auto repeated_other_input =
-        RepeatInputToMatchShape(other_input, other_shape.num_elements());
+        test::RepeatInputToMatchShape(other_input, other_shape.num_elements());
 
     // Compute expected results.
     absl::InlinedVector<OutT, 10> expected_output;
@@ -169,7 +172,7 @@ class GpuBinaryOpTest : public OpsTestBase {
       expected_output.push_back(result);
     }
 
-    auto scalar_input_vector = InputAsVector<T>({scalar_input});
+    auto scalar_input_vector = test::InputAsVector<T>({scalar_input});
     RunAndExpectResult<T, OutT>(op_name, scalar_shape, scalar_input_vector,
                                 other_shape, repeated_other_input,
                                 /*expected_shape=*/other_shape, expected_output,
@@ -188,9 +191,9 @@ class GpuBinaryOpTest : public OpsTestBase {
     TensorShape lhs_shape{1};
     TensorShape rhs_shape{6};
     auto repeated_lhs_input =
-        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+        test::RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
     auto repeated_rhs_input =
-        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+        test::RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
 
     // Compute expected results.
     std::vector<int> lhs_indices = {0, 0, 0, 0, 0, 0};
@@ -217,9 +220,9 @@ class GpuBinaryOpTest : public OpsTestBase {
     TensorShape lhs_shape{3};
     TensorShape rhs_shape{2, 3};
     auto repeated_lhs_input =
-        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+        test::RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
     auto repeated_rhs_input =
-        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+        test::RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
 
     // Compute expected results.
     std::vector<int> lhs_indices = {0, 1, 2, 0, 1, 2};
@@ -245,9 +248,9 @@ class GpuBinaryOpTest : public OpsTestBase {
     TensorShape lhs_shape{2, 1};
     TensorShape rhs_shape{3};
     auto repeated_lhs_input =
-        RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
+        test::RepeatInputToMatchShape(lhs_input, lhs_shape.num_elements());
     auto repeated_rhs_input =
-        RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
+        test::RepeatInputToMatchShape(rhs_input, rhs_shape.num_elements());
 
     // Compute expected results.
     TensorShape expected_shape{2, 3};
@@ -284,17 +287,6 @@ class GpuBinaryOpTest : public OpsTestBase {
   }
 
  private:
-  template <typename T>
-  absl::InlinedVector<T, 10> RepeatInputToMatchShape(
-      absl::InlinedVector<T, 10> input, int size) {
-    absl::InlinedVector<T, 10> result;
-    for (int i = 0; i < size; i++) {
-      auto value = input[i % input.size()];
-      result.push_back(value);
-    }
-    return result;
-  }
-
   template <typename T, typename BaselineT, typename OutT,
             typename BaselineOutT>
   absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
@@ -310,108 +302,61 @@ class GpuBinaryOpTest : public OpsTestBase {
     }
     return expected_output;
   }
-
-  // Helper functions to get default input values.
-
- protected:
-  TensorShape DefaultInputShape() { return TensorShape{3, 4}; }
-
-  template <typename T>
-  T DefaultScalarInput() {
-    return static_cast<T>(2.0);
-  }
-
-  template <typename T>
-  absl::InlinedVector<T, 10> InfZeroInput() {
-    return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
-                                     -0.1, -0.0, 0.0, 0.1,
-                                     std::numeric_limits<float>::infinity()});
-  }
-
-  template <
-      typename T,
-      std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                       bool> = true>
-  absl::InlinedVector<T, 10> DefaultInput() {
-    return InputAsVector<T, int>(
-        {-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
-  }
-
-  template <
-      typename T,
-      std::enable_if_t<llvm::is_one_of<T, Eigen::half, float, double>::value,
-                       bool> = true>
-  absl::InlinedVector<T, 10> DefaultInput() {
-    return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
-                                     0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
-  }
-
-  template <typename T,
-            std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
-  absl::InlinedVector<T, 10> DefaultInput() {
-    return InputAsVector<T, bool>({true, false, true, true, false});
-  }
-
-  template <typename T, typename LiteralT>
-  absl::InlinedVector<T, 10> InputAsVector(
-      std::initializer_list<LiteralT> input) {
-    absl::InlinedVector<T, 10> result;
-    result.reserve(input.size());
-    for (const LiteralT& value : input) {
-      result.push_back(static_cast<T>(value));
-    }
-    return result;
-  }
 };
 
 // Macros to easily generate common test cases. For specific inputs, please
 // define your own test fixtures.
 
-#define GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, BaselineT, OutT,       \
-                                 BaselineOutT, baseline_callback,              \
-                                 use_constraint)                               \
-  TEST_F(GpuBinaryOpTest, op_name##EqShapes##test_name) {                      \
-    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                         \
-        #op_name, /*shape=*/DefaultInputShape(),                               \
-        /*lhs_input=*/DefaultInput<T>(), /*rhs_input=*/DefaultInput<T>(),      \
-        baseline_callback, use_constraint);                                    \
-  }                                                                            \
-                                                                               \
-  TEST_F(GpuBinaryOpTest, op_name##OneScalar##test_name) {                     \
-    TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                           \
-        #op_name, /*scalar_input=*/DefaultScalarInput<T>(),                    \
-        /*other_shape=*/DefaultInputShape(),                                   \
-        /*other_input=*/DefaultInput<T>(), baseline_callback, use_constraint); \
-  }                                                                            \
-                                                                               \
-  TEST_F(GpuBinaryOpTest, op_name##IncompatibleShapes##test_name) {            \
-    TestIncompatibleShapes<T, OutT>(#op_name, /*lhs_input=*/DefaultInput<T>(), \
-                                    /*rhs_input=*/DefaultInput<T>(),           \
-                                    use_constraint);                           \
-  }                                                                            \
-                                                                               \
-  TEST_F(GpuBinaryOpTest, op_name##BroadcastingExpand##test_name) {            \
-    TestBroadcastingExpand<T, BaselineT, OutT, BaselineOutT>(                  \
-        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
-        /*rhs_input=*/DefaultInput<T>(), baseline_callback, use_constraint);   \
-  }                                                                            \
-                                                                               \
-  TEST_F(GpuBinaryOpTest, op_name##BroadcastingInDim##test_name) {             \
-    TestBroadcastingInDim<T, BaselineT, OutT, BaselineOutT>(                   \
-        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
-        /*rhs_input=*/DefaultInput<T>(), baseline_callback, use_constraint);   \
-  }                                                                            \
-                                                                               \
-  TEST_F(GpuBinaryOpTest, op_name##Broadcasting##test_name) {                  \
-    TestBroadcasting<T, BaselineT, OutT, BaselineOutT>(                        \
-        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
-        /*rhs_input=*/DefaultInput<T>(), baseline_callback, use_constraint);   \
-  }                                                                            \
-                                                                               \
-  TEST_F(GpuBinaryOpTest, op_name##EmptyShapeBroadcasting##test_name) {        \
-    TestEmptyShapeBroadcasting<T, BaselineT, OutT, BaselineOutT>(              \
-        #op_name, /*lhs_input=*/DefaultInput<T>(),                             \
-        /*rhs_input=*/DefaultInput<T>(), use_constraint);                      \
+#define GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, BaselineT, OutT, \
+                                 BaselineOutT, baseline_callback,        \
+                                 use_constraint)                         \
+  TEST_F(GpuBinaryOpTest, op_name##EqShapes##test_name) {                \
+    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                   \
+        #op_name, /*shape=*/test::DefaultInputShape(),                   \
+        /*lhs_input=*/test::DefaultInput<T>(),                           \
+        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
+        use_constraint);                                                 \
+  }                                                                      \
+                                                                         \
+  TEST_F(GpuBinaryOpTest, op_name##OneScalar##test_name) {               \
+    TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                     \
+        #op_name, /*scalar_input=*/test::DefaultScalarInput<T>(),        \
+        /*other_shape=*/test::DefaultInputShape(),                       \
+        /*other_input=*/test::DefaultInput<T>(), baseline_callback,      \
+        use_constraint);                                                 \
+  }                                                                      \
+                                                                         \
+  TEST_F(GpuBinaryOpTest, op_name##IncompatibleShapes##test_name) {      \
+    TestIncompatibleShapes<T, OutT>(                                     \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
+        /*rhs_input=*/test::DefaultInput<T>(), use_constraint);          \
+  }                                                                      \
+                                                                         \
+  TEST_F(GpuBinaryOpTest, op_name##BroadcastingExpand##test_name) {      \
+    TestBroadcastingExpand<T, BaselineT, OutT, BaselineOutT>(            \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
+        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
+        use_constraint);                                                 \
+  }                                                                      \
+                                                                         \
+  TEST_F(GpuBinaryOpTest, op_name##BroadcastingInDim##test_name) {       \
+    TestBroadcastingInDim<T, BaselineT, OutT, BaselineOutT>(             \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
+        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
+        use_constraint);                                                 \
+  }                                                                      \
+                                                                         \
+  TEST_F(GpuBinaryOpTest, op_name##Broadcasting##test_name) {            \
+    TestBroadcasting<T, BaselineT, OutT, BaselineOutT>(                  \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
+        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
+        use_constraint);                                                 \
+  }                                                                      \
+                                                                         \
+  TEST_F(GpuBinaryOpTest, op_name##EmptyShapeBroadcasting##test_name) {  \
+    TestEmptyShapeBroadcasting<T, BaselineT, OutT, BaselineOutT>(        \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
+        /*rhs_input=*/test::DefaultInput<T>(), use_constraint);          \
   }
 
 #define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback) \
