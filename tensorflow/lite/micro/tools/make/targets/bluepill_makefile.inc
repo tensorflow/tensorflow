@@ -59,3 +59,10 @@ MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_bluepill_binary.sh
 
+# We are setting this variable to non-zero to allow us to have a custom
+# implementation of `make test` for bluepill
+TARGET_SPECIFIC_MAKE_TEST := 1
+test: build
+	$(TEST_SCRIPT) $(BINDIR)
+
+
