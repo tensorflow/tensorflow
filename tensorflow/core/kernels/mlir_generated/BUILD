@@ -249,8 +249,10 @@ cc_library(
         "gpu_ops_test_util.h",
     ],
     deps = [
+        "//tensorflow/core:framework",
         "//tensorflow/core:tensorflow",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )

@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -307,56 +308,56 @@ class GpuBinaryOpTest : public OpsTestBase {
 // Macros to easily generate common test cases. For specific inputs, please
 // define your own test fixtures.
 
-#define GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, BaselineT, OutT, \
-                                 BaselineOutT, baseline_callback,        \
-                                 use_constraint)                         \
-  TEST_F(GpuBinaryOpTest, op_name##EqShapes##test_name) {                \
-    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                   \
-        #op_name, /*shape=*/test::DefaultInputShape(),                   \
-        /*lhs_input=*/test::DefaultInput<T>(),                           \
-        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
-        use_constraint);                                                 \
-  }                                                                      \
-                                                                         \
-  TEST_F(GpuBinaryOpTest, op_name##OneScalar##test_name) {               \
-    TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                     \
-        #op_name, /*scalar_input=*/test::DefaultScalarInput<T>(),        \
-        /*other_shape=*/test::DefaultInputShape(),                       \
-        /*other_input=*/test::DefaultInput<T>(), baseline_callback,      \
-        use_constraint);                                                 \
-  }                                                                      \
-                                                                         \
-  TEST_F(GpuBinaryOpTest, op_name##IncompatibleShapes##test_name) {      \
-    TestIncompatibleShapes<T, OutT>(                                     \
-        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
-        /*rhs_input=*/test::DefaultInput<T>(), use_constraint);          \
-  }                                                                      \
-                                                                         \
-  TEST_F(GpuBinaryOpTest, op_name##BroadcastingExpand##test_name) {      \
-    TestBroadcastingExpand<T, BaselineT, OutT, BaselineOutT>(            \
-        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
-        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
-        use_constraint);                                                 \
-  }                                                                      \
-                                                                         \
-  TEST_F(GpuBinaryOpTest, op_name##BroadcastingInDim##test_name) {       \
-    TestBroadcastingInDim<T, BaselineT, OutT, BaselineOutT>(             \
-        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
-        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
-        use_constraint);                                                 \
-  }                                                                      \
-                                                                         \
-  TEST_F(GpuBinaryOpTest, op_name##Broadcasting##test_name) {            \
-    TestBroadcasting<T, BaselineT, OutT, BaselineOutT>(                  \
-        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
-        /*rhs_input=*/test::DefaultInput<T>(), baseline_callback,        \
-        use_constraint);                                                 \
-  }                                                                      \
-                                                                         \
-  TEST_F(GpuBinaryOpTest, op_name##EmptyShapeBroadcasting##test_name) {  \
-    TestEmptyShapeBroadcasting<T, BaselineT, OutT, BaselineOutT>(        \
-        #op_name, /*lhs_input=*/test::DefaultInput<T>(),                 \
-        /*rhs_input=*/test::DefaultInput<T>(), use_constraint);          \
+#define GENERATE_DEFAULT_TESTS_2(op_name, test_name, T, BaselineT, OutT,    \
+                                 BaselineOutT, baseline_callback,           \
+                                 use_constraint)                            \
+  TEST_F(GpuBinaryOpTest, op_name##EqShapes##test_name) {                   \
+    TestEqualShapes<T, BaselineT, OutT, BaselineOutT>(                      \
+        #op_name, /*shape=*/test::DefaultInputShape(),                      \
+        /*lhs_input=*/test::DefaultInput<T>(#op_name),                      \
+        /*rhs_input=*/test::DefaultInput<T>(#op_name), baseline_callback,   \
+        use_constraint);                                                    \
+  }                                                                         \
+                                                                            \
+  TEST_F(GpuBinaryOpTest, op_name##OneScalar##test_name) {                  \
+    TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                        \
+        #op_name, /*scalar_input=*/test::DefaultScalarInput<T>(),           \
+        /*other_shape=*/test::DefaultInputShape(),                          \
+        /*other_input=*/test::DefaultInput<T>(#op_name), baseline_callback, \
+        use_constraint);                                                    \
+  }                                                                         \
+                                                                            \
+  TEST_F(GpuBinaryOpTest, op_name##IncompatibleShapes##test_name) {         \
+    TestIncompatibleShapes<T, OutT>(                                        \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(#op_name),            \
+        /*rhs_input=*/test::DefaultInput<T>(#op_name), use_constraint);     \
+  }                                                                         \
+                                                                            \
+  TEST_F(GpuBinaryOpTest, op_name##BroadcastingExpand##test_name) {         \
+    TestBroadcastingExpand<T, BaselineT, OutT, BaselineOutT>(               \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(#op_name),            \
+        /*rhs_input=*/test::DefaultInput<T>(#op_name), baseline_callback,   \
+        use_constraint);                                                    \
+  }                                                                         \
+                                                                            \
+  TEST_F(GpuBinaryOpTest, op_name##BroadcastingInDim##test_name) {          \
+    TestBroadcastingInDim<T, BaselineT, OutT, BaselineOutT>(                \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(#op_name),            \
+        /*rhs_input=*/test::DefaultInput<T>(#op_name), baseline_callback,   \
+        use_constraint);                                                    \
+  }                                                                         \
+                                                                            \
+  TEST_F(GpuBinaryOpTest, op_name##Broadcasting##test_name) {               \
+    TestBroadcasting<T, BaselineT, OutT, BaselineOutT>(                     \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(#op_name),            \
+        /*rhs_input=*/test::DefaultInput<T>(#op_name), baseline_callback,   \
+        use_constraint);                                                    \
+  }                                                                         \
+                                                                            \
+  TEST_F(GpuBinaryOpTest, op_name##EmptyShapeBroadcasting##test_name) {     \
+    TestEmptyShapeBroadcasting<T, BaselineT, OutT, BaselineOutT>(           \
+        #op_name, /*lhs_input=*/test::DefaultInput<T>(#op_name),            \
+        /*rhs_input=*/test::DefaultInput<T>(#op_name), use_constraint);     \
   }
 
 #define GENERATE_DEFAULT_TESTS(op_name, test_name, T, OutT, baseline_callback) \
@@ -434,40 +435,35 @@ GENERATE_DEFAULT_TESTS(BitwiseXor,
 
 /// Test `tf.LeftShift`.
 
-// TODO(b/175714068): Enable when fixed.
-// template <typename T>
-// T baseline_left_shift(T lhs, T rhs) {
-//   return lhs << rhs;
-// }
+template <typename T>
+T baseline_left_shift(T lhs, T rhs) {
+  return lhs << rhs;
+}
 
-// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int8, int8, int8,
-//                        baseline_left_shift)
-// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int16, int16, int16,
-//                        baseline_left_shift)
-// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int32, int32, int32,
-//                        baseline_left_shift)
-// GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int64, int64, int64,
-//                        baseline_left_shift)
+GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int8, int8, int8,
+                       baseline_left_shift)
+GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int16, int16, int16,
+                       baseline_left_shift)
+GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int32, int32, int32,
+                       baseline_left_shift)
+GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int64, int64, int64,
+                       baseline_left_shift)
 
 /// Test `tf.RightShift`.
 
-// TODO(b/175772820): Enable when fixed.
-// template <typename T>
-// T baseline_right_shift(T lhs, T rhs) {
-//   return lhs >> rhs;
-// }
+template <typename T>
+T baseline_right_shift(T lhs, T rhs) {
+  return lhs >> rhs;
+}
 
-// GENERATE_DEFAULT_TESTS(RightShift,
-//                        /*test_name=*/Int8, int8, int8, baseline_right_shift)
-// GENERATE_DEFAULT_TESTS(RightShift,
-//                        /*test_name=*/Int16, int16, int16,
-//                        baseline_right_shift)
-// GENERATE_DEFAULT_TESTS(RightShift,
-//                        /*test_name=*/Int32, int32, int32,
-//                        baseline_right_shift)
-// GENERATE_DEFAULT_TESTS(RightShift,
-//                        /*test_name=*/Int64, int64, int64,
-//                        baseline_right_shift)
+GENERATE_DEFAULT_TESTS(RightShift,
+                       /*test_name=*/Int8, int8, int8, baseline_right_shift)
+GENERATE_DEFAULT_TESTS(RightShift,
+                       /*test_name=*/Int16, int16, int16, baseline_right_shift)
+GENERATE_DEFAULT_TESTS(RightShift,
+                       /*test_name=*/Int32, int32, int32, baseline_right_shift)
+GENERATE_DEFAULT_TESTS(RightShift,
+                       /*test_name=*/Int64, int64, int64, baseline_right_shift)
 
 /// Test `tf.Equal`.
 
