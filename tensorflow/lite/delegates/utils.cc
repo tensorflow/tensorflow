@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace delegates {
@@ -183,7 +184,8 @@ FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
     // its value in delegated_dequant_consumers.
     for (int j = 0; j < node->inputs->size; ++j) {
       const int input_tid = node->inputs->data[j];
-      if (dequant_consumers_.find(input_tid) != dequant_consumers_.end()) {
+      if (constant_dequant_consumers_.find(input_tid) !=
+          constant_dequant_consumers_.end()) {
         delegated_dequant_consumers[input_tid] += 1;
       }
     }
@@ -192,9 +194,10 @@ FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
   // If the number of delegated consumers is same as total number of consumers,
   // add the corresponding DEQUANTIZE op to the delegated nodes.
   for (auto tensor_and_consumers : delegated_dequant_consumers) {
-    if (dequant_consumers_[tensor_and_consumers.first] ==
+    if (constant_dequant_consumers_[tensor_and_consumers.first] ==
         tensor_and_consumers.second) {
-      ops_to_replace.emplace_back(dequant_nodes_[tensor_and_consumers.first]);
+      ops_to_replace.emplace_back(
+          constant_dequant_nodes_[tensor_and_consumers.first]);
     }
   }
 
@@ -216,16 +219,21 @@ FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
 bool FP16GraphPartitionHelper::IsNodeSupported(
     TfLiteContext* context, TfLiteNode* node, TfLiteRegistration* registration,
     int node_id, std::string* unsupported_details) {
-  if (registration->builtin_code == kTfLiteBuiltinDequantize &&
-      context_->tensors[node->inputs->data[0]].type ==
-          TfLiteType::kTfLiteFloat16) {
-    // Update mappings if this node is a fp16 DEQUANTIZE node.
-    dequant_map_[node->outputs->data[0]] = node->inputs->data[0];
-    dequant_nodes_[node->outputs->data[0]] = node_id;
-    // We do not accept these ops right now.
-    // This is done to support use-cases where a DEQUANTIZE output might be
-    // consumed by a CPU op.
-    return false;
+  if (registration->builtin_code == kTfLiteBuiltinDequantize) {
+    auto& dequantize_input = context_->tensors[node->inputs->data[0]];
+    if (dequantize_input.type == kTfLiteFloat16 &&
+        IsConstantTensor(&dequantize_input)) {
+      // Update mappings if this node is a fp16 DEQUANTIZE node that
+      // works on a **constant** input tensor.
+      // If the input is not a constant, the remapping that we do here will
+      // cause bugs due to preceding ops such as DENSIFY.
+      constant_dequant_map_[node->outputs->data[0]] = node->inputs->data[0];
+      constant_dequant_nodes_[node->outputs->data[0]] = node_id;
+      // We do not accept these ops right now.
+      // This is done to support use-cases where a DEQUANTIZE output might be
+      // consumed by a CPU op.
+      return false;
+    }
   }
 
   // To check if a (possibly) FP16 node is supported, we temporarily point the
@@ -234,7 +242,7 @@ bool FP16GraphPartitionHelper::IsNodeSupported(
   // we remap the original node inputs, so that the TFLite graph remains the
   // same.
   std::vector<int> orig_inputs;
-  if (!dequant_nodes_.empty()) {
+  if (!constant_dequant_nodes_.empty()) {
     RemapFp16InputTensors(node, &orig_inputs);
   }
 
@@ -245,10 +253,11 @@ bool FP16GraphPartitionHelper::IsNodeSupported(
     // Remapping happened. Restore original inputs.
     for (int j = 0; j < node->inputs->size; ++j) {
       node->inputs->data[j] = orig_inputs[j];
-      if (dequant_nodes_.find(orig_inputs[j]) != dequant_nodes_.end()) {
+      if (constant_dequant_nodes_.find(orig_inputs[j]) !=
+          constant_dequant_nodes_.end()) {
         // If its a fp16 tensor, increment number of consumers of the
         // corresponding DEQUANTIZE.
-        dequant_consumers_[orig_inputs[j]] += 1;
+        constant_dequant_consumers_[orig_inputs[j]] += 1;
       }
     }
   }
@@ -289,8 +298,8 @@ void FP16GraphPartitionHelper::RemapFp16InputTensors(
   bool is_remapped = false;
   for (int j = 0; j < inputs->size; ++j) {
     const int input_tid = inputs->data[j];
-    const auto it = dequant_map_.find(input_tid);
-    if (it != dequant_map_.end()) {
+    const auto it = constant_dequant_map_.find(input_tid);
+    if (it != constant_dequant_map_.end()) {
       inputs->data[j] = it->second;
       is_remapped = true;
     }
