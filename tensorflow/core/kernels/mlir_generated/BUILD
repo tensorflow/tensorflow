@@ -357,6 +357,17 @@ gen_kernel_library(
 )
 
 gen_kernel_library(
+    name = "complex",
+    tile_size = "256,1,1",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/174543802): Enable once fusion heuristics is better.
+    # unroll_factors = "2",
+)
+
+gen_kernel_library(
     name = "mul",
     tile_size = "256,1,1",
     types = [
