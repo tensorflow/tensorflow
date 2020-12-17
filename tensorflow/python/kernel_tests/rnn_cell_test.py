@@ -26,14 +26,16 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import   array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -47,6 +49,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
@@ -3059,6 +3064,26 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
         config_copy["cell"]["config"])
     reconstructed_wrapper = wrapper_cls.from_config(config_copy)
     self.assertFalse(reconstructed_wrapper._dropout_state_filter(None))
+
+  def testSavedModel(self):
+    with self.cached_session():
+      root = tracking.AutoTrackable()
+      root.cell = rnn_cell_impl.LSTMCell(8)
+      @def_function.function(input_signature=[tensor_spec.TensorSpec([3, 8])])
+      def call(x):
+        state = root.cell.zero_state(3, dtype=x.dtype)
+        y, _ = root.cell(x, state)
+        return y
+      root.call = call
+      expected = root.call(array_ops.zeros((3, 8)))
+      self.evaluate(variables_lib.global_variables_initializer())
+
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(root, save_dir)
+      loaded = load.load(save_dir)
+      self.evaluate(variables_lib.global_variables_initializer())
+      self.assertAllClose(
+          expected, loaded.call(array_ops.zeros((3, 8))))
 
 
 @test_util.run_all_in_graph_and_eager_modes
