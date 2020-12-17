@@ -333,17 +333,21 @@ class DeviceSpecV2(object):
           replica = y[1]
         elif ly == 2 and y[0] == "task":
           task = y[1]
-        elif ((ly == 1 or ly == 2) and (y[0].upper() in _VALID_DEVICE_TYPES)):
+        elif ((ly == 1 or ly == 2) and (y[0] != "")):
           if device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[0].upper()
           if ly == 2 and y[1] != "*":
+            if y[1].isdigit() is False:
+              raise ValueError("invalid literal for int: %s" % spec)
             device_index = int(y[1])
         elif ly == 3 and y[0] == "device":
           if device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[1]
           if y[2] != "*":
+            if y[2].isdigit() is False:
+              raise ValueError("invalid literal for int: %s" % spec)
             device_index = int(y[2])
         elif ly and y[0] != "":  # pylint: disable=g-explicit-bool-comparison
           raise ValueError("Unknown attribute: '%s' in '%s'" % (y[0], spec))

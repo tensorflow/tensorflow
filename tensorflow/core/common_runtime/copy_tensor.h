@@ -60,6 +60,15 @@ class CopyTensor {
     }
   };
 
+  // Dynamic registered devices(PluggableDevices) use this function to
+  // register a copy function.
+  static void DynamicRegister(DeviceType sender_device_type,
+                              DeviceType receiver_device_type,
+                              CopyFunction copy_function) {
+    TF_QCHECK_OK(
+        Register(sender_device_type, receiver_device_type, copy_function));
+  }
+
  private:
   // Register a function for copying between two specific DeviceTypes.
   // Note: This should only be called via the constructor of

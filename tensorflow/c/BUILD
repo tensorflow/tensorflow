@@ -420,6 +420,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_plugin_init",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",

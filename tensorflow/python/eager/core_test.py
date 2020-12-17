@@ -965,11 +965,6 @@ class TFETest(test_util.TensorFlowTestCase):
     execute(
         b'Add', 1, inputs=[x, y], attrs=('T', x.dtype.as_datatype_enum))
 
-  def testInvalidDevice(self):
-    with self.assertRaises(ValueError):
-      with context.device('pu:0'):
-        _ = constant_op.constant(1)
-
   def testConvertMixedEagerTensors(self):
     array = np.zeros((), dtype=np.float32)
     tensor = constant_op.constant(0., dtype=dtypes.float32)

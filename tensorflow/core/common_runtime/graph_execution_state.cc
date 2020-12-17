@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -395,7 +396,9 @@ bool IsFeedAndFetchSupported(DataType dtype, const string& device_type) {
   // TODO(ashankar): Instead of a allowlist here, perhaps we could query
   // the kernel registry for _Arg and _Retval kernels instead.
   if (device_type == DEVICE_CPU) return true;
-  if (device_type != DEVICE_GPU) return false;
+  if (device_type != DEVICE_GPU &&
+      !DeviceFactory::IsPluggableDevice(device_type))
+    return false;
   switch (dtype) {
     case DT_BFLOAT16:
     case DT_BOOL:

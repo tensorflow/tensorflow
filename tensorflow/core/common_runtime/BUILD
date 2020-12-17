@@ -90,6 +90,7 @@ cc_library(
     deps = [
         ":core_cpu",
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
+        "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime",
     ] + if_libtpu(["//tensorflow/core/tpu:tpu_runtime"]),
 )
 

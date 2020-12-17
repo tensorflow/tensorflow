@@ -40,6 +40,7 @@ static mutex* get_device_factory_lock() {
 struct FactoryItem {
   std::unique_ptr<DeviceFactory> factory;
   int priority;
+  bool is_pluggable_device;
 };
 
 std::unordered_map<string, FactoryItem>& device_factories() {
@@ -62,18 +63,30 @@ int32 DeviceFactory::DevicePriority(const string& device_type) {
   return -1;
 }
 
+bool DeviceFactory::IsPluggableDevice(const string& device_type) {
+  tf_shared_lock l(*get_device_factory_lock());
+  std::unordered_map<string, FactoryItem>& factories = device_factories();
+  auto iter = factories.find(device_type);
+  if (iter != factories.end()) {
+    return iter->second.is_pluggable_device;
+  }
+
+  return false;
+}
+
 // static
 void DeviceFactory::Register(const string& device_type, DeviceFactory* factory,
-                             int priority) {
+                             int priority, bool is_pluggable_device) {
   mutex_lock l(*get_device_factory_lock());
   std::unique_ptr<DeviceFactory> factory_ptr(factory);
   std::unordered_map<string, FactoryItem>& factories = device_factories();
   auto iter = factories.find(device_type);
   if (iter == factories.end()) {
-    factories[device_type] = {std::move(factory_ptr), priority};
+    factories[device_type] = {std::move(factory_ptr), priority,
+                              is_pluggable_device};
   } else {
     if (iter->second.priority < priority) {
-      iter->second = {std::move(factory_ptr), priority};
+      iter->second = {std::move(factory_ptr), priority, is_pluggable_device};
     } else if (iter->second.priority == priority) {
       LOG(FATAL) << "Duplicate registration of device factory for type "
                  << device_type << " with the same priority " << priority;

@@ -31,7 +31,7 @@ class DeviceFactory {
  public:
   virtual ~DeviceFactory() {}
   static void Register(const std::string& device_type, DeviceFactory* factory,
-                       int priority);
+                       int priority, bool is_pluggable_device);
   static DeviceFactory* GetFactory(const std::string& device_type);
 
   // Append to "*devices" all suitable devices, respecting
@@ -89,6 +89,11 @@ class DeviceFactory {
   // REGISTER_LOCAL_DEVICE_FACTORY to see the existing priorities used
   // for built-in devices.
   static int32 DevicePriority(const std::string& device_type);
+
+  // Return the boolean flag for the device_type. If true, the device_type
+  // is registered from plugin. If false, the device_type is a first party
+  // device.
+  static bool IsPluggableDevice(const std::string& device_type);
 };
 
 namespace dfactory {
@@ -127,7 +132,8 @@ class Registrar {
   // ThreadPoolDevice: 60
   // Default: 50
   explicit Registrar(const std::string& device_type, int priority = 50) {
-    DeviceFactory::Register(device_type, new Factory(), priority);
+    DeviceFactory::Register(device_type, new Factory(), priority,
+                            /*is_pluggable_device*/ false);
   }
 };
 

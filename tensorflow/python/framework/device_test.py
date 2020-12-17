@@ -82,11 +82,9 @@ class DeviceTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, "invalid literal for int"):
       device.check_valid("/job:j/replica:foo")
-
     with self.assertRaisesRegex(ValueError, "invalid literal for int"):
       device.check_valid("/job:j/task:bar")
-
-    with self.assertRaisesRegex(ValueError, "Unknown attribute: 'bar'"):
+    with self.assertRaisesRegex(ValueError, "invalid literal for int"):
       device.check_valid("/bar:muu/baz:2")
 
     with self.assertRaisesRegex(ValueError, "Cannot specify multiple device"):

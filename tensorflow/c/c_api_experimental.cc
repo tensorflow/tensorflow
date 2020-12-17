@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_plugin_init.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -777,7 +778,9 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
     } else {
       status->status =
           env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
-      if (!status->status.ok()) {
+      if (status->status.ok()) {
+        tensorflow::RegisterPluggableDevicePlugin(lib_handle->lib_handle);
+      } else {
         delete lib_handle;
         return nullptr;
       }
