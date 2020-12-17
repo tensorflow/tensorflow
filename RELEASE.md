@@ -1,3 +1,7 @@
+# Release 2.0.4
+
+<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+
 # Release 2.0.3
 
 ## Bug Fixes and Other Changes
