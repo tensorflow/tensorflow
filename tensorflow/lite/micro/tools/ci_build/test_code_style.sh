@@ -64,6 +64,7 @@ tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
   -e "\.projbuild" \
   -e "\.properties" \
   -e "\.resc" \
+  -e "\.resource" \
   -e "\.robot" \
   -e "\.txt" \
   -e "\.tpl" \
@@ -73,9 +74,12 @@ LICENSE_CHECK_RESULT=$?
 
 # Check that the TFLM-only code is clang-formatted We are currently ignoring
 # Python files (with yapf as the formatter) because that needs additional setup.
+# We are also ignoring the markdown files to allow for a more gradual rollout of
+# this presubmit check.
 tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
   . \
   -e "\.inc" \
+  -e "\.md" \
   -e "\.py"
 
 CLANG_FORMAT_RESULT=$?
