@@ -111,6 +111,7 @@ def _gen_kernel_fatbin_impl(ctx):
             "--arch=%s" % arch_flag,
             "--input=%s" % ctx.file.mlir_op.path,
             "--output=%s" % gpu_bin.path,
+            "--enable_ftz=%s" % (ctx.attr.data_type == "f32"),
         ],
         mnemonic = "compile",
     )
@@ -131,6 +132,7 @@ def _gen_kernel_fatbin_impl(ctx):
 _gen_kernel_fatbin_rule = rule(
     attrs = {
         "mlir_op": attr.label(mandatory = True, allow_single_file = True),
+        "data_type": attr.string(mandatory = True),
         "tile_size": attr.string(mandatory = True),
         "unroll_factors": attr.string(),
         "gpu_archs": attr.string_list(mandatory = True),
@@ -174,6 +176,7 @@ def gen_kernel_library(name, types, tile_size, tags = [], unroll_factors = None,
             _gen_kernel_fatbin_rule(
                 name = "{name}_{type}_kernel_generator".format(name = name, type = type),
                 mlir_op = "{name}_{type}.mlir".format(name = name, type = type),
+                data_type = type,
                 gpu_archs = rocm_gpu_architectures() if rocm_is_configured() else cuda_gpu_architectures(),
                 tile_size = tile_size,
                 unroll_factors = unroll_factors,
