@@ -39,6 +39,4 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARG
 # Next, build w/o release so that we can run the tests and get additional
 # debugging info on failures.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
-readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} build
-
-readable_run make -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile TARGET=${TARGET} test
