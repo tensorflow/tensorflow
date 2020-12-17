@@ -540,6 +540,10 @@ $(HOST_OS) \
 arduino \
 chre
 
+# ${TARGET}_makefile.inc can set this to true to allow it to defined a custom
+# implementation for `make test`. See bluepill_makefile as an example.
+TARGET_SPECIFIC_MAKE_TEST:=0
+
 ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
   include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
 endif
@@ -659,7 +663,9 @@ $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET)
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
+ifeq ($(TARGET_SPECIFIC_MAKE_TEST),0)
 test: $(MICROLITE_TEST_TARGETS)
+endif
 
 # Just build the test targets
 build: $(MICROLITE_BUILD_TARGETS)

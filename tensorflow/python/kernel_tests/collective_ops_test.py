@@ -43,6 +43,8 @@ from tensorflow.python.platform import test
 class CollectiveOpsV1(object):
   all_reduce = _collective_ops.all_reduce
   all_gather = _collective_ops.all_gather
+  broadcast_send = _collective_ops.broadcast_send
+  broadcast_recv = _collective_ops.broadcast_recv
 
 
 class CollectiveOpsV2(object):
@@ -62,6 +64,25 @@ class CollectiveOpsV2(object):
     instance_key = array_ops.identity(instance_key)
     return _collective_ops.all_gather_v2(t, group_size, group_key, instance_key,
                                          *args, **kwargs)
+
+  @staticmethod
+  def broadcast_send(t, shape, dtype, group_size, group_key, instance_key,
+                     *args, **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    return _collective_ops.broadcast_send_v2(t, group_size, group_key,
+                                             instance_key, *args, **kwargs)
+
+  @staticmethod
+  def broadcast_recv(shape, dtype, group_size, group_key, instance_key, *args,
+                     **kwargs):
+    group_size = array_ops.identity(group_size)
+    group_key = array_ops.identity(group_key)
+    instance_key = array_ops.identity(instance_key)
+    shape = array_ops.identity(shape)
+    return _collective_ops.broadcast_recv_v2(
+        shape, dtype, group_size, group_key, instance_key, *args, **kwargs)
 
 
 device_combination = (
@@ -190,6 +211,42 @@ class CollectiveOpsTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(run_all_gather_1device(), [1.], rtol=1e-5, atol=1e-5)
     for result in run_all_gather_2devices():
       self.assertAllClose(result, [1., 1.], rtol=1e-5, atol=1e-5)
+
+  def testBroadcast(self, collective_ops, device, communication):
+    dev0 = '/device:%s:0' % device
+    dev1 = '/device:%s:1' % device
+
+    @def_function.function
+    def run_broadcast_2devices():
+      shape = [3]
+      in_value = constant_op.constant([1., 2., 3.], shape=shape)
+      group_size = 2
+      group_key = 2
+      instance_key = 2
+      collectives = []
+      with ops.device(dev0):
+        collectives.append(
+            collective_ops.broadcast_send(
+                in_value,
+                shape,
+                in_value.dtype,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      with ops.device(dev1):
+        collectives.append(
+            collective_ops.broadcast_recv(
+                shape,
+                in_value.dtype,
+                group_size,
+                group_key,
+                instance_key,
+                communication_hint=communication))
+      return collectives
+
+    for result in run_broadcast_2devices():
+      self.assertAllClose(result, [1., 2., 3.], rtol=1e-5, atol=1e-5)
 
   def testInstanceKeyScopedUnderGroupKey(self, collective_ops, device,
                                          communication):

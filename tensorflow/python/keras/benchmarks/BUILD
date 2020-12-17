@@ -232,6 +232,7 @@ py_test(
         ":benchmark_util",
         ":profiler_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 

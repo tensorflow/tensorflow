@@ -198,6 +198,9 @@ LogicalResult MarkUncompilableOps(
   int outside_compiled_cluster_counter = 0;
   block->walk([&](Operation* op) {
     if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
+      VLOG(3) << "Cloud TPU: Op " << op->getName().getStringRef().str()
+              << " isn't compilable, adding outside_compilation attr. "
+                 "This op will automatically be placed on CPU.";
       op->setAttr(
           kXlaOutsideCompilationAttr,
           StringAttr::get(
