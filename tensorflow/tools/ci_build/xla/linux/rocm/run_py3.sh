@@ -30,7 +30,7 @@ export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
-export ROCM_PATH=/opt/rocm-3.3.0
+export ROCM_PATH=/opt/rocm-3.9.0
 export TF_GPU_COUNT=${N_GPUS}
 
 yes "" | $PYTHON_BIN_PATH configure.py
