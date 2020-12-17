@@ -1,0 +1,25 @@
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CAST_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CAST_H_
+
+#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/common.h"
+
+namespace tflite {
+
+namespace reference_ops {
+
+template <typename SrcT, typename DstT>
+inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
+                 const RuntimeShape& output_shape, DstT* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    int offset = i;
+    output_data[offset] = static_cast<DstT>(input_data[offset]);
+  }
+}
+
+}  // namespace reference_ops
+}  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CAST_H_
