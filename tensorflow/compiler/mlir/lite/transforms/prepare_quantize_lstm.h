@@ -233,9 +233,9 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
         return failure();
       }
 
-      op.setAttr(intermediate_attributes[index],
-                 TypeAttr::get(qtype.castFromExpressedType(
-                     qtype.castToExpressedType(attr.getValue()))));
+      op->setAttr(intermediate_attributes[index],
+                  TypeAttr::get(qtype.castFromExpressedType(
+                      qtype.castToExpressedType(attr.getValue()))));
     }
     return success();
   }

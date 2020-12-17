@@ -130,7 +130,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.input().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
-      if (!q.getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+      if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
       op.replaceAllUsesWith(q.input());
       return success();
