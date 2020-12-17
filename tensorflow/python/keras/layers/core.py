@@ -1085,7 +1085,7 @@ class Dense(Layer):
   where `activation` is the element-wise activation function
   passed as the `activation` argument, `kernel` is a weights matrix
   created by the layer, and `bias` is a bias vector created by the layer
-  (only applicable if `use_bias` is `True`). These are all attributes in 
+  (only applicable if `use_bias` is `True`). These are all attributes of 
   `Dense`.
 
   Note: If the input to the layer has a rank greater than 2, then `Dense`
