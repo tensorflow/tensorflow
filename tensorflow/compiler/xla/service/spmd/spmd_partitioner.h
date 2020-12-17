@@ -338,6 +338,10 @@ class PartitionedHlo {
   absl::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
       const HloSharding& target);
 
+  // Helper function to reshard from partial replicate using AllToAll.
+  absl::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
+      const HloSharding& target);
+
   // SPMD instruction.
   HloInstruction* hlo_;
 

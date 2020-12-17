@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import unittest
 
 from absl import logging
 import numpy as np
@@ -35,6 +34,8 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as tracking_util
+
+_BATCH_SIZE = 32
 
 
 class SidecarEvaluatorTest(test.TestCase):
@@ -130,7 +131,6 @@ class SidecarEvaluatorTest(test.TestCase):
 
     self.assertSummaryEventsWritten(log_dir)
 
-  @unittest.skip('b/172976255')
   def testSidecarEvaluatorOutputsSummarySavedWithCallback(self):
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'checkpoints')
     log_dir = os.path.join(self.get_temp_dir(), 'summary')
@@ -139,7 +139,7 @@ class SidecarEvaluatorTest(test.TestCase):
     data = np.random.random((1000, 32))
     labels = np.random.random((1000, 10))
     dataset = dataset_ops.Dataset.from_tensor_slices((data, labels))
-    dataset = dataset.batch(32)
+    dataset = dataset.batch(_BATCH_SIZE)
     save_callback = keras.callbacks.ModelCheckpoint(
         filepath=os.path.join(checkpoint_dir, 'ckpt-{epoch}'),
         save_weights_only=True)
@@ -152,16 +152,21 @@ class SidecarEvaluatorTest(test.TestCase):
     # Create a new model used for evaluation.
     eval_model = self.createTestModel(compile_model=True)
     # Have an sidecar_evaluator evaluate once.
-    sidecar_evaluator_lib.SidecarEvaluator(
+    sidecar_evaluator = sidecar_evaluator_lib.SidecarEvaluator(
         eval_model,
         data=dataset,
         checkpoint_dir=checkpoint_dir,
         log_dir=log_dir,
-        max_evaluations=1).start()
+        max_evaluations=1)
+    sidecar_evaluator.start()
+
     # Eval model has been restored to the same state as the original model, so
     # their weights should match. If not, restoration of the model didn't
     # work.
     self.assertModelsSameVariables(model, eval_model)
+
+    # check the iterations is restored.
+    self.assertEqual(sidecar_evaluator._iterations.numpy(), _BATCH_SIZE)
 
     self.assertSummaryEventsWritten(log_dir)
 

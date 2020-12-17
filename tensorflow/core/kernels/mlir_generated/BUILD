@@ -197,6 +197,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
+        ":gpu_ops_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",

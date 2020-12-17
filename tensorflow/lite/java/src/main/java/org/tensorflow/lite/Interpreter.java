@@ -65,11 +65,12 @@ import org.checkerframework.checker.nullness.qual.NonNull;
  * model with Toco, as are the default shapes of the inputs.
  *
  * <p>When inputs are provided as (multi-dimensional) arrays, the corresponding input tensor(s) will
- * be implicitly resized according to that array's shape. When inputs are provided as {@link Buffer}
- * types, no implicit resizing is done; the caller must ensure that the {@link Buffer} byte size
- * either matches that of the corresponding tensor, or that they first resize the tensor via {@link
- * #resizeInput()}. Tensor shape and type information can be obtained via the {@link Tensor} class,
- * available via {@link #getInputTensor(int)} and {@link #getOutputTensor(int)}.
+ * be implicitly resized according to that array's shape. When inputs are provided as {@link
+ * java.nio.Buffer} types, no implicit resizing is done; the caller must ensure that the {@link
+ * java.nio.Buffer} byte size either matches that of the corresponding tensor, or that they first
+ * resize the tensor via {@link #resizeInput(int, int[])}. Tensor shape and type information can be
+ * obtained via the {@link Tensor} class, available via {@link #getInputTensor(int)} and {@link
+ * #getOutputTensor(int)}.
  *
  * <p><b>WARNING:</b>Instances of a {@code Interpreter} is <b>not</b> thread-safe. A {@code
  * Interpreter} owns resources that <b>must</b> be explicitly freed by invoking {@link #close()}
@@ -269,7 +270,7 @@ public final class Interpreter implements AutoCloseable {
 
   /**
    * Initializes a {@code Interpreter} with a {@code ByteBuffer} of a model file and a set of custom
-   * {@link #Options}.
+   * {@link Interpreter.Options}.
    *
    * <p>The ByteBuffer should not be modified after the construction of a {@code Interpreter}. The
    * {@code ByteBuffer} can be either a {@link MappedByteBuffer} that memory-maps a model file, or a
@@ -285,33 +286,35 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Runs model inference if the model takes only one input, and provides only one output.
    *
-   * <p>Warning: The API is more efficient if a {@link Buffer} (preferably direct, but not required)
-   * is used as the input/output data type. Please consider using {@link Buffer} to feed and fetch
-   * primitive data for better performance. The following concrete {@link Buffer} types are
-   * supported:
+   * <p>Warning: The API is more efficient if a {@link java.nio.Buffer} (preferably direct, but not
+   * required) is used as the input/output data type. Please consider using {@link java.nio.Buffer}
+   * to feed and fetch primitive data for better performance. The following concrete {@link
+   * java.nio.Buffer} types are supported:
    *
    * <ul>
    *   <li>{@link ByteBuffer} - compatible with any underlying primitive Tensor type.
-   *   <li>{@link FloatBuffer} - compatible with float Tensors.
-   *   <li>{@link IntBuffer} - compatible with int32 Tensors.
-   *   <li>{@link LongBuffer} - compatible with int64 Tensors.
+   *   <li>{@link java.nio.FloatBuffer} - compatible with float Tensors.
+   *   <li>{@link java.nio.IntBuffer} - compatible with int32 Tensors.
+   *   <li>{@link java.nio.LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
-   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   * Note that boolean types are only supported as arrays, not {@link java.nio.Buffer}s, or as
+   * scalar inputs.
    *
-   * @param input an array or multidimensional array, or a {@link Buffer} of primitive types
-   *     including int, float, long, and byte. {@link Buffer} is the preferred way to pass large
-   *     input data for primitive types, whereas string types require using the (multi-dimensional)
-   *     array input path. When a {@link Buffer} is used, its content should remain unchanged until
-   *     model inference is done, and the caller must ensure that the {@link Buffer} is at the
-   *     appropriate read position. A {@code null} value is allowed only if the caller is using a
-   *     {@link Delegate} that allows buffer handle interop, and such a buffer has been bound to the
-   *     input {@link Tensor}.
-   * @param output a multidimensional array of output data, or a {@link Buffer} of primitive types
-   *     including int, float, long, and byte. When a {@link Buffer} is used, the caller must ensure
-   *     that it is set the appropriate write position. A null value is allowed only if the caller
-   *     is using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
-   *     bound to the output {@link Tensor}. See {@link Options#setAllowBufferHandleOutput()}.
+   * @param input an array or multidimensional array, or a {@link java.nio.Buffer} of primitive
+   *     types including int, float, long, and byte. {@link java.nio.Buffer} is the preferred way to
+   *     pass large input data for primitive types, whereas string types require using the
+   *     (multi-dimensional) array input path. When a {@link java.nio.Buffer} is used, its content
+   *     should remain unchanged until model inference is done, and the caller must ensure that the
+   *     {@link java.nio.Buffer} is at the appropriate read position. A {@code null} value is
+   *     allowed only if the caller is using a {@link Delegate} that allows buffer handle interop,
+   *     and such a buffer has been bound to the input {@link Tensor}.
+   * @param output a multidimensional array of output data, or a {@link java.nio.Buffer} of
+   *     primitive types including int, float, long, and byte. When a {@link java.nio.Buffer} is
+   *     used, the caller must ensure that it is set the appropriate write position. A null value is
+   *     allowed only if the caller is using a {@link Delegate} that allows buffer handle interop,
+   *     and such a buffer has been bound to the output {@link Tensor}. See {@link
+   *     Interpreter.Options#setAllowBufferHandleOutput(boolean)}.
    * @throws IllegalArgumentException if {@code input} or {@code output} is null or empty, or if
    *     error occurs when running the inference.
    * @throws IllegalArgumentException (EXPERIMENTAL, subject to change) if the inference is
@@ -327,35 +330,36 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Runs model inference if the model takes multiple inputs, or returns multiple outputs.
    *
-   * <p>Warning: The API is more efficient if {@link Buffer}s (preferably direct, but not required)
-   * are used as the input/output data types. Please consider using {@link Buffer} to feed and fetch
-   * primitive data for better performance. The following concrete {@link Buffer} types are
-   * supported:
+   * <p>Warning: The API is more efficient if {@link java.nio.Buffer}s (preferably direct, but not
+   * required) are used as the input/output data types. Please consider using {@link
+   * java.nio.Buffer} to feed and fetch primitive data for better performance. The following
+   * concrete {@link java.nio.Buffer} types are supported:
    *
    * <ul>
    *   <li>{@link ByteBuffer} - compatible with any underlying primitive Tensor type.
-   *   <li>{@link FloatBuffer} - compatible with float Tensors.
-   *   <li>{@link IntBuffer} - compatible with int32 Tensors.
-   *   <li>{@link LongBuffer} - compatible with int64 Tensors.
+   *   <li>{@link java.nio.FloatBuffer} - compatible with float Tensors.
+   *   <li>{@link java.nio.IntBuffer} - compatible with int32 Tensors.
+   *   <li>{@link java.nio.LongBuffer} - compatible with int64 Tensors.
    * </ul>
    *
-   * Note that boolean types are only supported as arrays, not {@link Buffer}s, or as scalar inputs.
+   * Note that boolean types are only supported as arrays, not {@link java.nio.Buffer}s, or as
+   * scalar inputs.
    *
    * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
    * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
    * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
-   *     model. Each input can be an array or multidimensional array, or a {@link Buffer} of
-   *     primitive types including int, float, long, and byte. {@link Buffer} is the preferred way
-   *     to pass large input data, whereas string types require using the (multi-dimensional) array
-   *     input path. When {@link Buffer} is used, its content should remain unchanged until model
-   *     inference is done, and the caller must ensure that the {@link Buffer} is at the appropriate
-   *     read position.
+   *     model. Each input can be an array or multidimensional array, or a {@link java.nio.Buffer}
+   *     of primitive types including int, float, long, and byte. {@link java.nio.Buffer} is the
+   *     preferred way to pass large input data, whereas string types require using the
+   *     (multi-dimensional) array input path. When {@link java.nio.Buffer} is used, its content
+   *     should remain unchanged until model inference is done, and the caller must ensure that the
+   *     {@link java.nio.Buffer} is at the appropriate read position.
    * @param outputs a map mapping output indices to multidimensional arrays of output data or {@link
-   *     Buffer}s of primitive types including int, float, long, and byte. It only needs to keep
-   *     entries for the outputs to be used. When a {@link Buffer} is used, the caller must ensure
-   *     that it is set the appropriate write position.
+   *     java.nio.Buffer}s of primitive types including int, float, long, and byte. It only needs to
+   *     keep entries for the outputs to be used. When a {@link java.nio.Buffer} is used, the caller
+   *     must ensure that it is set the appropriate write position.
    * @throws IllegalArgumentException if {@code inputs} or {@code outputs} is null or empty, or if
    *     error occurs when running the inference.
    */
@@ -494,8 +498,8 @@ public final class Interpreter implements AutoCloseable {
   /**
    * Sets the number of threads to be used for ops that support multi-threading.
    *
-   * @deprecated Prefer using {@link Options#setNumThreads(int)} directly for controlling thread
-   *     multi-threading. This method will be removed in a future release.
+   * @deprecated Prefer using {@link Interpreter.Options#setNumThreads(int)} directly for
+   *     controlling thread multi-threading. This method will be removed in a future release.
    */
   @Deprecated
   public void setNumThreads(int numThreads) {
@@ -507,8 +511,8 @@ public final class Interpreter implements AutoCloseable {
    * Advanced: Modifies the graph with the provided {@link Delegate}.
    *
    * @throws IllegalArgumentException if error occurs when modifying graph with {@code delegate}.
-   * @deprecated Prefer using {@link Options#addDelegate} to provide delegates at creation time.
-   *     This method will be removed in a future release.
+   * @deprecated Prefer using {@link Interpreter.Options#addDelegate} to provide delegates at
+   *     creation time. This method will be removed in a future release.
    */
   @Deprecated
   public void modifyGraphWithDelegate(Delegate delegate) {

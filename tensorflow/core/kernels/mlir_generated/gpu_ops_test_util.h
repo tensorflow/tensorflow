@@ -48,9 +48,11 @@ absl::InlinedVector<T, 10> RepeatInputToMatchShape(
   return result;
 }
 
-/// Helper functions to get default input values.
+/// Helper functions to get default input shapes.
 
 TensorShape DefaultInputShape();
+
+/// Helper functions to get default input data.
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
@@ -72,17 +74,10 @@ T DefaultScalarInput() {
   return static_cast<T>(true);
 }
 
-template <typename T>
-absl::InlinedVector<T, 10> InfZeroInput() {
-  return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
-                                   -0.1, -0.0, 0.0, 0.1,
-                                   std::numeric_limits<float>::infinity()});
-}
-
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name = "") {
   // Only generate values less than the bitwidth of the data type.
   if (op_name == "LeftShift" || op_name == "RightShift") {
     auto max_shift = sizeof(T) * 8 - 1;
@@ -96,16 +91,65 @@ absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
 template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name = "") {
   return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
                                    0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name = "") {
   return InputAsVector<T, bool>({true, false, true, true, false});
 }
+
+/// Helper functions to get more specific input data.
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<std::complex<T>, 10> DefaultComplexInput() {
+  auto input = test::DefaultInput<T>();
+  absl::InlinedVector<std::complex<T>, 10> complex_input;
+  for (T value : input) {
+    complex_input.emplace_back(value, -value);
+  }
+  return complex_input;
+}
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
+  return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
+                                   -0.1, -0.0, 0.0, 0.1,
+                                   std::numeric_limits<float>::infinity()});
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
+                           bool> = true>
+absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
+  return InputAsVector<T, T>({std::numeric_limits<T>::min(),
+                              std::numeric_limits<T>::min() + 1, -1, 0, 1,
+                              std::numeric_limits<T>::max()});
+}
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> DefaultInputGreaterThanZero() {
+  return test::InputAsVector<T, double>({18.0, 9.0, 1e-6, 1.0, 0.1, 1e-6, 0.1,
+                                         0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
+}
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> DefaultInputGreaterOrEqualToZero() {
+  return test::InputAsVector<T, double>({18.0, 9.0, 1e-6, 0.0, 0.1, 1e-6, 0.1,
+                                         0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
+}
+
 }  // namespace test
 }  // namespace tensorflow
 
