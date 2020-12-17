@@ -1015,7 +1015,7 @@ def tf_gen_op_wrapper_py(
     native.py_library(
         name = generated_target_name,
         srcs = [out],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         visibility = visibility,
         deps = [
             clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
@@ -1828,7 +1828,7 @@ def tf_custom_op_py_library(
         srcs = [],
         dso = [],
         kernels = [],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         visibility = None,
         deps = [],
         **kwargs):
@@ -2019,7 +2019,7 @@ def pywrap_tensorflow_macro(
     native.py_library(
         name = name,
         srcs = [":" + name + ".py"],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         data = select({
             clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
             "//conditions:default": [":" + cc_library_name],
@@ -2139,7 +2139,7 @@ def tf_py_test(
             deps.append(clean_dep(to_add))
 
     # Python version placeholder
-    kwargs.setdefault("srcs_version", "PY2AND3")
+    kwargs.setdefault("srcs_version", "PY3")
     py_test(
         name = name,
         size = size,
@@ -2500,7 +2500,7 @@ def pybind_extension(
         module_name,
         hdrs = [],
         features = [],
-        srcs_version = "PY2AND3",
+        srcs_version = "PY3",
         data = [],
         copts = [],
         linkopts = [],
