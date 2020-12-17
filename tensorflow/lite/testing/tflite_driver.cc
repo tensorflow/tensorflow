@@ -26,6 +26,8 @@ limitations under the License.
 #endif
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
+#include "tensorflow/lite/kernels/parse_example/parse_example.h"
+#include "tensorflow/lite/kernels/perception/perception_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
@@ -325,6 +327,8 @@ bool TfLiteDriver::DataExpectation::Check(bool verbose,
       return TypedCheck<int32_t, float>(verbose, tensor);
     case kTfLiteInt64:
       return TypedCheck<int64_t, float>(verbose, tensor);
+    case kTfLiteUInt64:
+      return TypedCheck<uint64_t, float>(verbose, tensor);
     case kTfLiteUInt8:
       return TypedCheck<uint8_t, float>(verbose, tensor);
     case kTfLiteInt8:
@@ -367,9 +371,9 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         new ops::builtin::BuiltinOpResolverWithoutDefaultDelegates());
     ops::builtin::BuiltinOpResolver* buildinop_resolver_ =
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
-    buildinop_resolver_->AddCustom("RFFT2D",
-                                   tflite::ops::custom::Register_RFFT2D());
     tflite::ops::custom::AddHashtableOps(buildinop_resolver_);
+    tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
+    tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);
   }
 
   switch (delegate_type) {
@@ -477,6 +481,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, tensor->data.raw);
       break;
     }
+    case kTfLiteUInt64: {
+      const auto& values = testing::Split<uint64_t>(csv_values, ",");
+      if (!CheckSizes<uint64_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, tensor->data.raw);
+      break;
+    }
     case kTfLiteUInt8: {
       const auto& values = testing::Split<uint8_t>(csv_values, ",");
       if (!CheckSizes<uint8_t>(tensor->bytes, values.size())) return;
@@ -553,6 +563,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteInt64:
       expected_output_[id]->SetData<int64_t>(csv_values);
+      break;
+    case kTfLiteUInt64:
+      expected_output_[id]->SetData<uint64_t>(csv_values);
       break;
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
@@ -653,6 +666,8 @@ string TfLiteDriver::ReadOutput(int id) {
       return JoinDefault(tensor->data.i32, num_elements, ",");
     case kTfLiteInt64:
       return JoinDefault(tensor->data.i64, num_elements, ",");
+    case kTfLiteUInt64:
+      return JoinDefault(tensor->data.u64, num_elements, ",");
     case kTfLiteUInt8:
       return Join(tensor->data.uint8, num_elements, ",");
     case kTfLiteInt8:

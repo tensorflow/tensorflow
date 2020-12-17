@@ -201,6 +201,18 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseDequantize(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_DIV: {
+      return ParseDiv(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_EXP: {
+      return ParseExp(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_FILL: {
+      return ParseFill(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_FLOOR: {
       return ParseFloor(op, error_reporter, allocator, builtin_data);
     }
@@ -483,16 +495,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_HASHTABLE_LOOKUP:
       // no-op.
       return kTfLiteOk;
-    case BuiltinOperator_DIV: {
-      auto params = safe_allocator.Allocate<TfLiteDivParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
-        params->activation =
-            ConvertActivation(schema_params->fused_activation_function());
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
+
     case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
       auto params = safe_allocator.Allocate<TfLiteLocalResponseNormParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -757,6 +760,8 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_BatchMatMulOptions()) {
         params->adj_x = bmm_params->adj_x();
         params->adj_y = bmm_params->adj_y();
+        params->asymmetric_quantize_inputs =
+            bmm_params->asymmetric_quantize_inputs();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -792,7 +797,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ELU:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
-    case BuiltinOperator_EXP:
     case BuiltinOperator_EXPAND_DIMS:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_MATRIX_DIAG:
@@ -808,7 +812,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_POW:
     case BuiltinOperator_FLOOR_DIV:
     case BuiltinOperator_ZEROS_LIKE:
-    case BuiltinOperator_FILL:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
@@ -823,6 +826,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
     case BuiltinOperator_BROADCAST_TO:
+    case BuiltinOperator_RFFT2D:
       return kTfLiteOk;
     case BuiltinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES:
       return kTfLiteError;
@@ -858,6 +862,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       return kTfLiteOk;
     case TensorType_INT64:
       *type = kTfLiteInt64;
+      return kTfLiteOk;
+    case TensorType_UINT64:
+      *type = kTfLiteUInt64;
       return kTfLiteOk;
     case TensorType_STRING:
       *type = kTfLiteString;
@@ -1082,11 +1089,42 @@ TfLiteStatus ParseDequantize(const Operator*, ErrorReporter*,
   return kTfLiteOk;
 }
 
+TfLiteStatus ParseDiv(const Operator* op, ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteDivParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* schema_params = op->builtin_options_as_DivOptions()) {
+    params->activation =
+        ConvertActivation(schema_params->fused_activation_function());
+  }
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseEqual(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                         void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseExp(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                      void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseFill(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                       void**) {
   return kTfLiteOk;
 }
 

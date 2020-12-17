@@ -30,7 +30,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -127,7 +127,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   VariableAccessesForTPUExecute infos;
   Attribute device_attr = execute_launch.deviceAttr();
   if (check_device && !device_attr) return infos;
-  auto func = execute_launch.getParentOfType<mlir::FuncOp>();
+  auto func = execute_launch->getParentOfType<mlir::FuncOp>();
 
   // Track the first read op found, which is used later to check if there are
   // assign ops between it and the TPUExecute op. We will exclude reads before
@@ -137,7 +137,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   Operation* first_read = nullptr;
   Operation& execute = execute_launch.GetBody().front();
   auto parallel_execute = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
-      execute_launch.getParentOp());
+      execute_launch->getParentOp());
   Operation* execute_parent =
       parallel_execute ? parallel_execute.getOperation() : execute_launch;
   // Find inputs that are variable reads.
@@ -148,7 +148,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         operand.value().get().getDefiningOp());
     if (!read_op) continue;
     if (check_same_region &&
-        read_op.getParentRegion() != execute_parent->getParentRegion())
+        read_op->getParentRegion() != execute_parent->getParentRegion())
       continue;
 
     auto resource = read_op.resource();
@@ -240,7 +240,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   auto execute_outputs =
       parallel_execute
           ? parallel_execute.GetRegionOutputs(
-                execute_launch.getParentRegion()->getRegionNumber())
+                execute_launch->getParentRegion()->getRegionNumber())
           : execute_launch.getResults();
   for (auto execute_output : llvm::enumerate(execute_outputs)) {
     // TODO(lyandy): Handle updates to resource writes by remapping to parent
@@ -340,7 +340,7 @@ void ReplaceParallelExecute(tf_device::ParallelExecuteOp parallel_execute,
   llvm::SmallVector<Type, 8> output_types;
   const int parallel_execute_num_results = parallel_execute_op->getNumResults();
   output_types.reserve(parallel_execute_num_results);
-  Region* execute_region = merged_execute_launch.getParentRegion();
+  Region* execute_region = merged_execute_launch->getParentRegion();
   const int region_index = execute_region->getRegionNumber();
   const int num_results_before_region =
       AppendTypes(&output_types, parallel_execute, 0, region_index);
@@ -547,7 +547,7 @@ void MergeForOneTPUExecute(tf_device::LaunchOp execute_launch,
       merged_execute_launch.GetBody().getTerminator());
 
   if (auto parallel_execute = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
-          execute_launch.getParentOp()))
+          execute_launch->getParentOp()))
     ReplaceParallelExecute(parallel_execute, execute_launch,
                            merged_execute_launch, infos, builder);
   else
@@ -591,11 +591,11 @@ void TPUMergeVariablesWithExecutePass::runOnFunction() {
   for (auto execute_launch : execute_launches) {
     OpBuilder builder(&getContext());
     const bool parent_is_replicate =
-        llvm::isa<tf_device::ReplicateOp>(execute_launch.getParentOp()) ||
+        llvm::isa<tf_device::ReplicateOp>(execute_launch->getParentOp()) ||
         (llvm::isa<tf_device::ParallelExecuteOp>(
-             execute_launch.getParentOp()) &&
+             execute_launch->getParentOp()) &&
          llvm::isa<tf_device::ReplicateOp>(
-             execute_launch.getParentOp()->getParentOp()));
+             execute_launch->getParentOp()->getParentOp()));
 
     // If this is inside a tf_device::ReplicateOp, the variables are guaranteed
     // to be on the same device as the TPUExecute op. Skip device checking in

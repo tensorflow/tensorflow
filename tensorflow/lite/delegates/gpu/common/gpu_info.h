@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+
 namespace tflite {
 namespace gpu {
 
@@ -32,6 +34,14 @@ enum class GpuVendor {
   kAMD,
   kIntel,
   kUnknown
+};
+
+enum class GpuApi {
+  kUnknown,
+  kOpenCl,
+  kMetal,
+  kVulkan,
+  kOpenGl,
 };
 
 enum class AdrenoGpu {
@@ -190,6 +200,95 @@ struct MaliInfo {
   bool IsValhall() const;
 };
 
+struct OpenGlInfo {
+  std::string renderer_name;
+  std::string vendor_name;
+  std::string version;
+  int major_version = -1;
+  int minor_version = -1;
+
+  int max_image_units = 0;
+  int max_ssbo_bindings = 0;
+  int max_image_bindings = 0;
+  int max_work_group_invocations = 0;
+  int max_texture_size = 0;
+  int max_array_texture_layers = 0;
+
+  std::vector<std::string> extensions;
+  int max_compute_work_group_size_x;
+  int max_compute_work_group_size_y;
+  int max_compute_work_group_size_z;
+};
+
+struct VulkanInfo {
+  std::string vendor_name;
+  uint32_t api_version = -1;
+  uint32_t api_version_major = -1;
+  uint32_t api_version_minor = -1;
+  uint32_t api_version_patch = -1;
+
+  uint32_t max_per_stage_descriptor_sampled_images = 0;
+  uint32_t max_compute_work_group_invocations;
+  uint32_t max_image_dimension_2d;
+  uint32_t max_image_array_layers;
+
+  std::vector<std::string> extensions;
+  int max_compute_work_group_size_x;
+  int max_compute_work_group_size_y;
+  int max_compute_work_group_size_z;
+};
+
+enum class OpenClVersion {
+  kCl1_0,
+  kCl1_1,
+  kCl1_2,
+  kCl2_0,
+  kCl2_1,
+  kCl2_2,
+  kCl3_0,
+  kUnknown,
+};
+std::string OpenClVersionToString(OpenClVersion version);
+
+struct OpenClInfo {
+  OpenClVersion cl_version;
+
+  std::vector<std::string> extensions;
+  bool supports_fp16;
+  bool supports_image3d_writes;
+  int compute_units_count;
+  uint64_t buffer_max_size;
+  uint64_t image2d_max_width;
+  uint64_t image2d_max_height;
+  uint64_t image_buffer_max_size;
+  uint64_t image_array_max_layers;
+  uint64_t image3d_max_width;
+  uint64_t image3d_max_height;
+  uint64_t image3d_max_depth;
+  int max_work_group_size_x;
+  int max_work_group_size_y;
+  int max_work_group_size_z;
+  int max_work_group_total_size;
+
+  // rtn is ROUND_TO_NEAREST
+  // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
+  // Adreno 3xx supports only rtz, Adreno 4xx and more support rtn
+  // Mali from T6xx supports rtn
+  // PowerVR supports only rtz
+  bool supports_fp32_rtn;
+  bool supports_fp16_rtn;
+
+  bool supports_r_f16_tex2d = false;
+  bool supports_rg_f16_tex2d = false;
+  bool supports_rgb_f16_tex2d = false;
+  bool supports_rgba_f16_tex2d = false;
+
+  bool supports_r_f32_tex2d = false;
+  bool supports_rg_f32_tex2d = false;
+  bool supports_rgb_f32_tex2d = false;
+  bool supports_rgba_f32_tex2d = false;
+};
+
 struct GpuInfo {
   bool IsAdreno() const;
   bool IsApple() const;
@@ -202,45 +301,70 @@ struct GpuInfo {
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
 
+  bool SupportsFP16() const;
+
+  bool SupportsTextureArray() const;
+  bool SupportsImageBuffer() const;
+  bool SupportsImage3D() const;
+
   // returns true if device have fixed wave size equal to 32
   bool IsWaveSizeEqualTo32() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
+
+  bool SupportsFloatImage2D(DataType data_type, int channels) const;
+  bool SupportsExtension(const std::string& extension) const;
 
   int GetComputeUnitsCount() const;
 
-  GpuVendor vendor = GpuVendor::kUnknown;
+  int GetMaxImageArguments() const;
 
-  std::string renderer_name;
-  std::string vendor_name;
-  std::string version;
-  int major_version = -1;
-  int minor_version = -1;
-  std::vector<std::string> extensions;
-  int max_ssbo_bindings = 0;
-  int max_image_bindings = 0;
-  std::vector<int> max_work_group_size;
-  int max_work_group_invocations;
-  int max_texture_size = 0;
-  int max_image_units = 0;
-  int max_array_texture_layers = 0;
+  int GetMaxWorkGroupSizeForX() const;
+  int GetMaxWorkGroupSizeForY() const;
+  int GetMaxWorkGroupSizeForZ() const;
+  int GetMaxWorkGroupTotalSize() const;
+
+  uint64_t GetMaxImage2DWidth() const;
+  uint64_t GetMaxImage2DHeight() const;
+  uint64_t GetMaxImage2DArrayLayers() const;
+  uint64_t GetMaxImage3DWidth() const;
+  uint64_t GetMaxImage3DHeight() const;
+  uint64_t GetMaxImage3DDepth() const;
+  uint64_t GetMaxBufferSize() const;
+  uint64_t GetMaxImageBufferWidth() const;
+
+  GpuVendor vendor = GpuVendor::kUnknown;
+  GpuApi gpu_api = GpuApi::kUnknown;
 
   std::vector<int> supported_subgroup_sizes;
 
   AdrenoInfo adreno_info;
   AppleInfo apple_info;
   MaliInfo mali_info;
-};
 
-inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.major_version == 3 && gpu_info.minor_version >= 1) ||
-         gpu_info.major_version > 3;
-}
+  // OpenGL specific, gpu_api should be kOpenGl
+  OpenGlInfo opengl_info;
+  bool IsApiOpenGl() const;
+  bool IsApiOpenGl31OrAbove() const;
+
+  // Vulkan specific, gpu_api should be kVulkan
+  VulkanInfo vulkan_info;
+  bool IsApiVulkan() const;
+
+  bool IsApiMetal() const;
+
+  OpenClInfo opencl_info;
+  bool IsApiOpenCl() const;
+  bool IsCL20OrHigher() const;
+  bool IsCL30OrHigher() const;
+};
 
 // Currently it initializes:
 // vendor
 // AdrenoInfo if vendor is kQualcomm
 // AppleInfo if vendor is kApple
+// MaliInfo if vendor is kMali
 void GetGpuInfoFromDeviceDescription(const std::string& gpu_description,
-                                     GpuInfo* gpu_info);
+                                     GpuApi gpu_api, GpuInfo* gpu_info);
 
 }  // namespace gpu
 }  // namespace tflite

@@ -116,6 +116,9 @@ extern const char* kSvdfQuantized;
 // Test model with an unpack op.
 extern const char* kModelWithUnpack;
 
+// Test QAT model with fc op.
+extern const char* kQatModelWithFc;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

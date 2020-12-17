@@ -29,6 +29,18 @@ func @integer_add(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: complex_add
+func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: addcf
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+      tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_mul
 func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -108,6 +120,18 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
   %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: complex_sub
+func @complex_sub(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: subcf
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+      tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -194,6 +218,30 @@ func @integer_and(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @integer_or
+func @integer_or(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: or
+  %0 = "mhlo.or"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @integer_xor
+func @integer_xor(%lhs: tensor<2x2xi32>,
+                  %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  // CHECK: linalg.generic
+  // CHECK: xor
+  %0 = "mhlo.xor"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                    tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
@@ -204,6 +252,20 @@ func @float_cmp(%lhs: tensor<2x2xf32>,
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
 // CHECK-NEXT:   %[[RESULT:.*]] = cmpf "oeq", %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @float_cmp_ne
+func @float_cmp_ne(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "NE"}
+          : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf "une", %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -630,3 +692,56 @@ func @iota() -> tensor<7x10xf32> {
 // CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
 // CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
 // CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32
+
+// -----
+
+func @shift_left(%lhs: tensor<2x2xi32>,
+                 %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %result = "mhlo.shift_left"(%lhs, %rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK-LABEL: func @shift_left
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = shift_left %[[LHS]], %[[RHS]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func @shift_right_arithmetic(%lhs: tensor<2x2xi32>,
+                             %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %result = "mhlo.shift_right_arithmetic"(%lhs, %rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK-LABEL: func @shift_right_arithmetic
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = shift_right_signed %[[LHS]], %[[RHS]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+func @shift_right_logical(%lhs: tensor<2x2xi32>,
+                          %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  %result = "mhlo.shift_right_logical"(%lhs, %rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %result : tensor<2x2xi32>
+}
+// CHECK-LABEL: func @shift_right_logical
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
+// CHECK-NEXT:   %[[RESULT:.*]] = shift_right_unsigned %[[LHS]], %[[RHS]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @constant
+func @constant() {
+  %result = "mhlo.constant"() {
+    value = dense<10> : tensor<i32>
+  } : () -> (tensor<i32>)
+  return
+}
+// CHECK: %[[CONSTANT:.*]] = constant dense<10> : tensor<i32>

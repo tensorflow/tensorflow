@@ -178,6 +178,7 @@ def tf_to_tflite(name, src, options, out):
 
     toco_cmdline = " ".join([
         "$(location //tensorflow/lite/python:tflite_convert)",
+        "--enable_v1_converter",
         "--experimental_new_converter",
         ("--graph_def_file=$(location %s)" % src),
         ("--output_file=$(location %s)" % out),
@@ -358,7 +359,6 @@ def generated_test_models():
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
-        "rfft2d",
         "round",
         "rsqrt",
         "scatter_nd",
@@ -635,6 +635,8 @@ def gen_zip_test(
         flags += " --ignore_converter_errors --run_with_flex"
     elif conversion_mode == "forward-compat":
         flags += " --make_forward_compat_test"
+    elif conversion_mode == "mlir-quant":
+        flags += " --mlir_quantizer"
     if test_name.startswith(merged_test_model_name() + "_"):
         flags += flags_for_merged_test_models(test_name, conversion_mode)
 
@@ -674,8 +676,7 @@ def gen_zipped_test_file(name, file, toco, flags):
         cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
                 " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
-        # `exec_tools` is required for PY3 compatibility in place of `tools`.
-        exec_tools = [
+        tools = [
             ":generate_examples",
             toco,
         ],
@@ -801,17 +802,17 @@ def tflite_custom_cc_library(
             model = models,
         )
         real_srcs.append(":%s_registration" % name)
-        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+        real_srcs.append("//tensorflow/lite:create_op_resolver_with_selected_ops.cc")
     else:
         # Support all operators if `models` not specified.
-        real_deps.append("//tensorflow/lite/java/src/main/native")
+        real_deps.append("//tensorflow/lite:create_op_resolver_with_builtin_ops")
 
     native.cc_library(
         name = name,
         srcs = real_srcs,
         hdrs = [
             # TODO(b/161323860) replace this by generated header.
-            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+            "//tensorflow/lite:create_op_resolver.h",
         ],
         copts = tflite_copts(),
         linkopts = select({
@@ -855,9 +856,10 @@ def tflite_custom_android_library(
     tflite_jni_binary(
         name = "libtensorflowlite_jni.so",
         linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
+        # Do not sort: "native_framework_only" must come before custom tflite library.
         deps = [
-            ":%s_cc" % name,
             "//tensorflow/lite/java/src/main/native:native_framework_only",
+            ":%s_cc" % name,
         ],
     )
 
@@ -882,4 +884,62 @@ def tflite_custom_android_library(
     aar_with_jni(
         name = "%s_aar" % name,
         android_library = name,
+    )
+
+def tflite_custom_c_library(
+        name,
+        models = [],
+        **kwargs):
+    """Generates a tflite cc library, stripping off unused operators.
+
+    This library includes the C API and the op kernels used in the given models.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+       **kwargs: custom c_api cc_library kwargs.
+    """
+    op_resolver_deps = "//tensorflow/lite:create_op_resolver_with_builtin_ops"
+    if models:
+        gen_selected_ops(
+            name = "%s_registration" % name,
+            model = models,
+        )
+
+        native.cc_library(
+            name = "%s_create_op_resolver" % name,
+            srcs = [
+                ":%s_registration" % name,
+                "//tensorflow/lite:create_op_resolver_with_selected_ops.cc",
+            ],
+            hdrs = ["//tensorflow/lite:create_op_resolver.h"],
+            copts = tflite_copts(),
+            deps = [
+                "//tensorflow/lite:op_resolver",
+                "//tensorflow/lite:framework",
+                "//tensorflow/lite/kernels:builtin_ops",
+            ],
+        )
+        op_resolver_deps = "%s_create_op_resolver" % name
+
+    native.cc_library(
+        name = name,
+        srcs = ["//tensorflow/lite/c:c_api_srcs"],
+        hdrs = ["//tensorflow/lite/c:c_api.h"],
+        copts = tflite_copts(),
+        deps = [
+            op_resolver_deps,
+            "//tensorflow/lite/c:common",
+            "//tensorflow/lite/c:c_api_types",
+            "//tensorflow/lite:builtin_ops",
+            "//tensorflow/lite:framework",
+            "//tensorflow/lite:version",
+            "//tensorflow/lite/core/api",
+            "//tensorflow/lite/delegates:interpreter_utils",
+            "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+            "//tensorflow/lite/kernels/internal:compatibility",
+        ],
+        **kwargs
     )

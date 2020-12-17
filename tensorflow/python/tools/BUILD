@@ -274,8 +274,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:_pywrap_kernel_registry",
         "//tensorflow/python:platform",
+        "//tensorflow/python/util:_pywrap_kernel_registry",
     ],
 )
 
@@ -399,8 +399,8 @@ genrule(
     cmd = (
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
-    exec_tools = [":make_aot_compile_models"],
     tags = ["no_rocm"],
+    tools = [":make_aot_compile_models"],
 )
 
 filegroup(

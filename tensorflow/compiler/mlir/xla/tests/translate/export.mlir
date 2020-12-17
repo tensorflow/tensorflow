@@ -1,4 +1,5 @@
 // RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text-via-builder %s | FileCheck %s
 
 // CHECK:  HloModule
 func @main(%arg0: !mhlo.token, %arg1: !mhlo.token) -> !mhlo.token {
@@ -139,6 +140,27 @@ func @main() -> !mhlo.token {
 }
 
 // CHECK:  ROOT [[TOKEN:%.*]] = token[] after-all()
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  call @empty_callee() : () -> ()
+  return %arg0 : tensor<4xi32>
+}
+
+func @empty_callee() {
+  return
+}
+
+// CHECK:       [[CALLEE:%.*]] () -> () {
+// CHECK-NEXT:    ROOT %{{.*}} = () tuple()
+// CHECK-NEXT:  }
+
+// CHECK:       ENTRY [[MAIN:%.*]] ([[ARG:.*]]: s32[4]) -> s32[4] {
+// CHECK-NEXT:    ROOT %[[ARG]] = s32[4] parameter(0)
+// CHECK-NEXT:    [[CALL:%.*]] = () call(), to_apply=[[CALLEE]]
+// CHECK-NEXT:  }
 
 // -----
 
@@ -961,7 +983,7 @@ func @main(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 
 // CHECK: [[SORT:%.+]] = (f32[16,16], s32[16,16]) sort(f32[16,16] %Arg_0.1, s32[16,16] %Arg_1.2), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 // CHECK: [[GET0:%.+]] = f32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=0
-// CHECK: ROOT [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
+// CHECK: [[GET1:%.+]] = s32[16,16] get-tuple-element((f32[16,16], s32[16,16]) [[SORT]]), index=1
 
 // -----
 
@@ -978,7 +1000,7 @@ func @main(%input0: tensor<16x16xf32>) {
 // CHECK: %[[SORT_CMP:.*]] ([[ARG0:.*]]: f32[], [[ARG1:.*]]: f32[]) -> pred[] {
 // CHECK:   ROOT %[[CMP:.*]] = pred[] compare(f32[] %[[ARG0]], f32[] %[[ARG1]]), direction=GT
 
-// CHECK: ROOT %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
+// CHECK: %[[RESULT:.*]] = f32[16,16] sort(f32[16,16] %Arg_0.1), dimensions={1}, is_stable=true, to_apply=%[[SORT_CMP]]
 
 // -----
 
@@ -1001,22 +1023,6 @@ func @main(%arg0: tensor<16x16xf32>) -> tensor<16x16xf32> {
 // CHECK:  ENTRY
 // CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] custom-call(f32[16,16] %[[ARG0]]), custom_call_target="Sharding", sharding={devices=[1,2]0,1}
-
-// -----
-
-// Tests that the exported HLO module keeps parameter replication annotation.
-
-// CHECK:  HloModule
-func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {mhlo.is_same_data_across_replicas}) -> tensor<16x16xf32> {
-  %0 = "mhlo.add"(%arg0, %arg1) : (tensor<16x16xf32>, tensor<16x16xf32>) -> tensor<16x16xf32>
-  return %0 : tensor<16x16xf32>
-}
-
-// CHECK:  ENTRY
-// CHECK:  %[[ARG0:.*]] = f32[16,16] parameter(0)
-// CHECK-NOT: parameter_replication={true}
-// CHECK:  %[[ARG1:.*]] = f32[16,16] parameter(1), parameter_replication={true}
-// CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(f32[16,16] %[[ARG0]], f32[16,16] %[[ARG1]])
 
 // -----
 

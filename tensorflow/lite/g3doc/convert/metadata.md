@@ -472,15 +472,39 @@ public QuantizationParams getoutputTensorQuantizationParams(int inputIndex);
 public int[] getoutputTensorShape(int inputIndex);
 ```
 
-You can also read associated files through their names with the
-`getAssociatedFile` method:
-
-```java
-public InputStream getAssociatedFile(String fileName);
-```
-
 Though the
 [TensorFlow Lite model schema](https://github.com/tensorflow/tensorflow/blob/aa7ff6aa28977826e7acae379e82da22482b2bf2/tensorflow/lite/schema/schema.fbs#L1075)
 supports multiple subgraphs, the TFLite Interpreter currently only supports a
 single subgraph. Therefore, `MetadataExtractor` omits subgraph index as an input
 argument in its methods.
+
+## Read the associated files from models
+
+The TensorFlow Lite model with metadata and associated files is essentially a
+zip file that can be unpacked with common zip tools to get the associated files.
+For example, you can unzip
+[mobilenet_v1_0.75_160_quantized](https://tfhub.dev/tensorflow/lite-model/mobilenet_v1_0.75_160_quantized/1/metadata/1)
+and extract the label file in the model as follows:
+
+```sh
+$ unzip mobilenet_v1_0.75_160_quantized_1_metadata_1.tflite
+Archive:  mobilenet_v1_0.75_160_quantized_1_metadata_1.tflite
+ extracting: labels.txt
+```
+
+You can also read associated files through the Metadata Extractor library.
+
+In Java, pass the file name into the `MetadataExtractor.getAssociatedFile`
+method:
+
+```java
+public InputStream getAssociatedFile(String fileName);
+```
+
+Similarily, in C++, this can be done with the method,
+`ModelMetadataExtractor::GetAssociatedFile`:
+
+```c++
+tflite::support::StatusOr<absl::string_view> GetAssociatedFile(
+      const std::string& filename) const;
+```

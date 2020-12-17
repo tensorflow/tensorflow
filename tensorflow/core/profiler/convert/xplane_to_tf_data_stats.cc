@@ -168,7 +168,7 @@ void ProcessIteratorEvent(const EventNode& iterator_event,
   iterator_stat.set_duration_ps(iterator_stat.duration_ps() +
                                 visitor.DurationPs());
   int64 self_time_ps = visitor.DurationPs();
-  tensorflow::profiler::Timespan self_time_span = visitor.GetTimespan();
+  Timespan self_time_span = visitor.GetTimespan();
   for (EventNode* child : iterator_event.GetChildren()) {
     const XEventVisitor& child_visitor = child->GetEventVisitor();
     if (ParseTfOpFullname(child_visitor.Name()).category == Category::kTfData) {
@@ -198,6 +198,7 @@ void SetBottleneckIteratorId(InputPipelineStat* input_pipeline_stat) {
     }
   }
   input_pipeline_stat->set_bottleneck_iterator_id(bottleneck_iterator_id);
+  input_pipeline_stat->set_bottleneck_iterator_latency_ps(max_self_time);
 }
 
 void ProcessInputPipelines(
@@ -256,17 +257,20 @@ void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
     InputPipeline(absl::string_view host_name,
                   absl::string_view input_pipeline_name, int64 max_latency_ps,
                   absl::string_view iterator_name,
-                  absl::string_view iterator_long_name)
+                  absl::string_view iterator_long_name,
+                  int64 iterator_latency_ps)
         : host_name(host_name),
           input_pipeline_name(input_pipeline_name),
           max_latency_ps(max_latency_ps),
           iterator_name(iterator_name),
-          iterator_long_name(iterator_long_name) {}
+          iterator_long_name(iterator_long_name),
+          iterator_latency_ps(iterator_latency_ps) {}
     absl::string_view host_name;
     absl::string_view input_pipeline_name;
     int64 max_latency_ps;
     absl::string_view iterator_name;
     absl::string_view iterator_long_name;
+    int64 iterator_latency_ps;
 
     bool operator<(const InputPipeline& rhs) const {
       return max_latency_ps > rhs.max_latency_ps;
@@ -286,12 +290,15 @@ void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
       }
       // Choose the slowest execution trace of the input pipeline.
       // `input_pipeline_stats.stats` is already sorted so choose the first one.
+      const InputPipelineStat& input_pipeline_stat =
+          input_pipeline_stats.stats(0);
       const IteratorMetadata& metadata = tf_data_stats.iterator_metadata().at(
-          input_pipeline_stats.stats(0).bottleneck_iterator_id());
-      slow_input_pipelines.emplace_back(host_name,
-                                        input_pipeline_stats.metadata().name(),
-                                        input_pipeline_stats.max_latency_ps(),
-                                        metadata.name(), metadata.long_name());
+          input_pipeline_stat.bottleneck_iterator_id());
+      slow_input_pipelines.emplace_back(
+          host_name, input_pipeline_stats.metadata().name(),
+          input_pipeline_stats.max_latency_ps(), metadata.name(),
+          metadata.long_name(),
+          input_pipeline_stat.bottleneck_iterator_latency_ps());
     }
   }
   std::sort(slow_input_pipelines.begin(), slow_input_pipelines.end());
@@ -309,6 +316,8 @@ void SetBottleneckAnalysis(CombinedTfDataStats* combined_tf_data_stats) {
     bottleneck_analysis->set_iterator_long_name(
         input_pipeline.iterator_long_name.data(),
         input_pipeline.iterator_long_name.size());
+    bottleneck_analysis->set_iterator_latency_ps(
+        input_pipeline.iterator_latency_ps);
   }
 }
 

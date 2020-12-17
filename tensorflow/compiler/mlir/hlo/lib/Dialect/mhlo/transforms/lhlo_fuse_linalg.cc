@@ -85,13 +85,66 @@ class LhloFuseLinalgPass
       if (!definingOp) {
         continue;
       }
+
       if (auto viewLike = dyn_cast<ViewLikeOpInterface>(definingOp)) {
         auto alias = viewLike.getViewSource();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);
         }
+        continue;
+      }
+
+      if (auto tensor_load = dyn_cast<TensorLoadOp>(definingOp)) {
+        auto alias = tensor_load.memref();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+        continue;
+      }
+
+      if (auto tensor_to_memref = dyn_cast<TensorToMemrefOp>(definingOp)) {
+        auto alias = tensor_to_memref.tensor();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+        continue;
+      }
+
+      if (auto tensor_cast = dyn_cast<TensorCastOp>(definingOp)) {
+        auto alias = tensor_cast.source();
+        if (result_buffers.insert(alias).second) {
+          worklist.push_back(alias);
+        }
+        continue;
+      }
+
+      if (auto regionInterface =
+              dyn_cast<RegionBranchOpInterface>(definingOp)) {
+        for (Region& region : regionInterface.getOperation()->getRegions()) {
+          // Only consider regions that can return to the parent region.
+          SmallVector<RegionSuccessor, 2> successorRegions;
+          regionInterface.getSuccessorRegions(region.getRegionNumber(),
+                                              successorRegions);
+          if (llvm::none_of(successorRegions, [&](auto successorRegion) {
+                return successorRegion.isParent();
+              }))
+            continue;
+
+          // Iterate over all immediate terminators and record the values
+          // corresponding to result_buffers of interest.
+          for (Block& block : region) {
+            if (block.empty()) continue;
+            Operation& operation = block.back();
+            if (!operation.hasTrait<OpTrait::ReturnLike>()) continue;
+            auto idx = result.dyn_cast<OpResult>().getResultNumber();
+            if (result_buffers.insert(operation.getOperand(idx)).second) {
+              worklist.push_back(operation.getOperand(idx));
+            }
+          }
+        }
       }
     }
+
     MLIRContext* ctx = func.getContext();
     OpBuilder b(func);
     func.walk([&](linalg::GenericOp generic_op) {
@@ -114,10 +167,10 @@ class LhloFuseLinalgPass
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
-    SmallVector<Operation*, 8> linalg_ops;
+    SmallVector<LinalgOp, 8> linalg_ops;
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
-    for (auto* op : llvm::reverse(linalg_ops)) {
-      for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
+    for (LinalgOp op : llvm::reverse(linalg_ops)) {
+      for (unsigned id = 0, e = op.getNumInputs(); id < e; ++id) {
         linalg::Aliases aliases;
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         if (auto info = fuseProducerOfBuffer(b, op, id, graph)) {

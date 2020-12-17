@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -198,7 +198,7 @@ void PropagateDevicesInGraph(
       if (auto sink =
               llvm::dyn_cast<tf_executor::NextIterationSinkOp>(op_to_update)) {
         auto source = sink.GetSource();
-        source.setAttr(kDeviceAttr, new_device_attr);
+        source->setAttr(kDeviceAttr, new_device_attr);
         PopulateDeviceForOpResults(*source, new_device_attr.getValue(),
                                    value_to_device);
         updated_next_iteration = true;

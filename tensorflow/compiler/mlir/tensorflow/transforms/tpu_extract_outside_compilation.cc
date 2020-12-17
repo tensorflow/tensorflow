@@ -24,12 +24,11 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -54,39 +54,9 @@ constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 using OutsideClusterMap =
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<Operation*, 8>, 8>;
 
-// This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-// annotation from a TPU cluster. Each outside compilation cluster is moved to
-// a parallel_execute region. The TPU cluster is also moved to a
-// parallel_execute region. Communication ops between device and host are
-// added to pass inputs/outputs to/from the outside compiled region.
-//
-// A simple example:
-//   "tf_device.cluster"() ( {
-//     "tf.A"()
-//     "tf.B"() {_xla_outside_compilation = "cluster1"}
-//     "tf.C"()
-//     tf_device.return
-//   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-//
-// Would become the following ops (unimportant attribute, type are omitted):
-//   "tf_device.parallel_execute"() ( {
-//     "tf_device.launch"() ( {
-//       "tf.B()
-//       tf_device.return
-//     })
-//     tf_device.return
-//   }, {
-//     "tf_device.cluster"( {
-//       "tf.A"()
-//       "tf.C"()
-//       tf_device.return
-//     })
-//    tf_device.return
-//  })
-
 struct TPUExtractOutsideCompilation
-    : public PassWrapper<TPUExtractOutsideCompilation,
-                         OperationPass<ModuleOp>> {
+    : public TF::TPUExtractOutsideCompilationPassBase<
+          TPUExtractOutsideCompilation> {
   void runOnOperation() override;
 };
 
@@ -255,8 +225,7 @@ TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
                                   OpBuilder& builder) {
   auto host_side_while = builder.create<TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
-      /*output_shapes=*/builder.getArrayAttr({}), parallel_iterations,
-      is_stateless);
+      parallel_iterations, is_stateless, /*shape_invariant=*/false);
 
   // Create empty else branch region.
   auto& body = host_side_while.body();
@@ -561,32 +530,46 @@ llvm::SmallSetVector<Value, 4> GetExternalOutputs(
   return external_outputs;
 }
 
-// Sets the insertion point on `builder` for HostCompute op.  Sets insertion
-// point to the first op in `cluster_ops` that has one of `external_inputs`
-// as an operand.  If there are no external_inputs, set insertion point to first
-// cluster_op.
-void SetHostComputeInsertion(
-    OpBuilder& builder, llvm::ArrayRef<Operation*> cluster_ops,
-    const llvm::SmallSetVector<Value, 4>& external_inputs) {
-  if (external_inputs.empty()) builder.setInsertionPoint(cluster_ops.front());
-  for (const auto& cluster_op : cluster_ops) {
-    for (Value v : cluster_op->getOperands()) {
-      if (external_inputs.count(v)) {
-        builder.setInsertionPoint(cluster_op);
-        return;
-      }
-    }
+// Move all the ops that are in-between the cluster ops and depend on any op in
+// the cluster to after last op in the cluster. This also includes ops that
+// indirectly depend on the results so that the IR is legal.
+void MoveDependentOpsAfter(llvm::ArrayRef<Operation*> cluster_ops) {
+  llvm::SmallPtrSet<Operation*, 8> outside_ops(cluster_ops.begin(),
+                                               cluster_ops.end());
+
+  // Collect all ops between first and last op in the cluster that may need to
+  // be moved after the cluster.
+  llvm::SmallVector<Operation*, 8> ops;
+  Operation* first_op = *cluster_ops.begin();
+  Operation* last_op = *cluster_ops.rbegin();
+  for (Operation& op :
+       llvm::make_range(first_op->getIterator(), last_op->getIterator())) {
+    if (!outside_ops.contains(&op)) ops.push_back(&op);
   }
 
-  // If no operand usage can be found, this means that external input is
-  // implicitly captured inputs for ops inside internal regions of one of the
-  // `cluster_ops`. In that case, set the insertion point to the last op of the
-  // `cluster_ops` in the IR.
-  builder.setInsertionPoint(cluster_ops.back());
+  Operation* move_position = last_op;
+  for (Operation* op : ops) {
+    bool is_dependent = false;
+    for (Value operand : op->getOperands()) {
+      if (outside_ops.contains(operand.getDefiningOp())) {
+        is_dependent = true;
+        break;
+      }
+    }
+    // Op doesn't depend on any of the cluster ops' results.
+    if (!is_dependent) continue;
+
+    // Note that results of this op are never used as operands by any of the ops
+    // in this cluster. That would create an circular dependency between host
+    // and device which is avoided by the cluster assignment pass.
+    op->moveAfter(move_position);
+    move_position = op;
+    outside_ops.insert(op);
+  }
 }
 
-// Creates the HostCompute with `inputs` and `outputs`
-// using `communication_key`.
+// Creates the HostCompute with `inputs` and `outputs` using
+// `communication_key`.
 TF::_XlaHostComputeMlirOp CreateHostCompute(
     OpBuilder& builder, tf_device::ClusterOp tpu_cluster,
     llvm::ArrayRef<Operation*> cluster_ops,
@@ -596,7 +579,10 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
   llvm::SmallVector<Type, 4> device_output_types;
   for (const auto& output : outputs)
     device_output_types.push_back(output.getType());
-  SetHostComputeInsertion(builder, cluster_ops, inputs);
+
+  MoveDependentOpsAfter(cluster_ops);
+  builder.setInsertionPointAfter(*cluster_ops.rbegin());
+
   auto host_compute = builder.create<TF::_XlaHostComputeMlirOp>(
       tpu_cluster.getLoc(), device_output_types, inputs.getArrayRef(),
       builder.getStringAttr(args_communication_key),
@@ -740,7 +726,7 @@ void MoveOutsideCompiledOps(
     // If there is no replication/data parallelism, it is assumed the device
     // ordinal is always 0 (e.g. /device:TPU:0). In that case, a constant 0
     // attribute can be used instead for _XlaSendFromHost/_XlaRecvAtHost ops.
-    if (tpu_cluster.getParentOfType<tf_device::ReplicateOp>()) {
+    if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
       auto device_ordinal_op =
           builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
               host_launch_op.getLoc(),
@@ -877,10 +863,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass() {
   return std::make_unique<TPUExtractOutsideCompilation>();
 }
-
-static PassRegistration<TPUExtractOutsideCompilation> pass(
-    "tf-tpu-extract-outside-compilation",
-    "Extracts TPU outside compilation to separate parallel_execute.");
 
 }  // namespace TFTPU
 }  // namespace mlir

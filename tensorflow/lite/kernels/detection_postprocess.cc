@@ -328,14 +328,27 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
         return kTfLiteError;
     }
 
-    float ycenter = box_centersize.y / scale_values.y * anchor.h + anchor.y;
-    float xcenter = box_centersize.x / scale_values.x * anchor.w + anchor.x;
+    float ycenter = static_cast<float>(static_cast<double>(box_centersize.y) /
+                                           static_cast<double>(scale_values.y) *
+                                           static_cast<double>(anchor.h) +
+                                       static_cast<double>(anchor.y));
+
+    float xcenter = static_cast<float>(static_cast<double>(box_centersize.x) /
+                                           static_cast<double>(scale_values.x) *
+                                           static_cast<double>(anchor.w) +
+                                       static_cast<double>(anchor.x));
+
     float half_h =
-        0.5f * static_cast<float>(std::exp(box_centersize.h / scale_values.h)) *
-        anchor.h;
+        static_cast<float>(0.5 *
+                           (std::exp(static_cast<double>(box_centersize.h) /
+                                     static_cast<double>(scale_values.h))) *
+                           static_cast<double>(anchor.h));
     float half_w =
-        0.5f * static_cast<float>(std::exp(box_centersize.w / scale_values.w)) *
-        anchor.w;
+        static_cast<float>(0.5 *
+                           (std::exp(static_cast<double>(box_centersize.w) /
+                                     static_cast<double>(scale_values.w))) *
+                           static_cast<double>(anchor.w));
+
     TfLiteTensor* decoded_boxes =
         &context->tensors[op_data->decoded_boxes_index];
     auto& box = ReInterpretTensor<BoxCornerEncoding*>(decoded_boxes)[idx];
@@ -369,9 +382,11 @@ void SelectDetectionsAboveScoreThreshold(const std::vector<float>& values,
 
 bool ValidateBoxes(const TfLiteTensor* decoded_boxes, const int num_boxes) {
   for (int i = 0; i < num_boxes; ++i) {
-    // ymax>=ymin, xmax>=xmin
     auto& box = ReInterpretTensor<const BoxCornerEncoding*>(decoded_boxes)[i];
-    if (box.ymin >= box.ymax || box.xmin >= box.xmax) {
+    // Note: `ComputeIntersectionOverUnion` properly handles degenerated boxes
+    // (xmin == xmax and/or ymin == ymax) as it just returns 0 in case the box
+    // area is <= 0.
+    if (box.ymin > box.ymax || box.xmin > box.xmax) {
       return false;
     }
   }

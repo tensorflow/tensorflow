@@ -12,6 +12,7 @@ package(
     default_visibility = [
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
+        "//learning/serving:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
     ],
@@ -96,7 +97,7 @@ pytype_library(
     deps = [
         ":topology",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -170,7 +171,7 @@ pytype_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -287,12 +288,12 @@ pytype_library(
         "//tensorflow/python:function",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/compiler/xla",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@absl_py//absl/logging",
         "@enum34_archive//:enum",
@@ -477,7 +478,7 @@ py_library(
     name = "tpu_name_util",
     srcs = ["tpu_name_util.py"],
     deps = [
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

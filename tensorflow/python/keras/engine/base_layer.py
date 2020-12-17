@@ -676,6 +676,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     information, nor the layer class name. These are handled
     by `Network` (one layer of abstraction above).
 
+    Note that `get_config()` does not guarantee to return a fresh copy of dict
+    every time it is called. The callers should make a copy of the returned dict
+    if they want to modify it.
+
     Returns:
         Python dictionary.
     """

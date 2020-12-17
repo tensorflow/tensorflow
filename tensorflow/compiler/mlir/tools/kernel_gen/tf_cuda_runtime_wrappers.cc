@@ -13,104 +13,87 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Implements C wrappers around the CUDA library for easy linking in ORC jit.
-// Also adds some debugging helpers that are helpful when writing MLIR code to
-// run on GPUs.
-
-#include <cassert>
-#include <numeric>
-
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/Support/raw_ostream.h"
-#include "mlir/ExecutionEngine/CRunnerUtils.h"  // from @llvm-project
+// Implements a C wrapper around the TensorFlow runtime and CUDA that allows
+// launching a kernel on the current device and stream from a binary blob for
+// the module and function name.
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
 
-#define CUDA_REPORT_IF_ERROR(expr)                                             \
-  [](CUresult result) {                                                        \
-    if (!result)                                                               \
-      return;                                                                  \
-    const char *name = nullptr;                                                \
-    cuGetErrorName(result, &name);                                             \
-    if (!name)                                                                 \
-      name = "<unknown>";                                                      \
-    llvm::errs() << "'" << #expr << "' failed with '" << name << "'\n";        \
+#include "absl/container/flat_hash_map.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/stream_executor/stream.h"
+#include "tensorflow/stream_executor/stream_executor_internal.h"
+
+#define CUDA_REPORT_IF_ERROR(expr)                                      \
+  [](CUresult result) {                                                 \
+    if (!result) return;                                                \
+    const char *name = nullptr;                                         \
+    cuGetErrorName(result, &name);                                      \
+    if (!name) name = "<unknown>";                                      \
+    LOG(WARNING) << "'" << #expr << "' failed with '" << name << "'\n"; \
   }(expr)
 
-extern "C" CUmodule mgpuModuleLoad(void *data) {
-  CUmodule module = nullptr;
-  CUDA_REPORT_IF_ERROR(cuModuleLoadData(&module, data));
-  return module;
-}
+namespace {
+// Implements a cache for loading modules. The assumption is that we never
+// unload modules again during the lifetime of a tensorflow runtime process.
+struct CudaRuntimeCache {
+ public:
+  CUmodule loadModule(void *data) {
+    tensorflow::mutex_lock lock(module_handle_mutex);
+    CUmodule &module = module_handles[data];
+    if (!module) {
+      CUDA_REPORT_IF_ERROR(cuModuleLoadData(&module, data));
+    }
+    return module;
+  }
 
-extern "C" void mgpuModuleUnload(CUmodule module) {
-  CUDA_REPORT_IF_ERROR(cuModuleUnload(module));
-}
+  // Returns the runtime cache for the context associated with stream.
+  static CudaRuntimeCache *get(CUstream stream) {
+    using CacheWithLock =
+        std::pair<tensorflow::mutex,
+                  absl::flat_hash_map<CUcontext, CudaRuntimeCache *>>;
+    static auto *cache_with_lock = new CacheWithLock();
+    tensorflow::mutex_lock lock(cache_with_lock->first);
+    CUcontext context;
+    CUDA_REPORT_IF_ERROR(cuStreamGetCtx(stream, &context));
+    auto &runtime_cache = cache_with_lock->second[context];
+    if (!runtime_cache) {
+      runtime_cache = new CudaRuntimeCache();
+    }
+    return runtime_cache;
+  }
 
-extern "C" CUfunction mgpuModuleGetFunction(CUmodule module, const char *name) {
-  CUfunction function = nullptr;
-  CUDA_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, name));
-  return function;
-}
+ private:
+  CudaRuntimeCache() = default;
+
+  tensorflow::mutex module_handle_mutex;
+  absl::flat_hash_map<void *, CUmodule> module_handles
+      TF_GUARDED_BY(module_handle_mutex);
+};
+}  // namespace
 
 // The wrapper uses intptr_t instead of CUDA's unsigned int to match
 // the type of MLIR's index type. This avoids the need for casts in the
 // generated MLIR code.
-extern "C" void mgpuLaunchKernel(CUfunction function, intptr_t gridX,
-                                 intptr_t gridY, intptr_t gridZ,
-                                 intptr_t blockX, intptr_t blockY,
-                                 intptr_t blockZ, int32_t smem, CUstream stream,
-                                 void **params, void **extra) {
+extern "C" void tfKernelGenLaunchKernel(tensorflow::OpKernelContext *ctx,
+                                        void *module_blob, char *kernel_name,
+                                        intptr_t gridX, intptr_t gridY,
+                                        intptr_t gridZ, intptr_t blockX,
+                                        intptr_t blockY, intptr_t blockZ,
+                                        void **params) {
+  stream_executor::Stream *se_stream = ctx->op_device_context()->stream();
+  auto stream =
+      reinterpret_cast<CUstream>(se_stream->implementation()->GpuStreamHack());
+  CUmodule module = CudaRuntimeCache::get(stream)->loadModule(module_blob);
+  CUfunction function;
+  CUDA_REPORT_IF_ERROR(cuModuleGetFunction(&function, module, kernel_name));
+
   CUDA_REPORT_IF_ERROR(cuLaunchKernel(function, gridX, gridY, gridZ, blockX,
-                                      blockY, blockZ, smem, stream, params,
-                                      extra));
+                                      blockY, blockZ, /*sharedMemBytes=*/0,
+                                      stream, params, nullptr));
 }
 
-extern "C" CUstream mgpuStreamCreate() {
-  CUstream stream = nullptr;
-  CUDA_REPORT_IF_ERROR(cuStreamCreate(&stream, CU_STREAM_NON_BLOCKING));
-  return stream;
-}
-
-extern "C" void mgpuStreamDestroy(CUstream stream) {
-  CUDA_REPORT_IF_ERROR(cuStreamDestroy(stream));
-}
-
-extern "C" void mgpuStreamSynchronize(CUstream stream) {
-  CUDA_REPORT_IF_ERROR(cuStreamSynchronize(stream));
-}
-
-/// Helper functions for writing mlir example code
-
-// Allows to register byte array with the CUDA runtime. Helpful until we have
-// transfer functions implemented.
-extern "C" void mgpuMemHostRegister(void *ptr, uint64_t sizeBytes) {
-  CUDA_REPORT_IF_ERROR(cuMemHostRegister(ptr, sizeBytes, /*flags=*/0));
-}
-
-// Allows to register a MemRef with the CUDA runtime. Helpful until we have
-// transfer functions implemented.
-extern "C" void
-mgpuMemHostRegisterMemRef(int64_t rank, StridedMemRefType<char, 1> *descriptor,
-                          int64_t elementSizeBytes) {
-
-  llvm::SmallVector<int64_t, 4> denseStrides(rank);
-  llvm::ArrayRef<int64_t> sizes(descriptor->sizes, rank);
-  llvm::ArrayRef<int64_t> strides(sizes.end(), rank);
-
-  std::partial_sum(sizes.rbegin(), sizes.rend(), denseStrides.rbegin(),
-                   std::multiplies<int64_t>());
-  auto sizeBytes = denseStrides.front() * elementSizeBytes;
-
-  // Only densely packed tensors are currently supported.
-  std::rotate(denseStrides.begin(), denseStrides.begin() + 1,
-              denseStrides.end());
-  denseStrides.back() = 1;
-  assert(strides == llvm::makeArrayRef(denseStrides));
-
-  auto ptr = descriptor->data + descriptor->offset * elementSizeBytes;
-  mgpuMemHostRegister(ptr, sizeBytes);
-}
-
-#endif
+#endif  // GOOGLE_CUDA

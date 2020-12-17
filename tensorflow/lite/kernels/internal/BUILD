@@ -316,7 +316,6 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        ":legacy_types",
         ":legacy_reference_base",
         ":cppmath",
         "//third_party/eigen3",
@@ -352,10 +351,8 @@ cc_library(
     deps = [
         ":common",
         ":optimized_base",
-        ":tensor",
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
@@ -388,11 +385,14 @@ cc_library(
     hdrs = ["quantization_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
         ":types",
-        "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
@@ -461,6 +461,8 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/fill.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
@@ -507,6 +509,13 @@ cc_library(
     }),
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    # We are disabling parse_headers for the tf_lite_static_memory build to
+    # allow it to be consistent with the OSS bazel build. See b/175817116
+    # for more details.
+    features = select({
+        ":tf_lite_static_memory": ["-parse_headers"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":common",
         ":compatibility",
@@ -554,6 +563,8 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/fill.h",
         "reference/floor.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
@@ -665,8 +676,6 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "@gemmlowp",
     ],
 )
@@ -688,7 +697,6 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
@@ -897,7 +905,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -914,7 +921,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -1008,10 +1014,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1025,10 +1029,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -37,8 +37,8 @@ from __future__ import print_function
 
 import six as _six
 
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 

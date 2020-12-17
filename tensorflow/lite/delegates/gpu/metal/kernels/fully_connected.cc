@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -65,7 +64,7 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
   threadgroup FLT4 local_vector[32];
   for (int j = 0; j < $0; ++j) {
     local_vector[tid_index] = j * 32 + tid_index >= args.src_slices ?
-      FLT4(0.0f) : vector[j * 32 + tid_index];
+      FLT4(0.0f) : src_tensor[j * 32 + tid_index];
     $1(mem_flags::mem_threadgroup);
     for (uint i = 0, counter = j * 32 + tid.y * 8; i < 8; ++i, ++counter) {
       summa += dot(local_vector[tid.y * 8 + i], args.weights.Read(counter * args.dst_channels_alignedx8 + ugid.x));
@@ -82,7 +81,7 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
     if (src_depth % 4 != 0) {
       code << "    if (counter >= args.src_slices) continue;" << std::endl;
     }
-    code << "    summa += dot(vector[counter], args.weights.Read(counter * "
+    code << "    summa += dot(src_tensor[counter], args.weights.Read(counter * "
             "args.dst_channels_alignedx8 + ugid.x));"
          << std::endl;
     code << "  }" << std::endl;
@@ -105,7 +104,7 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
       args.bias.Read(linear_index);
     uint3 gid = uint3(0u, 0u, uint(linear_index));
     $$2
-    result[linear_index] = value;
+    dst_tensor[linear_index] = value;
   }
 }
   )";
@@ -115,30 +114,19 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> FullyConnected(
-    int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const GpuInfo& gpu_info,
-    const RuntimeOptions& options) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
-                                              attr.weights.shape.o);
+ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
+                                     const FullyConnectedAttributes& attr,
+                                     const GpuInfo& gpu_info) {
+  ComputeTaskDescriptor desc(definition);
+  desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
+                                             attr.weights.shape.o);
 
-  desc->args.AddInt("dst_channels", attr.weights.shape.o);
-  desc->args.AddInt("src_slices", DivideRoundUp(attr.weights.shape.i, 4));
-  desc->args.AddInt("dst_channels_alignedx8",
-                    AlignByN(attr.weights.shape.o, 8));
+  desc.args.AddInt("dst_channels", attr.weights.shape.o);
+  desc.args.AddInt("src_slices", DivideRoundUp(attr.weights.shape.i, 4));
+  desc.args.AddInt("dst_channels_alignedx8", AlignByN(attr.weights.shape.o, 8));
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const vector"},
-  };
-
-  desc->output_buffer = {
-      output_id, "device FLT4* result",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   bool shared_memory = gpu_info.IsApple() &&
                        gpu_info.apple_info.IsLocalMemoryPreferredOverGlobal();
@@ -163,40 +151,35 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     }
   }
 
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   BufferDescriptor weights_desc;
-  weights_desc.element_type =
-      options.storage_precision == RuntimeOptions::Precision::FP32
-          ? DataType::FLOAT32
-          : DataType::FLOAT16;
+  weights_desc.element_type = data_type;
   weights_desc.element_size = 4;
-  weights_desc.data =
-      GetByteBufferConverted(filters_reordered, options.storage_precision);
+  weights_desc.data = GetByteBufferConverted(filters_reordered, data_type);
   weights_desc.size = weights_desc.data.size();
 
-  desc->args.AddObject(
+  desc.args.AddObject(
       "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
   BufferDescriptor bias_desc;
-  bias_desc.element_type =
-      options.storage_precision == RuntimeOptions::Precision::FP32
-          ? DataType::FLOAT32
-          : DataType::FLOAT16;
+  bias_desc.element_type = data_type;
   bias_desc.element_size = 4;
-  bias_desc.data = GetByteBufferConvertedResized(
-      attr.bias.data, options.storage_precision, attr.weights.shape.o);
+  bias_desc.data = GetByteBufferConvertedResized(attr.bias.data, data_type,
+                                                 dst_channels_aligned);
   bias_desc.size = bias_desc.data.size();
 
-  desc->args.AddObject(
+  desc.args.AddObject(
       "bias", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
-  desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{8, 4, 1};
     const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
     int groups_x = DivideRoundUp(dst_channels_aligned, groups_size.x);
     return std::make_pair(groups_size, uint3{groups_x, 1, 1});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

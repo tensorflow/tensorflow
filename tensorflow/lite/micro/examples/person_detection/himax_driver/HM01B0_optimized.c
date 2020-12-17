@@ -20,9 +20,9 @@ limitations under the License.
 #ifndef ARDUINO_EXCLUDE_CODE
 
 #include "HM01B0.h"
-#include "am_bsp.h" //NOLINT
-#include "am_mcu_apollo.h" //NOLINT
-#include "platform.h"      // TARGET specific implementation
+#include "am_bsp.h"         //NOLINT
+#include "am_mcu_apollo.h"  //NOLINT
+#include "platform.h"       // TARGET specific implementation
 
 // Image is down-sampled by applying a stride of 2 pixels in both the x and y
 // directions.
@@ -45,8 +45,9 @@ static const int kStrideShift = 1;
 //! @return Error code.
 //
 //*****************************************************************************
-uint32_t hm01b0_blocking_read_oneframe_scaled(
-    hm01b0_cfg_t* psCfg, uint8_t* buffer, int w, int h, int channels) {
+uint32_t hm01b0_blocking_read_oneframe_scaled(hm01b0_cfg_t* psCfg,
+                                              int8_t* buffer, int w, int h,
+                                              int channels) {
   hm01b0_single_frame_capture(psCfg);
 
   // Calculate the number of pixels to crop to get a centered image.
@@ -57,7 +58,8 @@ uint32_t hm01b0_blocking_read_oneframe_scaled(
 
   while ((hsync_count < HM01B0_PIXEL_Y_NUM)) {
     // Wait for horizontal sync.
-    while (!read_hsync());
+    while (!read_hsync())
+      ;
 
     // Get resulting image position.  When hsync_count < offset_y, this will
     // underflow resulting in an index out of bounds which we check later,
@@ -68,20 +70,24 @@ uint32_t hm01b0_blocking_read_oneframe_scaled(
     // Read one row. Hsync is held high for the duration of a row read.
     while (read_hsync()) {
       // Wait for pixel value to be ready.
-      while (!read_pclk());
+      while (!read_pclk())
+        ;
 
       // Read 8-bit value from camera.
       const uint8_t value = read_byte();
       const uint32_t output_x = (rowidx++ - offset_x) >> kStrideShift;
       if (output_x < w && output_y < h) {
         const int output_idx = (output_y * w + output_x) * channels;
-        for (int i=0; i<channels; i++) {
-          buffer[output_idx + i] = value;
+        for (int i = 0; i < channels; i++) {
+          // See the top of main_functions.cc for an explanation of and
+          // rationale for our unsigned to signed input conversion.
+          buffer[output_idx + i] = value - 128;
         }
       }
 
       // Wait for next pixel clock.
-      while (read_pclk());
+      while (read_pclk())
+        ;
     }
 
     hsync_count++;

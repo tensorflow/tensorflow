@@ -43,6 +43,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:profiler_factory",
         "//tensorflow/core/profiler/lib:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -126,8 +127,10 @@ tf_cuda_library(
         ":cupti_collector",
         ":cupti_interface",
         ":cupti_utils",
+        ":nvtx_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
@@ -136,10 +139,40 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "nvtx_utils",
+    srcs = if_cuda_is_configured_compat(["nvtx_utils.cc"]),
+    hdrs = if_cuda_is_configured_compat(["nvtx_utils.h"]),
+    copts = tf_profiler_copts() + tf_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cuda_library(
     name = "cupti_collector",
     srcs = if_cuda_is_configured_compat(["cupti_collector.cc"]),
     hdrs = if_cuda_is_configured_compat(["cupti_collector.h"]),
     copts = tf_profiler_copts() + tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:parse_annotation",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "cupti_collector_header",
+    hdrs = ["cupti_collector.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",

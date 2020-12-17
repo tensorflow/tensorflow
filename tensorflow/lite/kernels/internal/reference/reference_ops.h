@@ -40,6 +40,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/concatenation.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
+#include "tensorflow/lite/kernels/internal/reference/div.h"
+#include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
@@ -179,7 +181,7 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
-    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+    output_data[i] = val < 0.0f ? std::expm1(val) : val;
   }
 }
 
@@ -319,10 +321,6 @@ inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-// TODO(benoitjacob): BroadcastMul is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
 inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const RuntimeShape& unswitched_input1_shape,
                                  const uint8* unswitched_input1_data,
@@ -421,172 +419,6 @@ inline void Mul(const ArithmeticParams& params,
         std::max<int16>(output_activation_min - output_offset, clamped_result);
     output_data[i] = output_offset + clamped_result;
   }
-}
-
-// TODO(jiawen): We can implement BroadcastDiv on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
-template <typename T, int N = 5>
-void BroadcastDivSlow(const ArithmeticParams& params,
-                      const RuntimeShape& unextended_input1_shape,
-                      const T* input1_data,
-                      const RuntimeShape& unextended_input2_shape,
-                      const T* input2_data,
-                      const RuntimeShape& unextended_output_shape,
-                      T* output_data) {
-  T output_activation_min;
-  T output_activation_max;
-  GetActivationParams(params, &output_activation_min, &output_activation_max);
-
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest
-  // stride, typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-
-  auto div_func = [&](int indexes[N]) {
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        ActivationFunctionWithMinMax(
-            input1_data[SubscriptToIndex(desc1, indexes)] /
-                input2_data[SubscriptToIndex(desc2, indexes)],
-            output_activation_min, output_activation_max);
-  };
-  NDOpsHelper<N>(output_desc, div_func);
-}
-
-template <typename T>
-inline void Div(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const T* input1_data,
-                const RuntimeShape& input2_shape, const T* input2_data,
-                const RuntimeShape& output_shape, T* output_data) {
-  T output_activation_min;
-  T output_activation_max;
-  GetActivationParams(params, &output_activation_min, &output_activation_max);
-
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] / input2_data[i], output_activation_min,
-        output_activation_max);
-  }
-}
-
-// Element-wise div that can often be used for inner loop of broadcast Div as
-// well as the non-broadcast Div.
-inline void DivElementwise(int size, const ArithmeticParams& params,
-                           const uint8* input1_data, const uint8* input2_data,
-                           uint8* output_data) {
-  TFLITE_DCHECK_GT(params.input1_offset, -256);
-  TFLITE_DCHECK_LT(params.input1_offset, 256);
-  TFLITE_DCHECK_GT(params.input2_offset, -256);
-  TFLITE_DCHECK_LT(params.input2_offset, 256);
-  TFLITE_DCHECK_GT(params.output_offset, -256);
-  TFLITE_DCHECK_LT(params.output_offset, 256);
-
-  for (int i = 0; i < size; ++i) {
-    const int32 input1_val = params.input1_offset + input1_data[i];
-    const int32 input2_val = params.input2_offset + input2_data[i];
-    TFLITE_DCHECK_NE(input2_val, 0);
-    int recip_shift;
-    const int32 input2_inv =
-        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
-                         : -GetReciprocal(-input2_val, 31, &recip_shift);
-    const int headroom = CountLeadingSignBits(input1_val);
-    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
-        input1_val, input2_inv, headroom);
-    const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32 unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
-    const int32 clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<uint8>(clamped_output);
-  }
-}
-
-inline void Div(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const uint8* input1_data,
-                const RuntimeShape& input2_shape, const uint8* input2_data,
-                const RuntimeShape& output_shape, uint8* output_data) {
-  TFLITE_DCHECK_LE(params.quantized_activation_min,
-                   params.quantized_activation_max);
-  ruy::profiler::ScopeLabel label("Div/8bit");
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-
-  DivElementwise(flat_size, params, input1_data, input2_data, output_data);
-}
-
-template <int N = 5>
-inline void BroadcastDivSlow(const ArithmeticParams& params,
-                             const RuntimeShape& unextended_input1_shape,
-                             const uint8* input1_data,
-                             const RuntimeShape& unextended_input2_shape,
-                             const uint8* input2_data,
-                             const RuntimeShape& unextended_output_shape,
-                             uint8* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
-
-  NdArrayDesc<N> desc1;
-  NdArrayDesc<N> desc2;
-  NdArrayDesc<N> output_desc;
-  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
-                                      unextended_input2_shape, &desc1, &desc2);
-  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
-                 &output_desc);
-
-  TFLITE_DCHECK_GT(params.input1_offset, -256);
-  TFLITE_DCHECK_LT(params.input1_offset, 256);
-  TFLITE_DCHECK_GT(params.input2_offset, -256);
-  TFLITE_DCHECK_LT(params.input2_offset, 256);
-  TFLITE_DCHECK_GT(params.output_offset, -256);
-  TFLITE_DCHECK_LT(params.output_offset, 256);
-
-  auto div_func = [&](int indexes[N]) {
-    const int32 input1_val =
-        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
-    const int32 input2_val =
-        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
-    TFLITE_DCHECK_NE(input2_val, 0);
-    int recip_shift;
-    const int32 input2_inv =
-        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
-                         : -GetReciprocal(-input2_val, 31, &recip_shift);
-    const int headroom = CountLeadingSignBits(input1_val);
-    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
-        input1_val, input2_inv, headroom);
-    const int total_shift = params.output_shift - recip_shift - headroom;
-    const int32 unclamped_result =
-        params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(
-            unscaled_quotient, params.output_multiplier, total_shift);
-    const int32 clamped_output =
-        std::min(params.quantized_activation_max,
-                 std::max(params.quantized_activation_min, unclamped_result));
-    output_data[SubscriptToIndex(output_desc, indexes)] =
-        static_cast<uint8>(clamped_output);
-  };
-  NDOpsHelper<N>(output_desc, div_func);
 }
 
 inline void Sub16(const ArithmeticParams& params,
@@ -1663,14 +1495,14 @@ inline void ComputeInterpolationValues(const int32 value, const int32 scale_10,
       std::min((*scaled_value + (1 << 10) - 1) / (1 << 10), input_size - 1);
 }
 
-// Same as above but takes int8 as input and output.
-inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
-                           const RuntimeShape& unextended_input_shape,
-                           const int8_t* input_data,
-                           const RuntimeShape& unextended_output_size_shape,
-                           const int32* output_size_data,
-                           const RuntimeShape& unextended_output_shape,
-                           int8_t* output_data) {
+// Same as above but doesn't use any floating-point for the resize
+template <typename T>
+inline void ResizeBilinearInteger(
+    const tflite::ResizeBilinearParams& op_params,
+    const RuntimeShape& unextended_input_shape, const T* input_data,
+    const RuntimeShape& unextended_output_size_shape,
+    const int32* output_size_data, const RuntimeShape& unextended_output_shape,
+    T* output_data) {
   // If half_pixel_centers is True, align_corners must be False.
   TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
@@ -1745,8 +1577,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
           const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
-          const int8_t interpolation =
-              static_cast<int8_t>((output_20 + round) / (1 << 20));
+          const T interpolation =
+              static_cast<T>((output_20 + round) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
@@ -1898,7 +1730,7 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
-  // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
+  // TODO(b/174275841): This op only supports 4D tensors or smaller.
   TFLITE_DCHECK_LE(op_params.begin_count, 4);
   TFLITE_DCHECK_LE(op_params.size_count, 4);
   const int begin_count = op_params.begin_count;
@@ -2497,16 +2329,6 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
         }
       }
     }
-  }
-}
-
-template <typename T>
-void Fill(const RuntimeShape& value_shape, const T* value_data,
-          const RuntimeShape& output_shape, T* output_data) {
-  TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
-  const int flat_size = output_shape.FlatSize();
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = *value_data;
   }
 }
 

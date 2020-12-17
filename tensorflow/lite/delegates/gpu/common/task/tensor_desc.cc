@@ -745,18 +745,24 @@ AddressMode TensorDescriptor::AddressModeFromState() const {
 }
 
 void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src) {
+  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
+  UploadData(src.data.data());
+}
+
+void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   shape = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
-  UploadData(absl::MakeConstSpan(src.data));
+  UploadData(src.data.data());
 }
 
 void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
   shape = BHWDC(1, 1, 1, 1, src.shape.v);
-  UploadData(absl::MakeConstSpan(src.data));
+  UploadData(src.data.data());
 }
 
-void TensorDescriptor::UploadData(absl::Span<const float> src) {
+void TensorDescriptor::UploadData(const float* src) {
   int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
                              ? shape.c
                              : AlignByN(shape.c, 4);
@@ -764,10 +770,10 @@ void TensorDescriptor::UploadData(absl::Span<const float> src) {
   data.resize(elements_count * SizeOf(data_type));
   if (data_type == DataType::FLOAT32) {
     float* gpu_data = reinterpret_cast<float*>(data.data());
-    DataFromBHWDC(src, shape, *this, absl::MakeSpan(gpu_data, elements_count));
+    DataFromBHWDC(src, shape, *this, gpu_data);
   } else {
     half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataFromBHWDC(src, shape, *this, absl::MakeSpan(gpu_data, elements_count));
+    DataFromBHWDC(src, shape, *this, gpu_data);
   }
 }
 
@@ -842,8 +848,8 @@ int GetChannelsAlignment(const TensorDescriptor& desc, const BHWDC& shape) {
 }  // namespace
 
 template <typename T>
-void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
-                   const TensorDescriptor& desc, absl::Span<T> dst) {
+void DataFromBHWDC(const float* src, const BHWDC& shape,
+                   const TensorDescriptor& desc, T* dst) {
   const int channels_alignment = GetChannelsAlignment(desc, shape);
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
@@ -870,18 +876,14 @@ void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
   }
 }
 
-template void DataFromBHWDC<float>(absl::Span<const float> src,
-                                   const BHWDC& shape,
-                                   const TensorDescriptor& desc,
-                                   absl::Span<float> dst);
-template void DataFromBHWDC<half>(absl::Span<const float> src,
-                                  const BHWDC& shape,
-                                  const TensorDescriptor& desc,
-                                  absl::Span<half> dst);
+template void DataFromBHWDC<float>(const float* src, const BHWDC& shape,
+                                   const TensorDescriptor& desc, float* dst);
+template void DataFromBHWDC<half>(const float* src, const BHWDC& shape,
+                                  const TensorDescriptor& desc, half* dst);
 
 template <typename T>
-void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
-                 const TensorDescriptor& desc, absl::Span<float> dst) {
+void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
+                 float* dst) {
   const int channels_alignment = GetChannelsAlignment(desc, shape);
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
@@ -904,13 +906,10 @@ void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
   }
 }
 
-template void DataToBHWDC<float>(absl::Span<const float> src,
-                                 const BHWDC& shape,
-                                 const TensorDescriptor& desc,
-                                 absl::Span<float> dst);
-template void DataToBHWDC<half>(absl::Span<const half> src, const BHWDC& shape,
-                                const TensorDescriptor& desc,
-                                absl::Span<float> dst);
+template void DataToBHWDC<float>(const float* src, const BHWDC& shape,
+                                 const TensorDescriptor& desc, float* dst);
+template void DataToBHWDC<half>(const half* src, const BHWDC& shape,
+                                const TensorDescriptor& desc, float* dst);
 
 }  // namespace gpu
 }  // namespace tflite

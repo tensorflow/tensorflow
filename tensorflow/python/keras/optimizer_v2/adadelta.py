@@ -153,7 +153,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
     config = super(Adadelta, self).get_config()
     config.update({
         'learning_rate': self._serialize_hyperparameter('learning_rate'),
-        'decay': self._serialize_hyperparameter('decay'),
+        'decay': self._initial_decay,
         'rho': self._serialize_hyperparameter('rho'),
         'epsilon': self.epsilon,
     })

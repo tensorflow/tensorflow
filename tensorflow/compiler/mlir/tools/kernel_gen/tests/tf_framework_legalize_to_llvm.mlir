@@ -81,17 +81,18 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 
 // -----
 
-// CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr<i8>, !llvm.ptr<i8>)
+// CHECK-LABEL: llvm.func @_mlir_ciface_tf_report_error(!llvm.ptr<i8>, !llvm.i32, !llvm.ptr<i8>)
 // CHECK: llvm.mlir.global internal constant [[MSG_CONST:@error_message_[0-9]+]]
 
 func @report_error(%ctx: !tf_framework.op_kernel_context) {
-  tf_framework.report_error %ctx, "Everything is awesome"
+  tf_framework.report_error %ctx, "INVALID_ARGUMENT", "Everything is awesome"
   return
 }
-// CHECK:      llvm.func @report_error([[CTX:%.*]]: !llvm.ptr<i8>)
-// CHECK-NEXT:   [[ADDR:%.*]] = llvm.mlir.addressof [[MSG_CONST]]
-// CHECK:        [[MSG:.*]] = llvm.getelementptr [[MSG]]
-// CHECK:        llvm.call @_mlir_ciface_tf_report_error([[CTX]], %2)
+// CHECK:     llvm.func @report_error([[CTX:%.*]]: !llvm.ptr<i8>)
+// CHECK-NEXT:  [[ADDR:%.*]] = llvm.mlir.addressof [[MSG_CONST]]
+// CHECK:       [[MSG:%.*]] = llvm.getelementptr [[ADDR]]
+// CHECK:       [[CODE:%.*]] = llvm.mlir.constant({{.*}}) : !llvm.i32
+// CHECK:       llvm.call @{{.*}}_tf_report_error([[CTX]], [[CODE]], [[MSG]])
 
 // ----
 

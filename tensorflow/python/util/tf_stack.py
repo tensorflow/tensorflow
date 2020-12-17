@@ -25,7 +25,7 @@ import threading
 import six
 
 # TODO(b/138203821): change to from ...util import ... once the bug is fixed.
-from tensorflow.python import _tf_stack
+from tensorflow.python.util import _tf_stack
 
 # Generally such lookups should be done using `threading.local()`. See
 # https://blogs.gnome.org/jamesh/2008/06/11/tls-python/ for a detailed
@@ -141,16 +141,39 @@ def extract_stack(limit=-1):
     limit: A limit on the number of frames to return.
 
   Returns:
-    A sequence of FrameSummary objects (filename, lineno, name, line)
-    corresponding to the call stack of the current thread.
+    An object wrapping the sequence of StackFrame objects (filename, lineno,
+    name, line) corresponding to the call stack of the current thread. The
+    returned object can be indexed as a Python list.
+  """
+  # N.B ExtractStack in tf_stack.cc will drop this frame prior to
+  # traversing the stack.
+  # TODO(cheshire): Remove this function, use extract_stack_for_node or Python
+  # traceback module.
+  thread_key = _get_thread_key()
+  return _tf_stack.extract_stack(limit, _source_mapper_stacks[thread_key],
+                                 _source_filter_stacks[thread_key])
+
+
+def extract_stack_for_node(node, limit=-1):
+  """Same as extract_stack, but also saves the retrieved stack in `node`.
+
+  Args:
+    node: Pointer to the Node object.
+    limit: A limit on the number of frames to return.
+
+  Returns:
+    An object wrapping the sequence of StackFrame objects (filename, lineno,
+    name, line) corresponding to the call stack of the current thread. The
+    returned object can be indexed as a Python list.
   """
   # N.B ExtractStack in tf_stack.cc will drop this frame prior to
   # traversing the stack.
   thread_key = _get_thread_key()
-  return _tf_stack.extract_stack(
-      limit,
-      _source_mapper_stacks[thread_key],
-      _source_filter_stacks[thread_key])
+  return _tf_stack.extract_stack_for_node(limit,
+                                          _source_mapper_stacks[thread_key],
+                                          _source_filter_stacks[thread_key],
+                                          node)
 
-StackSummary = _tf_stack.StackSummary
-FrameSummary = _tf_stack.FrameSummary
+
+StackSummary = _tf_stack.StackTraceWrapper
+FrameSummary = _tf_stack.StackFrame

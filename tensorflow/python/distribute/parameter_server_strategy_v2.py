@@ -517,6 +517,11 @@ class ParameterServerStrategyV2Extended(
     self._variable_count = 0
     self._variable_partitioner = variable_partitioner
 
+    # The following two attrs are to verify that `ParameterServerStrategy`
+    # methods are properly used with a `ClusterCoordinator`.
+    self._used_with_coordinator = False
+    self._being_scheduled = False
+
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.
 
@@ -670,7 +675,22 @@ class ParameterServerStrategyV2Extended(
         self._variable_count += 1
         return var
 
+  def _assert_used_with_cluster_coordinator(self):
+    if not self._used_with_coordinator:
+      raise NotImplementedError(
+          "`tf.distribute.experimental.ParameterServerStrategy` must be used "
+          "with `tf.distribute.experimental.coordinator.ClusterCoordinator`.")
+
+  def _assert_being_scheduled_by_cluster_coordinator(self):
+    if not self._being_scheduled:
+      raise NotImplementedError(
+          "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
+          "`reduce` must be used within a function passed to `"
+          "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule"
+          "`.")
+
   def _experimental_distribute_dataset(self, dataset, options):
+    self._assert_used_with_cluster_coordinator()
     if not ops.get_default_graph().building_function:
       raise ValueError(
           "The `experimental_distribute_dataset` method must be called inside "
@@ -679,6 +699,7 @@ class ParameterServerStrategyV2Extended(
     return dataset
 
   def _distribute_datasets_from_function(self, dataset_fn, options):
+    self._assert_used_with_cluster_coordinator()
     if not ops.get_default_graph().building_function:
       raise ValueError(
           "The `distribute_datasets_from_function` method must be called "
@@ -687,6 +708,7 @@ class ParameterServerStrategyV2Extended(
     return dataset_fn(distribute_lib.InputContext())
 
   def _call_for_each_replica(self, fn, args, kwargs):
+    self._assert_being_scheduled_by_cluster_coordinator()
     with distribute_lib.ReplicaContext(
         self._container_strategy(),
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
@@ -694,6 +716,7 @@ class ParameterServerStrategyV2Extended(
       return distribute_utils.regroup((fn(*args, **kwargs),))
 
   def _reduce(self, reduce_op, value):
+    self._assert_being_scheduled_by_cluster_coordinator()
     # TODO(rchao): Provide implementation for multi-replica. Also look into why
     # the default implementation is not working.
     return value

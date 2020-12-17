@@ -33,13 +33,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -1185,7 +1185,7 @@ class ConvertConvOp : public OpRewritePattern<OpTy> {
       // Conv2D. So, fetch attribute by identifier instead of the
       // op.explicit_paddings() attribute getter.
       explicit_paddings =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
     }
 
     SmallVector<int64_t, num_spatial_dims> spatial_dim_indices;
@@ -1473,7 +1473,7 @@ class ConvertMatrixDiagPartV3Op
     // {sub} the subdiagonal alignment. "LEFT" means rows will be padded to the
     // left, "RIGHT" means rows will be padded ot the right.  The default is
     // "RIGHT_LEFT".
-    StringRef align = op.getAttrOfType<StringAttr>("align").getValue();
+    StringRef align = op->getAttrOfType<StringAttr>("align").getValue();
     enum Alignment { kLeft, kRight };
 
     // default is RIGHT_LEFT
@@ -1691,7 +1691,7 @@ class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
 
   LogicalResult matchAndRewrite(TF::EinsumOp op,
                                 PatternRewriter &rewriter) const override {
-    StringAttr equation = op.getAttrOfType<StringAttr>("equation");
+    StringAttr equation = op->getAttrOfType<StringAttr>("equation");
     if (op.N() == 1) {
       rewriter.replaceOpWithNewOp<UnaryEinsumOp>(
           op, op.getType(), *op.inputs().begin(), equation);
@@ -3311,7 +3311,7 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
       auto input_val = GetScalarConstOfType(begin_element_ty, loc,
                                             input_shape[d], &rewriter);
       auto wrapped_index =
-          rewriter.create<TF::AddOp>(loc, input_val, reshaped_index);
+          rewriter.create<TF::AddV2Op>(loc, input_val, reshaped_index);
       auto final_index = rewriter.create<SelectOp>(
           loc, type, index_negative, wrapped_index, reshaped_index);
       slice_begin_indices.push_back(final_index);
@@ -4183,7 +4183,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
       // Conv2DBackpropInput. So, fetch attribute by identifier instead of the
       // op.explicit_paddings() attribute getter.
       ArrayRef<Attribute> explicit_paddings_attr =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
       explicit_paddings.reserve(explicit_paddings_attr.size());
       for (Attribute explicit_padding : explicit_paddings_attr)
         explicit_paddings.push_back(
@@ -4265,6 +4265,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
                                    &rewriter),
         /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
+        /*window_reversal=*/nullptr,
         ConvDimensionNumbers::get(
             /*input_batch_dimension=*/batch_dim_attr,
             /*input_feature_dimension=*/feature_dim_attr,
@@ -4346,7 +4347,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
       // Conv2DBackpropFilter. So, fetch attribute by identifier instead of the
       // op.explicit_paddings() attribute getter.
       ArrayRef<Attribute> explicit_paddings_attr =
-          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+          op->template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
       explicit_paddings.reserve(explicit_paddings_attr.size());
       for (Attribute explicit_padding : explicit_paddings_attr)
         explicit_paddings.push_back(
@@ -4479,6 +4480,7 @@ class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
         GetI64ElementsAttrForValue(/*size=*/num_spatial_dims, /*val=*/1,
                                    &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
+        /*window_reversal=*/nullptr,
         ConvDimensionNumbers::get(
             // Swap batch_dim and feature_dim in the activations.
             /*input_batch_dimension=*/feature_dim_attr,
@@ -4635,11 +4637,11 @@ class ConvertInfeedDequeueTupleOp
       if (sharding_proto.type() == ::xla::OpSharding::TUPLE) {
         *sharding_proto.add_tuple_shardings() =
             ::xla::sharding_builder::AssignDevice(0);
-        data_and_token.setAttr(
+        data_and_token->setAttr(
             kShardingAttr,
             rewriter.getStringAttr(sharding_proto.SerializeAsString()));
       } else {
-        data_and_token.setAttr(kShardingAttr, op._XlaShardingAttr());
+        data_and_token->setAttr(kShardingAttr, op._XlaShardingAttr());
       }
     }
 
@@ -4808,7 +4810,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
 
   LogicalResult matchAndRewrite(TF::UnpackOp op,
                                 PatternRewriter &rewriter) const override {
-    auto value_type = op.value().getType().cast<RankedTensorType>();
+    auto value_type = op.value().getType().dyn_cast<RankedTensorType>();
     if (!value_type) return failure();
 
     int64_t value_rank = value_type.getRank();
@@ -4820,7 +4822,7 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
     auto end_indices = llvm::to_vector<4>(value_type.getShape());
     SmallVector<int64_t, 4> strides(value_rank, 1);
 
-    // All HLO slice+reshape results used to replace the original tf.Unpack op.
+    // All HLO slice+squeeze results used to replace the original tf.Unpack op.
     SmallVector<Value, 4> results;
     results.reserve(op.getNumResults());
 
@@ -4833,9 +4835,10 @@ class ConvertUnpackOp : public OpRewritePattern<TF::UnpackOp> {
           GetI64ElementsAttr(end_indices, &rewriter),
           GetI64ElementsAttr(strides, &rewriter));
       // Reshape to drop the axis dimension.
-      auto reshape_op = rewriter.create<mhlo::ReshapeOp>(
-          op.getLoc(), op.getType(i), slice_op);
-      results.push_back(reshape_op);
+      auto result =
+          rewriter.create<TF::SqueezeOp>(op.getLoc(), op.getType(i), slice_op,
+                                         rewriter.getI64ArrayAttr(op.axis()));
+      results.push_back(result);
     }
 
     rewriter.replaceOp(op, results);
@@ -5125,7 +5128,7 @@ class ConvertRandomShuffleOp : public OpRewritePattern<TF::RandomShuffleOp> {
     SmallVector<int64_t, 4> slice_sizes(input_shape.begin(), input_shape.end());
     slice_sizes[0] = 1;
     auto dims_attr = GatherDimensionNumbers::get(
-        /*offset_dims=*/GetI64ElementsAttrForSeq(1, first_dim_size, &rewriter),
+        /*offset_dims=*/GetI64ElementsAttrForSeq(1, input_rank, &rewriter),
         /*collapsed_slice_dims=*/GetI64ElementsAttr({0}, &rewriter),
         /*start_index_map=*/GetI64ElementsAttr({0}, &rewriter),
         /*index_vector_dim=*/rewriter.getI64IntegerAttr(1),
@@ -5154,7 +5157,7 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr(kShardingAttr, op._XlaShardingAttr());
+    custom_call->setAttr(kShardingAttr, op._XlaShardingAttr());
     rewriter.replaceOp(op, custom_call.getResult(0));
 
     return success();

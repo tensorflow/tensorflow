@@ -484,6 +484,10 @@ public final class InterpreterTest {
       fail();
     } catch (IllegalStateException e) {
       // Expected failure.
+    } catch (IllegalArgumentException e) {
+      // As we could apply some TfLite delegate by default, the flex ops preparation could fail if
+      // the flex delegate isn't applied first, in which this type of exception is thrown.
+      // Expected failure
     }
   }
 

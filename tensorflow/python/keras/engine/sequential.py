@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.module import module
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
@@ -177,8 +178,15 @@ class Sequential(functional.Functional):
       origin_layer = layer._keras_history[0]
       if isinstance(origin_layer, input_layer.InputLayer):
         layer = origin_layer
+        logging.warning(
+            'Please add `keras.layers.InputLayer` instead of `keras.Input` to '
+            'Sequential model. `keras.Input` is intended to be used by '
+            'Functional model.')
 
-    if not isinstance(layer, base_layer.Layer):
+    if isinstance(layer, module.Module):
+      if not isinstance(layer, base_layer.Layer):
+        layer = functional.ModuleWrapper(layer)
+    else:
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))

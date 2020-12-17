@@ -1,3 +1,4 @@
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -172,7 +173,23 @@ cc_library(
     copts = tf_profiler_copts(),
     deps = [
         "//tensorflow/core:lib",
+    ] + if_static([
+        ":time_utils_impl",
+    ]),
+)
+
+cc_library(
+    name = "time_utils_impl",
+    srcs = [
+        "time_utils.cc",
+        "time_utils.h",
     ],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/time",
+    ],
+    alwayslink = True,
 )
 
 cc_library(
@@ -192,6 +209,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":time_utils",
+        ":timespan",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -236,6 +254,7 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = [":friends"],
     deps = [
+        ":time_utils",
         ":timespan",
         ":trace_utils",
         ":xplane_builder",
@@ -243,6 +262,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -251,6 +271,7 @@ tf_cc_test(
     name = "xplane_utils_test",
     srcs = ["xplane_utils_test.cc"],
     deps = [
+        ":time_utils",
         ":xplane_builder",
         ":xplane_utils",
         ":xplane_visitor",
@@ -447,6 +468,7 @@ tf_cc_test(
         ":kernel_stats_utils",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/internal/gpu:cupti_collector_header",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
     ],
 )

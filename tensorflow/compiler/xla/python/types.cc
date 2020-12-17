@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/types.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 
 namespace xla {
 
@@ -81,8 +81,8 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
     case U64:
       return py::dtype::of<uint64>();
     case BF16: {
-      TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
-      return py::dtype::from_args(bfloat16);
+      py::handle bfloat16(tensorflow::Bfloat16Dtype());
+      return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
     }
     case F16:
       return py::dtype("e");  // PEP 3118 code for "float16
@@ -102,37 +102,43 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
 
 // Returns a numpy-style format descriptor string for `type`.
 StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
+  // We use an "=" prefix to indicate that we prefer "standard" types like
+  // np.int32 rather than "native" types like np.cint. pybind11 does not qualify
+  // its format descriptors.
   switch (type) {
     case PRED:
-      return py::format_descriptor<bool>::format();
+      return std::string("?");
     case S8:
-      return py::format_descriptor<int8>::format();
+      return std::string("=b");
     case S16:
-      return py::format_descriptor<int16>::format();
+      return std::string("=h");
     case S32:
-      return py::format_descriptor<int32>::format();
+      return std::string("=i");
     case S64:
-      return py::format_descriptor<int64>::format();
+      return std::string("=q");
     case U8:
-      return py::format_descriptor<uint8>::format();
+      return std::string("=B");
     case U16:
-      return py::format_descriptor<uint16>::format();
+      return std::string("=H");
     case U32:
-      return py::format_descriptor<uint32>::format();
+      return std::string("=I");
     case U64:
-      return py::format_descriptor<uint64>::format();
+      return std::string("=Q");
     case BF16:
-      return std::string("H");  // PEP 3118 code for "unsigned int16"
+      // PEP 3118 code for "unsigned int16". It doesn't really matter exactly
+      // which type we pick here, so long as it is 16-bits wide. We will bitcast
+      // it to our custom bfloat16 type anyway.
+      return std::string("H");
     case F16:
-      return std::string("e");  // PEP 3118 code for "float16"
+      return std::string("=e");
     case F32:
-      return py::format_descriptor<float>::format();
+      return std::string("=f");
     case F64:
-      return py::format_descriptor<double>::format();
+      return std::string("=d");
     case C64:
-      return py::format_descriptor<std::complex<float>>::format();
+      return std::string("=Zf");
     case C128:
-      return py::format_descriptor<std::complex<double>>::format();
+      return std::string("=Zd");
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
@@ -231,10 +237,11 @@ StatusOr<py::object> LiteralToPython(std::shared_ptr<xla::Literal> literal) {
     // We requested an array of uint16 since NumPy doesn't know how
     // to produce our custom bfloat16 type. Reinterpret the array as bfloat16
     // before handing it back to the caller.
-    TF_ASSIGN_OR_RETURN(py::object bfloat16, Bfloat16Dtype());
+    py::handle bfloat16(tensorflow::Bfloat16Dtype());
+    bfloat16.inc_ref();
     array = py::reinterpret_steal<py::array>(
         PyArray_View(reinterpret_cast<PyArrayObject*>(array.ptr()),
-                     reinterpret_cast<PyArray_Descr*>(bfloat16.release().ptr()),
+                     reinterpret_cast<PyArray_Descr*>(bfloat16.ptr()),
                      static_cast<PyTypeObject*>(nullptr)));
   }
   return array;
@@ -270,12 +277,20 @@ StatusOr<PythonBufferTree> GetPythonBufferTree(const py::object& argument) {
   return tree;
 }
 
-py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+template <typename IntType>
+static py::tuple IntSpanToTupleHelper(absl::Span<IntType const> xs) {
   py::tuple out(xs.size());
   for (int i = 0; i < xs.size(); ++i) {
     out[i] = py::int_(xs[i]);
   }
   return out;
+}
+
+py::tuple IntSpanToTuple(absl::Span<int64 const> xs) {
+  return IntSpanToTupleHelper(xs);
+}
+py::tuple IntSpanToTuple(absl::Span<int const> xs) {
+  return IntSpanToTupleHelper(xs);
 }
 
 std::vector<int64> IntSequenceToVector(const py::object& sequence) {

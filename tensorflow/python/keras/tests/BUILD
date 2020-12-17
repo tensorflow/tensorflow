@@ -1,12 +1,12 @@
 # Description:
 #   Contains Keras test utils and integration tests.
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
@@ -390,7 +390,6 @@ tf_py_test(
     python_version = "PY3",
     tags = ["notsan"],  # b/74395663
     deps = [
-        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:checkpoint_management",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

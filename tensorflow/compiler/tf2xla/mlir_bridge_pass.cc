@@ -61,7 +61,8 @@ bool IsMlirBridgePassEnabled(const Graph& graph,
                              const absl::optional<ConfigProto>& config_proto) {
   MlirBridgeRolloutPolicy policy =
       GetMlirBridgeRolloutPolicy(graph, config_proto);
-  return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
+  return (policy == MlirBridgeRolloutPolicy::kEnabledByUser ||
+          policy == MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis);
 }
 
 // This runs the first phase of the "bridge", transforming the graph in a form

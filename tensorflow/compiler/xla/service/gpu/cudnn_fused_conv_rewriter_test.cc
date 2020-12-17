@@ -324,7 +324,7 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
       input = f32[1,17,9,9] parameter(0)
       filter = f32[3,3,17,32] parameter(1)
 
-      conv = f32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1, metadata={op_type="foo"}
+      conv = f32[1,32,9,9] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, feature_group_count=1, metadata={op_type="foo" op_name="bar"}
       ROOT relu = f32[1,32,9,9] maximum(zeros, conv)
     })";
 
@@ -337,9 +337,9 @@ TEST_F(CudnnFusedConvRewriterTest, PreservesMetadata) {
               backend().default_stream_executor(), backend().memory_allocator())
           .ConsumeValueOrDie()
           ->ToString();
-  EXPECT_THAT(
-      optimized_hlo_string,
-      ::testing::ContainsRegex(R"(custom-call.*metadata=\{op_type="foo"\})"));
+  EXPECT_THAT(optimized_hlo_string,
+              ::testing::ContainsRegex(
+                  R"(custom-call.*metadata=\{op_type="foo" op_name="bar"\})"));
 }
 
 TEST_F(CudnnFusedConvRewriterTest, TestPreservesFeatureGroupCount) {

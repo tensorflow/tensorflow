@@ -24,45 +24,80 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
-@interface TFLComputeTask : NSObject
+namespace tflite {
+namespace gpu {
+namespace metal {
 
-/// Returns empty string or error if shader can't be compiled.
-- (absl::Status)compileWithDevice:(id<MTLDevice>)device
-                   taskDescriptor:(::tflite::gpu::metal::ComputeTaskDescriptorPtr)desc
-                   runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
+class ComputeTask {
+ public:
+  ComputeTask() = default;
 
-/// Updates dimensions for inputs/outputs/intermediate tensors
-- (absl::Status)
-    setInputDimensionsWithDevice:(id<MTLDevice>)device
-                      dimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions;
+  // Move only
+  ComputeTask(ComputeTask&& args) = default;
+  ComputeTask& operator=(ComputeTask&& args) = default;
+  ComputeTask(const ComputeTask&) = delete;
+  ComputeTask& operator=(const ComputeTask&) = delete;
 
-/// Updates buffers for intermediate tensors only. Returns error if out of memory or a buffer is
-/// larger than MTLDevice can support.
-/// @param buffers is a map from intermediate tensors' ValueId to metal handles with corresponding
-///        buffers.
-/// @param outputIDs must match the output of added operations.
-/// @param usageRecordIds is a map from intermediate tensors' ValueId to corresponding tensor usage
-/// records ids.
-/// @param sharedBufferIds contain shared buffer id for each tensor usage record id.
-/// @param sharedBuffers contain metal handles to the allocated buffers for each shared buffer id.
-/// TODO(ypisarchyk): probably we can decrease the number of parameters here
-- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-               usageRecordIds:(const std::map<::tflite::gpu::ValueId, size_t>&)usageRecordIds
-              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers;
+  /// Returns empty string or error if shader can't be compiled.
+  absl::Status CompileWithDevice(id<MTLDevice> device,
+                                 const NodeDescriptor& desc,
+                                 CalculationsPrecision precision);
 
-- (bool)hasInOutIds:(const std::set<::tflite::gpu::ValueId>&)ids;
+  /// Updates parameters for inputs/outputs/intermediate tensors
+  absl::Status UpdateParamsWithDevice(
+      id<MTLDevice> device, const std::map<ValueId, BHWC>& tensor_shapes);
 
-- (void)updateBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers;
+  bool HasInOutIds(const std::set<ValueId>& ids) const;
 
-- (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder;
+  void EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder);
 
-@end
+  std::vector<ValueId> GetOutputIds() const;
+  std::vector<ValueId> GetInputIds() const;
+
+  void SetSrcTensor(const MetalSpatialTensor& tensor, int index);
+
+  void SetDstTensor(const MetalSpatialTensor& tensor, int index);
+
+  void SetDescription(const std::string& description);
+
+ private:
+  struct InputBuffer {
+    ValueId uid;
+    id<MTLBuffer> metal_handle;
+  };
+
+  struct OutputBuffer {
+    ValueId uid;
+    id<MTLBuffer> metal_handle;
+  };
+
+  struct UniformBuffer {
+    std::vector<uint8_t> data;
+    UniformsFunction data_function;
+  };
+
+  id<MTLComputePipelineState> program_;
+  std::vector<InputBuffer> input_buffers_;
+  std::vector<OutputBuffer> output_buffers_;
+  std::vector<id<MTLBuffer>> immutable_buffers_;
+  std::vector<UniformBuffer> uniform_buffers_;
+  uint3 groups_size_;
+  uint3 groups_count_;
+  DispatchParamsFunction resize_function_;
+  std::string description_;
+  MetalArguments metal_args_;
+};
+
+}  // namespace metal
+}  // namespace gpu
+}  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_COMPUTE_TASK_H_

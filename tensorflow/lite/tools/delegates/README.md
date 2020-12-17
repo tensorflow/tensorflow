@@ -103,7 +103,7 @@ Only Android and iOS devices support GPU delegate.
 
 ### CoreML delegate provider
 *   `use_coreml`: `bool` (default=false) \
-    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/delegates/coreml).
+    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/coreml).
     This option is only available in iOS.
 *   `coreml_version`: `int` (default=0) \
     Target Core ML version for model conversion. The default value is 0 and it

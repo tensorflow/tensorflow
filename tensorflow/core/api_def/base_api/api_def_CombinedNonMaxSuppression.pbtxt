@@ -25,7 +25,9 @@ END
   in_arg {
     name: "max_total_size"
     description: <<END
-A scalar representing maximum number of boxes retained over all classes.
+An int32 scalar representing the maximum number of boxes retained over all
+classes. Note that setting this value to a large number may result in OOM error
+depending on the system workload.
 END
   }
   in_arg {

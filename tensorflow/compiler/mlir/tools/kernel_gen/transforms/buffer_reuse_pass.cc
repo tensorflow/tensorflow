@@ -25,9 +25,9 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -55,12 +55,14 @@ namespace {
 /// A temporary buffer size analysis that is correct but may be incomplete.
 class BufferSizeAnalysis {
  public:
-  explicit BufferSizeAnalysis(FuncOp f) { build(f); }
+  BufferSizeAnalysis(FuncOp f, const BufferAliasAnalysis &aliases) {
+    build(f, aliases);
+  }
 
   bool is_same_size(Value a, Value b) { return ecs_.isEquivalent(a, b); }
 
  private:
-  void build(FuncOp &f) {
+  void build(FuncOp &f, const BufferAliasAnalysis &aliases) {
     auto buffers = find_buffer_values(f);
 
     // Memrefs with statically known same shape and same symbol-free affine maps
@@ -102,10 +104,16 @@ class BufferSizeAnalysis {
       }
     });
 
-    // Operand and result of `reshape_memref_cast` must be of same size.
-    f.walk([&](MemRefReshapeOp reshapeOp) {
-      ecs_.unionSets(reshapeOp.result(), reshapeOp.source());
-    });
+    // All aliases of a memref must be of the same underlying buffer size.
+    for (auto e : aliases) {
+      Value value = e.getFirst();
+      if (!value.getType().isa<BaseMemRefType>()) continue;
+      for (Value alias : e.getSecond()) {
+        assert(alias.getType().isa<BaseMemRefType>() &&
+               "Expected aliases of memref to be memrefs.");
+        ecs_.unionSets(value, alias);
+      }
+    }
   }
 
   bool affine_maps_symbol_free_and_equal(ArrayRef<AffineMap> as,
@@ -138,15 +146,15 @@ class BufferReuseAnalysis {
  public:
   explicit BufferReuseAnalysis(FuncOp f) { build(f); }
 
-  static constexpr int kIndexAmbiguous = -1;
+  static constexpr int32_t kIndexAmbiguous = -1;
 
-  Optional<SmallVector<int64_t, 2>> get_reuse_candiates(AllocOp op) {
+  Optional<SmallVector<int32_t, 2>> get_reuse_candiates(AllocOp op) {
     auto it = reuse_candidates_.find(op);
     if (it == reuse_candidates_.end()) return llvm::None;
     return it->second;
   }
 
-  Optional<int64_t> get_output_index(AllocOp op) {
+  Optional<int32_t> get_output_index(AllocOp op) {
     auto it = output_indices_.find(op);
     if (it == output_indices_.end()) return llvm::None;
     return it->second;
@@ -161,13 +169,13 @@ class BufferReuseAnalysis {
 
   void find_output_indices(FuncOp &f, BufferAliasAnalysis &aliases) {
     f.walk([&](AllocOp alloc_op) {
-      int64_t output_index = kIndexAmbiguous;
+      int32_t output_index = kIndexAmbiguous;
       int count_return_uses = 0;
       auto buffer_aliases = aliases.resolve(alloc_op.getResult());
       for (Value alias : buffer_aliases) {
         for (auto &use : alias.getUses()) {
           if (isa<ReturnOp>(use.getOwner())) {
-            int64_t index = use.getOperandNumber();
+            int32_t index = use.getOperandNumber();
             if (count_return_uses++ == 0)
               output_index = index;
             else if (output_index != index)
@@ -181,7 +189,7 @@ class BufferReuseAnalysis {
 
   void find_reuse_candiates(FuncOp &f, BufferAliasAnalysis &aliases) {
     Liveness liveness(f);
-    BufferSizeAnalysis size_equivalences(f);
+    BufferSizeAnalysis size_equivalences(f, aliases);
     f.walk([&](Block *block) {
       find_reuse_candiates(block, aliases, liveness.getLiveness(block),
                            size_equivalences, f.getArguments());
@@ -203,51 +211,54 @@ class BufferReuseAnalysis {
              "Expected first use in same block if found.");
 
       // Find reuse candidates for the regarded allocation.
-      SmallVector<int64_t, 2> local_reuse_candidates;
-      for (auto it : llvm::enumerate(arguments)) {
-        int64_t old_buffer_index = it.index();
-        Value old_buffer = it.value();
+      SmallVector<int32_t, 2> local_reuse_candidates;
+      for (BlockArgument old_buffer : arguments) {
         if (!old_buffer.getType().isa<BaseMemRefType>()) continue;
 
-        // Will not reuse buffers of different size as they may be too small.
+        // Size criterion: Do not reuse buffers of different size as they may be
+        // too small.
         if (!size_equivalences.is_same_size(new_buffer, old_buffer)) continue;
 
-        // Only reuse buffers that are no longer used on first reuse, i.e. they
-        // are no longer alive.
-        bool livetimes_compatible = true;
+        // Lifetime criterion: Only reuse buffers that are no longer used on
+        // first reuse, i.e. they are no longer alive.
+        bool lifetimes_compatible = true;
         for (Value old_buffer_alias : aliases.resolve(old_buffer)) {
           if (first_reuse == nullptr) {
             // If the first use is beyond the end of this block we look at the
             // block end. An argument buffer that is already reusable there is
-            // certainly reusable at any later actual use.
+            // certainly reusable at any later actual use. Otherwise, lifetimes
+            // are incompatible.
             if (liveness->isLiveOut(old_buffer_alias)) {
-              livetimes_compatible = false;
+              lifetimes_compatible = false;
               break;
             }
           } else {
-            // A buffer is *not* reusable if
-            //   i)  its last use is after the point of reuse, or
-            //   ii) its last use is also its first reuse but the operation
-            //       does not allow for local reuse.
+            // A buffer is reusable if
+            //   i)  its last use is before the point of reuse, or
+            //   ii) its last use is also its first reuse and the operation
+            //       allows for local reuse.
+            // Otherwise, lifetimes are incompatible.
             Operation *last_use =
                 liveness->getEndOperation(old_buffer_alias, &block->front());
             assert(last_use != nullptr && last_use->getBlock() == block &&
                    "Expected last use in same block.");
             if (first_reuse->isBeforeInBlock(last_use)) {
-              livetimes_compatible = false;
+              lifetimes_compatible = false;
               break;
             }
             if (first_reuse == last_use &&
                 !can_reuse_locally(first_reuse, old_buffer_alias, new_buffer)) {
-              livetimes_compatible = false;
+              lifetimes_compatible = false;
               break;
             }
           }
         }
 
-        // All criteria are fulfilled 🙂.
-        if (livetimes_compatible)
+        if (lifetimes_compatible) {
+          // All criteria are fulfilled 🙂.
+          int32_t old_buffer_index = old_buffer.getArgNumber();
           local_reuse_candidates.push_back(old_buffer_index);
+        }
       }
 
       reuse_candidates_[&op] = local_reuse_candidates;
@@ -304,8 +315,8 @@ class BufferReuseAnalysis {
     return false;
   }
 
-  DenseMap<Operation *, SmallVector<int64_t, 2>> reuse_candidates_;
-  DenseMap<Operation *, int64_t> output_indices_;
+  DenseMap<Operation *, SmallVector<int32_t, 2>> reuse_candidates_;
+  DenseMap<Operation *, int32_t> output_indices_;
 };
 
 #define GEN_PASS_CLASSES
@@ -323,12 +334,12 @@ struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
     Builder builder(&getContext());
     getFunction().walk([&](AllocOp op) {
       if (auto output_index = analysis.get_output_index(op)) {
-        auto attr = builder.getIndexAttr(*output_index);
+        auto attr = builder.getI32IntegerAttr(*output_index);
         op.getOperation()->setAttr(
             tf_framework::TFAllocOp::kReuseOutputAttrName, attr);
       }
       if (auto reuse_candiates = analysis.get_reuse_candiates(op)) {
-        auto attr = builder.getIndexArrayAttr(*reuse_candiates);
+        auto attr = builder.getI32ArrayAttr(*reuse_candiates);
         op.getOperation()->setAttr(
             tf_framework::TFAllocOp::kReuseInputCandidatesAttrName, attr);
       }

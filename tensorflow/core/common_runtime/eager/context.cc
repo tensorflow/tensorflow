@@ -90,6 +90,8 @@ EagerContext::EagerContext(
       log_device_placement_(opts.config.log_device_placement()),
       allow_soft_placement_(opts.config.allow_soft_placement()),
       num_active_steps_(0),
+      step_container_(std::make_unique<ScopedStepContainer>(
+          0, [this](const string& name) { ClearResourceContainer(name); })),
       default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
@@ -385,6 +387,11 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   for (auto& entry : registered_functions_) {
     entry.second->cached_kernel_keys->clear();
   }
+  {
+    mutex_lock ml(metadata_mu_);
+    step_container_.reset(new ScopedStepContainer(
+        0, [this](const string& name) { ClearResourceContainer(name); }));
+  }
 }
 
 void EagerContext::SetThreadLocalDevicePlacementPolicy(
@@ -600,29 +607,20 @@ void EagerContext::ListDevices(
 void EagerContext::StartStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_++;
-  if (step_container_ == nullptr) {
-    step_container_.reset(
-        new ScopedStepContainer(0, [this](const string& name) {
-          auto local_devices = local_device_mgr()->ListDevices();
-          for (Device* device : local_devices) {
-            device->resource_manager()->Cleanup(name).IgnoreError();
-          }
-        }));
-  }
 }
 
 void EagerContext::EndStep() {
   mutex_lock ml(metadata_mu_);
   num_active_steps_--;
   if (num_active_steps_ == 0) {
-    step_container_.reset();
+    // TODO(b/139809335): This does not properly clean up remote resources
+    // Clean up the previous step container and create a new one.
+    step_container_.reset(new ScopedStepContainer(
+        0, [this](const string& name) { ClearResourceContainer(name); }));
   }
 }
 
 ScopedStepContainer* EagerContext::StepContainer() {
-  if (num_active_steps_.load() == 0) {
-    return nullptr;
-  }
   mutex_lock ml(metadata_mu_);
   return step_container_.get();
 }
@@ -707,6 +705,12 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
   return Status::OK();
 }
 
+Status EagerContext::AddFunctionDefWithStackTraces(
+    const FunctionDef& fdef, const StackTracesMap& stack_traces) {
+  return AddFunctionDef(fdef, FunctionDefLibrary(),
+                        /* add_to_local_only=*/false, stack_traces);
+}
+
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
   return AddFunctionDef(fdef, FunctionDefLibrary(),
                         /* add_to_local_only=*/false);
@@ -714,7 +718,8 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef) {
 
 Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
                                     const FunctionDefLibrary& library,
-                                    const bool add_to_local_only) {
+                                    const bool add_to_local_only,
+                                    const StackTracesMap& stack_traces) {
   bool is_first_ref = false;
   {
     mutex_lock l(cache_mu_);
@@ -748,7 +753,7 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
     is_first_ref = registered_function->RefCountIsOne();
   }
   if (is_first_ref) {
-    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef));
+    TF_RETURN_IF_ERROR(func_lib_def_.AddFunctionDef(fdef, stack_traces));
     TF_RETURN_IF_ERROR(func_lib_def_.AddLibrary(library));
     if (!add_to_local_only) {
       return MaybeRegisterFunctionRemotely(fdef);
@@ -986,6 +991,15 @@ Status EagerContext::CPUDeviceOnTask(const Device* device,
       device->name(), &cpu_device_name));
 
   return FindDeviceFromName(cpu_device_name.c_str(), cpu_device);
+}
+
+void EagerContext::ClearResourceContainer(const string& name) {
+  // TODO(b/139809335): This does not properly clean up remote resources
+  auto local_devices = local_device_mgr()->ListDevices();
+  for (Device* device : local_devices) {
+    // Only ignore container not found errors.
+    device->resource_manager()->Cleanup(name).IgnoreError();
+  }
 }
 
 namespace {

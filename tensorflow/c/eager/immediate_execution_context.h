@@ -21,13 +21,16 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -108,6 +111,12 @@ class ImmediateExecutionContext : public AbstractContext {
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
+  // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
+  // the key of the function definition name (to be retrieved during function
+  // instantiation).
+  virtual Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) = 0;
+
   // Find and return a added function by its name.
   virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;
 
@@ -173,6 +182,18 @@ class ImmediateExecutionContext : public AbstractContext {
   // Convert a TFRT TensorHandle to tensorflow::TensorHandle.
   virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
       ImmediateExecutionTensorHandle* handle) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Distributed runtime related functions.
+  //===--------------------------------------------------------------------===//
+#if !defined(IS_MOBILE_PLATFORM)
+  // Set a distributed manager that helps set up, update, and check liveness
+  // of member tasks in the cluster.
+  virtual void SetDistributedManager(
+      std::unique_ptr<ImmediateExecutionDistributedManager> distributed) = 0;
+
+  virtual ImmediateExecutionDistributedManager* GetDistributedManager() = 0;
+#endif  // !IS_MOBILE_PLATFORM
 
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)

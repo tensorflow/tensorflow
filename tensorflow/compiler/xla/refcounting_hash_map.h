@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
@@ -58,22 +59,33 @@ class RefcountingHashMap {
   std::shared_ptr<V> GetOrCreateIfAbsent(
       const K& key,
       const std::function<std::unique_ptr<V>(const K&)>& value_factory) {
+    return *GetOrTryCreateIfAbsent(key, [&](const K& key) {
+      return StatusOr<std::unique_ptr<V>>(value_factory(key));
+    });
+  }
+
+  // Gets the value for the given key.
+  //
+  // If the map doesn't contain a live value for the key, constructs one
+  // using `value_factory`, or returns the status from `value_factory`.
+  StatusOr<std::shared_ptr<V>> GetOrTryCreateIfAbsent(
+      const K& key, const std::function<StatusOr<std::unique_ptr<V>>(const K&)>&
+                        value_factory) {
     absl::MutexLock lock(&mu_);
     auto it = map_.find(key);
-    // We ensure that the entry has not expired in case deleter was running when
-    // we have entered this block.
     if (it != map_.end()) {
+      // We ensure that the entry has not expired in case deleter was running
+      // when we have entered this block.
       if (std::shared_ptr<V> value = it->second.lock()) {
         return value;
       }
-      map_.erase(it);
     }
 
     // Create entry in the map and then set its value, so the value can
     // contain a pointer back into the map.
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<V> value_unique, value_factory(key));
     it = map_.emplace(key, std::weak_ptr<V>()).first;
-    std::shared_ptr<V> value(value_factory(key).release(),
-                             Deleter{&it->first, this});
+    std::shared_ptr<V> value(value_unique.release(), Deleter{it->first, *this});
     it->second = value;  // Set the weak ptr to the shared ptr.
     return value;
   }
@@ -95,15 +107,17 @@ class RefcountingHashMap {
 
  private:
   struct Deleter {
-    const K* key;  // Points into parent->map_.
-    RefcountingHashMap* parent;
+    const K& key;  // Points into parent->map_.
+    RefcountingHashMap& parent;
 
     void operator()(V* v) {
       delete v;
-      absl::MutexLock lock(&parent->mu_);
-      auto it = parent->map_.find(*key);
-      if (it != parent->map_.end() && it->second.expired()) {
-        parent->map_.erase(it);
+      absl::MutexLock lock(&parent.mu_);
+      // We must check if that the entry is still expired in case the value was
+      // replaced while the deleter was running.
+      auto it = parent.map_.find(key);
+      if (it != parent.map_.end() && it->second.expired()) {
+        parent.map_.erase(it);
       }
     }
   };

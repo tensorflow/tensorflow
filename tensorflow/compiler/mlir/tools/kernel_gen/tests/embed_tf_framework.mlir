@@ -1,4 +1,6 @@
-// RUN: kernel-gen-opt %s -embed-tf-framework -split-input-file | FileCheck %s
+// RUN: kernel-gen-opt %s -embed-tf-framework-func-and-alloc \
+// RUN:   -embed-tf-framework-assert -split-input-file | \
+// RUN: FileCheck %s
 
 // CHECK-LABEL: func @tf_entry(
 // CHECK-SAME:    [[CTX:%.*]]: !tf_framework.op_kernel_context,
@@ -59,7 +61,8 @@ func @assert(%arg0: !tf_framework.op_kernel_context)
 // CHECK:   [[OUT_I32:%.*]] = memref_cast [[BUF_I32]]
 // CHECK:   return [[OUT_F32]], [[OUT_I32]] : memref<*xf32>, memref<*xi32>
 // CHECK: ^bb2:
-// CHECK:   tf_framework.report_error [[CTX]], "the one and only"
+// CHECK:   tf_framework.report_error [[CTX]], "INVALID_ARGUMENT",
+// CHECK-SAME: "the one and only"
 // CHECK:   [[NULL_F32:%.*]] = tf_framework.null_memref : memref<*xf32>
 // CHECK:   [[NULL_I32:%.*]] = tf_framework.null_memref : memref<*xi32>
 // CHECK:   return [[NULL_F32]], [[NULL_I32]] : memref<*xf32>, memref<*xi32>
@@ -88,10 +91,12 @@ func @double_assert(%arg0: !tf_framework.op_kernel_context)
 // CHECK:   [[OUT:%.*]] = memref_cast [[BUF]]
 // CHECK:   return [[OUT]] : memref<*xf32>
 // CHECK: ^bb3:
-// CHECK:   tf_framework.report_error [[CTX]], "first assertion"
+// CHECK:   tf_framework.report_error [[CTX]], "INVALID_ARGUMENT",
+// CHECK-SAME: "first assertion"
 // CHECK:   [[NULL:%.*]] = tf_framework.null_memref : memref<*xf32>
 // CHECK:   return [[NULL]] : memref<*xf32>
 // CHECK: ^bb4:
-// CHECK:   tf_framework.report_error [[CTX]], "second assertion"
+// CHECK:   tf_framework.report_error [[CTX]], "INVALID_ARGUMENT",
+// CHECK-SAME: "second assertion"
 // CHECK:   [[NULL:%.*]] = tf_framework.null_memref : memref<*xf32>
 // CHECK:   return [[NULL]] : memref<*xf32>

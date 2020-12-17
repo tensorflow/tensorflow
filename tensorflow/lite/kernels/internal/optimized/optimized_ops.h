@@ -201,43 +201,6 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   return MatrixMap<Scalar>(data, rows, cols);
 }
 
-// TODO(renjieliu): Refactor this to merge with other
-// MultiplyByQuantizedMultipler.
-#ifdef USE_NEON
-inline int32x4x4_t MultiplyByQuantizedMultiplier4Rows(
-    int32x4x4_t input_val, int32 quantized_multiplier, int32 shift) {
-  const int left_shift = std::max(shift, 0);
-  const int right_shift = std::min(shift, 0);
-  int32x4x4_t result;
-
-  int32x4_t multiplier_dup = vdupq_n_s32(quantized_multiplier);
-  int32x4_t left_shift_dup = vdupq_n_s32(left_shift);
-  int32x4_t right_shift_dup = vdupq_n_s32(right_shift);
-
-  result.val[0] =
-      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[0], left_shift_dup),
-                               multiplier_dup),
-                 right_shift_dup);
-
-  result.val[1] =
-      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[1], left_shift_dup),
-                               multiplier_dup),
-                 right_shift_dup);
-
-  result.val[2] =
-      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[2], left_shift_dup),
-                               multiplier_dup),
-                 right_shift_dup);
-
-  result.val[3] =
-      vrshlq_s32(vqrdmulhq_s32(vshlq_s32(input_val.val[3], left_shift_dup),
-                               multiplier_dup),
-                 right_shift_dup);
-
-  return result;
-}
-#endif
-
 template <typename ElementwiseF, typename ScalarBroadcastF, typename T>
 inline void BinaryBroadcastFiveFold(const ArithmeticParams& unswitched_params,
                                     const RuntimeShape& unswitched_input1_shape,
@@ -418,7 +381,7 @@ inline void FullyConnected(
   const int32 output_activation_max = params.quantized_activation_max;
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -484,7 +447,7 @@ inline void FullyConnected(
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
 
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -862,7 +825,7 @@ inline void ShuffledFullyConnected(
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(weights_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
-  // TODO(benoitjacob): This really should be:
+  // TODO(b/62193649): This really should be:
   //     const int batches = ArraySize(output_dims, 1);
   // but the current --variable_batch hack consists in overwriting the 3rd
   // dimension with the runtime batch size, as we don't keep track for each
@@ -1312,8 +1275,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_data = im2col_data;
     gemm_input_shape = &im2col_shape;
   } else {
-    // TODO(aselle): We need to make sure to not send im2col if it is not
-    // needed.
     TFLITE_DCHECK(!im2col_data);
     gemm_input_data = input_data;
     gemm_input_shape = &input_shape;
@@ -7867,7 +7828,7 @@ inline void Transpose2D(const RuntimeShape& input_shape,
   }
 }
 
-// TODO(alanchiao): see if we can reduce the number
+// TODO(b/173718660): see if we can reduce the number
 // of lines of code in branching without affecting latency.
 template <typename T>
 inline void Transpose3D(const TransposeParams& params,

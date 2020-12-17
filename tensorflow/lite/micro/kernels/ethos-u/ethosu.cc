@@ -15,15 +15,12 @@ limitations under the License.
 
 #include <ethosu_driver.h>
 
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/flatbuffers/flexbuffers.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace custom {
-namespace ethosu {
+namespace {
 
 constexpr uint8_t CO_TYPE_ETHOSU = 1;
 
@@ -93,19 +90,27 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   tensor = context->GetEvalTensor(context, node->inputs->data[0]);
   cms_data = reinterpret_cast<void*>(tensor->data.uint8);
 
-  // Get adresses to weights/scratch/input data
+  // Get addresses to weights/scratch/input data
   for (i = 1; i < node->inputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->inputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
-    base_addrs_size[num_tensors] = tensor->dims->size;
+    size_t byte_size = 1;
+    for (int k = 0; k < tensor->dims->size; k++) {
+      byte_size = byte_size * tensor->dims->data[k];
+    }
+    base_addrs_size[num_tensors] = byte_size;
     num_tensors++;
   }
 
-  // Get adresses to output data
+  // Get addresses to output data
   for (i = 0; i < node->outputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->outputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
-    base_addrs_size[num_tensors] = tensor->dims->size;
+    size_t byte_size = 1;
+    for (int k = 0; k < tensor->dims->size; k++) {
+      byte_size = byte_size * tensor->dims->data[k];
+    }
+    base_addrs_size[num_tensors] = byte_size;
     num_tensors++;
   }
 
@@ -122,13 +127,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-}  // namespace ethosu
+}  // namespace
 
 TfLiteRegistration* Register_ETHOSU() {
-  static TfLiteRegistration r = {ethosu::Init,
-                                 ethosu::Free,
-                                 ethosu::Prepare,
-                                 ethosu::Eval,
+  static TfLiteRegistration r = {Init,
+                                 Free,
+                                 Prepare,
+                                 Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,
                                  /*custom_name=*/nullptr,
@@ -138,7 +143,4 @@ TfLiteRegistration* Register_ETHOSU() {
 
 const char* GetString_ETHOSU() { return "ethos-u"; }
 
-}  // namespace custom
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

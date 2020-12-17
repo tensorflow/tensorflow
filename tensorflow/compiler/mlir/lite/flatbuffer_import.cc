@@ -50,20 +50,20 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -149,7 +149,7 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
 
   int64_t storage_min = QuantizedType::getDefaultMinimumForInteger(
                             is_signed, storage_type.getWidth()) +
-                        is_weight_buffer;
+                        static_cast<int>(is_weight_buffer);
   int64_t storage_max = QuantizedType::getDefaultMaximumForInteger(
       is_signed, storage_type.getWidth());
   uint32_t flags =
@@ -177,18 +177,38 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
       quant_params.zero_point.at(0), storage_min, storage_max);
 }
 
+// import float tensor with calibration value into calibrated quantized type.
+StatusOr<QuantizedType> GetCalibratedQuantizedType(const TensorT& tensor,
+                                                   Builder builder) {
+  if (tensor.quantization == nullptr) {
+    return errors::InvalidArgument("The tensor is not quantized.");
+  }
+  auto raw_elem_type = ConvertElementType(tensor.type, builder);
+  float min = tensor.quantization->min[0];
+  float max = tensor.quantization->max[0];
+  return mlir::quant::CalibratedQuantizedType::get(raw_elem_type, min, max);
+}
+
 // TODO(b/138222071) Remove shapeless_are_scalars once we can reliably
 // make that distinction and don't have to rely on context
 // (input to main and constants must have static shape)
 StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
                                          bool shapeless_are_scalars = false,
-                                         bool is_constant = false) {
+                                         bool is_constant = false,
+                                         bool is_intermediate = false) {
   mlir::Type elem_type = ConvertElementType(tensor.type, builder);
   // TODO(b/139554398) Store min/max (even for non-quantized tensors) somewhere
   // if it's set
   if (IsQuantized(tensor)) {
     TF_ASSIGN_OR_RETURN(elem_type,
                         GetQuantizedType(tensor, builder, is_constant));
+  }
+
+  // Intermediate tensors with calibration value (but not scale and zero points)
+  // should return calibrated quantized type.
+  if (is_intermediate && tensor.quantization != nullptr &&
+      !IsQuantized(tensor)) {
+    TF_ASSIGN_OR_RETURN(elem_type, GetCalibratedQuantizedType(tensor, builder));
   }
 
   if (IsScalar(tensor) || (shapeless_are_scalars && tensor.shape.empty())) {
@@ -489,6 +509,12 @@ Operation* BuildVariableOp(const tflite::TensorT& tensor,
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
+  if (tensor.quantization && !tensor.quantization->min.empty()) {
+    if (auto stats_op =
+            ConvertMinMaxToStatsOp(tensor, builder, op.getResult())) {
+      return stats_op;
+    }
+  }
   return op.getOperation();
 }
 
@@ -986,7 +1012,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "outputs", func_outputs));
     }
-    func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   } else {
     func.setPrivate();
   }
@@ -1033,7 +1059,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       }
     }
 
-    // Intermediate tensors for tfl.lstm are used to carry quantization range
+    // Intermediate tensors for LSTMs are used to carry quantization range
     // in their types, so we only need and extract their types.
     std::vector<mlir::TensorType> intermediate_types;
     intermediate_types.reserve(5);
@@ -1041,7 +1067,8 @@ StatusOr<FuncOp> ConvertSubgraph(
       TF_ASSIGN_OR_RETURN(
           auto type, GetTensorType(*subgraph.tensors[intermediate], builder,
                                    /*shapeless_are_scalars=*/true,
-                                   /*is_constant=*/true));
+                                   /*is_constant=*/false,
+                                   /*is_intermediate=*/true));
       intermediate_types.emplace_back(type);
     }
 
@@ -1135,7 +1162,6 @@ OwningModuleRef tflite::FlatBufferToMlir(
 
   auto builder = Builder(context);
 
-
   std::vector<std::string> func_names;
   for (auto& subgraph : model->subgraphs) {
     func_names.push_back(subgraph->name);
@@ -1144,11 +1170,11 @@ OwningModuleRef tflite::FlatBufferToMlir(
   auto module = mlir::ModuleOp::create(base_loc);
   // We currently don't use this to make decisions, but we could
   // use it in exports or if there are breaking changes
-  module.setAttr("tfl.schema_version",
-                 builder.getI32IntegerAttr(model->version));
+  module->setAttr("tfl.schema_version",
+                  builder.getI32IntegerAttr(model->version));
   if (!model->description.empty()) {
-    module.setAttr("tfl.description",
-                   builder.getStringAttr(model->description));
+    module->setAttr("tfl.description",
+                    builder.getStringAttr(model->description));
   }
 
   for (auto e : llvm::enumerate(model->subgraphs)) {

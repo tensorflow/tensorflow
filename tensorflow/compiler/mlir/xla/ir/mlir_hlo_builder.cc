@@ -17,7 +17,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
@@ -113,6 +113,7 @@ StatusOr<XlaOp> MlirHloBuilder::ConvGeneralDilatedInternal(
       ConvertPadding(padding, &builder_),
       GetI64ElementsAttr(lhs_dilation, &builder_),
       GetI64ElementsAttr(rhs_dilation, &builder_),
+      /*window_reversal=*/nullptr,
       ConvertConvDimensionNumbers(dimension_numbers, &builder_),
       builder_.getI64IntegerAttr(feature_group_count),
       builder_.getI64IntegerAttr(batch_group_count), config_attr);
@@ -273,6 +274,17 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::ReducePrecisionInternal(
+    const Shape& shape, XlaOp operand, const int exponent_bits,
+    const int mantissa_bits) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::ReducePrecisionOp>(
+      loc_, ty, GetValue(operand), builder_.getI32IntegerAttr(exponent_bits),
+      builder_.getI32IntegerAttr(mantissa_bits));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
     const Shape& shape, XlaOp input, XlaOp start_indices,
     const GatherDimensionNumbers& dimension_numbers,
@@ -301,6 +313,18 @@ StatusOr<XlaOp> MlirHloBuilder::ScatterInternal(
 
   TF_RETURN_IF_ERROR(
       ImportComputation(update_computation.proto(), &op.update_computation()));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::SetDimensionSizeInternal(const Shape& shape,
+                                                         XlaOp operand,
+                                                         XlaOp val,
+                                                         int64 dimension) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::mhlo::SetDimensionSizeOp>(
+      loc_, ty, GetValue(operand), GetValue(val),
+      builder_.getI64IntegerAttr(dimension));
   return MakeXlaOp(op);
 }
 

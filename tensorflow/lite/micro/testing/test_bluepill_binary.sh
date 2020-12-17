@@ -21,7 +21,7 @@ TFLM_ROOT_DIR=${SCRIPT_DIR}/..
 RESC_PATH=${TFLM_ROOT_DIR}/testing/bluepill.resc
 
 # Robot file with definition of custom keywords used in test suite.
-ROBOT_RESOURCE=${TFLM_ROOT_DIR}/testing/robot.resource
+ROBOT_RESOURCE=${TFLM_ROOT_DIR}/testing/robot.resource.txt
 
 # Renode's entrypoint for using the Robot Framework.
 RENODE_TEST_SCRIPT=${TFLM_ROOT_DIR}/tools/make/downloads/renode/test.sh

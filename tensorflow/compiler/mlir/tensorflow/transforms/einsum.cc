@@ -33,14 +33,15 @@ limitations under the License.
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
 namespace mlir {
@@ -57,7 +58,7 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
       {static_cast<int32_t>(permutation.size())}, rewriter->getIntegerType(32));
   auto perm_attr = DenseElementsAttr::get(perm_type, permutation);
   auto perm_op = rewriter->create<ConstantOp>(loc, perm_type, perm_attr);
-  std::vector<int64_t> transposed_shape(shape.begin(), shape.end());
+  SmallVector<int64_t, 4> transposed_shape(shape.begin(), shape.end());
   for (int i = 0, end = shape.size(); i < end; ++i) {
     transposed_shape[i] = shape[permutation[i]];
   }
@@ -230,17 +231,6 @@ LogicalResult transposeForBatchMatmul(
   return success();
 }
 
-// Returns success when the given shape argument of the Reshape op is valid.
-LogicalResult verifyShapeOfReshapeOp(std::vector<int64_t> shape) {
-  int num_dynamic_dims = 0;
-  for (int64_t dim : shape) {
-    if (dim == ShapedType::kDynamicSize) ++num_dynamic_dims;
-  }
-
-  // Reshape op allows only at most one dynamic dimension.
-  return (num_dynamic_dims <= 1) ? success() : failure();
-}
-
 // Reshapes LHS and RHS to have B0,...,Bn,L,C and B0,...,Bn,C,R shape
 // respectively while assuming that the initial shape for them is
 // B0,...,Bn,L0,...,Ln,C0,...,Cn and B0,...,Bn,C0,...,Cn,R0,...,Rn respectively.
@@ -295,8 +285,8 @@ LogicalResult reshapeForBatchMatmul(const Location& loc,
   rhs_shape.push_back(rhs_size);
   out_shape->push_back(rhs_size);
 
-  if (failed(verifyShapeOfReshapeOp(lhs_shape)) ||
-      failed(verifyShapeOfReshapeOp(rhs_shape)))
+  if (failed(VerifyShapeOfReshapeOp(lhs_shape)) ||
+      failed(VerifyShapeOfReshapeOp(rhs_shape)))
     return failure();
 
   *lhs = createReshapeOp(*lhs, lhs_shape, lhs_type.getElementType(), loc,
@@ -339,7 +329,7 @@ LogicalResult rewriteToBatchMatmul(TF::EinsumOp op,
 
   std::vector<int64_t> reshape_shape =
       inverseTransposeVector(original_type.getShape(), out_transpose);
-  if (failed(verifyShapeOfReshapeOp(reshape_shape))) return failure();
+  if (failed(VerifyShapeOfReshapeOp(reshape_shape))) return failure();
 
   auto matmul_type =
       RankedTensorType::get(matmul_shape, original_type.getElementType());

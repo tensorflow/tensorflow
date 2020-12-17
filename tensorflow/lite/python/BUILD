@@ -91,6 +91,32 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = ["test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":lite",
+        ":schema_util",
+        "//tensorflow/lite/tools:visualize",
+        "//tensorflow/python:framework",
+    ],
+)
+
+py_test(
+    name = "test_util_test",
+    srcs = ["test_util_test.py"],
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/softplus_flex.bin",
+    ],
+    python_version = "PY3",
+    deps = [
+        ":test_util",
+    ],
+)
+
 py_test(
     name = "tflite_convert_test",
     srcs = ["tflite_convert_test.py"],
@@ -111,6 +137,7 @@ py_test(
     ],
     deps = [
         ":convert",
+        ":test_util",
         ":tflite_convert",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:array_ops",
@@ -159,7 +186,10 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    data = [
+        "//tensorflow/lite/python/testdata:control_flow_v1.pbtxt",
+        "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
+    ],
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
@@ -178,6 +208,9 @@ py_test(
 py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     shard_count = 12,
     srcs_version = "PY2AND3",
@@ -189,7 +222,7 @@ py_test(
         ":lite",
         ":lite_v2_test_util",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/hashtable:pywrap_hashtable_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
@@ -219,6 +252,8 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":lite",
+        ":test_util",
+        "//tensorflow/lite/python/testdata:double_op",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -404,9 +439,9 @@ py_binary(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":lite",
         ":util",
-        "@six_archive//:six",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

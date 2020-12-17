@@ -74,7 +74,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -97,9 +96,9 @@ filegroup(
         "example_proto_helper.h",
         "guarded_philox_random.cc",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.cc",
         "matmul_autotune.h",
-        "matmul_bcast.cc",
         "matmul_bcast.h",
         "mirror_pad_mode.cc",
         "mirror_pad_mode.h",
@@ -109,7 +108,6 @@ filegroup(
         "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
-        "ragged_to_dense_util_common.cc",
         "ragged_to_dense_util_common.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
@@ -221,7 +219,6 @@ filegroup(
         "example_proto_helper.cc",
         "guarded_philox_random.cc",
         "matmul_autotune.cc",
-        "matmul_bcast.cc",
         "mirror_pad_mode.cc",
         "saved_tensor_slice_util.cc",
         "stat_summarizer.cc",
@@ -277,6 +274,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 
@@ -329,7 +327,6 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
-        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -342,6 +339,7 @@ filegroup(
         "example_proto_helper.h",
         "gpu_kernel_helper.h",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
@@ -390,9 +388,6 @@ cc_library(
 
 cc_library(
     name = "ragged_to_dense_util_common",
-    srcs = [
-        "ragged_to_dense_util_common.cc",
-    ],
     hdrs = [
         "ragged_to_dense_util_common.h",
     ],
@@ -466,13 +461,14 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "abstract_stack_trace",
-    hdrs = ["abstract_stack_trace.h"],
+    hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
@@ -480,6 +476,7 @@ cc_library(
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     deps = [
         "//tensorflow/core/platform:status",

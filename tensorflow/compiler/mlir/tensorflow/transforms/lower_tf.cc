@@ -20,11 +20,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -245,23 +245,25 @@ class LowerAddNOp : public RewritePattern {
 //     : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>,
 //        tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
 //
+template <typename OpT>
 class LowerDynamicStitchOp : public RewritePattern {
  public:
   explicit LowerDynamicStitchOp(MLIRContext *context)
       : RewritePattern(
-            DynamicStitchOp::getOperationName(),
+            OpT::getOperationName(),
             {ConstOp::getOperationName(), ReshapeOp::getOperationName(),
              UnpackOp::getOperationName(), PackOp::getOperationName()},
             1, context) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
-    auto op = cast<DynamicStitchOp>(src_op);
+    auto op = cast<OpT>(src_op);
 
     // Static output type is used to compute intermediate values. Note that the
     // output type doesn't have to be static but if input types and indices are
     // constant, then the output type can be statically determined.
-    RankedTensorType out_ty = op.getType().dyn_cast<RankedTensorType>();
+    RankedTensorType out_ty =
+        op.getType().template dyn_cast<RankedTensorType>();
     if (!out_ty || !out_ty.hasStaticShape()) return failure();
 
     // Extract out all the constant indices' attributes and verify that data
@@ -276,7 +278,8 @@ class LowerDynamicStitchOp : public RewritePattern {
       if (!matchPattern(index, m_Constant(&index_attr))) return failure();
       indices.push_back(index_attr);
 
-      RankedTensorType data_ty = data.getType().dyn_cast<RankedTensorType>();
+      RankedTensorType data_ty =
+          data.getType().template dyn_cast<RankedTensorType>();
       if (!data_ty || !data_ty.hasStaticShape()) return failure();
     }
 
@@ -301,8 +304,9 @@ class LowerDynamicStitchOp : public RewritePattern {
 
       auto reshaped_data =
           rewriter.create<ReshapeOp>(loc, data, packed_shape_val);
-      auto num_items =
-          reshaped_data.getType().cast<RankedTensorType>().getShape()[0];
+      auto num_items = reshaped_data.getType()
+                           .template cast<RankedTensorType>()
+                           .getShape()[0];
       auto items = rewriter.create<UnpackOp>(
           loc, SmallVector<Type, 4>(num_items, item_ty), reshaped_data,
           /*axis=*/0);
@@ -328,12 +332,13 @@ class LowerDynamicStitchOp : public RewritePattern {
 class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
  public:
   explicit ConvertFakeQuantWithMinMaxVarsOp(MLIRContext *context)
-      : RewritePattern(FakeQuantWithMinMaxVarsOp::getOperationName(),
-                       {SubOp::getOperationName(), ConstOp::getOperationName(),
-                        MulOp::getOperationName(), FloorOp::getOperationName(),
-                        ClipByValueOp::getOperationName(),
-                        DivOp::getOperationName(), RoundOp::getOperationName()},
-                       1, context) {}
+      : RewritePattern(
+            FakeQuantWithMinMaxVarsOp::getOperationName(),
+            {AddV2Op::getOperationName(), SubOp::getOperationName(),
+             ConstOp::getOperationName(), MulOp::getOperationName(),
+             FloorOp::getOperationName(), ClipByValueOp::getOperationName(),
+             DivOp::getOperationName(), RoundOp::getOperationName()},
+            1, context) {}
 
   LogicalResult matchAndRewrite(Operation *src_op,
                                 PatternRewriter &rewriter) const override {
@@ -415,8 +420,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
         op.getLoc(),
         DenseElementsAttr::get(scalar_ty, ConvertToAPFloat(0.5, element_ty)));
 
-    quantized_input = rewriter.create<AddOp>(op.getLoc(), input_ty,
-                                             quantized_input, half_val);
+    quantized_input = rewriter.create<AddV2Op>(op.getLoc(), input_ty,
+                                               quantized_input, half_val);
 
     quantized_input = rewriter.create<FloorOp>(op.getLoc(), quantized_input);
 
@@ -424,8 +429,8 @@ class ConvertFakeQuantWithMinMaxVarsOp : public RewritePattern {
     Value output = rewriter.create<MulOp>(op.getLoc(), input_ty,
                                           quantized_input, quant_to_float);
 
-    output =
-        rewriter.create<AddOp>(op.getLoc(), input_ty, output, nudged_float_min);
+    output = rewriter.create<AddV2Op>(op.getLoc(), input_ty, output,
+                                      nudged_float_min);
 
     rewriter.replaceOp(op, {output});
     return success();
@@ -807,7 +812,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
                            CastOp::getOperationName(),
                            ConstOp::getOperationName(),
                            ConcatV2Op::getOperationName(),
-                           AddOp::getOperationName(),
+                           AddV2Op::getOperationName(),
                            PadOp::getOperationName(),
                            SplitOp::getOperationName(),
                            UnpackOp::getOperationName(),
@@ -833,6 +838,9 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
       return failure();
     }
     auto paddings_type = op.paddings().getType().cast<ShapedType>();
+    if (!paddings_type.hasRank()) {
+      return failure();
+    }
 
     int64_t input_rank = input_type.getRank();
     int64_t block_rank = block_shape_type.getNumElements();
@@ -903,8 +911,8 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
     auto paddings_split = rewriter.create<UnpackOp>(
         loc, TypeRange({paddings_sum_type, paddings_sum_type}), full_paddings,
         rewriter.getI64IntegerAttr(1));
-    auto paddings_sum = rewriter.create<AddOp>(loc, paddings_split.getResult(0),
-                                               paddings_split.getResult(1));
+    auto paddings_sum = rewriter.create<AddV2Op>(
+        loc, paddings_split.getResult(0), paddings_split.getResult(1));
 
     auto input_shape_tensor = rewriter.create<ConstOp>(
         loc,
@@ -914,7 +922,7 @@ class LowerSpaceToBatchNDOp : public RewritePattern {
 
     // padded_shape_tensor is the shape of padded.
     auto padded_shape_tensor =
-        rewriter.create<AddOp>(loc, paddings_sum, input_shape_tensor);
+        rewriter.create<AddV2Op>(loc, paddings_sum, input_shape_tensor);
 
     auto zero_i32 = rewriter.create<ConstOp>(
         loc, GetScalarOfType(rewriter.getIntegerType(32), 0));
@@ -1509,10 +1517,12 @@ class LowerResizeNearestNeighbor : public RewritePattern {
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerAddNOp, ConvertFakeQuantWithMinMaxVarsOp,
-                   LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerLgammaOp, LowerPackOp, LowerBatchToSpaceND,
-                   LowerSpaceToBatchNDOp, LowerResizeNearestNeighbor,
-                   LowerSparseMatMulOp, Lower_UnaryOpsComposition>(context);
+                   LowerDynamicStitchOp<DynamicStitchOp>,
+                   LowerDynamicStitchOp<ParallelDynamicStitchOp>,
+                   LowerInvertPermutationOp, LowerLgammaOp, LowerPackOp,
+                   LowerBatchToSpaceND, LowerSpaceToBatchNDOp,
+                   LowerResizeNearestNeighbor, LowerSparseMatMulOp,
+                   Lower_UnaryOpsComposition>(context);
   populateWithGenerated(context, *patterns);
 }
 

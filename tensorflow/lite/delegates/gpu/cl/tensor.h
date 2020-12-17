@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
@@ -103,10 +102,8 @@ class Tensor : public GPUObject, public GpuSpatialTensor {
   int GetChannelsAlignment() const;
   int GetAlignedChannels() const;
 
-  absl::Status WriteDataBHWDC(absl::Span<const float> in,
-                              CLCommandQueue* queue);
-  absl::Status ReadDataBHWDC(absl::Span<float> out,
-                             CLCommandQueue* queue) const;
+  absl::Status WriteDataBHWDC(const float* in, CLCommandQueue* queue);
+  absl::Status ReadDataBHWDC(float* out, CLCommandQueue* queue) const;
 
   int3 GetFullTensorRegion() const;
   void Release();

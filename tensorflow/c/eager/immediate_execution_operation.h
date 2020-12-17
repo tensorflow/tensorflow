@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/util/abstract_stack_trace.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 
 struct TFE_Op;
 
@@ -48,10 +48,10 @@ class ImmediateExecutionOperation : public AbstractOperation {
   virtual Status OutputLength(const char* output_name, int* length) = 0;
 
   // Set stack trace to be used for potential async error reporting.
-  virtual void SetStackTrace(AbstractStackTrace stack_trace) = 0;
+  virtual void SetStackTrace(ManagedStackTrace stack_trace) = 0;
 
   // Returns the stack trace set by `SetStackTrace` if exists.
-  virtual absl::optional<AbstractStackTrace> GetStackTrace() = 0;
+  virtual absl::optional<ManagedStackTrace> GetStackTrace() = 0;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {

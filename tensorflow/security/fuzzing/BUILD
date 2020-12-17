@@ -28,6 +28,44 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
+    name = "AreAttrValuesEqual_fuzz",
+    srcs = ["AreAttrValuesEqual_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/framework:attr_value_proto_cc",
+        "//tensorflow/core/framework:attr_value_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
+    name = "joinpath_fuzz",
+    srcs = ["joinpath_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
+    name = "parseURI_fuzz",
+    srcs = ["parseURI_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
+    name = "cleanpath_fuzz",
+    srcs = ["cleanpath_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
     name = "consume_leading_digits_fuzz",
     srcs = ["consume_leading_digits_fuzz.cc"],
     deps = [

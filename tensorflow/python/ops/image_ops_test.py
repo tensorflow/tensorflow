@@ -4815,6 +4815,49 @@ class FormatTest(test_util.TensorFlowTestCase):
           decode(io_ops.read_file(path)).eval()
 
 
+class CombinedNonMaxSuppressionTest(test_util.TensorFlowTestCase):
+
+  # NOTE(b/142795960): parameterized tests do not work well with tf.tensor
+  # inputs. Due to failures, creating another test `testInvalidTensorInput`
+  # which is identical to this one except that the input here is a scalar as
+  # opposed to a tensor.
+  def testInvalidPyInput(self):
+    boxes_np = [[[[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]]]
+    scores_np = [[[0.9, 0.75, 0.6, 0.95, 0.5, 0.3]]]
+    max_output_size_per_class = 5
+    max_total_size = 2**31
+    with self.assertRaisesRegex(
+        (TypeError, ValueError),
+        "type int64 that does not match expected type of int32|"
+        "Tensor conversion requested dtype int32 for Tensor with dtype int64"):
+      image_ops.combined_non_max_suppression(
+          boxes=boxes_np,
+          scores=scores_np,
+          max_output_size_per_class=max_output_size_per_class,
+          max_total_size=max_total_size)
+
+  # NOTE(b/142795960): parameterized tests do not work well with tf.tensor
+  # inputs. Due to failures, creating another this test which is identical to
+  # `testInvalidPyInput` except that the input is a tensor here as opposed
+  # to a scalar.
+  def testInvalidTensorInput(self):
+    boxes_np = [[[[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                  [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]]]
+    scores_np = [[[0.9, 0.75, 0.6, 0.95, 0.5, 0.3]]]
+    max_output_size_per_class = 5
+    max_total_size = ops.convert_to_tensor(2**31)
+    with self.assertRaisesRegex(
+        (TypeError, ValueError),
+        "type int64 that does not match expected type of int32|"
+        "Tensor conversion requested dtype int32 for Tensor with dtype int64"):
+      image_ops.combined_non_max_suppression(
+          boxes=boxes_np,
+          scores=scores_np,
+          max_output_size_per_class=max_output_size_per_class,
+          max_total_size=max_total_size)
+
+
 class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
 
   def testNonMaxSuppression(self):

@@ -1,4 +1,5 @@
-// RUN: tf-opt %s -tf-move-transposes=direction=end -verify-diagnostics | FileCheck %s --dump-input=always
+// RUN: tf-opt %s -tf-move-transposes=direction=end -verify-diagnostics | FileCheck %s
+// RUN: tf-opt %s -tf-move-transposes="fold-transpose-in-ops=false direction=end" -verify-diagnostics | FileCheck %s --check-prefix=NOFOLD
 
 // CHECK-LABEL: func @move_across_single_op
 func @move_across_single_op(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x8x4x4xf32> {
@@ -80,6 +81,13 @@ func @fold_into_mean(%arg0: tensor<1x64x112x112xf32>) -> tensor<1x64xf32> {
   // CHECK: %[[MEAN:[0-9]*]] = "tf.Mean"(%arg0, %[[RED_IDX]])
   // CHECK-SAME: (tensor<1x64x112x112xf32>, tensor<2xi32>) -> tensor<1x64xf32>
   // CHECK: return %[[MEAN]]
+
+  // NOFOLD: %[[CST:[0-9]*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>}
+  // NOFOLD: %[[TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[CST]])
+  // NOFOLD: %[[CST_1:[0-9]*]] = "tf.Const"() {value = dense<[1, 2]> : tensor<2xi32>}
+  // NOFOLD: %[[MEAN:[0-9]*]] = "tf.Mean"(%[[TRANSPOSE]], %[[CST_1]])
+  // NOFOLD-SAME: (tensor<1x112x112x64xf32>, tensor<2xi32>) -> tensor<1x64xf32>
+  // NOFOLD: return %[[MEAN]]
 
   // Transpose NCHW -> NHWC
   %0 = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>} : () -> tensor<4xi32>

@@ -320,12 +320,6 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     }
   }
 
-  // Copy class_boxes_data to a tensor
-  TensorShape boxesShape({num_boxes, 4});
-  Tensor boxes(DT_FLOAT, boxesShape);
-  std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
-              boxes.unaligned_flat<float>().data());
-
   // Do NMS, get the candidate indices of form vector<int>
   // Data structure for selection candidate in NMS.
   struct Candidate {
@@ -347,9 +341,10 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   Candidate next_candidate;
 
   std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
-  const Tensor const_boxes = boxes;
-  typename TTypes<float, 2>::ConstTensor boxes_data_t =
-      const_boxes.tensor<float, 2>();
+  // Move class_boxes_data to a tensor
+  Eigen::array<Eigen::DenseIndex, 2> boxesShape = {num_boxes, 4};
+  typename TTypes<float, 2>::ConstTensor boxes_data_t(class_boxes_data.data(),
+                                                      boxesShape);
   int candidate_idx = 0;
   float iou;
   while (selected.size() < size_per_class &&
@@ -941,6 +936,12 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     const int max_total_size_per_batch = max_total_size.scalar<int>()();
     OP_REQUIRES(context, max_total_size_per_batch > 0,
                 errors::InvalidArgument("max_total_size must be > 0"));
+    // Throw warning when `max_total_size` is too large as it may cause OOM.
+    if (max_total_size_per_batch > pow(10, 6)) {
+      LOG(WARNING) << "Detected a large value for `max_total_size`. This may "
+                   << "cause OOM error. (max_total_size: "
+                   << max_total_size.scalar<int>()() << ")";
+    }
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(4);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),

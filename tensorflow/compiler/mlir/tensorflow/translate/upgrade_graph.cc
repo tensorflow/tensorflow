@@ -15,20 +15,34 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
+#include "llvm/ADT/StringSet.h"
+
 namespace tensorflow {
+
+// Returns the set of ops that we want to generate shared_names for them if
+// empty.
+const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
+  static auto* const ops = new llvm::StringSet<>({"VariableV2", "Variable"});
+  return *ops;
+}
 
 Status GenerateResourceSharedNameIfEmpty(Graph& graph,
                                          FunctionLibraryDefinition& flib_def) {
   auto is_resource_op_with_empty_shared_name = [](const NodeDef& node_def,
                                                   const OpDef& op_def) {
-    // If the OpDef has "use_node_name_sharing" field, then it is valid to use
-    // node names as shared names.
-    if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
-                     [](const auto& attr_def) {
-                       return attr_def.name() == "use_node_name_sharing" &&
-                              attr_def.type() == "bool";
-                     }))
-      return false;
+    if (!GetSharedNameGenerationCompatibleOps().contains(op_def.name())) {
+      // If this op is not in the allowlist, then it is likely a custom op.
+      // Currently for these ops, we are relying on its "use_node_name_sharing"
+      // to decide whether it is valid to generate shared_names. If the OpDef
+      // has "use_node_name_sharing" field, then it is valid to use node names
+      // as shared names.
+      if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
+                       [](const auto& attr_def) {
+                         return attr_def.name() == "use_node_name_sharing" &&
+                                attr_def.type() == "bool";
+                       }))
+        return false;
+    }
 
     if (!std::any_of(op_def.attr().begin(), op_def.attr().end(),
                      [](const auto& attr_def) {

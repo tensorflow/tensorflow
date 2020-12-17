@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -73,11 +73,16 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
     }
     // Symbolic operands that bind to the symbols of the memref's layout map are
     // not supported by TFAllocOp.
-    if (alloc.getNumSymbolicOperands() != 0) {
+    if (!alloc.symbolOperands().empty()) {
       return failure();
     }
+    auto reuse_input_candidates = alloc.getAttrOfType<ArrayAttr>(
+        TFAllocOp::kReuseInputCandidatesAttrName);
+    auto reuse_output_index =
+        alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
-                                           operands);
+                                           operands, reuse_input_candidates,
+                                           reuse_output_index);
     return success();
   }
 };
@@ -139,7 +144,8 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
 
     Block *error_reporting_block =
         rewriter.createBlock(&func.getRegion(), {}, {});
-    rewriter.create<ReportErrorOp>(loc, ctx, transformed.msg());
+    rewriter.create<ReportErrorOp>(loc, ctx, ErrorCode::INVALID_ARGUMENT,
+                                   transformed.msg().getValue());
 
     SmallVector<Value, 2> null_memrefs;
     for (auto type : func.getType().getResults()) {
@@ -162,10 +168,15 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
 
 }  // namespace
 
-void PopulateEmbedTFFrameworkConversionPatterns(
+void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns) {
-  patterns->insert<TFAllocOpConverter, TFAssertOpConverter,
-                   TFDeallocOpConverter, FuncOpConverter>(context);
+  patterns->insert<TFAllocOpConverter, TFDeallocOpConverter, FuncOpConverter>(
+      context);
+}
+
+void PopulateEmbedTFFrameworkAssertConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns) {
+  patterns->insert<TFAssertOpConverter, FuncOpConverter>(context);
 }
 
 }  // namespace tf_framework

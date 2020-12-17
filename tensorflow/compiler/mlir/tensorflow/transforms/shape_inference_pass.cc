@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/core/framework/shape_inference.h"
-
-#define DEBUG_TYPE "tf-shape-inference"
 
 namespace mlir {
 namespace TF {
@@ -29,17 +28,13 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-class ShapeInference
-    : public PassWrapper<ShapeInference, OperationPass<ModuleOp>> {
+class ShapeInference : public TensorFlowShapeInferencePassBase<ShapeInference> {
  public:
-  ShapeInference() = default;
   void runOnOperation() override {
-    if (failed(InferModuleShape(getOperation()))) return signalPassFailure();
+    if (failed(InferModuleShape(getOperation(), max_iterations_)))
+      return signalPassFailure();
   }
 };
-
-PassRegistration<ShapeInference> pass(
-    "tf-shape-inference", "Simple Shape Inference on TensorFlow Dialect");
 
 }  // namespace
 

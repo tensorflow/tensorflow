@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/snappy.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -60,13 +61,8 @@ namespace data {
 /* static */ constexpr const char* const DataServiceDatasetOp::kOutputShapes;
 
 namespace {
-// Once we've spent `kRetryTimeoutMicros` in `GetNextInternal`, we will wait for
-// the current attempt to complete and perform no more retries.
-const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
-
 // Default interval between task list refreshes.
 const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
-
 }  // namespace
 
 // Dataset for reading data from the tf.data service non-deterministically.
@@ -224,30 +220,23 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           &deregister_fn_));
       dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
           dataset()->address_, dataset()->protocol_);
-      int64 deadline_micros = ctx->env()->NowMicros() + kRetryTimeoutMicros;
-      if (dataset()->job_name_.empty()) {
-        TF_RETURN_IF_ERROR(grpc_util::Retry(
-            [&]() {
-              return dispatcher_->CreateJob(dataset()->dataset_id_,
-                                            dataset()->processing_mode_,
-                                            job_client_id_);
-            },
-            /*description=*/
-            strings::StrCat("create job with dispatcher at ",
-                            dataset()->address_),
-            deadline_micros));
-      } else {
-        TF_RETURN_IF_ERROR(grpc_util::Retry(
-            [&]() {
-              return dispatcher_->GetOrCreateJob(
-                  dataset()->dataset_id_, dataset()->processing_mode_,
-                  dataset()->job_name_, iterator_index_, job_client_id_);
-            },
-            /*description=*/
-            strings::StrCat("get or create job with dispatcher at ",
-                            dataset()->address_),
-            deadline_micros));
+      int64 deadline_micros = kint64max;
+      absl::optional<JobKey> key;
+      if (!dataset()->job_name_.empty()) {
+        key.emplace();
+        key.value().set_job_name(std::string(dataset()->job_name_));
+        key.value().set_job_name_index(iterator_index_);
       }
+      TF_RETURN_IF_ERROR(grpc_util::Retry(
+          [&]() {
+            return dispatcher_->GetOrCreateJob(dataset()->dataset_id_,
+                                               dataset()->processing_mode_, key,
+                                               job_client_id_);
+          },
+          /*description=*/
+          strings::StrCat("get or create job with dispatcher at ",
+                          dataset()->address_),
+          deadline_micros));
       initialized_ = true;
       VLOG(1) << "Created data service job with id " << job_client_id_;
       return Status::OK();
@@ -375,7 +364,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateTasks() LOCKS_EXCLUDED(mu_) {
+    void UpdateTasks() TF_LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
@@ -431,7 +420,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void UpdateWorkerThreads(IteratorContext* ctx) LOCKS_EXCLUDED(mu_) {
+    void UpdateWorkerThreads(IteratorContext* ctx) TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       while (num_running_worker_threads_ < max_outstanding_requests_) {
         num_running_worker_threads_++;
@@ -496,8 +485,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           DCHECK(task_to_process != nullptr);
           VLOG(3) << "Processing task " << task_to_process->task_id;
         }
-        int64 deadline_micros =
-            Env::Default()->NowMicros() + kRetryTimeoutMicros;
+        int64 deadline_micros = kint64max;
         Status s = GetElement(task_to_process.get(), deadline_micros);
         if (!s.ok()) {
           mutex_lock l(mu_);
@@ -631,7 +619,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     bool job_finished_ = false;
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
-    std::unique_ptr<Thread> task_thread_manager_ GUARDED_BY(mu_);
+    std::unique_ptr<Thread> task_thread_manager_ TF_GUARDED_BY(mu_);
   };
 
   const int64 dataset_id_;

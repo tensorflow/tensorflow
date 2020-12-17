@@ -34,9 +34,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 
@@ -91,9 +94,12 @@ void SetInstructionAsConstant(HloInstructionProto* instr, int64 id,
   *instr->mutable_opcode() = HloOpcodeString(HloOpcode::kConstant);
 }
 
-// Converts a HloComputation into ReducerOr with predicate types.
-HloComputationProto CreateReduceOr(int64 reducer_id,
-                                   HloComputationProto* original_reducer) {
+// Copy `original_reducer` into a new computation proto with `reducer_id` as new
+// id. If `rewrite_into_pred` is true, the instructions in the reducer are
+// rewritten into predicate form.
+HloComputationProto CopyReducer(int64 reducer_id,
+                                HloComputationProto* original_reducer,
+                                bool rewrite_into_pred, int64* global_id) {
   HloComputationProto reducer;
   SetProtoIdAndName(&reducer, StrCat("reduce_or"), kNameSeparator, reducer_id);
   std::vector<int64> operands_id;
@@ -103,19 +109,28 @@ HloComputationProto CreateReduceOr(int64 reducer_id,
         HloOpcode::kParameter) {
       HloInstructionProto* new_param = reducer.add_instructions();
       *new_param = inst;
-      *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
-      operands_id.push_back(inst.id());
+      new_param->set_id((*global_id)++);
+      *new_param->mutable_name() =
+          GetFullName(inst.name(), '.', new_param->id());
+      if (rewrite_into_pred) {
+        *new_param->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+      }
+      operands_id.push_back(new_param->id());
     }
     if (inst.id() == original_reducer->root_id()) {
       HloInstructionProto* new_root = reducer.add_instructions();
       *new_root = inst;
-      *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
-      *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+      new_root->set_id((*global_id)++);
+      *new_root->mutable_name() = GetFullName(inst.name(), '.', new_root->id());
+      if (rewrite_into_pred) {
+        *new_root->mutable_shape() = ConvertShapeProtoToPred(inst.shape());
+        *new_root->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
+      }
       new_root->clear_operand_ids();
       for (int64 operand_id : operands_id) {
         new_root->add_operand_ids(operand_id);
       }
-      reducer.set_root_id(inst.id());
+      reducer.set_root_id(new_root->id());
     }
   }
   return reducer;
@@ -129,6 +144,7 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   }
   return false;
 }
+
 }  // namespace
 
 namespace internal {
@@ -1265,7 +1281,8 @@ StatusOr<XlaOp> XlaBuilder::GetTupleElementInternal(const Shape& shape,
 }
 
 XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
-                      const PrecisionConfig* precision_config) {
+                      const PrecisionConfig* precision_config,
+                      absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
 
@@ -1277,15 +1294,17 @@ XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
   });
 }
 
-XlaOp XlaBuilder::DotGeneral(XlaOp lhs, XlaOp rhs,
-                             const DotDimensionNumbers& dimension_numbers,
-                             const PrecisionConfig* precision_config) {
+XlaOp XlaBuilder::DotGeneral(
+    XlaOp lhs, XlaOp rhs, const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferDotOpShape(*lhs_shape, *rhs_shape,
-                                                        dimension_numbers));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferDotOpShape(
+            *lhs_shape, *rhs_shape, dimension_numbers, preferred_element_type));
     return DotGeneralInternal(shape, lhs, rhs, dimension_numbers,
                               precision_config);
   });
@@ -1352,28 +1371,33 @@ Status XlaBuilder::VerifyConvolution(
 XlaOp XlaBuilder::Conv(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64> window_strides, Padding padding,
                        int64 feature_group_count, int64 batch_group_count,
-                       const PrecisionConfig* precision_config) {
+                       const PrecisionConfig* precision_config,
+                       absl::optional<PrimitiveType> preferred_element_type) {
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
       CreateDefaultConvDimensionNumbers(window_strides.size()),
-      feature_group_count, batch_group_count, precision_config);
+      feature_group_count, batch_group_count, precision_config,
+      preferred_element_type);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralPadding(
     XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
     absl::Span<const std::pair<int64, int64>> padding,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ConvGeneral(lhs, rhs, window_strides, padding,
                      CreateDefaultConvDimensionNumbers(window_strides.size()),
-                     feature_group_count, batch_group_count, precision_config);
+                     feature_group_count, batch_group_count, precision_config,
+                     preferred_element_type);
 }
 
 XlaOp XlaBuilder::ConvWithGeneralDimensions(
     XlaOp lhs, XlaOp rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1401,7 +1425,8 @@ XlaOp XlaBuilder::ConvWithGeneralDimensions(
                        MakePadding(base_area_dimensions, window_dimensions,
                                    window_strides, padding),
                        dimension_numbers, feature_group_count,
-                       batch_group_count, precision_config);
+                       batch_group_count, precision_config,
+                       preferred_element_type);
   });
 }
 
@@ -1410,10 +1435,12 @@ XlaOp XlaBuilder::ConvGeneral(
     absl::Span<const std::pair<int64, int64>> padding,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ConvGeneralDilated(lhs, rhs, window_strides, padding, {}, {},
                             dimension_numbers, feature_group_count,
-                            batch_group_count, precision_config);
+                            batch_group_count, precision_config,
+                            preferred_element_type);
 }
 
 XlaOp XlaBuilder::ConvGeneralDilated(
@@ -1422,7 +1449,8 @@ XlaOp XlaBuilder::ConvGeneralDilated(
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -1441,10 +1469,11 @@ XlaOp XlaBuilder::ConvGeneralDilated(
                         ShapeInference::InferWindowFromDimensions(
                             window_dimensions, window_strides, padding,
                             lhs_dilation, rhs_dilation));
-    TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferConvolveShape(
-                            *lhs_shape, *rhs_shape, feature_group_count,
-                            batch_group_count, window, dimension_numbers));
+    TF_ASSIGN_OR_RETURN(
+        Shape shape,
+        ShapeInference::InferConvolveShape(
+            *lhs_shape, *rhs_shape, feature_group_count, batch_group_count,
+            window, dimension_numbers, preferred_element_type));
     return ConvGeneralDilatedInternal(shape, lhs, rhs, window, window_strides,
                                       padding, lhs_dilation, rhs_dilation,
                                       dimension_numbers, feature_group_count,
@@ -1458,7 +1487,8 @@ StatusOr<HloInstructionProto> XlaBuilder::DynamicConvInstruction(
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config, PaddingType padding_type) {
+    const PrecisionConfig* precision_config, PaddingType padding_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
   TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
   TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
   std::vector<int64> window_dimensions(
@@ -1471,10 +1501,11 @@ StatusOr<HloInstructionProto> XlaBuilder::DynamicConvInstruction(
   TF_ASSIGN_OR_RETURN(Window window, ShapeInference::InferWindowFromDimensions(
                                          window_dimensions, window_strides,
                                          padding, lhs_dilation, rhs_dilation));
-  TF_ASSIGN_OR_RETURN(Shape shape,
-                      ShapeInference::InferConvolveShape(
-                          *lhs_shape, *rhs_shape, feature_group_count,
-                          batch_group_count, window, dimension_numbers));
+  TF_ASSIGN_OR_RETURN(
+      Shape shape,
+      ShapeInference::InferConvolveShape(
+          *lhs_shape, *rhs_shape, feature_group_count, batch_group_count,
+          window, dimension_numbers, preferred_element_type));
 
   HloInstructionProto instr;
   *instr.mutable_shape() = shape.ToProto();
@@ -1498,14 +1529,15 @@ XlaOp XlaBuilder::DynamicConvInputGrad(
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config, PaddingType padding_type) {
+    const PrecisionConfig* precision_config, PaddingType padding_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(
         HloInstructionProto instr,
-        DynamicConvInstruction(lhs, rhs, window_strides, padding, lhs_dilation,
-                               rhs_dilation, dimension_numbers,
-                               feature_group_count, batch_group_count,
-                               precision_config, padding_type));
+        DynamicConvInstruction(
+            lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+            dimension_numbers, feature_group_count, batch_group_count,
+            precision_config, padding_type, preferred_element_type));
 
     instr.set_custom_call_target("DynamicConvolutionInputGrad");
 
@@ -1520,14 +1552,16 @@ XlaOp XlaBuilder::DynamicConvKernelGrad(
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config, PaddingType padding_type) {
+    const PrecisionConfig* precision_config, PaddingType padding_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(
         HloInstructionProto instr,
         DynamicConvInstruction(activations, gradients, window_strides, padding,
                                lhs_dilation, rhs_dilation, dimension_numbers,
                                feature_group_count, batch_group_count,
-                               precision_config, padding_type));
+                               precision_config, padding_type,
+                               preferred_element_type));
 
     instr.set_custom_call_target("DynamicConvolutionKernelGrad");
     // The gradient of kernel has kernel shape and shouldn't have any dynamic
@@ -1544,14 +1578,15 @@ XlaOp XlaBuilder::DynamicConvForward(
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config, PaddingType padding_type) {
+    const PrecisionConfig* precision_config, PaddingType padding_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(
         HloInstructionProto instr,
-        DynamicConvInstruction(lhs, rhs, window_strides, padding, lhs_dilation,
-                               rhs_dilation, dimension_numbers,
-                               feature_group_count, batch_group_count,
-                               precision_config, padding_type));
+        DynamicConvInstruction(
+            lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+            dimension_numbers, feature_group_count, batch_group_count,
+            precision_config, padding_type, preferred_element_type));
     instr.set_custom_call_target("DynamicConvolutionForward");
 
     return AddInstruction(std::move(instr), HloOpcode::kCustomCall, {lhs, rhs});
@@ -3002,17 +3037,25 @@ XlaOp XlaBuilder::SelectAndScatterWithGeneralPadding(
 XlaOp XlaBuilder::ReducePrecision(XlaOp operand, const int exponent_bits,
                                   const int mantissa_bits) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferReducePrecisionShape(
                             *operand_shape, exponent_bits, mantissa_bits));
-    *instr.mutable_shape() = shape.ToProto();
-    instr.set_exponent_bits(exponent_bits);
-    instr.set_mantissa_bits(mantissa_bits);
-    return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
-                          {operand});
+    return ReducePrecisionInternal(shape, operand, exponent_bits,
+                                   mantissa_bits);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ReducePrecisionInternal(const Shape& shape,
+                                                    XlaOp operand,
+                                                    const int exponent_bits,
+                                                    const int mantissa_bits) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_exponent_bits(exponent_bits);
+  instr.set_mantissa_bits(mantissa_bits);
+  return AddInstruction(std::move(instr), HloOpcode::kReducePrecision,
+                        {operand});
 }
 
 void XlaBuilder::Send(XlaOp operand, const ChannelHandle& handle) {
@@ -3238,29 +3281,36 @@ XlaOp XlaBuilder::RemoveDynamicDimension(XlaOp operand, int64 dimension) {
 
 XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(const Shape* val_shape, GetShapePtr(val));
 
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferSetDimensionSizeShape(
                             *operand_shape, *val_shape, dimension));
-    // Setting an op's dynamic dimension to the static size is a noop.
-    TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
-                        LookUpInstruction(val));
-    if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
-        HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          Literal::CreateFromProto(val_proto->literal(), true));
-      if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
-        return operand;
-      }
-    }
-    *instr.mutable_shape() = shape.ToProto();
-    instr.add_dimensions(dimension);
-    return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
-                          {operand, val});
+    return SetDimensionSizeInternal(shape, operand, val, dimension);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::SetDimensionSizeInternal(const Shape& shape,
+                                                     XlaOp operand, XlaOp val,
+                                                     int64 dimension) {
+  // Setting an op's dynamic dimension to the static size is a noop.
+  TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
+                      LookUpInstruction(val));
+  if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
+      HloOpcode::kConstant) {
+    TF_ASSIGN_OR_RETURN(auto literal,
+                        Literal::CreateFromProto(val_proto->literal(), true));
+    if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+      return operand;
+    }
+  }
+
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.add_dimensions(dimension);
+  return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
+                        {operand, val});
 }
 
 StatusOr<bool> XlaBuilder::IsConstant(XlaOp operand) const {
@@ -3286,12 +3336,21 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
   *program_shape->mutable_result() =
       ShapeUtil::ChangeElementType(Shape(root->shape()), PRED).ToProto();
 
-  std::vector<HloComputationProto> called_computatons;
+  std::vector<HloComputationProto> called_computations;
+  auto operand_is_constant = [&](const HloInstructionProto* instr_proto,
+                                 int64 operand_index) -> StatusOr<bool> {
+    int64 operand_id = instr_proto->operand_ids(operand_index);
+    bool is_constant = true;
+    absl::flat_hash_set<int64> visited;
+    IsConstantVisitor(operand_id, &visited, &is_constant);
+    return is_constant;
+  };
   // Process instruction and copy it into the new graph. The new node in the new
   // graph with have id set to `id`.
   auto process_instruction = [&](const HloInstructionProto* instr_proto,
                                  bool need_rewrite, int64 id,
-                                 absl::Span<int64 const> operand_ids) {
+                                 absl::Span<int64 const> operand_ids,
+                                 int64* global_id) {
     // Rewrite the instruction with following rules:
     // - Unary ops: Convert into bitcast (identity) with type Pred.
     // - Binary ops: Convert into binary or.
@@ -3302,6 +3361,8 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     // contant False if dimension is static.
     // - Reduce: Convert to reduce or.
     // - Constant: Convert to constant False.
+    // - Reshape, slice, transpose, pad:
+    //   Convert into predicate type with same opcode.
     // - Other ops: Not supported.
     // Create the instruction for the new handle.
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
@@ -3317,6 +3378,17 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     if (!need_rewrite) {
       *new_instr->mutable_name() =
           GetFullName(instr_proto->opcode(), kNameSeparator, id);
+      if (opcode == HloOpcode::kReduce) {
+        // Copy the reducer to the new module, with a new id that's same as the
+        // reduce op.
+        HloComputationProto* reducer =
+            &embedded_[new_instr->called_computation_ids(0)];
+        int64 reducer_id = (*global_id)++;
+        new_instr->clear_called_computation_ids();
+        new_instr->add_called_computation_ids(reducer_id);
+        called_computations.push_back(CopyReducer(
+            reducer_id, reducer, /*rewrite_into_pred=*/false, global_id));
+      }
       return Status::OK();
     }
     *new_instr->mutable_shape() = ConvertShapeProtoToPred(instr_proto->shape());
@@ -3371,14 +3443,33 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
         CHECK_EQ(instr_proto->operand_ids_size(), 2);
         *new_instr->mutable_opcode() = HloOpcodeString(HloOpcode::kOr);
         break;
-      case HloOpcode::kSelect:
+      case HloOpcode::kSelect: {
+        TF_ASSIGN_OR_RETURN(bool constant_predicate,
+                            operand_is_constant(instr_proto, 0));
+        if (!constant_predicate) {
+          // If the predicate operand is not constant, conservatively assume the
+          // entire result values are dynamic.
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
         break;
-      case HloOpcode::kGather:
+      }
+      case HloOpcode::kGather: {
+        TF_ASSIGN_OR_RETURN(bool constant_indices,
+                            operand_is_constant(instr_proto, 1));
+        if (!constant_indices) {
+          // If the indices operand is not constant, conservatively assume the
+          // entire result values are dynamic.
+          SetInstructionAsConstant(new_instr, id, new_shape, true);
+        }
         break;
+      }
       case HloOpcode::kReduce: {
-        int64 reducer_id = new_instr->called_computation_ids(0);
-        called_computatons.push_back(
-            CreateReduceOr(reducer_id, &embedded_[reducer_id]));
+        auto* reducer = &embedded_[new_instr->called_computation_ids(0)];
+        int64 reducer_id = (*global_id)++;
+        new_instr->clear_called_computation_ids();
+        new_instr->add_called_computation_ids(reducer_id);
+        called_computations.push_back(CopyReducer(
+            reducer_id, reducer, /*rewrite_into_pred=*/true, global_id));
         break;
       }
       case HloOpcode::kTuple:
@@ -3388,6 +3479,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
       case HloOpcode::kBroadcast:
       case HloOpcode::kConcatenate:
       case HloOpcode::kReshape:
+      case HloOpcode::kPad:
         break;
       case HloOpcode::kGetDimensionSize: {
         int64 dimension = instr_proto->dimensions(0);
@@ -3475,29 +3567,57 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
     }
     TF_ASSIGN_OR_RETURN(HloOpcode opcode,
                         StringToHloOpcode(instr_proto->opcode()));
+    bool should_visit_operand = true;
+    if (opcode == HloOpcode::kGetDimensionSize) {
+      // We rewrite gte instructions into constants based on its operand shape
+      // so no need to visit their operands.
+      should_visit_operand = false;
+    }
+
+    if (opcode == HloOpcode::kSelect) {
+      TF_ASSIGN_OR_RETURN(bool constant_predicate,
+                          operand_is_constant(instr_proto, 0));
+      // If the predicate operand (first operand) is non-constant, we don't
+      // visit operands and we say the all result values are dynamic.
+      should_visit_operand = constant_predicate;
+    }
+    if (opcode == HloOpcode::kGather) {
+      TF_ASSIGN_OR_RETURN(bool constant_indices,
+                          operand_is_constant(instr_proto, 1));
+      // If the indices operand (second operand) is non-constant, we don't
+      // visit operands and we say the all result values are dynamic.
+      should_visit_operand = constant_indices;
+    }
+    if (opcode == HloOpcode::kGetDimensionSize && next_operand == 0) {
+      // Always rewrite get dimension size into constant.
+      item.need_rewrite = true;
+    }
     if (next_operand >= instr_proto->operand_ids_size() ||
-        opcode == HloOpcode::kGetDimensionSize ||
-        InstrIsSetBound(instr_proto)) {
+        !should_visit_operand || InstrIsSetBound(instr_proto)) {
       // No more operands to process, process self.
-      int64 new_id = ++global_id;
+      int64 new_id = global_id++;
       VLOG(3) << "new_id: " << new_id << "instr: " << instr_proto->name();
       TF_RETURN_IF_ERROR(process_instruction(instr_proto, item.need_rewrite,
-                                             new_id, item.processed_operands));
+                                             new_id, item.processed_operands,
+                                             &global_id));
       stacktop_id = new_id;
       seen[item_key] = stacktop_id;
       worklist.pop_back();
-      continue;
+    } else {
+      // Visit and process operand.  If an operand doesn't need rewrite
+      // (predicate of kSelect, or indices of kGather), we also don't rewrite
+      // its ancestors.
+      WorkItem next_item(instr_proto->operand_ids(next_operand),
+                         item.need_rewrite);
+      if (opcode == HloOpcode::kSelect && next_operand == 0) {
+        next_item.need_rewrite = false;
+      }
+      if (opcode == HloOpcode::kGather && next_operand == 1) {
+        next_item.need_rewrite = false;
+      }
+      // Push next operand into worklist.
+      worklist.push_back(next_item);
     }
-
-    WorkItem next_item(instr_proto->operand_ids(next_operand), true);
-    if (opcode == HloOpcode::kSelect && next_operand == 0) {
-      next_item.need_rewrite = false;
-    }
-    if (opcode == HloOpcode::kGather && next_operand == 1) {
-      next_item.need_rewrite = false;
-    }
-    // Push next operand into worklist.
-    worklist.push_back(next_item);
   }
   TF_RET_CHECK(stacktop_id != -1);
   entry.set_root_id(stacktop_id);
@@ -3511,10 +3631,14 @@ StatusOr<XlaComputation> XlaBuilder::BuildDynamicInferenceGraph(XlaOp root_op) {
   module->set_entry_computation_name(entry.name());
   module->set_entry_computation_id(entry.id());
   *module->mutable_host_program_shape() = *program_shape;
-  for (auto& called_comp : called_computatons) {
+  for (auto& called_comp : called_computations) {
     *module->add_computations() = called_comp;
   }
   *module->add_computations() = std::move(entry);
+  // Make sure all ids appear in the computation with ascending order.
+  absl::c_sort(*module->mutable_computations(),
+               [](const HloComputationProto& c1,
+                  const HloComputationProto& c2) { return c1.id() < c2.id(); });
   XLA_VLOG_LINES(3, module->DebugString());
   return std::move(computation);
 }
@@ -3974,11 +4098,26 @@ XlaOp Eq(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
+static XlaOp CompareTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                               absl::Span<const int64> broadcast_dimensions,
+                               ComparisonDirection comparison_direction) {
+  auto b = lhs.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto operand_shape, b->GetShape(lhs));
+    auto operand_element_type = operand_shape.element_type();
+    auto compare_type =
+        primitive_util::IsFloatingPointType(operand_element_type)
+            ? Comparison::Type::kFloatTotalOrder
+            : Comparison::DefaultComparisonType(operand_element_type);
+    return Compare(lhs, rhs, broadcast_dimensions, comparison_direction,
+                   compare_type);
+  });
+}
+
 XlaOp EqTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kEq);
 }
 
 XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
@@ -3988,9 +4127,8 @@ XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp NeTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kNe);
 }
 
 XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
@@ -4000,9 +4138,8 @@ XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp GeTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kGe);
 }
 
 XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
@@ -4012,9 +4149,8 @@ XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp GtTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kGt);
 }
 
 XlaOp Le(const XlaOp lhs, const XlaOp rhs,
@@ -4024,10 +4160,10 @@ XlaOp Le(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp LeTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  auto compare_type = Comparison::Type::kFloatTotalOrder;
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe,
-                 compare_type);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kLe);
 }
+
 XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
@@ -4035,8 +4171,8 @@ XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
 
 XlaOp LtTotalOrder(const XlaOp lhs, const XlaOp rhs,
                    absl::Span<const int64> broadcast_dimensions) {
-  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt,
-                 Comparison::Type::kFloatTotalOrder);
+  return CompareTotalOrder(lhs, rhs, broadcast_dimensions,
+                           ComparisonDirection::kLt);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
@@ -4058,44 +4194,49 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {
 }
 
 XlaOp Dot(const XlaOp lhs, const XlaOp rhs,
-          const PrecisionConfig* precision_config) {
-  return lhs.builder()->Dot(lhs, rhs, precision_config);
+          const PrecisionConfig* precision_config,
+          absl::optional<PrimitiveType> preferred_element_type) {
+  return lhs.builder()->Dot(lhs, rhs, precision_config, preferred_element_type);
 }
 
 XlaOp DotGeneral(const XlaOp lhs, const XlaOp rhs,
                  const DotDimensionNumbers& dimension_numbers,
-                 const PrecisionConfig* precision_config) {
+                 const PrecisionConfig* precision_config,
+                 absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DotGeneral(lhs, rhs, dimension_numbers,
-                                   precision_config);
+                                   precision_config, preferred_element_type);
 }
 
 XlaOp Conv(const XlaOp lhs, const XlaOp rhs,
            absl::Span<const int64> window_strides, Padding padding,
            int64 feature_group_count, int64 batch_group_count,
-           const PrecisionConfig* precision_config) {
+           const PrecisionConfig* precision_config,
+           absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->Conv(lhs, rhs, window_strides, padding,
                              feature_group_count, batch_group_count,
-                             precision_config);
+                             precision_config, preferred_element_type);
 }
 
-XlaOp ConvWithGeneralPadding(const XlaOp lhs, const XlaOp rhs,
-                             absl::Span<const int64> window_strides,
-                             absl::Span<const std::pair<int64, int64>> padding,
-                             int64 feature_group_count, int64 batch_group_count,
-                             const PrecisionConfig* precision_config) {
+XlaOp ConvWithGeneralPadding(
+    const XlaOp lhs, const XlaOp rhs, absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvWithGeneralPadding(
       lhs, rhs, window_strides, padding, feature_group_count, batch_group_count,
-      precision_config);
+      precision_config, preferred_element_type);
 }
 
 XlaOp ConvWithGeneralDimensions(
     const XlaOp lhs, const XlaOp rhs, absl::Span<const int64> window_strides,
     Padding padding, const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config) {
+    const PrecisionConfig* precision_config,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
-      batch_group_count, precision_config);
+      batch_group_count, precision_config, preferred_element_type);
 }
 
 XlaOp ConvGeneral(const XlaOp lhs, const XlaOp rhs,
@@ -4103,10 +4244,11 @@ XlaOp ConvGeneral(const XlaOp lhs, const XlaOp rhs,
                   absl::Span<const std::pair<int64, int64>> padding,
                   const ConvolutionDimensionNumbers& dimension_numbers,
                   int64 feature_group_count, int64 batch_group_count,
-                  const PrecisionConfig* precision_config) {
-  return lhs.builder()->ConvGeneral(lhs, rhs, window_strides, padding,
-                                    dimension_numbers, feature_group_count,
-                                    batch_group_count, precision_config);
+                  const PrecisionConfig* precision_config,
+                  absl::optional<PrimitiveType> preferred_element_type) {
+  return lhs.builder()->ConvGeneral(
+      lhs, rhs, window_strides, padding, dimension_numbers, feature_group_count,
+      batch_group_count, precision_config, preferred_element_type);
 }
 
 XlaOp ConvGeneralDilated(const XlaOp lhs, const XlaOp rhs,
@@ -4116,26 +4258,27 @@ XlaOp ConvGeneralDilated(const XlaOp lhs, const XlaOp rhs,
                          absl::Span<const int64> rhs_dilation,
                          const ConvolutionDimensionNumbers& dimension_numbers,
                          int64 feature_group_count, int64 batch_group_count,
-                         const PrecisionConfig* precision_config) {
+                         const PrecisionConfig* precision_config,
+                         absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->ConvGeneralDilated(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
       dimension_numbers, feature_group_count, batch_group_count,
-      precision_config);
+      precision_config, preferred_element_type);
 }
 
-XlaOp DynamicConvInputGrad(XlaOp input_sizes, const XlaOp lhs, const XlaOp rhs,
-                           absl::Span<const int64> window_strides,
-                           absl::Span<const std::pair<int64, int64>> padding,
-                           absl::Span<const int64> lhs_dilation,
-                           absl::Span<const int64> rhs_dilation,
-                           const ConvolutionDimensionNumbers& dimension_numbers,
-                           int64 feature_group_count, int64 batch_group_count,
-                           const PrecisionConfig* precision_config,
-                           PaddingType padding_type) {
+XlaOp DynamicConvInputGrad(
+    XlaOp input_sizes, const XlaOp lhs, const XlaOp rhs,
+    absl::Span<const int64> window_strides,
+    absl::Span<const std::pair<int64, int64>> padding,
+    absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
+    const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 feature_group_count, int64 batch_group_count,
+    const PrecisionConfig* precision_config, PaddingType padding_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DynamicConvInputGrad(
       input_sizes, lhs, rhs, window_strides, padding, lhs_dilation,
       rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
-      precision_config, padding_type);
+      precision_config, padding_type, preferred_element_type);
 }
 
 XlaOp DynamicConvKernelGrad(
@@ -4144,11 +4287,12 @@ XlaOp DynamicConvKernelGrad(
     absl::Span<const int64> lhs_dilation, absl::Span<const int64> rhs_dilation,
     const ConvolutionDimensionNumbers& dimension_numbers,
     int64 feature_group_count, int64 batch_group_count,
-    const PrecisionConfig* precision_config, PaddingType padding_type) {
+    const PrecisionConfig* precision_config, PaddingType padding_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
   return activations.builder()->DynamicConvKernelGrad(
       activations, gradients, window_strides, padding, lhs_dilation,
       rhs_dilation, dimension_numbers, feature_group_count, batch_group_count,
-      precision_config, padding_type);
+      precision_config, padding_type, preferred_element_type);
 }
 
 XlaOp DynamicConvForward(const XlaOp lhs, const XlaOp rhs,
@@ -4159,11 +4303,12 @@ XlaOp DynamicConvForward(const XlaOp lhs, const XlaOp rhs,
                          const ConvolutionDimensionNumbers& dimension_numbers,
                          int64 feature_group_count, int64 batch_group_count,
                          const PrecisionConfig* precision_config,
-                         PaddingType padding_type) {
+                         PaddingType padding_type,
+                         absl::optional<PrimitiveType> preferred_element_type) {
   return lhs.builder()->DynamicConvForward(
       lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
       dimension_numbers, feature_group_count, batch_group_count,
-      precision_config, padding_type);
+      precision_config, padding_type, preferred_element_type);
 }
 
 XlaOp Fft(const XlaOp operand, FftType fft_type,

@@ -26,11 +26,10 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -108,7 +107,7 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
   auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
   if (element_shape.hasStaticShape()) {
     auto shape = element_shape.getShape();
-    // Convert int64 to int64_.
+    // Convert int64 to int64_t.
     llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
     return dims;
   }
@@ -141,6 +140,20 @@ llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
           if (!t || t.getShape().empty()) return llvm::None;
           return RankedTensorType::get(t.getShape().drop_front(),
                                        t.getElementType());
+        } else if (auto gather =
+                       llvm::dyn_cast<TF::TensorArrayGatherV3Op>(user)) {
+          // Try to infer from result type of gather.
+          auto t = gather.value().getType().dyn_cast<RankedTensorType>();
+          if (t && !t.getShape().empty())
+            return RankedTensorType::get(t.getShape().drop_front(),
+                                         t.getElementType());
+          // Try to infer from `element_shape` attribute of gather.
+          auto element_shape = gather.element_shapeAttr()
+                                   .dyn_cast_or_null<mlir::TF::ShapeAttr>();
+          if (element_shape && element_shape.hasStaticShape()) {
+            return RankedTensorType::get(element_shape.getShape(),
+                                         gather.dtype());
+          }
         }
         return llvm::None;
       });
@@ -739,7 +752,7 @@ LogicalResult HandlePartitionedCallOp(
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call.getAttrs());
-    new_call.setAttr(
+    new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.ret_forward_input) {

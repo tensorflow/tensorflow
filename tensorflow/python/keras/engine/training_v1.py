@@ -55,6 +55,7 @@ from tensorflow.python.keras.engine import training_utils_v1
 from tensorflow.python.keras.mixed_precision import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision import policy
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -229,7 +230,7 @@ class Model(training_lib.Model):
     """
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not training_lib._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+          (not saving_utils.is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
@@ -2753,7 +2754,7 @@ class Model(training_lib.Model):
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
-    Refer to tensorflow/python/keras/distribute/multi_worker_training_state.py
+    Refer to tensorflow/python/keras/distribute/worker_training_state.py
     for more information.
 
     Arguments:
@@ -2807,20 +2808,12 @@ class Model(training_lib.Model):
     Returns:
       Whether this model indicates it's working in multi-worker settings.
     """
-    strategy = self._get_distribution_strategy()
-    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
-
-  def _get_distribution_strategy(self):
-    # If the model was compiled under the scope of a `tf.distribute.Strategy',
-    # `self._distribution_strategy` would have been set and model should infer
-    # that as the used strategy (even if it's out of strategy scope already).
     strategy = self._distribution_strategy
 
     # Otherwise, use the strategy whose scope this is in.
     if not strategy and distribution_strategy_context.has_strategy():
       strategy = distribution_strategy_context.get_strategy()
-
-    return strategy
+    return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
   @property
   def _trackable_saved_model_saver(self):

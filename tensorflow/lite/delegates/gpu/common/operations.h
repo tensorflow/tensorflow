@@ -505,6 +505,9 @@ BHWC CalculateOutputShape(const BHWC& input,
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
+// @return shape of a tensor after Mean operation is applied to the given input.
+BHWDC CalculateOutputShape(const BHWDC& input, const MeanAttributes& attr);
+
 struct ElementwiseAttributes {
   TensorOrScalar param;
   // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second

@@ -551,49 +551,49 @@ func @testAvgPoolWrongStridesType(tensor<1x7x7x16xf32>) -> tensor<1x1x1x16xf32> 
 // -----
 
 // CHECK-LABEL: func @testValidConv2D
-func @testValidConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
-  return %0 : tensor<256x30x30x16xf32>
+func @testValidConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
 }
 
 // -----
 
 // CHECK-LABEL: func @testValidDynamicConv2D
-func @testValidDynamicConv2D(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+func @testValidDynamicConv2D(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<?x?x?x?xf32> {
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<*xf32>, tensor<*xf32>) -> tensor<?x?x?x?xf32>
+  return %0 : tensor<?x?x?x?xf32>
 }
 
 // -----
 
 // CHECK-LABEL: func @testValidConv3D
-func @testValidConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x30x30x30x16xf32> {
-  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x30x30x30x16xf32>
-  return %0 : tensor<256x30x30x30x16xf32>
+func @testValidConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x32x16xf32> {
+  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x32x16xf32>
+  return %0 : tensor<256x32x32x32x16xf32>
 }
 
 // -----
 
-func @testConv2D(%arg0: tensor<256x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
+func @testConv2D(%arg0: tensor<256x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
   // expected-error @+1 {{requires operands to be 4D tensor}}
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
-  return %0 : tensor<256x30x30x16xf32>
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
 }
 
 // -----
 
-func @testConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
-  // expected-error @+1 {{requires result to be 5D tensor}}
-  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
-  return %0 : tensor<256x30x30x16xf32>
+func @testConv3D(%arg0: tensor<256x32x32x32x3xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+1 {{'tf.Conv3D' op inferred type incompatible with return type of operation}}
+  %0 = "tf.Conv3D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<256x32x32x32x3xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
 }
 
 // -----
 
-func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x2x16xf32>) -> tensor<256x30x30x16xf32> {
+func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x2x16xf32>) -> tensor<256x32x32x16xf32> {
   // expected-error @+1 {{requires the number of input channels to be divisible by the number of filter input channels; found 3 and 2, respectively}}
-  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x2x16xf32>) -> tensor<256x30x30x16xf32>
-  return %0 : tensor<256x30x30x16xf32>
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x2x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
 }
 
 // -----
@@ -607,7 +607,7 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
 // -----
 
 func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
-  // expected-error @+1 {{requires explicit_paddings attribute length to be 8; actual length 4}}
+  // expected-error @+1 {{requires explicit_paddings attribute length to be 8}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "EXPLICIT", strides = [1, 1, 1, 1], explicit_paddings = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
   return %0 : tensor<256x30x30x16xf32>
 }
@@ -634,6 +634,38 @@ func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) ->
   // expected-error @+1 {{requires positive strides}}
   %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [0, 1, 1, 0]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
   return %0 : tensor<256x30x30x16xf32>
+}
+
+// -----
+
+func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32> {
+  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x30x30x16xf32>
+  return %0 : tensor<256x30x30x16xf32>
+}
+
+// -----
+
+func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32> {
+  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "SAME", strides = [1, 2, 3, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x16x30x16xf32>
+  return %0 : tensor<256x16x30x16xf32>
+}
+
+// -----
+
+func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "EXPLICIT", dilations = [1, 2, 3, 4], explicit_paddings = [1, 2, 3, 4, 5, 6, 7, 8], strides = [5, 6, 7, 8]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
+}
+
+// -----
+
+func @testConv2D(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
+  // expected-error @+1 {{'tf.Conv2D' op inferred type incompatible with return type of operation}}
+  %0 = "tf.Conv2D"(%arg0, %arg1) {padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32>
+  return %0 : tensor<256x32x32x16xf32>
 }
 
 // -----
@@ -1849,7 +1881,7 @@ func private @testWhileBody(tensor<*xf32>) -> (tensor<*xi32>)
 // Test invalid 'While' operation
 func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 ^bb0(%arg0: tensor<*xf32>):
-  // expected-error @+1 {{'tf.While' op body result type tensor<*xi32> is incompatible with result type tensor<*xf32> at index 0}}
+  // expected-error @+1 {{'tf.While' op result type tensor<*xf32> is incompatible with body result type tensor<*xi32> at index 0}}
   %1 = "tf.While"(%arg0) {
     cond = @testWhileCond,
     body = @testWhileBody,
@@ -1931,6 +1963,19 @@ func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.res
   } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
 
   return %1 : tensor<!tf.resource>
+}
+
+// -----
+
+func private @cond(tensor<1x?x3xf32>) -> tensor<i1>
+func private @body(tensor<1x?x3xf32>) -> tensor<1x?x3xf32>
+
+// Test shape invariant 'While' operation verifier with different operand and
+// result shapes.
+// CHECK-LABEL: func @testShapeInvariantWhile
+func @testShapeInvariantWhile(%arg0: tensor<1x2x3xf32>) -> tensor<1x8x3xf32> {
+  %0 = "tf.While"(%arg0) {cond = @cond, body = @body, is_stateless = false, shape_invariant} : (tensor<1x2x3xf32>) -> tensor<1x8x3xf32>
+  return %0 : tensor<1x8x3xf32>
 }
 
 // -----
@@ -2056,7 +2101,7 @@ func @testInvalidWhileRegion_I_BI_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
        ^bb0(%barg0: tensor<i32>, %barg1 : tensor<f32>):
         "tf.Yield"(%barg0) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2076,7 +2121,7 @@ func @testInvalidWhileRegion_I_BI_TypeMismatch(%arg0 : tensor<i32>) -> (tensor<i
         %c = "tf.Cast"(%barg) : (tensor<f32>) -> tensor<i32>
         "tf.Yield"(%c) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2084,7 +2129,7 @@ func @testInvalidWhileRegion_I_BI_TypeMismatch(%arg0 : tensor<i32>) -> (tensor<i
 // -----
 
 func @testInvalidWhileRegion_O_BO_CountMismatch(%arg0 : tensor<i32>) -> (tensor<i32>) {
-  // expected-error @+1 {{'tf.WhileRegion' op body results (size = 2) should have the same number of values as results (size = 1)}}
+  // expected-error @+1 {{'tf.WhileRegion' op results (size = 1) should have the same number of values as body results (size = 2)}}
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
@@ -2102,7 +2147,7 @@ func @testInvalidWhileRegion_O_BO_CountMismatch(%arg0 : tensor<i32>) -> (tensor<
 // -----
 
 func @testInvalidWhileRegionMismatch_O_BO_TypeMismatch(%arg0 : tensor<i32>, %arg1: tensor<f32>) -> (tensor<i32>) {
-  // expected-error @+1 {{'tf.WhileRegion' op body result type tensor<f32> is incompatible with result type tensor<i32> at index 0}}
+  // expected-error @+1 {{'tf.WhileRegion' op result type tensor<i32> is incompatible with body result type tensor<f32> at index 0}}
   %0 = "tf.WhileRegion"(%arg0) (
     {
      ^bb0(%carg: tensor<i32>):
@@ -2166,7 +2211,7 @@ func @testInvalidWhileRegionConditionOutputCount2(%arg : tensor<i32>) -> (tensor
        ^bb0(%barg: tensor<i32>):
         "tf.Yield"(%barg) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2184,7 +2229,7 @@ func @testInvalidWhileRegionConditionOutputCount0(%arg : tensor<i32>) -> (tensor
        ^bb0(%barg: tensor<i32>):
         "tf.Yield"(%barg) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
@@ -2202,11 +2247,28 @@ func @testInvalidWhileRegionConditionOutputType(%arg : tensor<i32>) -> (tensor<i
        ^bb0(%barg: tensor<i32>):
         "tf.Yield"(%barg) : (tensor<i32>) -> ()
      }
-  ) : (tensor<i32>) -> (tensor<i32>)
+  ) {is_stateless = false} : (tensor<i32>) -> (tensor<i32>)
 
   return %0 : tensor<i32>
 }
 
+// -----
+
+// Test shape invariant 'WhileRegion' operation verifier with different operand
+// and result shapes.
+// CHECK-LABEL: func @testShapeInvariantWhileRegion
+func @testShapeInvariantWhileRegion(%arg0: tensor<1x2x3xf32>) -> tensor<1x8x3xf32> {
+  %0 = "tf.WhileRegion"(%arg0) ( {
+  ^cond(%carg0: tensor<1x?x3xf32>):
+    %1 = "tf.SomeCondOp"(%carg0) : (tensor<1x?x3xf32>) -> tensor<i1>
+    "tf.Yield"(%1) : (tensor<i1>) -> ()
+  }, {
+  ^body(%barg0: tensor<1x?x3xf32>):
+    %1 = "tf.SomeBodyOp"(%barg0) : (tensor<1x?x3xf32>) -> tensor<1x?x3xf32>
+    "tf.Yield"(%1) : (tensor<1x?x3xf32>) -> ()
+  }) {is_stateless = false, shape_invariant} : (tensor<1x2x3xf32>) -> tensor<1x8x3xf32>
+  return %0 : tensor<1x8x3xf32>
+}
 
 // -----
 
@@ -3500,6 +3562,22 @@ func @testParseExampleV2RaggedMismatchedOutputLengths(%serialized: tensor<32x!tf
 
 // -----
 
+// Legal BatchMatMul op.
+func @testBatchMatMul(%lhs: tensor<2x?x2x?x3x5xf32>, %rhs: tensor<2x2x?x?x5x7xf32>) {
+  %0 = "tf.BatchMatMul"(%lhs, %rhs) : (tensor<2x?x2x?x3x5xf32>, tensor<2x2x?x?x5x7xf32>) -> tensor<2x?x?x?x3x7xf32>
+  return
+}
+
+// -----
+
+// Mismatching batch dimensions.
+func @testBatchMatMul(%lhs: tensor<1x3x5xf32>, %rhs: tensor<2x5x7xf32>) {
+  // expected-error @+1 {{found mismatching batch dimensions for lhs shape 'tensor<1x3x5xf32>' and rhs shape 'tensor<2x5x7xf32>'}}
+  %0 = "tf.BatchMatMul"(%lhs, %rhs) : (tensor<1x3x5xf32>, tensor<2x5x7xf32>) -> tensor<2x3x7xf32>
+}
+
+// -----
+
 func @testBatchMatMulV2(%lhs: tensor<f32>, %rhs: tensor<10x10xf32>) {
   // expected-error @+1 {{requires lhs operand to have rank at least two}}
   %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<f32>, tensor<10x10xf32>) -> tensor<10x10xf32>
@@ -4024,4 +4102,36 @@ func @testAddWithRef(%arg0: tensor<!tf.f64ref>, %arg1: tensor<f64>) -> tensor<f6
   // CHECK: tf.Add
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<!tf.f64ref>, tensor<f64>) -> tensor<f64>
   return %0 : tensor<f64>
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_reads_indices' to be the same size as number of resource handles in 'args' (1), but got 2}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0, 1], device_var_updates_indices = [0]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_updates_indices' to be the same size as number of resource handles in 'args' (1), but got 2}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [0, 1]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_reads_indices' to contain values of at least 0, but got -1 at index 0}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [-1], device_var_updates_indices = [0]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
+}
+
+// -----
+
+func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<3x!tf.string>) {
+  // expected-error@below {{requires 'device_var_updates_indices' to contain values of at least -1, but got -2 at index 0}}
+  "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [-2]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
+  return
 }

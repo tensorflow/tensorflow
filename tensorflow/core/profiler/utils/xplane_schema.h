@@ -107,6 +107,7 @@ enum HostEventType {
   kMergeInputTensors,
   kScheduleWithoutSplit,
   kScheduleWithSplit,
+  kASBSQueueSchedule,
   // JAX related.
   kExecuteOnLocalDevices,
   // GPU related.
@@ -163,6 +164,7 @@ enum StatType {
   kMemcpyDetails,
   kMemallocDetails,
   kKernelAnnotation,
+  kNVTXRange,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.
@@ -199,7 +201,11 @@ enum StatType {
   kBatchSizeAfterPadding,
   kPaddingAmount,
   kBatchingInputTaskSize,
-  kLastStatType = kBatchingInputTaskSize,
+  // GPU occupancy metrics
+  kTheoreticalOccupancyPct,
+  kOccupancyMinGridSize,
+  kOccupancySuggestedBlockSize,
+  kLastStatType = kOccupancySuggestedBlockSize,
 };
 
 inline std::string GpuPlaneName(int32 device_ordinal) {

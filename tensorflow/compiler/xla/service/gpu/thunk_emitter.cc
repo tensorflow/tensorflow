@@ -33,6 +33,10 @@ limitations under the License.
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#endif
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #endif
 
@@ -258,8 +262,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
             /*output_data=*/output_data,
             /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev,
-            /*output_tuple=*/GetAllocationSlice(*custom_call)));
+            /*output_inv_stddev=*/output_inv_stddev));
     return Status::OK();
   }
 
@@ -295,8 +298,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
         /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
         /*output_grad_data=*/output_grad_data,
         /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset,
-        /*output_tuple=*/GetAllocationSlice(*custom_call)));
+        /*output_grad_offset=*/output_grad_offset));
     return Status::OK();
   }
 
@@ -306,17 +308,23 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     for (const auto* operand : custom_call->operands()) {
       operand_slices.push_back(GetAllocationSlice(*operand));
     }
-    auto tuple_result_slice = GetAllocationSlice(*custom_call);
     auto conv_result_slice = GetAllocationSlice(*custom_call, {0});
     auto scratch_slice = GetAllocationSlice(*custom_call, {1});
+
+    // Assert that the tuple slice is not used by anyone directly. That is, all
+    // users of the tuple output are get-tuple-element. Also assert that the
+    // second element of the tuple (the scratch buffer) is not used by anyone.
+    for (const HloInstruction* user : custom_call->users()) {
+      TF_RET_CHECK(user->opcode() == HloOpcode::kGetTupleElement &&
+                   user->tuple_index() == 0);
+    }
 
     TF_ASSIGN_OR_RETURN(
         GpuConvConfig config,
         GetGpuConvConfig(Cast<HloCustomCallInstruction>(custom_call)));
     AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
         context_->GetThunkInfo(custom_call), std::move(config),
-        std::move(operand_slices), conv_result_slice, scratch_slice,
-        tuple_result_slice));
+        std::move(operand_slices), conv_result_slice, scratch_slice));
     return Status::OK();
   }
 
@@ -370,7 +378,10 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
 
     return Status::OK();
   }
+#endif
 
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
           custom_call->custom_call_target(), std::string(platform_name()))) {
     auto get_slices_for_instr = [&](const HloInstruction* instr) {

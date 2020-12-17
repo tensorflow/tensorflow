@@ -219,8 +219,13 @@ class ModelDatasetOp::Dataset : public DatasetBase {
           tf_shared_lock l(mu_);
           model_input_time = SelfInputTime();
         }
+
+        int64 optimization_start_us = EnvTime::NowMicros();
         model_->Optimize(dataset()->algorithm_, cpu_budget_, ram_budget_,
                          /*model_input_time=*/0);
+        VLOG(2) << "Optimized for "
+                << (EnvTime::NowMicros() - optimization_start_us) << " us.";
+
         // Exponentially increase the period of running the optimization
         // until a threshold is reached.
         if (optimization_period_ms != kOptimizationPeriodThresholdMs) {

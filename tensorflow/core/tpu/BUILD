@@ -8,6 +8,8 @@ load(
 
 package(
     default_visibility = [
+        "//tensorflow/compiler/mlir/tensorflow:__subpackages__",
+        "//tensorflow/compiler/tf2xla/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
@@ -114,6 +116,7 @@ cc_library(
     name = "tpu_api",
     srcs = ["tpu_api.cc"],
     hdrs = ["tpu_api.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
         ":tpu_executor_api",
@@ -342,6 +345,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":libtftpu_header",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/stream_executor/tpu:c_api_decl",
         "//tensorflow/stream_executor/tpu:proto_helper",
     ],

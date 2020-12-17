@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/verification_utils.h"
 
 namespace mlir {
 namespace TF {
@@ -60,15 +61,18 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     if (!reshape_type.hasStaticShape()) return failure();
     ArrayRef<int64_t> reshape_shape = reshape_type.getShape();
 
+    auto input_type = op.input().getType().cast<ShapedType>();
+    auto output_type = op.output().getType().cast<ShapedType>();
+
+    if (!input_type.hasRank() || !output_type.hasRank()) return failure();
+
     // The pattern attempts to reduce the rank of the input to BroadcastTo.
     // Thus, we fail to match if the consuming reshape rank is larger.
-    ArrayRef<int64_t> input_shape =
-        op.input().getType().cast<ShapedType>().getShape();
+    ArrayRef<int64_t> input_shape = input_type.getShape();
     if (reshape_shape.size() > input_shape.size()) return failure();
 
     // Extend the input shape with leading 1s to match the broadcast shape.
-    ArrayRef<int64_t> broadcast_shape =
-        op.output().getType().cast<ShapedType>().getShape();
+    ArrayRef<int64_t> broadcast_shape = output_type.getShape();
     SmallVector<int64_t, 4> input_shape_extended;
     input_shape_extended.append(broadcast_shape.size() - input_shape.size(), 1);
     input_shape_extended.append(input_shape.begin(), input_shape.end());
@@ -106,6 +110,8 @@ class SimplifyBroadcastReshape : public OpRewritePattern<BroadcastToOp> {
     }
 
     if (non_unit_dims != old_reshape_non_unit_dims) return failure();
+
+    if (failed(VerifyShapeOfReshapeOp(new_reshape_dims))) return failure();
 
     Type el_ty = getElementTypeOrSelf(op.getType());
     TF::ConstOp new_reshape_shape = GetI64ConstantTensor(

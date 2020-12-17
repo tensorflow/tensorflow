@@ -573,7 +573,10 @@ class Loader(object):
     filename = os.path.join(
         saved_model_utils.get_assets_dir(self._export_dir),
         self._asset_file_def[proto.asset_file_def_index].filename)
-    return tracking.Asset(filename), setattr
+    asset = tracking.Asset(filename)
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, asset.asset_path)
+    return asset, setattr
 
   def _recreate_function(self, proto):
     return function_deserialization.recreate_function(

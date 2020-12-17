@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/gpu_object.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/serialization_generated.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_linear_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/texture2d_desc.h"
@@ -53,7 +53,25 @@ data::DataType ToFB(DataType type) {
       return data::DataType::FLOAT16;
     case DataType::FLOAT32:
       return data::DataType::FLOAT32;
-    default:
+    case DataType::FLOAT64:
+      return data::DataType::FLOAT64;
+    case DataType::UINT8:
+      return data::DataType::UINT8;
+    case DataType::INT8:
+      return data::DataType::INT8;
+    case DataType::UINT16:
+      return data::DataType::UINT16;
+    case DataType::INT16:
+      return data::DataType::INT16;
+    case DataType::UINT32:
+      return data::DataType::UINT32;
+    case DataType::INT32:
+      return data::DataType::INT32;
+    case DataType::UINT64:
+      return data::DataType::UINT64;
+    case DataType::INT64:
+      return data::DataType::INT64;
+    case DataType::UNKNOWN:
       return data::DataType::UNKNOWN;
   }
 }
@@ -118,7 +136,25 @@ DataType ToEnum(data::DataType type) {
       return DataType::FLOAT16;
     case data::DataType::FLOAT32:
       return DataType::FLOAT32;
-    default:
+    case data::DataType::FLOAT64:
+      return DataType::FLOAT64;
+    case data::DataType::UINT8:
+      return DataType::UINT8;
+    case data::DataType::INT8:
+      return DataType::INT8;
+    case data::DataType::UINT16:
+      return DataType::UINT16;
+    case data::DataType::INT16:
+      return DataType::INT16;
+    case data::DataType::UINT32:
+      return DataType::UINT32;
+    case data::DataType::INT32:
+      return DataType::INT32;
+    case data::DataType::UINT64:
+      return DataType::UINT64;
+    case data::DataType::INT64:
+      return DataType::INT64;
+    case data::DataType::UNKNOWN:
       return DataType::UNKNOWN;
   }
 }
@@ -187,10 +223,6 @@ Layout ToEnum(data::Layout type) {
       return Layout::UNKNOWN;
   }
 }
-}  // namespace
-
-namespace cl {
-namespace {
 
 data::CalculationsPrecision ToFB(CalculationsPrecision type) {
   switch (type) {
@@ -220,17 +252,17 @@ data::TensorToGrid ToFB(TensorToGrid type) {
 
 data::CompilerOptions ToFB(CompilerOptions type) {
   switch (type) {
-    case CompilerOptions::ADRENO_FULL_SIMD_LINE:
+    case CompilerOptions::kAdrenoFullSimd:
       return data::CompilerOptions::ADRENO_FULL_SIMD_LINE;
-    case CompilerOptions::ADRENO_MORE_WAVES:
+    case CompilerOptions::kAdrenoMoreWaves:
       return data::CompilerOptions::ADRENO_MORE_WAVES;
-    case CompilerOptions::POWERVR_FP16:
+    case CompilerOptions::kClPowervrFp16:
       return data::CompilerOptions::POWERVR_FP16;
-    case CompilerOptions::CL_OPT_DISABLE:
+    case CompilerOptions::kClDisableOptimizations:
       return data::CompilerOptions::CL_OPT_DISABLE;
-    case CompilerOptions::CL_2_0:
+    case CompilerOptions::kCl20:
       return data::CompilerOptions::CL_2_0;
-    case CompilerOptions::CL_3_0:
+    case CompilerOptions::kCl30:
       return data::CompilerOptions::CL_3_0;
   }
 }
@@ -264,22 +296,21 @@ TensorToGrid ToEnum(data::TensorToGrid type) {
 CompilerOptions ToEnum(data::CompilerOptions type) {
   switch (type) {
     case data::CompilerOptions::ADRENO_FULL_SIMD_LINE:
-      return CompilerOptions::ADRENO_FULL_SIMD_LINE;
+      return CompilerOptions::kAdrenoFullSimd;
     case data::CompilerOptions::ADRENO_MORE_WAVES:
-      return CompilerOptions::ADRENO_MORE_WAVES;
+      return CompilerOptions::kAdrenoMoreWaves;
     case data::CompilerOptions::POWERVR_FP16:
-      return CompilerOptions::POWERVR_FP16;
+      return CompilerOptions::kClPowervrFp16;
     case data::CompilerOptions::CL_OPT_DISABLE:
-      return CompilerOptions::CL_OPT_DISABLE;
+      return CompilerOptions::kClDisableOptimizations;
     case data::CompilerOptions::CL_2_0:
-      return CompilerOptions::CL_2_0;
+      return CompilerOptions::kCl20;
     case data::CompilerOptions::CL_3_0:
-      return CompilerOptions::CL_3_0;
+      return CompilerOptions::kCl30;
   }
 }
 
 }  // namespace
-}  // namespace cl
 
 flatbuffers::Offset<data::Int2> Encode(
     const int2& v, flatbuffers::FlatBufferBuilder* builder) {
@@ -732,7 +763,6 @@ flatbuffers::Offset<data::Arguments> Encode(
   return arguments_builder.Finish();
 }
 
-namespace cl {
 flatbuffers::Offset<data::OperationDef> Encode(
     const OperationDef& def, flatbuffers::FlatBufferBuilder* builder) {
   std::vector<flatbuffers::Offset<tflite::gpu::data::TensorDescriptor>>
@@ -771,22 +801,6 @@ void Decode(const data::OperationDef* fb_def, OperationDef* def) {
     def->dst_tensors.push_back(std::move(desc));
   }
   def->precision = ToEnum(fb_def->precision());
-}
-
-flatbuffers::Offset<data::TensorDescWithId> Encode(
-    const TensorDescriptor& desc, const ValueId& id,
-    flatbuffers::FlatBufferBuilder* builder) {
-  auto desc_fb = Encode(desc, builder);
-  data::TensorDescWithIdBuilder desc_builder(*builder);
-  desc_builder.add_desc(desc_fb);
-  desc_builder.add_id(id);
-  return desc_builder.Finish();
-}
-
-void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
-            ValueId* id) {
-  Decode(fb_desc->desc(), desc);
-  *id = fb_desc->id();
 }
 
 absl::Status Decode(const data::GPUOperation* fb_op, GPUOperation* op) {
@@ -881,6 +895,24 @@ flatbuffers::Offset<data::GPUOperation> Encode(
   return op_builder.Finish();
 }
 
+namespace cl {
+
+flatbuffers::Offset<data::TensorDescWithId> Encode(
+    const TensorDescriptor& desc, const ValueId& id,
+    flatbuffers::FlatBufferBuilder* builder) {
+  auto desc_fb = Encode(desc, builder);
+  data::TensorDescWithIdBuilder desc_builder(*builder);
+  desc_builder.add_desc(desc_fb);
+  desc_builder.add_id(id);
+  return desc_builder.Finish();
+}
+
+void Decode(const data::TensorDescWithId* fb_desc, TensorDescriptor* desc,
+            ValueId* id) {
+  Decode(fb_desc->desc(), desc);
+  *id = fb_desc->id();
+}
+
 flatbuffers::Offset<data::CLNode> Encode(
     const CLNode& node, flatbuffers::FlatBufferBuilder* builder) {
   auto op_fb = Encode(node.cl_operation.GetGpuOperation(), builder);
@@ -944,11 +976,18 @@ flatbuffers::Offset<data::InferenceContext> Encode(
 
   std::vector<flatbuffers::Offset<data::TensorDescWithId>> tensors_fb;
   auto tensors = inference.tensor_reserver_.GetTensorDescs();
-  for (auto& tensor : tensors) {
+  for (const auto& tensor : tensors) {
     auto tensor_fb = Encode(tensor.second, tensor.first, builder);
     tensors_fb.push_back(tensor_fb);
   }
   auto tensors_fb_vec = builder->CreateVector(tensors_fb);
+
+  std::vector<flatbuffers::Offset<data::TensorDescWithId>> const_tensors_fb;
+  for (const auto& tensor : inference.const_tensors_descs_) {
+    auto tensor_fb = Encode(tensor.second, tensor.first, builder);
+    const_tensors_fb.push_back(tensor_fb);
+  }
+  auto const_tensors_fb_vec = builder->CreateVector(const_tensors_fb);
 
   std::vector<flatbuffers::Offset<data::PairOfValueIds>>
       variable_ids_and_refs_fb;
@@ -970,6 +1009,7 @@ flatbuffers::Offset<data::InferenceContext> Encode(
   inf_builder.add_storage_type(tflite::gpu::ToFB(inference.storage_type_));
   inf_builder.add_nodes(nodes_fb_vec);
   inf_builder.add_tensors(tensors_fb_vec);
+  inf_builder.add_const_tensors(const_tensors_fb_vec);
   inf_builder.add_input_ids(in_ids_fb);
   inf_builder.add_output_ids(out_ids_fb);
   inf_builder.add_variable_ids_and_refs(variable_ids_and_refs_fb_vec);
@@ -995,12 +1035,17 @@ absl::Status Decode(const data::InferenceContext* fb_inference,
   }
 
   std::vector<std::pair<ValueId, TensorDescriptor>> tensors;
-  for (auto tensor_fb : *fb_inference->tensors()) {
+  for (const auto& tensor_fb : *fb_inference->tensors()) {
     TensorDescriptor desc;
     Decode(tensor_fb->desc(), &desc);
     tensors.push_back({tensor_fb->id(), std::move(desc)});
   }
   inference->tensor_reserver_.Add(tensors);
+  for (const auto& tensor_fb : *fb_inference->const_tensors()) {
+    TensorDescriptor desc;
+    Decode(tensor_fb->desc(), &desc);
+    inference->const_tensors_descs_[tensor_fb->id()] = std::move(desc);
+  }
   for (auto in_fb : *fb_inference->input_ids()) {
     inference->input_ids_.push_back(in_fb);
   }

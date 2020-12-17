@@ -372,6 +372,9 @@ tf.lite.TFLiteConverter.from_frozen_graph('vww_96_grayscale_frozen.pb',
 ['input'], ['MobilenetV1/Predictions/Reshape_1'])
 converter.optimizations = [tf.lite.Optimize.DEFAULT]
 converter.representative_dataset = representative_dataset_gen
+converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+converter.inference_input_type = tf.int8
+converter.inference_output_type = tf.int8
 
 tflite_quant_model = converter.convert()
 open("vww_96_grayscale_quantized.tflite", "wb").write(tflite_quant_model)

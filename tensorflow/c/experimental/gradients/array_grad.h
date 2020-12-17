@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace gradients {
-BackwardFunction* IdentityNRegisterer(const ForwardOperation& op);
+GradientFunction* IdentityNRegisterer(const ForwardOperation& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

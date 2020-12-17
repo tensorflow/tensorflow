@@ -218,6 +218,41 @@ bool TensorTypeChangeRequired(const TensorT* tensor, const TensorType& type) {
   return (int8check || int16check);
 }
 
+// Check if input is consumed by quantize, which means we don't need to
+// requantize if the output scale is the same as the input tensor's.
+bool InputQuantizeRequired(const ModelT* model, const SubGraphT* subgraph,
+                           int32_t input_idx) {
+  std::vector<OperatorT*> quantize_ops;
+  for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+    OperatorT* op = subgraph->operators[op_idx].get();
+    if (std::find(op->inputs.begin(), op->inputs.end(), input_idx) !=
+        op->inputs.end()) {
+      const BuiltinOperator op_code =
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
+      if (op_code != BuiltinOperator_QUANTIZE) {
+        return true;
+      }
+      quantize_ops.push_back(op);
+    }
+  }
+  if (quantize_ops.size() == 1) {
+    const auto* tensor = subgraph->tensors[input_idx].get();
+    const auto* op = quantize_ops[0];
+    const int32_t output_idx = op->outputs[0];
+    const auto output_type = subgraph->tensors[output_idx]->type;
+    const float output_scale =
+        subgraph->tensors[output_idx]->quantization->scale[0];
+    const int64_t output_zero_point =
+        subgraph->tensors[output_idx]->quantization->zero_point[0];
+    if (output_type == tensor->type &&
+        output_scale == tensor->quantization->scale[0] &&
+        output_zero_point == tensor->quantization->zero_point[0]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // Sets the input type, adding a Leading Op node at the start of the model if
 // necessary.
 // Returns the new input tensor index.
@@ -258,6 +293,13 @@ int32_t SetInputType(ModelT* model, SubGraphT* subgraph,
           leading_op_name, tensor->shape, tensor->shape_signature, input_type,
           scale, zero_point + 128, &leading_op_input);
     }
+
+    // Check if quantize op already exists.
+    if (!InputQuantizeRequired(model, subgraph, tensor_idx)) {
+      subgraph->tensors[tensor_idx] = std::move(leading_op_input);
+      return tensor_idx;
+    }
+
     const int32_t leading_op_input_idx = subgraph->tensors.size();
     subgraph->tensors.push_back(std::move(leading_op_input));
 
@@ -890,7 +932,7 @@ TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
             continue;
           }
           // Currently only support pair of twos.
-          // TODO(jianlijianli): extend to arbitrary number of tensors.
+          // TODO(b/174534943): extend to arbitrary number of tensors.
           if (input.size() != 2) {
             return kTfLiteError;
           }
@@ -963,6 +1005,11 @@ TfLiteStatus QuantizeWeightsInputOutput(
             EnumNameBuiltinOperator(op_code));
         quantization_not_supported = true;
       } else if (!property.quantizable && !allow_float) {
+        if (op_code == BuiltinOperator_DEQUANTIZE &&
+            std::find(subgraph->outputs.begin(), subgraph->outputs.end(),
+                      op->outputs[0]) != subgraph->outputs.end()) {
+          continue;
+        }
         TF_LITE_REPORT_ERROR(error_reporter,
                              "Quantization not yet supported for op: '%s'.\n",
                              EnumNameBuiltinOperator(op_code));
@@ -1044,6 +1091,18 @@ TfLiteStatus QuantizeBiases(ModelT* model,
                 model, input_tensor, weight_tensor, bias_tensor,
                 weight_property.per_axis, weight_property.per_axis_index,
                 activations_type, error_reporter));
+          }
+        } else {
+          // If bias is already quantized, make sure it is quantized to 32 bit.
+          if (bias_tensor->type != TensorType_INT32) {
+            TF_LITE_REPORT_ERROR(
+                error_reporter,
+                "Bias (\"%s\" at global index %d) of op \"%s\" at op_index %d "
+                "in subgraph %d is expected to be quantized to INT32 but it is "
+                "already quantized to %s.\n",
+                bias_tensor->name.c_str(), op->inputs[bias_idx],
+                operator_name.c_str(), op_idx, subgraph_idx,
+                EnumNameTensorType(bias_tensor->type));
           }
         }
       }

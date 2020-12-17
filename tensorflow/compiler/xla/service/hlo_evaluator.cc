@@ -388,9 +388,10 @@ StatusOr<Literal> HloEvaluator::EvaluateDotOp(
   std::unique_ptr<HloInstruction> rhs_instr =
       HloInstruction::CreateConstant(rhs.Clone());
 
-  TF_ASSIGN_OR_RETURN(
-      Shape dot_shape,
-      ShapeInference::InferDotOpShape(lhs.shape(), rhs.shape(), dim_numbers));
+  TF_ASSIGN_OR_RETURN(Shape dot_shape,
+                      ShapeInference::InferDotOpShape(
+                          lhs.shape(), rhs.shape(), dim_numbers,
+                          /*preferred_element_type=*/absl::nullopt));
 
   std::unique_ptr<HloInstruction> cloned_instruction =
       HloInstruction::CreateDot(dot_shape, lhs_instr.get(), rhs_instr.get(),
@@ -2129,6 +2130,10 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
       return ExtractLiteralFromIndexPositions<double>(from, indices,
                                                       extract_as_scalar);
     }
+    case C64: {
+      return ExtractLiteralFromIndexPositions<std::complex<float>>(
+          from, indices, extract_as_scalar);
+    }
     case U64: {
       return ExtractLiteralFromIndexPositions<uint64>(from, indices,
                                                       extract_as_scalar);
@@ -2136,6 +2141,10 @@ StatusOr<Literal> ExtractFromIndexPositions(const Literal& from,
     case S64: {
       return ExtractLiteralFromIndexPositions<int64>(from, indices,
                                                      extract_as_scalar);
+    }
+    case C128: {
+      return ExtractLiteralFromIndexPositions<std::complex<double>>(
+          from, indices, extract_as_scalar);
     }
     default:
       return InvalidArgument("Unsupported type for Sort: %s",

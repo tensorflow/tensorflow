@@ -21,18 +21,22 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -44,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/lib/math/math_util.h"
 
 namespace mlir {
 namespace TF {
@@ -479,18 +484,16 @@ template <typename ReductionOp>
 LogicalResult MatchBinaryReduceFunction(mlir::Region &function) {
   Block &body = function.front();
   if (body.getNumArguments() != 2) return failure();
-  if (body.getOperations().size() != 2) return failure();
-
-  ReductionOp reduce_op = dyn_cast<ReductionOp>(body.front());
-  if (!reduce_op) return failure();
-  if (reduce_op.lhs() != body.getArgument(0) ||
-      reduce_op.rhs() != body.getArgument(1))
-    return failure();
 
   mhlo::ReturnOp return_op = dyn_cast<mhlo::ReturnOp>(body.back());
   if (!return_op) return failure();
-  if (return_op.getNumOperands() != 1 ||
-      return_op.results().front() != reduce_op)
+  if (return_op.getNumOperands() != 1) return failure();
+
+  ReductionOp reduce_op = dyn_cast_or_null<ReductionOp>(
+      return_op.getOperands().front().getDefiningOp());
+  if (!reduce_op) return failure();
+  if (reduce_op.lhs() != body.getArgument(0) ||
+      reduce_op.rhs() != body.getArgument(1))
     return failure();
 
   return success();
@@ -654,6 +657,190 @@ class ConvertIotaOpToTfRange : public OpConversionPattern<mhlo::IotaOp> {
   }
 };
 
+// Maps the following represenattions of AvgPool in MHLO into a tf.AvgPool{3D}
+// operation when they cleanly map to 2D or 3D average pool with VALID or SAME
+// padding:
+// * div(reduce_sum_window(x), constant(sizeof(window)))
+// * div(reduce_sum_window(x), reduce_sum_window(constant(1)))
+class ConvertAvgPoolOp : public OpConversionPattern<mhlo::DivOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DivOp div_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    auto rw =
+        dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.lhs().getDefiningOp());
+    if (!rw) return failure();
+
+    // Check that the reduce-window is a sum-reduce-window.
+    if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw.body())))
+      return failure();
+
+    // Check that this is a floating point reduce window with a rank of 4 or 5.
+    RankedTensorType rw_type = rw.getType().dyn_cast<RankedTensorType>();
+    if (!rw_type || !rw_type.getElementType().isa<FloatType>() ||
+        rw_type.getRank() <= 3 || rw_type.getRank() > 5)
+      return failure();
+
+    // Check that the Div op doesn't do broadcasting on the output of the reduce
+    // window.
+    if (div_op.getType() != rw.getType()) return failure();
+
+    // tf.avg_pool need at least 3 dimensions (batch, spatial, channel)
+    const uint64_t rank = rw.window_dimensions().size();
+    if (rank <= 2) return failure();
+
+    // If the init value isn't zero then it can't be an average pool.
+    if (!isFloatZero(rw.init_value())) return failure();
+
+    llvm::SmallVector<int64_t, 5> window_strides;
+    if (rw.window_strides().hasValue()) {
+      window_strides.insert(window_strides.end(),
+                            rw.window_strides()->getValues<int64_t>().begin(),
+                            rw.window_strides()->getValues<int64_t>().end());
+    } else {
+      window_strides.resize(rank, 1);
+    }
+
+    llvm::SmallVector<int64_t, 10> padding;
+    if (rw.padding().hasValue()) {
+      padding.insert(padding.begin(),
+                     rw.padding()->getValues<int64_t>().begin(),
+                     rw.padding()->getValues<int64_t>().end());
+    } else {
+      padding.resize(2 * rank, 0);
+    }
+
+    // Check that we don't do any reduction along the batch (first) and channel
+    // (last) dimensions.
+    const uint64_t batch_dim = 0;
+    const uint64_t channel_dim = rank - 1;
+    if (rw.window_dimensions().getValue<int64_t>({batch_dim}) != 1 ||
+        rw.window_dimensions().getValue<int64_t>({channel_dim}) != 1 ||
+        window_strides[batch_dim] != 1 || window_strides[channel_dim] != 1 ||
+        padding[2 * batch_dim] != 0 || padding[2 * batch_dim + 1] != 0 ||
+        padding[2 * channel_dim] != 0 || padding[2 * channel_dim + 1] != 0)
+      return failure();
+
+    if (rw.window_dilations().hasValue() &&
+        !(rw.window_dilations()->isSplat() &&
+          rw.window_dilations()->getSplatValue<APInt>() == 1))
+      return failure();
+
+    if (rw.base_dilations().hasValue() &&
+        !(rw.base_dilations()->isSplat() &&
+          rw.base_dilations()->getSplatValue<APInt>() == 1))
+      return failure();
+
+    DenseFPElementsAttr divisor;
+    if (matchPattern(div_op.rhs(), m_Constant(&divisor))) {
+      // If the divisor is a constant then check that it matches with the number
+      // of elements inside the window what is required for a VALID AvgPool.
+      if (!divisor.isSplat()) return failure();
+      int64_t window_size = 1;
+      for (int64_t w : rw.window_dimensions().getValues<int64_t>()) {
+        window_size *= w;
+      }
+      if (!divisor.getSplatValue<APFloat>().isExactlyValue(window_size))
+        return failure();
+
+      // Check that we have no padding.
+      if (!llvm::all_of(padding, [](int64_t i) { return i == 0; }))
+        return failure();
+
+      return replaceWithAvgPool(
+          div_op, rw.operand(),
+          llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
+          window_strides, "VALID", rewriter);
+    }
+
+    auto rw_rhs =
+        dyn_cast_or_null<mhlo::ReduceWindowOp>(div_op.rhs().getDefiningOp());
+    if (rw_rhs) {
+      // Check that RHS is a sum-reduce-window.
+      if (failed(MatchBinaryReduceFunction<mhlo::AddOp>(rw_rhs.body())))
+        return failure();
+
+      // Check that the RHS is a reduce_window over a constant 1 input with 0 as
+      // the init value.
+      DenseFPElementsAttr rhs_input;
+      if (!isFloatZero(rw_rhs.init_value()) ||
+          !matchPattern(rw_rhs.operand(), m_Constant(&rhs_input)) ||
+          !rhs_input.isSplat() ||
+          !rhs_input.getSplatValue<APFloat>().isExactlyValue(1.0))
+        return failure();
+
+      // Check that the two reduce window have the same window configuration.
+      if (rw.window_dimensions() != rw_rhs.window_dimensions() ||
+          rw.window_strides() != rw_rhs.window_strides() ||
+          rw.window_dilations() != rw_rhs.window_dilations() ||
+          rw.base_dilations() != rw_rhs.base_dilations() ||
+          rw.padding() != rw_rhs.padding())
+        return failure();
+
+      if (llvm::all_of(padding, [](int64_t i) { return i == 0; }))
+        return replaceWithAvgPool(
+            div_op, rw.operand(),
+            llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
+            window_strides, "VALID", rewriter);
+
+      RankedTensorType input_type =
+          rw.operand().getType().dyn_cast<RankedTensorType>();
+      RankedTensorType output_type = rw.getType().dyn_cast<RankedTensorType>();
+      if (!input_type || !output_type) return failure();
+
+      // Check that the individual padding values are corresponding to SAME
+      // padding from TensorFlow.
+      for (uint64_t i = 1; i < rank - 1; ++i) {
+        int64_t padding_size =
+            (output_type.getShape()[i] - 1) * window_strides[i] +
+            rw.window_dimensions().getValue<int64_t>({i}) -
+            input_type.getShape()[i];
+        if (padding[2 * i] !=
+                tensorflow::MathUtil::FloorOfRatio(padding_size, int64_t(2)) ||
+            padding[2 * i + 1] !=
+                tensorflow::MathUtil::CeilOfRatio(padding_size, int64_t(2)))
+          return failure();
+      }
+      return replaceWithAvgPool(
+          div_op, rw.operand(),
+          llvm::to_vector<4>(rw.window_dimensions().getValues<int64_t>()),
+          window_strides, "SAME", rewriter);
+    }
+    return failure();
+  }
+
+ private:
+  bool isFloatZero(Value value) const {
+    DenseFPElementsAttr initial_value;
+    return matchPattern(value, m_Constant(&initial_value)) &&
+           initial_value.getNumElements() == 1 &&
+           initial_value.getValue<APFloat>({}).isZero();
+  }
+
+  LogicalResult replaceWithAvgPool(mhlo::DivOp op, Value input,
+                                   llvm::ArrayRef<int64_t> ksizes,
+                                   llvm::ArrayRef<int64_t> kstrides,
+                                   llvm::StringRef padding,
+                                   ConversionPatternRewriter &rewriter) const {
+    if (ksizes.size() == 4) {
+      rewriter.replaceOpWithNewOp<AvgPoolOp>(
+          op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
+          rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
+          rewriter.getStringAttr("NHWC"));
+      return success();
+    } else if (ksizes.size() == 5) {
+      rewriter.replaceOpWithNewOp<AvgPool3DOp>(
+          op, op.getType(), input, rewriter.getI64ArrayAttr(ksizes),
+          rewriter.getI64ArrayAttr(kstrides), rewriter.getStringAttr(padding),
+          rewriter.getStringAttr("NDHWC"));
+      return success();
+    }
+    return failure();
+  }
+};
+
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<TF::TensorFlowDialect>();
@@ -729,6 +916,25 @@ Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
   return reshape.getResult();
 }
 
+// Converts mhlo.pad to tf.PadV2
+Value ConvertPadOp(PatternRewriter &rewriter, Operation *old_op) {
+  auto pad_op = cast<mhlo::PadOp>(old_op);
+  mlir::Location loc = pad_op.getLoc();
+
+  llvm::SmallVector<APInt, 8> padding;
+  for (auto p : llvm::zip(pad_op.edge_padding_low().getValues<APInt>(),
+                          pad_op.edge_padding_high().getValues<APInt>())) {
+    padding.push_back(std::get<0>(p));
+    padding.push_back(std::get<1>(p));
+  }
+  auto attr_type = RankedTensorType::get({pad_op.edge_padding_low().size(), 2},
+                                         rewriter.getI64Type());
+  auto padding_attr = DenseIntElementsAttr::get(attr_type, padding);
+  auto padding_op = rewriter.create<ConstantOp>(loc, attr_type, padding_attr);
+  return rewriter.create<PadV2Op>(loc, pad_op.getType(), pad_op.operand(),
+                                  padding_op, pad_op.padding_value());
+}
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -794,10 +1000,10 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
+  patterns->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertSliceOp,
+                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(context, *patterns);
-  patterns->insert<ConvertConvOp, ConvertSliceOp, ConvertReduceOpToTfMax,
-                   ConvertReduceOpToTfMin, ConvertReduceOpToTfSum,
-                   ConvertIotaOpToTfRange>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {

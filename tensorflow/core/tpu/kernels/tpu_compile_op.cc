@@ -53,6 +53,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
   }
   if (!status.ok() || proto.status_code() != error::Code::OK) {
     status.Update(Status(proto.status_code(), proto.status_error_message()));
+    LOG(WARNING) << "TPU compilation failed: " << status;
     errors::AppendToMessage(&status, "TPU compilation failed");
     if (tensorflow::internal::TpuCompilationFailureClosesChips()) {
       // At this point, if compilation fails we do not know if a task
@@ -70,7 +71,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
         errors::AppendToMessage(&status, close_status.error_message());
       }
     }
-    ctx->CtxFailureWithWarning(status);
+    ctx->CtxFailure(status);
   }
 }
 

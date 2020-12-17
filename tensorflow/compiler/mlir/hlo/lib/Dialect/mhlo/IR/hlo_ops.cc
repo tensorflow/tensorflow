@@ -42,6 +42,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -518,11 +518,19 @@ void ConvertOp::build(OpBuilder& builder, OperationState& result, Value operand,
 }
 
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
-  if (getOperand().getType() == getResult().getType()) return getOperand();
+  auto operand_ty = getOperand().getType().cast<TensorType>();
+  auto result_ty = getResult().getType().cast<TensorType>();
+  if (operand_ty == result_ty) return getOperand();
 
   // If the result has non-static shape, a convert op is necessary to go from
   // static shape to non-static shape.
-  if (!getResult().getType().cast<TensorType>().hasStaticShape()) return {};
+  if (!result_ty.hasStaticShape()) return {};
+
+  // TODO(hinsu): Handle unsigned types.
+  if (operand_ty.getElementType().isUnsignedInteger() ||
+      result_ty.getElementType().isUnsignedInteger()) {
+    return {};
+  }
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
@@ -1268,8 +1276,8 @@ class DynamicReshapeOpNotActuallyDynamic
 
 void DynamicReshapeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicReshapeOpNotActuallyDynamic, ShapeOfDynamicReshape>(
-      context);
+  results.insert<DynamicReshapeOpNotActuallyDynamic,
+                 RemoveRedundantDynamicReshape, ShapeOfDynamicReshape>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1871,28 +1879,29 @@ OpFoldResult PadOp::fold(ArrayRef<Attribute> operands) {
                        llvm::ArrayRef<int64_t> shape) {
     for (int64_t i = index.size() - 1; i >= 0; --i) {
       ++index[i];
-      if (index[i] < shape[i]) return true;
+      if (index[i] < shape[i]) return;
       index[i] = 0;
     }
-    return false;
   };
 
   // Iterate over all elements of the input tensor and copy it to the correct
   // location in the output tensor.
   llvm::SmallVector<uint64_t, 8> index(input.getType().getRank(), 0);
-  do {
-    uint64_t linear_index = 0;
-    uint64_t linear_index_multiplyer = 1;
+  uint64_t num_elements = input.getNumElements();
+  for (uint64_t operand_idx = 0; operand_idx < num_elements; operand_idx++) {
+    uint64_t result_idx = 0;
+    uint64_t idx_multiplyer = 1;
     for (int64_t i = index.size() - 1; i >= 0; --i) {
-      linear_index +=
+      result_idx +=
           (edge_padding_low().getValue<int64_t>({uint64_t(i)}) +
            index[i] *
                (interior_padding().getValue<int64_t>({uint64_t(i)}) + 1)) *
-          linear_index_multiplyer;
-      linear_index_multiplyer *= return_type.getShape()[i];
+          idx_multiplyer;
+      idx_multiplyer *= return_type.getDimSize(i);
     }
-    result[linear_index] = input.getValue(index);
-  } while (next_index(index, input.getType().getShape()));
+    result[result_idx] = input.getValue(index);
+    next_index(index, input.getType().getShape());
+  }
   return DenseElementsAttr::get(return_type, result);
 }
 
@@ -1937,6 +1946,24 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   }
 
   return {};
+}
+
+void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                            MLIRContext* context) {
+  results.insert<IdentityBroadcastReshape, IdentityBroadcastInDimReshape>(
+      context);
+}
+
+//===----------------------------------------------------------------------===//
+// ReplicaId Op
+//===----------------------------------------------------------------------===//
+
+LogicalResult ReplicaIdOp::inferReturnTypes(
+    MLIRContext* context, Optional<Location>, ValueRange operands,
+    DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
+  inferredReturnTypes.push_back(RankedTensorType::get(
+      /*shape=*/{}, IntegerType::get(32, IntegerType::Unsigned, context)));
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -2306,6 +2333,12 @@ static Attribute FoldSlice(SliceOp* op, I values) {
 
   auto shape = result_type.getShape();
   int64_t count = result_type.getNumElements();
+  if (count == 0) {
+    return DenseElementsAttr::get<E>(
+        op->getResult().getType().cast<ShapedType>(),
+        /*list=*/{});
+  }
+
   // Compute the striding for each dimension.
   llvm::SmallVector<int64_t, 6> sizes;
   sizes.reserve(shape.size());
@@ -2764,11 +2797,10 @@ OpFoldResult CompareOp::fold(ArrayRef<Attribute> operands) {
   if (!result_ty.hasStaticShape()) return {};
 
   auto direction = comparison_direction();
-  if (lhs() == rhs()) {
+  if (lhs() == rhs() && !getElementTypeOrSelf(lhs()).isa<FloatType>()) {
     if (direction == "LE" || direction == "EQ" || direction == "GE") {
       return DenseIntElementsAttr::get(result_ty, {true});
     }
-
     return DenseIntElementsAttr::get(result_ty, {false});
   }
 
