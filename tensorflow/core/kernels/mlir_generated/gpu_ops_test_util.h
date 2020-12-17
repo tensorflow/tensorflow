@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MLIR_GENERATED_GPU_OPS_TEST_UTIL_H_
 
 #include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
@@ -81,21 +82,28 @@ absl::InlinedVector<T, 10> InfZeroInput() {
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
-absl::InlinedVector<T, 10> DefaultInput() {
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+  // Only generate values less than the bitwidth of the data type.
+  if (op_name == "LeftShift" || op_name == "RightShift") {
+    auto max_shift = sizeof(T) * 8 - 1;
+    absl::InlinedVector<T, 10> v(max_shift);
+    for (auto i = 0; i < max_shift; ++i) v.push_back(i);
+    return v;
+  }
   return InputAsVector<T, int>({-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
 }
 
 template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
-absl::InlinedVector<T, 10> DefaultInput() {
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
   return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
                                    0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
-absl::InlinedVector<T, 10> DefaultInput() {
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
   return InputAsVector<T, bool>({true, false, true, true, false});
 }
 }  // namespace test
