@@ -185,8 +185,8 @@ struct HloToLhloCustomCallOpConverter
     // for args and outputs.
     const int32_t segments[2] = {static_cast<int32_t>(operands.size()),
                                  static_cast<int32_t>(op->getNumResults())};
-    lhloOp.setAttr(lhloOp.getOperandSegmentSizeAttr(),
-                   rewriter.getI32VectorAttr(segments));
+    lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
+                    rewriter.getI32VectorAttr(segments));
 
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
     return success();
