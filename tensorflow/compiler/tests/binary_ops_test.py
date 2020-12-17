@@ -1009,7 +1009,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([], dtype=dtype).reshape((0, 3)),
           expected=np.array([[0, 0, 0], [0, 0, 0]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testMatMul(self):
     self._testMatMul(math_ops.matmul, self.float_types | {np.float64})
 
@@ -1047,7 +1046,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
     self._testMatMul(SparseMatmulWrapperFT, self.float_types)
     self._testMatMul(SparseMatmulWrapperTT, self.float_types)
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testBatchMatMul(self):
     # Tests with batches of matrices.
     for dtype in self.float_types | {np.float64}:
@@ -1099,7 +1097,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             x,
             expected=np.matmul(x, x.transpose([0, 1, 3, 2])))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testExpandDims(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1367,7 +1364,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
               np.reshape(np.array([16, 18, 8], dtype=dtype), (3, 1)),
               (1, 2, 3, 1)))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testReshape(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1499,7 +1495,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [1, 2]],
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testTranspose(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1518,7 +1513,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1, 3], [2, 4]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testConjugateTranspose(self):
     for dtype in self.complex_types:
       self._testBinary(
@@ -1555,7 +1549,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[4, 5, 6], [40, 50, 60]], dtype=dtype),
           expected=np.array([[-3, 6, -3], [60, -120, 60]], dtype=dtype))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
   def testBroadcastArgs(self):
     self._testBinary(array_ops.broadcast_dynamic_shape,
                      np.array([2, 3, 5], dtype=np.int32),
@@ -1616,6 +1609,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
 
+  @test_util.disable_mlir_bridge("TODO(b/175721108): Legalize BroadcastArgs op")
   def testBroadcastTo(self):
     for dtype in self.all_types:
       x = np.random.randint(0, high=100, size=[2, 3])

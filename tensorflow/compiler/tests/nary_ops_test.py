@@ -159,7 +159,8 @@ class NAryOpsTest(xla_test.XLATestCase):
                     np.array([[3, 4], [7, 8], [1, 2]], dtype=np.float32)]
         self.assertAllEqual(output, expected)
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
+  @test_util.disable_mlir_bridge(
+      "TODO(b/344771933): Fix canonicalization failure")
   def testStridedSlice(self):
     self._testNAry(lambda x: array_ops.strided_slice(*x),
                    [np.array([[], [], []], dtype=np.float32),
@@ -204,7 +205,8 @@ class NAryOpsTest(xla_test.XLATestCase):
                              dtype=np.float32)],
                    expected=np.array([[4], [5], [6]], dtype=np.float32))
 
-  @test_util.disable_mlir_bridge("TODO(b/172473885)")
+  @test_util.disable_mlir_bridge(
+      "TODO(b/344771933): Fix canonicalization failure")
   def testStridedSliceGrad(self):
     # Tests cases where input shape is empty.
     self._testNAry(lambda x: array_ops.strided_slice_grad(*x),
