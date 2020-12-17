@@ -881,7 +881,24 @@ class CopyRemover {
       return ordering_.IsDefinedBefore(*a.value, *b.value);
     }
     return absl::c_all_of(a.uses, [&](const HloUse* use) {
-      return ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_);
+      // Here if the HloUse is located in a branch that is exclusive to b's
+      // branch, it can be skipped, because in order for them to interfere,
+      // there must be an execution path from b's definition to the HloUse. If
+      // there is such a path, it would have to pass through the point where the
+      // two exclusive branches are joined. The join point would have to contain
+      // a phi operation because b's definition is not guranteed to reach a. The
+      // phi operation would be another use of a that would ensure correct
+      // answer is returned.
+      switch (ordering_.GetExecutionConstraint(
+          use->instruction, b.value->defining_instruction())) {
+        case HloOrdering::ExecutionConstraint::kIsSame:
+        case HloOrdering::ExecutionConstraint::kRunExclusiveAfter:
+        case HloOrdering::ExecutionConstraint::kRunExclusiveBefore:
+          return true;
+        default:
+          return ordering_.UseIsBeforeValueDefinition(*use, *b.value,
+                                                      dataflow_);
+      }
     });
   }
 
