@@ -34,11 +34,14 @@ namespace metal {
 absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                                             const NodeDescriptor& desc,
                                             CalculationsPrecision precision) {
-  size_t offset = desc.task->src_tensors_names.size() + desc.task->uniform_buffers.size()
-                  + desc.task->immutable_buffers.size() + 1;
-  RETURN_IF_ERROR(metal_args_.Init(device, offset, &desc.task->args, &desc.task->shader_source));
+  size_t offset = desc.task->src_tensors_names.size() +
+                  desc.task->uniform_buffers.size() +
+                  desc.task->immutable_buffers.size() + 1;
+  RETURN_IF_ERROR(metal_args_.Init(device, offset, &desc.task->args,
+                                   &desc.task->shader_source));
   NSString* barrier;
-  // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
+  // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language
+  // version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
     barrier = @"simdgroup_barrier";
   } else {
@@ -82,10 +85,12 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
     @"SIMDGROUP_BARRIER" : barrier,
   };
 
-  NSString* code = [NSString stringWithCString:desc.task->shader_source.c_str()
-                                      encoding:[NSString defaultCStringEncoding]];
+  NSString* code =
+      [NSString stringWithCString:desc.task->shader_source.c_str()
+                         encoding:[NSString defaultCStringEncoding]];
   id<MTLComputePipelineState> program;
-  RETURN_IF_ERROR(CreateComputeProgram(device, code, @"ComputeFunction", macros, &program));
+  RETURN_IF_ERROR(
+      CreateComputeProgram(device, code, @"ComputeFunction", macros, &program));
   if (!program) {
     return absl::InternalError("Unknown shader compilation error");
   }
@@ -101,9 +106,10 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
     int padding = 4 * (f32_storage ? sizeof(float) : sizeof(HalfBits));
     int paddedSize = AlignByN(immutable.data.size(), padding);
     immutable.data.resize(paddedSize);
-    id<MTLBuffer> metalBuffer = [device newBufferWithBytes:immutable.data.data()
-                                                    length:immutable.data.size()
-                                                   options:MTLResourceStorageModeShared];
+    id<MTLBuffer> metalBuffer =
+        [device newBufferWithBytes:immutable.data.data()
+                            length:immutable.data.size()
+                           options:MTLResourceStorageModeShared];
     immutable_buffers_.emplace_back(metalBuffer);
   }
   resize_function_ = desc.task->resize_function;
@@ -137,14 +143,17 @@ absl::Status ComputeTask::UpdateParamsWithDevice(
   auto workGroups = resize_function_(src_shapes, dst_shapes);
   groups_size_ = workGroups.first;
   MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
-  if (groups_size_.x > threadsPerGroup.width || groups_size_.y > threadsPerGroup.height ||
+  if (groups_size_.x > threadsPerGroup.width ||
+      groups_size_.y > threadsPerGroup.height ||
       groups_size_.z > threadsPerGroup.depth) {
     std::string error("Threads per working group: ");
-    error += std::to_string(groups_size_.x) + ", " + std::to_string(groups_size_.y) + ", " +
+    error += std::to_string(groups_size_.x) + ", " +
+             std::to_string(groups_size_.y) + ", " +
              std::to_string(groups_size_.z);
     error += "is larger than the MTLDevice can support: ";
-    error += std::to_string(threadsPerGroup.width) + ", " + std::to_string(threadsPerGroup.height) +
-             ", " + std::to_string(threadsPerGroup.depth);
+    error += std::to_string(threadsPerGroup.width) + ", " +
+             std::to_string(threadsPerGroup.height) + ", " +
+             std::to_string(threadsPerGroup.depth);
     return absl::InvalidArgumentError(error);
   }
   groups_count_ = workGroups.second;
@@ -187,13 +196,17 @@ void ComputeTask::EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder) {
     bindIndex++;
   }
   for (auto& uniform : uniform_buffers_) {
-    [encoder setBytes:uniform.data.data() length:uniform.data.size() atIndex:bindIndex];
+    [encoder setBytes:uniform.data.data()
+               length:uniform.data.size()
+              atIndex:bindIndex];
     bindIndex++;
   }
   metal_args_.Encode(encoder, bindIndex);
 
-  MTLSize groupsCount = MTLSizeMake(groups_count_.x, groups_count_.y, groups_count_.z);
-  MTLSize groupsSize = MTLSizeMake(groups_size_.x, groups_size_.y, groups_size_.z);
+  MTLSize groupsCount =
+      MTLSizeMake(groups_count_.x, groups_count_.y, groups_count_.z);
+  MTLSize groupsSize =
+      MTLSizeMake(groups_size_.x, groups_size_.y, groups_size_.z);
   [encoder dispatchThreadgroups:groupsCount threadsPerThreadgroup:groupsSize];
 }
 

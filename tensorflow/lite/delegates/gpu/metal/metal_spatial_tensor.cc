@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
-#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
-
 #include <memory>
+
+#include "tensorflow/lite/delegates/gpu/common/task/buffer_desc.h"
 
 namespace tflite {
 namespace gpu {
@@ -29,7 +29,7 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
                                   const void* data_ptr, id<MTLBuffer>* buffer) {
   const int slices = DivideRoundUp(shape.c, 4);
   switch (descriptor.storage_type) {
-    case TensorStorageType::BUFFER:{
+    case TensorStorageType::BUFFER: {
       const size_t data_size = shape.b * shape.w * shape.h * shape.d * slices *
                                4 * SizeOf(descriptor.data_type);
       if (data_ptr) {
@@ -53,8 +53,8 @@ absl::Status AllocateTensorMemory(id<MTLDevice> device, const BHWDC& shape,
 }
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, id<MTLBuffer> buffer,
-                          MetalSpatialTensor* result) {
+                          const TensorDescriptor& descriptor,
+                          id<MTLBuffer> buffer, MetalSpatialTensor* result) {
   const bool memory_owner = buffer == nullptr;
   if (memory_owner) {
     RETURN_IF_ERROR(
@@ -66,15 +66,17 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
 }
 }  // namespace
 
-MetalSpatialTensor::MetalSpatialTensor(id<MTLBuffer> buffer, bool memory_owner, const BHWC& shape,
-               const TensorDescriptor& descriptor)
+MetalSpatialTensor::MetalSpatialTensor(id<MTLBuffer> buffer, bool memory_owner,
+                                       const BHWC& shape,
+                                       const TensorDescriptor& descriptor)
     : memory_(buffer),
       memory_owner_(memory_owner),
       shape_(shape.b, shape.h, shape.w, 1, shape.c),
       descriptor_(descriptor) {}
 
-MetalSpatialTensor::MetalSpatialTensor(id<MTLBuffer> buffer, bool memory_owner, const BHWDC& shape,
-               const TensorDescriptor& descriptor)
+MetalSpatialTensor::MetalSpatialTensor(id<MTLBuffer> buffer, bool memory_owner,
+                                       const BHWDC& shape,
+                                       const TensorDescriptor& descriptor)
     : memory_(buffer),
       memory_owner_(memory_owner),
       shape_(shape),
@@ -105,8 +107,9 @@ void MetalSpatialTensor::Release() {
   }
 }
 
-absl::Status MetalSpatialTensor::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
-                                     GPUResourcesWithValue* resources) const {
+absl::Status MetalSpatialTensor::GetGPUResources(
+    const GPUObjectDescriptor* obj_ptr,
+    GPUResourcesWithValue* resources) const {
   const auto* buffer_desc = dynamic_cast<const BufferDescriptor*>(obj_ptr);
   if (buffer_desc) {
     if (descriptor_.storage_type != TensorStorageType::BUFFER) {
@@ -339,7 +342,8 @@ absl::Status MetalSpatialTensor::ReadData(Tensor5DFloat32* dst) const {
   return ReadDataBHWDC(dst->data.data());
 }
 
-absl::Status MetalSpatialTensor::CreateFromDescriptor(const TensorDescriptor& desc, id<MTLDevice> device) {
+absl::Status MetalSpatialTensor::CreateFromDescriptor(
+    const TensorDescriptor& desc, id<MTLDevice> device) {
   shape_ = desc.shape;
   descriptor_.data_type = desc.data_type;
   descriptor_.storage_type = desc.storage_type;
@@ -359,31 +363,31 @@ void MetalSpatialTensor::SetBufferHandle(id<MTLBuffer> buffer) {
   memory_ = buffer;
 }
 
-id<MTLBuffer> MetalSpatialTensor::GetBufferHandle() const {
-  return memory_;
-}
+id<MTLBuffer> MetalSpatialTensor::GetBufferHandle() const { return memory_; }
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
-                          const TensorDescriptor& descriptor, MetalSpatialTensor* result) {
+                          const TensorDescriptor& descriptor,
+                          MetalSpatialTensor* result) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return CreateTensor(device, shape5D, descriptor, nullptr, result);
 }
 
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, MetalSpatialTensor* result) {
+                          const TensorDescriptor& descriptor,
+                          MetalSpatialTensor* result) {
   return CreateTensor(device, shape, descriptor, nullptr, result);
 }
 
-MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
-                                            const BHWC& shape,
-                                            const TensorDescriptor& descriptor) {
+MetalSpatialTensor CreateSharedBufferTensor(
+    id<MTLBuffer> buffer, const BHWC& shape,
+    const TensorDescriptor& descriptor) {
   const BHWDC shape5D(shape.b, shape.h, shape.w, 1, shape.c);
   return MetalSpatialTensor(buffer, false, shape5D, descriptor);
 }
 
-MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
-                                            const BHWDC& shape,
-                                            const TensorDescriptor& descriptor) {
+MetalSpatialTensor CreateSharedBufferTensor(
+    id<MTLBuffer> buffer, const BHWDC& shape,
+    const TensorDescriptor& descriptor) {
   return MetalSpatialTensor(buffer, false, shape, descriptor);
 }
 

@@ -135,7 +135,8 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
 // Static
 constexpr char MetalArguments::kArgsPrefix[];
 
-absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset, Arguments* args, std::string* code) {
+absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
+                                  Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, device));
   RETURN_IF_ERROR(AddObjectArgs(args));
   RETURN_IF_ERROR(ResolveSelectorsPass(*args, {}, code));
@@ -174,13 +175,15 @@ absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset, Argum
     const_data_.resize(aligned_pos * 4);
     for (auto& it : float_values_) {
       if (it.second.active) {
-        float* ptr = reinterpret_cast<float*>(&const_data_[it.second.bytes_offset]);
+        float* ptr =
+            reinterpret_cast<float*>(&const_data_[it.second.bytes_offset]);
         *ptr = it.second.value;
       }
     }
     for (auto& it : int_values_) {
       if (it.second.active) {
-        int32_t* ptr = reinterpret_cast<int32_t*>(&const_data_[it.second.bytes_offset]);
+        int32_t* ptr =
+            reinterpret_cast<int32_t*>(&const_data_[it.second.bytes_offset]);
         *ptr = it.second.value;
       }
     }
@@ -200,7 +203,8 @@ absl::Status MetalArguments::SetInt(const std::string& name, int value) {
   }
   it->second.value = value;
   if (it->second.active) {
-    int32_t* ptr = reinterpret_cast<int32_t*>(&const_data_[it->second.bytes_offset]);
+    int32_t* ptr =
+        reinterpret_cast<int32_t*>(&const_data_[it->second.bytes_offset]);
     *ptr = value;
   }
   return absl::OkStatus();
@@ -213,23 +217,28 @@ absl::Status MetalArguments::SetFloat(const std::string& name, float value) {
   }
   it->second.value = value;
   if (it->second.active) {
-    float* ptr = reinterpret_cast<float*>(&const_data_[it->second.bytes_offset]);
+    float* ptr =
+        reinterpret_cast<float*>(&const_data_[it->second.bytes_offset]);
     *ptr = value;
   }
   return absl::OkStatus();
 }
 
 absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
-  return absl::UnimplementedError("No support of half uniforms in Metal backend");
+  return absl::UnimplementedError(
+      "No support of half uniforms in Metal backend");
 }
 
-void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const {
+void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
+                            int buffer_offset) const {
   for (auto& b : buffers_) {
     [encoder setBuffer:b.second.handle offset:0 atIndex:buffer_offset];
     buffer_offset++;
   }
   if (!const_data_.empty()) {
-    [encoder setBytes:const_data_.data() length:const_data_.size() atIndex:buffer_offset];
+    [encoder setBytes:const_data_.data()
+               length:const_data_.size()
+              atIndex:buffer_offset];
   }
 }
 
@@ -262,17 +271,18 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset) {
       attributes += absl::StrCat("  __attribute__((", attr, "))");
     }
     AppendArgument(
-        absl::StrCat(
-            MemoryTypeToMetalType(t.second.desc.memory_type), " ",
-            ToMetalDataType(t.second.desc.data_type, t.second.desc.element_size),
-            "* ", t.first, "[[buffer(", buffer_offset, ")]]", attributes),
+        absl::StrCat(MemoryTypeToMetalType(t.second.desc.memory_type), " ",
+                     ToMetalDataType(t.second.desc.data_type,
+                                     t.second.desc.element_size),
+                     "* ", t.first, "[[buffer(", buffer_offset, ")]]",
+                     attributes),
         &result);
     buffer_offset++;
   }
   if (!const_data_.empty()) {
-    AppendArgument(
-        absl::StrCat("constant uniforms_buffer& U[[buffer(", buffer_offset, ")]]"),
-        &result);
+    AppendArgument(absl::StrCat("constant uniforms_buffer& U[[buffer(",
+                                buffer_offset, ")]]"),
+                   &result);
     buffer_offset++;
   }
   if (!result.empty()) {
@@ -295,7 +305,8 @@ absl::Status MetalArguments::SetGPUResources(
   return absl::OkStatus();
 }
 
-void MetalArguments::AddBuffer(const std::string& name, const GPUBufferDescriptor& desc) {
+void MetalArguments::AddBuffer(const std::string& name,
+                               const GPUBufferDescriptor& desc) {
   buffers_[name].desc = desc;
 }
 
@@ -313,7 +324,8 @@ void MetalArguments::AddGPUResources(const std::string& name,
   }
 }
 
-absl::Status MetalArguments::SetBuffer(const std::string& name, id<MTLBuffer> handle) {
+absl::Status MetalArguments::SetBuffer(const std::string& name,
+                                       id<MTLBuffer> handle) {
   auto it = buffers_.find(name);
   if (it == buffers_.end()) {
     return absl::NotFoundError(
