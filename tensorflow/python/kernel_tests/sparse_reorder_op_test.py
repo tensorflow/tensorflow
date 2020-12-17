@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -132,9 +131,9 @@ class SparseReorderTest(test.TestCase):
         dense_shape=[4096, 4096, 4096, 4096, 4096, 4096])
     self.assertAllEqual(
         (4096, 4096, 4096, 4096, 4096, 4096), sp_input.get_shape())
-    with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
-                                "Shape would have more than"):
-        sp_output = sparse_ops.sparse_reorder(sp_input)
+    sp_output = sparse_ops.sparse_reorder(sp_input)
+    self.assertAllEqual(
+        (4096, 4096, 4096, 4096, 4096, 4096), sp_output.get_shape())
 
 
 if __name__ == "__main__":

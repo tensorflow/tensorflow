@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
-#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -55,21 +54,10 @@ class SparseReorderOp : public OpKernel {
                     "Input shape should be a vector but received shape ",
                     input_shape_in.shape().DebugString()));
 
-    // Check if the sparse tensor input shape is valid
-    int64 total = 1;
-    for (int64 i = 0; i < input_shape_in.NumElements(); ++i) {
-      int dim = input_shape_in.vec<int64>()(i);
-      OP_REQUIRES(context, (dim >= 0),
-                  errors::InvalidArgument("Dimension ", dim, " must be >= 0"));
-      total = MultiplyWithoutOverflow(total, dim);
-      OP_REQUIRES(context, (total > 0),
-                  errors::InvalidArgument(
-                      "Shape would have more than 2**63 - 1 elements"));
-    }
+    gtl::ArraySlice<int64> input_shape(
+        input_shape_in.vec<int64>().data(), input_shape_in.NumElements());
 
-    const TensorShape input_shape(input_shape_in.vec<int64>());
-
-    gtl::InlinedVector<int64, 8> std_order(input_shape.dims());
+    gtl::InlinedVector<int64, 8> std_order(input_shape.size());
     std::iota(std_order.begin(), std_order.end(), 0);
 
     // Check if the sparse tensor is already ordered correctly
