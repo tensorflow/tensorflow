@@ -77,9 +77,9 @@ def _gen_mlir_op(name, type):
 # Kernels build rules.
 ################################################################################
 
-def if_mlir_unranked_kernels_enabled(if_true, if_false = []):
+def if_mlir_experimental_kernels_enabled(if_true, if_false = []):
     return select({
-        "//tensorflow/core/kernels/mlir_generated:mlir_use_unranked_kernels": if_true,
+        "//tensorflow/core/kernels/mlir_generated:mlir_experimental_kernels_enabled": if_true,
         "//conditions:default": if_false,
     })
 

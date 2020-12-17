@@ -3,8 +3,8 @@
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gen_kernel_library",
+    "if_mlir_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
-    "if_mlir_unranked_kernels_enabled",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -31,7 +31,7 @@ config_setting(
 )
 
 config_setting(
-    name = "mlir_use_unranked_kernels",
+    name = "mlir_experimental_kernels_enabled",
     define_values = {"enable_unranked_kernels": "1"},
 )
 
@@ -70,7 +70,7 @@ filegroup(
     name = "unary_kernel_srcs",
     srcs = [
         ":enabled_unary_kernel_srcs",
-    ] + if_mlir_unranked_kernels_enabled(
+    ] + if_mlir_experimental_kernels_enabled(
         if_true = [":experimental_unary_kernel_srcs"],
     ),
     compatible_with = get_compatible_with_cloud(),
@@ -182,7 +182,7 @@ tf_kernel_library(
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
         ":cwise_unary_op",
-    ]) + if_mlir_unranked_kernels_enabled(
+    ]) + if_mlir_experimental_kernels_enabled(
         [
             ":cwise_binary_op",
         ],
