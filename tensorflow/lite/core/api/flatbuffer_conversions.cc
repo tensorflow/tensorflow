@@ -415,18 +415,7 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     }
 
     case BuiltinOperator_CAST: {
-      auto params = safe_allocator.Allocate<TfLiteCastParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->in_data_type(),
-                                                &params->in_data_type,
-                                                error_reporter));
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
-                                                &params->out_data_type,
-                                                error_reporter));
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
+      return ParseCast(op, error_reporter, allocator, builtin_data);
     }
     case BuiltinOperator_LSH_PROJECTION: {
       auto params = safe_allocator.Allocate<TfLiteLSHProjectionParams>();
@@ -965,6 +954,30 @@ TfLiteStatus ParseArgMin(const Operator* op, ErrorReporter* error_reporter,
     // better undertand the ramifications of changing the legacy behavior.
   }
 
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseCast(const Operator* op,
+                       ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator,
+                       void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteCastParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
+    TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->in_data_type(),
+                                            &params->in_data_type,
+                                            error_reporter));
+    TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
+                                            &params->out_data_type,
+                                            error_reporter));
+  }
   *builtin_data = params.release();
   return kTfLiteOk;
 }
