@@ -1276,6 +1276,20 @@ Status XlaCompiler::CompileGraph(
     CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
 
+  absl::optional<ConfigProto> config_proto;
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(*graph, config_proto);
+  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
+    VLOG(1) << "Using MLIR bridge";
+    GraphDebugInfo debug_info;
+    TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
+        std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        {}, options_.device_type.type_string(), options.use_tuple_arg,
+        *options_.flib_def, debug_info, options_.shape_representation_fn,
+        result));
+    return Status::OK();
+  }
+
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
   TF_RETURN_IF_ERROR(RearrangeFunctionArguments(
