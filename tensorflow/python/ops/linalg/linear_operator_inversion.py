@@ -166,7 +166,6 @@ class LinearOperatorInversion(linear_operator.LinearOperator):
     with ops.name_scope(name, values=operator.graph_parents):
       super(LinearOperatorInversion, self).__init__(
           dtype=operator.dtype,
-          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
