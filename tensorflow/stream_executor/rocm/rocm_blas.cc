@@ -465,11 +465,7 @@ bool ROCMBlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) {
   return DoBlasInternal(wrap::rocblas_scasum, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -477,11 +473,7 @@ bool ROCMBlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) {
   return DoBlasInternal(wrap::rocblas_dzasum, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -508,11 +500,7 @@ bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_caxpy, stream, true /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_caxpy, stream, /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
       complex_cast(alpha), complex_cast(x), incx, complex_cast(y), incy);
 }
 
@@ -521,11 +509,7 @@ bool ROCMBlas::DoBlasAxpy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zaxpy, stream, true /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_zaxpy, stream, /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
       complex_cast(alpha), complex_cast(x), incx, complex_cast(y), incy);
 }
 
@@ -549,11 +533,7 @@ bool ROCMBlas::DoBlasCopy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_ccopy, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, complex_cast(y), incy);
 }
 
@@ -561,11 +541,7 @@ bool ROCMBlas::DoBlasCopy(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_zcopy, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, complex_cast(y), incy);
 }
 
@@ -594,11 +570,7 @@ bool ROCMBlas::DoBlasDotc(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *result) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_cdotc, stream, false /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_cdotc, stream, /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
       complex_cast(x), incx, complex_cast(y), incy, complex_cast(result));
 }
 
@@ -607,11 +579,7 @@ bool ROCMBlas::DoBlasDotc(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *result) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zdotc, stream, false /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_zdotc, stream, /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
       complex_cast(x), incx, complex_cast(y), incy, complex_cast(result));
 }
 
@@ -620,11 +588,7 @@ bool ROCMBlas::DoBlasDotu(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *result) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_cdotu, stream, false /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_cdotu, stream, /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
       complex_cast(x), incx, complex_cast(y), incy, complex_cast(result));
 }
 
@@ -633,11 +597,7 @@ bool ROCMBlas::DoBlasDotu(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *result) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zdotu, stream, false /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_zdotu, stream, /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
       complex_cast(x), incx, complex_cast(y), incy, complex_cast(result));
 }
 
@@ -661,11 +621,7 @@ bool ROCMBlas::DoBlasNrm2(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<float>> &x, int incx,
                           DeviceMemory<float> *result) {
   return DoBlasInternal(wrap::rocblas_scnrm2, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -673,11 +629,7 @@ bool ROCMBlas::DoBlasNrm2(Stream *stream, uint64 elem_count,
                           const DeviceMemory<std::complex<double>> &x, int incx,
                           DeviceMemory<double> *result) {
   return DoBlasInternal(wrap::rocblas_dznrm2, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -685,11 +637,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<float> *x, int incx,
                          DeviceMemory<float> *y, int incy, float c, float s) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_srot, stream, true /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_srot, stream, /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
       GpuMemoryMutable(x), incx, GpuMemoryMutable(y), incy, &c, &s);
 }
 
@@ -698,11 +646,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<double> *y, int incy, double c,
                          double s) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_drot, stream, true /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_drot, stream, /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
       GpuMemoryMutable(x), incx, GpuMemoryMutable(y), incy, &c, &s);
 }
 
@@ -711,11 +655,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<std::complex<float>> *y, int incy,
                          float c, float s) {
   return DoBlasInternal(wrap::rocblas_csrot, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, complex_cast(y), incy, &c, &s);
 }
 
@@ -724,11 +664,7 @@ bool ROCMBlas::DoBlasRot(Stream *stream, uint64 elem_count,
                          DeviceMemory<std::complex<double>> *y, int incy,
                          double c, double s) {
   return DoBlasInternal(wrap::rocblas_zdrot, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, complex_cast(y), incy, &c, &s);
 }
 
@@ -736,11 +672,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<float> *a,
                           DeviceMemory<float> *b, DeviceMemory<float> *c,
                           DeviceMemory<float> *s) {
   return DoBlasInternal(wrap::rocblas_srotg, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, GpuMemoryMutable(a),
-=======
                         /* pointer_mode_host = */ false, GpuMemoryMutable(a),
->>>>>>> upstream/master
                         GpuMemoryMutable(b), GpuMemoryMutable(c),
                         GpuMemoryMutable(s));
 }
@@ -749,11 +681,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<double> *a,
                           DeviceMemory<double> *b, DeviceMemory<double> *c,
                           DeviceMemory<double> *s) {
   return DoBlasInternal(wrap::rocblas_drotg, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, GpuMemoryMutable(a),
-=======
                         /* pointer_mode_host = */ false, GpuMemoryMutable(a),
->>>>>>> upstream/master
                         GpuMemoryMutable(b), GpuMemoryMutable(c),
                         GpuMemoryMutable(s));
 }
@@ -763,11 +691,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<std::complex<float>> *a,
                           DeviceMemory<float> *c,
                           DeviceMemory<std::complex<float>> *s) {
   return DoBlasInternal(wrap::rocblas_crotg, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, complex_cast(a),
-=======
                         /* pointer_mode_host = */ false, complex_cast(a),
->>>>>>> upstream/master
                         complex_cast(b), GpuMemoryMutable(c), complex_cast(s));
 }
 
@@ -776,11 +700,7 @@ bool ROCMBlas::DoBlasRotg(Stream *stream, DeviceMemory<std::complex<double>> *a,
                           DeviceMemory<double> *c,
                           DeviceMemory<std::complex<double>> *s) {
   return DoBlasInternal(wrap::rocblas_zrotg, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, complex_cast(a),
-=======
                         /* pointer_mode_host = */ false, complex_cast(a),
->>>>>>> upstream/master
                         complex_cast(b), GpuMemoryMutable(c), complex_cast(s));
 }
 
@@ -789,11 +709,7 @@ bool ROCMBlas::DoBlasRotm(Stream *stream, uint64 elem_count,
                           DeviceMemory<float> *y, int incy,
                           const DeviceMemory<float> &param) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_srotm, stream, false /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_srotm, stream, /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
       GpuMemoryMutable(x), incx, GpuMemoryMutable(y), incy, GpuMemory(param));
 }
 
@@ -802,11 +718,7 @@ bool ROCMBlas::DoBlasRotm(Stream *stream, uint64 elem_count,
                           DeviceMemory<double> *y, int incy,
                           const DeviceMemory<double> &param) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_drotm, stream, false /* = pointer_mode_host */, elem_count,
-=======
       wrap::rocblas_drotm, stream, /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
       GpuMemoryMutable(x), incx, GpuMemoryMutable(y), incy, GpuMemory(param));
 }
 
@@ -815,11 +727,7 @@ bool ROCMBlas::DoBlasRotmg(Stream *stream, DeviceMemory<float> *d1,
                            const DeviceMemory<float> &y1,
                            DeviceMemory<float> *param) {
   return DoBlasInternal(wrap::rocblas_srotmg, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, GpuMemoryMutable(d1),
-=======
                         /* pointer_mode_host = */ false, GpuMemoryMutable(d1),
->>>>>>> upstream/master
                         GpuMemoryMutable(d2), GpuMemoryMutable(x1),
                         GpuMemory(y1), GpuMemoryMutable(param));
 }
@@ -829,11 +737,7 @@ bool ROCMBlas::DoBlasRotmg(Stream *stream, DeviceMemory<double> *d1,
                            const DeviceMemory<double> &y1,
                            DeviceMemory<double> *param) {
   return DoBlasInternal(wrap::rocblas_drotmg, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, GpuMemoryMutable(d1),
-=======
                         /* pointer_mode_host = */ false, GpuMemoryMutable(d1),
->>>>>>> upstream/master
                         GpuMemoryMutable(d2), GpuMemoryMutable(x1),
                         GpuMemory(y1), GpuMemoryMutable(param));
 }
@@ -903,11 +807,7 @@ bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
                           DeviceMemory<std::complex<float>> *x, int incx,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_cswap, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, complex_cast(y), incy);
 }
 
@@ -915,11 +815,7 @@ bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
                           DeviceMemory<std::complex<double>> *x, int incx,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_zswap, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ true, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, complex_cast(y), incy);
 }
 
@@ -943,11 +839,7 @@ bool ROCMBlas::DoBlasIamax(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(wrap::rocblas_icamax, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -955,11 +847,7 @@ bool ROCMBlas::DoBlasIamax(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) {
   return DoBlasInternal(wrap::rocblas_izamax, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -967,11 +855,7 @@ bool ROCMBlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<float> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(wrap::rocblas_isamin, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         GpuMemory(x), incx, GpuMemoryMutable(result));
 }
 
@@ -979,11 +863,7 @@ bool ROCMBlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<double> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(wrap::rocblas_idamin, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         GpuMemory(x), incx, GpuMemoryMutable(result));
 }
 
@@ -991,11 +871,7 @@ bool ROCMBlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<float>> &x, int incx,
                            DeviceMemory<int> *result) {
   return DoBlasInternal(wrap::rocblas_icamin, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -1003,11 +879,7 @@ bool ROCMBlas::DoBlasIamin(Stream *stream, uint64 elem_count,
                            const DeviceMemory<std::complex<double>> &x,
                            int incx, DeviceMemory<int> *result) {
   return DoBlasInternal(wrap::rocblas_izamin, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */, elem_count,
-=======
                         /* pointer_mode_host = */ false, elem_count,
->>>>>>> upstream/master
                         complex_cast(x), incx, GpuMemoryMutable(result));
 }
 
@@ -1017,11 +889,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_sgbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_sgbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasTranspose(trans), m, n, kl, ku, &alpha, GpuMemory(a), lda,
       GpuMemory(x), incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1032,11 +900,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dgbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_dgbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasTranspose(trans), m, n, kl, ku, &alpha, GpuMemory(a), lda,
       GpuMemory(x), incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1049,11 +913,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_cgbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_cgbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasTranspose(trans), m, n, kl, ku, complex_cast(alpha),
       complex_cast(a), lda, complex_cast(x), incx, complex_cast(beta),
       complex_cast(y), incy);
@@ -1067,11 +927,7 @@ bool ROCMBlas::DoBlasGbmv(Stream *stream, blas::Transpose trans, uint64 m,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zgbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zgbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasTranspose(trans), m, n, kl, ku, complex_cast(alpha),
       complex_cast(a), lda, complex_cast(x), incx, complex_cast(beta),
       complex_cast(y), incy);
@@ -1149,11 +1005,7 @@ bool ROCMBlas::DoBlasGerc(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_cgerc, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, m, n,
-=======
                         /* pointer_mode_host = */ true, m, n,
->>>>>>> upstream/master
                         complex_cast(alpha), complex_cast(x), incx,
                         complex_cast(y), incy, complex_cast(a), lda);
 }
@@ -1164,11 +1016,7 @@ bool ROCMBlas::DoBlasGerc(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_zgerc, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, m, n,
-=======
                         /* pointer_mode_host = */ true, m, n,
->>>>>>> upstream/master
                         complex_cast(alpha), complex_cast(x), incx,
                         complex_cast(y), incy, complex_cast(a), lda);
 }
@@ -1179,11 +1027,7 @@ bool ROCMBlas::DoBlasGeru(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_cgeru, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, m, n,
-=======
                         /* pointer_mode_host = */ true, m, n,
->>>>>>> upstream/master
                         complex_cast(alpha), complex_cast(x), incx,
                         complex_cast(y), incy, complex_cast(a), lda);
 }
@@ -1194,11 +1038,7 @@ bool ROCMBlas::DoBlasGeru(Stream *stream, uint64 m, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_zgeru, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, m, n,
-=======
                         /* pointer_mode_host = */ true, m, n,
->>>>>>> upstream/master
                         complex_cast(alpha), complex_cast(x), incx,
                         complex_cast(y), incy, complex_cast(a), lda);
 }
@@ -1210,11 +1050,7 @@ bool ROCMBlas::DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_chbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_chbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, k, complex_cast(alpha), complex_cast(a), lda,
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
 }
@@ -1226,11 +1062,7 @@ bool ROCMBlas::DoBlasHbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zhbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zhbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, k, complex_cast(alpha), complex_cast(a), lda,
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
 }
@@ -1242,11 +1074,7 @@ bool ROCMBlas::DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_chemv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_chemv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(a), lda,
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
 }
@@ -1258,11 +1086,7 @@ bool ROCMBlas::DoBlasHemv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zhemv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zhemv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(a), lda,
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
 }
@@ -1272,11 +1096,7 @@ bool ROCMBlas::DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<float>> &x, int incx,
                          DeviceMemory<std::complex<float>> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_cher, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, complex_cast(alpha),
                         complex_cast(x), incx, complex_cast(a), lda);
 }
@@ -1286,11 +1106,7 @@ bool ROCMBlas::DoBlasHer(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<double>> &x, int incx,
                          DeviceMemory<std::complex<double>> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_zher, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, complex_cast(alpha),
                         complex_cast(x), incx, complex_cast(a), lda);
 }
@@ -1301,11 +1117,7 @@ bool ROCMBlas::DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *a, int lda) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_cher2, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_cher2, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(x), incx,
       complex_cast(y), incy, complex_cast(a), lda);
 }
@@ -1316,11 +1128,7 @@ bool ROCMBlas::DoBlasHer2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *a, int lda) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zher2, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zher2, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(x), incx,
       complex_cast(y), incy, complex_cast(a), lda);
 }
@@ -1332,11 +1140,7 @@ bool ROCMBlas::DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_chpmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_chpmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(ap),
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
 }
@@ -1348,11 +1152,7 @@ bool ROCMBlas::DoBlasHpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zhpmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zhpmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(ap),
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
 }
@@ -1362,11 +1162,7 @@ bool ROCMBlas::DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<float>> &x, int incx,
                          DeviceMemory<std::complex<float>> *ap) {
   return DoBlasInternal(wrap::rocblas_chpr, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, complex_cast(alpha),
                         complex_cast(x), incx, complex_cast(ap));
 }
@@ -1376,11 +1172,7 @@ bool ROCMBlas::DoBlasHpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          const DeviceMemory<std::complex<double>> &x, int incx,
                          DeviceMemory<std::complex<double>> *ap) {
   return DoBlasInternal(wrap::rocblas_zhpr, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, complex_cast(alpha),
                         complex_cast(x), incx, complex_cast(ap));
 }
@@ -1391,11 +1183,7 @@ bool ROCMBlas::DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<float>> &y, int incy,
                           DeviceMemory<std::complex<float>> *ap) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_chpr2, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_chpr2, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(x), incx,
       complex_cast(y), incy, complex_cast(ap));
 }
@@ -1406,11 +1194,7 @@ bool ROCMBlas::DoBlasHpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<std::complex<double>> &y, int incy,
                           DeviceMemory<std::complex<double>> *ap) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zhpr2, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zhpr2, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, complex_cast(alpha), complex_cast(x), incx,
       complex_cast(y), incy, complex_cast(ap));
 }
@@ -1420,11 +1204,7 @@ bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           int lda, const DeviceMemory<float> &x, int incx,
                           float beta, DeviceMemory<float> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ssbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_ssbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, k, &alpha, GpuMemory(a), lda, GpuMemory(x),
       incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1434,11 +1214,7 @@ bool ROCMBlas::DoBlasSbmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           int lda, const DeviceMemory<double> &x, int incx,
                           double beta, DeviceMemory<double> *y, int incy) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dsbmv, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_dsbmv, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), n, k, &alpha, GpuMemory(a), lda, GpuMemory(x),
       incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1448,11 +1224,7 @@ bool ROCMBlas::DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_sspmv, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(ap),
                         GpuMemory(x), incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1462,11 +1234,7 @@ bool ROCMBlas::DoBlasSpmv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_dspmv, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(ap),
                         GpuMemory(x), incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1475,11 +1243,7 @@ bool ROCMBlas::DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          float alpha, const DeviceMemory<float> &x, int incx,
                          DeviceMemory<float> *ap) {
   return DoBlasInternal(wrap::rocblas_sspr, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(x), incx,
                         GpuMemoryMutable(ap));
 }
@@ -1488,11 +1252,7 @@ bool ROCMBlas::DoBlasSpr(Stream *stream, blas::UpperLower uplo, uint64 n,
                          double alpha, const DeviceMemory<double> &x, int incx,
                          DeviceMemory<double> *ap) {
   return DoBlasInternal(wrap::rocblas_dspr, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(x), incx,
                         GpuMemoryMutable(ap));
 }
@@ -1502,11 +1262,7 @@ bool ROCMBlas::DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &y, int incy,
                           DeviceMemory<float> *ap) {
   return DoBlasInternal(wrap::rocblas_sspr2, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(x), incx,
                         GpuMemory(y), incy, GpuMemoryMutable(ap));
 }
@@ -1516,11 +1272,7 @@ bool ROCMBlas::DoBlasSpr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &y, int incy,
                           DeviceMemory<double> *ap) {
   return DoBlasInternal(wrap::rocblas_dspr2, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(x), incx,
                         GpuMemory(y), incy, GpuMemoryMutable(ap));
 }
@@ -1530,11 +1282,7 @@ bool ROCMBlas::DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &x, int incx, float beta,
                           DeviceMemory<float> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_ssymv, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(a), lda,
                         GpuMemory(x), incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1544,11 +1292,7 @@ bool ROCMBlas::DoBlasSymv(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &x, int incx, double beta,
                           DeviceMemory<double> *y, int incy) {
   return DoBlasInternal(wrap::rocblas_dsymv, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(a), lda,
                         GpuMemory(x), incx, &beta, GpuMemoryMutable(y), incy);
 }
@@ -1576,11 +1320,7 @@ bool ROCMBlas::DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<float> &y, int incy,
                           DeviceMemory<float> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_ssyr2, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(x), incx,
                         GpuMemory(y), incy, GpuMemoryMutable(a), lda);
 }
@@ -1590,11 +1330,7 @@ bool ROCMBlas::DoBlasSyr2(Stream *stream, blas::UpperLower uplo, uint64 n,
                           const DeviceMemory<double> &y, int incy,
                           DeviceMemory<double> *a, int lda) {
   return DoBlasInternal(wrap::rocblas_dsyr2, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), n, &alpha, GpuMemory(x), incx,
                         GpuMemory(y), incy, GpuMemoryMutable(a), lda);
 }
@@ -1604,11 +1340,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   return DoBlasInternal(wrap::rocblas_stbmv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, GpuMemory(a), lda,
                         GpuMemoryMutable(x), incx);
@@ -1619,11 +1351,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   return DoBlasInternal(wrap::rocblas_dtbmv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, GpuMemory(a), lda,
                         GpuMemoryMutable(x), incx);
@@ -1635,11 +1363,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<float>> *x,
                           int incx) {
   return DoBlasInternal(wrap::rocblas_ctbmv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, complex_cast(a), lda,
                         complex_cast(x), incx);
@@ -1651,11 +1375,7 @@ bool ROCMBlas::DoBlasTbmv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<double>> *x,
                           int incx) {
   return DoBlasInternal(wrap::rocblas_ztbmv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, complex_cast(a), lda,
                         complex_cast(x), incx);
@@ -1666,11 +1386,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   return DoBlasInternal(wrap::rocblas_stbsv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, GpuMemory(a), lda,
                         GpuMemoryMutable(x), incx);
@@ -1681,11 +1397,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           uint64 k, const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   return DoBlasInternal(wrap::rocblas_dtbsv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, GpuMemory(a), lda,
                         GpuMemoryMutable(x), incx);
@@ -1697,11 +1409,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<float>> *x,
                           int incx) {
   return DoBlasInternal(wrap::rocblas_ctbsv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, complex_cast(a), lda,
                         complex_cast(x), incx);
@@ -1713,11 +1421,7 @@ bool ROCMBlas::DoBlasTbsv(Stream *stream, blas::UpperLower uplo,
                           int lda, DeviceMemory<std::complex<double>> *x,
                           int incx) {
   return DoBlasInternal(wrap::rocblas_ztbsv, stream,
-<<<<<<< HEAD
-                        false /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ false,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
                         ROCMBlasDiagonal(diag), n, k, complex_cast(a), lda,
                         complex_cast(x), incx);
@@ -1728,11 +1432,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &ap, DeviceMemory<float> *x,
                           int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_stpmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_stpmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(ap), GpuMemoryMutable(x), incx);
 }
@@ -1742,11 +1442,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &ap,
                           DeviceMemory<double> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dtpmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_dtpmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(ap), GpuMemoryMutable(x), incx);
 }
@@ -1756,11 +1452,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &ap,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ctpmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ctpmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(ap), complex_cast(x), incx);
 }
@@ -1770,11 +1462,7 @@ bool ROCMBlas::DoBlasTpmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &ap,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ztpmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ztpmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(ap), complex_cast(x), incx);
 }
@@ -1784,11 +1472,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &ap, DeviceMemory<float> *x,
                           int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_stpsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_stpsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(ap), GpuMemoryMutable(x), incx);
 }
@@ -1798,11 +1482,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &ap,
                           DeviceMemory<double> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dtpsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_dtpsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(ap), GpuMemoryMutable(x), incx);
 }
@@ -1812,11 +1492,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &ap,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ctpsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ctpsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(ap), complex_cast(x), incx);
 }
@@ -1826,11 +1502,7 @@ bool ROCMBlas::DoBlasTpsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &ap,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ztpsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ztpsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(ap), complex_cast(x), incx);
 }
@@ -1840,11 +1512,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_strmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_strmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(a), lda, GpuMemoryMutable(x), incx);
 }
@@ -1854,11 +1522,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dtrmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_dtrmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(a), lda, GpuMemoryMutable(x), incx);
 }
@@ -1868,11 +1532,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ctrmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ctrmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(a), lda, complex_cast(x), incx);
 }
@@ -1882,11 +1542,7 @@ bool ROCMBlas::DoBlasTrmv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ztrmv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ztrmv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(a), lda, complex_cast(x), incx);
 }
@@ -1896,11 +1552,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_strsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_strsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(a), lda, GpuMemoryMutable(x), incx);
 }
@@ -1910,11 +1562,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dtrsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_dtrsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, GpuMemory(a), lda, GpuMemoryMutable(x), incx);
 }
@@ -1924,11 +1572,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ctrsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ctrsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(a), lda, complex_cast(x), incx);
 }
@@ -1938,11 +1582,7 @@ bool ROCMBlas::DoBlasTrsv(Stream *stream, blas::UpperLower uplo,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ztrsv, stream, false /* = pointer_mode_host */,
-=======
       wrap::rocblas_ztrsv, stream, /* pointer_mode_host = */ false,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans),
       ROCMBlasDiagonal(diag), n, complex_cast(a), lda, complex_cast(x), incx);
 }
@@ -2648,11 +2288,7 @@ bool ROCMBlas::DoBlasHemm(Stream *stream, blas::Side side,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   return DoBlasInternal(wrap::rocblas_chemm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2666,11 +2302,7 @@ bool ROCMBlas::DoBlasHemm(Stream *stream, blas::Side side,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
   return DoBlasInternal(wrap::rocblas_zhemm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2683,11 +2315,7 @@ bool ROCMBlas::DoBlasHerk(Stream *stream, blas::UpperLower uplo,
                           float beta, DeviceMemory<std::complex<float>> *c,
                           int ldc) {
   return DoBlasInternal(wrap::rocblas_cherk, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n,
                         k, complex_cast(alpha), complex_cast(a), lda,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2700,11 +2328,7 @@ bool ROCMBlas::DoBlasHerk(Stream *stream, blas::UpperLower uplo,
                           double beta, DeviceMemory<std::complex<double>> *c,
                           int ldc) {
   return DoBlasInternal(wrap::rocblas_zherk, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n,
                         k, complex_cast(alpha), complex_cast(a), lda,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2718,11 +2342,7 @@ bool ROCMBlas::DoBlasHer2k(Stream *stream, blas::UpperLower uplo,
                            float beta, DeviceMemory<std::complex<float>> *c,
                            int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_cher2k, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_cher2k, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k,
       complex_cast(alpha), complex_cast(a), lda, complex_cast(b), ldb,
       complex_cast(beta), complex_cast(c), ldc);
@@ -2736,11 +2356,7 @@ bool ROCMBlas::DoBlasHer2k(Stream *stream, blas::UpperLower uplo,
                            double beta, DeviceMemory<std::complex<double>> *c,
                            int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zher2k, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zher2k, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k,
       complex_cast(alpha), complex_cast(a), lda, complex_cast(b), ldb,
       complex_cast(beta), complex_cast(c), ldc);
@@ -2752,11 +2368,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ssymm, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_ssymm, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasSide(side), ROCMBlasUpperLower(uplo), m, n, &alpha, GpuMemory(a),
       lda, GpuMemory(b), ldb, &beta, GpuMemoryMutable(c), ldc);
 }
@@ -2767,11 +2379,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           const DeviceMemory<double> &b, int ldb, double beta,
                           DeviceMemory<double> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dsymm, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_dsymm, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasSide(side), ROCMBlasUpperLower(uplo), m, n, &alpha, GpuMemory(a),
       lda, GpuMemory(b), ldb, &beta, GpuMemoryMutable(c), ldc);
 }
@@ -2784,11 +2392,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   return DoBlasInternal(wrap::rocblas_csymm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2802,11 +2406,7 @@ bool ROCMBlas::DoBlasSymm(Stream *stream, blas::Side side,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
   return DoBlasInternal(wrap::rocblas_zsymm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2817,11 +2417,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           float beta, DeviceMemory<float> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ssyrk, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_ssyrk, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k, &alpha,
       GpuMemory(a), lda, &beta, GpuMemoryMutable(c), ldc);
 }
@@ -2831,11 +2427,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           double alpha, const DeviceMemory<double> &a, int lda,
                           double beta, DeviceMemory<double> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dsyrk, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_dsyrk, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k, &alpha,
       GpuMemory(a), lda, &beta, GpuMemoryMutable(c), ldc);
 }
@@ -2847,11 +2439,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           std::complex<float> beta,
                           DeviceMemory<std::complex<float>> *c, int ldc) {
   return DoBlasInternal(wrap::rocblas_csyrk, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n,
                         k, complex_cast(alpha), complex_cast(a), lda,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2864,11 +2452,7 @@ bool ROCMBlas::DoBlasSyrk(Stream *stream, blas::UpperLower uplo,
                           std::complex<double> beta,
                           DeviceMemory<std::complex<double>> *c, int ldc) {
   return DoBlasInternal(wrap::rocblas_zsyrk, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */,
-=======
                         /* pointer_mode_host = */ true,
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n,
                         k, complex_cast(alpha), complex_cast(a), lda,
                         complex_cast(beta), complex_cast(c), ldc);
@@ -2880,11 +2464,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            const DeviceMemory<float> &b, int ldb, float beta,
                            DeviceMemory<float> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_ssyr2k, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_ssyr2k, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k, &alpha,
       GpuMemory(a), lda, GpuMemory(b), ldb, &beta, GpuMemoryMutable(c), ldc);
 }
@@ -2895,11 +2475,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            const DeviceMemory<double> &b, int ldb, double beta,
                            DeviceMemory<double> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_dsyr2k, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_dsyr2k, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k, &alpha,
       GpuMemory(a), lda, GpuMemory(b), ldb, &beta, GpuMemoryMutable(c), ldc);
 }
@@ -2912,11 +2488,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            std::complex<float> beta,
                            DeviceMemory<std::complex<float>> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_csyr2k, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_csyr2k, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k,
       complex_cast(alpha), complex_cast(a), lda, complex_cast(b), ldb,
       complex_cast(beta), complex_cast(c), ldc);
@@ -2930,11 +2502,7 @@ bool ROCMBlas::DoBlasSyr2k(Stream *stream, blas::UpperLower uplo,
                            std::complex<double> beta,
                            DeviceMemory<std::complex<double>> *c, int ldc) {
   return DoBlasInternal(
-<<<<<<< HEAD
-      wrap::rocblas_zsyr2k, stream, true /* = pointer_mode_host */,
-=======
       wrap::rocblas_zsyr2k, stream, /* pointer_mode_host = */ true,
->>>>>>> upstream/master
       ROCMBlasUpperLower(uplo), ROCMBlasTranspose(trans), n, k,
       complex_cast(alpha), complex_cast(a), lda, complex_cast(b), ldb,
       complex_cast(beta), complex_cast(c), ldc);
@@ -2946,11 +2514,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<float> &a, int lda,
                           DeviceMemory<float> *b, int ldb) {
   return DoBlasInternal(wrap::rocblas_strmm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, &alpha, GpuMemory(a), lda,
                         GpuMemoryMutable(b), ldb);
@@ -2962,11 +2526,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<double> &a, int lda,
                           DeviceMemory<double> *b, int ldb) {
   return DoBlasInternal(wrap::rocblas_dtrmm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, &alpha, GpuMemory(a), lda,
                         GpuMemoryMutable(b), ldb);
@@ -2979,11 +2539,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) {
   return DoBlasInternal(wrap::rocblas_ctrmm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb);
@@ -2996,11 +2552,7 @@ bool ROCMBlas::DoBlasTrmm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) {
   return DoBlasInternal(wrap::rocblas_ztrmm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb);
@@ -3013,11 +2565,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           DeviceMemory<float> *b, int ldb) {
   blas_log("DoBlasTrsm");
   return DoBlasInternal(wrap::rocblas_strsm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, &alpha, GpuMemory(a), lda,
                         GpuMemoryMutable(b), ldb);
@@ -3030,11 +2578,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           DeviceMemory<double> *b, int ldb) {
   blas_log("DoBlasTrsm");
   return DoBlasInternal(wrap::rocblas_dtrsm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, &alpha, GpuMemory(a), lda,
                         GpuMemoryMutable(b), ldb);
@@ -3047,11 +2591,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<float>> &a, int lda,
                           DeviceMemory<std::complex<float>> *b, int ldb) {
   return DoBlasInternal(wrap::rocblas_ctrsm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb);
@@ -3064,11 +2604,7 @@ bool ROCMBlas::DoBlasTrsm(Stream *stream, blas::Side side,
                           const DeviceMemory<std::complex<double>> &a, int lda,
                           DeviceMemory<std::complex<double>> *b, int ldb) {
   return DoBlasInternal(wrap::rocblas_ztrsm, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, ROCMBlasSide(side),
-=======
                         /* pointer_mode_host = */ true, ROCMBlasSide(side),
->>>>>>> upstream/master
                         ROCMBlasUpperLower(uplo), ROCMBlasTranspose(transa),
                         ROCMBlasDiagonal(diag), m, n, complex_cast(alpha),
                         complex_cast(a), lda, complex_cast(b), ldb);

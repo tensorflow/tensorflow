@@ -163,14 +163,16 @@ tf_cuda_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
-=======
+    ],
+)
+
+tf_cuda_library(
     name = "nvtx_utils",
     srcs = if_cuda_is_configured_compat(["nvtx_utils.cc"]),
     hdrs = if_cuda_is_configured_compat(["nvtx_utils.h"]),
     copts = tf_profiler_copts() + tf_copts(),
     deps = [
         "//tensorflow/core:lib",
->>>>>>> upstream/master
     ],
 )
 
