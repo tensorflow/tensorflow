@@ -840,6 +840,38 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
       ASSERT_EQ(2, node.input_size());
       EXPECT_EQ(node.input(0), "id3");
       EXPECT_EQ(node.input(1), "id4");
+    } else if (node.name() == "switch1") {
+      // The node can be replaced by Identity
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "v_in");
+    } else if (node.name() == "switch2") {
+      // The node can be replaced by Identity
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "v_in");
+    } else if (node.name() == "switch3") {
+      // The node can be replaced by Identity
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "v_in");
+    } else if (node.name() == "switch4") {
+      // The node can be replaced by Identity
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "v_in");
+    } else if (node.name() == "switch5") {
+      // The node should remain unchanged
+      EXPECT_EQ(node.op(), "Switch");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "ctrl1");
+    } else if (node.name() == "switch6") {
+      // The node should remain unchanged
+      EXPECT_EQ(node.op(), "Switch");
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0), "v_in");
+      EXPECT_EQ(node.input(1), "ctrl1");
     }
   }
 
@@ -851,6 +883,53 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
 
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
   test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-6);
+}
+
+TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition2) {
+  Scope scope = Scope::NewRootScope();
+  Output v_in = ops::Const<float>(scope.WithOpName("v_in"), {123.0}, {});
+
+  Output ctrl1 = ops::Const(scope.WithOpName("ctrl1"), true, TensorShape({}));
+  ops::Switch s1(scope.WithOpName("switch1"), v_in, ctrl1);
+
+  Output square1 = ops::Square(scope.WithOpName("square1"), s1.output_false);
+
+  Output add1 =
+      ops::Add(scope.WithOpName("add1"), s1.output_true, s1.output_true);
+
+  Output const2 = ops::Const<float>(scope.WithOpName("const2"), {20.0}, {});
+  Output add2 = ops::Add(scope.WithOpName("add2"), s1.output_true, const2);
+
+  Output sub1 = ops::Sub(scope.WithOpName("sub1"), add1, add2);
+
+  ops::Merge m1(scope.WithOpName("m1"), {square1, sub1});
+  Output add3 = ops::Add(scope.WithOpName("add3"), m1.output, const2);
+
+  GrapplerItem item;
+  item.fetch.push_back("add3");
+
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  LoopOptimizer optimizer(RewriterConfig::AGGRESSIVE, nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_CHECK_OK(status);
+
+  for (const NodeDef& node : output.node()) {
+    // This node should have been pruned
+    EXPECT_NE(node.name(), "Square1");
+
+    if (node.name() == "m1") {
+      // square1 is dead
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "sub1");
+    } else if (node.name() == "switch1") {
+      EXPECT_EQ(node.op(), "Identity");
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), "v_in");
+    }
+  }
 }
 
 TEST_F(LoopOptimizerTest, RemoveDeadBranchesFullyRemoveDeadBranches) {

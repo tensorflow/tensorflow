@@ -764,8 +764,6 @@ Status LoopOptimizer::RemoveDeadBranches(
     GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
-  // TODO(bsteiner): also rewrite switches as identity. For now we just record
-  // them
   absl::flat_hash_set<GraphView::OutputPort> identity_switches;
 
   MutableGraphView view(optimized_graph);
@@ -789,7 +787,6 @@ Status LoopOptimizer::RemoveDeadBranches(
       continue;
     }
     GraphView::OutputPort dead(&node, dead_fanout);
-    identity_switches.insert(dead);
 
     SetVector<MutableGraphView::InputPort, absl::Hash<MutableGraphView::Port>>
         zombie_inputs;
@@ -875,6 +872,9 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (!found_node_to_preserve) {
       std::swap(dead_nodes, local_dead_nodes);
       std::swap(dead_merge_inputs, local_dead_merge_inputs);
+      identity_switches.insert(dead);
+      VLOG(3) << "Found no nodes to preserve in fanout of switch node: "
+              << node.name() << ", fanout port: " << dead_fanout;
     }
   }
 
@@ -939,6 +939,42 @@ Status LoopOptimizer::RemoveDeadBranches(
     VLOG(3) << "Merge node after cleanup: " << merge_node->DebugString();
   }
 
+  for (const auto& dead_switch : identity_switches) {
+    NodeDef* sw_node = const_cast<NodeDef*>((dead_switch.node));
+    int dead_port_id = dead_switch.port_id;
+
+    // Switch nodes that are dead because of zero-iteration loop, are not
+    // optimized currently.
+    // TODO(intel-tf): For that case, enable optimization only if safe.
+    if (IsReallyConstant(*node_map.GetNode(sw_node->input(1)), feed_nodes)) {
+      // From the dead_port_id, get the live port id, so we can correct
+      // input names of consumers. When switch will be replaced with Identity,
+      // it will have only 1 output versus 2 outputs of a Switch node
+      int live_port_id = (dead_port_id + 1) % 2;
+      string live_output_name = sw_node->name();
+      if (live_port_id == 1) {
+        live_output_name = StrCat(sw_node->name(), ":1");
+      }
+
+      // Get consumers of live port and update the input names
+      auto consumers = node_map.GetOutputs(sw_node->name());
+
+      for (auto* consumer : consumers) {
+        for (int i = 0; i < consumer->input_size(); ++i) {
+          if (consumer->input(i) == live_output_name) {
+            consumer->set_input(i, sw_node->name());
+          }
+        }
+      }
+
+      VLOG(3) << "Switch node before cleanup: " << sw_node->DebugString();
+      // remove input[1] and change node from switch to identity
+      auto* inputs = sw_node->mutable_input();
+      inputs->RemoveLast();
+      sw_node->set_op("Identity");
+      VLOG(3) << "Switch node after cleanup: " << sw_node->DebugString();
+    }
+  }
   EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
   return Status::OK();
