@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
+#include "tensorflow/lite/kernels/internal/reference/floor_mod.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
@@ -1386,22 +1387,6 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
     int offset = i;
     output_data[offset] = static_cast<DstT>(input_data[offset]);
   }
-}
-
-template <typename T>
-T FloorMod(T input1, T input2) {
-  struct FloatMod {
-    float operator()(const float lhs, const float rhs) const {
-      return std::fmod(lhs, rhs);
-    }
-  };
-  using ModFunc = typename std::conditional<std::is_integral<T>::value,
-                                            std::modulus<T>, FloatMod>::type;
-  ModFunc mod_func;
-  T trunc_mod = mod_func(input1, input2);
-  return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
-             ? (trunc_mod + input2)
-             : trunc_mod;
 }
 
 template <typename T, typename CoordsT = int32>
