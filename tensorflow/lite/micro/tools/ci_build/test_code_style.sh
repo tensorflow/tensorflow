@@ -46,26 +46,16 @@ fi
 tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
   . \
   -p copyright_notice \
+  -e tools/make/downloads \
   -e tools/make/targets/ecm3531 \
   -e BUILD\
   -e leon_commands \
-  -e Makefile \
   -e "\.bzl" \
-  -e "\.cmd" \
-  -e "\.conf" \
-  -e "\.defaults" \
   -e "\.h5" \
   -e "\.ipynb" \
   -e "\.inc" \
-  -e "\.lcf" \
-  -e "\.ld" \
-  -e "\.lds" \
   -e "\.patch" \
-  -e "\.projbuild" \
   -e "\.properties" \
-  -e "\.resc" \
-  -e "\.resource" \
-  -e "\.robot" \
   -e "\.txt" \
   -e "\.tpl" \
   --output-directory /tmp
