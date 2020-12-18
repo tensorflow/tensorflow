@@ -237,17 +237,17 @@ CreateTFExecutorTPUV1IslandInliningPass();
 
 // Creates a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass();
-
-// Sink `tf.Const` operations in the LaunchOp region using them. This is
-// performed in order to limit the number of values implicitly captured in this
-// region before outlining.
-std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorConstantSinkingPass();
 }  // namespace tf_executor
 
 namespace TFDevice {
 // Creates a pass that forms clusters from instructions that are assigned to
 // same device.
 std::unique_ptr<OperationPass<FuncOp>> CreateClusterFormationPass();
+
+// Sinks `tf.Const` operations in the ClusterOp region using them. This is
+// performed in order to limit the number of values implicitly captured in this
+// region before outlining.
+std::unique_ptr<OperationPass<FuncOp>> CreateClusterConstantSinkingPass();
 
 // Creates a pass that outlines regions of tf_device.launch operations.
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass();

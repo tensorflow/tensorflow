@@ -202,6 +202,44 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
   let constructor = "TFTPU::CreateTPUClusterFormationPass()";
 }
 
+def ClusterConstantSinkingPass : FunctionPass<"tf-device-constant-sinking"> {
+  let summary = "Sinks constants implicitly captured in a tf_device.cluster region.";
+
+  let description = [{
+This pass sinks implicitly captured constants (`tf.Const` ops) used by and into
+a `tf_device.cluster` region. Performing this prior to outlining will reduce the
+number of arguments of the outlined function.
+
+For example, the following:
+
+```mlir
+func @cluster() -> tensor<i32> {
+  %const = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %cluster = "tf_device.cluster"() ( {
+    %identity = "tf.Identity"(%const) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) : () -> (tensor<i32>)
+  return %cluster : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @cluster() -> tensor<i32> {
+  %cluster = "tf_device.cluster"() ( {
+    %const = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %identity = "tf.Identity"(%const) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) : () -> (tensor<i32>)
+  return %cluster : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateClusterConstantSinkingPass()";
+}
+
 def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
   let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
 
