@@ -1,7 +1,7 @@
 [MASTER]
 
 # Specify a configuration file.
-#rcfile=
+rcfile=tensorflow/tools/ci_build/pylintrc
 
 # Python code to execute, usually for sys.path manipulation such as
 # pygtk.require().
