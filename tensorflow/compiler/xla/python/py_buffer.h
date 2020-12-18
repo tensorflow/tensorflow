@@ -65,6 +65,8 @@ class PyBuffer : public DeviceArrayBase {
   StatusOr<std::unique_ptr<PyBuffer>> CopyToDevice(
       const ClientAndPtr<PjRtDevice>& dst_device) const;
 
+  int64 OnDeviceSizeInBytes() { return buffer_->OnDeviceSizeInBytes(); }
+
   void Delete() {
     buffer_->Delete();
     npy_value_ = pybind11::none();

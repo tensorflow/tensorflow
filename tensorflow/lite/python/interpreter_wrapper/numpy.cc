@@ -73,6 +73,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteFloat32;
     case NPY_FLOAT16:
       return kTfLiteFloat16;
+    case NPY_FLOAT64:
+      return kTfLiteFloat64;
     case NPY_INT32:
       return kTfLiteInt32;
     case NPY_INT16:
@@ -83,6 +85,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteInt8;
     case NPY_INT64:
       return kTfLiteInt64;
+    case NPY_UINT64:
+      return kTfLiteUInt64;
     case NPY_BOOL:
       return kTfLiteBool;
     case NPY_OBJECT:
@@ -91,7 +95,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
       return kTfLiteString;
     case NPY_COMPLEX64:
       return kTfLiteComplex64;
-      // Avoid default so compiler errors created when new types are made.
+    case NPY_COMPLEX128:
+      return kTfLiteComplex128;
   }
   return kTfLiteNoType;
 }

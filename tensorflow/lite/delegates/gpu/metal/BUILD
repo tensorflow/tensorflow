@@ -33,16 +33,20 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
         "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
+        "//tensorflow/lite/delegates/gpu/metal/selectors:subgraph",
     ],
 )
 
 objc_library(
     name = "buffer",
-    srcs = ["buffer.mm"],
+    srcs = ["buffer.cc"],
     hdrs = ["buffer.h"],
-    copts = DEFAULT_COPTS,
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
     sdk_frameworks = ["Metal"],
     deps = [
         ":gpu_object",
@@ -155,9 +159,11 @@ ios_unit_test(
 
 objc_library(
     name = "compute_task",
-    srcs = ["compute_task.mm"],
+    srcs = ["compute_task.cc"],
     hdrs = ["compute_task.h"],
-    copts = DEFAULT_COPTS,
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
     sdk_frameworks = ["Metal"],
     deps = [
         ":common",
@@ -204,9 +210,11 @@ objc_library(
 
 objc_library(
     name = "inference_context",
-    srcs = ["inference_context.mm"],
+    srcs = ["inference_context.cc"],
     hdrs = ["inference_context.h"],
-    copts = DEFAULT_COPTS,
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
     sdk_frameworks = ["Metal"],
     deps = [
         ":compiled_model",
@@ -247,9 +255,11 @@ ios_unit_test(
 
 objc_library(
     name = "metal_arguments",
-    srcs = ["metal_arguments.mm"],
+    srcs = ["metal_arguments.cc"],
     hdrs = ["metal_arguments.h"],
-    copts = DEFAULT_COPTS,
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
     sdk_frameworks = ["Metal"],
     deps = [
         ":buffer",
@@ -265,9 +275,11 @@ objc_library(
 
 objc_library(
     name = "metal_spatial_tensor",
-    srcs = ["metal_spatial_tensor.mm"],
+    srcs = ["metal_spatial_tensor.cc"],
     hdrs = ["metal_spatial_tensor.h"],
-    copts = DEFAULT_COPTS,
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
     sdk_frameworks = ["Metal"],
     deps = [
         ":gpu_object",
@@ -276,7 +288,6 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:buffer_desc",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_tensor",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
-        "@com_google_absl//absl/types:span",
     ],
 )
 

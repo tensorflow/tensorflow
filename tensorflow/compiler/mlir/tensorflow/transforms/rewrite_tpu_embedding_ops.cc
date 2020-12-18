@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -94,8 +94,8 @@ void RewriteTPUEmbeddingOps::runOnFunction() {
 
     auto new_send_op = AddOperandAndRewriteAs<_SendTPUEmbeddingGradientsOp>(
         send_op, dedup_op, &builder);
-    new_send_op.setAttr(new_send_op.getOperandSegmentSizeAttr(),
-                        operand_size_attr);
+    new_send_op->setAttr(new_send_op.getOperandSegmentSizeAttr(),
+                         operand_size_attr);
   }
 }
 

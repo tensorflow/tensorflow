@@ -121,7 +121,7 @@ std::string OpType(const DeviceStepStats& ds, const NodeExecStats& ns) {
   std::string::size_type start = label.find(sep);
   if (start == std::string::npos) return "<>";
   start += sep.size();
-  std::string::size_type end = label.find("(", start);
+  std::string::size_type end = label.find('(', start);
   if (end == std::string::npos) return "<>";
   return label.substr(start, end - start);
 }

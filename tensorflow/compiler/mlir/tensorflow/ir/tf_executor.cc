@@ -31,13 +31,13 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -163,7 +163,7 @@ FetchOp GraphOp::GetFetch() { return llvm::cast<FetchOp>(GetBody().back()); }
 namespace {
 
 LogicalResult Verify(GraphOp graph) {
-  auto *executorDialect = graph.getDialect();
+  auto *executorDialect = graph->getDialect();
 
   if (graph.GetBody().empty())
     return graph.emitOpError() << "expects a non-empty body";
@@ -461,7 +461,7 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
 namespace {
 
 LogicalResult Verify(SwitchNOp switchn) {
-  IntegerAttr num_outs = switchn.getAttrOfType<IntegerAttr>("num_outs");
+  IntegerAttr num_outs = switchn->getAttrOfType<IntegerAttr>("num_outs");
   if (!num_outs)
     return switchn.emitOpError() << "expects a `num_outs` integer attribute";
 

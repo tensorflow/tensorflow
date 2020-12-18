@@ -21,8 +21,8 @@ limitations under the License.
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -51,7 +51,7 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   mlir::FuncOp entry_function = nullptr;
   for (auto func : module->get().getOps<mlir::FuncOp>()) {
     if (auto tf_attrs =
-            func.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
+            func->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function")) {
       // TODO(jaesung): There could be multiple entry functions. Let's handle
       // such cases if there are any needs for that.
       if (entry_function != nullptr) {
@@ -67,7 +67,7 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
 
   // Get the list of input Op names from the function attribute.
   mlir::DictionaryAttr tf_attrs =
-      entry_function.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      entry_function->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   llvm::SmallVector<llvm::StringRef, 4> function_input_names;
   function_input_names.reserve(model_flags.input_arrays().size());
   auto input_attr = tf_attrs.get("inputs");

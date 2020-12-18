@@ -146,10 +146,9 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
 
 // Abs supports complex to real, so element type is not guaranteed to match.
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
-    [NoSideEffect, SameOperandsAndResultShape],
+    [NoSideEffect, SameOperandsAndResultShape,
+     DeclareOpInterfaceMethods<InferTypeOpInterface>],
      TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>>, BASE_HLO_AbsOp {
-  let builders = [
-    OpBuilderDAG<(ins "Value":$operand)>];
 }
 
 def HLO_CbrtOp: HLO_UnaryElementwiseOp<"cbrt",
@@ -902,6 +901,7 @@ def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
     ConvolutionAttributes.attributes);
 
   let results = (outs HLO_Tensor);
+  let hasCustomHLOConverter = 1;
 }
 
 def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CopyOp {

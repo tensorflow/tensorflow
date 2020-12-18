@@ -110,7 +110,10 @@ cc_library(
         ":hiprand",
         ":miopen",
         ":hipsparse",
+<<<<<<< HEAD
         ":roctracer",
+=======
+>>>>>>> upstream/master
         ":rocsolver",
     ],
 )
@@ -147,11 +150,14 @@ cc_library(
 )
 
 cc_library(
+<<<<<<< HEAD
     name = "roctracer",
     data = ["rocm/lib/%{roctracer_lib}"],
 )
 
 cc_library(
+=======
+>>>>>>> upstream/master
     name = "rocsolver",
     srcs = ["rocm/lib/%{rocsolver_lib}"],
     data = ["rocm/lib/%{rocsolver_lib}"],

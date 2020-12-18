@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -629,33 +630,39 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   def test_bidirectional_statefulness(self):
     # Bidirectional and stateful
-    rnn = keras.layers.SimpleRNN
-    samples = 2
-    dim = 2
-    timesteps = 2
-    output_dim = 2
-    mode = 'sum'
+    def run_test():
+      rnn = keras.layers.SimpleRNN
+      samples = 2
+      dim = 2
+      timesteps = 2
+      output_dim = 2
+      mode = 'sum'
 
-    with self.cached_session():
-      x = np.random.random((samples, timesteps, dim))
-      target_dim = 2 * output_dim if mode == 'concat' else output_dim
-      y = np.random.random((samples, target_dim))
+      with self.cached_session():
+        x = np.random.random((samples, timesteps, dim))
+        target_dim = 2 * output_dim if mode == 'concat' else output_dim
+        y = np.random.random((samples, target_dim))
 
-      inputs = keras.layers.Input(batch_shape=(1, timesteps, dim))
-      bidi_rnn = keras.layers.Bidirectional(
-          rnn(output_dim, stateful=True), merge_mode=mode)
-      self.assertTrue(bidi_rnn.stateful)
-      output = bidi_rnn(inputs)
-      model = keras.models.Model(inputs, output)
+        inputs = keras.layers.Input(batch_shape=(1, timesteps, dim))
+        bidi_rnn = keras.layers.Bidirectional(
+            rnn(output_dim, stateful=True), merge_mode=mode)
+        self.assertTrue(bidi_rnn.stateful)
+        output = bidi_rnn(inputs)
+        model = keras.models.Model(inputs, output)
 
-      y_1 = model.predict(x, batch_size=1)
-      model.reset_states()
-      y_2 = model.predict(x, batch_size=1)
+        y_1 = model.predict(x, batch_size=1)
+        model.reset_states()
+        y_2 = model.predict(x, batch_size=1)
 
-      self.assertAllClose(y_1, y_2)
+        self.assertAllClose(y_1, y_2)
 
-      model.compile(loss='mse', optimizer='sgd')
-      model.fit(x, y, epochs=1, batch_size=1)
+        model.compile(loss='mse', optimizer='sgd')
+        model.fit(x, y, epochs=1, batch_size=1)
+
+    if context.executing_eagerly():
+      run_test()
+    else:
+      tf_test_util.enable_output_all_intermediates(run_test)()
 
   @parameterized.parameters(['sum', 'mul', 'ave', 'concat', None])
   def test_Bidirectional_merged_value(self, merge_mode):

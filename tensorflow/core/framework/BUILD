@@ -1246,6 +1246,17 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
+    ],
+    deps = [
+        ":api_def_proto_cc",
+        ":op_def_proto_cc",
+        ":tensor",
+        "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/lib/core:status",
     ],
 )
 

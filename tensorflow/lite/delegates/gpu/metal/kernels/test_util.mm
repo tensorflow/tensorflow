@@ -90,12 +90,9 @@ absl::Status SingleOpModel::Invoke() {
   CompiledModel optimized_model;
   RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
-  TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
-  RETURN_IF_ERROR([graph compileModelWithDevice:device
-                                          model:optimized_model
-                                 inputBufferIDs:input_ids
-                                outputBufferIDs:output_ids
-                                      precision:precision]);
+  InferenceContext inference_context;
+  RETURN_IF_ERROR(inference_context.CompileModelWithDevice(device, optimized_model, input_ids,
+                                                           output_ids, precision));
   std::map<ValueId, BHWC> input_dimensions;
   std::map<ValueId, id<MTLBuffer>> input_buffers;
   for (auto& input : inputs_) {
@@ -127,7 +124,7 @@ absl::Status SingleOpModel::Invoke() {
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> command_encoder = [command_buffer computeCommandEncoder];
-  [graph encodeWithEncoder:command_encoder inputOutputBuffers:inout_buffers];
+  inference_context.EncodeWithEncoder(command_encoder, inout_buffers);
   [command_encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -193,12 +190,9 @@ absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> de
 
   CalculationsPrecision precision = CalculationsPrecision::F32;
 
-  TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
-  RETURN_IF_ERROR([graph compileModelWithDevice:device
-                                          model:optimized_model
-                                 inputBufferIDs:inputBufferIDs
-                                outputBufferIDs:outputBufferIDs
-                                      precision:precision]);
+  InferenceContext inference_context;
+  RETURN_IF_ERROR(inference_context.CompileModelWithDevice(device, optimized_model, inputBufferIDs,
+                                                           outputBufferIDs, precision));
   std::map<ValueId, BHWC> inputDimensions;
   std::map<ValueId, std::vector<float>> inputBuffersCPU;
   std::map<ValueId, id<MTLBuffer>> inputBuffersGPU;
@@ -235,7 +229,7 @@ absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> de
   id<MTLCommandQueue> commandQueue = [device newCommandQueue];
   id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
   id<MTLComputeCommandEncoder> commandEncoder = [commandBuffer computeCommandEncoder];
-  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers];
+  inference_context.EncodeWithEncoder(commandEncoder, inputOutputBuffers);
   [commandEncoder endEncoding];
   [commandBuffer commit];
   [commandBuffer waitUntilCompleted];

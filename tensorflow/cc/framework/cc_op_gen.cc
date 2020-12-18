@@ -60,7 +60,7 @@ string GetPath(const string& dot_h_fname) {
   if (result.size() > sizeof("external/") &&
       result.compare(0, sizeof("external/") - 1, "external/") == 0) {
     result = result.substr(sizeof("external/") - 1);
-    pos = result.find("/");
+    pos = result.find('/');
     if (pos != string::npos) {
       result = result.substr(pos + 1);
     }

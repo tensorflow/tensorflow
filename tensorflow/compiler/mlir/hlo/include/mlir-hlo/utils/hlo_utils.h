@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -82,6 +82,11 @@ enum ScalarLimit {
 //
 // Requires `ty` to be either FloatType or IntegerType.
 DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit);
+
+// Given `op_name` from LMHLO, returns the corresponding op name in MHLO.
+// Returns empty string if no such op exists.
+std::string LmhloToMhloOpName(llvm::StringRef op_name,
+                              mlir::MLIRContext* context);
 
 }  // namespace hlo
 }  // namespace mlir

@@ -114,7 +114,7 @@ class FunctionTable {
     func_pb->set_id(function_table_.size());
 
     string file_base(io::Basename(file_path));
-    file_base = file_base.substr(0, file_base.find_last_of("."));
+    file_base = file_base.substr(0, file_base.find_last_of('.'));
     func_pb->set_name(
         string_table_->GetIndex(absl::StrCat(file_base, ":", func_name)));
     func_pb->set_filename(string_table_->GetIndex(file_path));

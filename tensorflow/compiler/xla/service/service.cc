@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
@@ -256,88 +257,16 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     absl::Span<const Shape* const> argument_shapes,
     const ExecutionOptions* execution_options,
     const AotCompilationOptions* aot_options) {
-  auto config = absl::make_unique<HloModuleConfig>(program_shape);
-  ComputationLayout* computation_layout =
-      config->mutable_entry_computation_layout();
-  const int64 argument_shapes_size = argument_shapes.size();
-  if (program_shape.parameters_size() != argument_shapes_size) {
-    return InvalidArgument("computation takes %d parameters, but %u given",
-                           program_shape.parameters_size(),
-                           argument_shapes.size());
-  }
-  for (int i = 0, end = argument_shapes.size(); i < end; ++i) {
-    // Verify that shape of arguments matches the shape of the arguments in the
-    // ProgramShape.
-    if (!ShapeUtil::Compatible(*argument_shapes[i],
-                               program_shape.parameters(i))) {
-      return InvalidArgument(
-          "Argument does not match shape of computation parameter %d: want "
-          "%s, got %s",
-          i, ShapeUtil::HumanString(program_shape.parameters(i)),
-          ShapeUtil::HumanString(*argument_shapes[i]));
-    }
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_parameter_layout(i)->CopyLayoutFromShape(
-            *argument_shapes[i]));
-  }
-  if (execution_options != nullptr &&
-      execution_options->has_shape_with_output_layout()) {
-    const Shape shape_with_output_layout(
-        execution_options->shape_with_output_layout());
-    TF_RETURN_IF_ERROR(
-        ValidateResultShape(shape_with_output_layout, program_shape.result()));
-    TF_RETURN_IF_ERROR(
-        computation_layout->mutable_result_layout()->CopyLayoutFromShape(
-            shape_with_output_layout));
-  } else {
-    // If the result layout is not set, then choose the default.
-    computation_layout->mutable_result_layout()->SetToDefaultLayout();
-  }
-
-  if (execution_options != nullptr) {
-    if (execution_options->num_replicas() > 0) {
-      config->set_replica_count(execution_options->num_replicas());
-    } else {
-      config->set_replica_count(options_.number_of_replicas());
-    }
-    if (execution_options->num_partitions() > 0) {
-      config->set_num_partitions(execution_options->num_partitions());
-    }
-    config->set_use_spmd_partitioning(
-        execution_options->use_spmd_partitioning());
-    config->set_deduplicate_hlo(execution_options->deduplicate_hlo());
-    config->set_seed(execution_options->seed());
-    config->set_launch_id(execution_options->launch_id());
-    config->set_debug_options(execution_options->debug_options());
-  } else {
-    config->set_replica_count(options_.number_of_replicas());
-    config->set_debug_options(GetDebugOptionsFromFlags());
-  }
-
+  int default_num_replicas = options_.number_of_replicas();
+  absl::optional<int> num_threads;
   if (execute_backend_ != nullptr &&
       execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
-    config->set_intra_op_parallelism_threads(
-        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+    num_threads = execute_backend_->eigen_intra_op_thread_pool()->NumThreads();
   }
 
-  if (execution_options != nullptr &&
-      execution_options->has_device_assignment()) {
-    TF_ASSIGN_OR_RETURN(
-        auto device_assignment,
-        DeviceAssignment::Deserialize(execution_options->device_assignment()));
-    config->set_static_device_assignment(*device_assignment);
-  }
-  config->set_alias_passthrough_params(
-      execution_options->alias_passthrough_params());
-
-  if (aot_options != nullptr &&
-      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
-    config->set_fusion_config_collection(
-        aot_options->fusion_config_collection());
-    *config->mutable_fusion_config() = aot_options->fusion_config();
-  }
-
-  return std::move(config);
+  return xla::CreateModuleConfig(program_shape, argument_shapes,
+                                 execution_options, default_num_replicas,
+                                 num_threads, aot_options);
 }
 
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
@@ -742,19 +671,38 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   // basically the same thing.
   ExecutionProfile profile;
   std::vector<GlobalDataHandle> outputs;
+  Status execution_status = Status::OK();
+
   if (executable_ptrs.size() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        auto output,
-        ExecuteAndRegisterResult(executable_ptrs[0], all_arguments[0],
-                                 execute_backend_.get(), device_handles[0],
-                                 computation_names[0], &profile));
-    outputs.push_back(std::move(output));
+    StatusOr<GlobalDataHandle> output_or_status = ExecuteAndRegisterResult(
+        executable_ptrs[0], all_arguments[0], execute_backend_.get(),
+        device_handles[0], computation_names[0], &profile);
+    if (output_or_status.ok()) {
+      outputs.push_back(std::move(output_or_status).ValueOrDie());
+    } else {
+      execution_status = output_or_status.status();
+    }
   } else {
-    TF_ASSIGN_OR_RETURN(
-        outputs, ExecuteParallelAndRegisterResult(
-                     executable_ptrs, all_arguments, execute_backend_.get(),
-                     device_handles, computation_names, &profile));
+    StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
+        ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
+                                         execute_backend_.get(), device_handles,
+                                         computation_names, &profile);
+    if (outputs_or_status.ok()) {
+      outputs = std::move(outputs_or_status).ValueOrDie();
+    } else {
+      execution_status = outputs_or_status.status();
+    }
   }
+
+  if (!execution_status.ok()) {
+    // Execution failed so we don't have the results.  Dump the HLO snapshot
+    // with just the program arguments.
+    for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
+      DumpHloSnapshotIfEnabled(executable_ptrs[i]->module(), snapshots[i]);
+    }
+  }
+
+  TF_RETURN_IF_ERROR(execution_status);
 
   for (const GlobalDataHandle& output : outputs) {
     ExecuteResponse response;

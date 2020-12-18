@@ -327,6 +327,15 @@ func @slice_2D_fold_vertical() -> tensor<4x1xi64> {
   return %1 : tensor<4x1xi64>
 }
 
+// CHECK-LABEL: slice_zero_elements
+func @slice_zero_elements() -> tensor<0xi64> {
+  %0 = mhlo.constant dense<> : tensor<0xi64>
+  // CHECK: %[[CONST:.*]] = mhlo.constant dense<> : tensor<0xi64>
+  %1 = "mhlo.slice"(%0) { limit_indices = dense<[0]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<0xi64>) -> (tensor<0xi64>)
+  // CHECK: return %[[CONST]] : tensor<0xi64>
+  return %1 : tensor<0xi64>
+}
+
 // CHECK-LABEL: slice_unknown_shape
 func @slice_unknown_shape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
@@ -1504,6 +1513,14 @@ func @pad_fold() -> tensor<4x5xi32> {
   // CHECK: constant dense<[
   // CHECK-SAME: [1, 1, 1, 1, 1], [2, 1, 3, 1, 1], [4, 1, 5, 1, 1], [1, 1, 1, 1, 1]
   // CHECK-SAME: ]> : tensor<4x5xi32>
+}
+
+func @pad_fold_zero_elements() -> tensor<3xi32> {
+  %0 = mhlo.constant dense<> : tensor<0xi32>
+  %1 = mhlo.constant dense<7> : tensor<i32>
+  %2 = "mhlo.pad"(%0, %1) {edge_padding_high = dense<3> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<0> : tensor<1xi64>} : (tensor<0xi32>, tensor<i32>) -> tensor<3xi32>
+  return %2 : tensor<3xi32>
+  // CHECK: mhlo.constant dense<7> : tensor<3xi32>
 }
 
 // CHECK-LABEL: @identity_broadcast_reshape

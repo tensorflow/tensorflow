@@ -177,6 +177,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"memalloc_details", kMemallocDetails},
       {"kernel_details", kKernelDetails},
       {"annotation", kKernelAnnotation},
+      {"nvtx_range", kNVTXRange},
       {"stream", kStream},
       // Stats added when processing traces.
       {"group_id", kGroupId},

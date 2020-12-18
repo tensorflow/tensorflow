@@ -349,6 +349,7 @@ PYBIND11_MODULE(xla_extension, m) {
             return npy_value_;
           })
       .def("copy_to_device", &PyBuffer::CopyToDevice)
+      .def("on_device_size_in_bytes", &PyBuffer::OnDeviceSizeInBytes)
       .def("delete", &PyBuffer::Delete)
       // The GIL is released within BlockHostUntilReady.
       .def("block_until_ready",

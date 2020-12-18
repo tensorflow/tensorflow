@@ -18,7 +18,6 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
@@ -81,8 +80,8 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
-  absl::Status WriteDataBHWDC(absl::Span<const float> in);
-  absl::Status ReadDataBHWDC(absl::Span<float> out) const;
+  absl::Status WriteDataBHWDC(const float* in);
+  absl::Status ReadDataBHWDC(float* out) const;
 
   int GetAlignedChannels() const;
   int3 GetFullTensorRegion() const;

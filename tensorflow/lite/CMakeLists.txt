@@ -176,6 +176,9 @@ populate_tflite_source_vars("." TFLITE_SRCS)
 # XNNPACK delegate is preferred to the weak-symbol one.
 list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*tflite_with_xnnpack\\.cc$")
 
+# Exclude Flex related files.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*with_selected_ops\\.cc$")
+
 if(_TFLITE_ENABLE_MMAP)
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation_disabled\\.cc$")
 else()
@@ -325,7 +328,7 @@ if(TFLITE_ENABLE_RUY)
 endif()
 populate_tflite_source_vars("kernels"
   TFLITE_KERNEL_SRCS
-  FILTER ".*(_test_util_internal|test_main)\\.(cc|h)"
+  FILTER "(.*_test_util_internal|test_.*)\\.(cc|h)"
 )
 populate_tflite_source_vars("kernels/internal" TFLITE_KERNEL_INTERNAL_SRCS)
 populate_tflite_source_vars("kernels/internal/optimized"

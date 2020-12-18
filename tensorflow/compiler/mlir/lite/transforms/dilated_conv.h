@@ -22,9 +22,9 @@ limitations under the License.
 
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
@@ -82,12 +82,12 @@ template <typename Conv2dOpTy>
 LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
   // Make sure Conv2D has 'VALID' padding.
-  if (op.template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
+  if (op->template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
     return failure();
   }
   // Make sure dilations are all ones if set.
   const ArrayAttr& dilations =
-      op.template getAttrOfType<ArrayAttr>("dilations");
+      op->template getAttrOfType<ArrayAttr>("dilations");
   if (dilations && !TFIntListIsAllOnes(dilations)) {
     return failure();
   }
@@ -233,14 +233,14 @@ LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     for (auto it1 = paddings.begin(), it2 = crops.begin();
          it1 != paddings.end() && it2 != crops.end(); it1++, it2++) {
       if ((*it1).getInt() != (*it2).getInt()) {
-        op.setAttr("padding", rewriter.getStringAttr("SAME"));
+        op->setAttr("padding", rewriter.getStringAttr("SAME"));
         break;
       }
     }
   }
 
   // Set dilations
-  op.setAttr("dilations", dilations_attr.getValue());
+  op->setAttr("dilations", dilations_attr.getValue());
 
   if (expand_op) {
     // If there is `expand_op`, we need to rewire the inputs to bypass the

@@ -292,8 +292,12 @@ def find_rocm_config():
   result.update(_find_roctracer_config(rocm_install_path))
   result.update(_find_hipsparse_config(rocm_install_path))
 <<<<<<< HEAD
+<<<<<<< HEAD
   result.update(_find_rocsolver_config(rocm_install_path))
 =======
+>>>>>>> upstream/master
+=======
+  result.update(_find_rocsolver_config(rocm_install_path))
 >>>>>>> upstream/master
 
   return result

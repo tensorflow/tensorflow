@@ -144,6 +144,7 @@ bool InstrIsSetBound(const HloInstructionProto* instr_proto) {
   }
   return false;
 }
+
 }  // namespace
 
 namespace internal {

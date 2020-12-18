@@ -296,6 +296,10 @@ class Node {
     }
   }
 
+  // Returns whether work is currently being recorded, i.e. whether we are
+  // currently between a `record_start` and a `record_stop`.
+  bool is_recording() TF_LOCKS_EXCLUDED(mu_) { return work_start_ > 0; }
+
   // Removes an input.
   void remove_input(std::shared_ptr<Node> input) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);

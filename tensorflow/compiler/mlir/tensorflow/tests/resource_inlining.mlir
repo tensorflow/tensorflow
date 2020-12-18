@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-shape-inference -inline="disable-simplify" %s | FileCheck %s --dump-input=always
+// RUN: tf-opt -tf-shape-inference -inline='default-pipeline=''' %s | FileCheck %s --dump-input=always
 // RUN: tf-opt -tf-standard-pipeline=enable-inliner %s | FileCheck %s --dump-input=always
 
 // Tests function with argument has no resource subtype but caller operand has a

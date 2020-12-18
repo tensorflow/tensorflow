@@ -27,7 +27,7 @@ namespace tensorflow {
 // execution mode.
 class AbstractTensorHandle : public core::RefCounted {
  protected:
-  enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt };
+  enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt, kCustomDevice };
   explicit AbstractTensorHandle(AbstractTensorHandleKind kind) : kind_(kind) {}
   virtual ~AbstractTensorHandle() {}
 
@@ -37,6 +37,10 @@ class AbstractTensorHandle : public core::RefCounted {
   // Returns tensor shape. If tensor has unknown rank, shape remains untouched.
   virtual tensorflow::Status Shape(
       tensorflow::PartialTensorShape* shape) const = 0;
+
+  // The default debug string includes a shape and dtype. Implementations are
+  // free to override it with something more informative.
+  virtual std::string DebugString() const;
 
   AbstractTensorHandleKind getKind() const { return kind_; }
 

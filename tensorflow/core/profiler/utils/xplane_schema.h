@@ -166,6 +166,7 @@ enum StatType {
   kMemcpyDetails,
   kMemallocDetails,
   kKernelAnnotation,
+  kNVTXRange,
   kKernelDetails,
   kStream,
   // Stats added when processing traces.

@@ -136,8 +136,10 @@ tf_cuda_library(
         ":cupti_collector",
         ":cupti_interface",
         ":cupti_utils",
+        ":nvtx_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal/cpu:annotation_stack",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
@@ -146,6 +148,7 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+<<<<<<< HEAD
     name = "rocm_tracer",
     srcs = if_rocm_is_configured_compat(["rocm_tracer.cc"]),
     hdrs = if_rocm_is_configured_compat(["rocm_tracer.h"]),
@@ -160,6 +163,14 @@ tf_cuda_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
+=======
+    name = "nvtx_utils",
+    srcs = if_cuda_is_configured_compat(["nvtx_utils.cc"]),
+    hdrs = if_cuda_is_configured_compat(["nvtx_utils.h"]),
+    copts = tf_profiler_copts() + tf_copts(),
+    deps = [
+        "//tensorflow/core:lib",
+>>>>>>> upstream/master
     ],
 )
 

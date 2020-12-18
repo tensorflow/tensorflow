@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -246,10 +247,16 @@ inline std::string MlirToString(mlir::Operation* op) {
   return s;
 }
 
+int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
 std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
+
+template <typename T>
+std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
+  return std::vector<T>(v.begin(), v.end());
+}
 
 }  // namespace gpu
 }  // namespace xla
