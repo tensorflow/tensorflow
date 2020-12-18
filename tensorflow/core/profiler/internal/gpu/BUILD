@@ -148,7 +148,6 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
-<<<<<<< HEAD
     name = "rocm_tracer",
     srcs = if_rocm_is_configured_compat(["rocm_tracer.cc"]),
     hdrs = if_rocm_is_configured_compat(["rocm_tracer.h"]),
