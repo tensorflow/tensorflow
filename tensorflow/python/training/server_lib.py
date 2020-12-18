@@ -155,11 +155,13 @@ class Server(object):
       # we leak instead of calling c_api.TF_DeleteServer here.
       # See:
       # https://github.com/tensorflow/tensorflow/blob/0495317a6e9dd4cac577b9d5cf9525e62b571018/tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h#L73
-    except errors.UnimplementedError:
-      pass
     except AttributeError:
       # At shutdown, `c_api` may have been garbage collected.
       pass
+    # At shutdown, `errors` may have been garbage collected.
+    except errors.UnimplementedError if errors else Exception:
+      pass
+
     self._server = None
 
   def start(self):
