@@ -30,6 +30,9 @@ from tensorflow.python.ops.ragged.ragged_tensor_shape import RaggedTensorDynamic
 from tensorflow.python.platform import googletest
 
 
+# pylint: disable=g-long-lambda
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
                             parameterized.TestCase):
@@ -80,8 +83,15 @@ class RaggedTensorShapeTest(test_util.TensorFlowTestCase,
       dict(
           value=ragged_factory_ops.constant_value([[[1, 2], [3]], [[4, 5]]]),
           expected_dim_sizes=[2, [2, 1], [2, 1, 2]]),
+      dict(
+          value=lambda: ragged_tensor.RaggedTensor.from_uniform_row_length(
+              ragged_factory_ops.constant([[1, 2], [3, 4, 5], [], [6]]),
+              uniform_row_length=2),
+          expected_dim_sizes=[2, 2, [2, 3, 0, 1]]),
   ])
   def testFromTensor(self, value, expected_dim_sizes):
+    if callable(value):
+      value = value()
     shape = RaggedTensorDynamicShape.from_tensor(value)
     expected = RaggedTensorDynamicShape.from_dim_sizes(expected_dim_sizes)
     self.assertShapeEq(shape, expected)

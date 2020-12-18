@@ -50,9 +50,7 @@ class RaggedTensorDynamicShape(object):
   Furthermore, there are two ways a dimension might be encoded:
 
     * "Partitioned dimensions" are dimensions that are encoded using a
-      `RaggedTensor`'s `nested_row_splits`.  The outermostmost partitioned
-      dimension must be uniform, and the innermost partitioned dimension must
-      be ragged.
+      `RowPartition`.  The outermostmost partitioned dimension must be uniform.
 
     * "Inner dimensions" are dimensions that are encoded using a
       `RaggedTensor`'s `flat_values`.  Inner dimensions are always uniform.
@@ -120,8 +118,6 @@ class RaggedTensorDynamicShape(object):
           dimension_size.shape.with_rank_at_most(1)
         if partitioned_dim_sizes[0].shape.ndims == 1:
           raise ValueError('outermost partitioned dimension must be uniform')
-        if partitioned_dim_sizes[-1].shape.ndims == 0:
-          raise ValueError('innermost partitioned dimension must be ragged')
       inner_dim_sizes.shape.assert_has_rank(1)
 
       # Convert dimension size tensors to a single dtype.
@@ -185,10 +181,17 @@ class RaggedTensorDynamicShape(object):
       if not ragged_tensor.is_ragged(rt_input):
         return cls([], array_ops.shape(rt_input))
       else:
-        partitioned_dim_sizes = (
-            (rt_input.nrows(),) + rt_input.nested_row_lengths())
+        partitioned_dim_sizes = [rt_input.nrows()]
+        rt = rt_input
+        while ragged_tensor.is_ragged(rt):
+          if rt.uniform_row_length is None:
+            partitioned_dim_sizes.append(rt.row_lengths())
+          else:
+            partitioned_dim_sizes.append(rt.uniform_row_length)
+          rt = rt.values
+
         return RaggedTensorDynamicShape(
-            partitioned_dim_sizes,
+            tuple(partitioned_dim_sizes),
             array_ops.shape(rt_input.flat_values)[1:],
             dim_size_dtype=dim_size_dtype)
 
