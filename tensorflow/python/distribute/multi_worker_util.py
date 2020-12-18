@@ -130,6 +130,55 @@ def is_chief(cluster_spec=None, task_type=None, task_id=None):
   return False
 
 
+def is_chief_for_collective_all_reduce_strategy(cluster_spec=None, task_type=None, task_id=None):
+  """Returns whether the given task is chief in the cluster.
+
+  Since there is at most one evaluator and the evaluator itself should be
+  independent of the training cluster, the evaluator job is also a chief job on
+  its own.
+
+  AllReduce mode, each task needs to act as the chief role. For example,
+
+  We just use chief and worker roles,or just worker roels
+
+  cluster = {'chief': ['host0:2222'],
+               'worker': ['host1:2222', 'host2:2222', 'host3:2222']}
+
+  cluster = {'worker': ['host0:2222', 'host1:2222', 'host2:2222']}
+
+
+  If this is currently running under a `_WorkerContext` of distribute
+  coordinator, the arguments can be omitted as the result is already available.
+
+
+
+  Args:
+    cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object specifying the
+      cluster configurations.
+    task_type: the task type in the cluster.
+    task_id: the task id in the cluster.
+
+  Returns:
+    a boolean indicating whether the given task is chief.
+
+  Raises:
+    ValueError: if `task_type` is not in the `cluster_spec` or `task_id` exceeds
+      the maximum id of the `task_type`.
+  """
+  if has_worker_context():
+    # If a worker context exists, use the value provided by it.
+    return dc_context.get_current_worker_context().is_chief
+
+  _validate_cluster_spec(cluster_spec, task_type, task_id)
+  cluster_spec = normalize_cluster_spec(cluster_spec).as_dict()
+
+  # Fix the bug that the model fails to load from checkpoint when using collective_all_reduce_strategy
+  # if task_type == "chief" or task_type == "worker" or task_type == "evaluator":
+  if task_type == "chief" or task_type == "worker" or task_type == "evaluator":
+    return True
+  return False
+
+
 def collective_leader(cluster_spec, task_type, task_id):
   """Return the job name for the leader of for collective ops.
 

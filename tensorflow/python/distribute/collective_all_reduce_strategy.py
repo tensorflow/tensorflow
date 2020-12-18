@@ -228,8 +228,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       raise ValueError("No `worker`, `chief` or `evaluator` tasks can be found "
                        "in `cluster_spec`.")
 
-    self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
-                                                task_id)
+    self._is_chief = multi_worker_util.is_chief_for_collective_all_reduce_strategy(
+        cluster_spec, task_type, task_id)
 
     self._worker_device = "/job:%s/task:%d" % (task_type, task_id)
     self._host_input_device = numpy_dataset.SingleDevice(self._worker_device)
