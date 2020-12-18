@@ -9,6 +9,11 @@ $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),g
 $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/renode_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the renode download: $(DOWNLOAD_RESULT))
+endif
+
 # TODO(b/161478030) : change - Wno - vla to - Wvla and remove - Wno-shadow once
 # we have a solution for fixing / avoiding being tripped up by these warnings.
 PLATFORM_FLAGS = \
