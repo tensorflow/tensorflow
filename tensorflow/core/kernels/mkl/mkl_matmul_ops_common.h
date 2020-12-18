@@ -388,7 +388,8 @@ class MklDnnMatMulOpBase : public OpKernel {
       OpKernelContext* context,
       const inner_product_forward::primitive_desc& mkldnn_matmul_prim_desc,
       const memory::dims& output_dims_mkl_order,
-      MklTensorFormat output_tf_format, Tensor** output_tensor) {
+      MklTensorFormat output_tf_format, Tensor** output_tensor,
+      bool native_format = false) {
     DCHECK(output_tensor);
     auto dst_pd = mkldnn_matmul_prim_desc.dst_desc();
 
@@ -402,9 +403,12 @@ class MklDnnMatMulOpBase : public OpKernel {
     TensorShape output_tf_shape;
     output_tf_shape.AddDim((dst_pd.get_size() / sizeof(Toutput)));
 
+    if (native_format) {
+      output_tf_shape = output_mkl_shape.GetTfShape();
+    }
     // Allocate Output Tensor
     AllocateOutputSetMklShape(context, kOutputIndexDst, output_tensor,
-                              output_tf_shape, output_mkl_shape);
+                              output_tf_shape, output_mkl_shape, native_format);
   }
 
   // TF_LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
