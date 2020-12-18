@@ -69,8 +69,8 @@ class GpuKernelToBlobPass
     if (blob_or.ok()) {
       const auto& blob = blob_or.ValueOrDie();
       std::string blob_string(blob.begin(), blob.end());
-      gpu_module.setAttr(blob_annotation_,
-                         mlir::StringAttr::get(blob_string, &getContext()));
+      gpu_module->setAttr(blob_annotation_,
+                          mlir::StringAttr::get(blob_string, &getContext()));
       return;
     }
     // Forward the error by attaching the message to the gpu module.
