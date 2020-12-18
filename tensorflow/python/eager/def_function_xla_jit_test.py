@@ -862,6 +862,15 @@ class DefFunctionTest(xla_test.XLATestCase):
       self.assertEqual(out.shape[0], 50)
       self.assertEqual(out.shape[1], 2)
 
+  def testTfAssert(self):
+    with ops.device('device:{}:0'.format(self.device)):
+
+      @def_function.function(jit_compile=True)
+      def f(x):
+        control_flow_ops.Assert(x == 1, ['Wrong value'])
+
+      f(constant_op.constant(1))
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
