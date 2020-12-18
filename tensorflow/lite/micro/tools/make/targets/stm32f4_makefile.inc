@@ -64,7 +64,6 @@ EXCLUDED_SRCS := \
   $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
 THIRD_PARTY_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(THIRD_PARTY_CC_SRCS))
 MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
 
 # TODO(b/158324045): Examine why some tests fail here.
 EXCLUDED_TESTS := \
@@ -83,11 +82,11 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 
-# These are microcontroller-specific rules for converting the ELF output
-# of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_renode.sh
 
-$(BINDIR)/%.bin: $(BINDIR)/%
-	@mkdir -p $(dir $@)
-	$(OBJCOPY) $< $@ -O binary
+# We are setting this variable to non-zero to allow us to have a custom
+# implementation of `make test` for bluepill
+TARGET_SPECIFIC_MAKE_TEST := 1
+test: build
+	$(TEST_SCRIPT) $(BINDIR) $(TARGET)
 

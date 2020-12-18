@@ -17,10 +17,11 @@
 #
 # Parameters:
 #  ${1} - path to a binary to test or directory (all *_test will be run).
+#  ${2} - target (bluepill, stm32f4 etc.)
 
 set -e
 
-TARGET=bluepill
+TARGET=${2}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TFLM_ROOT_DIR=${SCRIPT_DIR}/..
