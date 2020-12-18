@@ -301,6 +301,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.mkl_fused_depthwise_conv2d = "_MklFusedDepthwiseConv2dNative";
     csinfo_.mkl_fused_matmul = "_MklFusedMatMul";
     csinfo_.mkl_native_conv2d_with_bias = "_MklNativeConv2DWithBias";
+    csinfo_.mkl_native_conv2d_grad_filter_with_bias =
+        "_MklNativeConv2DBackpropFilterWithBias";
     csinfo_.mkl_native_fused_batch_norm_ex = "_MklNativeFusedBatchNormEx";
     csinfo_.mkl_native_fused_conv2d = "_MklNativeFusedConv2D";
     csinfo_.mkl_native_fused_depthwise_conv2d =
@@ -425,8 +427,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_filter),
                       CopyAttrsConv, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.conv2d_grad_filter_with_bias,
-                      csinfo_.mkl_conv2d_grad_filter_with_bias, CopyAttrsConv,
-                      AlwaysRewrite, GetRewriteCause()});
+                      native_fmt
+                          ? csinfo_.mkl_native_conv2d_grad_filter_with_bias
+                          : csinfo_.mkl_conv2d_grad_filter_with_bias,
+                      CopyAttrsConv, AlwaysRewrite, GetRewriteCause()});
     rinfo_.push_back({csinfo_.conv2d_grad_input,
                       mkl_op_registry::GetMklOpName(csinfo_.conv2d_grad_input),
                       CopyAttrsConv, AlwaysRewrite, GetRewriteCause()});
@@ -719,82 +723,77 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     minfo_.push_back({csinfo_.pad, csinfo_.fused_conv2d,
                       csinfo_.pad_with_fused_conv2d, GetPadOrFusedConv2D});
 
-    if (!native_fmt) {
-      minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
-                        csinfo_.conv2d_grad_filter_with_bias,
-                        GetConv2DBackpropFilterOrBiasAddGrad});
+    minfo_.push_back({csinfo_.conv2d_grad_filter, csinfo_.bias_add_grad,
+                      csinfo_.conv2d_grad_filter_with_bias,
+                      GetConv2DBackpropFilterOrBiasAddGrad});
 
-      // The fusion patterns in "finfo_" that show up first will get applied
-      // first, for example, graph "A->B->C-D" and finfo_ is {A->B->C to ABC,
-      // A->B->C->D to ABCD}, since the first gets applied first, the final
-      // graph will be ABC->D.
+    // The fusion patterns in "finfo_" that show up first will get applied
+    // first, for example, graph "A->B->C-D" and finfo_ is {A->B->C to ABC,
+    // A->B->C->D to ABCD}, since the first gets applied first, the final
+    // graph will be ABC->D.
 
-      //
-      // Add rules to fuse sequences such as "Transpose (NCHW -> NHWC) + Conv2D
-      // (NHWC) + Transpose (NHWC->
-      // NCHW)" into "Conv2D (NCHW)". Such patterns occur frequently in Keras.
-      // Note: we use the term "merge" to combine (exactly) 2 nodes into one,
-      // while "fusion" is for 3+ nodes situation.
-      //
+    //
+    // Add rules to fuse sequences such as "Transpose (NCHW -> NHWC) + Conv2D
+    // (NHWC) + Transpose (NHWC->
+    // NCHW)" into "Conv2D (NCHW)". Such patterns occur frequently in Keras.
+    // Note: we use the term "merge" to combine (exactly) 2 nodes into one,
+    // while "fusion" is for 3+ nodes situation.
+    //
 
-      // Transpose + Conv2d + Transpose:
-      std::vector<int> transpose_to_nhwc = {NCHW::dim::N, NCHW::dim::H,
-                                            NCHW::dim::W, NCHW::dim::C};
-      std::vector<int> transpose_to_nchw = {NHWC::dim::N, NHWC::dim::C,
-                                            NHWC::dim::H, NHWC::dim::W};
-      auto CheckForTransposeToNHWC = std::bind(
-          CheckForTranspose, std::placeholders::_1, transpose_to_nhwc);
-      auto CheckForConv2dOp =
-          std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.conv2d);
-      auto CheckForTransposeToNCHW = std::bind(
-          CheckForTranspose, std::placeholders::_1, transpose_to_nchw);
-      auto FuseConv2D =
-          std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
-                    std::placeholders::_2, std::placeholders::_3, "NCHW");
-      finfo_.push_back(
-          {"transpose-elimination for Conv2D",
-           {CheckForTransposeToNHWC, CheckForConv2dOp, CheckForTransposeToNCHW},
-           // CheckForMklOp
-           FuseConv2D,
-           CopyAttrsConv});
+    // Transpose + Conv2d + Transpose:
+    std::vector<int> transpose_to_nhwc = {NCHW::dim::N, NCHW::dim::H,
+                                          NCHW::dim::W, NCHW::dim::C};
+    std::vector<int> transpose_to_nchw = {NHWC::dim::N, NHWC::dim::C,
+                                          NHWC::dim::H, NHWC::dim::W};
+    auto CheckForTransposeToNHWC =
+        std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_nhwc);
+    auto CheckForConv2dOp =
+        std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.conv2d);
+    auto CheckForTransposeToNCHW =
+        std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_nchw);
+    auto FuseConv2D =
+        std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, "NCHW");
+    finfo_.push_back(
+        {"transpose-elimination for Conv2D",
+         {CheckForTransposeToNHWC, CheckForConv2dOp, CheckForTransposeToNCHW},
+         FuseConv2D,
+         CopyAttrsConv});
 
-      // Transpose + Conv3d + Transpose:
-      std::vector<int> transpose_to_ndhwc = {NCDHW::dim::N, NCDHW::dim::D,
-                                             NCDHW::dim::H, NCDHW::dim::W,
-                                             NCDHW::dim::C};
-      std::vector<int> transpose_to_ncdhw = {NDHWC::dim::N, NDHWC::dim::C,
-                                             NDHWC::dim::D, NDHWC::dim::H,
-                                             NDHWC::dim::W};
+    // Transpose + Conv3d + Transpose:
+    std::vector<int> transpose_to_ndhwc = {NCDHW::dim::N, NCDHW::dim::D,
+                                           NCDHW::dim::H, NCDHW::dim::W,
+                                           NCDHW::dim::C};
+    std::vector<int> transpose_to_ncdhw = {NDHWC::dim::N, NDHWC::dim::C,
+                                           NDHWC::dim::D, NDHWC::dim::H,
+                                           NDHWC::dim::W};
 
-      auto CheckForTransposeToNDHWC = std::bind(
-          CheckForTranspose, std::placeholders::_1, transpose_to_ndhwc);
-      auto CheckForConv3dOp =
-          std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.conv3d);
-      auto CheckForTransposeToNCDHW = std::bind(
-          CheckForTranspose, std::placeholders::_1, transpose_to_ncdhw);
-      auto FuseConv3D =
-          std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
-                    std::placeholders::_2, std::placeholders::_3, "NCDHW");
+    auto CheckForTransposeToNDHWC =
+        std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_ndhwc);
+    auto CheckForConv3dOp =
+        std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.conv3d);
+    auto CheckForTransposeToNCDHW =
+        std::bind(CheckForTranspose, std::placeholders::_1, transpose_to_ncdhw);
+    auto FuseConv3D =
+        std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, "NCDHW");
 
-      finfo_.push_back({"transpose-elimination for Conv3D",
-                        {CheckForTransposeToNDHWC, CheckForConv3dOp,
-                         CheckForTransposeToNCDHW},
-                        // CheckForMklOp
-                        FuseConv3D,
-                        CopyAttrsConv});
+    finfo_.push_back(
+        {"transpose-elimination for Conv3D",
+         {CheckForTransposeToNDHWC, CheckForConv3dOp, CheckForTransposeToNCDHW},
+         FuseConv3D,
+         CopyAttrsConv});
 
-      auto CheckForMaxPool3DOp =
-          std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.max_pool3d);
-      auto FuseMaxPool3D =
-          std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
-                    std::placeholders::_2, std::placeholders::_3, "NCDHW");
-      finfo_.push_back({"transpose-elimination for MaxPool3D",
-                        {CheckForTransposeToNDHWC, CheckForMaxPool3DOp,
-                         CheckForTransposeToNCDHW},
-                        // CheckForMklOp
-                        FuseMaxPool3D,
-                        CopyAttrsPooling});
-    }
+    auto CheckForMaxPool3DOp =
+        std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.max_pool3d);
+    auto FuseMaxPool3D =
+        std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, "NCDHW");
+    finfo_.push_back({"transpose-elimination for MaxPool3D",
+                      {CheckForTransposeToNDHWC, CheckForMaxPool3DOp,
+                       CheckForTransposeToNCDHW},
+                      FuseMaxPool3D,
+                      CopyAttrsPooling});
   }
 
   // Standard interface to run pass
@@ -962,6 +961,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string mkl_fused_depthwise_conv2d;
     string mkl_fused_matmul;
     string mkl_native_conv2d_with_bias;
+    string mkl_native_conv2d_grad_filter_with_bias;
     string mkl_native_fused_batch_norm_ex;
     string mkl_native_fused_conv2d;
     string mkl_native_fused_depthwise_conv2d;
@@ -1445,7 +1445,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     DataType T;
     TF_CHECK_OK(GetNodeAttr(node->def(), "T", &T));
-    return mkl_op_registry::IsMklLayoutDependentOp(
+    return mkl_op_registry::IsMklOp(
         mkl_op_registry::GetMklOpName(node->type_string()), T);
   }
 

@@ -232,6 +232,27 @@ MKL version of Conv2D and BiasAdd operator. Uses oneDNN APIs to perform
 expected to invoke this operator.
 )doc");
 
+REGISTER_OP("_MklNativeConv2DBackpropFilterWithBias")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Output("output: T")
+    .Output("bias_grad: T")
+    .Attr("T: {bfloat16, float}")
+    .Attr("strides: list(int)")
+    .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::Conv2DBackpropFilterWithBiasShape)
+    .Doc(R"doc(
+oneDNN version of Conv2DBackpropFilterWithBias. Uses oneDNN APIs to compute the
+fusion of Conv2DBackpropFilter and BiasAddGrad.
+
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke this one.
+)doc");
+
 REGISTER_OP("_MklFusedDepthwiseConv2dNative")
     .Input("input: T")
     .Input("filter: T")

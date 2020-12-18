@@ -1922,25 +1922,7 @@ REGISTER_OP("_MklConv2DBackpropFilterWithBias")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input_shape;
-      // Fetch the data_format attribute, which may not exist.
-      string data_format;
-      Status s = c->GetAttr("data_format", &data_format);
-
-      if (s.ok() && data_format == "NCHW") {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-        c->set_output(1, c->Vector(c->Dim(input_shape, -3)));
-      } else {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
-        c->set_output(1, c->Vector(c->Dim(input_shape, -1)));
-      }
-      ShapeHandle sh;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &sh));
-      TF_RETURN_IF_ERROR(c->WithRank(sh, 4, &sh));
-      c->set_output(0, sh);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::Conv2DBackpropFilterWithBiasShape)
     .Doc(R"doc(
 MKL version of Conv2DBackpropFilterWithBias. Uses MKL DNN APIs to compute the
 gradients of convolution with respect to the filter.
