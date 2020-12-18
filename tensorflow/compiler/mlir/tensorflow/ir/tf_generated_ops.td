@@ -9770,6 +9770,48 @@ most one RecvTPUEmbeddingActivations op in the TPU graph.
   TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
 }
 
+def TF_ReduceJoinOp : TF_Op<"ReduceJoin", [NoSideEffect]> {
+  let summary = "Joins a string Tensor across the given dimensions.";
+
+  let description = [{
+Computes the string join across dimensions in the given string Tensor of shape
+`[\\(d_0, d_1, ..., d_{n-1}\\)]`.  Returns a new Tensor created by joining the input
+strings with the given separator (default: empty string).  Negative indices are
+counted backwards from the end, with `-1` being equivalent to `n - 1`.  If
+indices are not specified, joins across all dimensions beginning from `n - 1`
+through `0`.
+
+For example:
+
+```python
+# tensor `a` is [["a", "b"], ["c", "d"]]
+tf.reduce_join(a, 0) ==> ["ac", "bd"]
+tf.reduce_join(a, 1) ==> ["ab", "cd"]
+tf.reduce_join(a, -2) = tf.reduce_join(a, 0) ==> ["ac", "bd"]
+tf.reduce_join(a, -1) = tf.reduce_join(a, 1) ==> ["ab", "cd"]
+tf.reduce_join(a, 0, keep_dims=True) ==> [["ac", "bd"]]
+tf.reduce_join(a, 1, keep_dims=True) ==> [["ab"], ["cd"]]
+tf.reduce_join(a, 0, separator=".") ==> ["a.c", "b.d"]
+tf.reduce_join(a, [0, 1]) ==> "acbd"
+tf.reduce_join(a, [1, 0]) ==> "abcd"
+tf.reduce_join(a, []) ==> [["a", "b"], ["c", "d"]]
+tf.reduce_join(a) = tf.reduce_join(a, [1, 0]) ==> "abcd"
+```
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$inputs,
+    TF_Int32Tensor:$reduction_indices,
+
+    DefaultValuedAttr<BoolAttr, "false">:$keep_dims,
+    StrAttr:$separator
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+}
+
 def TF_ReluOp : TF_Op<"Relu", [Idempotent, NoSideEffect, SameOperandsAndResultType, TF_ContractionFusableInterface, TF_LayoutAgnostic]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
