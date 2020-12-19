@@ -2061,8 +2061,8 @@ cc_library(
     deps = [
         ":ConversionPassIncGen",
         ":Pass",
+        ":SPIRVConversion",
         ":SPIRVDialect",
-        ":SPIRVLowering",
         ":Transforms",
         ":VectorOps",
     ],
@@ -2201,8 +2201,8 @@ cc_library(
         ":Pass",
         ":SCFDialect",
         ":SCFToSPIRV",
+        ":SPIRVConversion",
         ":SPIRVDialect",
-        ":SPIRVLowering",
         ":StandardToSPIRVTransforms",
         ":Support",
         ":Transforms",
@@ -2252,6 +2252,7 @@ cc_library(
         ":LLVMDialect",
         ":Pass",
         ":SPIRVDialect",
+        ":SPIRVUtils",
         ":StandardOps",
         ":StandardToLLVM",
         ":Support",
@@ -2579,7 +2580,7 @@ filegroup(
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
         ":SideEffectTdFiles",
         ":OpBaseTdFiles",
-    ] + glob(["include/mlir/Dialect/SPIRV/*.td"]),
+    ] + glob(["include/mlir/Dialect/SPIRV/IR/*.td"]),
 )
 
 gentbl(
@@ -2588,15 +2589,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVOps.h.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVOps.cpp.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVOps.cpp.inc",
         ),
         (
             "-gen-dialect-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVOpsDialect.h.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVOpsDialect.h.inc",
         ),
         (
             "-gen-op-doc",
@@ -2604,27 +2605,27 @@ gentbl(
         ),
         (
             "-gen-enum-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVEnums.h.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVEnums.h.inc",
         ),
         (
             "-gen-enum-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVEnums.cpp.inc",
         ),
         (
             "-gen-spirv-enum-avail-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.h.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVEnumAvailability.h.inc",
         ),
         (
             "-gen-spirv-enum-avail-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVEnumAvailability.cpp.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVEnumAvailability.cpp.inc",
         ),
         (
             "-gen-spirv-capability-implication",
-            "include/mlir/Dialect/SPIRV/SPIRVCapabilityImplication.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVCapabilityImplication.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
+    td_file = "include/mlir/Dialect/SPIRV/IR/SPIRVOps.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
     ],
@@ -2632,18 +2633,18 @@ gentbl(
 
 gentbl(
     name = "SPIRVCanonicalizationIncGen",
-    strip_include_prefix = "lib/Dialect/SPIRV",
+    strip_include_prefix = "lib/Dialect/SPIRV/IR",
     tbl_outs = [
         (
             "-gen-rewriters",
-            "lib/Dialect/SPIRV/SPIRVCanonicalization.inc",
+            "lib/Dialect/SPIRV/IR/SPIRVCanonicalization.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    td_file = "lib/Dialect/SPIRV/IR/SPIRVCanonicalization.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
-        "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+        "lib/Dialect/SPIRV/IR/SPIRVCanonicalization.td",
     ],
 )
 
@@ -2653,19 +2654,19 @@ gentbl(
     tbl_outs = [
         (
             "-gen-avail-interface-decls",
-            "include/mlir/Dialect/SPIRV/SPIRVAvailability.h.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVAvailability.h.inc",
         ),
         (
             "-gen-avail-interface-defs",
-            "include/mlir/Dialect/SPIRV/SPIRVAvailability.cpp.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVAvailability.cpp.inc",
         ),
         (
             "-gen-spirv-avail-impls",
-            "include/mlir/Dialect/SPIRV/SPIRVOpAvailabilityImpl.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVOpAvailabilityImpl.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
+    td_file = "include/mlir/Dialect/SPIRV/IR/SPIRVOps.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
     ],
@@ -2676,15 +2677,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-struct-attr-decls",
-            "include/mlir/Dialect/SPIRV/TargetAndABI.h.inc",
+            "include/mlir/Dialect/SPIRV/IR/TargetAndABI.h.inc",
         ),
         (
             "-gen-struct-attr-defs",
-            "include/mlir/Dialect/SPIRV/TargetAndABI.cpp.inc",
+            "include/mlir/Dialect/SPIRV/IR/TargetAndABI.cpp.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/TargetAndABI.td",
+    td_file = "include/mlir/Dialect/SPIRV/IR/TargetAndABI.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
@@ -2692,16 +2693,16 @@ gentbl(
 )
 
 gentbl(
-    name = "SPIRVOpUtilsIncGen",
+    name = "SPIRVAttrUtilsGen",
     strip_include_prefix = "include",
     tbl_outs = [
         (
-            "-gen-spirv-op-utils",
-            "include/mlir/Dialect/SPIRV/SPIRVOpUtils.inc",
+            "-gen-spirv-attr-utils",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVAttrUtils.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVBase.td",
+    td_file = "include/mlir/Dialect/SPIRV/IR/SPIRVBase.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":SPIRVAvailabilityIncGen",
@@ -2714,11 +2715,11 @@ gentbl(
     tbl_outs = [
         (
             "-gen-spirv-serialization",
-            "include/mlir/Dialect/SPIRV/SPIRVSerialization.inc",
+            "include/mlir/Dialect/SPIRV/IR/SPIRVSerialization.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/SPIRVOps.td",
+    td_file = "include/mlir/Dialect/SPIRV/IR/SPIRVOps.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
     ],
@@ -2726,26 +2727,15 @@ gentbl(
 
 cc_library(
     name = "SPIRVDialect",
-    srcs = glob(
-        [
-            "lib/Dialect/SPIRV/*.cpp",
-            "lib/Dialect/SPIRV/*.h",
-        ],
-        exclude = [
-            "lib/Dialect/SPIRV/SPIRVLowering.cpp",
-        ],
-    ) + [
+    srcs = glob([
+        "lib/Dialect/SPIRV/IR/*.cpp",
+        "lib/Dialect/SPIRV/IR/*.h",
+    ]) + [
         "include/mlir/Transforms/InliningUtils.h",
     ],
-    hdrs = glob(
-        [
-            "include/mlir/Dialect/SPIRV/*.h",
-        ],
-        exclude = [
-            "include/mlir/Dialect/SPIRV/SPIRVBinaryUtils.h",
-            "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
-        ],
-    ),
+    hdrs = glob([
+        "include/mlir/Dialect/SPIRV/IR/*.h",
+    ]),
     includes = ["include"],
     deps = [
         ":CommonFolders",
@@ -2753,11 +2743,10 @@ cc_library(
         ":IR",
         ":Parser",
         ":Pass",
+        ":SPIRVAttrUtilsGen",
         ":SPIRVAvailabilityIncGen",
         ":SPIRVCanonicalizationIncGen",
-        ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
-        ":SPIRVPassIncGen",
         ":SPIRVSerializationGen",
         ":SPIRVTargetAndABIStructGen",
         ":SideEffectInterfaces",
@@ -2773,39 +2762,82 @@ gentbl(
     tbl_outs = [
         (
             "-gen-pass-decls -name SPIRV",
-            "include/mlir/Dialect/SPIRV/Passes.h.inc",
+            "include/mlir/Dialect/SPIRV/Transforms/Passes.h.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/SPIRV/Passes.td",
+    td_file = "include/mlir/Dialect/SPIRV/Transforms/Passes.td",
     td_srcs = [
         ":PassBaseTdFiles",
     ],
 )
 
 cc_library(
-    name = "SPIRVLowering",
+    name = "SPIRVUtils",
     srcs = glob([
-        "lib/Dialect/SPIRV/Transforms/*.cpp",
-        "lib/Dialect/SPIRV/Transforms/*.h",
-    ]) + [
-        "lib/Dialect/SPIRV/SPIRVLowering.cpp",
+        "lib/Dialect/SPIRV/Utils/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/SPIRV/Utils/*.h",
+    ]),
+    includes = [
+        "include",
+    ],
+    deps = [
+        ":SPIRVDialect",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SPIRVConversion",
+    srcs = [
+        "lib/Dialect/SPIRV/Transforms/SPIRVConversion.cpp",
     ],
     hdrs = [
-        "include/mlir/Dialect/SPIRV/Passes.h",
-        "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
-        "include/mlir/Dialect/SPIRV/TargetAndABI.h",
+        "include/mlir/Dialect/SPIRV/Transforms/SPIRVConversion.h",
     ],
+    includes = [
+        "include",
+    ],
+    deps = [
+        ":SPIRVDialect",
+        ":Support",
+        ":TransformUtils",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "SPIRVTransforms",
+    srcs = glob(
+        [
+            "lib/Dialect/SPIRV/Transforms/*.cpp",
+            "lib/Dialect/SPIRV/Transforms/*.h",
+        ],
+        exclude = [
+            "lib/Dialect/SPIRV/Transforms/SPIRVConversion.cpp",
+        ],
+    ),
+    hdrs = glob(
+        [
+            "include/mlir/Dialect/SPIRV/Transforms/*.h",
+        ],
+        exclude = [
+            "include/mlir/Dialect/SPIRV/Transforms/SPIRVConversion.h",
+        ],
+    ),
     includes = [
         "include",
     ],
     deps = [
         ":IR",
         ":Pass",
+        ":SPIRVConversion",
         ":SPIRVDialect",
         ":SPIRVPassIncGen",
-        ":SPIRVTargetAndABIStructGen",
-        ":StandardOps",
+        ":SPIRVUtils",
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:Support",
@@ -2829,8 +2861,9 @@ cc_library(
         ":ConversionPassIncGen",
         ":IR",
         ":Pass",
+        ":SPIRVConversion",
         ":SPIRVDialect",
-        ":SPIRVLowering",
+        ":SPIRVUtils",
         ":StandardOps",
         ":Support",
         ":Transforms",
@@ -2855,8 +2888,8 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":SPIRVAttrUtilsGen",
         ":SPIRVDialect",
-        ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
         "@llvm-project//llvm:Support",
@@ -2874,9 +2907,9 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":SPIRVAttrUtilsGen",
         ":SPIRVBinaryUtils",
         ":SPIRVDialect",
-        ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":SPIRVSerializationGen",
         ":Support",
@@ -2896,9 +2929,9 @@ cc_library(
     includes = ["include"],
     deps = [
         ":IR",
+        ":SPIRVAttrUtilsGen",
         ":SPIRVBinaryUtils",
         ":SPIRVDialect",
-        ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":SPIRVSerializationGen",
         ":Support",
@@ -2908,14 +2941,14 @@ cc_library(
 )
 
 cc_library(
-    name = "SPIRVLinking",
+    name = "SPIRVModuleCombiner",
     srcs = glob(
         [
             "lib/Dialect/SPIRV/Linking/ModuleCombiner/*.cpp",
         ],
     ),
     hdrs = [
-        "include/mlir/Dialect/SPIRV/ModuleCombiner.h",
+        "include/mlir/Dialect/SPIRV/Linking/ModuleCombiner.h",
     ],
     includes = ["include"],
     deps = [
@@ -3345,8 +3378,8 @@ cc_library(
         ":IR",
         ":Pass",
         ":SCFDialect",
+        ":SPIRVConversion",
         ":SPIRVDialect",
-        ":SPIRVLowering",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
@@ -3939,9 +3972,9 @@ cc_library(
         ":SCFTransforms",
         ":SDBM",
         ":SPIRVDialect",
-        ":SPIRVLowering",
         ":SPIRVPassIncGen",
         ":SPIRVToLLVM",
+        ":SPIRVTransforms",
         ":Shape",
         ":ShapeToStandard",
         ":ShapeTransforms",
@@ -4169,6 +4202,7 @@ cc_binary(
         ":MlirJitRunner",
         ":Pass",
         ":SPIRVDialect",
+        ":SPIRVTransforms",
         ":StandardToLLVM",
         ":StandardToSPIRVTransforms",
         "@llvm-project//llvm:Support",
@@ -4704,8 +4738,8 @@ cc_library(
         ":LinalgOps",
         ":LinalgTransforms",
         ":Pass",
+        ":SPIRVConversion",
         ":SPIRVDialect",
-        ":SPIRVLowering",
         ":StandardOps",
     ],
 )
