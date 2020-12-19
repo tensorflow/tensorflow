@@ -4252,9 +4252,14 @@ def ssim(img1,
   Example:
 
   ```python
-      # Read images from file.
-      im1 = tf.decode_png('path/to/im1.png')
-      im2 = tf.decode_png('path/to/im2.png')
+      # Read images (of size 255 x 255) from file.
+      im1 = tf.image.decode_image(tf.io.read_file('path/to/im1.png'))
+      im2 = tf.image.decode_image(tf.io.read_file('path/to/im2.png'))
+      tf.shape(im1)  # `img1.png` has 3 channels; shape is `(255, 255, 3)`
+      tf.shape(im2)  # `img2.png` has 3 channels; shape is `(255, 255, 3)`
+      # Add an outer batch for each image.
+      im1 = tf.expand_dims(im1, axis=0)
+      im2 = tf.expand_dims(im2, axis=0)
       # Compute SSIM over tf.uint8 Tensors.
       ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size=11,
                             filter_sigma=1.5, k1=0.01, k2=0.03)
@@ -4268,8 +4273,10 @@ def ssim(img1,
   ```
 
   Args:
-    img1: First image batch.
-    img2: Second image batch.
+    img1: First image batch. 4-D Tensor of shape `[batch, height, width,
+      channels]`.
+    img2: Second image batch. 4-D Tensor of shape `[batch, height, width,
+      channels]`.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     filter_size: Default value 11 (size of gaussian filter).
