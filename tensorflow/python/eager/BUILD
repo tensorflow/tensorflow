@@ -1022,6 +1022,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
+        "notap",  # b/175813762
         "optonly",  # times out
     ],
     deps = [

@@ -1168,6 +1168,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
         "no_rocm",
+        "noasan",  # b/175816710
         "notsan",  # b/168645872
     ],
     tpu_tags = [
@@ -1658,6 +1659,11 @@ py_test(
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],  # b/175904958
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",

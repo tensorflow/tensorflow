@@ -30,6 +30,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -109,7 +111,10 @@ struct HloBufferizePass : public HloBufferizePassBase<HloBufferizePass> {
     OwningRewritePatternList patterns;
     auto& context = getContext();
     ConversionTarget target(context);
+    target.addLegalDialect<lmhlo::LmhloDialect>();
+    target.addLegalDialect<StandardOpsDialect>();
     target.addLegalDialect<lmhlo::LmhloDialect, StandardOpsDialect>();
+    target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
 
     CustomBufferizeTypeConverter converter;
@@ -149,7 +154,8 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
   // TODO(b/173201243): Move to tablegen.
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<AffineDialect, scf::SCFDialect, shape::ShapeDialect,
-                    tf_framework::TFFrameworkDialect, lmhlo::LmhloDialect>();
+                    tensor::TensorDialect, tf_framework::TFFrameworkDialect,
+                    lmhlo::LmhloDialect>();
   }
 
  public:
@@ -157,13 +163,14 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
     auto& context = getContext();
     ConversionTarget target(context);
     target.addLegalDialect<scf::SCFDialect, StandardOpsDialect,
+                           tensor::TensorDialect,
                            tf_framework::TFFrameworkDialect, AffineDialect,
                            shape::ShapeDialect, lmhlo::LmhloDialect,
                            linalg::LinalgDialect>();
     target.addLegalOp<FuncOp, ModuleOp, ModuleTerminatorOp>();
 
     target.addIllegalDialect<mhlo::MhloDialect>();
-    target.addIllegalOp<DynamicTensorFromElementsOp, ExtractElementOp,
+    target.addIllegalOp<DynamicTensorFromElementsOp, tensor::ExtractOp,
                         TensorFromElementsOp, TensorCastOp, TensorLoadOp,
                         TensorToMemrefOp>();
     BufferizeTypeConverter converter;
@@ -175,6 +182,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
         typesAreLegal);
 
     OwningRewritePatternList patterns;
+    populateTensorBufferizePatterns(&context, converter, patterns);
     populateStdBufferizePatterns(&context, converter, patterns);
     populateEliminateBufferizeMaterializationsPatterns(&context, converter,
                                                        patterns);

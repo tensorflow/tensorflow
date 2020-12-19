@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 import enum
-import inspect
 import os
 import re
 import types
@@ -43,9 +42,11 @@ from tensorflow.python.autograph.pyct.static_analysis import activity
 from tensorflow.python.autograph.pyct.static_analysis import reaching_definitions
 from tensorflow.python.autograph.pyct.static_analysis import reaching_fndefs
 from tensorflow.python.autograph.pyct.static_analysis import type_inference
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import load_library
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
 
 # TODO(mdan): Use class definitions so that we can mix these with Python types.
 
@@ -316,6 +317,13 @@ _PY_TYPE_TO_TFR = {
     float: TFRTypes.F32,
 }
 
+_TF_DTYPE_TO_TFR = {
+    'bool': TFRTypes.I1,
+    'int64': TFRTypes.I64,
+    'int32': TFRTypes.I32,
+    'float32': TFRTypes.F32,
+}
+
 _AG_FIXED_RETURN_TYPE = {
     'for_stmt': type(None),
     'if_stmt': type(None),
@@ -380,6 +388,9 @@ class TFRTypeResolver(type_inference.Resolver):
     if getattr(value, '__name__', None) == 'tensorflow.raw_ops':
       return {types.ModuleType}
     if hasattr(value, '__module__'):
+      if isinstance(value, dtypes.DType):
+        return {TFRTypes.ATTR}
+
       # All the imported operations, which are not autograph built-ins, are
       # considered to be TF raw ops.
       # TODO(fengliuai): refine the condition so we only match TensorFlow
@@ -472,7 +483,7 @@ class TFRTypeResolver(type_inference.Resolver):
     op_def, derived_attrs = self._op_defs.lookup(f_name, func)
     if op_def is None:
       return None
-    pos = inspect.getfullargspec(func).args.index(str(name))
+    pos = tf_inspect.getfullargspec(func).args.index(str(name))
 
     if pos < len(op_def.input_arg):
       arg_def = op_def.input_arg[pos]
@@ -703,6 +714,13 @@ class TFRGen(transformer.CodeGenerator):
       if node_type == TFRTypes.TF_RAW_OP:
         # This branch is used when it is inside tensorflow
         return (node.attr, TFRTypes.TF_RAW_OP)
+
+      if node_type == TFRTypes.ATTR:
+        attr = self._ssa_name('attr')
+        tfr_type = _TF_DTYPE_TO_TFR.get(node.attr)
+        self._emit_with_loc(
+            '\n{} = tfr.constant {} -> !tfr.attr'.format(attr, tfr_type), node)
+        return (attr, TFRTypes.ATTR)
 
       value, _ = self.visit(node.value)
       tensor_type = self._get_inferred_type(node.value, None)
@@ -1432,7 +1450,7 @@ def tfr_gen_from_module(source, method_prefix=None, op_libraries=None):
 
   py_funcs = [
       func
-      for name, func in inspect.getmembers(source, inspect.isfunction)
+      for name, func in tf_inspect.getmembers(source, tf_inspect.isfunction)
       if not method_prefix or name.startswith(method_prefix)
   ]
   # Sort the methods by the line number, to make sure the definitions are

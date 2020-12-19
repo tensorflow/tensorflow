@@ -132,10 +132,10 @@ struct ParsedArgumentsAsBuffers {
 
 // Filter out static arguments, flatten and concatenate other arguments (i.e.
 // dynamic positional and keyword arguments), filling `arguments` in place.
-void ParseArguments(const pybind11::args& args,
-                    const pybind11::kwargs& py_kwargs,
-                    absl::Span<int const> static_argnums,
-                    ParsedArgumentsAsBuffers& arguments);
+Status ParseArguments(const pybind11::args& args,
+                      const pybind11::kwargs& py_kwargs,
+                      absl::Span<int const> static_argnums,
+                      ParsedArgumentsAsBuffers& arguments);
 
 struct DevicePutResult {
   explicit DevicePutResult(PjRtBuffer* b, bool weak_type)

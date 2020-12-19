@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -399,7 +400,7 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     llvm::SmallVector<int64_t, 4> minor_to_major(
         shape.layout().minor_to_major().begin(),
         shape.layout().minor_to_major().end());
-    load.setAttr("minor_to_major", b->getIndexTensorAttr(minor_to_major));
+    load->setAttr("minor_to_major", b->getIndexTensorAttr(minor_to_major));
   }
   return load.getResult();
 }
@@ -571,8 +572,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
       builder_.getStringAttr(custom_call_instr->opaque()));
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
-  custom_call.setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
-                      builder_.getI32VectorAttr(segments));
+  custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
+                       builder_.getI32VectorAttr(segments));
   return custom_call.getOperation();
 }
 
@@ -659,6 +660,13 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
   TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnConvKind kind,
                       xla::gpu::GetCudnnConvKind(custom_call));
 
+  auto get_layout_attribute = [&](const xla::Layout& layout) {
+    std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
+    absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
+                      [](xla::int64 x) { return static_cast<int64_t>(x); });
+    return builder_.getI64ArrayAttr(minor_to_major);
+  };
+
   auto set_common_conv_attributes = [&, this](auto op) -> Operation* {
     const xla::Window& window = custom_call->window();
     // Window size for Cudnn Conv is same as the kernel size.
@@ -703,6 +711,9 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
     auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
         builder_.getI64IntegerAttr(backend_config.algorithm()),
         builder_.getBoolAttr(backend_config.tensor_ops_enabled()),
+        get_layout_attribute(custom_call->operand(0)->shape().layout()),
+        get_layout_attribute(custom_call->operand(1)->shape().layout()),
+        get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
         builder_.getContext());
     op.backend_configAttr(config);
 
@@ -803,12 +814,12 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(instr));
-  get_global_memref.setAttr("lmhlo.alloc",
-                            builder_.getIndexAttr(slice.index()));
-  get_global_memref.setAttr("lmhlo.slice_offset",
-                            builder_.getI64IntegerAttr(slice.offset()));
-  get_global_memref.setAttr("lmhlo.slice_size",
-                            builder_.getI64IntegerAttr(slice.size()));
+  get_global_memref->setAttr("lmhlo.alloc",
+                             builder_.getIndexAttr(slice.index()));
+  get_global_memref->setAttr("lmhlo.slice_offset",
+                             builder_.getI64IntegerAttr(slice.offset()));
+  get_global_memref->setAttr("lmhlo.slice_size",
+                             builder_.getI64IntegerAttr(slice.size()));
 
   // Update the cache to remember this value.
   auto& cached_value = slices_[std::make_pair(instr, ::xla::ShapeIndex())];
@@ -902,7 +913,7 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   auto* all_reduce = ::xla::Cast<::xla::HloAllReduceInstruction>(instr);
   auto replica_groups_attr = ::xla::HloFunctionImporter::ConvertReplicaGroups(
       all_reduce->replica_groups(), builder_);
-  all_reduce_op.setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  all_reduce_op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
   all_reduce_op.constrain_layoutAttr(
       builder_.getBoolAttr(all_reduce->constrain_layout()));
   all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(

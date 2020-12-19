@@ -575,7 +575,7 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
   def testDatasetsShuffledDifferently(self):
     # This test requires at least two workers in the cluster.
-    self.assertGreaterEqual(len(self.coordinator.cluster.workers), 2)
+    self.assertGreaterEqual(len(self.coordinator._cluster.workers), 2)
 
     random_seed.set_random_seed(None)
 
@@ -587,12 +587,12 @@ class ClusterCoordinatorTest(TestCaseWithErrorReportingThread):
 
     # Get elements from the first two iterators.
     iterator_1 = distributed_iterator._values[0]
-    iterator_1._rebuild_on(self.coordinator.cluster.workers[0])
+    iterator_1._rebuild_on(self.coordinator._cluster.workers[0])
     iterator_1 = iterator_1.fetch()
     elements_in_iterator_1 = [e.numpy() for e in iterator_1]
 
     iterator_2 = distributed_iterator._values[1]
-    iterator_2._rebuild_on(self.coordinator.cluster.workers[1])
+    iterator_2._rebuild_on(self.coordinator._cluster.workers[1])
     iterator_2 = iterator_2.fetch()
     elements_in_iterator_2 = [e.numpy() for e in iterator_2]
 

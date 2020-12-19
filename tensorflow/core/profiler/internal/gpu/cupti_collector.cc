@@ -160,6 +160,11 @@ struct PerDeviceCollector {
                               GetStatTypeStr(StatType::kKernelAnnotation)),
                           *plane->GetOrCreateStatMetadata(event.annotation));
     }
+    if (!event.nvtx_range.empty()) {
+      xevent.AddStatValue(
+          *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),
+          *plane->GetOrCreateStatMetadata(event.nvtx_range));
+    }
     if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
@@ -547,8 +552,9 @@ struct PerDeviceCollector {
 }  // namespace
 
 void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
-                        const std::string& annotation) {
-  if (annotation.empty()) return;
+                        const absl::string_view annotation,
+                        const absl::string_view nvtx_range) {
+  if (annotation.empty() && nvtx_range.empty()) return;
   VLOG(3) << "Add annotation: device_id: " << device_id
           << " correlation_id: " << correlation_id
           << " annotation: " << annotation;
@@ -556,20 +562,22 @@ void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   if (per_device_map.annotations.size() < max_size_) {
-    absl::string_view annotation_str =
-        *per_device_map.annotations.insert(annotation).first;
-    per_device_map.correlation_map.emplace(correlation_id, annotation_str);
+    AnnotationInfo info;
+    info.annotation = *per_device_map.annotations.emplace(annotation).first;
+    if (!nvtx_range.empty())
+      info.nvtx_range = *per_device_map.nvtx_ranges.emplace(nvtx_range).first;
+    per_device_map.correlation_map.emplace(correlation_id, info);
   }
 }
 
-absl::string_view AnnotationMap::LookUp(uint32 device_id,
-                                        uint32 correlation_id) {
-  if (device_id >= per_device_map_.size()) return absl::string_view();
+AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32 device_id,
+                                                    uint32 correlation_id) {
+  if (device_id >= per_device_map_.size()) return AnnotationInfo();
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   auto it = per_device_map.correlation_map.find(correlation_id);
   return it != per_device_map.correlation_map.end() ? it->second
-                                                    : absl::string_view();
+                                                    : AnnotationInfo();
 }
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and

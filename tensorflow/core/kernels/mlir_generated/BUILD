@@ -3,8 +3,8 @@
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gen_kernel_library",
+    "if_mlir_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
-    "if_mlir_unranked_kernels_enabled",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -31,7 +31,7 @@ config_setting(
 )
 
 config_setting(
-    name = "mlir_use_unranked_kernels",
+    name = "mlir_experimental_kernels_enabled",
     define_values = {"enable_unranked_kernels": "1"},
 )
 
@@ -70,7 +70,7 @@ filegroup(
     name = "unary_kernel_srcs",
     srcs = [
         ":enabled_unary_kernel_srcs",
-    ] + if_mlir_unranked_kernels_enabled(
+    ] + if_mlir_experimental_kernels_enabled(
         if_true = [":experimental_unary_kernel_srcs"],
     ),
     compatible_with = get_compatible_with_cloud(),
@@ -182,7 +182,7 @@ tf_kernel_library(
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
         ":cwise_unary_op",
-    ]) + if_mlir_unranked_kernels_enabled(
+    ]) + if_mlir_experimental_kernels_enabled(
         [
             ":cwise_binary_op",
         ],
@@ -197,6 +197,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
+        ":gpu_ops_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
@@ -219,6 +220,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # b/173033461
     ],
     deps = [
+        ":gpu_ops_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
@@ -233,6 +235,25 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "gpu_ops_test_util",
+    testonly = 1,
+    srcs = [
+        "gpu_ops_test_util.cc",
+        "gpu_ops_test_util.h",
+    ],
+    hdrs = [
+        "gpu_ops_test_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -354,6 +375,17 @@ gen_kernel_library(
     ],
     # TODO(b/174543802): Enable once fusion heuristics is better.
     # unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "complex",
+    tile_size = "256,1,1",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/174543802): Enable once fusion heuristics is better.
+    # unroll_factors = "2",
 )
 
 gen_kernel_library(

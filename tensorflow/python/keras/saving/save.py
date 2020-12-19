@@ -18,11 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import six
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import load_context
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
@@ -38,12 +38,6 @@ try:
 except ImportError:
   h5py = None
 # pylint: enable=g-import-not-at-top
-
-_HDF5_EXTENSIONS = ['.h5', '.hdf5', '.keras']
-
-
-# TODO(kathywu): Remove this when Keras SavedModel is not experimental.
-_KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = True
 
 
 @keras_export('keras.models.save_model')
@@ -140,7 +134,7 @@ def save_model(model,
 
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
-      os.path.splitext(filepath)[1] in _HDF5_EXTENSIONS):
+      saving_utils.is_hdf5_filepath(filepath)):
     # TODO(b/130258301): add utility method for detecting model type.
     if (not model._is_graph_network and  # pylint:disable=protected-access
         not isinstance(model, sequential.Sequential)):

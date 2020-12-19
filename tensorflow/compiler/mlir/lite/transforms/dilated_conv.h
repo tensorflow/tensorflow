@@ -82,12 +82,12 @@ template <typename Conv2dOpTy>
 LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
   // Make sure Conv2D has 'VALID' padding.
-  if (op.template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
+  if (op->template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
     return failure();
   }
   // Make sure dilations are all ones if set.
   const ArrayAttr& dilations =
-      op.template getAttrOfType<ArrayAttr>("dilations");
+      op->template getAttrOfType<ArrayAttr>("dilations");
   if (dilations && !TFIntListIsAllOnes(dilations)) {
     return failure();
   }

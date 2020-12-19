@@ -1515,6 +1515,14 @@ func @pad_fold() -> tensor<4x5xi32> {
   // CHECK-SAME: ]> : tensor<4x5xi32>
 }
 
+func @pad_fold_zero_elements() -> tensor<3xi32> {
+  %0 = mhlo.constant dense<> : tensor<0xi32>
+  %1 = mhlo.constant dense<7> : tensor<i32>
+  %2 = "mhlo.pad"(%0, %1) {edge_padding_high = dense<3> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<0> : tensor<1xi64>} : (tensor<0xi32>, tensor<i32>) -> tensor<3xi32>
+  return %2 : tensor<3xi32>
+  // CHECK: mhlo.constant dense<7> : tensor<3xi32>
+}
+
 // CHECK-LABEL: @identity_broadcast_reshape
 func @identity_broadcast_reshape(%arg0: tensor<128xf32>) -> tensor<128xf32> {
   %0 = "mhlo.broadcast"(%arg0) {

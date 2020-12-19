@@ -62,18 +62,18 @@ absl::Status Buffer::CreateFromBufferDescriptor(const BufferDescriptor& desc,
                                                 id<MTLDevice> device) {
   size_ = desc.size;
   if (desc.data.empty()) {
-    buffer_ = [device newBufferWithLength:size_
-                                         options:MTLResourceStorageModeShared];
+    buffer_ =
+        [device newBufferWithLength:size_ options:MTLResourceStorageModeShared];
   } else {
     buffer_ = [device newBufferWithBytes:desc.data.data()
-                                 length:size_
-                                options:MTLResourceStorageModeShared];
+                                  length:size_
+                                 options:MTLResourceStorageModeShared];
   }
   return absl::OkStatus();
 }
 
 absl::Status CreateBuffer(size_t size_in_bytes, const void* data,
-                                  id<MTLDevice> device, Buffer* result) {
+                          id<MTLDevice> device, Buffer* result) {
   id<MTLBuffer> buffer;
   if (data) {
     buffer = [device newBufferWithBytes:data
@@ -81,7 +81,7 @@ absl::Status CreateBuffer(size_t size_in_bytes, const void* data,
                                 options:MTLResourceStorageModeShared];
   } else {
     buffer = [device newBufferWithLength:size_in_bytes
-                                         options:MTLResourceStorageModeShared];
+                                 options:MTLResourceStorageModeShared];
   }
 
   *result = Buffer(buffer, size_in_bytes);

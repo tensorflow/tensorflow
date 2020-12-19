@@ -314,9 +314,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     # TODO(b/156309549): We should add INT16 to the builtin types.
     converter.optimizations = [lite.Optimize.DEFAULT]
-    converter.target_spec.supported_ops = [
-        lite.OpsSet.TFLITE_BUILTINS_INT8
-    ]
+    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.representative_dataset = calibration_gen
     converter._experimental_calibrate_only = True
     calibrated_tflite = converter.convert()
@@ -610,11 +608,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
       ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
       ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
-      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
   @test_util.run_v2_only
-  def testIntegerQuantizationWithUnsupportedOps(self, is_int_only,
+  def testIntegerQuantizationWithUnsupportedOps(self,
+                                                is_int_only,
                                                 is_int16_quantize,
-                                                inference_input_output_type):
+                                                inference_input_output_type,
+                                                enable_mlir_quantizer=False):
     func, calib_gen = self._getIntegerQuantizationModelWithUnsupportedOps()
 
     quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
@@ -646,23 +648,25 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
+    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+
+    expected_dtype = inference_input_output_type.as_numpy_dtype
+    # Allow float32 for fallback on non-quantizable op.
+    expected_ceil_dtype = (
+        expected_dtype if enable_mlir_quantizer else dtypes.float32)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(input_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(input_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(input_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(input_details[1]['dtype'], expected_dtype)
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(output_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(output_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(output_details[1]['dtype'], expected_dtype)
 
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
@@ -921,8 +925,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(len(signature_defs.values()), 1)
     self.assertEqual(
         list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
-    self.assertEqual(
-        sorted(signature_defs['mul_add']['inputs']), ['x', 'y'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only
@@ -962,8 +965,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(len(signature_defs.values()), 1)
     self.assertEqual(
         list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
-    self.assertEqual(
-        sorted(signature_defs['mul_add']['inputs']), ['x', 'y'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only

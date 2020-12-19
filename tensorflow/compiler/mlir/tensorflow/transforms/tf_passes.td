@@ -29,6 +29,53 @@ def TensorFlowShapeInferencePass : Pass<"tf-shape-inference", "ModuleOp"> {
   ];
 }
 
+def ExecutorGraphPruningPass : FunctionPass<"tf-executor-graph-pruning"> {
+  let summary = "Prunes unreachable ops in a tf_executor.graph";
+
+  let description = [{
+This pass removes ops from a `tf_executor.graph` that are not transitively, via
+data or control dependencies, connected to the associated `tf_executor.fetch`
+op. The order of ops will be preserved. Functions named `main` with no
+`tf.entry_function` attribute will not be pruned, as such graphs/functions may
+have been imported from a V1 TensorFlow graph, where feeds/fetches/targets are
+not provided at certain stages of IR transformation (e.g. pre-placement).
+
+For example, the following:
+
+```mlir
+func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %graph = tf_executor.graph {
+    %transitive_reachable_data:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    %reachable_data:2 = tf_executor.island wraps "tf.Identity"(%transitive_reachable_data#0) : (tensor<i32>) -> tensor<i32>
+    %unreachable_data:2 = tf_executor.island wraps "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %transitive_reachable_control = tf_executor.island wraps "tf.NoOp"() : () -> ()
+    %reachable_control = tf_executor.island(%transitive_reachable_control) wraps "tf.NoOp"() : () -> ()
+    %unreachable_control = tf_executor.island wraps "tf.NoOp"() : () -> tensor<i32>
+    tf_executor.fetch %reachable_data#0, %reachable_control : tensor<i32>, !tf_executor.control
+  }
+  return %graph : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @graph(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %graph = tf_executor.graph {
+    %transitive_reachable_data:2 = tf_executor.island wraps "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    %reachable_data:2 = tf_executor.island wraps "tf.Identity"(%transitive_reachable_data#0) : (tensor<i32>) -> tensor<i32>
+    %transitive_reachable_control = tf_executor.island wraps "tf.NoOp"() : () -> ()
+    %reachable_control = tf_executor.island(%transitive_reachable_control) wraps "tf.NoOp"() : () -> ()
+    tf_executor.fetch %reachable_data#0, %reachable_control : tensor<i32>, !tf_executor.control
+  }
+  return %graph : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "tf_executor::CreateTFExecutorGraphPruningPass()";
+}
+
 def ExecutorDialectToFunctionalPass : FunctionPass<"tf-executor-to-functional-conversion"> {
   let summary = "Lifts tf_executor.island inner ops from a tf_executor.graph";
 
@@ -72,7 +119,7 @@ func @my_fn(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>
 }
 
 def TPUClusterFormationPass : Pass<"tf-tpu-cluster-formation", "ModuleOp"> {
-  let summary = "Form clusters from operations assigned to the same TPU computation";
+  let summary = "Forms clusters from operations assigned to the same TPU computation";
 
   let description = [{
 TPU computations from the frontend are composed of a `tf.TPUReplicateMetadata`
@@ -155,6 +202,44 @@ func @tpu_computation(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, t
   let constructor = "TFTPU::CreateTPUClusterFormationPass()";
 }
 
+def ClusterConstantSinkingPass : FunctionPass<"tf-device-constant-sinking"> {
+  let summary = "Sinks constants implicitly captured in a tf_device.cluster region.";
+
+  let description = [{
+This pass sinks implicitly captured constants (`tf.Const` ops) used by and into
+a `tf_device.cluster` region. Performing this prior to outlining will reduce the
+number of arguments of the outlined function.
+
+For example, the following:
+
+```mlir
+func @cluster() -> tensor<i32> {
+  %const = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %cluster = "tf_device.cluster"() ( {
+    %identity = "tf.Identity"(%const) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) : () -> (tensor<i32>)
+  return %cluster : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @cluster() -> tensor<i32> {
+  %cluster = "tf_device.cluster"() ( {
+    %const = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+    %identity = "tf.Identity"(%const) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) : () -> (tensor<i32>)
+  return %cluster : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateClusterConstantSinkingPass()";
+}
+
 def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
   let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
 
@@ -209,4 +294,51 @@ func @outside_compilation() -> tensor<f32> {
   }];
 
   let constructor = "TFTPU::CreateTPUExtractOutsideCompilationPass()";
+}
+
+def MarkOpsForOutsideCompilationPass : Pass<"tf-mark-ops-for-outside-compilation", "ModuleOp"> {
+  let summary = "Marks ops in device cluster for outside compilation if they are unsupported on device.";
+
+  let description = [{
+This pass marks unsupported ops in a device cluster with
+`_xla_outside_compilation` attribute so the operations will run on the host
+instead of the device. Unsupported ops are ops that can not be code
+generated to run on the device for the cluster including:
+
+1. String operations on TPUs.
+2. Operations that don't have a kernel defined for the device.
+
+This pass is conservative in that it will mark all ops for outside compilation
+that can not be compiled for the device.  Exceptions for this are added for ops
+that will be rewritten or decomposed before compiling on device.
+
+
+For example, tf_device.cluster op with an unsupported op, tf.UnsupportedOp:
+
+```mlir
+func @unsupported_op() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.UnsupportedOp"() : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+```
+
+will mark tf.UnsupportedOp with `_xla_outside_compilation` attribute:
+
+```mlir
+func @unsupported_op() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ( {
+    %1 = "tf.UnsupportedOp"() {_xla_outside_compilation = "auto0"} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateMarkOpsForOutsideCompilationPass()";
 }

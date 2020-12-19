@@ -2052,6 +2052,14 @@ func @acos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: @acos_complex
+// CHLO-LABEL: @acos_complex
+func @acos_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHLO: tf.Acos
+  %0 = "tf.Acos"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
+}
+
 // CHECK-LABEL: @acos_dynamic
 // CHLO-LABEL: @acos_dynamic
 func @acos_dynamic(%arg0: tensor<*xf32>) -> tensor<*xf32> {
@@ -2088,6 +2096,14 @@ func @tan_unranked(%arg : tensor<*xf32>) -> tensor<*xf32> {
   // CHLO  %[[RESULT:.*]] = "mhlo.divide"(%[[SINE]], %[[COSINE]])
   %result = "tf.Tan"(%arg) : (tensor<*xf32>) -> tensor<*xf32>
   return %result : tensor<*xf32>
+}
+
+// CHECK-LABEL: @sinh_complex
+// CHLO-LABEL: @sinh_complex
+func @sinh_complex(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>> {
+  // CHLO: tf.Sinh
+  %0 = "tf.Sinh"(%arg0) : (tensor<2xcomplex<f32>>) -> tensor<2xcomplex<f32>>
+  return %0 : tensor<2xcomplex<f32>>
 }
 
 // CHECK-LABEL: func @cast_dynamic_i2f
@@ -4955,6 +4971,16 @@ func @cumsum_exclusive_reverse(%arg0: tensor<4xf32>) -> tensor<4xf32> {
   %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
   %1 = "tf.Cumsum"(%arg0, %0) {exclusive = true, reverse = true} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
   return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_empty
+func @cumsum_empty(%arg0: tensor<0xf32>) -> tensor<0xf32> {
+  %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+
+  // CHECK: "mhlo.reduce_window"
+  // CHECK: padding = dense<0> : tensor<1x2xi64>
+  %1 = "tf.Cumsum"(%arg0, %0) : (tensor<0xf32>, tensor<i32>) -> tensor<0xf32>
+  return %1 : tensor<0xf32>
 }
 
 // CHECK-LABEL: func @cumsum_dynamic

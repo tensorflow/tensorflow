@@ -265,7 +265,7 @@ std::unique_ptr<Cluster> SvdfClusterFactory::CreateCluster(
       // Assuming the node name has a pattern like:
       // "SOMESTRING1/CELLNAME/SEARCH_PATTERN/SOMESTRING2", we use
       // CELLNAME as the cluster name.
-      size_t cell_pos = node.name().rfind("/", weights_pos - 2) + 1;
+      size_t cell_pos = node.name().rfind('/', weights_pos - 2) + 1;
       std::string cell_name =
           node.name().substr(cell_pos, weights_pos - cell_pos - 1);
       cluster = std::unique_ptr<SvdfCluster>(new SvdfCluster);

@@ -131,6 +131,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     SmallVector<AffineMap, 2> indexing_maps(args.size() + (isLHLO ? 0 : 1),
                                             common_indexing_map);
 
+    bool failed = false;
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, op_result_types, inputs, output_buffers,
         /*initTensors=*/ValueRange{}, indexing_maps,
@@ -141,8 +142,13 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           Value op_result = lmhlo::HloOpToStdScalarOp::map<OpTy>(
               op, body_result_types,
               llvm::to_vector<2>(args.take_front(inputs.size())), &rewriter);
-          nested_builder.create<linalg::YieldOp>(loc, op_result);
+          if (op_result == nullptr) {
+            failed = true;
+          } else {
+            nested_builder.create<linalg::YieldOp>(loc, op_result);
+          }
         });
+    if (failed) return failure();
     rewriter.replaceOp(op, linalg_op.getOperation()->getResults());
     return success();
   }

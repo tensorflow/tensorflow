@@ -145,4 +145,35 @@ REGISTER_OP("CollectiveGatherV2")
       return Status::OK();
     });
 
+REGISTER_OP("CollectiveBcastSendV2")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("T: {bool, float, float16, float64, int32, int64}")
+    .Input("group_size: int32")
+    .Input("group_key: int32")
+    .Input("instance_key: int32")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CollectiveBcastRecvV2")
+    .Output("data: T")
+    .Attr("T: {bool, float, float16, float64, int32, int64}")
+    .Input("group_size: int32")
+    .Input("group_key: int32")
+    .Input("instance_key: int32")
+    .Input("shape: Tshape")
+    .Attr("Tshape: {int32, int64} = DT_INT32")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // The output shape is given by the `shape` input at index 3.
+      shape_inference::ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(/*input_idx=*/3, &out));
+      c->set_output(/*idx=*/0, out);
+      return Status::OK();
+    });
+
 }  // namespace tensorflow

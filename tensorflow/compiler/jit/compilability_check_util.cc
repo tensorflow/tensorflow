@@ -196,12 +196,11 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
         "SymbolicGradient should be handled by IsCompilableCall().";
     return false;
   }
+
   if (node.type_string() == "Const") {
-    // Skip Const op with type DT_STRING, since XLA doesn't support it, but the
-    // registered Const KernelDef says that it does, to support no-op Assert for
-    // tfcompile.
     const AttrValue* attr = node.attrs().Find("dtype");
-    if (attr != nullptr && attr->type() == DT_STRING) {
+    if (!op_filter_.allow_string_consts && attr != nullptr &&
+        attr->type() == DT_STRING) {
       *uncompilable_reason =
           "Const op with type DT_STRING is not supported by XLA.";
       return false;

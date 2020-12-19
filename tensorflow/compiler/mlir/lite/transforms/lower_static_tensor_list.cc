@@ -565,7 +565,7 @@ struct ConvertTensorListResize
     // Inserts the two blocks' names into the symbol table held by the module.
     // Using SymbolTable will ensure that the inserted symbol names are
     // unique.
-    SymbolTable manager(op.getParentOfType<ModuleOp>());
+    SymbolTable manager(op->getParentOfType<ModuleOp>());
     manager.insert(then_branch_op);
     manager.insert(else_branch_op);
 
