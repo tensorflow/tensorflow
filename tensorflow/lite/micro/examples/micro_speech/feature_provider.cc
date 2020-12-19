@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
 #include "tensorflow/lite/micro/examples/micro_speech/feature_provider.h"
 
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
@@ -92,12 +94,11 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
   if (slices_needed > 0) {
     for (int new_slice = slices_to_keep; new_slice < kFeatureSliceCount;
          ++new_slice) {
-      const int new_step = (current_step - kFeatureSliceCount + 1) + new_slice;
+      const int new_step = std::max(0, (current_step - kFeatureSliceCount + 1) + new_slice);
       const int32_t slice_start_ms = (new_step * kFeatureSliceStrideMs);
       int16_t* audio_samples = nullptr;
       int audio_samples_size = 0;
-      // TODO(petewarden): Fix bug that leads to non-zero slice_start_ms
-      GetAudioSamples(error_reporter, (slice_start_ms > 0 ? slice_start_ms : 0),
+      GetAudioSamples(error_reporter, slice_start_ms,
                       kFeatureSliceDurationMs, &audio_samples_size,
                       &audio_samples);
       if (audio_samples_size < kMaxAudioSampleSize) {
