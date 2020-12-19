@@ -43,8 +43,8 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
 
   // Quantize the time into steps as long as each window stride, so we can
   // figure out which audio data we need to fetch.
-  const int last_step = (last_time_in_ms / kFeatureSliceStrideMs);
-  const int current_step = (time_in_ms / kFeatureSliceStrideMs);
+  const int last_step = (last_time_in_ms - kFeatureSliceDurationMs) / kFeatureSliceStrideMs;
+  const int current_step = (time_in_ms - kFeatureSliceDurationMs) / kFeatureSliceStrideMs;
 
   int slices_needed = current_step - last_step;
   // If this is the first call, make sure we don't use any cached information.
