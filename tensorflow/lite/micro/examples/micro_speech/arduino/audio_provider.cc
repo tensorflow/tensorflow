@@ -53,7 +53,7 @@ volatile int32_t g_latest_audio_timestamp = 0;
 
 void CaptureSamples() {
   // This is how many bytes of new data we have each time this is called
-  const int number_of_samples = DEFAULT_PDM_BUFFER_SIZE;
+  const int number_of_samples = DEFAULT_PDM_BUFFER_SIZE / sizeof(int16_t);
   // Calculate what timestamp the last audio sample represents
   const int32_t time_in_ms =
       g_latest_audio_timestamp +
@@ -62,7 +62,7 @@ void CaptureSamples() {
   const int32_t start_sample_offset =
       g_latest_audio_timestamp * (kAudioSampleFrequency / 1000);
   // Determine the index of this sample in our ring buffer
-  const int capture_index = start_sample_offset % kAudioCaptureBufferSize;
+  const int capture_index = (start_sample_offset * sizeof(int16_t)) % kAudioCaptureBufferSize;
   // Read the data to the correct place in our buffer
   PDM.read(g_audio_capture_buffer + capture_index, DEFAULT_PDM_BUFFER_SIZE);
   // This is how we let the outside world know that new audio data has arrived.
