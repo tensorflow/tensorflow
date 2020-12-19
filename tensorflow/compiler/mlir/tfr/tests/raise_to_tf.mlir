@@ -74,3 +74,16 @@ func @decompose_tf_cast(%arg0: tensor<f32>) -> tensor<i32> {
 // CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf.shape<>} : (tensor<*xi32>) -> tensor<i32>
 // CHECK: return %[[es]] : tensor<i32>
 }
+
+// CHECK-LABEL: attribute_propagate
+func @attribute_propagate(%arg0: tensor<f32>) -> tensor<i32> {
+  %0 = "tfr.cast"(%arg0) : (tensor<f32>) -> !tfr.tensor
+  %t = tfr.constant i32 -> !tfr.attr
+  %concat = tfr.call @tf__risc_cast(%0, %t) {device = "hello", _tpu_replicate} : (!tfr.tensor, !tfr.attr) -> !tfr.tensor
+  %4 = "tfr.cast"(%concat) : (!tfr.tensor) -> tensor<i32>
+  return %4 : tensor<i32>
+
+// CHECK: %[[tfcast:.*]] = "tf.RiscCast"(%arg0) {K = i32, _tpu_replicate, device = "hello"} : (tensor<f32>) -> tensor<*xi32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf.shape<>} : (tensor<*xi32>) -> tensor<i32>
+// CHECK: return %[[es]] : tensor<i32>
+}

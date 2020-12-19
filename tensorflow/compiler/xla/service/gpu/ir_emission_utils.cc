@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -647,16 +647,39 @@ bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
   return true;
 }
 
+// Given an LMHLO op, returns the operand index of the first output operand.
+//
+// Notice that an operand alised to an output isn't an output, even though in
+// that case WritesMlirBuffer() returns true on that operand.
+//
+// An operand is !WritesMlirBuffer() || equals (aliases) to a later operand. An
+// output is the opposite, being both WritesMlirBuffer() and does not equal to
+// any later operand.
+int PartitionLmhloOperandsAndOutputs(mlir::Operation* op) {
+  CHECK(op->getDialect() == op->getContext()->getLoadedDialect("lmhlo"));
+
+  int i;
+  for (i = op->getOperands().size() - 1; i >= 0; i--) {
+    const bool aliased =
+        std::find(op->getOperands().begin() + i + 1, op->getOperands().end(),
+                  op->getOperand(i)) != op->getOperands().end();
+    if (!WritesMlirBuffer(op, op->getOperand(i)) || aliased) {
+      break;
+    }
+  }
+  return i + 1;
+}
+
 std::vector<mlir::Value> GetHloOperands(mlir::Operation* op) {
   if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(op)) {
     return ToStdVector(fusion.getInputBuffers());
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
+    int output_start = PartitionLmhloOperandsAndOutputs(op);
     std::vector<mlir::Value> operands;
-    for (auto buffer : op->getOperands()) {
-      if (!WritesMlirBuffer(op, buffer)) {
-        operands.push_back(buffer);
-      }
+    operands.reserve(output_start);
+    for (int i = 0; i < output_start; i++) {
+      operands.push_back(op->getOperand(i));
     }
     return operands;
   }
@@ -672,11 +695,10 @@ std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op) {
     return ToStdVector(fusion.getOutputBuffers());
   }
   if (op->getDialect() == op->getContext()->getLoadedDialect("lmhlo")) {
+    int output_start = PartitionLmhloOperandsAndOutputs(op);
     std::vector<mlir::Value> outputs;
-    for (auto buffer : op->getOperands()) {
-      if (WritesMlirBuffer(op, buffer)) {
-        outputs.push_back(buffer);
-      }
+    for (int i = output_start; i < op->getNumOperands(); i++) {
+      outputs.push_back(op->getOperand(i));
     }
     return outputs;
   }

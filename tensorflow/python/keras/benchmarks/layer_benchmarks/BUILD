@@ -62,5 +62,6 @@ tf_py_test(
     deps = [
         ":layer_benchmarks_test_base",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:benchmark_util",
     ],
 )

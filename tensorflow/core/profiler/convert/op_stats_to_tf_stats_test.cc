@@ -92,7 +92,7 @@ static_shared:0
 dynamic_shared:16384
 grid:2,1,1
 block:32,1,1
-occ_pct:1.0)MULTI";
+occ_pct:100)MULTI";
 
   XSpace space;
   XPlaneBuilder device_plane(

@@ -907,24 +907,25 @@ Status VerifyVirtualDeviceSettings(
   return Status::OK();
 }
 
-int64 MinSystemMemory(int64 available_memory) {
+int64 MinSystemMemory(int64 available_memory, int cc_major) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
-  // Otherwise, allocate max(300MiB, kMinSystemMemoryFraction *
-  // available_memory) to system memory.
-  //
-  // In the future we could be more sophisticated by using a table of devices.
+  // Otherwise, depending on the capability version assign
+  //  500MiB (for cuda_compute_capability <= 6.x) or
+  // 1050MiB (for cuda_compute_capability <= 7.x) or
+  // 1536MiB (for cuda_compute_capability >= 8.x)
   int64 min_system_memory;
-  constexpr float kMinSystemMemoryFraction = 0.06;
   if (available_memory < (1LL << 31)) {
-    // 225MiB
     min_system_memory = 225 * 1024 * 1024;
   } else {
-    // max(300 MiB, kMinSystemMemoryFraction * available_memory)
-    min_system_memory = std::max(
-        int64{314572800},
-        static_cast<int64>(available_memory * kMinSystemMemoryFraction));
+    if (cc_major <= 6) {
+      min_system_memory = 500 * 1024 * 1024;
+    } else if (cc_major <= 7) {
+      min_system_memory = 1050 * 1024 * 1024;
+    } else {
+      min_system_memory = 1536 * 1024 * 1024;
+    }
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
@@ -967,13 +968,13 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
   int64 allocated_memory = 0;
   const double per_process_gpu_memory_fraction =
       gpu_options.per_process_gpu_memory_fraction();
+  int cc_major = 0, cc_minor = 0;
+  if (!se->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                          &cc_minor)) {
+    return errors::Internal("Failed to get compute capability for device.");
+  }
   if (per_process_gpu_memory_fraction > 1.0 ||
       gpu_options.experimental().use_unified_memory()) {
-    int cc_major = 0, cc_minor = 0;
-    if (!se->GetDeviceDescription().cuda_compute_capability(&cc_major,
-                                                            &cc_minor)) {
-      return errors::Internal("Failed to get compute capability for device.");
-    }
     if (cc_major < 6) {
       return errors::Internal(
           "Unified memory on GPUs with compute capability lower than 6.0 "
@@ -983,12 +984,44 @@ Status SingleVirtualDeviceMemoryLimit(const GPUOptions& gpu_options,
 
   if (per_process_gpu_memory_fraction == 0) {
     allocated_memory = available_memory;
-    const int64 min_system_memory = MinSystemMemory(available_memory);
+    const int64 min_system_memory = MinSystemMemory(available_memory, cc_major);
     if (min_system_memory < allocated_memory) {
       allocated_memory -= min_system_memory;
     }
   } else {
     allocated_memory = total_memory * per_process_gpu_memory_fraction;
+  }
+
+  // Override the excluded memory when TF_DEVICE_MIN_SYS_MEMORY_IN_MB is set.
+  const char* force_device_reserved_bytes =
+      std::getenv("TF_DEVICE_MIN_SYS_MEMORY_IN_MB");
+  if (force_device_reserved_bytes != nullptr &&
+      strcmp(force_device_reserved_bytes, "") != 0) {
+    int32 reserved_mb;
+    if (!strings::safe_strto32(force_device_reserved_bytes, &reserved_mb) ||
+        reserved_mb < 0) {
+      LOG(WARNING) << "The requested reserved device memory "
+                   << force_device_reserved_bytes
+                   << " is invalid. The request will be ignored.";
+    } else {
+      // Convert MBytes to Bytes.
+      size_t allowable_reserved_memory = reserved_mb * 1024 * 1024;
+      // TF_DEVICE_MIN_SYS_MEMORY_IN_MB overrides
+      // per_process_gpu_memory_fraction.
+      if (allowable_reserved_memory <= available_memory) {
+        allocated_memory = available_memory - allowable_reserved_memory;
+        VLOG(1) << "Setting the GPU reserved bytes to "
+                << strings::HumanReadableNumBytes(allocated_memory)
+                << " MBytes";
+      } else {
+        LOG(WARNING) << "The requested reserved device memory "
+                     << strings::HumanReadableNumBytes(
+                            allowable_reserved_memory)
+                     << " is larger than the available memory of "
+                     << strings::HumanReadableNumBytes(available_memory)
+                     << ". The request is ignored.";
+      }
+    }
   }
   *memory_limit = allocated_memory;
   return Status::OK();

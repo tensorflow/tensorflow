@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -433,6 +434,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ExecuteNativeSegment",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_execution_func_handle_ == kInvalidHandle) {
@@ -457,18 +461,21 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   lib->Run(opts, native_execution_func_handle_, inputs, outputs,
            [this, ctx, outputs, helper](const Status& s) {
              core::ScopedUnref sc(helper);
+             std::unique_ptr<std::vector<Tensor>> outputs_wrapper(outputs);
              OP_REQUIRES_OK_ASYNC(ctx, s, *helper);
              VLOG(1) << "Native Segment completed";
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
-             delete outputs;
            });
 }
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                      TRTEngineCacheResource* cache_res,
                                      AsyncHelper* helper) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ExecuteCalibration",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
@@ -594,6 +601,8 @@ static bool AllowEngineNativeSegmentExecution() {
 
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ComputeAsync", tensorflow::profiler::TraceMeLevel::kInfo);
   auto helper = new AsyncHelper(done);
   core::ScopedUnref sc(helper);
 
@@ -718,6 +727,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                      EngineContext* engine_context,
                                      int trt_context_idx) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ExecuteTrtEngine",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
 

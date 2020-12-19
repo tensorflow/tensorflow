@@ -1,8 +1,11 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -45,7 +48,7 @@ limitations under the License.
      defined(FSL_FEATURE_L1ICACHE_LINESIZE_BYTE))
 #define AT_NONCACHEABLE_SECTION_ALIGN(var, alignbytes) \
   __attribute__((section("NonCacheable"), zero_init))  \
-      __attribute__((aligned(alignbytes))) var
+  __attribute__((aligned(alignbytes))) var
 #else
 #define AT_NONCACHEABLE_SECTION_ALIGN(var, alignbytes) \
   __attribute__((aligned(alignbytes))) var
@@ -128,7 +131,7 @@ volatile uint8_t g_da7212_register_config[da7212ConfigurationSize][2] = {
     {0x24, 0x00}, {0x25, 0x00}, {0x26, 0x20}, {0x20, 0x80}};
 
 // Save audio samples into intermediate buffer
-void CaptureSamples(const int16_t *sample_data) {
+void CaptureSamples(const int16_t* sample_data) {
   const int sample_size = kNoOfSamples;
   const int32_t time_in_ms =
       g_latest_audio_timestamp + (sample_size / (kAudioSampleFrequency / 1000));
@@ -145,17 +148,17 @@ void CaptureSamples(const int16_t *sample_data) {
 }
 
 // Callback function for SAI RX EDMA transfer complete
-static void SaiRxCallback(I2S_Type *base, sai_edma_handle_t *handle,
-                          status_t status, void *userData) {
+static void SaiRxCallback(I2S_Type* base, sai_edma_handle_t* handle,
+                          status_t status, void* userData) {
   if (kStatus_SAI_RxError == status) {
     // Handle the error
   } else {
     // Save audio data into intermediate buffer
     CaptureSamples(
-        reinterpret_cast<int16_t *>(g_rx_buffer + g_tx_index * kNoOfSamples));
+        reinterpret_cast<int16_t*>(g_rx_buffer + g_tx_index * kNoOfSamples));
 
     // Submit received audio buffer to SAI TX for audio loopback debug
-    g_sai_transfer.data = (uint8_t *)(g_rx_buffer + g_tx_index * kNoOfSamples);
+    g_sai_transfer.data = (uint8_t*)(g_rx_buffer + g_tx_index * kNoOfSamples);
     g_sai_transfer.dataSize = kBufferSize;
     if (kStatus_Success ==
         SAI_TransferSendEDMA(I2S0, &g_tx_sai_handle, &g_sai_transfer)) {
@@ -166,7 +169,7 @@ static void SaiRxCallback(I2S_Type *base, sai_edma_handle_t *handle,
     }
 
     // Submit buffer to SAI RX to receive audio data
-    g_sai_transfer.data = (uint8_t *)(g_rx_buffer + g_rx_index * kNoOfSamples);
+    g_sai_transfer.data = (uint8_t*)(g_rx_buffer + g_rx_index * kNoOfSamples);
     g_sai_transfer.dataSize = kBufferSize;
     if (kStatus_Success ==
         SAI_TransferReceiveEDMA(I2S0, &g_rx_sai_handle, &g_sai_transfer)) {
@@ -179,8 +182,8 @@ static void SaiRxCallback(I2S_Type *base, sai_edma_handle_t *handle,
 }
 
 // Callback function for TX Buffer transfer
-static void SaiTxCallback(I2S_Type *base, sai_edma_handle_t *handle,
-                          status_t status, void *userData) {
+static void SaiTxCallback(I2S_Type* base, sai_edma_handle_t* handle,
+                          status_t status, void* userData) {
   if (kStatus_SAI_TxError == status) {
     // Handle the error
   }
@@ -240,7 +243,7 @@ status_t Da7212WriteRegister(uint8_t register_address, uint8_t register_data) {
   i2c_data.direction = kI2C_Write;
   i2c_data.subaddress = register_address;
   i2c_data.subaddressSize = 1;
-  i2c_data.data = (uint8_t * volatile) data;
+  i2c_data.data = (uint8_t* volatile)data;
   i2c_data.dataSize = 1;
   i2c_data.flags = kI2C_TransferDefaultFlag;
   return I2C_MasterTransferBlocking(I2C1, &i2c_data);
@@ -255,7 +258,7 @@ void Da7212Initialize(void) {
 }
 
 // Initialization for receiving audio data
-TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
+TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   edma_config_t dma_config = {0};
   sai_config_t sai_config;
   sai_transfer_format_t sai_format;
@@ -325,7 +328,7 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
                               sai_format.masterClockHz);
 
   // Submit buffers to SAI RX to start receiving audio
-  g_sai_transfer.data = (uint8_t *)(g_rx_buffer + g_rx_index * kNoOfSamples);
+  g_sai_transfer.data = (uint8_t*)(g_rx_buffer + g_rx_index * kNoOfSamples);
   g_sai_transfer.dataSize = kBufferSize;
   if (kStatus_Success ==
       SAI_TransferReceiveEDMA(I2S0, &g_rx_sai_handle, &g_sai_transfer)) {
@@ -334,7 +337,7 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
   if (g_rx_index == kNoOfBuffers) {
     g_rx_index = 0U;
   }
-  g_sai_transfer.data = (uint8_t *)(g_rx_buffer + g_rx_index * kNoOfSamples);
+  g_sai_transfer.data = (uint8_t*)(g_rx_buffer + g_rx_index * kNoOfSamples);
   g_sai_transfer.dataSize = kBufferSize;
   if (kStatus_Success ==
       SAI_TransferReceiveEDMA(I2S0, &g_rx_sai_handle, &g_sai_transfer)) {
@@ -349,9 +352,9 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
 }  // namespace
 
 // Main entry point for getting audio data.
-TfLiteStatus GetAudioSamples(tflite::ErrorReporter *error_reporter,
+TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
                              int start_ms, int duration_ms,
-                             int *audio_samples_size, int16_t **audio_samples) {
+                             int* audio_samples_size, int16_t** audio_samples) {
   if (!g_is_audio_initialized) {
     TfLiteStatus init_status = InitAudioRecording(error_reporter);
     if (init_status != kTfLiteOk) {

@@ -28,6 +28,7 @@ from tensorflow.compiler.mlir.python.mlir_wrapper import filecheck_wrapper as fw
 from tensorflow.compiler.mlir.tfr.python import composite
 from tensorflow.compiler.mlir.tfr.python.tfr_gen import tfr_gen_from_module as tfr_gen
 from tensorflow.compiler.mlir.tfr.resources import gen_test_ops as test_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_array_ops as array_ops
 from tensorflow.python.ops import gen_math_ops as math_ops
 from tensorflow.python.platform import test
@@ -124,6 +125,15 @@ def _tfr_control_flow_range_for(x):
   for i in range(1, n):
     x_sum = math_ops.Add(x_sum, x[i])
   return x_sum
+
+
+@composite.Composite('TestInputNOp')
+def _tfr_control_flow_tensor_list_size(ins):
+  n = len(ins)
+  if n == 0:
+    return array_ops.Const(value=[[0, 1], [2, 3]], dtype=dtypes.int64)
+  else:
+    return math_ops.AddN(ins)
 
 
 #--- test fn for tf ops ---
@@ -403,6 +413,10 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT:   %{{.*}} = constant true
       CHECK-NEXT:   tfr.return %[[for_stmt]] : !tfr.tensor
       CHECK-NEXT: }
+
+      CHECK-LABEL: tfr.func @tf__test_input_n_op(%ins: !tfr.tensor_list) -> (!tfr.tensor) {
+      CHECK: %[[attr:.*]] = tfr.constant i64 -> !tfr.attr loc("tfr_gen_test.py":134:57)
+      CHECK: %Const = tfr.call @tf__const(%{{.*}}, %[[attr]]) : (!tfr.attr, !tfr.attr) -> (!tfr.tensor)
     """
     self._check_code(mlir_code, mlir_code_exp)
 

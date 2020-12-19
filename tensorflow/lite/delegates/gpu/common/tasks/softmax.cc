@@ -33,15 +33,28 @@ std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
        "return; \n";
   c += "  float sum = 0.0f;\n";
+  c += "  float maximum = args.src_tensor.Read<float>(X, Y, 0).x;\n";
   c += "  for (int d = 0; d < args.dst_tensor.Slices(); ++d) {\n";
   c += "    float4 t = args.src_tensor.Read<float>(X, Y, d);\n";
+  c += "    maximum = max(maximum, t.x);\n";
+  c += "    if (d * 4 + 1 < args.dst_tensor.Channels()) maximum = max(maximum, "
+       "t.y);\n";
+  c += "    if (d * 4 + 2 < args.dst_tensor.Channels()) maximum = max(maximum, "
+       "t.z);\n";
+  c += "    if (d * 4 + 3 < args.dst_tensor.Channels()) maximum = max(maximum, "
+       "t.w);\n";
+  c += "  }\n";
+  c += "  for (int d = 0; d < args.dst_tensor.Slices(); ++d) {\n";
+  c += "    float4 t = args.src_tensor.Read<float>(X, Y, d) - "
+       "(float4)(maximum);\n";
   c += "    sum += exp(t.x);\n";
   c += "    if (d * 4 + 1 < args.dst_tensor.Channels()) sum += exp(t.y);\n";
   c += "    if (d * 4 + 2 < args.dst_tensor.Channels()) sum += exp(t.z);\n";
   c += "    if (d * 4 + 3 < args.dst_tensor.Channels()) sum += exp(t.w);\n";
   c += "  }\n";
   c += "  for (int d = 0; d < args.dst_tensor.Slices(); ++d) {\n";
-  c += "    float4 t = args.src_tensor.Read<float>(X, Y, d);\n";
+  c += "    float4 t = args.src_tensor.Read<float>(X, Y, d) - "
+       "(float4)(maximum);\n";
   c += "    t = exp(t) / sum;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
   c += "    args.dst_tensor.Write(result, X, Y, d);\n";

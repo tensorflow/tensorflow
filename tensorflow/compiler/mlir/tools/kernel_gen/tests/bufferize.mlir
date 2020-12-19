@@ -1,55 +1,61 @@
-// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize | FileCheck %s
+// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize | FileCheck %s  --check-prefixes=CHECK,ALLOC
+// RUN: kernel-gen-opt %s --func-bufferize --final-bufferize --promote-buffers-to-stack | FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
-// CHECK-LABEL: @extract_element
+
+// CHECK-LABEL: @tensor.extract
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32
-func @extract_element(%arg : tensor<?xf32>) -> f32 {
+func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[RESULT:.*]] = load %[[ARG]][%[[C0]]]
   // CHECK: return %[[RESULT]]
   %c0 = constant 0 : index
-  %result = extract_element %arg[%c0] : tensor<?xf32>
+  %result = tensor.extract %arg[%c0] : tensor<?xf32>
   return %result : f32
 }
 
 // CHECK-LABEL: @tensor_from_elements
-// CHECK-SAME: (%[[A:.*]]: f32) -> memref<3xf32>
-func @tensor_from_elements(%a : f32) -> tensor<3xf32> {
+// CHECK-SAME: (%[[A:.*]]: f32) -> f32
+func @tensor_from_elements(%a : f32) -> f32 {
   // CHECK: %[[B:.*]] = constant 1.2
   // CHECK: %[[C:.*]] = constant 2.3
-  // CHECK: %[[MEM:.*]] = alloc() : memref<3xf32>
+  // ALLOC: %[[MEM:.*]] = alloc() : memref<3xf32>
+  // ALLOCA: %[[MEM:.*]] = alloca() : memref<3xf32>
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: %[[C1:.*]] = constant 1 : index
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: %[[C2:.*]] = constant 2 : index
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
-  // CHECK: return %[[MEM]] : memref<3xf32>
   %b = constant 1.2 : f32
   %c = constant 2.3 : f32
-  %result = tensor_from_elements %a, %b, %c : tensor<3xf32>
-  return %result : tensor<3xf32>
+  %tfe = tensor_from_elements %a, %b, %c : tensor<3xf32>
+  %c0 = constant 0 : index
+  %result = tensor.extract %tfe[%c0] : tensor<3xf32>
+  return %result : f32
 }
 
 // CHECK-LABEL: @dynamic_tensor_from_elements
-// CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> memref<?xindex>
-func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> tensor<?xindex> {
-  // CHECK: %[[C3:.*]] = constant 3 : index
-  // CHECK: %[[MEM:.*]] = alloca(%c3) : memref<?xindex>
+// CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
+func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> index {
+  // CHECK: %[[SIZE:.*]] = rank %[[ARG]] : memref<*xf32>
+  // ALLOC: %[[MEM:.*]] = alloc(%[[SIZE]]) : memref<?xindex>
+  // ALLOCA: %[[MEM:.*]] = alloca(%[[SIZE]]) : memref<?xindex>
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[C1:.*]] = constant 1 : index
-  // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[C3]]) step (%[[C1]]) {
+  // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
   // CHECK:   %[[ELEM:.*]] = dim %[[ARG]], %[[I]] : memref<*xf32>
   // CHECK:   store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
   // CHECK:   scf.yield
   // CHECK: }
-  // CHECK: return %[[MEM]] : memref<?xindex>
-  %c3 = constant 3 : index
-  %result = dynamic_tensor_from_elements %c3 {
+  %size = rank %arg : tensor<*xf32>
+  %tfe = dynamic_tensor_from_elements %size {
   ^bb0(%i : index):
     %elem = dim %arg, %i : tensor<*xf32>
     yield %elem : index
   } : tensor<?xindex>
-  return %result : tensor<?xindex>
+  %c0 = constant 0 : index
+  %result = tensor.extract %tfe[%c0] : tensor<?xindex>
+  return %result : index
 }
 
 // CHECK-LABEL: @assuming

@@ -619,7 +619,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
   def _is_list_of_scalars(inp):
     if isinstance(inp, (float, int, str, bytes, bytearray)):
       return True
-    if isinstance(inp, (list, tuple)):
+    if isinstance(inp, (list, tuple)) and inp:
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
     return False
 

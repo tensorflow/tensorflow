@@ -25,7 +25,7 @@ import threading
 import six
 
 # TODO(b/138203821): change to from ...util import ... once the bug is fixed.
-from tensorflow.python import _tf_stack
+from tensorflow.python.util import _tf_stack
 
 # Generally such lookups should be done using `threading.local()`. See
 # https://blogs.gnome.org/jamesh/2008/06/11/tls-python/ for a detailed

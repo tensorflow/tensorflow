@@ -28,6 +28,8 @@ tfr.func @tf__my_add_n(%values: !tfr.tensor_list,
   tfr.return %res : !tfr.tensor
 }
 
+tfr.func @tf__my_add_n_(!tfr.tensor_list<N,T>, i64 {tfr.name="N"}) -> !tfr.tensor attributes {N,T}
+
 // Translated from tf.compose Python function.
 tfr.func @tf__my_biased_dense(%input: !tfr.tensor, %weight: !tfr.tensor,
                               %bias: !tfr.tensor,
@@ -54,6 +56,9 @@ tfr.func @tf__my_biased_dense(%input: !tfr.tensor, %weight: !tfr.tensor,
   }
   tfr.return %res : !tfr.tensor
 }
+
+tfr.func @tf__my_biased_dense_(!tfr.tensor<T>, !tfr.tensor<T>, !tfr.tensor<T>,
+    !tfr.attr{tfr.name="act", tfr.default=""}) -> !tfr.tensor attributes {T}
 
 // This is a wong decomposition and used to verify that tf.Elu isn't decomposed
 // since its kernel has been registered.

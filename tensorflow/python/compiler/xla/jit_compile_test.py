@@ -37,20 +37,14 @@ class JitCompileTest(test.TestCase):
 
       xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])
-      # XLA support is not yet enabled for TF ROCm
-      if not test.is_built_with_rocm():
-        x = xla_func(inputs, 1)
-        with session.Session(graph=g) as sess:
-          y = sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
-          self.assertTrue(x.graph.as_graph_def().library.function[0]
-                          .attr["_XlaMustCompile"].b)
-          self.assertAllClose([2, 3, 3, 4, 4], y)
+      x = xla_func(inputs, 1)
+      with session.Session(graph=g) as sess:
+        y = sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
+        self.assertTrue(x.graph.as_graph_def().library.function[0]
+                        .attr["_XlaMustCompile"].b)
+        self.assertAllClose([2, 3, 3, 4, 4], y)
 
   def testDerivative(self):
-    # XLA support is not yet enabled for TF ROCm
-    if test.is_built_with_rocm():
-      return
-
     def fn(x, a):
       return 2 * x + a
 
@@ -81,14 +75,12 @@ class JitCompileTest(test.TestCase):
 
       xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.int32, [5])
-      # XLA support is not yet enabled for TF ROCm
-      if not test.is_built_with_rocm():
-        x = xla_func(inputs, 1)
-        with session.Session(graph=g) as sess:
-          y = sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
-          self.assertTrue(x.graph.as_graph_def().library.function[0]
-                          .attr["_XlaMustCompile"].b)
-          self.assertAllClose([2, 3, 3, 4, 4], y)
+      x = xla_func(inputs, 1)
+      with session.Session(graph=g) as sess:
+        y = sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
+        self.assertTrue(x.graph.as_graph_def().library.function[0]
+                        .attr["_XlaMustCompile"].b)
+        self.assertAllClose([2, 3, 3, 4, 4], y)
 
   # Checking that we crash on an unsupported operation lets us test that the XLA
   # compiler was actually invoked.
@@ -101,12 +93,10 @@ class JitCompileTest(test.TestCase):
       xla_func = def_function.function(fn, jit_compile=True)
       inputs = array_ops.placeholder(dtypes.float32, [5])
       x = xla_func(inputs)
-      # XLA support is not yet enabled for TF ROCm
-      if not test.is_built_with_rocm():
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    "not compilable"):
-          with session.Session(graph=g) as sess:
-            sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
+      with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                  "not compilable"):
+        with session.Session(graph=g) as sess:
+          sess.run(x, feed_dict={inputs: [1, 2, 2, 3, 3]})
 
 
 if __name__ == "__main__":

@@ -57,7 +57,8 @@ class GpuDummyCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
       const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec) {
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
+      bool relocatable) {
     if (user_post_optimization_hook_) {
       user_post_optimization_hook_(*llvm_module);
     }

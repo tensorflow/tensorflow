@@ -12,7 +12,10 @@ package(
     licenses = ["notice"],  # Apache 2.0,
 )
 
-exports_files(glob(["*.pb"]))
+exports_files(glob([
+    "*.pb",
+    "*.pbtxt",
+]))
 
 tf_to_tflite(
     name = "permute_float",

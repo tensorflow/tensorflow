@@ -532,9 +532,9 @@ func @decompose_resource_apply_proximal_adagrad_op(%lr: tensor<f32>, %l1: tensor
   // CHECK-DAG: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK-DAG: %[[VAR_HANDLE:.*]] = "tf.VarHandleOp"() {container = "c", shared_name = "var"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
   // CHECK-DAG: %[[ACCUM_HANDLE:.*]] = "tf.VarHandleOp"() {container = "c", shared_name = "accum"} : () -> tensor<*x!tf.resource<tensor<4xf32>>>
-  // CHECK-DAG: %[[GRAD_SQRT:.*]] = "tf.Sqrt"(%[[GRAD]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[GRAD_SQ:.*]] = "tf.Square"(%[[GRAD]]) : (tensor<4xf32>) -> tensor<4xf32>
   // CHECK-DAG: %[[ACCUM:.*]] = "tf.ReadVariableOp"(%[[ACCUM_HANDLE]]) : (tensor<*x!tf.resource<tensor<4xf32>>>) -> tensor<4xf32>
-  // CHECK-DAG: %[[ACCUM_NEW:.*]] = "tf.AddV2"(%[[ACCUM]], %[[GRAD_SQRT]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK-DAG: %[[ACCUM_NEW:.*]] = "tf.AddV2"(%[[ACCUM]], %[[GRAD_SQ]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // CHECK-DAG: %[[RSQRT_ACCUM:.*]] = "tf.Rsqrt"(%[[ACCUM_NEW]]) : (tensor<4xf32>) -> tensor<4xf32>
   // CHECK-DAG: %[[ADAGRAD_LR:.*]] = "tf.Mul"(%[[LR]], %[[RSQRT_ACCUM]]) : (tensor<f32>, tensor<4xf32>) -> tensor<4xf32>
   // CHECK-DAG: %[[DELTA:.*]] = "tf.Mul"(%[[GRAD]], %[[ADAGRAD_LR]]) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>

@@ -1275,8 +1275,6 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_data = im2col_data;
     gemm_input_shape = &im2col_shape;
   } else {
-    // TODO(aselle): We need to make sure to not send im2col if it is not
-    // needed.
     TFLITE_DCHECK(!im2col_data);
     gemm_input_data = input_data;
     gemm_input_shape = &input_shape;
@@ -7830,7 +7828,7 @@ inline void Transpose2D(const RuntimeShape& input_shape,
   }
 }
 
-// TODO(alanchiao): see if we can reduce the number
+// TODO(b/173718660): see if we can reduce the number
 // of lines of code in branching without affecting latency.
 template <typename T>
 inline void Transpose3D(const TransposeParams& params,

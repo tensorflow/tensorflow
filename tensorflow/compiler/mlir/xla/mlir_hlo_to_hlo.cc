@@ -31,16 +31,17 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/utils/name_utils.h"
+#include "tensorflow/compiler/mlir/xla/attribute_exporter.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -297,36 +298,7 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
 
 static xla::ConvolutionDimensionNumbers Convert_dimension_numbers(
     mlir::mhlo::ConvDimensionNumbers input) {
-  xla::ConvolutionDimensionNumbers output;
-
-  output.set_input_batch_dimension(
-      input.input_batch_dimension().getValue().getSExtValue());
-  output.set_input_feature_dimension(
-      input.input_feature_dimension().getValue().getSExtValue());
-
-  for (int64 v : input.input_spatial_dimensions().getValues<int64>()) {
-    output.add_input_spatial_dimensions(v);
-  }
-
-  output.set_kernel_input_feature_dimension(
-      input.kernel_input_feature_dimension().getValue().getSExtValue());
-  output.set_kernel_output_feature_dimension(
-      input.kernel_output_feature_dimension().getValue().getSExtValue());
-
-  for (int64 v : input.kernel_spatial_dimensions().getValues<int64>()) {
-    output.add_kernel_spatial_dimensions(v);
-  }
-
-  output.set_output_batch_dimension(
-      input.output_batch_dimension().getValue().getSExtValue());
-  output.set_output_feature_dimension(
-      input.output_feature_dimension().getValue().getSExtValue());
-
-  for (int64 v : input.output_spatial_dimensions().getValues<int64>()) {
-    output.add_output_spatial_dimensions(v);
-  }
-
-  return output;
+  return xla::ConvertConvDimensionNumbers(input);
 }
 
 xla::ChannelHandle Convert_channel_handle(mlir::mhlo::ChannelHandle attr) {
@@ -516,6 +488,11 @@ class ConvertToHloModule {
   //
   // TODO(hinsu): Check for dynamic shapes and exit instead of crashing.
   LogicalResult Run() {
+    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    if (!main)
+      return module_.emitError(
+          "conversion requires module with `main` function");
+
     for (auto func : module_.getOps<FuncOp>()) {
       if (func.empty()) continue;
       if (failed(RunOnFunction(func))) return failure();
@@ -539,8 +516,11 @@ class ConvertToHloModule {
       xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
-    return lowered_computation_[module_.lookupSymbol<mlir::FuncOp>("main")]
-        .proto();
+    auto main = module_.lookupSymbol<mlir::FuncOp>("main");
+    // This is an invariant check as Run returns failure if there is no main
+    // function and so the main proto shouldn't be consumed in that case.
+    CHECK(main) << "requires module to have main function";  // Crash Ok.
+    return lowered_computation_[main].proto();
   }
 
   // Lower function call to HLO call instruction
@@ -755,6 +735,26 @@ mlir::LogicalResult ExportXlaOp(mlir::mhlo::CompareOp op,
 
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
+}
+
+LogicalResult ExportXlaOp(mlir::mhlo::ConvOp op, OpLoweringContext ctx) {
+  // XLA client builder API does not support generating convolution instructions
+  // with window reversal.
+  if (op.hasWindowReversal()) return failure();
+  auto& value_map = *ctx.values;
+  xla::XlaOp lhs, rhs;
+  if (failed(GetXlaOp(op.lhs(), value_map, &lhs, op))) return mlir::failure();
+  if (failed(GetXlaOp(op.rhs(), value_map, &rhs, op))) return mlir::failure();
+  xla::XlaOp xla_result = xla::ConvGeneralDilated(
+      lhs, rhs, Convert_window_strides(op.window_strides()),
+      Convert_padding(op.padding()), Convert_lhs_dilation(op.lhs_dilation()),
+      Convert_rhs_dilation(op.rhs_dilation()),
+      Convert_dimension_numbers(op.dimension_numbers()),
+      Convertuint64_t(op.feature_group_count()),
+      Convertuint64_t(op.batch_group_count()),
+      Unwrap(Convert_precision_config(op.precision_config())));
+  value_map[op] = xla_result;
+  return mlir::success();
 }
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
@@ -1256,10 +1256,10 @@ LogicalResult ConvertToHloModule::Lower(
   }
 
   if (isa<mhlo::ReturnOp, mlir::ReturnOp>(inst)) {
-    // Construct the return value for the function. If there are multiple
-    // values returned, then create a tuple, else return value directly.
+    // Construct the return value for the function. If there is a single value
+    // returned, then return it directly, else create a tuple and return.
     unsigned num_return_values = inst->getNumOperands();
-    if ((return_tuple_ && is_entry_function) || num_return_values > 1) {
+    if ((return_tuple_ && is_entry_function) || num_return_values != 1) {
       const bool has_ret_shardings =
           !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
 

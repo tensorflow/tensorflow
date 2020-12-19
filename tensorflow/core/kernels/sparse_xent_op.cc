@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/sparse_xent_op.h"
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -123,8 +122,6 @@ REGISTER(CPU, float, int32)
 REGISTER(CPU, float, int64)
 REGISTER(CPU, double, int32)
 REGISTER(CPU, double, int64)
-REGISTER(CPU, bfloat16, int32)
-REGISTER(CPU, bfloat16, int64)
 REGISTER(CPU, Eigen::half, int32)
 REGISTER(CPU, Eigen::half, int64)
 

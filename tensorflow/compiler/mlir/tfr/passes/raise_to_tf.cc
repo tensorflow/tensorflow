@@ -35,11 +35,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -377,6 +377,10 @@ LogicalResult RewriteTFRCallOp::CreateAndReplaceOp(
       new_results.push_back(list_op.out());
     }
   }
+
+  // Copy all the allowed attributes to the new op.
+  if (failed(CopyNonSymbolRefAttrs(call_op, new_op))) return failure();
+
   rewriter.replaceOp(call_op, new_results);
   return success();
 }
@@ -446,13 +450,12 @@ void RaiseToTFOpsPass::runOnFunction() {
   MLIRContext* ctx = &getContext();
   SymbolTable table(external_tfr_module.hasValue()
                         ? *external_tfr_module
-                        : func.getParentOfType<ModuleOp>());
+                        : func->getParentOfType<ModuleOp>());
 
   OwningRewritePatternList patterns;
   patterns.insert<RewriteTFRCallOp>(ctx, table, materialize_derived_attrs);
-  for (auto* op : ctx->getRegisteredOperations()) {
-    op->getCanonicalizationPatterns(patterns, ctx);
-  }
+
+  populateCanonicalizationPatterns(func, patterns);
 
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 }

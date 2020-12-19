@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -120,35 +121,6 @@ OpenClVersion ParseCLVersion(const std::string& version) {
   }
 }
 
-GpuVendor ParseVendor(const std::string& device_name,
-                      const std::string& vendor_name) {
-  std::string d_name = device_name;
-  std::string v_name = vendor_name;
-  std::transform(d_name.begin(), d_name.end(), d_name.begin(), ::tolower);
-  std::transform(v_name.begin(), v_name.end(), v_name.begin(), ::tolower);
-  if (d_name.find("qualcomm") != std::string::npos ||
-      v_name.find("qualcomm") != std::string::npos) {
-    return GpuVendor::kQualcomm;
-  } else if (d_name.find("mali") != std::string::npos ||
-             v_name.find("mali") != std::string::npos) {
-    return GpuVendor::kMali;
-  } else if (d_name.find("power") != std::string::npos ||
-             v_name.find("power") != std::string::npos) {
-    return GpuVendor::kPowerVR;
-  } else if (d_name.find("nvidia") != std::string::npos ||
-             v_name.find("nvidia") != std::string::npos) {
-    return GpuVendor::kNvidia;
-  } else if (d_name.find("advanced micro devices") != std::string::npos ||
-             v_name.find("advanced micro devices") != std::string::npos) {
-    return GpuVendor::kAMD;
-  } else if (d_name.find("intel") != std::string::npos ||
-             v_name.find("intel") != std::string::npos) {
-    return GpuVendor::kIntel;
-  } else {
-    return GpuVendor::kUnknown;
-  }
-}
-
 // check that gpu_version belong to range min_version-max_version
 // min_version is included and max_version is excluded.
 bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
@@ -162,13 +134,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   const auto vendor_name = GetDeviceInfo<std::string>(id, CL_DEVICE_VENDOR);
   const auto opencl_c_version =
       GetDeviceInfo<std::string>(id, CL_DEVICE_OPENCL_C_VERSION);
-  info.gpu_api = GpuApi::kOpenCl;
-  info.vendor = ParseVendor(device_name, vendor_name);
-  if (info.IsAdreno()) {
-    info.adreno_info = AdrenoInfo(opencl_c_version);
-  } else if (info.IsMali()) {
-    info.mali_info = MaliInfo(device_name);
-  }
+  const std::string gpu_description =
+      absl::StrCat(device_name, " ", vendor_name, " ", opencl_c_version);
+  GetGpuInfoFromDeviceDescription(gpu_description, GpuApi::kOpenCl, &info);
   info.opencl_info.cl_version = ParseCLVersion(opencl_c_version);
   info.opencl_info.extensions =
       absl::StrSplit(GetDeviceInfo<std::string>(id, CL_DEVICE_EXTENSIONS), ' ');

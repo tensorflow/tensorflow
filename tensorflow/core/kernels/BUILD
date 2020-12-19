@@ -16,8 +16,8 @@ load(
 )
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
+    "if_mlir_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
-    "if_mlir_unranked_kernels_enabled",
 )
 
 # buildifier: disable=same-origin-load
@@ -632,6 +632,7 @@ cc_library(
     srcs = ["batch_kernels.cc"],
     deps = [
         ":ops_util_hdrs",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -3229,6 +3230,7 @@ MATH_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:math_grad",
     "//tensorflow/core/framework:bounds_check",
+    "//tensorflow/core/framework:op_requires",
     "//third_party/eigen3",
 ]
 
@@ -3278,65 +3280,6 @@ tf_kernel_library(
     name = "aggregate_ops",
     prefix = "aggregate_ops",
     deps = MATH_DEPS,
-)
-
-cc_library(
-    name = "aggregate_ops_headers",
-    hdrs = [
-        "aggregate_ops.h",
-        "aggregate_ops_cpu.h",
-    ],
-    deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            "//third_party/eigen3",
-            "//tensorflow/core:framework",
-        ],
-    }),
-)
-
-# TODO(annarev): conv_ops_3d_headers currently depends on android target build
-# from selected sources. We should switch to use granular dependencies instead.
-# Then, we can just depend on "conv3d".
-cc_library(
-    name = "conv_3d_mobile",
-    hdrs = [
-        "conv_3d.h",
-        "eigen_backward_cuboid_convolutions.h",
-        "eigen_convolution_helpers.h",
-        "eigen_cuboid_convolution.h",
-        "eigen_volume_patch.h",
-    ],
-    deps = [
-        ":eigen_spatial_convolutions-inl",
-    ] + select({
-        "//tensorflow:android": [
-            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            "//tensorflow/core:framework",
-        ],
-    }),
-)
-
-cc_library(
-    name = "conv_ops_3d_headers",
-    hdrs = [
-        "conv_ops_3d.h",
-    ],
-    deps = select({
-        "//tensorflow:android": [
-            ":conv_3d_mobile",
-            "//tensorflow/core:portable_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
-        ],
-        "//conditions:default": [
-            ":conv_3d",
-            "//third_party/eigen3",
-            "//tensorflow/core:framework",
-        ],
-    }),
 )
 
 tf_kernel_library(
@@ -3404,7 +3347,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     copts = if_mlir_generated_gpu_kernels_enabled(if_true = ["-DMLIR_GENERATED_GPU_KERNELS_ENABLED=1"]) +
-            if_mlir_unranked_kernels_enabled(if_true = ["-DMLIR_GENERATED_UNRANKED_GPU_KERNELS_ENABLED=1"]),
+            if_mlir_experimental_kernels_enabled(if_true = ["-DMLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED=1"]),
     prefix = "cwise_op",
     deps = MATH_DEPS + if_mlir_generated_gpu_kernels_enabled(if_true = ["//tensorflow/core/kernels/mlir_generated:cwise_op"]),
 )
@@ -3810,6 +3753,7 @@ tf_kernel_library(
         "deep_conv2d.h",
         "gemm_functors.h",
         "winograd_transform.h",
+        "conv_ops_fused_impl.h",
     ] + select({
         ":xsmm_convolutions": ["xsmm_conv2d.h"],
         "//conditions:default": [],
@@ -3824,7 +3768,6 @@ tf_kernel_library(
     prefix = "conv_ops",
     deps = [
         ":conv_grad_shape_utils",
-        ":conv_ops_3d_headers",
         ":conv_2d",
         ":conv_3d",
         ":eigen_contraction_kernel",
@@ -5948,7 +5891,6 @@ filegroup(
         "conv_2d.h",
         "conv_3d.h",
         "conv_ops.h",
-        "conv_ops_3d.h",
         "conv_ops_gpu.h",
         "data_format_ops.h",
         "depthtospace_op.h",
@@ -6262,6 +6204,7 @@ filegroup(
         "stateless_random_ops.cc",
         "stateless_random_ops_v2.cc",
         "string_join_op.cc",
+        "string_length_op.cc",
         "string_lower_op.cc",
         "string_util.cc",
         "string_split_op.cc",
@@ -6444,7 +6387,6 @@ filegroup(
         "stateful_random_ops_cpu_gpu.h",
         # Allows conv_3d ops for android but excluded from *_3d* rule above.
         "conv_3d.h",
-        "conv_ops_3d.h",
         "conv_ops_3d.cc",
         "conv_ops_gpu.h",
     ],
@@ -7523,6 +7465,7 @@ exports_files([
     "cwise_op_gpu_sigmoid.cu.cc",
     "cwise_op_gpu_sin.cu.cc",
     "cwise_op_gpu_sqrt.cu.cc",
+    "cwise_op_gpu_square.cu.cc",
     "cwise_op_gpu_squared_difference.cu.cc",
     "cwise_op_gpu_sub.cu.cc",
     "cwise_op_gpu_tanh.cu.cc",

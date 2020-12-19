@@ -646,6 +646,22 @@ def l2_normalize_v2(x, axis=None, epsilon=1e-12, name=None):
   For `x` with more dimensions, independently normalizes each 1-D slice along
   dimension `axis`.
 
+  * 1-D tensor example:
+  >>> x = tf.constant([3.0, 4.0])
+  >>> tf.math.l2_normalize(x).numpy()
+  array([0.6, 0.8], dtype=float32)
+
+  * 2-D tensor example:
+  >>> x = tf.constant([[3.0], [4.0]])
+  >>> tf.math.l2_normalize(x, 0).numpy()
+  array([[0.6],
+       [0.8]], dtype=float32)
+
+  >>> x = tf.constant([[3.0], [4.0]])
+  >>> tf.math.l2_normalize(x, 1).numpy()
+  array([[1.],
+       [1.]], dtype=float32)
+
   Args:
     x: A `Tensor`.
     axis: Dimension along which to normalize.  A scalar or a vector of

@@ -170,24 +170,31 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) -> index {
   return %rank : index
 }
 // CHECK: %[[SHAPE:.*]] = tensor_from_elements
+
 // CHECK: %[[C0:.*]] = constant 0 : index
-// CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C0]]] : tensor<3xi64>
-// CHECK: %[[SIZE_0:.*]] = index_cast %[[EL0]] : i64 to index
 // CHECK: %[[C1:.*]] = constant 1 : index
-// CHECK: %[[EL1:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C1]]] : tensor<3xi64>
-// CHECK: %[[SIZE_1:.*]] = index_cast %[[EL1]] : i64 to index
-// CHECK: %[[C2:.*]] = constant 2 : index
-// CHECK: %[[EL2:.*]] = extract_element %[[SHAPE]]{{\[}}%[[C2]]] : tensor<3xi64>
-// CHECK: %[[SIZE_2:.*]] = index_cast %[[EL2]] : i64 to index
-// CHECK: %[[RESULT:.*]] = alloc(%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]) : memref<?x?x?xf32>
 // CHECK: %[[OPER_DIM_1:.*]] = dim %[[OPERAND]], %[[C1]] : memref<?x?xf32>
 // CHECK: %[[OP_STRIDE_0:.*]] = muli %[[C1]], %[[OPER_DIM_1]] : index
 // CHECK: %[[OPER_DIM_0:.*]] = dim %[[OPERAND]], %[[C0]] : memref<?x?xf32>
+
+// CHECK: %[[EL0:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C0]]] : tensor<3xi64>
+// CHECK: %[[SIZE_0:.*]] = index_cast %[[EL0]] : i64 to index
+// CHECK: %[[EL1:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C1]]] : tensor<3xi64>
+
+// CHECK: %[[SIZE_1:.*]] = index_cast %[[EL1]] : i64 to index
 // CHECK: %[[EXPAND_1:.*]] = cmpi "slt", %[[OPER_DIM_0]], %[[SIZE_1]] : index
 // CHECK: %[[STRIDE_1:.*]] = select %[[EXPAND_1]], %[[C0]], %[[OP_STRIDE_0]] : index
+
+// CHECK: %[[C2:.*]] = constant 2 : index
+// CHECK: %[[EL2:.*]] = tensor.extract %[[SHAPE]]{{\[}}%[[C2]]] : tensor<3xi64>
+// CHECK: %[[SIZE_2:.*]] = index_cast %[[EL2]] : i64 to index
 // CHECK: %[[EXPAND_2:.*]] = cmpi "slt", %[[OPER_DIM_1]], %[[SIZE_2]] : index
 // CHECK: %[[STRIDE_2:.*]] = select %[[EXPAND_2]], %[[C0]], %[[C1]] : index
+
 // CHECK: %[[TRANSFORMED_MEMREF:.*]] = memref_reinterpret_cast %[[OPERAND]] to offset: [0], sizes: {{\[}}%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]], strides: {{\[}}%[[C0]], %[[STRIDE_1]], %[[STRIDE_2]]]: memref<?x?xf32> to memref<?x?x?xf32, #map>
+
+// CHECK: %[[RESULT:.*]] = alloc(%[[SIZE_0]], %[[SIZE_1]], %[[SIZE_2]]) : memref<?x?x?xf32>
+
 // CHECK: "lmhlo.copy"(%[[TRANSFORMED_MEMREF]], %[[RESULT]]) : (memref<?x?x?xf32, #map>, memref<?x?x?xf32>) -> ()
 // CHECK: dealloc %[[RESULT]] : memref<?x?x?xf32>
 
@@ -316,6 +323,20 @@ func @abs(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @and
+func @and(%operand0: memref<2x2xi32>, %operand1: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  %tensor_operand0 = tensor_load %operand0 : memref<2x2xi32>
+  %tensor_operand1 = tensor_load %operand1 : memref<2x2xi32>
+  %tensor_result = "mhlo.and"(%tensor_operand0, %tensor_operand1)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.and"(%{{.*}}, %{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @ceil
 func @ceil(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -389,6 +410,20 @@ func @not(%operand: memref<2x2xi32>, %result: memref<2x2xi32>) {
 
 // -----
 
+// CHECK-LABEL: func @or
+func @or(%operand0: memref<2x2xi32>, %operand1: memref<2x2xi32>,
+         %result: memref<2x2xi32>) {
+  %tensor_operand0 = tensor_load %operand0 : memref<2x2xi32>
+  %tensor_operand1 = tensor_load %operand1 : memref<2x2xi32>
+  %tensor_result = "mhlo.or"(%tensor_operand0, %tensor_operand1)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.or"(%{{.*}}, %{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @rsqrt
 func @rsqrt(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -425,6 +460,48 @@ func @sqrt(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @shift_left
+func @shift_left(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
+                 %result: memref<2x2xi32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xi32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xi32>
+  %tensor_result = "mhlo.shift_left"(%tensor_lhs, %tensor_rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.shift_left"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_right_arithmetic
+func @shift_right_arithmetic(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
+                             %result: memref<2x2xi32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xi32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xi32>
+  %tensor_result = "mhlo.shift_right_arithmetic"(%tensor_lhs, %tensor_rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.shift_right_arithmetic"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @shift_right_logical
+func @shift_right_logical(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
+                          %result: memref<2x2xi32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xi32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xi32>
+  %tensor_result = "mhlo.shift_right_logical"(%tensor_lhs, %tensor_rhs)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.shift_right_logical"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @tanh
 func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
@@ -438,13 +515,28 @@ func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // -----
 
 // CHECK-LABEL: func @remainder
-func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
+func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
+                %result: memref<2x2xf32>) {
   %tensor_lhs = tensor_load %lhs : memref<2x2xf32>
   %tensor_rhs = tensor_load %rhs : memref<2x2xf32>
   %tensor_result = "mhlo.remainder"(%tensor_lhs, %tensor_rhs)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK: "lmhlo.remainder"(%{{.*}}, %{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @xor
+func @xor(%operand0: memref<2x2xi32>, %operand1: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  %tensor_operand0 = tensor_load %operand0 : memref<2x2xi32>
+  %tensor_operand1 = tensor_load %operand1 : memref<2x2xi32>
+  %tensor_result = "mhlo.xor"(%tensor_operand0, %tensor_operand1)
+      : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
+  // CHECK: "lmhlo.xor"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xi32>
   return
 }
 
@@ -462,9 +554,9 @@ func @add_dyn(%lhs: tensor<?x?xf32>, %rhs: tensor<?x?xf32>) {
   // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
-  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
+  // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
-  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
+  // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xi64>
   // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
   // CHECK: "lmhlo.add"(%arg0, %arg1, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
@@ -485,9 +577,9 @@ func @tanh_dyn(%arg0: tensor<?x?xf32>) {
   // CHECK: %[[DIM1:.*]] = dim %arg0, %[[C1]] : memref<?x?xf32>
   // CHECK: %[[IC1:.*]] = index_cast %[[DIM1]] : index to i64
   // CHECK: %[[SHAPE:.*]] = tensor_from_elements %[[IC0]], %[[IC1]] : tensor<2xi64>
-  // CHECK: %[[EE0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<2xi64>
+  // CHECK: %[[EE0:.*]] = tensor.extract %[[SHAPE]][%[[C0]]] : tensor<2xi64>
   // CHECK: %[[ICS0:.*]] = index_cast %[[EE0]] : i64 to index
-  // CHECK: %[[EE1:.*]] = extract_element %[[SHAPE]][%[[C1]]] : tensor<2xi64>
+  // CHECK: %[[EE1:.*]] = tensor.extract %[[SHAPE]][%[[C1]]] : tensor<2xi64>
   // CHECK: %[[ICS1:.*]] = index_cast %[[EE1]] : i64 to index
   // CHECK: %[[RESULT:.*]] = alloc(%[[ICS0]], %[[ICS1]])
   // CHECK: "lmhlo.tanh"(%arg0, %[[RESULT]]) : (memref<?x?xf32>, memref<?x?xf32>) -> ()

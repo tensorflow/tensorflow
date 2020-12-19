@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -111,48 +112,6 @@ absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 // the exceptions are local to the binding code.
 namespace pybind11 {
 namespace detail {
-
-// When absl::optional is an alias for std::optional, the type_caster
-// specializations are provided by pybind11.
-#ifndef ABSL_HAVE_STD_OPTIONAL
-// absl::optional
-template <typename T>
-struct type_caster<absl::optional<T>> : optional_caster<absl::optional<T>> {};
-
-template <>
-struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
-#endif
-
-// absl::Span
-template <typename T>
-struct type_caster<absl::Span<const T>> {
-  using value_conv = make_caster<T>;
-
-  PYBIND11_TYPE_CASTER(absl::Span<const T>,
-                       _("Span[") + value_conv::name + _("]"));
-
-  // absl::Span doesn't hold ownership. We therefore need a temporary array.
-  // Pybind appears to keep type_casters alive until the callee has run.
-  std::vector<T> storage_;
-
-  bool load(handle src, bool convert) {
-    if (!isinstance<sequence>(src)) {
-      return false;
-    }
-    auto seq = reinterpret_borrow<sequence>(src);
-    storage_.clear();
-    storage_.reserve(seq.size());
-    for (const auto& it : seq) {
-      value_conv conv;
-      if (!conv.load(it, convert)) {
-        return false;
-      }
-      storage_.push_back(cast_op<T&&>(std::move(conv)));
-    }
-    value = absl::Span<const T>(storage_);
-    return true;
-  }
-};
 
 // Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
 // becomes None.

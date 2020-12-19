@@ -33,10 +33,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
@@ -268,7 +268,17 @@ struct QuantizationPattern : public RewritePattern {
       OperationState new_state(quantized_op->getLoc(),
                                quantized_op->getName().getStringRef(), inputs,
                                output_types, quantized_op->getAttrs());
+      for (int i = 0; i < quantized_op->getNumRegions(); ++i) {
+        new_state.addRegion();
+      }
       Operation* new_op = rewriter.createOperation(new_state);
+      if (quantized_op->getNumRegions() != 0) {
+        for (auto indexed_regions :
+             llvm::enumerate(quantized_op->getRegions())) {
+          new_op->getRegion(indexed_regions.index())
+              .takeBody(indexed_regions.value());
+        }
+      }
       for (auto output : outputs_replaced) {
         output.getFirst().replaceAllUsesWith(
             new_op->getResult(output.getSecond()));

@@ -33,10 +33,10 @@ limitations under the License.
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
@@ -1106,7 +1106,7 @@ LogicalResult HandlePartitionedCallOpCallee(
 
   // Clone the callee before making changes.
   SmallString<64> name_base = callee.getName();
-  auto module = callee.getParentOfType<ModuleOp>();
+  auto module = callee->getParentOfType<ModuleOp>();
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
@@ -1180,7 +1180,7 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_call = builder.create<CallOpType>(
       call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
       new_operands, call_op.getAttrs());
-  new_call.setAttr(
+  new_call->setAttr(
       "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
@@ -1376,7 +1376,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
   if (failed(HoistForControlFlow(
-          &function.front(), cast<ModuleOp>(function.getParentOp()),
+          &function.front(), cast<ModuleOp>(function->getParentOp()),
           /*vars_initialized=*/false, &lifted_partitioned_call_callees)))
     return failure();
 

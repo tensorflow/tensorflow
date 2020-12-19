@@ -23,12 +23,11 @@ limitations under the License.
 
 #ifndef ARDUINO_EXCLUDE_CODE
 
-#include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
-
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_RAW8_QVGA_8bits_lsb_5fps.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_debug.h"
 #include "tensorflow/lite/micro/examples/person_detection/himax_driver/HM01B0_optimized.h"
+#include "tensorflow/lite/micro/examples/person_detection/image_provider.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
 #include "am_bsp.h"         // NOLINT

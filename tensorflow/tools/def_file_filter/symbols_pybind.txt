@@ -1,4 +1,4 @@
-[//tensorflow/python:cpp_python_util] # util tfe
+[//tensorflow/python/util:cpp_python_util] # util tfe
 tensorflow::swig::IsSequence
 tensorflow::swig::IsSequenceOrComposite
 tensorflow::swig::IsCompositeTensor
@@ -48,7 +48,7 @@ tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
 
 [//tensorflow/python:bfloat16_lib] # bfloat16
 tensorflow::RegisterNumpyBfloat16
-tensorflow::Bfloat16PyType
+tensorflow::Bfloat16Dtype
 
 [//tensorflow/python:py_func_lib] # py_func
 tensorflow::InitializePyTrampoline

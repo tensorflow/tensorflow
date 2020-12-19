@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <tuple>
 
+#include "absl/algorithm/container.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -27,13 +28,13 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops_base_enums.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -120,7 +122,7 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
   // Run all HLO passes to produce an optimized module.
   auto result_or = backend->compiler()->RunHloPassesAndBufferAssignement(
       std::move(hlo_module), backend->default_stream_executor(),
-      backend->memory_allocator(), optimize_xla_hlo);
+      optimize_xla_hlo, {backend->memory_allocator()});
   TF_RETURN_WITH_CONTEXT_IF_ERROR(result_or.status(),
                                   "running XLA pass pipeline");
   std::unique_ptr<HloModule> optimized_hlo_module =
@@ -398,7 +400,7 @@ StatusOr<Value> LhloDialectEmitter::RewriteFusionOperand(
     llvm::SmallVector<int64_t, 4> minor_to_major(
         shape.layout().minor_to_major().begin(),
         shape.layout().minor_to_major().end());
-    load.setAttr("minor_to_major", b->getIndexTensorAttr(minor_to_major));
+    load->setAttr("minor_to_major", b->getIndexTensorAttr(minor_to_major));
   }
   return load.getResult();
 }
@@ -556,6 +558,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitGemm(custom_call_instr);
   }
 
+  if (xla::gpu::IsCustomCallToDnnConvolution(*instr)) {
+    return EmitDnnConvolution(custom_call_instr);
+  }
+
   size_t num_arguments, num_results;
   TF_ASSIGN_OR_RETURN(auto custom_call,
                       CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
@@ -566,8 +572,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
       builder_.getStringAttr(custom_call_instr->opaque()));
   const int32_t segments[2] = {static_cast<int32_t>(num_arguments),
                                static_cast<int32_t>(num_results)};
-  custom_call.setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
-                      builder_.getI32VectorAttr(segments));
+  custom_call->setAttr(lmhlo::CustomCallOp::getOperandSegmentSizeAttr(),
+                       builder_.getI32VectorAttr(segments));
   return custom_call.getOperation();
 }
 
@@ -623,6 +629,150 @@ StatusOr<Operation*> LhloDialectEmitter::EmitGemm(
   return xla::InvalidArgument("GEMM custom call should have 2 or 3 operands");
 }
 
+static StatusOr<mlir::lmhlo_gpu::Activation> GetLHLOActivation(
+    stream_executor::dnn::ActivationMode activation) {
+  switch (activation) {
+    case stream_executor::dnn::kNone:
+      return mlir::lmhlo_gpu::Activation::None;
+    case stream_executor::dnn::kSigmoid:
+      return mlir::lmhlo_gpu::Activation::Sigmoid;
+    case stream_executor::dnn::kRelu:
+      return mlir::lmhlo_gpu::Activation::Relu;
+    case stream_executor::dnn::kRelu6:
+      return mlir::lmhlo_gpu::Activation::Relu6;
+    case stream_executor::dnn::kReluX:
+      return mlir::lmhlo_gpu::Activation::ReluX;
+    case stream_executor::dnn::kTanh:
+      return mlir::lmhlo_gpu::Activation::Tanh;
+    case stream_executor::dnn::kBandPass:
+      return mlir::lmhlo_gpu::Activation::BandPass;
+    default:
+      return xla::InternalError("Unknown activation");
+  }
+}
+
+StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
+    HloCustomCallInstruction* custom_call) {
+  TF_ASSIGN_OR_RETURN(
+      auto const backend_config,
+      custom_call->backend_config<xla::gpu::CudnnConvBackendConfig>());
+
+  TF_ASSIGN_OR_RETURN(const xla::gpu::CudnnConvKind kind,
+                      xla::gpu::GetCudnnConvKind(custom_call));
+
+  auto get_layout_attribute = [&](const xla::Layout& layout) {
+    std::vector<int64_t> minor_to_major(layout.minor_to_major_size());
+    absl::c_transform(layout.minor_to_major(), minor_to_major.begin(),
+                      [](xla::int64 x) { return static_cast<int64_t>(x); });
+    return builder_.getI64ArrayAttr(minor_to_major);
+  };
+
+  auto set_common_conv_attributes = [&, this](auto op) -> Operation* {
+    const xla::Window& window = custom_call->window();
+    // Window size for Cudnn Conv is same as the kernel size.
+    op.window_stridesAttr(
+        GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+          return static_cast<int64_t>(dim.stride());
+        }));
+    // Cudnn Conv requires low and high padding to be equal.
+    op.paddingAttr(
+        GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+          return static_cast<int64_t>(dim.padding_low());
+        }));
+    // LHS dilation is encoded in base_dilation of the backend config.
+    // RHS dilation is encoded in window_dilation of the backend config.
+    op.lhs_dilationAttr(
+        GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+          return static_cast<int64_t>(dim.base_dilation());
+        }));
+    op.rhs_dilationAttr(
+        GetWindowElements(window, [](const ::xla::WindowDimension& dim) {
+          return static_cast<int64_t>(dim.window_dilation());
+        }));
+    // Setup window reversal.
+    auto window_reversal = llvm::to_vector<4>(llvm::map_range(
+        window.dimensions(), [](const ::xla::WindowDimension& dim) {
+          return dim.window_reversal();
+        }));
+    auto type = RankedTensorType::get(op.window_strides()->getType().getShape(),
+                                      builder_.getIntegerType(/*width=*/1));
+    op.window_reversalAttr(DenseElementsAttr::get(type, window_reversal));
+
+    op.dimension_numbersAttr(xla::ConvertConvDimensionNumbers(
+        custom_call->convolution_dimension_numbers(), &builder_));
+    op.feature_group_countAttr(
+        builder_.getI64IntegerAttr(custom_call->feature_group_count()));
+    op.batch_group_countAttr(
+        builder_.getI64IntegerAttr(custom_call->batch_group_count()));
+    op.precision_configAttr(xla::ConvertPrecisionConfig(
+        &custom_call->precision_config(), &builder_));
+    op.result_scaleAttr(
+        builder_.getF64FloatAttr(backend_config.conv_result_scale()));
+    auto config = mlir::lmhlo_gpu::ConvolutionBackendConfig::get(
+        builder_.getI64IntegerAttr(backend_config.algorithm()),
+        builder_.getBoolAttr(backend_config.tensor_ops_enabled()),
+        get_layout_attribute(custom_call->operand(0)->shape().layout()),
+        get_layout_attribute(custom_call->operand(1)->shape().layout()),
+        get_layout_attribute(custom_call->shape().tuple_shapes(0).layout()),
+        builder_.getContext());
+    op.backend_configAttr(config);
+
+    return op.getOperation();
+  };
+
+  auto set_activation = [&, this](auto op) -> Status {
+    auto se_activation = static_cast<stream_executor::dnn::ActivationMode>(
+        backend_config.activation_mode());
+    TF_ASSIGN_OR_RETURN(mlir::lmhlo_gpu::Activation activation,
+                        GetLHLOActivation(se_activation));
+    StringAttr activation_attr = builder_.getStringAttr(
+        mlir::lmhlo_gpu::stringifyActivation(activation));
+    op.activation_modeAttr(activation_attr);
+    return Status::OK();
+  };
+
+  switch (kind) {
+    case xla::gpu::CudnnConvKind::kForward: {
+      TF_ASSIGN_OR_RETURN(
+          auto cnn_forward,
+          CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardOp>(custom_call));
+      return set_common_conv_attributes(cnn_forward);
+    }
+    case xla::gpu::CudnnConvKind::kBackwardInput: {
+      TF_ASSIGN_OR_RETURN(
+          auto cnn_backward,
+          CreateOpWithoutAttrs<lmhlo_gpu::ConvBackwardInputOp>(custom_call));
+      return set_common_conv_attributes(cnn_backward);
+    }
+    case xla::gpu::CudnnConvKind::kBackwardFilter: {
+      TF_ASSIGN_OR_RETURN(
+          auto cnn_backward,
+          CreateOpWithoutAttrs<lmhlo_gpu::ConvBackwardFilterOp>(custom_call));
+      return set_common_conv_attributes(cnn_backward);
+    }
+    case xla::gpu::CudnnConvKind::kForwardActivation: {
+      // Fused conv can be either with side input or without.
+      if (custom_call->operand_count() == 3) {
+        TF_ASSIGN_OR_RETURN(
+            auto cnn_fused,
+            CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardFusedOp>(custom_call));
+        TF_RETURN_IF_ERROR(set_activation(cnn_fused));
+        return set_common_conv_attributes(cnn_fused);
+      }
+
+      TF_RET_CHECK(custom_call->operand_count() == 4);
+      TF_ASSIGN_OR_RETURN(
+          auto cnn_fused_side_input,
+          CreateOpWithoutAttrs<lmhlo_gpu::ConvForwardFusedSideInputOp>(
+              custom_call));
+      cnn_fused_side_input.side_input_scaleAttr(
+          builder_.getF64FloatAttr(backend_config.side_input_scale()));
+      TF_RETURN_IF_ERROR(set_activation(cnn_fused_side_input));
+      return set_common_conv_attributes(cnn_fused_side_input);
+    }
+  }
+}
+
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
 StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
     const HloInstruction* instr) {
@@ -664,12 +814,12 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
 
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(instr));
-  get_global_memref.setAttr("lmhlo.alloc",
-                            builder_.getIndexAttr(slice.index()));
-  get_global_memref.setAttr("lmhlo.slice_offset",
-                            builder_.getI64IntegerAttr(slice.offset()));
-  get_global_memref.setAttr("lmhlo.slice_size",
-                            builder_.getI64IntegerAttr(slice.size()));
+  get_global_memref->setAttr("lmhlo.alloc",
+                             builder_.getIndexAttr(slice.index()));
+  get_global_memref->setAttr("lmhlo.slice_offset",
+                             builder_.getI64IntegerAttr(slice.offset()));
+  get_global_memref->setAttr("lmhlo.slice_size",
+                             builder_.getI64IntegerAttr(slice.size()));
 
   // Update the cache to remember this value.
   auto& cached_value = slices_[std::make_pair(instr, ::xla::ShapeIndex())];
@@ -763,7 +913,7 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   auto* all_reduce = ::xla::Cast<::xla::HloAllReduceInstruction>(instr);
   auto replica_groups_attr = ::xla::HloFunctionImporter::ConvertReplicaGroups(
       all_reduce->replica_groups(), builder_);
-  all_reduce_op.setAttr(replica_groups_attr.first, replica_groups_attr.second);
+  all_reduce_op->setAttr(replica_groups_attr.first, replica_groups_attr.second);
   all_reduce_op.constrain_layoutAttr(
       builder_.getBoolAttr(all_reduce->constrain_layout()));
   all_reduce_op.channel_idAttr(mlir::mhlo::ChannelHandle::get(
