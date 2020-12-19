@@ -5936,6 +5936,7 @@ filegroup(
         "spectrogram.h",
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
+        "sparse_fill_empty_rows_op.h",
         "string_util.h",
         "string_to_hash_bucket_op.h",
         "string_to_hash_bucket_fast_op.h",
