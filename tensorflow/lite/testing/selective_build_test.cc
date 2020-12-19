@@ -18,8 +18,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/create_op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/java/src/main/native/op_resolver.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/model_builder.h"
 
@@ -29,7 +29,7 @@ bool RunWithRandomInputs(const std::string& filename) {
       tflite::FlatBufferModel::BuildFromFile(filename.c_str());
 
   // Build the interpreter
-  std::unique_ptr<OpResolver> resolver = CreateOpResolver();
+  std::unique_ptr<MutableOpResolver> resolver = CreateOpResolver();
   std::unique_ptr<tflite::Interpreter> interpreter;
   if (tflite::InterpreterBuilder(*model, *resolver)(&interpreter) !=
       kTfLiteOk) {

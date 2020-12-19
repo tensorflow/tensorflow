@@ -22,6 +22,22 @@ py_library(
     deps = [":xla_extension"],
 )
 
+cc_library(
+    name = "absl_casters",
+    hdrs = ["absl_casters.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
 pyx_library(
     name = "custom_call_for_test",
     testonly = True,
@@ -97,13 +113,14 @@ cc_library(
     name = "types",
     srcs = ["types.cc"],
     hdrs = ["types.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":bfloat16",
+        ":absl_casters",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -113,6 +130,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:lib",
+        "//tensorflow/python:bfloat16_lib",
         "//third_party/py/numpy:headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -159,42 +177,6 @@ cc_library(
 )
 
 cc_library(
-    name = "bfloat16",
-    srcs = ["bfloat16.cc"],
-    hdrs = ["bfloat16.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/platform:bfloat16",
-        "//tensorflow/core/platform:logging",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
-        "@com_google_absl//absl/strings",
-        "@pybind11",
-    ],
-)
-
-py_test(
-    name = "bfloat16_test",
-    srcs = ["bfloat16_test.py"],
-    main = "bfloat16_test.py",
-    python_version = "PY3",
-    tags = ["no_oss"],
-    deps = [
-        ":xla_client",
-        ":xla_extension",
-        "@absl_py//absl/testing:absltest",
-        "@absl_py//absl/testing:parameterized",
-    ] + xla_py_test_deps(),
-)
-
-cc_library(
     name = "py_client",
     srcs = [
         "py_buffer.cc",
@@ -206,6 +188,7 @@ cc_library(
         "py_client.h",
         "py_executable.h",
     ],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -221,6 +204,7 @@ cc_library(
         "//tensorflow/core/platform:fingerprint",
         "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
@@ -232,6 +216,7 @@ cc_library(
     name = "dlpack",
     srcs = ["dlpack.cc"],
     hdrs = ["dlpack.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -244,6 +229,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",  # TODO(zhangqiaorjc): Remove after adding a factory method for PjRtBuffer.
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
         "//tensorflow/stream_executor:device_memory",
         "//tensorflow/stream_executor:platform",
@@ -263,6 +249,7 @@ cc_library(
     name = "jax_jit",
     srcs = ["jax_jit.cc"],
     hdrs = ["jax_jit.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -281,6 +268,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -291,6 +279,7 @@ cc_library(
     name = "ops",
     srcs = ["ops.cc"],
     hdrs = ["ops.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -355,6 +344,7 @@ cc_library(
     name = "outfeed_receiver_py",
     srcs = ["outfeed_receiver_py.cc"],
     hdrs = ["outfeed_receiver_py.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -378,12 +368,14 @@ cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
     hdrs = ["pytree.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
     ],
     features = ["-use_header_modules"],
     deps = [
+        ":types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
@@ -434,6 +426,7 @@ cc_library(
     name = "xla_compiler",
     srcs = ["xla_compiler.cc"],
     hdrs = ["xla_compiler.h"],
+    compatible_with = [],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -480,7 +473,6 @@ pybind_extension(
     features = ["-use_header_modules"],
     module_name = "xla_extension",
     deps = [
-        ":bfloat16",
         ":dlpack",
         ":jax_jit",
         ":ops",
@@ -533,6 +525,7 @@ pybind_extension(
         # without any TF dependencies as "jaxlib" on Pypi, and "jaxlib" does
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
+        "//tensorflow/python:bfloat16_lib",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:platform",
     ] + select({

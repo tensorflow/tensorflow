@@ -385,6 +385,10 @@ cc_library(
     hdrs = ["quantization_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
@@ -457,6 +461,7 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
         "reference/fill.h",
         "reference/floor.h",
         "reference/floor_mod.h",
@@ -505,6 +510,13 @@ cc_library(
     }),
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    # We are disabling parse_headers for the tf_lite_static_memory build to
+    # allow it to be consistent with the OSS bazel build. See b/175817116
+    # for more details.
+    features = select({
+        ":tf_lite_static_memory": ["-parse_headers"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":common",
         ":compatibility",
@@ -552,6 +564,7 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
         "reference/fill.h",
         "reference/floor.h",
         "reference/floor_mod.h",

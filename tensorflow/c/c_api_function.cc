@@ -213,7 +213,11 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     TF_DeleteFunction(tf_function);
     return nullptr;
   }
-  tf_function->graph_with_debug_info = &fn_body->graph;
+
+  for (const Node* n : fn_body->graph.nodes()) {
+    tf_function->stack_traces[n->name()] = n->GetStackTrace();
+  }
+
   return tf_function;
 }
 

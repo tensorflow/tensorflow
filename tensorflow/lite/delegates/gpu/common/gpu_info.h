@@ -358,12 +358,6 @@ struct GpuInfo {
   bool IsCL30OrHigher() const;
 };
 
-inline bool IsOpenGl31OrAbove(const GpuInfo& gpu_info) {
-  return (gpu_info.opengl_info.major_version == 3 &&
-          gpu_info.opengl_info.minor_version >= 1) ||
-         gpu_info.opengl_info.major_version > 3;
-}
-
 // Currently it initializes:
 // vendor
 // AdrenoInfo if vendor is kQualcomm

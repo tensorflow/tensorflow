@@ -1221,30 +1221,27 @@ def strided_slice(input_,
 
   parent_name = name
 
-  if not (var is None and isinstance(op, ops.EagerTensor)):
-
+  if var is not None:
     def assign(val, name=None):
       """Closure that holds all the arguments to create an assignment."""
 
-      if var is None:
-        raise ValueError("Sliced assignment is only supported for variables")
-      else:
-        if name is None:
-          name = parent_name + "_assign"
+      if name is None:
+        name = parent_name + "_assign"
 
-        return var._strided_slice_assign(
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=val,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
+      return var._strided_slice_assign(
+          begin=begin,
+          end=end,
+          strides=strides,
+          value=val,
+          name=name,
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          ellipsis_mask=ellipsis_mask,
+          new_axis_mask=new_axis_mask,
+          shrink_axis_mask=shrink_axis_mask)
 
     op.assign = assign
+
   return op
 
 
@@ -4759,6 +4756,7 @@ def reverse_sequence(input,
 
 
 @tf_export("reverse_sequence", v1=[])
+@dispatch.add_dispatch_support
 def reverse_sequence_v2(input,
                         seq_lengths,
                         seq_axis=None,

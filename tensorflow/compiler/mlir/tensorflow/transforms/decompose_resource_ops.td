@@ -458,7 +458,7 @@ def DecomposeResourceApplyProximalAdagrad :
      (TF_ConstOp:$zero (GetScalarOfType<0> $grad)),
      (TF_AddV2Op:$accum_new
        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
-       (TF_SqrtOp $grad)),
+       (TF_SquareOp $grad)),
      (TF_MulOp:$adagrad_lr $lr, (TF_RsqrtOp $accum_new)),
      (TF_SubOp:$prox_var
        (CreateTFReadVariableOp $src_op, $grad, $var_resource),

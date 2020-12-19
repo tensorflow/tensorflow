@@ -45,8 +45,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -959,7 +959,8 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     if (!TFTypeIsFloat32Tensor(fused_batch_norm_op.x())) return failure();
 
     {
-      epsilon = fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>("epsilon");
+      epsilon =
+          fused_batch_norm_op->getAttrOfType<::mlir::FloatAttr>("epsilon");
       if (!epsilon)
         epsilon = rewriter.getFloatAttr(rewriter.getF32Type(), 0.0001f);
 
@@ -974,7 +975,7 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     }
     {
       exponential_avg_factor =
-          fused_batch_norm_op.getAttrOfType<::mlir::FloatAttr>(
+          fused_batch_norm_op->getAttrOfType<::mlir::FloatAttr>(
               "exponential_avg_factor");
       if (!exponential_avg_factor)
         exponential_avg_factor =
@@ -982,12 +983,12 @@ struct FusedBatchNormV3Pat : public ::mlir::RewritePattern {
     }
     {
       data_format =
-          fused_batch_norm_op.getAttrOfType<::mlir::StringAttr>("data_format");
+          fused_batch_norm_op->getAttrOfType<::mlir::StringAttr>("data_format");
       if (!data_format) data_format = rewriter.getStringAttr("NHWC");
     }
     {
       is_training =
-          fused_batch_norm_op.getAttrOfType<::mlir::BoolAttr>("is_training");
+          fused_batch_norm_op->getAttrOfType<::mlir::BoolAttr>("is_training");
       if (!is_training) is_training = rewriter.getBoolAttr(true);
 
       if (!((!is_training.getValue()))) {

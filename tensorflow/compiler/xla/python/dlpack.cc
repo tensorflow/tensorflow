@@ -25,6 +25,7 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "pybind11/pytypes.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -45,15 +46,16 @@ const char* const kDlTensorCapsuleName = "dltensor";
 struct DLPackTensor {
   ~DLPackTensor();
 
-  // At most one of buffer and buffer_reference/scoped_hold is populated.
+  // At most one of owned_buffer and buffer_reference/external_reference_hold is
+  // populated.
 
-  // `buffer` is populated if we have exclusive (read-write) access.
-  std::shared_ptr<TrackedDeviceBuffer> buffer;
+  // `owned_buffer` is populated if we have exclusive (read-write) access.
+  std::shared_ptr<void> owned_buffer;
 
-  // `buffer_reference` and `scoped_hold` are populated if we have
+  // `buffer_reference` and `external_reference_hold` are populated if we have
   // shared (read-only) access.
   py::object buffer_reference;
-  absl::optional<PjRtBuffer::ScopedHold> scoped_hold;
+  std::unique_ptr<PjRtBuffer::ExternalReferenceHold> external_reference_hold;
 
   std::vector<int64> shape;
   std::vector<int64> strides;
@@ -214,11 +216,9 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
 }
 
 StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
-  const se::Platform* platform =
-      device.local_device_state()->executor()->platform();
-  if (platform->id() == se::host::kHostPlatformId) {
+  if (device.client()->platform_id() == kCpuId) {
     return kDLCPU;
-  } else if (platform->id() == se::cuda::kCudaPlatformId) {
+  } else if (device.client()->platform_id() == kGpuId) {
     return kDLGPU;
   }
   return InvalidArgument("Device %s cannot be used as a DLPack device.",
@@ -228,7 +228,7 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
 StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
   DLContext context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
-  context.device_id = device.local_device_id();
+  context.device_id = device.local_hardware_id();
   return context;
 }
 
@@ -241,14 +241,14 @@ StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
             "DLPack CPU device type mismatch with PjRtClient platform %s",
             client.platform_name());
       }
-      return client.LookupLocalDevice(context.device_id);
+      return client.LookupAddressableDevice(context.device_id);
     case kDLGPU:
       if (client.platform_id() != kGpuId) {
         return InvalidArgument(
             "DLPack GPU device type mismatch with PjRtClient platform %s",
             client.platform_name());
       }
-      return client.LookupLocalDevice(context.device_id);
+      return client.LookupAddressableDevice(context.device_id);
     default:
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
@@ -271,33 +271,35 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(py::handle py_buffer,
   if (take_ownership) {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
-    StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or =
-        buffer->buffer()->Release(/*wait_for_operations_to_complete=*/true);
+    StatusOr<absl::optional<std::shared_ptr<void>>> buffer_or =
+        buffer->buffer()->ReleaseDeviceMemoryOwnership(
+            /*wait_for_operations_to_complete=*/true);
     if (!buffer_or.ok()) {
       return InvalidArgument(
           "Buffer synchronization failed converting to DLPack tensor: %s",
           buffer_or.status().ToString());
     }
-    pack->buffer = buffer_or.ConsumeValueOrDie();
-    if (!pack->buffer) {
+    absl::optional<std::shared_ptr<void>> owned_buffer_opt =
+        buffer_or.ConsumeValueOrDie();
+    if (!owned_buffer_opt.has_value()) {
       return InvalidArgument(
           "Cannot convert deleted/invalid buffer to DLPack tensor.");
     }
-    TF_RET_CHECK(pack->buffer->device_memory().size() == 1);
-    dt.data = pack->buffer->device_memory().front().opaque();
+    pack->owned_buffer = owned_buffer_opt.value();
+    dt.data = pack->owned_buffer.get();
   } else {
     // Block on outstanding operations, so that it is safe to read or mutate the
     // returned buffer.
     TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
     pack->buffer_reference = py::reinterpret_borrow<py::object>(py_buffer);
-    pack->scoped_hold.emplace(
-        buffer->buffer()->GetBufferWithExternalReference());
-    dt.data = pack->scoped_hold->buffer()->device_memory().front().opaque();
+    TF_ASSIGN_OR_RETURN(pack->external_reference_hold,
+                        buffer->buffer()->AcquireExternalReference());
+    dt.data = pack->external_reference_hold->OpaqueDeviceMemoryDataPointer();
   }
   pack->tensor.manager_ctx = pack.get();
   pack->tensor.deleter = DLPackTensorDeleter;
   TF_ASSIGN_OR_RETURN(dt.ctx, DLContextForDevice(*buffer->buffer()->device()));
-  dt.ctx.device_id = buffer->buffer()->device()->local_device_id();
+  dt.ctx.device_id = buffer->buffer()->device()->local_hardware_id();
   dt.ndim = buffer->buffer()->on_host_shape().dimensions_size();
   TF_ASSIGN_OR_RETURN(dt.dtype,
                       PrimitiveTypeToDLDataType(
@@ -379,7 +381,10 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
   // capsule it cannot be used again.
   PyCapsule_SetName(tensor.ptr(), "used_dltensor");
   PyCapsule_SetDestructor(tensor.ptr(), nullptr);
-  auto pjrt_buffer = std::make_unique<PjRtBuffer>(
+  // TODO(zhangqiaorjc): Add a factory method that avoids StreamExecutor
+  // specifics. The challenge may be what generic data structures to use for
+  // definition events.
+  auto pjrt_buffer = std::make_unique<PjRtStreamExecutorBuffer>(
       shape, shape, std::move(device_buffer), client->pjrt_client(), device);
   return std::make_unique<PyBuffer>(std::move(client), std::move(pjrt_buffer),
                                     Traceback::Get());

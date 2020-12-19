@@ -182,6 +182,10 @@ class ConvolutionVisitor {
     return permute_dims[id];
   }
 
+  int64 ReverseDimLookUp(absl::Span<const int64> permute_dims, int64 id) {
+    return std::distance(permute_dims.begin(), absl::c_find(permute_dims, id));
+  }
+
   HloInstruction* DoesConvolutionFeedReduceWindowOrSelectAndScatter(
       HloInstruction* instr, int64 depth);
 
@@ -215,9 +219,10 @@ class ConvolutionVisitor {
   // Limit on batch size to apply this technique on.
   int64 limit_on_batch_size_;
 
-  // We choose the new batch size to be a constant so that space-to-batch
-  // propagation through several convolutional layers is consistent.
-  static constexpr int64 kNewBatchSize = 8;
+  // We choose the new batch size to be kNumSplits times that of the old batch
+  // so that space-to-batch propagation through several convolutional layers is
+  // consistent.
+  static constexpr int64 kNumSplits = 8;
 
   // Depth for searching reduce window
   static constexpr int64 kReduceWindowSearchDepth = 10;
@@ -301,17 +306,12 @@ bool ConvolutionVisitor::IsConvSuitableForSpaceToBatch(
   if (old_batch_size > limit_on_batch_size_) {
     return false;
   }
-  // We currently only cater to evenly divisible cases.
-  if (kNewBatchSize % old_batch_size != 0) {
-    return false;
-  }
 
   VLOG(1) << "spatial size " << c.spatial_size;
 
-  const int64 num_splits = kNewBatchSize / old_batch_size;
   // If the ratio is not within the 2X range, we can't Halo Pad from the next
   // split.
-  if (c.halo_size > CeilOfRatio(c.spatial_size, num_splits)) {
+  if (c.halo_size > CeilOfRatio(c.spatial_size, kNumSplits)) {
     return false;
   }
   VLOG(1) << "Legal space-to-batch convolution " << convolution->ToString();
@@ -323,6 +323,24 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     int64 activations_batch_dim, int64 old_batch_size, int64 low_padding,
     int64 high_padding, int64 halo_size, int64 original_split_dim_size,
     HloInstruction* pad_val) {
+  const int64 original_batch_size =
+      activations->shape().dimensions(activations_batch_dim) / kNumSplits;
+
+  if (original_batch_size > 1) {
+    std::vector<int64> new_dimensions(activations->shape().dimensions().begin(),
+                                      activations->shape().dimensions().end());
+    new_dimensions[activations_batch_dim] = kNumSplits;
+    new_dimensions.insert(new_dimensions.begin() + activations_batch_dim,
+                          original_batch_size);
+
+    // Reshape the output of the new conv into the old convolutions shape.
+    TF_ASSIGN_OR_RETURN(activations,
+                        MakeReshapeHlo(new_dimensions, activations));
+
+    spatial_dimension_to_split++;
+    activations_batch_dim++;
+  }
+
   const int64 rank = activations->shape().rank();
   const int64 spatial_split_size =
       activations->shape().dimensions(spatial_dimension_to_split);
@@ -415,6 +433,21 @@ StatusOr<HloInstruction*> ConvolutionVisitor::HaloDuplicateWithSlice(
     TF_ASSIGN_OR_RETURN(activations, MakeConcatHlo({activations, halo_region},
                                                    spatial_dimension_to_split));
   }
+
+  if (original_batch_size > 1) {
+    std::vector<int64> new_dimensions(activations->shape().dimensions().begin(),
+                                      activations->shape().dimensions().end());
+    new_dimensions[activations_batch_dim] = original_batch_size * kNumSplits;
+    new_dimensions.erase(new_dimensions.begin() + activations_batch_dim - 1);
+
+    // Reshape the output of the new conv into the old convolutions shape.
+    TF_ASSIGN_OR_RETURN(activations,
+                        MakeReshapeHlo(new_dimensions, activations));
+
+    spatial_dimension_to_split++;
+    activations_batch_dim++;
+  }
+
   VLOG(1) << "HaloDuplicated activations " << activations->ToString();
   return activations;
 }
@@ -424,17 +457,20 @@ ConvolutionVisitor::BringSpaceNextToBatch(
     HloInstruction* activations, ConvolutionDimensionNumbers& dim_numbers,
     int64& spatial_dimension_to_split, int64& activations_batch_dim,
     bool is_backprop) {
-  std::vector<int64> transpose_dims;
-  ConvolutionDimensionNumbers new_dim_numbers = dim_numbers;
-  if (spatial_dimension_to_split != activations_batch_dim + 1) {
+  std::vector<int64> transpose_dims(activations->shape().rank());
+  if (spatial_dimension_to_split == activations_batch_dim + 1) {
+    absl::c_iota(transpose_dims, 0);
+  } else {
+    ConvolutionDimensionNumbers new_dim_numbers = dim_numbers;
     int64 pushed_counter = 0;
     int64 new_batch_dim, new_spatial_dim;
+    int64 dim_counter = 0;
     for (int i = 0; i < activations->shape().rank(); ++i) {
       if (i == activations_batch_dim) {
         continue;
       }
       if (i == spatial_dimension_to_split) {
-        transpose_dims.push_back(activations_batch_dim);
+        transpose_dims[dim_counter++] = activations_batch_dim;
         new_batch_dim = pushed_counter;
         pushed_counter++;
         new_spatial_dim = pushed_counter;
@@ -452,7 +488,7 @@ ConvolutionVisitor::BringSpaceNextToBatch(
           }
         }
       }
-      transpose_dims.push_back(i);
+      transpose_dims[dim_counter++] = i;
       pushed_counter++;
     }
 
@@ -460,14 +496,14 @@ ConvolutionVisitor::BringSpaceNextToBatch(
     spatial_dimension_to_split = new_spatial_dim;
     TF_ASSIGN_OR_RETURN(activations,
                         MakeTransposeHlo(activations, transpose_dims));
-  }
 
-  if (is_backprop) {
-    new_dim_numbers.set_input_feature_dimension(activations_batch_dim);
-  } else {
-    new_dim_numbers.set_input_batch_dimension(activations_batch_dim);
+    if (is_backprop) {
+      new_dim_numbers.set_input_feature_dimension(activations_batch_dim);
+    } else {
+      new_dim_numbers.set_input_batch_dimension(activations_batch_dim);
+    }
+    dim_numbers = new_dim_numbers;
   }
-  dim_numbers = new_dim_numbers;
 
   return SpaceNextToBatchDetails{activations, transpose_dims};
 }
@@ -586,12 +622,23 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     VLOG(1) << "Checking if conv is supported for propagation "
             << consumer->ToString();
     if (IsConvSuitableForSpaceToBatch(consumer)) {
-      for (int64 i = 0; i < consumer->operand_count(); ++i) {
-        auto old_producer = consumer->mutable_operand(i);
-        if (i == 0 && !old_to_new_instrs_.contains(old_producer)) {
-          return false;
-        }
+      if (!old_to_new_instrs_.contains(consumer->mutable_operand(0))) {
+        return false;
       }
+      auto dim_map_val_op_0 = instr_to_dim_map_[consumer->mutable_operand(0)];
+      // Make sure that the space dimension is the same across the producer
+      // and consumer.
+      if (consumer->convolution_dimension_numbers().input_spatial_dimensions(
+              get_chosen_spatial_dim(consumer)) != dim_map_val_op_0.second) {
+        return false;
+      }
+      // Make sure that the batch dimension is the same across the producer
+      // and consumer.
+      if (consumer->convolution_dimension_numbers().input_batch_dimension() !=
+          dim_map_val_op_0.first) {
+        return false;
+      }
+
       return true;
     }
 
@@ -611,13 +658,35 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
     VLOG(2) << "Checking for backprop filter conv operands "
             << consumer->operand_count();
 
-    if (!old_to_new_instrs_.contains(consumer->mutable_operand(1))) {
+    auto activations = consumer->mutable_operand(0);
+    auto kernel = consumer->mutable_operand(1);
+
+    if (!old_to_new_instrs_.contains(kernel)) {
       VLOG(2) << "Backprop filter conv not ready for propagation because of "
                  "kernel is not space-to-batched";
       return false;
     }
 
-    if (!old_to_new_instrs_.contains(consumer->mutable_operand(0))) {
+    if (!old_to_new_instrs_.contains(activations)) {
+      const int64 lhs_batch = activations->shape().dimensions(
+          consumer->convolution_dimension_numbers().input_feature_dimension());
+      auto dim_map_val_op_1 = instr_to_dim_map_[consumer->mutable_operand(1)];
+      const int64 old_batch_dim = dim_map_val_op_1.first;
+      auto second_operand = old_to_new_instrs_[kernel];
+      auto permute_dims_second_operand =
+          instr_to_dim_permute_map_[second_operand];
+      const int64 new_batch_dim =
+          DimLookUp(permute_dims_second_operand, old_batch_dim);
+      const int64 rhs_batch = second_operand->shape().dimensions(new_batch_dim);
+
+      // Because we want to convert activations into a space-to-batched version
+      // only for backprop filter convolutions, we want to make sure that the
+      // batch dimensions (feature dimensions, technically) are same sized.
+      // Since RHS is already space-to-batched, we need to account for it too.
+      if (rhs_batch != kNumSplits * lhs_batch) {
+        return false;
+      }
+
       // If activations have not been propagated through, we can do
       // space-to-batch on them provided kernel has been propagated.
       VLOG(2) << "Backprop filter conv ready for propagation: kernel ready, "
@@ -625,10 +694,10 @@ bool ConvolutionVisitor::CanPropagate(HloInstruction* consumer,
       return true;
     }
 
-    auto first_operand = old_to_new_instrs_[consumer->mutable_operand(0)];
-    auto dim_map_val_op_0 = instr_to_dim_map_[consumer->mutable_operand(0)];
-    auto second_operand = old_to_new_instrs_[consumer->mutable_operand(1)];
-    auto dim_map_val_op_1 = instr_to_dim_map_[consumer->mutable_operand(1)];
+    auto first_operand = old_to_new_instrs_[activations];
+    auto dim_map_val_op_0 = instr_to_dim_map_[activations];
+    auto second_operand = old_to_new_instrs_[kernel];
+    auto dim_map_val_op_1 = instr_to_dim_map_[kernel];
 
     auto permute_dims_first_operand = instr_to_dim_permute_map_[first_operand];
     auto permute_dims_second_operand =
@@ -853,6 +922,11 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
            absl::c_linear_search(reduce_dims, space_dim);
   }
 
+  if (consumer->opcode() == HloOpcode::kReduceWindow &&
+      consumer->shape().IsTuple()) {
+    // TODO (b/73062247) variadic reduce window is not yet supported.
+    return false;
+  }
   if (consumer->opcode() == HloOpcode::kReduceWindow ||
       consumer->opcode() == HloOpcode::kSelectAndScatter) {
     auto first_operand = consumer->mutable_operand(0);
@@ -912,12 +986,14 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     auto dim_map_val = instr_to_dim_map_[producer];
     auto new_consumer = computation->AddInstruction(consumer->Clone());
 
+    bool is_pivot_producer_modified = false;
     // For elementwise binary ops, both of whose operands have been space-to-
     // batched, if their new spatial sizes don't match, choose the bigger one
     // as the producer.
     if (consumer->IsElementwiseBinary() &&
         old_to_new_instrs_.contains(consumer->mutable_operand(0)) &&
         old_to_new_instrs_.contains(consumer->mutable_operand(1))) {
+      is_pivot_producer_modified = true;
       if (old_to_new_instrs_[consumer->mutable_operand(0)]
               ->shape()
               .dimensions() > old_to_new_instrs_[consumer->mutable_operand(1)]
@@ -969,7 +1045,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
               pivot_new_instr->shape().dimensions(space_dim) * batch_size /
               old_batch_size;
 
-          CHECK_GT(pivot_space_size, new_dimensions[space_dim]);
+          CHECK(pivot_space_size > new_dimensions[space_dim] ||
+                !is_pivot_producer_modified);
 
           PaddingConfig padding_config =
               MakeNoPaddingConfig(reshape->shape().dimensions_size());
@@ -1119,7 +1196,7 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
 
     Window new_win;
     for (int64 i = 0; i < consumer->window().dimensions().size(); ++i) {
-      auto dim = DimLookUp(permute_dims, i);
+      auto dim = ReverseDimLookUp(permute_dims, i);
       new_win.add_dimensions();
       new_win.mutable_dimensions(i)->set_stride(
           consumer->window().dimensions(dim).stride());
@@ -1339,7 +1416,9 @@ StatusOr<HloInstruction*> ConvolutionVisitor::SelectValidPortion(
   const int64 new_space_size = new_shape.dimensions(new_space_dim);
   const int64 old_batch_size = old_shape.dimensions(old_batch_dim);
   const int64 old_space_size = old_shape.dimensions(old_space_dim);
-  CHECK_EQ(new_batch_size % old_batch_size, 0);
+  CHECK_EQ(new_batch_size % old_batch_size, 0)
+      << " New batch size " << new_batch_size << " old batch size "
+      << old_batch_size;
   const int64 num_splits = new_batch_size / old_batch_size;
   // Build a constant PRED to decide which elements in the split dimension
   // are from halo.
@@ -1394,8 +1473,10 @@ StatusOr<HloInstruction*> ConvolutionVisitor::BatchToSpace(
   CHECK(old_to_new_instrs_.contains(old_instr));
   auto new_instr = old_to_new_instrs_[old_instr];
   VLOG(2) << "old_batch_dim " << old_batch_dim << " old_space_dim "
-          << old_space_dim << " new_instr " << new_instr->ToString()
-          << " permute dims " << instr_to_dim_permute_map_.count(new_instr);
+          << old_space_dim << " old_instr " << old_instr->ToString()
+          << "\n new_instr " << new_instr->ToString() << " permute dims "
+          << instr_to_dim_permute_map_.count(new_instr) << " old_batch_size "
+          << old_batch_size;
   CHECK(instr_to_dim_permute_map_.contains(new_instr));
   auto permute_dims = instr_to_dim_permute_map_[new_instr];
   const int64 batch_dim = DimLookUp(permute_dims, old_batch_dim);
@@ -1565,6 +1646,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
                           c.spatial_dimension_to_split, activations_batch_dim));
   activations_new = retval.instr;
   std::vector<int64> trans_dims = retval.transpose_dims;
+  CHECK(!trans_dims.empty());
   auto select_val = computation_->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(activations_new->shape().element_type())));
 
@@ -1578,8 +1660,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
 
   VLOG(1) << "spatial size " << c.spatial_size;
 
-  const int64 num_splits = kNewBatchSize / old_batch_size;
-
+  const int64 num_splits = kNumSplits;
   const int64 output_offsets = convolution->shape().dimensions(
       permuted_conv_dims_numbers.output_spatial_dimensions(
           get_chosen_spatial_dim(convolution)));
@@ -1614,6 +1695,8 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
         activations_new->shape().dimensions().end());
     const int64 reshaped_space_size =
         new_space_size * new_batch_size / old_batch_size;
+    VLOG(3) << "Increasing the spatial size while propagating new_batch_size "
+            << new_batch_size << " old_batch_size " << old_batch_size;
     new_dimensions[c.spatial_dimension_to_split] = reshaped_space_size;
     new_dimensions[activations_batch_dim] = old_batch_size;
 
@@ -1621,10 +1704,12 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     TF_ASSIGN_OR_RETURN(HloInstruction * reshaped_activations,
                         MakeReshapeHlo(new_dimensions, activations_new));
 
+    VLOG(3) << "First reshape done";
     PaddingConfig padding_config =
         MakeNoPaddingConfig(reshaped_activations->shape().dimensions_size());
     padding_config.mutable_dimensions(c.spatial_dimension_to_split)
-        ->set_edge_padding_high(spatial_split_size * new_batch_size -
+        ->set_edge_padding_high(spatial_split_size * new_batch_size /
+                                    old_batch_size -
                                 reshaped_space_size);
     padding_config.mutable_dimensions(c.spatial_dimension_to_split)
         ->set_edge_padding_low(0);
@@ -1647,6 +1732,8 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
         reshaped_activations,
         MakeReshapeHlo(reshape_back_dims, reshaped_activations));
 
+    VLOG(3) << "Second reshape done";
+
     TF_ASSIGN_OR_RETURN(
         activations_new,
         HaloDuplicateWithSlice(
@@ -1664,6 +1751,7 @@ Status ConvolutionVisitor::PropagateOnConv(HloInstruction* convolution) {
     // additional space available, and adjust the required slice size (and
     // thereby the halo size).
     if (spatial_split_size < new_space_size) {
+      VLOG(3) << "Decreasing the spatial size while propagating";
       const int64 additional_space_present = spatial_split_size % c.stride;
       spatial_split_size = new_space_size;
       slice_size =
@@ -1758,6 +1846,7 @@ ConvolutionVisitor::SplitSpace(HloInstruction* activations,
 
   activations = retval.instr;
   std::vector<int64> transpose_dims = retval.transpose_dims;
+  CHECK(!transpose_dims.empty());
   // Because we are splitting the spatial dimension, if convolution needed
   // padding in the spatial dimension, we materialize it.
   if (high_padding || low_padding) {
@@ -1774,7 +1863,9 @@ ConvolutionVisitor::SplitSpace(HloInstruction* activations,
                         MakePadHlo(activations, padding, padding_config));
   }
   VLOG(1) << "Initial padded activations shape "
-          << activations->shape().ToString();
+          << activations->shape().ToString() << " old_batch_size "
+          << old_batch_size << " activations_batch_dim "
+          << activations_batch_dim;
 
   // Now we reorganize the activations. E.g. if the shape [B, SPACE] was [1, 16]
   // and 4 splits were needed, we first create [4, 4]. Next, to deal with halo
@@ -1829,7 +1920,10 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   CHECK(old_to_new_instrs_.contains(kernel_old));
   auto kernel_new = old_to_new_instrs_[kernel_old];
 
+  auto permute_dims_kernel = instr_to_dim_permute_map_[kernel_new];
+
   HloInstruction* activations_new = nullptr;
+  bool activations_locally_space_to_batched = false;
   // If activations were no space-to-batched, we space-to-batch them below.
   if (!old_to_new_instrs_.contains(activations_old)) {
     VLOG(1) << "Space-to-batching activations to enable space-to-depth";
@@ -1838,28 +1932,34 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
     instr_to_dim_map_[activations_old] =
         std::make_pair(prev_feature_dim, prev_batch_dim);
 
-    int64 activations_batch_dim = original_conv_dims.input_feature_dimension();
-    const int64 old_batch_size =
-        activations_old->shape().dimensions(activations_batch_dim);
-    const int64 num_splits = kNewBatchSize / old_batch_size;
+    const int64 new_kernel_space_dim =
+        DimLookUp(permute_dims_kernel, kernel_space_dim);
+
     const int64 new_kernel_split_dim_size =
-        kernel_new->shape().dimensions(kernel_space_dim);
+        kernel_new->shape().dimensions(new_kernel_space_dim);
     const int64 needed_spatial_size = rhs_dilation * new_kernel_split_dim_size;
     const int64 pad_size =
-        needed_spatial_size * num_splits - old_split_dim_size;
+        needed_spatial_size * kNumSplits - old_split_dim_size;
     ConvolutionDimensionNumbers tmp_dim_numbers;
     tmp_dim_numbers = original_conv_dims;
     TF_ASSIGN_OR_RETURN(
         auto retval,
         SplitSpace(activations_old, tmp_dim_numbers, old_space_dim,
-                   activations_batch_dim,
+                   old_batch_dim,
                    /*high_padding=*/pad_size, /*low_padding=*/0,
-                   needed_spatial_size, num_splits, /*is_backprop=*/true));
+                   needed_spatial_size, kNumSplits, /*is_backprop=*/true));
 
     old_to_new_instrs_[activations_old] = retval.first;
-    instr_to_dim_permute_map_[retval.first] = retval.second;
 
-    VLOG(3) << "Edited conv dims " << original_conv_dims.DebugString();
+    std::vector<int64> reversed_transpose_dims(retval.second.size());
+    for (int64 i = 0; i < retval.second.size(); ++i) {
+      reversed_transpose_dims[i] = ReverseDimLookUp(retval.second, i);
+    }
+    instr_to_dim_permute_map_[retval.first] = reversed_transpose_dims;
+
+    VLOG(3) << "New Activations " << retval.first->ToString();
+
+    activations_locally_space_to_batched = true;
   }
 
   CHECK(old_to_new_instrs_.contains(activations_old));
@@ -1884,7 +1984,7 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
         i, DimLookUp(permute_dims,
                      original_conv_dims.input_spatial_dimensions(i)));
     permuted_conv_dims_numbers.set_kernel_spatial_dimensions(
-        i, DimLookUp(permute_dims,
+        i, DimLookUp(permute_dims_kernel,
                      original_conv_dims.kernel_spatial_dimensions(i)));
   }
 
@@ -1905,10 +2005,11 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
       previous_spatial_dim_count, previous_chosen_spatial_dim_in_output);
 
   const int64 kernel_input_feature_dim = DimLookUp(
-      permute_dims, original_conv_dims.kernel_input_feature_dimension());
+      permute_dims_kernel, original_conv_dims.kernel_input_feature_dimension());
 
-  const int64 kernel_output_feature_dim = DimLookUp(
-      permute_dims, original_conv_dims.kernel_output_feature_dimension());
+  const int64 kernel_output_feature_dim =
+      DimLookUp(permute_dims_kernel,
+                original_conv_dims.kernel_output_feature_dimension());
 
   permuted_conv_dims_numbers.set_kernel_input_feature_dimension(
       kernel_input_feature_dim);
@@ -1931,7 +2032,8 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
 
   VLOG(1) << "Propagating on conv activations_batch_dim "
           << activations_batch_dim << " spatial_dimension_to_split "
-          << spatial_dimension_to_split << " old_batch_size " << old_batch_size;
+          << spatial_dimension_to_split << " old_batch_size " << old_batch_size
+          << " new_split_dim_size " << new_split_dim_size;
 
   TF_ASSIGN_OR_RETURN(
       auto retval,
@@ -1939,6 +2041,7 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
                             spatial_dimension_to_split, activations_batch_dim,
                             /*is_backprop=*/true));
   std::vector<int64> transpose_dims = retval.transpose_dims;
+  CHECK(!transpose_dims.empty());
   activations_new = retval.instr;
 
   VLOG(1) << "Activations_new post BringSpaceNextToBatch "
@@ -1949,13 +2052,15 @@ Status ConvolutionVisitor::PropagateOnBackpropFilterConv(
   auto select_val = computation_->AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::Zero(activations_new->shape().element_type())));
 
-  // Select activations correctly by masking additional space.
-  TF_ASSIGN_OR_RETURN(
-      activations_new,
-      SelectValidPortion(activations_new, activations_old, select_val,
-                         activations_batch_dim, spatial_dimension_to_split,
-                         old_batch_dim, old_space_dim));
-
+  if (!activations_locally_space_to_batched) {
+    // Select activations correctly by masking additional space.
+    TF_ASSIGN_OR_RETURN(
+        activations_new,
+        SelectValidPortion(activations_new, activations_old, select_val,
+                           activations_batch_dim, spatial_dimension_to_split,
+                           old_batch_dim, old_space_dim));
+  }
+  VLOG(3) << "Selecting the valid kernel area";
   // Select kernel correctly by masking additional space.
   TF_ASSIGN_OR_RETURN(
       kernel_new,
@@ -2238,7 +2343,6 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
 
   VLOG(1) << "spatial size " << c.spatial_size;
 
-  const int64 num_splits = kNewBatchSize / old_batch_size;
   auto original_conv = convolution;
 
   const int64 output_spatial_dim = dim_numbers.output_spatial_dimensions(
@@ -2246,13 +2350,13 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   const int64 output_offsets =
       convolution->shape().dimensions(output_spatial_dim);
   const int64 output_offsets_per_split =
-      CeilOfRatio(output_offsets, num_splits);
+      CeilOfRatio(output_offsets, kNumSplits);
 
   int64 spatial_split_size =
       CeilOfRatio(output_offsets_per_split, c.base_dilation_factor) * c.stride;
   // Keep increasing the split size so that overall size isn't smaller than the
   // original spatial dimension.
-  while (spatial_split_size * num_splits - c.spatial_size < 0) {
+  while (spatial_split_size * kNumSplits - c.spatial_size < 0) {
     spatial_split_size += c.stride;
   }
 
@@ -2276,12 +2380,12 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
   const int64 slice_size = spatial_split_size + c.halo_size;
 
   // Pad spatial dim.
-  const int64 pad_size = spatial_split_size * num_splits - c.spatial_size;
+  const int64 pad_size = spatial_split_size * kNumSplits - c.spatial_size;
 
   VLOG(1) << "spatial_split_size " << spatial_split_size << " stride "
           << c.stride << " slice_size " << slice_size;
   VLOG(1) << "spatial_dimension_to_split " << c.spatial_dimension_to_split
-          << " num_splits " << num_splits << " kernel_spatial_dim_size "
+          << " num_splits " << kNumSplits << " kernel_spatial_dim_size "
           << c.kernel_spatial_dim_size;
   int64 spatial_dimension_to_split = c.spatial_dimension_to_split;
   TF_ASSIGN_OR_RETURN(
@@ -2292,7 +2396,7 @@ Status ConvolutionVisitor::PerformSpaceToBatchOnConvolution(
                  /*low_padding=*/c.base_dilation_factor == 1
                      ? c.inherent_low_padding
                      : 0,
-                 spatial_split_size, num_splits));
+                 spatial_split_size, kNumSplits));
   HloInstruction* batch_increased_reshape = retval.first;
   convolution->SetupDerivedInstruction(batch_increased_reshape);
 

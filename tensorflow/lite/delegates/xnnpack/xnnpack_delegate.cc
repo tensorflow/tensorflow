@@ -89,6 +89,8 @@ class Delegate {
   // ignored in the delegate implementation, because their outputs are
   // pre-unpacked in DelegatePrepare.
   std::unordered_set<int> static_unpack_nodes_;
+  // Set of indices of tensors with unpacked static sparse weights.
+  std::unordered_set<int> static_sparse_weights_;
 #if !defined(__EMSCRIPTEN__) || defined(__EMSCRIPTEN_PTHREADS__)
   // Thread pool with smart-pointer for lifetime management.
   std::unique_ptr<pthreadpool, decltype(&pthreadpool_destroy)> threadpool_{
@@ -134,23 +136,35 @@ class Subgraph {
     std::unique_ptr<xnn_subgraph, decltype(&xnn_delete_subgraph)> subgraph(
         subgraph_ptr, &xnn_delete_subgraph);
 
+    bool has_sparse_weights = false;
     // Detect which tensors are used as inputs or outputs of any subgraph nodes.
     // -1 denotes tensor not used in the subgraph. These indexes will be
     // filtered out and removed later.
     std::vector<int> tensors(context->tensors_size, -1);
     for (int i = 0; i < params->nodes_to_replace->size; i++) {
       const int node_index = params->nodes_to_replace->data[i];
-      if (delegate->static_unpack_nodes_.count(node_index)) {
-        // The node unpacks static input and can be skipped because its input
-        // was pre-unpacked in DelegatePrepare.
-        continue;
-      }
 
       TfLiteNode* node = nullptr;
       TfLiteRegistration* registration = nullptr;
       if (context->GetNodeAndRegistration(context, node_index, &node,
                                           &registration) != kTfLiteOk) {
         return nullptr;
+      }
+
+      // Detect if any of the node's inputs are sparse weights.
+      if (!has_sparse_weights) {
+        for (int i = 0; i < node->inputs->size; i++) {
+          if (delegate->static_sparse_weights_.count(node->inputs->data[i]) !=
+              0) {
+            has_sparse_weights = true;
+          }
+        }
+      }
+
+      if (delegate->static_unpack_nodes_.count(node_index) != 0) {
+        // The node unpacks static input and can be skipped because its input
+        // was pre-unpacked in DelegatePrepare.
+        continue;
       }
 
       switch (registration->builtin_code) {
@@ -260,8 +274,9 @@ class Subgraph {
     }
 
     xnn_runtime_t runtime_ptr = nullptr;
+    const uint32_t flags = has_sparse_weights ? XNN_FLAG_SPARSE_INFERENCE : 0;
     status = xnn_create_runtime_v2(subgraph.get(), delegate->threadpool(),
-                                   /*flags=*/0, &runtime_ptr);
+                                   flags, &runtime_ptr);
     if (status != xnn_status_success) {
       TF_LITE_KERNEL_LOG(context, "failed to create XNNPACK runtime");
       return nullptr;
@@ -2911,6 +2926,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
   static_unpacked_data_map_.clear();
   static_unpacked_data_.clear();
   static_unpack_nodes_.clear();
+  static_sparse_weights_.clear();
 
   TfLiteIntArray* execution_plan = nullptr;
   if (context->GetExecutionPlan(context, &execution_plan) != kTfLiteOk) {
@@ -2962,6 +2978,11 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
           quasi_static_tensors_to_unpack.insert(node->inputs->data[0]);
         }
 
+        // If dequantized input is sparse, so is its output
+        if (static_sparse_weights_.count(node->inputs->data[0]) != 0) {
+          static_sparse_weights_.insert(node->outputs->data[0]);
+        }
+
         // Skip this node for now. If output of the node is consumed only by
         // delegated nodes, it will be added to nodes_to_delegate in the end.
         continue;
@@ -2987,6 +3008,7 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
         static_unpack_nodes_.insert(node_index);
         quasi_static_tensors_producers[node->outputs->data[0]] = node_index;
         quasi_static_tensors.insert(node->outputs->data[0]);
+        static_sparse_weights_.insert(node->outputs->data[0]);
 
         // Skip this node for now. If output of the node is consumed only by
         // delegated nodes, it will be added to nodes_to_delegate in the end.
@@ -3156,22 +3178,25 @@ TfLiteIntArray* Delegate::PrepareOpsToDelegate(TfLiteContext* context) {
 
         switch (input_tensor.type) {
           case kTfLiteFloat32: {
+            const size_t dense_size = context->tensors[t].bytes / sizeof(float);
+            float* unpacked_fp32_data = reinterpret_cast<float*>(unpacked_data);
             tflite::optimize::sparsity::FormatConverter<float> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
-                static_cast<const float*>(input_tensor.data.data));
-            const std::vector<float> out = converter.GetData();
-            std::memcpy(unpacked_data, out.data(), out.size() * sizeof(float));
+                static_cast<const float*>(input_tensor.data.data), dense_size,
+                unpacked_fp32_data, context);
             break;
           }
           case kTfLiteFloat16: {
+            const size_t dense_size =
+                context->tensors[t].bytes / sizeof(Eigen::half);
+            Eigen::half* unpacked_fp16_data =
+                reinterpret_cast<Eigen::half*>(unpacked_data);
             tflite::optimize::sparsity::FormatConverter<Eigen::half> converter(
                 vector_shape, *input_tensor.sparsity);
             converter.SparseToDense(
-                static_cast<const Eigen::half*>(input_tensor.data.data));
-            const std::vector<Eigen::half> out = converter.GetData();
-            std::memcpy(unpacked_data, out.data(),
-                        out.size() * sizeof(Eigen::half));
+                static_cast<const Eigen::half*>(input_tensor.data.data),
+                dense_size, unpacked_fp16_data, context);
             break;
           }
           default: {

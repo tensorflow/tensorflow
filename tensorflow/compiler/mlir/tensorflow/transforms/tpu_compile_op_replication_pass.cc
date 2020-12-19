@@ -76,8 +76,8 @@ class TPUCompileOpReplicationPass
               builder.create<TF::TPUCompileSucceededAssertOp>(
                   new_compile_op->getLoc(),
                   new_compile_op->getResult(kStatusResultIndex));
-          new_assert_op.setAttr(kDeviceAttr,
-                                new_compile_op->getAttr(kDeviceAttr));
+          new_assert_op->setAttr(kDeviceAttr,
+                                 new_compile_op->getAttr(kDeviceAttr));
         }
         // Updates the operand to use the result of the newly created
         // tf._TPUCompileMlir op.

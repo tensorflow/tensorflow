@@ -27,11 +27,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
@@ -70,8 +70,8 @@ class ConvertEmbeddedLookupFunc {
   explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
-    func_.setAttr(kTFImplements,
-                  StringAttr::get("embedding_lookup", func_.getContext()));
+    func_->setAttr(kTFImplements,
+                   StringAttr::get("embedding_lookup", func_.getContext()));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);
@@ -326,20 +326,21 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
     // 2) tf._implements, with proto attributes.
     // 3) tf.api_implements.
     // We need to handle them separately.
-    auto tf_implements_attr_str = func.getAttrOfType<StringAttr>(kTFImplements);
+    auto tf_implements_attr_str =
+        func->getAttrOfType<StringAttr>(kTFImplements);
     if (tf_implements_attr_str) {
       ConvertTFImplements(func, tf_implements_attr_str);
       continue;
     }
 
-    auto tf_implements_attr = func.getAttrOfType<FuncAttr>(kTFImplements);
+    auto tf_implements_attr = func->getAttrOfType<FuncAttr>(kTFImplements);
     if (tf_implements_attr) {
       ConvertTFImplementsWithAttributes(func, tf_implements_attr);
       continue;
     }
 
     auto tf_api_implements_attr =
-        func.getAttrOfType<StringAttr>(kTFAPIImplements);
+        func->getAttrOfType<StringAttr>(kTFAPIImplements);
     if (tf_api_implements_attr) {
       // TODO(b/147536816): Keras lstm should set up the correct attributes.
       ConvertTFAPIImplements(func, tf_api_implements_attr, module);

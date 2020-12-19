@@ -72,7 +72,7 @@ own implementation for the interface methods.
 
 ### 1 - `SimpleDelegateInterface`
 
-This class represents the capabilities of the delegate, which operations aer
+This class represents the capabilities of the delegate, which operations are
 supported, and a factory class for creating a kernel which encapsulates the
 delegated graph. For more details, see the interface defined in this
 [C++ header file](https://github.com/tensorflow/tensorflow/blob/8a643858ce174b8bd1b4bb8fa4bfaa62f7e8c45f/tensorflow/lite/delegates/utils/simple_delegate.h#L71).

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -76,8 +76,13 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
     if (!alloc.symbolOperands().empty()) {
       return failure();
     }
+    auto reuse_input_candidates = alloc.getAttrOfType<ArrayAttr>(
+        TFAllocOp::kReuseInputCandidatesAttrName);
+    auto reuse_output_index =
+        alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
-                                           operands);
+                                           operands, reuse_input_candidates,
+                                           reuse_output_index);
     return success();
   }
 };

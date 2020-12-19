@@ -113,7 +113,7 @@ struct PerDeviceCollector {
     }
 
     stats.occupancy_pct =
-        occ_result.activeBlocksPerMultiprocessor * params.block_size;
+        occ_result.activeBlocksPerMultiprocessor * params.block_size * 100;
     stats.occupancy_pct /= device_properties.maxThreadsPerMultiprocessor;
 
     status = cudaOccMaxPotentialOccupancyBlockSize(
@@ -160,6 +160,11 @@ struct PerDeviceCollector {
                               GetStatTypeStr(StatType::kKernelAnnotation)),
                           *plane->GetOrCreateStatMetadata(event.annotation));
     }
+    if (!event.nvtx_range.empty()) {
+      xevent.AddStatValue(
+          *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),
+          *plane->GetOrCreateStatMetadata(event.nvtx_range));
+    }
     if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
@@ -184,7 +189,7 @@ struct PerDeviceCollector {
       params.dynamic_smem_size = event.kernel_info.dynamic_shared_memory_usage;
 
       OccupancyStats& occ_stats = occupancy_cache[params];
-      if (occ_stats.occupancy_pct == 0) {
+      if (occ_stats.occupancy_pct == 0.0) {
         occ_stats = GetOccupancy(params);
       }
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
@@ -224,26 +229,24 @@ struct PerDeviceCollector {
 
     std::vector<Annotation> annotation_stack =
         ParseAnnotationStack(event.annotation);
-    // If multiple metadata have the same key name, show the values from the top
-    // of the stack (innermost annotation). Concatenate the values from
-    // "hlo_op".
-    absl::flat_hash_set<absl::string_view> key_set;
-    std::vector<absl::string_view> hlo_op_names;
-    for (auto annotation = annotation_stack.rbegin();
-         annotation != annotation_stack.rend(); ++annotation) {
-      for (const Annotation::Metadata& metadata : annotation->metadata) {
-        if (metadata.key == "tf_op") {
-          continue;  // ignored, obtained from HLO proto via DebugInfoMap
-        } else if (key_set.insert(metadata.key).second) {
-          xevent.ParseAndAddStatValue(
-              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
-        }
-      }
-    }
     if (!annotation_stack.empty()) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
           *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
+    }
+    // If multiple metadata have the same key name, show the values from the top
+    // of the stack (innermost annotation). Concatenate the values from
+    // "hlo_op".
+    absl::flat_hash_set<absl::string_view> key_set;
+
+    for (auto annotation = annotation_stack.rbegin();
+         annotation != annotation_stack.rend(); ++annotation) {
+      for (const Annotation::Metadata& metadata : annotation->metadata) {
+        if (key_set.insert(metadata.key).second) {
+          xevent.ParseAndAddStatValue(
+              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
+        }
+      }
     }
   }
 
@@ -549,8 +552,9 @@ struct PerDeviceCollector {
 }  // namespace
 
 void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
-                        const std::string& annotation) {
-  if (annotation.empty()) return;
+                        const absl::string_view annotation,
+                        const absl::string_view nvtx_range) {
+  if (annotation.empty() && nvtx_range.empty()) return;
   VLOG(3) << "Add annotation: device_id: " << device_id
           << " correlation_id: " << correlation_id
           << " annotation: " << annotation;
@@ -558,20 +562,22 @@ void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   if (per_device_map.annotations.size() < max_size_) {
-    absl::string_view annotation_str =
-        *per_device_map.annotations.insert(annotation).first;
-    per_device_map.correlation_map.emplace(correlation_id, annotation_str);
+    AnnotationInfo info;
+    info.annotation = *per_device_map.annotations.emplace(annotation).first;
+    if (!nvtx_range.empty())
+      info.nvtx_range = *per_device_map.nvtx_ranges.emplace(nvtx_range).first;
+    per_device_map.correlation_map.emplace(correlation_id, info);
   }
 }
 
-absl::string_view AnnotationMap::LookUp(uint32 device_id,
-                                        uint32 correlation_id) {
-  if (device_id >= per_device_map_.size()) return absl::string_view();
+AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32 device_id,
+                                                    uint32 correlation_id) {
+  if (device_id >= per_device_map_.size()) return AnnotationInfo();
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   auto it = per_device_map.correlation_map.find(correlation_id);
   return it != per_device_map.correlation_map.end() ? it->second
-                                                    : absl::string_view();
+                                                    : AnnotationInfo();
 }
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and

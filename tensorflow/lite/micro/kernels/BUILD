@@ -34,7 +34,9 @@ cc_library(
         ],
     }),
     copts = micro_copts(),
-    deps = select({
+    deps = [
+        ":xtensa",
+    ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
@@ -62,6 +64,7 @@ cc_library(
     deps = [
         ":fixedpoint_utils",
         ":kernel_util",
+        ":xtensa",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:common",
@@ -117,6 +120,7 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "prelu.cc",
+        "quantize_common.cc",
         "reduce.cc",
         "reshape.cc",
         "resize_nearest_neighbor.cc",
@@ -126,6 +130,7 @@ cc_library(
         "split_v.cc",
         "strided_slice.cc",
         "sub.cc",
+        "svdf_common.cc",
         "tanh.cc",
         "unpack.cc",
     ] + select({
@@ -144,7 +149,11 @@ cc_library(
             "xtensa/svdf.cc",
         ],
     }),
-    hdrs = ["micro_ops.h"],
+    hdrs = [
+        "micro_ops.h",
+        "quantize.h",
+        "svdf.h",
+    ],
     copts = micro_copts(),
     visibility = [
         # Needed for micro:op_resolvers but visibility can not be finer-grained
@@ -156,6 +165,7 @@ cc_library(
         ":kernel_util",
         ":fixedpoint_utils",
         ":micro_utils",
+        ":xtensa",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
@@ -170,6 +180,24 @@ cc_library(
         "//tensorflow/lite/micro:micro_utils",
         "@flatbuffers",
     ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
+cc_library(
+    name = "xtensa",
+    hdrs = select({
+        "//conditions:default": [
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/xtensa.h",
+        ],
+    }),
+    copts = micro_copts(),
+    deps = select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
@@ -678,6 +706,7 @@ tflite_micro_cc_test(
     srcs = [
         "pad_test.cc",
     ],
+    tags = ["nomsan"],  # b/175133159
     deps = [
         ":kernel_runner",
         "//tensorflow/lite/c:common",

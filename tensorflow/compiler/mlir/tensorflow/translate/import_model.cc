@@ -50,12 +50,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
@@ -190,8 +190,13 @@ Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
       restrict_functionalization_to_tpu_nodes
           ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
           : NodeFilter{};
-  return FunctionalizeControlFlow(graph, flib_def, node_filter,
-                                  /*include_functions=*/true);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      FunctionalizeControlFlow(graph, flib_def, node_filter,
+                               /*include_functions=*/true),
+      "Failed to functionalize Control Flow V1 ops. Consider using Control "
+      "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
+      "compat/v1/enable_control_flow_v2.");
+  return Status::OK();
 }
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
@@ -1530,6 +1535,10 @@ Status ImporterBase::ConvertFunctionArgAndRets(
     const auto& ret = ret_and_idx.value();
     auto* inst = node_values_[ret.node->id()];
     if (ret.node->IsRetval()) {
+      if (!ret.node->requested_device().empty())
+        func.setResultAttr(
+            ret_and_idx.index(), "tf.device",
+            builder_.getStringAttr(ret.node->requested_device()));
       TF_RETURN_IF_ERROR(set_attributes_on_func(ret.node, ret_and_idx.index(),
                                                 /*is_arg=*/false));
       // Lookup the instruction inside the island
@@ -3060,7 +3069,7 @@ Status CreateSavedModelIR(
             /*executor_type=*/builder.getStringAttr(""));
         body_builder.create<mlir::ReturnOp>(func.getLoc(), call.getResults());
       }
-      func.setAttr(
+      func->setAttr(
           "tf_saved_model.exported_names",
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
       const SavedConcreteFunction& concrete_function =
@@ -3158,7 +3167,7 @@ Status CreateSavedModelIR(
           value_attr,
           /*type=*/mlir::TypeAttr::get(type),
           /*is_mutable=*/builder.getUnitAttr());
-      op.setAttr(
+      op->setAttr(
           "tf_saved_model.exported_names",
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     } else if (object.kind_case() == SavedObject::kConstant) {
@@ -3178,13 +3187,13 @@ Status CreateSavedModelIR(
           value_attr,
           /*type=*/mlir::TypeAttr::get(value_attr.Attribute::getType()),
           /*is_mutable=*/nullptr);
-      op.setAttr(
+      op->setAttr(
           "tf_saved_model.exported_names",
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     }
   }
   AdjustBoundInputArgTypes(module);
-  module.setAttr("tf_saved_model.semantics", builder.getUnitAttr());
+  module->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
   SortSavedModelModule(module);
   MarkSavedModelFunctionVisibility(module);
   return Status::OK();
@@ -3444,7 +3453,7 @@ Status SavedModelSignatureDefImporterLite::ConvertInitializer(
 
   // Set the exported name of init function to an reserved name for
   // tf_saved_model.
-  init_func_op.setAttr(
+  init_func_op->setAttr(
       "tf_saved_model.exported_names",
       builder.getStrArrayAttr({absl::StrCat(
           "__tf_saved_model_session_initializer_", target_node_name)}));
@@ -3504,8 +3513,8 @@ Status SavedModelSignatureDefImporterLite::ConvertSignature(
       << sig_def_key << ".";
 
   // Use unique SignatureDef key as exported name.
-  func_op.setAttr("tf_saved_model.exported_names",
-                  builder.getStrArrayAttr({sig_def_key}));
+  func_op->setAttr("tf_saved_model.exported_names",
+                   builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
   for (auto input_and_idx : llvm::enumerate(inputs)) {
@@ -3619,7 +3628,7 @@ SavedModelSignatureDefImporterLite::ConvertSignatures() {
   builder.create<mlir::tf_saved_model::SessionInitializerOp>(
       module_->getLoc(), builder.getArrayAttr(init_sym_refs));
 
-  module_->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
+  (*module_)->setAttr("tf_saved_model.semantics", builder.getUnitAttr());
 
   SortSavedModelModule(*module_);
   MarkSavedModelFunctionVisibility(*module_);
@@ -3649,7 +3658,8 @@ class SavedModelSignatureDefImporter {
                             context, upgrade_legacy, /*import_restore=*/false));
 
     mlir::OpBuilder builder(module->getContext());
-    module->setAttr("tf_saved_model.under_construction", builder.getUnitAttr());
+    (*module)->setAttr("tf_saved_model.under_construction",
+                       builder.getUnitAttr());
     TF_RETURN_IF_ERROR(LiftVariables(bundle, *module));
     module->removeAttr("tf_saved_model.under_construction");
 
@@ -3729,6 +3739,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
     mlir::MLIRContext* context) {
   tensorflow::GraphDebugInfo dummy_debug_info;
   tensorflow::GraphImportConfig specs;
+  specs.enable_shape_inference = false;
   specs.graph_as_function = true;
   for (const auto* control_ret_node : fbody->control_ret_nodes)
     specs.control_outputs.push_back(control_ret_node->name());

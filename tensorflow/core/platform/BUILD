@@ -94,10 +94,6 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/cpu_utils.cc",
-        "profile_utils/cpu_utils.h",
-        "profile_utils/i_cpu_utils_helper.h",
         "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
@@ -985,24 +981,9 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
+alias(
     name = "profile_utils_cpu_utils",
-    srcs = [
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/cpu_utils.cc",
-        "profile_utils/i_cpu_utils_helper.h",
-    ],
-    hdrs = [
-        "profile_utils/cpu_utils.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":logging",
-        ":macros",
-        ":types",
-        "@com_google_absl//absl/base",
-    ],
-    alwayslink = 1,
+    actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
 )
 
 filegroup(
@@ -1021,13 +1002,13 @@ tf_cc_tests(
         "mutex_test.cc",
         "net_test.cc",
         "port_test.cc",
-        "profile_utils/cpu_utils_test.cc",
         "scanner_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
         "stringpiece_test.cc",
         "stringprintf_test.cc",
         "vmodule_benchmark_test.cc",
+        "//tensorflow/core/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
     deps = [
@@ -1370,10 +1351,10 @@ filegroup(
         "numa.h",
         "path.h",
         "prefetch.h",
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/clock_cycle_profiler.h",
-        "profile_utils/cpu_utils.h",
-        "profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "protobuf.h",
         "ram_file_system.h",
         "random.h",
@@ -1661,11 +1642,11 @@ filegroup(
         "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
-        "profile_utils/android_armv7a_cpu_utils_helper.cc",
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/cpu_utils.cc",
-        "profile_utils/cpu_utils.h",
-        "profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.cc",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "protobuf_internal.h",
         "random.cc",
         "random.h",
@@ -1683,7 +1664,6 @@ filegroup(
     srcs = glob(
         [
             "*.h",
-            "profile_utils/**/*.h",
         ],
         exclude = [
             "dynamic_annotations.h",
@@ -1700,16 +1680,18 @@ filegroup(
             "**/rocm.h",
             "**/stream_executor.h",
         ],
-    ),
+    ) + [
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
-filegroup(
+alias(
     name = "legacy_lib_internal_srcs",
-    srcs = [
-        "profile_utils/android_armv7a_cpu_utils_helper.cc",
-        "profile_utils/clock_cycle_profiler.cc",
-    ],
+    actual = "//tensorflow/core/platform/profile_utils:legacy_lib_internal_srcs",
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1728,7 +1710,6 @@ bzl_library(
         "//learning/brain/google/xla/tests:__pkg__",
         "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
         "//nlp/deleuze:__pkg__",
-        "//nlp/projects/minmt:__pkg__",
         "//tensorflow:__subpackages__",
     ],
 )

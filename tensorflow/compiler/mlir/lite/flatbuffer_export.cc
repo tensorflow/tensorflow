@@ -47,10 +47,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -1244,7 +1244,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 }
 
 void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
-  auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+  auto dict_attr = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
   llvm::SmallVector<llvm::StringRef, 2> input_names;
@@ -1481,7 +1481,7 @@ BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
 
 Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
 Translator::CreateMetadataVector() {
-  auto dict_attr = module_.getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
+  auto dict_attr = module_->getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
   std::vector<BufferOffset<tflite::Metadata>> metadata;
   if (dict_attr) {
     for (const auto& named_attr : dict_attr) {
@@ -1559,7 +1559,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
 
   // Fetch function inputs and outputs tensor names.
   auto dict_attr =
-      main_op.getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
+      main_op->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
   if (!dict_attr) return {};
 
   // Get Input and output tensor names from attribute.
@@ -1592,7 +1592,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   }
   // Exported method name.
   auto exported_name =
-      main_op.getAttrOfType<mlir::ArrayAttr>("tf_saved_model.exported_names");
+      main_op->getAttrOfType<mlir::ArrayAttr>("tf_saved_model.exported_names");
   if (exported_name.empty()) {
     main_op.emitError("Empty exported names for main Function");
     return {};
@@ -1658,7 +1658,7 @@ bool UpdateEntryFunction(ModuleOp module) {
   int entry_func_count = 0;
   FuncOp entry_func = nullptr;
   for (auto fn : module.getOps<FuncOp>()) {
-    auto attrs = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
     if (attrs && !attrs.empty()) {
       entry_func_count++;
       entry_func = fn;
@@ -1759,13 +1759,14 @@ Optional<std::string> Translator::TranslateInternal() {
     std::string err;
     if (!failed_flex_ops_.empty())
       err +=
-          "Ops that can be supported by the flex runtime (enabled via setting "
-          "the -emit-select-tf-ops flag):\n" +
+          "Some ops are not supported by the native TFLite runtime, you can "
+          "enable TF kernels fallback using TF Select. See instructions: "
+          "https://www.tensorflow.org/lite/guide/ops_select" +
           failed_flex_ops_summary;
     if (!failed_custom_ops_.empty())
       err +=
-          "Ops that need custom implementation (enabled via setting the "
-          "-emit-custom-ops flag):\n" +
+          "Some ops in the model are custom ops, See instructions to implement "
+          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom" +
           failed_custom_ops_summary;
 
     auto& failed_region = named_regions[first_failed_func];
@@ -1776,7 +1777,7 @@ Optional<std::string> Translator::TranslateInternal() {
   }
 
   std::string model_description;
-  if (auto attr = module_.getAttrOfType<StringAttr>("tfl.description")) {
+  if (auto attr = module_->getAttrOfType<StringAttr>("tfl.description")) {
     model_description = attr.getValue().str();
   } else {
     model_description = "MLIR Converted.";

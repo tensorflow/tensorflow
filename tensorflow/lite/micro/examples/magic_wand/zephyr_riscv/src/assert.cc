@@ -15,5 +15,5 @@ limitations under the License.
 
 extern "C" {
 
-void __assert_func(const char *, int, const char *, const char *) {}
+void __assert_func(const char*, int, const char*, const char*) {}
 }

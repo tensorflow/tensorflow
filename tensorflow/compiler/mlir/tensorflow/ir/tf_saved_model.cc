@@ -25,10 +25,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -79,7 +79,7 @@ static LogicalResult Verify(GlobalTensorOp global_tensor) {
 
 static LogicalResult Verify(SessionInitializerOp session_initializer) {
   mlir::SymbolTable symbol_table(
-      session_initializer.getParentOfType<ModuleOp>());
+      session_initializer->getParentOfType<ModuleOp>());
 
   for (auto sym_ref : session_initializer.initializers()) {
     auto init_func_op = symbol_table.lookup<mlir::FuncOp>(
@@ -327,7 +327,7 @@ static LogicalResult VerifySavedModelModule(
 
 LogicalResult VerifyExportedFunc(FuncOp func) {
   bool reached_bound_inputs = false;
-  auto module = func.getParentOfType<ModuleOp>();
+  auto module = func->getParentOfType<ModuleOp>();
   for (int i = 0, e = func.getNumArguments(); i < e; i++) {
     if (func.getArgAttr(i, "tf_saved_model.bound_input")) {
       reached_bound_inputs = true;
@@ -342,7 +342,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
       continue;
     }
     if (func.getArgAttr(i, "tf.resource_name")) {
-      if (module.getAttr("tf_saved_model.under_construction")) continue;
+      if (module->getAttr("tf_saved_model.under_construction")) continue;
       return func.emitError() << "'tf.resource_name' attribute is not allowed "
                                  "unless it is being under construction";
     }
@@ -355,7 +355,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
     if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
             i, "tf_saved_model.bound_input")) {
       if (!unique_bound_inputs.insert(attr.getValue()).second) {
-        if (module.getAttr("tf_saved_model.under_construction")) continue;
+        if (module->getAttr("tf_saved_model.under_construction")) continue;
         return func.emitError()
                << "duplicate 'tf_saved_model.bound_input' binding";
       }
@@ -431,7 +431,7 @@ bool IsExported(Operation *op) {
 }
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
-  return module.getAttr("tf_saved_model.semantics") != nullptr;
+  return module->getAttr("tf_saved_model.semantics") != nullptr;
 }
 
 Operation *LookupBoundInput(FuncOp func, int arg_index,
@@ -455,7 +455,7 @@ class OptimizeSessionInitializerPattern
 
   LogicalResult matchAndRewrite(SessionInitializerOp op,
                                 PatternRewriter &rewriter) const override {
-    SymbolTable symbol_table(op.getParentOfType<ModuleOp>());
+    SymbolTable symbol_table(op->getParentOfType<ModuleOp>());
 
     SmallVector<FuncOp, 2> to_remove;
     SmallVector<mlir::Attribute, 2> to_keep;
@@ -483,7 +483,7 @@ class OptimizeSessionInitializerPattern
     if (to_keep.empty())
       rewriter.eraseOp(op);
     else
-      op.setAttr("initializers", rewriter.getArrayAttr(to_keep));
+      op->setAttr("initializers", rewriter.getArrayAttr(to_keep));
 
     return success();
   }

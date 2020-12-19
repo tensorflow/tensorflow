@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
 namespace tflite {
@@ -84,20 +84,15 @@ absl::Status SingleOpModel::Invoke() {
   std::string device_name = std::string([[device name] UTF8String]);
   GpuInfo gpu_info;
   GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
-  RuntimeOptions options;
-  options.storage_precision = RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = RuntimeOptions::Precision::FP32;
+  CalculationsPrecision precision = CalculationsPrecision::F32;
   CompiledModel compiled_model;
-  RETURN_IF_ERROR(Compile(graph_, gpu_info, options, &compiled_model));
+  RETURN_IF_ERROR(Compile(graph_, gpu_info, precision, &compiled_model));
   CompiledModel optimized_model;
   RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
-  TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
-  RETURN_IF_ERROR([graph compileModelWithDevice:device
-                                          model:optimized_model
-                                 inputBufferIDs:input_ids
-                                outputBufferIDs:output_ids
-                                 runtimeOptions:options]);
+  InferenceContext inference_context;
+  RETURN_IF_ERROR(inference_context.CompileModelWithDevice(device, optimized_model, input_ids,
+                                                           output_ids, precision));
   std::map<ValueId, BHWC> input_dimensions;
   std::map<ValueId, id<MTLBuffer>> input_buffers;
   for (auto& input : inputs_) {
@@ -129,7 +124,7 @@ absl::Status SingleOpModel::Invoke() {
   id<MTLCommandQueue> command_queue = [device newCommandQueue];
   id<MTLCommandBuffer> command_buffer = [command_queue commandBuffer];
   id<MTLComputeCommandEncoder> command_encoder = [command_buffer computeCommandEncoder];
-  [graph encodeWithEncoder:command_encoder inputOutputBuffers:inout_buffers encoderBlock:nil];
+  inference_context.EncodeWithEncoder(command_encoder, inout_buffers);
   [command_encoder endEncoding];
   [command_buffer commit];
   [command_buffer waitUntilCompleted];
@@ -193,16 +188,11 @@ absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> de
   RETURN_IF_ERROR(
       ValidateOptimizeModel(inputBufferIDs, outputBufferIDs, raw_model, &optimized_model));
 
-  RuntimeOptions options;
-  options.storage_precision = RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = RuntimeOptions::Precision::FP32;
+  CalculationsPrecision precision = CalculationsPrecision::F32;
 
-  TFLInferenceContext* graph = [[TFLInferenceContext alloc] init];
-  RETURN_IF_ERROR([graph compileModelWithDevice:device
-                                          model:optimized_model
-                                 inputBufferIDs:inputBufferIDs
-                                outputBufferIDs:outputBufferIDs
-                                 runtimeOptions:options]);
+  InferenceContext inference_context;
+  RETURN_IF_ERROR(inference_context.CompileModelWithDevice(device, optimized_model, inputBufferIDs,
+                                                           outputBufferIDs, precision));
   std::map<ValueId, BHWC> inputDimensions;
   std::map<ValueId, std::vector<float>> inputBuffersCPU;
   std::map<ValueId, id<MTLBuffer>> inputBuffersGPU;
@@ -239,7 +229,7 @@ absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes, id<MTLDevice> de
   id<MTLCommandQueue> commandQueue = [device newCommandQueue];
   id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
   id<MTLComputeCommandEncoder> commandEncoder = [commandBuffer computeCommandEncoder];
-  [graph encodeWithEncoder:commandEncoder inputOutputBuffers:inputOutputBuffers encoderBlock:nil];
+  inference_context.EncodeWithEncoder(commandEncoder, inputOutputBuffers);
   [commandEncoder endEncoding];
   [commandBuffer commit];
   [commandBuffer waitUntilCompleted];

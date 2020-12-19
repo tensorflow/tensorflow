@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace tf_executor {
@@ -40,7 +41,7 @@ namespace {
 // "tf.entry_function" attribute defined.
 bool CanPruneGraph(FuncOp func) {
   return func.getName() != "main" ||
-         func.getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
+         func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
 }
 
 // Visits an op's operand if it is an output of an Operation in the same
@@ -120,7 +121,8 @@ void PruneGraph(GraphOp graph) {
 namespace {
 
 // This transformation pass prunes a TF graph eliminating dead-nodes.
-struct GraphPruning : public PassWrapper<GraphPruning, FunctionPass> {
+struct GraphPruningPass
+    : public TF::ExecutorGraphPruningPassBase<GraphPruningPass> {
   void runOnFunction() override {
     if (!CanPruneGraph(getFunction())) return;
     getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
@@ -130,12 +132,8 @@ struct GraphPruning : public PassWrapper<GraphPruning, FunctionPass> {
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass() {
-  return std::make_unique<GraphPruning>();
+  return std::make_unique<GraphPruningPass>();
 }
-
-static PassRegistration<GraphPruning> pass(
-    "tf-executor-graph-pruning",
-    "Prune unreachable nodes in a TensorFlow Graph.");
 
 }  // namespace tf_executor
 }  // namespace mlir

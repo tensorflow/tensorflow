@@ -53,14 +53,13 @@ class GpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<
       std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
   RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> hlo_module,
-                                   se::StreamExecutor* executor,
-                                   se::DeviceMemoryAllocator* device_allocator,
-                                   bool optimize) override;
+                                   se::StreamExecutor* executor, bool optimize,
+                                   const CompileOptions& options) override;
 
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
@@ -84,18 +83,22 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
   CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
-                      GpuVersion gpu_version,
-                      se::StreamExecutor* stream_exec) = 0;
+                      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
+                      bool relocatable) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
+
+  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
+      const HloModule& module, std::unique_ptr<llvm::Module> llvm_module,
+      se::StreamExecutor* stream_exec, const CompileOptions& options);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 
@@ -116,6 +119,12 @@ class GpuCompiler : public LLVMCompiler {
   }
 
  private:
+  virtual StatusOr<std::vector<uint8>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8>> modules) {
+    return Unimplemented("LinkModules is not implemented.");
+  }
+
   se::Platform::Id platform_id_;
 
   // The triple that represents our target.

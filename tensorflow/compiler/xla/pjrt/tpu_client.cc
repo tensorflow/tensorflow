@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -94,10 +94,11 @@ Status TpuDeviceState::ThenMemcpyDeviceToDevice(
   return Status::OK();
 }
 
-class PjRtTpuClient : public PjRtClient {
+class PjRtTpuClient : public PjRtStreamExecutorClient {
  public:
   PjRtTpuClient(LocalClient* client,
-                std::vector<std::unique_ptr<PjRtDevice>> devices, int host_id);
+                std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+                int host_id);
 
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -108,14 +109,14 @@ class PjRtTpuClient : public PjRtClient {
       const PjRtExecutable& executable) const override;
 };
 
-PjRtTpuClient::PjRtTpuClient(LocalClient* client,
-                             std::vector<std::unique_ptr<PjRtDevice>> devices,
-                             int host_id)
-    : PjRtClient(kTpuName, client, std::move(devices), host_id,
-                 /*allocator=*/nullptr,
-                 /*host_memory_allocator=*/nullptr,
-                 /*should_stage_host_to_device_transfers=*/false,
-                 /*gpu_run_options=*/nullptr) {}
+PjRtTpuClient::PjRtTpuClient(
+    LocalClient* client,
+    std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices, int host_id)
+    : PjRtStreamExecutorClient(kTpuName, client, std::move(devices), host_id,
+                               /*allocator=*/nullptr,
+                               /*host_memory_allocator=*/nullptr,
+                               /*should_stage_host_to_device_transfers=*/false,
+                               /*gpu_run_options=*/nullptr) {}
 
 StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
     int num_replicas, int num_partitions) const {
@@ -128,7 +129,8 @@ StatusOr<DeviceAssignment> PjRtTpuClient::GetDefaultDeviceAssignment(
                                                             num_partitions);
   }
   // Fallback to default global device assignment if we can't run locally.
-  return PjRtClient::GetDefaultDeviceAssignment(num_replicas, num_partitions);
+  return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
+                                                              num_partitions);
 }
 
 StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
@@ -152,10 +154,10 @@ StatusOr<absl::optional<std::string>> PjRtTpuClient::ExecutableFingerprint(
   return absl::optional<std::string>(tpu_executable->fingerprint());
 }
 
-StatusOr<std::vector<std::unique_ptr<PjRtDevice>>> GetTpuDevices(
+StatusOr<std::vector<std::unique_ptr<PjRtStreamExecutorDevice>>> GetTpuDevices(
     LocalClient* client,
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
-  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   tf_tpu::TpuTopologyExternal topology =
       tf_tpu::TpuPlatformInterface::GetRegisteredPlatform()->topology();
 

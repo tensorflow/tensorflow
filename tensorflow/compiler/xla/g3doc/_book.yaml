@@ -39,6 +39,6 @@ upper_tabs:
       - title: XLA autoclustering
         path: /xla/tutorials/autoclustering_xla
       - title: Use XLA with tf.function
-        path: /xla/tutorials/compile
+        path: /xla/tutorials/jit_compile
 
 - include: /_upper_tabs_right.yaml
