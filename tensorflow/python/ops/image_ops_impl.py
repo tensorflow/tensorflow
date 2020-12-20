@@ -1837,7 +1837,7 @@ def per_image_standardization(image):
       dimensions of each image.
 
   Returns:
-    A `Tensor` with the same shape and dtype as `image`.
+    A `Tensor` with the same shape as `image`.
 
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
@@ -1846,22 +1846,18 @@ def per_image_standardization(image):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
 
-    # Remember original dtype to so we can convert back if needed
-    orig_dtype = image.dtype
-    if orig_dtype not in [dtypes.float16, dtypes.float32]:
-      image = convert_image_dtype(image, dtypes.float32)
-
+    image = math_ops.cast(image, dtype=dtypes.float32)
     num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
     image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
     # Apply a minimum normalization that protects us against uniform images.
     stddev = math_ops.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
-    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, image.dtype))
+    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
     adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
     image -= image_mean
     image = math_ops.divide(image, adjusted_stddev, name=scope)
-    return convert_image_dtype(image, orig_dtype, saturate=True)
+    return image
 
 
 @tf_export('image.random_brightness')
