@@ -2538,7 +2538,7 @@ string PrintName(const string& name, bool print_ids) {
   if (print_ids) {
     return name;
   } else {
-    auto dot_position = name.find_first_of(".");
+    auto dot_position = name.find_first_of('.');
     return name.substr(0, dot_position);
   }
 }
