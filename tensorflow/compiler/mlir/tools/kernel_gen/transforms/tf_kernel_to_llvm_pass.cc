@@ -152,7 +152,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   assert(kernel_module && "expected a kernel module");
 
   auto binary_attr =
-      kernel_module.getAttrOfType<StringAttr>(gpu_binary_annotation_);
+      kernel_module->getAttrOfType<StringAttr>(gpu_binary_annotation_);
   if (!binary_attr) {
     kernel_module.emitOpError()
         << "missing " << gpu_binary_annotation_ << " attribute";
@@ -180,13 +180,13 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
       LLVM::createGlobalString(loc, rewriter, kernel_name_global_name,
                                kernel_name_buffer, LLVM::Linkage::Internal);
 
-  auto adaptor = gpu::LaunchFuncOpAdaptor(
-      operands, launch_op.getOperation()->getAttrDictionary());
+  auto adaptor =
+      gpu::LaunchFuncOpAdaptor(operands, launch_op->getAttrDictionary());
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
   Value context_arg =
-      launch_op.getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
+      launch_op->getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
   auto kernel_params = generateParamsArray(launch_op, operands, rewriter);
 
   auto function = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
@@ -208,7 +208,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
             llvm_pointer_pointer_type_, /* void **kernel_params */
         });
     rewriter.setInsertionPointToStart(
-        launch_op.getParentOfType<ModuleOp>().getBody());
+        launch_op->getParentOfType<ModuleOp>().getBody());
     function = rewriter.create<LLVM::LLVMFuncOp>(
         loc, kTfWrapperLibaryLaunchHelperName, function_type);
   }

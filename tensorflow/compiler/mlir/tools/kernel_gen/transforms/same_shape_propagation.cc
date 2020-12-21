@@ -321,7 +321,7 @@ struct PropagateShapeKnowledgeToKernels
     knowledge.build(getFunction());
 
     getFunction().walk([&](gpu::LaunchFuncOp launch) {
-      auto module = launch.getParentOfType<ModuleOp>();
+      auto module = launch->getParentOfType<ModuleOp>();
       auto kernel = module.lookupSymbol<LLVM::LLVMFuncOp>(launch.kernel());
 
       if (!kernel || kernel.isExternal()) return;

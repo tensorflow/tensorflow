@@ -46,7 +46,7 @@ Operation* emitCallToPrint(Location loc, StringRef func_name, Value arg,
   if (!callee_func) {
     OpBuilder::InsertionGuard insertGuard(*b);
 
-    auto module = caller_func.getParentOfType<ModuleOp>();
+    auto module = caller_func->getParentOfType<ModuleOp>();
     b->setInsertionPointToStart(module.getBody());
     auto func_type = FunctionType::get(arg.getType(), /*results=*/llvm::None,
                                        b->getContext());
@@ -106,7 +106,7 @@ struct EmbedMemRefPrintsPass
     : public EmbedMemRefPrintsPassBase<EmbedMemRefPrintsPass> {
   void runOnFunction() override {
     FuncOp func = getFunction();
-    if (!func.getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
+    if (!func->getAttrOfType<UnitAttr>(TFFrameworkDialect::kTFEntryAttrName))
       return;
 
     Liveness liveness(func);
