@@ -437,7 +437,7 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testCanHandleUnknownDims(self):
-    if(tf.executing_eagerly()):
+    if(context.executing_eagerly()):
       dataset = dataset_ops.Dataset.range(1001)
     else:
       dataset = dataset_ops.Dataset.range(1000)
