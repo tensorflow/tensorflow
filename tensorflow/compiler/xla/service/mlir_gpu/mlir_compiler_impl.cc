@@ -300,9 +300,9 @@ Status InsertBufferLoadPreduleIntoKernel(
 
   auto num_original_args = kernel.getNumArguments();
   std::vector<LLVMType> new_arg_types(buffers.size(), ptr_type);
-  kernel.setAttr(kernel.getTypeAttrName(),
-                 mlir::TypeAttr::get(LLVMType::getFunctionTy(
-                     void_type, new_arg_types, /*isVarArg=*/false)));
+  kernel->setAttr(kernel.getTypeAttrName(),
+                  mlir::TypeAttr::get(LLVMType::getFunctionTy(
+                      void_type, new_arg_types, /*isVarArg=*/false)));
   std::vector<Value> original_args(kernel.args_begin(), kernel.args_end());
 
   std::vector<mlir::Type> as_mlir_types(new_arg_types.begin(),
