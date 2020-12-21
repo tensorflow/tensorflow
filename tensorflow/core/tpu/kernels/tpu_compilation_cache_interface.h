@@ -109,6 +109,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64* uid,
       std::vector<std::string>* proto_key,
+      std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,
       const std::function<Status(TpuProgramGroupInterface*)>& compile_function);
@@ -197,6 +198,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64* uid,
       std::vector<std::string>* proto_key,
+      std::vector<std::string>* sharding_key,
       std::vector<bool>* may_modify_variables,
       std::vector<CompiledSubgraph*>* removed_entries,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,

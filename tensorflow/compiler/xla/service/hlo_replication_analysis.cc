@@ -129,6 +129,13 @@ bool DetermineHloInstructionIsReplicated(
     return true;
   }
 
+  if (hlo->opcode() == HloOpcode::kCustomCall &&
+      (hlo->custom_call_target() == "X64SplitLow" ||
+       hlo->custom_call_target() == "X64SplitHigh" ||
+       hlo->custom_call_target() == "X64Combine")) {
+    return all_operands_replicated(hlo);
+  }
+
   if (hlo->IsElementwise() ||                             //
       hlo->opcode() == HloOpcode::kConcatenate ||         //
       hlo->opcode() == HloOpcode::kConvolution ||         //

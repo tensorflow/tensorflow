@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tpu/tpu_api_dlsym_set_fn.h"
 #if !defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_node_device.h"
@@ -27,13 +28,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
 
-#define TFTPU_SET_FN(Struct, FnName)                                         \
-  Struct->FnName##Fn =                                                       \
-      reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName));   \
-  if (!(Struct->FnName##Fn)) {                                               \
-    LOG(FATAL) << #FnName " not available in this library.";                 \
-    return errors::Unimplemented(#FnName " not available in this library."); \
-  }
 
 // Reminder: Update tpu_library_loader_windows.cc if you are adding new publicly
 // visible methods.
@@ -55,10 +49,10 @@ Status InitializeTpuLibrary(void* library_handle) {
   // loaded. We do not want to register a TPU platform in XLA without the
   // supporting library providing the necessary APIs.
   if (s.ok()) {
-    void (*initialize_fn)();
+    void (*initialize_fn)(bool init_library, int argc, char** argv);
     initialize_fn = reinterpret_cast<decltype(initialize_fn)>(
         dlsym(library_handle, "TfTpu_Initialize"));
-    (*initialize_fn)();
+    (*initialize_fn)(/*init_library=*/true, /*argc=*/0, /*argv=*/nullptr);
 
     RegisterTpuPlatform();
     RegisterTpuSystemDevice();

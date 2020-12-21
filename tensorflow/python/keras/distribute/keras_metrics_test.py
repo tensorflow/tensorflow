@@ -84,9 +84,7 @@ def all_combinations():
 
 def tpu_combinations():
   return combinations.combine(
-      distribution=[
-          strategy_combinations.tpu_strategy_one_step,
-      ],
+      distribution=[strategy_combinations.tpu_strategy,],
       mode=["graph"])
 
 

@@ -18,9 +18,10 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 
+#include "absl/types/span.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -70,6 +71,27 @@ mlir::LogicalResult IsValidGraph(mlir::ModuleOp module) {
   }
   return mlir::success();
 }
+
+// Util that registers 'extra_tf_opdefs' to the TF global registry.
+// Return OK on success, failure if registering failed.
+Status RegisterExtraTfOpDefs(absl::Span<const std::string> extra_tf_opdefs) {
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
+    tensorflow::OpDef opdef;
+    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
+                                                           &opdef)) {
+      LOG(ERROR) << "OpDef parsing failed for: " << tf_opdefs_string;
+      return errors::InvalidArgument("fail to parse extra OpDef");
+    }
+    // Register extra opdefs.
+    // TODO(b/133770952): Support shape functions.
+    tensorflow::OpRegistry::Global()->Register(
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
+          *op_reg_data = tensorflow::OpRegistrationData(opdef);
+          return Status::OK();
+        });
+  }
+  return Status::OK();
+}
 }  // namespace
 
 StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
@@ -92,21 +114,9 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
     return OwningModuleRef(mlir::parseSourceFile(*source_mgr, context));
   }
 
-  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
-    tensorflow::OpDef opdef;
-    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
-                                                           &opdef)) {
-      LOG(ERROR) << "OpDef parsing failed for: " << tf_opdefs_string;
-      return errors::InvalidArgument("fail to parse extra OpDef");
-    }
-    // Register extra opdefs.
-    // TODO(b/133770952): Support shape functions.
-    tensorflow::OpRegistry::Global()->Register(
-        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
-          *op_reg_data = tensorflow::OpRegistrationData(opdef);
-          return Status::OK();
-        });
-  }
+  // Register extra TF ops passed as OpDef.
+  auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
+  if (!extra_opdefs_status.ok()) return extra_opdefs_status;
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
@@ -127,8 +137,13 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
-    const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
-    mlir::PassManager* pass_manager) {
+    const std::unordered_set<std::string>& select_user_tf_ops,
+    const mlir::TFL::QuantizationSpecs& quant_specs,
+    const std::unordered_set<std::string>& saved_model_tags,
+    std::string* result, mlir::PassManager* pass_manager) {
+  // Explicitly disable dumping Op details on failures.
+  module.getContext()->printOpOnDiagnostic(false);
+
   // Register a warning handler only log to std out.
   mlir::ScopedDiagnosticHandler s(
       module.getContext(), [](mlir::Diagnostic& diag) {
@@ -155,10 +170,12 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   }
 
   // Write MLIR TFLite dialect into FlatBuffer
+  OpOrArgLocNameMapper op_or_arg_name_mapper;
   if (!quant_specs.RunWeightQuantization()) {
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, result, emit_builtin_tflite_ops, emit_select_tf_ops,
-            emit_custom_ops)) {
+            emit_custom_ops, select_user_tf_ops, saved_model_tags,
+            &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
   } else {
@@ -167,7 +184,8 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::string pre_quantized_result;
     if (tflite::MlirToFlatBufferTranslateFunction(
             module, &pre_quantized_result, emit_builtin_tflite_ops,
-            emit_select_tf_ops, emit_custom_ops)) {
+            emit_select_tf_ops, emit_custom_ops, select_user_tf_ops,
+            saved_model_tags, &op_or_arg_name_mapper)) {
       return statusHandler.ConsumeStatus();
     }
     flatbuffers::FlatBufferBuilder q_builder(/*initial_size=*/10240);
@@ -198,8 +216,13 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     const std::string& input_filename, const int saved_model_version,
     const std::unordered_set<std::string>& tags,
+    absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,
     mlir::MLIRContext* context) {
+  // Register extra TF ops passed as OpDef.
+  auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
+  if (!extra_opdefs_status.ok()) return extra_opdefs_status;
+
   if (saved_model_version == 2) {
     auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, context);

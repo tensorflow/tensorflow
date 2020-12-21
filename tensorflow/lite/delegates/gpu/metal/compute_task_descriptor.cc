@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -31,9 +30,8 @@ namespace metal {
 
 /// Converts float to destination type (if needed) and stores as bytes array.
 std::vector<uint8_t> GetByteBufferConverted(
-    const std::vector<float>& input_vector,
-    RuntimeOptions::Precision destination_type) {
-  if (destination_type == metal::RuntimeOptions::Precision::FP32) {
+    const std::vector<float>& input_vector, DataType data_type) {
+  if (data_type == DataType::FLOAT32) {
     return GetByteBuffer(input_vector);
   } else {
     std::vector<uint8_t> result;
@@ -50,15 +48,26 @@ std::vector<uint8_t> GetByteBufferConverted(
 /// Resizes, Converts float to destination type (if needed) and stores as bytes
 /// array.
 std::vector<uint8_t> GetByteBufferConvertedResized(
-    const std::vector<float>& input_vector,
-    RuntimeOptions::Precision destination_type, size_t elements_count) {
-  auto result = GetByteBufferConverted(input_vector, destination_type);
+    const std::vector<float>& input_vector, DataType data_type,
+    size_t elements_count) {
+  auto result = GetByteBufferConverted(input_vector, data_type);
   const size_t type_size =
-      destination_type == metal::RuntimeOptions::Precision::FP32
-          ? sizeof(float)
-          : sizeof(HalfBits);
+      data_type == DataType::FLOAT32 ? sizeof(float) : sizeof(HalfBits);
   result.resize(type_size * elements_count);
   return result;
+}
+
+ComputeTaskDescriptor::ComputeTaskDescriptor(const OperationDef& def)
+    : definition(def) {}
+
+void ComputeTaskDescriptor::AddSrcTensor(const std::string& tensor_name,
+                                         const TensorDescriptor& desc) {
+  src_tensors_names.push_back("device FLT4* " + tensor_name);
+}
+
+void ComputeTaskDescriptor::AddDstTensor(const std::string& tensor_name,
+                                         const TensorDescriptor& desc) {
+  dst_tensors_names.push_back("device FLT4* " + tensor_name);
 }
 
 }  // namespace metal

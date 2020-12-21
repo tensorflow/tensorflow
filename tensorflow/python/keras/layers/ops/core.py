@@ -50,7 +50,7 @@ def dense(inputs, kernel, bias=None, activation=None, dtype=None):
     if isinstance(inputs, sparse_tensor.SparseTensor):
       outputs = sparse_ops.sparse_tensor_dense_matmul(inputs, kernel)
     else:
-      outputs = gen_math_ops.mat_mul(inputs, kernel)
+      outputs = gen_math_ops.MatMul(a=inputs, b=kernel)
   # Broadcast kernel to inputs.
   else:
     outputs = standard_ops.tensordot(inputs, kernel, [[rank - 1], [0]])

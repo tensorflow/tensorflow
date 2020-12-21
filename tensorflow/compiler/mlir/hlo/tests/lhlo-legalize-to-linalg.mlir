@@ -1,6 +1,6 @@
 // RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
-// CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
 func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                    %result: memref<2x2xf32>) {
@@ -122,6 +122,20 @@ func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   linalg.yield %[[OPERAND_IN]] : f32
+
+// -----
+
+// CHECK-LABEL: func @is_finte
+func @is_finte(%input: memref<2x2xf32>, %result: memref<2x2xi1>) {
+  "lmhlo.is_finite"(%input, %result) : (memref<2x2xf32>, memref<2x2xi1>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[POS_INF:.+]] = constant 0x7F800000 : f32
+// CHECK-NEXT:   %[[ABS_X:.+]] = absf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.+]] = cmpf "one", %[[ABS_X]], %[[POS_INF]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
 
@@ -263,7 +277,8 @@ func @static_broadcast_in_dim_expansion(%operand: memref<1x5xf32>,
 // CHECK: %[[RESHAPED_ARG:.*]] = linalg.reshape %{{.*}}#[[REASSOCIATION]]]
 // CHECK-SAME:                   memref<1x5xf32> into memref<5xf32>
 // CHECK: linalg.generic {{{.*}}indexing_maps =
-// CHECK-SAME:       [#[[OPERAND_MAP]], #[[RESULT_MAP]]]{{.*}} %[[RESHAPED_ARG]]
+// CHECK-SAME:       [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-SAME:   ins(%[[RESHAPED_ARG]] :
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
 
@@ -533,6 +548,19 @@ func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
 
 // -----
 
+// CHECK-LABEL: func @not
+func @not(%input: memref<2x2xi64>, %result: memref<2x2xi64>) {
+  "lmhlo.not"(%input, %result) : (memref<2x2xi64>, memref<2x2xi64>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i64, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[N1:.*]] = constant -1 : i64
+// CHECK-NEXT:   %[[RESULT:.*]] = xor %[[N1]], %[[OPERAND_IN]] : i64
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i64
+
+// -----
+
 // CHECK-LABEL: func @rem
 func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                 %result: memref<2x2xf32>) {
@@ -566,9 +594,48 @@ func @sign(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 }
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
-// CHECK-NEXT:   %[[CST:.*]] = constant 1.000000e+00 : f32
-// CHECK-NEXT:   %[[RESULT:.*]] = copysign %[[CST]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[CST_0:.*]] = constant 0.000000e+00 : f32
+// CHECK-NEXT:   %[[NE_0:.*]] = cmpf "one", %[[OPERAND_IN]], %[[CST_0]] : f32
+// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = uitofp %[[NE_0]] : i1 to f32
+// CHECK-NEXT:   %[[SIGN:.*]] = copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[CMP:.*]] = cmpf "uno", %[[OPERAND_IN]], %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[OPERAND_IN]], %[[SIGN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @sign_bf16
+func @sign_bf16(%input: memref<2x2xbf16>, %result: memref<2x2xbf16>) {
+  "lmhlo.sign"(%input, %result) : (memref<2x2xbf16>, memref<2x2xbf16>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: bf16, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[CST_0:.*]] = constant 0.000000e+00 : bf16
+// CHECK-NEXT:   %[[NE_0:.*]] = cmpf "one", %[[OPERAND_IN]], %[[CST_0]] : bf16
+// CHECK-NEXT:   %[[NE_0_FLOAT:.*]] = uitofp %[[NE_0]] : i1 to bf16
+// CHECK-NEXT:   %[[SIGN:.*]] = copysign %[[NE_0_FLOAT]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[CMP:.*]] = cmpf "uno", %[[OPERAND_IN]], %[[OPERAND_IN]] : bf16
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[OPERAND_IN]], %[[SIGN]] : bf16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : bf16
+
+// -----
+
+// CHECK-LABEL: func @sign_i16
+func @sign_i16(%input: memref<2x2xi16>, %result: memref<2x2xi16>) {
+  "lmhlo.sign"(%input, %result) : (memref<2x2xi16>, memref<2x2xi16>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i16, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[C0:.*]] = constant 0 : i16
+// CHECK-NEXT:   %[[C15:.*]] = constant 15 : i16
+// CHECK-NEXT:   %[[C1:.*]] = constant 1 : i16
+// CHECK-NEXT:   %[[CMP:.*]] = cmpi "eq", %[[OPERAND_IN]], %[[C0]] : i16
+// CHECK-NEXT:   %[[ASHR:.*]] = shift_right_signed %[[OPERAND_IN]], %[[C15]] : i16
+// CHECK-NEXT:   %[[OR:.*]] = or %[[ASHR]], %[[C1]] : i16
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[C0]], %[[OR]] : i16
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i16
 
 // -----
 
@@ -714,6 +781,32 @@ func @reshape_3D_4D(%arg0: memref<1x49x16xf32>, %arg1: memref<1x784x1x1xf32>) {
 
 // -----
 
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape1_4D_4D
+func @reshape1_4D_4D(%arg0: memref<4x512x1x1xi32>,
+                     %arg1: memref<1x4x1x512xi32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<4x512x1x1xi32>, memref<1x4x1x512xi32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape2_4D_4D
+func @reshape2_4D_4D(%arg0: memref<4x1x1x1024xi32>,
+                     %arg1: memref<4x1024x1x1xi32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<4x1x1x1024xi32>, memref<4x1024x1x1xi32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+// CHECK: linalg.reshape %{{.*}} [#[[MAP]]]
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1) -> (d0, -d1 + 2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
@@ -761,3 +854,76 @@ func @transpose(%arg0: memref<2x2xf32>, %arg1: memref<2x2xf32>) {
   return
 }
 // CHECK: linalg.generic {{{.*}}indexing_maps = [#[[TRANSPOSE_INPUT_MAP]], #[[TRANSPOSE_OUTPUT_MAP]]]
+
+// -----
+
+// CHECK-DAG: #[[REDUCE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[REDUCE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @reduce_add
+func @reduce_add(%arg: memref<100x10xf32>,
+             %init: memref<f32>,
+             %result: memref<100xf32>) {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
+    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
+      "lmhlo.add"(%lhs, %rhs, %res)
+        : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "lmhlo.terminator"() : () -> ()
+    } ) {dimensions = dense<[1]> : tensor<1xi64>}
+      : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
+  return
+}
+// CHECK: %[[INIT_VAL:.*]] = load %arg1[] : memref<f32>
+// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.generic {
+// CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]}
+// CHECK-SAME: ins(%arg0 : memref<100x10xf32>) outs(%arg2 : memref<100xf32>) {
+// CHECK: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: store
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: load
+// CHECK-NEXT: addf
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: linalg.yield
+// CHECK-NEXT: }
+
+// -----
+
+// CHECK-DAG: #[[REDUCE_INPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-DAG: #[[REDUCE_OUTPUT_MAP:.*]] = affine_map<(d0, d1) -> (d0)>
+// CHECK-LABEL: func @reduce_maximum
+func @reduce_maximum(%arg: memref<100x10xf32>,
+             %init: memref<f32>,
+             %result: memref<100xf32>) {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
+    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
+      "lmhlo.maximum"(%lhs, %rhs, %res)
+        : (memref<f32>, memref<f32>, memref<f32>) -> ()
+      "lmhlo.terminator"() : () -> ()
+    } ) {dimensions = dense<[1]> : tensor<1xi64>}
+      : (memref<100x10xf32>, memref<f32>, memref<100xf32>) -> ()
+  return
+}
+// CHECK: %[[INIT_VAL:.*]] = load %arg1[] : memref<f32>
+// CHECK: linalg.fill(%arg2, %[[INIT_VAL]])
+// CHECK: linalg.generic {
+// CHECK-SAME: indexing_maps = [#[[REDUCE_INPUT_MAP]], #[[REDUCE_OUTPUT_MAP]]],
+// CHECK-SAME: iterator_types = ["parallel", "reduction"]}
+// CHECK-SAME: ins(%arg0 : memref<100x10xf32>) outs(%arg2 : memref<100xf32>) {
+// CHECK: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: alloca
+// CHECK-NEXT: store
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: load
+// CHECK-NEXT: cmpf
+// CHECK-NEXT: select
+// CHECK-NEXT: store
+// CHECK-NEXT: load
+// CHECK-NEXT: linalg.yield
+// CHECK-NEXT: }

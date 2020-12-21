@@ -389,13 +389,9 @@ class _DefinedFunction(object):
     variable_keys.extend(ops.GraphKeys._VARIABLE_COLLECTIONS)  # pylint: disable=protected-access
     variable_keys.append(vs._VARSTORE_KEY)  # pylint: disable=protected-access
 
-    collections_ref = {}
-    parent_collections_ref = ops.get_default_graph()._collections  # pylint: disable=protected-access
-    for key in variable_keys:
-      if key not in parent_collections_ref:
-        parent_collections_ref[key] = collections_ref[key] = []
-      else:
-        collections_ref[key] = parent_collections_ref[key]
+    parent_graph = ops.get_default_graph()
+    collections_ref = {
+        key: parent_graph.get_collection_ref(key) for key in variable_keys}
 
     temp_graph = func_graph_from_py_func(
         self._func,

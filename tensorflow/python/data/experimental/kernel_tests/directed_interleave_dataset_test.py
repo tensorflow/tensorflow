@@ -99,6 +99,13 @@ class DirectedInterleaveDatasetTest(test_base.DatasetTestBase,
       self.assertLess(self._chi2(probs, freqs / num_samples), 1e-2)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testSampleFromDatasetsCardinality(self):
+    ds1 = dataset_ops.Dataset.from_tensors([1.0]).repeat()
+    ds2 = dataset_ops.Dataset.from_tensors([2.0]).repeat()
+    ds = interleave_ops.sample_from_datasets([ds1, ds2])
+    self.assertEqual(self.evaluate(ds.cardinality()), dataset_ops.INFINITE)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testSelectFromDatasets(self):
     words = [b"foo", b"bar", b"baz"]
     datasets = [dataset_ops.Dataset.from_tensors(w).repeat() for w in words]

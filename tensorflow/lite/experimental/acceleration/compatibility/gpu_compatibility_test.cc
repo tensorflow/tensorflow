@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/compatibility/gpu_compatibility.h"
 
+#include <algorithm>
 #include <memory>
 
 #include <gmock/gmock.h>
@@ -38,10 +39,9 @@ TEST_F(GPUCompatibilityTest, ReturnsSupportedForFullMatch) {
   tflite::acceleration::AndroidInfo android_info = {.android_sdk_version = "24",
                                                     .model = "m712c"};
 
-  tflite::gpu::GpuInfo tflite_gpu_info = {
-      .major_version = 3,
-      .minor_version = 1,
-  };
+  tflite::gpu::GpuInfo tflite_gpu_info;
+  tflite_gpu_info.opengl_info.major_version = 3;
+  tflite_gpu_info.opengl_info.minor_version = 1;
 
   EXPECT_TRUE(list_->Includes(android_info, tflite_gpu_info));
 }
@@ -53,11 +53,10 @@ TEST_F(GPUCompatibilityTest, ReturnsUnsupportedForFullMatch) {
                                                     .model = "SM-G960F",
                                                     .device = "starlte",
                                                     .manufacturer = "Samsung"};
-  tflite::gpu::GpuInfo tflite_gpu_info = {
-      .renderer_name = "Mali-G72",
-      .major_version = 3,
-      .minor_version = 2,
-  };
+  tflite::gpu::GpuInfo tflite_gpu_info;
+  tflite_gpu_info.opengl_info.renderer_name = "Mali-G72";
+  tflite_gpu_info.opengl_info.major_version = 3;
+  tflite_gpu_info.opengl_info.minor_version = 2;
   EXPECT_FALSE(list_->Includes(android_info, tflite_gpu_info));
 }
 
@@ -82,6 +81,19 @@ TEST_F(GPUCompatibilityTest, ReturnsDefaultOptions) {
             default_options.experimental_flags);
   EXPECT_EQ(best_options.max_delegated_partitions,
             default_options.max_delegated_partitions);
+}
+
+TEST(GPUCompatibility, RecogniseValidCompatibilityListFlatbuffer) {
+  EXPECT_TRUE(tflite::acceleration::GPUCompatibilityList::IsValidFlatbuffer(
+      g_tflite_acceleration_devicedb_sample_binary,
+      g_tflite_acceleration_devicedb_sample_binary_len));
+}
+
+TEST(GPUCompatibility, RecogniseInvalidCompatibilityListFlatbuffer) {
+  unsigned char invalid_buffer[100];
+  std::fill(invalid_buffer, invalid_buffer + 100, ' ');
+  EXPECT_FALSE(tflite::acceleration::GPUCompatibilityList::IsValidFlatbuffer(
+      invalid_buffer, 100));
 }
 
 }  // namespace

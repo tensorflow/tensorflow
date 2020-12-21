@@ -1,0 +1,13 @@
+path: "tensorflow.__internal__.distribute.multi_process_runner.SubprocessTimeoutError"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.multi_process_runner.SubprocessTimeoutError\'>"
+  is_instance: "<type \'exceptions.RuntimeError\'>"
+  member {
+    name: "args"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'msg\', \'mpr_result\'], varargs=None, keywords=None, defaults=None"
+  }
+}

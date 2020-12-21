@@ -43,10 +43,14 @@ static inline void CheckScoreSizes(OpKernelContext* context, int num_boxes,
                                    const Tensor& scores) {
   // The shape of 'scores' is [num_boxes]
   OP_REQUIRES(context, scores.dims() == 1,
-              errors::InvalidArgument("scores must be 1-D",
-                                      scores.shape().DebugString()));
-  OP_REQUIRES(context, scores.dim_size(0) == num_boxes,
-              errors::InvalidArgument("scores has incompatible shape"));
+              errors::InvalidArgument(
+                  "scores must be 1-D", scores.shape().DebugString(),
+                  " (Shape must be rank 1 but is rank ", scores.dims(), ")"));
+  OP_REQUIRES(
+      context, scores.dim_size(0) == num_boxes,
+      errors::InvalidArgument("scores has incompatible shape (Dimensions must "
+                              "be equal, but are ",
+                              num_boxes, " and ", scores.dim_size(0), ")"));
 }
 
 static inline void ParseAndCheckOverlapSizes(OpKernelContext* context,
@@ -67,11 +71,14 @@ static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
                                          const Tensor& boxes, int* num_boxes) {
   // The shape of 'boxes' is [num_boxes, 4]
   OP_REQUIRES(context, boxes.dims() == 2,
-              errors::InvalidArgument("boxes must be 2-D",
-                                      boxes.shape().DebugString()));
+              errors::InvalidArgument(
+                  "boxes must be 2-D", boxes.shape().DebugString(),
+                  " (Shape must be rank 2 but is rank ", boxes.dims(), ")"));
   *num_boxes = boxes.dim_size(0);
   OP_REQUIRES(context, boxes.dim_size(1) == 4,
-              errors::InvalidArgument("boxes must have 4 columns"));
+              errors::InvalidArgument("boxes must have 4 columns (Dimension "
+                                      "must be 4 but is ",
+                                      boxes.dim_size(1), ")"));
 }
 
 static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
@@ -185,14 +192,17 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
   }
 
   T scale = static_cast<T>(0.0);
-  if (soft_nms_sigma > static_cast<T>(0.0)) {
+  bool is_soft_nms = soft_nms_sigma > static_cast<T>(0.0);
+  if (is_soft_nms) {
     scale = static_cast<T>(-0.5) / soft_nms_sigma;
   }
 
-  auto suppress_weight = [similarity_threshold, scale](const T sim) {
+  auto suppress_weight = [similarity_threshold, scale,
+                          is_soft_nms](const T sim) {
     const T weight =
         static_cast<T>(std::exp(static_cast<float>(scale * sim * sim)));
-    return sim <= similarity_threshold ? weight : static_cast<T>(0.0);
+    return is_soft_nms || sim <= similarity_threshold ? weight
+                                                      : static_cast<T>(0.0);
   };
 
   std::vector<int> selected;
@@ -221,7 +231,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
       next_candidate.score *= suppress_weight(similarity);
 
       // First decide whether to perform hard suppression
-      if (similarity >= static_cast<T>(similarity_threshold)) {
+      if (!is_soft_nms && similarity > static_cast<T>(similarity_threshold)) {
         should_hard_suppress = true;
         break;
       }
@@ -313,12 +323,6 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     }
   }
 
-  // Copy class_boxes_data to a tensor
-  TensorShape boxesShape({num_boxes, 4});
-  Tensor boxes(DT_FLOAT, boxesShape);
-  std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
-              boxes.unaligned_flat<float>().data());
-
   // Do NMS, get the candidate indices of form vector<int>
   // Data structure for selection candidate in NMS.
   struct Candidate {
@@ -340,9 +344,10 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   Candidate next_candidate;
 
   std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
-  const Tensor const_boxes = boxes;
-  typename TTypes<float, 2>::ConstTensor boxes_data_t =
-      const_boxes.tensor<float, 2>();
+  // Move class_boxes_data to a tensor
+  Eigen::array<Eigen::DenseIndex, 2> boxesShape = {num_boxes, 4};
+  typename TTypes<float, 2>::ConstTensor boxes_data_t(class_boxes_data.data(),
+                                                      boxesShape);
   int candidate_idx = 0;
   float iou;
   while (selected.size() < size_per_class &&
@@ -670,12 +675,16 @@ class NonMaxSuppressionV3Op : public OpKernel {
     OP_REQUIRES(
         context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+                                max_output_size.shape().DebugString(),
+                                " (Shape must be rank 0 but is ", "rank ",
+                                max_output_size.dims(), ")"));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
                 errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
+                                        iou_threshold.shape().DebugString(),
+                                        " (Shape must be rank 0 but is rank ",
+                                        iou_threshold.dims(), ")"));
     const T iou_threshold_val = iou_threshold.scalar<T>()();
     OP_REQUIRES(context,
                 iou_threshold_val >= static_cast<T>(0.0) &&
@@ -930,6 +939,12 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     const int max_total_size_per_batch = max_total_size.scalar<int>()();
     OP_REQUIRES(context, max_total_size_per_batch > 0,
                 errors::InvalidArgument("max_total_size must be > 0"));
+    // Throw warning when `max_total_size` is too large as it may cause OOM.
+    if (max_total_size_per_batch > pow(10, 6)) {
+      LOG(WARNING) << "Detected a large value for `max_total_size`. This may "
+                   << "cause OOM error. (max_total_size: "
+                   << max_total_size.scalar<int>()() << ")";
+    }
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(4);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),

@@ -123,7 +123,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [
-            "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+            "//tensorflow/lite/delegates/coreml:coreml_delegate",
         ],
         "//conditions:default": [],
     }),

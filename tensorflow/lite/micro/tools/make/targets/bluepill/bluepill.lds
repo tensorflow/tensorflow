@@ -1,8 +1,11 @@
-/* Copyright 2018 Google Inc. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -12,32 +15,27 @@ limitations under the License.
 
 /* Copied and modified from:
    https://github.com/google/stm32_bare_lib/blob/master/stm32_linker_layout.lds
-   
+
    Modifications:
-    * increased the flash size to 128K from 64K. While the bluepill board has
-      64K of flash, our tests currently need more than that. Changing the flash
-      to 128K at least enables running the tests in the emulator.
-      
-      TODO(b/143153151): Change this back to 64K if/when the tests fit on real
-      bluepill hardware.
+    * increased the flash size to 512K and RAM to 256K. This far exceeds the
+      actual hardware but enables running the tests in the emulator.
 */
 
 /*
  * 0x00000000 - 0x07ffffff - aliased to flash or sys memory depending on BOOT jumpers.
- * 0x08000000 - 0x0801ffff - Flash.
+ * 0x08000000 - 0x080fffff - Flash.
  * 0x1ffff000 - 0x1ffff7ff - Boot firmware in system memory.
  * 0x1ffff800 - 0x1fffffff - Option bytes.
- * 0x20000000 - 0x20004fff - SRAM.
+ * 0x20000000 - 0x2003ffff - SRAM.
  * 0x40000000 - 0x40023400 - Peripherals
  */
 
 /* Define main entry point */
 ENTRY(_main)
 
-/* 20K of RAM and 128K of FLASH */
 MEMORY {
-RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 20K
-FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 128K
+RAM (xrw) : ORIGIN = 0x20000000, LENGTH = 256K
+FLASH (rx) : ORIGIN = 0x8000000, LENGTH = 1024K
 }
 
 /* Compute where the stack ends rather than hard coding it */

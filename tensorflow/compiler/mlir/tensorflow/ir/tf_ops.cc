@@ -41,9 +41,10 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -51,7 +52,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -77,43 +77,6 @@ namespace TF {
 
 namespace {
 
-// Returns true of the given function has a single uses (within the scope
-// of the module containing it and all parent modules).
-bool HasSingleUse(FuncOp func) {
-  // Public function can have any number of external uses.
-  if (func.isPublic()) return false;
-
-  // Return false if unexpected IR structure seen.
-  ModuleOp module = func.getParentOfType<ModuleOp>();
-  if (!module) return false;
-
-  // Inspect function uses in the containing module and all parent
-  // modules.
-  bool use_seen = false;
-  for (; module; module = module.getParentOfType<ModuleOp>()) {
-    auto func_uses_optional =
-        SymbolTable::getSymbolUses(func, &module.getBodyRegion());
-    // Found an unknown use.
-    if (!func_uses_optional) return false;
-
-    // If no uses in this scope, continue looking in parent module
-    SymbolTable::UseRange func_uses = func_uses_optional.getValue();
-    if (func_uses.empty()) continue;
-
-    // Check if multiple uses at this scope or another use already seen.
-    if (!llvm::hasSingleElement(func_uses) || use_seen) return false;
-
-    // This is the first use seen.
-    use_seen = true;
-
-    // If the function is private, no need to inspect parent modules.
-    if (func.isPrivate()) break;
-  }
-
-  // No multiple uses seen.
-  return true;
-}
-
 struct TFConstantFoldInterface : public DialectFoldInterface {
   TFConstantFoldInterface(Dialect *dialect) : DialectFoldInterface(dialect) {}
   LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
@@ -137,9 +100,17 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  // Returns if it's legal to inline 'callable' into the 'call', where 'call' is
+  // a TF operation.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    // Check that the TF call operation is one that is legal to inline.
+    return !isa<TPUPartitionedCallOp>(call);
+  }
+
   // Returns if its legal to inline 'src' region into the 'dest' region
   // attached to a TF operation.
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &valueMapping) const final {
     // Allow inlining in regions attached to region based control flow
     // operations only if the src region is a single block region
@@ -149,15 +120,15 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 
   // Returns true if its legal to inline a TF operation `op` into the `dest`
   // region.
-  bool isLegalToInline(Operation *op, Region *dest,
+  bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     // An op is legal to inline if either of the following conditions is true:
     // (a) Its legal to duplicate the Op.
-    // (a) The Op is inside a single use function. If that function is inlined,
+    // (b) The Op is inside a single use function. If that function is inlined,
     //     post inlining, the function will be dead and eliminated from the IR.
     //     So there won't be any code duplication.
-    FuncOp func = op->getParentOfType<FuncOp>();
-    return !func || TensorFlowDialect::CanDuplicate(op) || HasSingleUse(func);
+    // plus the function caller op can be replaced by inlined ops.
+    return !wouldBeCloned || TensorFlowDialect::CanDuplicate(op);
   }
 
   //===--------------------------------------------------------------------===//
@@ -221,8 +192,11 @@ bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
 }
 
 std::vector<TensorFlowDialect::AdditionalOpFunction>
-    *TensorFlowDialect::additional_operation_hooks_ =
-        new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+    *TensorFlowDialect::GetAdditionalOperationHooks() {
+  static auto *const additional_operation_hooks =
+      new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+  return additional_operation_hooks;
+}
 
 TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
 TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
@@ -232,6 +206,10 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.cc.inc"
+      >();
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/mlir/tensorflow/ir/tfrt_ops.cc.inc"
       >();
   addTypes<
 #define HANDLE_TF_TYPE(tftype, enumerant, name) tftype##Type,
@@ -246,7 +224,7 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
   // registered.
   allowUnknownOperations();
 
-  for (const auto &hook : *TensorFlowDialect::additional_operation_hooks_) {
+  for (const auto &hook : *GetAdditionalOperationHooks()) {
     hook(*this);
   }
 }

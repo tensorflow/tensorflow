@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/batching_util/adaptive_shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
 #include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
@@ -48,7 +50,7 @@ class BatchResourceBase : public ResourceBase {
                        const string& batcher_queue_name,
                        AsyncOpKernel::DoneCallback done_callback);
 
- protected:
+ public:
   // One task to be batched, corresponds to a `slice` of input from one batch-op
   // invocation.
   //
@@ -87,15 +89,27 @@ class BatchResourceBase : public ResourceBase {
 
     bool is_partial = false;
 
+    uint64 start_time;
+
     size_t size() const override { return inputs[0].shape().dim_size(0); }
 
-    uint64 start_time;
+    // Create a split task from this one. The caller needs to setup the inputs
+    // of the new task
+    std::unique_ptr<BatchTask> CreateSplitTask(
+        int split_index, AsyncOpKernel::DoneCallback done_callback);
+
+   protected:
+    virtual std::unique_ptr<BatchTask> CreateDerivedTask() {
+      return std::make_unique<BatchTask>();
+    }
   };
 
   // Appending a T suffix to make the type alias different to those in
   // tensorflow::serving namespace, because some versions of compiler complain
   // about changing meaning of the symbols.
   using BatcherT = SharedBatchScheduler<BatchResourceBase::BatchTask>;
+  using AdaptiveBatcherT =
+      AdaptiveSharedBatchScheduler<BatchResourceBase::BatchTask>;
   using BatcherQueueT = BatchScheduler<BatchResourceBase::BatchTask>;
   using BatchT = Batch<BatchResourceBase::BatchTask>;
 
@@ -106,12 +120,27 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {
+    allowed_batch_sizes_str_ = absl::StrJoin(allowed_batch_sizes_, ",");
+  }
+
+  BatchResourceBase(bool has_process_batch_function,
+                    std::shared_ptr<AdaptiveBatcherT> batcher,
+                    const AdaptiveBatcherT::QueueOptions& batcher_queue_options,
+                    std::vector<int32> allowed_batch_sizes)
+      : has_process_batch_function_(has_process_batch_function),
+        adaptive_batcher_(std::move(batcher)),
+        adaptive_batcher_queue_options_(batcher_queue_options),
         allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
       int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
       int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
       bool enable_large_batch_splitting);
+
+  static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
+      int32 max_batch_size, int32 batch_timeout_micros,
+      int32 max_enqueued_batches, bool enable_large_batch_splitting);
 
  private:
   // Implementation of calling the process batch function.
@@ -186,6 +215,10 @@ class BatchResourceBase : public ResourceBase {
   std::shared_ptr<BatcherT> batcher_;
   BatcherT::QueueOptions batcher_queue_options_;
 
+  // A batch scheduler, and options for creating queues.
+  std::shared_ptr<AdaptiveBatcherT> adaptive_batcher_;
+  AdaptiveBatcherT::QueueOptions adaptive_batcher_queue_options_;
+
   // A collection of batcher queues, keyed on queue name.
   // TODO(olston): Garbage-collect unused queues (perhaps simply remove empty
   // ones (with a time delay?); it's okay if they get recreated later).
@@ -194,6 +227,9 @@ class BatchResourceBase : public ResourceBase {
       TF_GUARDED_BY(batcher_queues_mu_);
 
   std::vector<int32> allowed_batch_sizes_;
+  // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
+  // used to record batching parameter.
+  string allowed_batch_sizes_str_;
 };
 
 }  // namespace serving

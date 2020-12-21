@@ -57,6 +57,11 @@ const char* kModelPack = "pack.bin";
 const char* kLstmCalibrated = "lstm_calibrated.bin";
 const char* kLstmQuantized = "lstm_quantized.bin";
 
+const char* kUnidirectionalSequenceLstmCalibrated =
+    "unidirectional_sequence_lstm_calibrated.bin";
+const char* kUnidirectionalSequenceLstmQuantized =
+    "unidirectional_sequence_lstm_quantized.bin";
+
 const char* kModelWithMinimumOp = "minimum.bin";
 const char* kModelWithMaximumOp = "maximum.bin";
 const char* kLstmCalibrated2 = "lstm_calibrated2.bin";
@@ -68,6 +73,7 @@ const char* kSvdfCalibrated = "svdf_calibrated.bin";
 const char* kSvdfQuantized = "svdf_quantized.bin";
 
 const char* kModelWithUnpack = "unpack.bin";
+const char* kQatModelWithFc = "fc_qat.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];

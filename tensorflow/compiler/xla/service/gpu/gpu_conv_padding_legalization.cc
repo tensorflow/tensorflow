@@ -313,7 +313,11 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
                             new_backward_conv_window.mutable_dimensions(i));
     }
     // Decreasing the padding by X *increases* the size of our output by X.
-    int64 dim = backward_conv_dnums.output_spatial_dimensions(i);
+    // Note that we have swapped input spatial dimensions with output spatial
+    // dimensions to be compatible with the cuDNN API, so
+    // input_spatial_dimensions(i) gives the i-th spatial dimension of the
+    // output.
+    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
     new_backward_conv_shape.set_dimensions(
         dim, new_backward_conv_shape.dimensions(dim) +
                  std::abs(padding_low - padding_high));
@@ -353,7 +357,11 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardInputConvolution(
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
     int64 padding_low = backward_conv->window().dimensions(i).padding_low();
     int64 padding_high = backward_conv->window().dimensions(i).padding_high();
-    int64 dim = backward_conv_dnums.output_spatial_dimensions(i);
+    // Note that we have swapped input spatial dimensions with output spatial
+    // dimensions to be compatible with the cuDNN API, so
+    // input_spatial_dimensions(i) gives the i-th spatial dimension of the
+    // output.
+    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
     if (padding_low > padding_high) {
       // If the amount of low padding (of the old backward convolution) is
       // larger, we internally pad the low end of the activations and slice

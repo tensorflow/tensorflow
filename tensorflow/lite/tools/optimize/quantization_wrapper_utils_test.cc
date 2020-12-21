@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 
 namespace tflite {
 namespace optimize {
@@ -35,6 +36,8 @@ TEST(LstmPreprocess, Add2Tensors) {
   auto lstm_op = absl::make_unique<OperatorT>();
 
   lstm_op_code->builtin_code = BuiltinOperator_LSTM;
+  lstm_op_code->deprecated_builtin_code =
+      static_cast<int8_t>(BuiltinOperator_LSTM);
   lstm_op_code->version = 2;
   lstm_op->opcode_index = 0;
   lstm_op->inputs = {0, 1,  2,  3,  4,  5,  6,  7,  8,  -1, -1, -1,
@@ -68,7 +71,8 @@ TEST(LstmPreprocess, Add2Tensors) {
   EXPECT_EQ(model->subgraphs[0]->tensors.size(), 26);
   EXPECT_EQ(model->buffers.size(), 1);
 
-  EXPECT_EQ(model->operator_codes[0]->builtin_code, BuiltinOperator_LSTM);
+  EXPECT_EQ(GetBuiltinCode(model->operator_codes[0].get()),
+            BuiltinOperator_LSTM);
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->name, "lstm_tensor0");
   EXPECT_EQ(model->subgraphs[0]->tensors[21]->name, "intermediate_0_0");
   EXPECT_EQ(model->subgraphs[0]->tensors[22]->name, "intermediate_0_1");
@@ -94,7 +98,8 @@ TEST(LstmPreprocess, Add2Tensors) {
   EXPECT_EQ(model->subgraphs[0]->tensors.size(), 26);
   EXPECT_EQ(model->buffers.size(), 1);
 
-  EXPECT_EQ(model->operator_codes[0]->builtin_code, BuiltinOperator_LSTM);
+  EXPECT_EQ(GetBuiltinCode(model->operator_codes[0].get()),
+            BuiltinOperator_LSTM);
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->name, "lstm_tensor0");
   EXPECT_EQ(model->subgraphs[0]->tensors[21]->name, "intermediate_0_0");
   EXPECT_EQ(model->subgraphs[0]->tensors[22]->name, "intermediate_0_1");

@@ -122,24 +122,28 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
 }
 
 StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
-    const HloCustomCallInstruction* conv,
+    const HloCustomCallInstruction* instr,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer, se::StreamExecutor* stream_exec,
     ScratchAllocator* scratch_allocator, se::Stream* stream) {
   std::vector<se::dnn::ProfileResult> algorithms;
 
-  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
-                      GetDnnConvolutionKind(conv));
+  TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
 
-  TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype, GetDnnDataType(conv));
+  TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
+                      GetDNNConvKindFromCudnnConvKind(config.kind));
+
+  TF_ASSIGN_OR_RETURN(se::dnn::DataType dtype,
+                      GetDNNDataTypeFromPrimitiveType(config.output_type));
 
   TF_ASSIGN_OR_RETURN(GpuConvParams params,
-                      GetGpuConvParams(conv, operand_buffers, result_buffer));
+                      GetGpuConvParams(config, operand_buffers, result_buffer));
 
   bool succ = stream_exec->GetMIOpenConvolveAlgorithms(
-      kind, dtype, stream, params.input_descriptor, params.input_buf,
-      params.filter_descriptor, params.filter_buf, params.output_descriptor,
-      params.output_buf, params.conv_desc, scratch_allocator, &algorithms);
+      kind, dtype, stream, params.config.input_descriptor, params.input_buf,
+      params.config.filter_descriptor, params.filter_buf,
+      params.config.output_descriptor, params.output_buf,
+      params.config.conv_desc, scratch_allocator, &algorithms);
   DCHECK(succ);
 
   return algorithms;
@@ -442,6 +446,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
       GetComputeCapability(stream_exec_), GetCudnnVersion(stream_exec_),
       blas_version, canonical_hlo);
 
+  TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
+
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     XLA_SCOPED_LOGGING_TIMER_LEVEL(
         absl::StrCat("CudnnConvAlgorithmPicker::PickBestAlgorithm algo ",
@@ -465,7 +471,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
     options.profile_result = &profile_result;
     options.algo_override = alg;
     Status launch_status =
-        RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+        RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffer,
                    &scratch_allocator, stream, options);
 
     if (!launch_status.ok()) {
@@ -630,7 +636,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   }
 
   auto selected_result = filtered_results.begin();
-  if (!RequireCudnnDeterminism()) {
+  if (!RequireCudnnDeterminism() &&
+      !hlo_module_config.debug_options().xla_gpu_deterministic_ops()) {
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
@@ -700,6 +707,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
     *result.mutable_run_time() = tensorflow::proto_utils::ToDurationProto(
         absl::Milliseconds(profile_result.elapsed_time_in_ms()));
   } else {
+    TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(instr));
     for (const auto& miopen_alg : algorithms) {
       const auto& alg = miopen_alg.algorithm();
       XLA_SCOPED_LOGGING_TIMER_LEVEL(
@@ -717,7 +725,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       options.algo_override = alg;
       options.scratch_size_override = miopen_alg.scratch_size();
       Status launch_status =
-          RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
+          RunGpuConv(config, absl::MakeSpan(operand_buffers), result_buffer,
                      &scratch_allocator, stream, options);
 
       if (!launch_status.ok()) {

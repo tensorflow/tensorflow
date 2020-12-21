@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -59,6 +60,9 @@ using absl::StrAppend;
 using absl::StrCat;
 using ::nvinfer1::IRuntime;
 using ::stream_executor::port::StatusOr;
+
+#define LOG_FIRST_FEW_WARNING_WITH_PREFIX \
+  LOG_FIRST_N(WARNING, 5) << "TF-TRT Warning: "
 
 // A helper class to call done() when destructed for asynchronous execution.
 // Helps simultaneous execution of native and TRT engines.
@@ -100,11 +104,16 @@ class TRTEngineOp : public AsyncOpKernel {
                           TRTEngineCacheResource* cache_res,
                           AsyncHelper* helper);
 
-  // Construct a function handle for executing native funcdef graph
-  // These are the exact same function.
+  // Constructs a function handle for the segment of the TRTEngineOp.
+  StatusOr<FunctionLibraryRuntime::Handle> ConstructFunctionHandle(
+      FunctionLibraryRuntime* lib, const string& device_name,
+      bool allow_soft_placement = false, size_t num_inputs = 0,
+      size_t num_outputs = 0);
 
-  Status ConstructFunctionHandle(FunctionLibraryRuntime* lib,
-                                 const string& device_name);
+  // Imports the GraphDef for the segment of the TRTEngineOp to
+  // segment_graph_def_.
+  Status ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
+                               const string& device_name);
 
   // Executes replaced native segment as function Op.
   void ExecuteNativeSegment(OpKernelContext* ctx, AsyncHelper* helper);
@@ -170,12 +179,16 @@ class TRTEngineOp : public AsyncOpKernel {
   // Whether to build TensorRT engines at runtime.
   bool allow_build_at_runtime_;
 
+  // Whether to allow soft placement when the graph is executed with native
+  // TensorFlow.
+  bool allow_soft_placement_;
+
   // Maximum number of cached engines.
   int max_cached_engines_;
 
   int64 workspace_size_;
   mutex engine_mutex_;
-  FunctionLibraryRuntime::Handle func_handle_;
+  FunctionLibraryRuntime::Handle native_execution_func_handle_;
 
   // The finalized calibrator for inference.
   std::unique_ptr<TRTInt8Calibrator> calibrator_;
@@ -255,8 +268,9 @@ static Status FunctionDefToGraphDef(FunctionLibraryRuntime::Handle handle,
   return Status::OK();
 }
 
-Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
-                                            const string& device_name) {
+StatusOr<FunctionLibraryRuntime::Handle> TRTEngineOp::ConstructFunctionHandle(
+    FunctionLibraryRuntime* lib, const string& device_name,
+    bool allow_soft_placement, size_t num_inputs, size_t num_outputs) {
   VLOG(1) << "Constructing function handle";
   if (lib == nullptr) {
     return errors::Internal("Context function library is null");
@@ -264,8 +278,46 @@ Status TRTEngineOp::ConstructFunctionHandle(FunctionLibraryRuntime* lib,
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
   inst_ops.state_handle = "";
   inst_ops.target = device_name;
-  return lib->Instantiate(func_.name(), AttrSlice(&func_.attr()), inst_ops,
-                          &func_handle_);
+  if (allow_soft_placement) {
+    const FunctionDef* fdef =
+        lib->GetFunctionLibraryDefinition()->Find(func_.name());
+    if (!fdef) {
+      return errors::Internal(
+          StrCat("Cann't find FunctionDef for", func_.name()));
+    }
+    bool ints_on_device =
+        fdef->attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
+        fdef->attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b();
+    // kIntsOnDeviceAttr is not compatible with is_multi_device_function which
+    // is needed to support allow_soft_placement.
+    if (ints_on_device) {
+      LOG_FIRST_FEW_WARNING_WITH_PREFIX
+          << "Function " << name()
+          << " has attribute kIntsOnDeviceAttr=true "
+             "and will be executed natively with allow_soft_placement=false. "
+             "If this is a problem, please re-generate your SavedModel with "
+             "the TF-TRT runtime you are using.";
+    } else {
+      inst_ops.is_multi_device_function = true;
+      inst_ops.input_devices.resize(num_inputs, device_name);
+      inst_ops.output_devices.resize(num_outputs, device_name);
+      inst_ops.config_proto.set_allow_soft_placement(true);
+    }
+  }
+  FunctionLibraryRuntime::Handle func_handle;
+  Status status = lib->Instantiate(func_.name(), AttrSlice(&func_.attr()),
+                                   inst_ops, &func_handle);
+  if (status.ok()) {
+    return func_handle;
+  }
+  return status;
+}
+
+Status TRTEngineOp::ImportSegmentGraphDef(FunctionLibraryRuntime* lib,
+                                          const string& device_name) {
+  TF_ASSIGN_OR_RETURN(FunctionLibraryRuntime::Handle func_handle,
+                      ConstructFunctionHandle(lib, device_name));
+  return FunctionDefToGraphDef(func_handle, lib, &segment_graph_def_);
 }
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
@@ -301,14 +353,21 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
             << context->device()->name()
             << ", thus setting _allow_build_at_runtime=true";
     allow_build_at_runtime_ = true;
+  } else {
+    OP_REQUIRES_OK(context, status);
   }
-  func_handle_ = kInvalidHandle;
+
+  status = context->GetAttr("_allow_soft_placement", &allow_soft_placement_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    allow_soft_placement_ = true;
+  } else {
+    OP_REQUIRES_OK(context, status);
+  }
+
+  native_execution_func_handle_ = kInvalidHandle;
   if (!static_engine_) {
-    FunctionLibraryRuntime* lib = context->function_library();
-    OP_REQUIRES_OK(context,
-                   ConstructFunctionHandle(lib, context->device()->name()));
-    OP_REQUIRES_OK(
-        context, FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_));
+    OP_REQUIRES_OK(context, ImportSegmentGraphDef(context->function_library(),
+                                                  context->device()->name()));
   }
   // TODO(laigd): calibration_data is used in TF v1.x and we keep it only for
   // backward compatibility reasons. Remove it once all known users switch to
@@ -375,13 +434,18 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ExecuteNativeSegment",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
-  if (func_handle_ == kInvalidHandle) {
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        ConstructFunctionHandle(ctx->function_library(), ctx->device()->name()),
-        *helper);
+  if (native_execution_func_handle_ == kInvalidHandle) {
+    StatusOr<FunctionLibraryRuntime::Handle> status_or_handle =
+        ConstructFunctionHandle(ctx->function_library(), ctx->device()->name(),
+                                allow_soft_placement_, ctx->num_inputs(),
+                                ctx->num_outputs());
+    OP_REQUIRES_OK_ASYNC(ctx, status_or_handle.status(), *helper);
+    native_execution_func_handle_ = status_or_handle.ValueOrDie();
   }
   auto lib = ctx->function_library();
   FunctionLibraryRuntime::Options opts;
@@ -394,21 +458,24 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   }
   helper->Ref();  // Increment count for calculating native graph
   VLOG(1) << "Executing native segment: " << name();
-  lib->Run(opts, func_handle_, inputs, outputs,
+  lib->Run(opts, native_execution_func_handle_, inputs, outputs,
            [this, ctx, outputs, helper](const Status& s) {
              core::ScopedUnref sc(helper);
+             std::unique_ptr<std::vector<Tensor>> outputs_wrapper(outputs);
              OP_REQUIRES_OK_ASYNC(ctx, s, *helper);
              VLOG(1) << "Native Segment completed";
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
-             delete outputs;
            });
 }
 
 void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                      TRTEngineCacheResource* cache_res,
                                      AsyncHelper* helper) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ExecuteCalibration",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT calibration: " << name();
   helper->Ref();
   core::ScopedUnref sc(helper);
@@ -534,6 +601,8 @@ static bool AllowEngineNativeSegmentExecution() {
 
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ComputeAsync", tensorflow::profiler::TraceMeLevel::kInfo);
   auto helper = new AsyncHelper(done);
   core::ScopedUnref sc(helper);
 
@@ -584,9 +653,10 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   Status verify_input_shape_status = VerifyInputShapes(input_concrete_shapes);
   // TODO(bixia): Fix the segmentation.
   if (!verify_input_shape_status.ok()) {
-    LOG_FIRST_N(WARNING, 5) << "Running native segment for" << name()
-                            << " due to failure in verifying input shapes: "
-                            << verify_input_shape_status.error_message();
+    LOG_FIRST_FEW_WARNING_WITH_PREFIX
+        << "Running native segment for" << name()
+        << " due to failure in verifying input shapes: "
+        << verify_input_shape_status.error_message();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -625,7 +695,7 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     return true;
   };
   if (!engine_context->cuda_engine) {
-    LOG_WARNING_WITH_PREFIX
+    LOG_FIRST_FEW_WARNING_WITH_PREFIX
         << "Engine retrieval for input shapes: "
         << TensorShapeUtils::ShapeListString(input_concrete_shapes)
         << " failed. Running native segment for " << name();
@@ -636,8 +706,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
   Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
   if (!stat.ok()) {
-    LOG_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
-                            << " Retrying with native segment for " << name();
+    LOG_FIRST_FEW_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
+                                      << " Retrying with native segment for "
+                                      << name();
     if (!may_execute_native_segment()) {
       return;
     }
@@ -656,6 +727,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                      EngineContext* engine_context,
                                      int trt_context_idx) {
+  tensorflow::profiler::TraceMe activity(
+      "TRTEngineOp::ExecuteTrtEngine",
+      tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
 
@@ -755,9 +829,10 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
       &cache_resource->profiles_);
   if (!status.ok()) {
-    LOG_WARNING_WITH_PREFIX << "Engine creation for " << name() << " failed. "
-                            << "The native segment will be used instead. "
-                            << "Reason: " << status;
+    LOG_FIRST_FEW_WARNING_WITH_PREFIX
+        << "Engine creation for " << name() << " failed. "
+        << "The native segment will be used instead. "
+        << "Reason: " << status;
     // Store an empty engine in the cache for these input shapes so we don't try
     // to build the same failing engine again.
     cache_resource->cache_.emplace(input_concrete_shapes,
@@ -815,16 +890,12 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         return std::pair<EngineContext*, int>(&empty_context, 0);
       }
       if (segment_graph_def_.node().empty()) {
-        FunctionLibraryRuntime* lib = ctx->function_library();
-        auto status = ConstructFunctionHandle(lib, ctx->device()->name());
-        if (status.ok()) {
-          status =
-              FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_);
-        }
+        Status status = ImportSegmentGraphDef(ctx->function_library(),
+                                              ctx->device()->name());
         if (!status.ok()) {
-          LOG_WARNING_WITH_PREFIX << "Getting segment graph for " << name()
-                                  << " failed. "
-                                  << "Reason: " << status;
+          LOG_FIRST_FEW_WARNING_WITH_PREFIX << "Getting segment graph for "
+                                            << name() << " failed. "
+                                            << "Reason: " << status;
         }
       }
       auto result = BuildEngine(input_concrete_shapes, batch_size,
@@ -883,7 +954,7 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
   // If cache does not have a compatible engine then create a new engine.
   if (engine_contexts == nullptr) {
     if (!allow_build_at_runtime_) {
-      LOG_WARNING_WITH_PREFIX
+      LOG_FIRST_FEW_WARNING_WITH_PREFIX
           << "Found no engine in cache matching input shapes. "
           << "Not building a new engine because "
           << "allow_build_at_runtime=False. "

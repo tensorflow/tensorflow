@@ -24,11 +24,10 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Target/NVVMIR.h"  // from @llvm-project
@@ -88,16 +87,16 @@ class MlirCompilerImpl : public MlirCompiler {
  public:
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
-      se::DeviceMemoryAllocator* device_allocator) override;
+      const CompileOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
@@ -156,12 +155,12 @@ std::string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
 
 StatusOr<std::unique_ptr<HloModule>> MlirCompilerImpl::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   // Until we find a reason to do something different, run the same passes
   // that the normal GPU backend runs.
   gpu::NVPTXCompiler xla_compiler;
   TF_RETURN_IF_ERROR(xla_compiler.OptimizeHloModule(module.get(), stream_exec,
-                                                    device_allocator));
+                                                    options.device_allocator));
   TF_RETURN_IF_ERROR(xla_compiler.PrepareHloModuleForIrEmitting(module.get()));
 
   return std::move(module);
@@ -301,9 +300,9 @@ Status InsertBufferLoadPreduleIntoKernel(
 
   auto num_original_args = kernel.getNumArguments();
   std::vector<LLVMType> new_arg_types(buffers.size(), ptr_type);
-  kernel.setAttr(kernel.getTypeAttrName(),
-                 mlir::TypeAttr::get(LLVMType::getFunctionTy(
-                     void_type, new_arg_types, /*isVarArg=*/false)));
+  kernel->setAttr(kernel.getTypeAttrName(),
+                  mlir::TypeAttr::get(LLVMType::getFunctionTy(
+                      void_type, new_arg_types, /*isVarArg=*/false)));
   std::vector<Value> original_args(kernel.args_begin(), kernel.args_end());
 
   std::vector<mlir::Type> as_mlir_types(new_arg_types.begin(),
@@ -438,7 +437,6 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
 
   // Finally, create the thunk and set the launch dimensions.
   gpu::Thunk::ThunkInfo info;
-  info.hlo_instruction = instr;
   auto thunk = absl::make_unique<gpu::KernelThunk>(info, buffers,
                                                    kernel.getName().str());
 
@@ -456,7 +454,7 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
 
 StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   // Determine the HLO schedule, which is an ordering of HLO instructions. This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
   // must also be used to determine the thunk launch schedule.
@@ -563,9 +561,20 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
       auto ptx, xla::gpu::nvptx::CompileToPtx(llvmModule.get(),
                                               GetGpuVersion(stream_exec),
                                               config, GetLibdeviceDir(config)));
-  TF_ASSIGN_OR_RETURN(
-      auto cubin, se::CompileGpuAsm(stream_exec->device_ordinal(), ptx.c_str(),
-                                    gpu::PtxOptsFromConfig(config)));
+  // Allow to fallback to the driver compilation when ptxas isn't able to
+  // compile.
+  StatusOr<std::vector<uint8>> maybe_cubin =
+      se::CompileGpuAsm(stream_exec->device_ordinal(), ptx.c_str(),
+                        gpu::PtxOptsFromConfig(config));
+  std::vector<uint8> cubin;
+  if (maybe_cubin.ok()) {
+    cubin = std::move(maybe_cubin).ValueOrDie();
+  } else if (maybe_cubin.status().code() ==
+             tensorflow::error::Code::UNIMPLEMENTED) {
+    xla::gpu::WarnIfBadDriverJITVersion();
+  } else {
+    return maybe_cubin.status();
+  }
 
   auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       std::make_unique<gpu::ThunkSequence>(std::move(thunk_sequence)),
@@ -580,13 +589,13 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   return {absl::make_unique<GpuExecutable>(
       ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
       emission_context.releaseHloModule(), std::move(buffer_assignment),
-      nullptr, nullptr)};
+      nullptr, nullptr, std::vector<GpuExecutable::ConstantInfo>())};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(
     std::unique_ptr<HloModuleGroup> module_group,
     std::vector<std::vector<se::StreamExecutor*>> stream_execs,
-    se::DeviceMemoryAllocator* device_allocator) {
+    const CompileOptions& options) {
   return Unimplemented("Not yet implemented in MLIR compiler");
 }
 

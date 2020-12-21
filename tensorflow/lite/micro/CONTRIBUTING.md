@@ -5,7 +5,6 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 
 <!--ts-->
 
-*   [Resources](#resources)
 *   [Contributing Guidelines](#contributing-guidelines)
     *   [General Pull Request Guidelines](#general-pull-request-guidelines)
     *   [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
@@ -19,25 +18,11 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
     *   [During the PR review](#during-the-pr-review)
     *   [Reviewer notes](#reviewer-notes)
     *   [Python notes](#python-notes)
+*   [Continuous Integration System](#continuous-integration-system)
 
-<!-- Added by: advaitjain, at: Tue 08 Sep 2020 04:00:31 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 15 Dec 2020 03:06:29 PM PST -->
 
 <!--te-->
-
-# Resources
-
-A
-[TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
-should be the primary method of getting in touch with the TensorFlow Lite Micro
-(TFLM) team.
-
-The following resources may also be useful:
-
-1.  SIG Micro [email group](https://groups.google.com/a/tensorflow.org/g/micro)
-    and
-    [monthly meetings](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc).
-
-1.  SIG Micro [gitter chat room](https://gitter.im/tensorflow/sig-micro).
 
 # Contributing Guidelines
 
@@ -125,7 +110,7 @@ fixing a bug needs a bigger architectural change.
 ### Reference Kernel Implementations
 
 Pull requests that port reference kernels from TF Lite Mobile to TF Lite Micro
-are welcome once we have enouch context from the contributor on why the
+are welcome once we have enough context from the contributor on why the
 additional kernel is needed.
 
 1.  Please create a
@@ -321,3 +306,32 @@ that can be expanded and improved as necessary.
     ```
     yapf log_parser.py -i --style='{based_on_style: pep8, indent_width: 2}'
     ```
+
+    # Continuous Integration System
+
+    *   As a contributor, please make sure that the TfLite Micro build is green.
+        You can click on the details link to see what the errors are:
+
+    [![TfLite Micro Build](docs/images/tflm_continuous_integration_1.png)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.html)
+
+    *   Most of the tests that are run as part of the CI are with the
+        [micro/tools/ci_build/test_all.sh](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/tools/ci_build/test_all.sh)
+        script.
+
+        *   There are a few additional tests that use bazel that are not
+            captured by the `test_all.sh` script.
+
+    *   If an error is not reproducible on your development machine, you can
+        recreate the docker container that is used on the CI servers with the
+        following commands (run from the root of the tensorflow github repo):
+
+    ```
+    mkdir /tmp/tflm-docker
+    docker build -f tensorflow/tools/ci_build/Dockerfile.micro -t tflm /tmp/tflm-docker
+    docker run -v `pwd`:/tensorflow -it tflm bash
+    ```
+
+    The `docker run` command is mounting the tensorflow repository on your
+    machine to the docker containter. As a result, any changes made within the
+    docker container will also be reflected in the directory in the host
+    machine.

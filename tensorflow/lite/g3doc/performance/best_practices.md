@@ -39,7 +39,7 @@ help in understanding performance bottlenecks and which operators dominate the
 computation time.
 
 You can also use
-[TensrFlow Lite tracing](measurement.md#trace_tensorflow_lite_internals_in_android)
+[TensorFlow Lite tracing](measurement.md#trace_tensorflow_lite_internals_in_android)
 to profile the model in your Android application, using standard Android system
 tracing, and to visualize the operator invocations by time with GUI based
 profiling tools.
@@ -107,9 +107,8 @@ interpreter execution. TensorFlow Lite can use delegates by:
 *   Using Android's
     [Neural Networks API](https://developer.android.com/ndk/guides/neuralnetworks/).
     You can utilize these hardware accelerator backends to improve the speed and
-    efficiency of your model. To enable the Neural Networks API, call
-    [UseNNAPI](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L343)
-    on the interpreter instance.
+    efficiency of your model. To enable the Neural Networks API, check out
+    the [NNAPI delegate](nnapi.md) guide.
 *   GPU delegate is available on Android and iOS, using OpenGL/OpenCL and Metal,
     respectively. To try them out, see the [GPU delegate tutorial](gpu.md) and
     [documentation](gpu_advanced.md).

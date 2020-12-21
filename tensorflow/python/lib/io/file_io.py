@@ -23,8 +23,8 @@ import uuid
 
 import six
 
-from tensorflow.python import _pywrap_file_io
 from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import _pywrap_file_io
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -347,6 +347,7 @@ def get_matching_files(filename):
 
   Raises:
   *  errors.OpError: If there are filesystem / directory listing errors.
+  *  errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
   return get_matching_files_v2(filename)
 
@@ -401,6 +402,7 @@ def get_matching_files_v2(pattern):
 
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
+    errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
   if isinstance(pattern, six.string_types):
     return [

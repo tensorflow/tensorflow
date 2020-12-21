@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_
 
+#include "tensorflow/core/platform/platform.h"
+
+// On mobile we do not provide optimize dataset op because not all of its
+// dependencies are available there. The op is replaced with a no-op.
+#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
@@ -54,5 +59,23 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
 
 }  // namespace data
 }  // namespace tensorflow
+#else  // !IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/dataset.h"
+
+namespace tensorflow {
+namespace data {
+
+class OptimizeDatasetOp : public UnaryDatasetOpKernel {
+ public:
+  explicit OptimizeDatasetOp(OpKernelConstruction* ctx);
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override;
+};
+
+}  // namespace data
+}  // namespace tensorflow
+#endif  // !IS_MOBILE_PLATFORM
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_OPTIMIZE_DATASET_OP_H_

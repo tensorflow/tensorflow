@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -74,11 +74,11 @@ void TestStridedSliceFloat(const int* input_shape, const int* begin_shape,
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims),
-      CreateQuantized32Tensor(begin_data, begin_dims, 1.0),
-      CreateQuantized32Tensor(end_data, end_dims, 1.0),
-      CreateQuantized32Tensor(strides_data, strides_dims, 1.0),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(input_data, input_dims),
+      CreateTensor(begin_data, begin_dims),
+      CreateTensor(end_data, end_dims),
+      CreateTensor(strides_data, strides_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateStridedSliceGoldens(tensors, tensors_size, expected_output,
@@ -106,9 +106,9 @@ void TestStridedSliceQuantized(
       std::numeric_limits<T>::max() + std::numeric_limits<T>::min() / 2;
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_dims, 1.0, zero_point),
-      CreateQuantized32Tensor(begin_data, begin_dims, 1.0),
-      CreateQuantized32Tensor(end_data, end_dims, 1.0),
-      CreateQuantized32Tensor(strides_data, strides_dims, 1.0),
+      CreateTensor(begin_data, begin_dims),
+      CreateTensor(end_data, end_dims),
+      CreateTensor(strides_data, strides_dims),
       CreateQuantizedTensor(output_data, output_dims, 1.0, zero_point),
   };
 

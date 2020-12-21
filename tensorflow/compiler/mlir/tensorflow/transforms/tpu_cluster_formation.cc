@@ -13,15 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass takes ops with the same `_tpu_replicate` attribute
-// in a block and clusters them together under a `tf_device.cluster`.
-// Associated TPUReplicateMetadata ops are removed and its attributes are copied
-// over to the associated `tf_device.cluster`. If a cluster should be
-// replicated, the associated `tf_device::LaunchOp` will be wrapped further with
-// a `tf_device.replicate`. This pass also assumes ops of the same cluster do
-// not have ops outside of the cluster that are both operands and results of the
-// cluster. Note, this currently does not handle side effecting ops yet.
-
 #include <algorithm>
 #include <iterator>
 #include <memory>
@@ -51,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -71,62 +63,59 @@ constexpr char kBadTPUReplicateAttrMsg[] =
 using MetadataMap =
     llvm::SmallDenseMap<llvm::StringRef, MutableDictionaryAttr, 8>;
 
-// Mapping for `_tpu_replicate` attribute to ops of a cluster.
-using ClusterMap = llvm::SmallDenseMap<llvm::StringRef,
-                                       llvm::SmallSetVector<Operation*, 8>, 8>;
+// A set of operations in a cluster.
+using ClusterOps = llvm::SmallSetVector<Operation*, 8>;
 
-struct TPUClusterFormation
-    : public TF::PerFunctionAggregateAnalysisConsumerPass<
-          TPUClusterFormation, TF::ResourceAliasAnalysis> {
+// Mapping for `_tpu_replicate` attribute to ops of a cluster.
+using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, ClusterOps, 8>;
+
+struct TPUClusterFormationPass
+    : public TF::TPUClusterFormationPassBase<TPUClusterFormationPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
 
-  void runOnFunction(
-      FuncOp func,
-      const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
+  void runOnOperation() override;
 };
 
 // Creates a mapping from the TPUReplicateMetadata ops `_tpu_replicate`
 // attribute to its attributes and removes the ops. If multiple
 // TPUReplicateMetadata ops have the same `_tpu_replicate` attribute, an error
 // will be returned.
-LogicalResult CollectMetadata(Operation* op, MetadataMap* metadata_map) {
-  auto result =
-      op->walk([&](TF::TPUReplicateMetadataOp metadata_op) -> WalkResult {
-        MutableDictionaryAttr attrs = metadata_op.getAttrs();
+LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
+  // Just look at top-level operations in the block (not nested ones)
+  for (Operation& op : llvm::make_early_inc_range(*block)) {
+    auto metadata_op = dyn_cast<TF::TPUReplicateMetadataOp>(op);
+    if (!metadata_op) continue;
 
-        // Missing or bad `_tpu_replicate` attribute.
-        auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
-        if (!tpu_replicate_attr)
-          return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
+    MutableDictionaryAttr attrs = metadata_op.getAttrs();
 
-        auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
-        if (!tpu_replicate_attr_str ||
-            tpu_replicate_attr_str.getValue().empty())
-          return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
+    // Missing or bad `_tpu_replicate` attribute.
+    auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
+    if (!tpu_replicate_attr)
+      return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
-        // Remove `name` attribute.
-        attrs.remove(Identifier::get(kNameAttr, metadata_op.getContext()));
+    auto tpu_replicate_attr_str = tpu_replicate_attr.dyn_cast<StringAttr>();
+    if (!tpu_replicate_attr_str || tpu_replicate_attr_str.getValue().empty())
+      return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
-        auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
-                                            std::move(attrs));
+    // Remove `name` attribute.
+    attrs.remove(Identifier::get(kNameAttr, metadata_op.getContext()));
 
-        // There are multiple TPUReplicateMetadata ops with the same
-        // `_tpu_replicate` attribute.
-        if (!it.second) {
-          return metadata_op.emitError()
-                 << "multiple TPUReplicateMetadata ops with the same '"
-                 << kTPUReplicateAttr << "' attribute '"
-                 << tpu_replicate_attr_str.getValue() << "' found";
-        }
+    auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
+                                        std::move(attrs));
 
-        metadata_op.erase();
-        return WalkResult::advance();
-      });
-
-  // Return failure if the walk was interrupted.
-  return failure(result.wasInterrupted());
+    // There are multiple TPUReplicateMetadata ops with the same
+    // `_tpu_replicate` attribute.
+    if (!it.second) {
+      return metadata_op.emitError()
+             << "multiple TPUReplicateMetadata ops with the same '"
+             << kTPUReplicateAttr << "' attribute '"
+             << tpu_replicate_attr_str.getValue() << "' found";
+    }
+    metadata_op.erase();
+  }
+  return success();
 }
 
 // Collects and clusters ops with the same `_tpu_replicate` attribute. This will
@@ -154,12 +143,12 @@ void CollectResourceIdsFromOp(
   op.walk([&](Operation* inner_op) {
     for (Value operand : TF::filter_resources(inner_op->getOperands())) {
       if (resource_alias_analysis.IsUnknownResource(operand)) continue;
-      auto ids = resource_alias_analysis.GetResourceUniqueIds(operand);
+      const auto& ids = resource_alias_analysis.GetResourceUniqueIds(operand);
       observed_resource_ids.insert(ids.begin(), ids.end());
     }
     for (Value result : TF::filter_resources(inner_op->getResults())) {
       if (resource_alias_analysis.IsUnknownResource(result)) continue;
-      auto ids = resource_alias_analysis.GetResourceUniqueIds(result);
+      const auto& ids = resource_alias_analysis.GetResourceUniqueIds(result);
       observed_resource_ids.insert(ids.begin(), ids.end());
     }
   });
@@ -168,13 +157,13 @@ void CollectResourceIdsFromOp(
 // Checks if an op should be moved after a cluster. There may be users of a
 // cluster interleaved among the cluster ops.
 bool ShouldMoveOpAfterCluster(
-    Block* block, Operation* op,
-    const llvm::SmallSetVector<Operation*, 8>& cluster_ops,
+    Block* block, Operation* op, const ClusterOps& cluster_ops,
     const llvm::SmallSetVector<Operation*, 8>& preceding_users,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis,
     const llvm::SmallDenseSet<int64_t>& observed_resource_ids) {
-  auto result = op->walk([&](Operation* op) {
-    for (Value operand : op->getOperands()) {
+  const bool is_replicate = llvm::isa<tf_device::ReplicateOp>(op);
+  auto result = op->walk([&](Operation* inner_op) {
+    for (Value operand : inner_op->getOperands()) {
       Operation* def = operand.getDefiningOp();
       // Operands may not have a defining op (BlockArgument) or is from a
       // different block.
@@ -187,8 +176,13 @@ bool ShouldMoveOpAfterCluster(
       }
     }
 
+    // Don't visit replicate op inner op operands as new resource
+    // values/arguments may have been created but are not known in
+    // `resource_alias_analysis`.
+    if (is_replicate && inner_op != op) return WalkResult::advance();
+
     // Check for uses of any resource in or after cluster.
-    for (Value operand : TF::filter_resources(op->getOperands())) {
+    for (Value operand : TF::filter_resources(inner_op->getOperands())) {
       if (resource_alias_analysis.IsUnknownResource(operand)) continue;
       auto ids = resource_alias_analysis.GetResourceUniqueIds(operand);
       for (const auto& id : ids)
@@ -205,16 +199,17 @@ bool ShouldMoveOpAfterCluster(
 // cluster may be interleaved with other ops in the cluster. Resource id's are
 // also captured, to keep track of resource usage before, in, or after the
 // cluster.
-// TODO(lyandy): Extend this to handle all side effecting ops while handling
-// transitive data dependencies.
+// TODO(b/175701589): Extend this to handle all side effecting ops while
+// handling transitive data dependencies.
 llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
-    Block* block, const llvm::SmallSetVector<Operation*, 8>& cluster_ops,
+    Block* block, const ClusterOps& cluster_ops,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   llvm::SmallSetVector<Operation*, 8> preceding_users;
   llvm::SmallDenseSet<int64_t> observed_resource_ids;
 
-  for (Operation& op : llvm::make_range(Block::iterator(cluster_ops.front()),
-                                        Block::iterator(cluster_ops.back()))) {
+  auto front = Block::iterator(cluster_ops.front());
+  auto back = Block::iterator(cluster_ops.back());
+  for (Operation& op : llvm::make_range(front, back)) {
     if (cluster_ops.contains(&op)) {
       CollectResourceIdsFromOp(op, resource_alias_analysis,
                                observed_resource_ids);
@@ -236,7 +231,7 @@ llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
 // outside of the cluster (i.e. results of ops in the cluster are only consumed
 // by other ops in the cluster) are pruned.
 llvm::SmallVector<Value, 8> CollectClusterResults(
-    Block* block, const llvm::SmallSetVector<Operation*, 8>& cluster_ops) {
+    Block* block, const ClusterOps& cluster_ops) {
   llvm::SmallVector<Value, 8> results;
 
   for (Operation* op : cluster_ops) {
@@ -255,61 +250,52 @@ llvm::SmallVector<Value, 8> CollectClusterResults(
 }
 
 // Creates a `tf_device.cluster` to wrap cluster ops.
-tf_device::ClusterOp CreateOpForCluster(Operation* last_cluster_op,
-                                        llvm::ArrayRef<Value> results) {
+tf_device::ClusterOp CreateClusterOp(
+    Block* block, const ClusterOps& cluster_ops, llvm::ArrayRef<Value> results,
+    llvm::ArrayRef<Operation*> preceding_users) {
   // `tf_device.cluster` will be placed at where the last op of the cluster is.
+  Operation* last_cluster_op = cluster_ops.back();
   OpBuilder builder(last_cluster_op);
 
   llvm::SmallVector<Type, 8> result_types;
   for (Value result : results) result_types.push_back(result.getType());
-
   auto cluster = builder.create<tf_device::ClusterOp>(last_cluster_op->getLoc(),
                                                       result_types);
 
-  cluster.body().push_back(new Block);
+  Block* body = new Block;
+  cluster.body().push_back(body);
+
+  // Move cluster ops to the cluster body. Also remove `_tpu_replicate` and
+  // `device` attribute from ops in the cluster as that information will be
+  // present in the `tf_device.cluster`. Do this for all ops including nested
+  // ops.
+  for (Operation* cluster_op : cluster_ops) {
+    cluster_op->moveBefore(body, body->end());
+    cluster_op->walk([&](Operation* inner_op) {
+      inner_op->removeAttr(kTPUReplicateAttr);
+      inner_op->removeAttr(kDeviceAttr);
+    });
+  }
 
   // Add terminator.
-  builder.setInsertionPointToEnd(&cluster.GetBody());
+  builder.setInsertionPointToEnd(body);
   builder.create<tf_device::ReturnOp>(last_cluster_op->getLoc(), results);
 
-  return cluster;
-}
-
-// Moves cluster ops to associated `tf_device.cluster` body.
-void MoveClusterOpsToCluster(
-    tf_device::ClusterOp cluster,
-    const llvm::SmallSetVector<Operation*, 8>& cluster_ops) {
-  MLIRContext* context = cluster.getContext();
-  Operation* terminator = cluster.GetBody().getTerminator();
-
-  for (Operation* cluster_op : cluster_ops) {
-    // Remove `_tpu_replicate` and `device` attribute from ops in the cluster
-    // as that information will be present in the `tf_device.cluster`.
-    cluster_op->removeAttr(Identifier::get(kTPUReplicateAttr, context));
-    cluster_op->removeAttr(Identifier::get(kDeviceAttr, context));
-    cluster_op->moveBefore(terminator);
-  }
-}
-
-// Replaces uses of cluster ops results outside of cluster with the associated
-// `tf_device.cluster` results.
-void UpdateClusterResultExternalUses(tf_device::ClusterOp cluster,
-                                     llvm::ArrayRef<Value> results) {
-  Block& cluster_block = cluster.GetBody();
+  // Replaces uses of cluster ops results outside of cluster with the associated
+  // `tf_device.cluster` results.
   for (auto ret_vals : llvm::zip(results, cluster.getResults())) {
     Value old_ret = std::get<0>(ret_vals);
     Value new_ret = std::get<1>(ret_vals);
-    for (auto& use : llvm::make_early_inc_range(old_ret.getUses()))
-      if (!cluster_block.findAncestorOpInBlock(*use.getOwner()))
-        use.set(new_ret);
+    for (auto& use : llvm::make_early_inc_range(old_ret.getUses())) {
+      Operation* user = use.getOwner();
+      if (!body->findAncestorOpInBlock(*user)) use.set(new_ret);
+    }
   }
-}
 
-// Moves users of cluster that are before the cluster to after the cluster.
-void MovePrecedingClusterUsers(tf_device::ClusterOp cluster,
-                               llvm::ArrayRef<Operation*> preceding_users) {
+  // Move users of cluster that are before the cluster to after the cluster.
   Operation* op_after_cluster = cluster.getOperation()->getNextNode();
   for (Operation* user : preceding_users) user->moveBefore(op_after_cluster);
+  return cluster;
 }
 
 // Sorts `tf.TPUReplicatedInput` ops by `index` attribute. Ops with an `index`
@@ -386,8 +372,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
   // Check if number of operands of each used TPUReplicatedInput op matches
   // `num_replicas` or 1. Collect all their operands and associated type for
   // creating the replicate op.
-  llvm::SmallVector<std::pair<Operation::operand_range, Type>, 8>
-      replicated_inputs;
+  llvm::SmallVector<std::pair<ValueRange, Type>, 8> replicated_inputs;
   llvm::SmallVector<Value, 8> packed_inputs;
   for (auto& pos_and_input : llvm::enumerate(replicated_input_ops)) {
     auto input = pos_and_input.value();
@@ -423,31 +408,35 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
       llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
       replicated_inputs, packed_inputs, cluster.getResultTypes());
   if (has_replicated_input_index)
-    replicate_op.setAttr(kReplicatedInputIndicesAttr,
-                         builder.getI64ArrayAttr(replicated_input_indices));
+    replicate_op->setAttr(kReplicatedInputIndicesAttr,
+                          builder.getI64ArrayAttr(replicated_input_indices));
 
   if (!mirrored_variable_indices.empty())
-    replicate_op.setAttr(kMirroredVariableIndicesAttr,
-                         builder.getI64ArrayAttr(mirrored_variable_indices));
+    replicate_op->setAttr(kMirroredVariableIndicesAttr,
+                          builder.getI64ArrayAttr(mirrored_variable_indices));
 
   // Replace replicated cluster results with replicate op results.
   for (auto result_and_idx : llvm::enumerate(cluster.getResults())) {
     Value result = result_and_idx.value();
     int idx = result_and_idx.index();
-    for (auto& use : result.getUses()) {
-      Operation* def = use.getOwner();
-      if (!def || !llvm::isa<TF::TPUReplicatedOutputOp>(def))
-        return cluster.emitError()
-               << "requires output of " << cluster.getOperationName()
-               << " to lead to a 'tf.TPUReplicatedOutput' op";
+    auto replicate_outputs = llvm::make_range(
+        std::next(replicate_op.result_begin(), idx * num_replicas),
+        std::next(replicate_op.result_begin(), (idx + 1) * num_replicas));
 
-      const int def_NumResults = def->getNumResults();
-      if (def_NumResults != num_replicas)
+    for (auto& use : llvm::make_early_inc_range(result.getUses())) {
+      Operation* def = use.getOwner();
+      if (!llvm::isa<TF::TPUReplicatedOutputOp>(def)) {
+        // If user is not a `tf.TPUReplicatedOutput`, simply forward the first
+        // replica output. Certain Graphs under V1 create `tf.Identity` users of
+        // replicated ops to pin the TPU computation for execution.
+        use.set(*replicate_outputs.begin());
+        continue;
+      }
+
+      const int def_num_results = def->getNumResults();
+      if (def_num_results != num_replicas)
         return def->emitOpError() << "requires " << num_replicas << " results";
 
-      auto replicate_outputs = llvm::make_range(
-          std::next(replicate_op.result_begin(), idx * num_replicas),
-          std::next(replicate_op.result_begin(), (idx + 1) * num_replicas));
       def->replaceAllUsesWith(replicate_outputs);
     }
   }
@@ -490,10 +479,29 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
 //      attribute `num_replicas` is greater than 1.
 //   9. Copy over TPUReplicateMetadata attributes to `tf_device.cluster`.
 LogicalResult FormClustersInBlock(
-    Block* block, const MetadataMap& metadata_map,
+    Block* block,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
+  MetadataMap metadata_map;
+  LogicalResult result = CollectMetadata(block, &metadata_map);
+  if (failed(result)) return result;
+
+  // If there is no TPUReplicateMetadata op in this block, process blocks in
+  // regions attached to the op's in the block.
+  if (metadata_map.empty()) {
+    for (Operation& op : *block) {
+      for (Region& region : op.getRegions()) {
+        if (!llvm::hasSingleElement(region))
+          return op.emitOpError("Expected single block region");
+        if (failed(
+                FormClustersInBlock(&region.front(), resource_alias_analysis)))
+          return failure();
+      }
+    }
+    return success();
+  }
+
   ClusterMap clusters;
-  LogicalResult result = CollectAndGroupClusterOps(block, &clusters);
+  result = CollectAndGroupClusterOps(block, &clusters);
   if (failed(result)) return result;
 
   for (const auto& cluster_metadata_and_ops : clusters) {
@@ -518,14 +526,8 @@ LogicalResult FormClustersInBlock(
     llvm::SmallVector<Value, 8> results =
         CollectClusterResults(block, cluster_ops);
 
-    tf_device::ClusterOp cluster =
-        CreateOpForCluster(cluster_ops.back(), results);
-
-    MoveClusterOpsToCluster(cluster, cluster_ops);
-
-    UpdateClusterResultExternalUses(cluster, results);
-
-    MovePrecedingClusterUsers(cluster, preceding_users.getArrayRef());
+    tf_device::ClusterOp cluster = CreateClusterOp(
+        block, cluster_ops, results, preceding_users.getArrayRef());
 
     auto num_replicas = cluster_metadata->getSecond().get(kNumReplicasAttr);
     if (!num_replicas || !num_replicas.isa<mlir::IntegerAttr>())
@@ -537,7 +539,7 @@ LogicalResult FormClustersInBlock(
       return failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
-    cluster.setAttrs(cluster_metadata->second);
+    cluster->setAttrs(cluster_metadata->second);
     // Exclude `num_replicas` as cluster should be replicated if necessary.
     cluster.removeAttr(kNumReplicasAttr);
   }
@@ -545,16 +547,14 @@ LogicalResult FormClustersInBlock(
   return success();
 }
 
-void TPUClusterFormation::runOnFunction(
+LogicalResult FormClustersInFunction(
     FuncOp func,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
-  MetadataMap metadata_map;
-  if (failed(CollectMetadata(func, &metadata_map))) return signalPassFailure();
+  if (!llvm::hasSingleElement(func))
+    return func.emitOpError("Expecting a single block function");
 
-  for (Block& block : func)
-    if (failed(
-            FormClustersInBlock(&block, metadata_map, resource_alias_analysis)))
-      return signalPassFailure();
+  if (failed(FormClustersInBlock(&func.front(), resource_alias_analysis)))
+    return failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = func.walk([&](Operation* op) {
@@ -580,17 +580,22 @@ void TPUClusterFormation::runOnFunction(
     return WalkResult::advance();
   });
 
-  if (remove_result.wasInterrupted()) return signalPassFailure();
+  return failure(remove_result.wasInterrupted());
+}
+
+void TPUClusterFormationPass::runOnOperation() {
+  auto& resource_alias_analysis = getAnalysis<TF::ResourceAliasAnalysis>();
+  for (auto func : getOperation().getOps<FuncOp>())
+    if (!func.isExternal() &&
+        failed(FormClustersInFunction(
+            func, resource_alias_analysis.GetAnalysisForFunc(func))))
+      return signalPassFailure();
 }
 }  // anonymous namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass() {
-  return std::make_unique<TPUClusterFormation>();
+  return std::make_unique<TPUClusterFormationPass>();
 }
-
-static PassRegistration<TPUClusterFormation> pass(
-    "tf-tpu-cluster-formation",
-    "Form clusters from operations assigned to the same TPU cluster");
 
 }  // namespace TFTPU
 }  // namespace mlir

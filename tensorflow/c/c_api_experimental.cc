@@ -37,7 +37,9 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/strcat.h"
@@ -561,15 +563,15 @@ TF_CAPI_EXPORT extern void TFE_AbortCollectiveOps(TFE_Context* ctx,
   collective_executor_handle->get()->StartAbort(status->status);
 }
 
-TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(TFE_Context* ctx,
-                                                            const char* task,
-                                                            TF_Status* status) {
+TF_CAPI_EXPORT extern void TFE_CollectiveOpsCheckPeerHealth(
+    TFE_Context* ctx, const char* task, int64_t timeout_in_ms,
+    TF_Status* status) {
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto collective_executor_handle = context->GetCollectiveExecutorHandle();
   tensorflow::Notification done;
   collective_executor_handle->get()->remote_access()->CheckPeerHealth(
-      task, [&done, status](const Status& s) {
+      task, timeout_in_ms, [&done, status](const Status& s) {
         status->status = s;
         done.Notify();
       });
@@ -630,6 +632,9 @@ void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
 
 namespace tensorflow {
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
+// Helpers for loadding a TensorFlow PluggableDevice plugin (a .so file).
+Status LoadPluggableDeviceLibrary(const char* library_filename, void** result);
 }  // namespace tensorflow
 
 void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
@@ -742,4 +747,46 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
     TF_ImportGraphDefOptions* opts, unsigned char enable) {
   opts->opts.validate_colocation_constraints = enable;
+}
+
+// Load a Pluggable Device library.
+// On success, returns the handle to library in result and return OK from the
+// function. Otherwise return nullptr in result and error Status from the
+// function.
+//
+// If `library_filename` has already been loaded, we return a cached handle.
+// Device and Kernels/Ops are registered as globals when a library is loaded
+// for the first time.
+TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
+                                          TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  status->status = tensorflow::errors::Unimplemented(
+      "PluggableDevice plugin functionality is not supported on mobile");
+  return nullptr;
+#else
+  TF_Library* lib_handle = new TF_Library;
+  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  static std::unordered_map<std::string, void*>* loaded_libs =
+      new std::unordered_map<std::string, void*>();
+  tensorflow::Env* env = tensorflow::Env::Default();
+  {
+    tensorflow::mutex_lock lock(mu);
+    auto it = loaded_libs->find(library_filename);
+    if (it != loaded_libs->end()) {
+      lib_handle->lib_handle = it->second;
+    } else {
+      status->status =
+          env->LoadDynamicLibrary(library_filename, &lib_handle->lib_handle);
+      if (!status->status.ok()) {
+        delete lib_handle;
+        return nullptr;
+      }
+    }
+    return lib_handle;
+  }
+#endif
+}
+
+void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
+  delete lib_handle;
 }

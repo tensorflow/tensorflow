@@ -37,10 +37,6 @@ std::unique_ptr<mlir::FunctionPass> createStoreForwardingPass();
 /// that loads and stores are side-effect free (in bounds, no aliasing, etc.).
 std::unique_ptr<mlir::FunctionPass> createDeadTempBufferRemovalPass();
 
-/// Moves scalar computations to the GPULaunchOp body.
-std::unique_ptr<mlir::FunctionPass>
-createMoveScalarComputationsIntoGpuLaunchPass();
-
 /// Sorts the operands to the kernel for a deterministic order. First operands
 /// that are defined by function arguments, followed by operands that are
 /// returned from the function. This only works for simple functions without
@@ -57,8 +53,11 @@ std::unique_ptr<mlir::FunctionPass> createFuseInnerParallelLoopsPass();
 std::unique_ptr<mlir::FunctionPass> createMapParallelLoopsPass();
 
 /// Collapses all loop dimension into the first one.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+std::unique_ptr<mlir::FunctionPass>
 createParallelLoopCollapsingToFirstDimPass();
+
+#define GEN_PASS_REGISTRATION
+#include "tensorflow/compiler/xla/service/mlir_gpu/passes.h.inc"
 
 }  // namespace mlir_gpu
 }  // namespace xla

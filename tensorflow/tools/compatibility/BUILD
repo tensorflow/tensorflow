@@ -4,6 +4,7 @@ load(
     "tf_cc_test",  # @unused
     "tf_copts",  # @unused
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -80,6 +81,7 @@ py_test(
 py_library(
     name = "renames_v2",
     srcs = ["renames_v2.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
 )
 
@@ -92,6 +94,7 @@ py_library(
 py_library(
     name = "all_renames_v2",
     srcs = ["all_renames_v2.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
     visibility = [
         "//tensorflow:__pkg__",
@@ -216,7 +219,7 @@ genrule(
            " --infile $(location testdata/test_file_v0_11.py)" +
            " --outfile $(location test_file_v1_0.py)" +
            " --reportfile $(location report.txt)"),
-    exec_tools = [":tf_upgrade"],
+    tools = [":tf_upgrade"],
 )
 
 py_test(
@@ -243,7 +246,7 @@ genrule(
            " --outfile $(location test_file_v2_0.py)" +
            " --reportfile $(location report_v2.txt) && " +
            "sed -i'.original' 's/_TEST_VERSION = 1/_TEST_VERSION = 2/g' $(location test_file_v2_0.py)"),
-    exec_tools = [":tf_upgrade_v2"],
+    tools = [":tf_upgrade_v2"],
 )
 
 py_test(
@@ -267,7 +270,6 @@ py_test(
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

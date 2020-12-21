@@ -1083,7 +1083,7 @@ namespace functor {
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
-      T padding_value);
+      const T& padding_value);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
@@ -1451,14 +1451,11 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                 ? static_cast<se::ScratchAllocator*>(&rz_scratch_allocator)
                 : static_cast<se::ScratchAllocator*>(&scratch_allocator);
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardDataWithAlgorithm(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr_rz, allocator_used,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+            input_desc, &in_backprop_ptr_rz, allocator_used,
+            AlgorithmConfig(profile_algorithm), &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1492,16 +1489,12 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        bool miopen_launch_status =
-            stream
-                ->ThenConvolveBackwardDataWithAlgorithm(
-                    filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
-        if (miopen_launch_status) {
+        auto miopen_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+            filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+            input_desc, &in_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (miopen_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1527,19 +1520,13 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
     }
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                           context);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveBackwardDataWithAlgorithm(
-                filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-                algorithm_config, nullptr)
-            .ok();
+    auto cudnn_launch_status = stream->ConvolveBackwardDataWithAlgorithm(
+        filter_desc, filter_ptr, output_desc, out_backprop_ptr, conv_desc,
+        input_desc, &in_backprop_ptr, &scratch_allocator, algorithm_config,
+        nullptr);
 
-    if (!cudnn_launch_status) {
-      context->SetStatus(errors::Internal(
-          "cuDNN Backward Data function launch failure : input shape(",
-          input_shape.DebugString(), ") filter shape(",
-          filter_shape.DebugString(), ")"));
+    if (!cudnn_launch_status.ok()) {
+      context->SetStatus(cudnn_launch_status);
     }
 
     if (rows_odd || cols_odd || planes_odd) {
@@ -1560,7 +1547,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
                       .tensor<T, 5>()),
           {{0, 0, 0}}, {{-planes_odd, -rows_odd, -cols_odd}},
           To32Bit(in_backprop_remove_padding.tensor<T, 5>()),
-          compute_data_format);
+          compute_data_format, T{});
 
       pre_transformed_in_backprop = in_backprop_remove_padding;
     }
@@ -1765,7 +1752,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           context->template eigen_device<GPUDevice>(),
           To32Bit(input.tensor<T, 5>()), {{0, 0, 0}},
           {{planes_odd, rows_odd, cols_odd}},
-          To32Bit(compatible_input.tensor<T, 5>()), data_format_);
+          To32Bit(compatible_input.tensor<T, 5>()), data_format_, T{});
     } else {
       compatible_input = input;
     }
@@ -1948,15 +1935,11 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
         DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                               context);
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator, AlgorithmConfig(profile_algorithm),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
+            input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+            filter_desc, &filter_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm), &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -1983,17 +1966,12 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
-        bool cudnn_launch_status =
-            stream
-                ->ThenConvolveBackwardFilterWithAlgorithm(
-                    input_desc, input_ptr, output_desc, out_backprop_ptr,
-                    conv_desc, filter_desc, &filter_backprop_ptr,
-                    &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
-        if (cudnn_launch_status) {
+        auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
+            input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+            filter_desc, &filter_backprop_ptr, &scratch_allocator,
+            AlgorithmConfig(profile_algorithm, miopen_algorithm.scratch_size()),
+            &profile_result);
+        if (cudnn_launch_status.ok()) {
           if (profile_result.is_valid()) {
             results.emplace_back();
             auto& result = results.back();
@@ -2019,19 +1997,13 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
     }
     DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                           context);
-    bool cudnn_launch_status =
-        stream
-            ->ThenConvolveBackwardFilterWithAlgorithm(
-                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
-                filter_desc, &filter_backprop_ptr, &scratch_allocator,
-                algorithm_config, nullptr)
-            .ok();
+    auto cudnn_launch_status = stream->ConvolveBackwardFilterWithAlgorithm(
+        input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+        filter_desc, &filter_backprop_ptr, &scratch_allocator, algorithm_config,
+        nullptr);
 
-    if (!cudnn_launch_status) {
-      context->SetStatus(errors::Internal(
-          "cuDNN Backward Filter function launch failure : input shape(",
-          input_shape.DebugString(), ") filter shape(",
-          filter_shape.DebugString(), ")"));
+    if (!cudnn_launch_status.ok()) {
+      context->SetStatus(cudnn_launch_status);
     }
 
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };

@@ -86,10 +86,19 @@ func @mul_no_nan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32
   return %0 : tensor<2x3xf32>
 }
 
+// CHECK-LABEL: @is_inf
+func @is_inf(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
+  // CHECK: %[[INF:.*]] = "tf.Const"() {value = dense<0x7F800000> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: %[[ABS:.*]] = "tf.Abs"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xf32>
+  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%[[ABS]], %[[INF]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  %0 = "tf.IsInf"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<3x4xi1>
+}
+
 // CHECK-LABEL: @is_nan
 func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
-  // CHECK: %[[NAN:.*]] = "tf.Const"() {value = dense<0x7FC00000> : tensor<f32>} : () -> tensor<f32>
-  // CHECK: %[[RESULT:.*]] = "tf.Equal"(%arg0, %[[NAN]]) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<f32>) -> tensor<3x4xi1>
+  // CHECK: %[[RESULT:.*]] = "tf.NotEqual"(%arg0, %arg0) {incompatible_shape_error = true} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xi1>
   %0 = "tf.IsNan"(%arg0) : (tensor<3x4xf32>) -> tensor<3x4xi1>
   // CHECK: return %[[RESULT]]
   return %0 : tensor<3x4xi1>
@@ -100,6 +109,15 @@ func @is_nan(%arg0: tensor<3x4xf32>) -> tensor<3x4xi1> {
 func @fill(%arg0: tensor<*xi64>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "tf.BroadcastTo"(%[[ARG1]], %[[ARG0]])
   %0 = "tf.Fill"(%arg0, %arg1) : (tensor<*xi64>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+func @empty(%arg0: tensor<?xi32>) -> tensor<*xf32> {
+  // CHECK-DAG: [[CST:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[RES:%.+]] = "tf.BroadcastTo"([[CST]], %arg0)
+  %0 = "tf.Empty"(%arg0) {init = true} : (tensor<?xi32>) -> (tensor<*xf32>)
+
+  // CHECK: return [[RES]]
   return %0 : tensor<*xf32>
 }
 
@@ -215,40 +233,161 @@ func @rsqrt_grad_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<
   return %0 : tensor<*xf32>
 }
 
-// %input has 1 batch dimension then 2 block dimensions then 1 remainder dimension.
-// CHECK-LABEL: SpaceToBatchND
-func @SpaceToBatchND(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<*xf32> {
-  // CHECK-DAG: [[I0:%.+]] = "tf.Const"() {value = dense<0> : tensor<1xi64>}
-  // CHECK-DAG: [[I1:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi64>}
-  // CHECK-DAG: [[I2:%.+]] = "tf.Const"() {value = dense<2> : tensor<1xi64>}
-  // CHECK-DAG: [[I3:%.+]] = "tf.Const"() {value = dense<3> : tensor<1xi64>}
+// %input has 1 batch dimension then 2 block dimensions then 1 remainder
+// dimension.
+// CHECK-LABEL: fourdim_space_to_batch_nd
+func @fourdim_space_to_batch_nd(%input: tensor<3x5x7x10xf32>, %block_shape: tensor<2xi64>, %paddings: tensor<2x2xi64>) -> tensor<?x?x?x10xf32> {
   // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"() {value = dense<0> : tensor<1x2xi64>}
-  // CHECK-DAG: [[AXIS:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
-  // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[AXIS]])
+  // CHECK-DAG: [[ZERO_I32:%.+]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK-DAG: [[ZERO_I64:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[ZERO_I64]])
   // CHECK-DAG: [[PAD_DEFAULT:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
   // CHECK-DAG: [[PADDED:%.+]] = "tf.PadV2"(%arg0, [[FULL_PADDINGS]], [[PAD_DEFAULT]])
-  // CHECK-DAG: [[PADDINGS_SUM:%.+]] = "tf.Einsum"([[FULL_PADDINGS]]) {equation = "ij->i"}
+  // CHECK-DAG: [[PADDINGS:%.+]]:2 = "tf.Unpack"([[FULL_PADDINGS]]) {axis = 1 : i64}
+  // CHECK-DAG: [[PADDINGS_SUM:%.+]] = "tf.AddV2"([[PADDINGS]]#0, [[PADDINGS]]#1)
   // CHECK-DAG: [[INPUT_SHAPE:%.+]] = "tf.Const"() {value = dense<[3, 5, 7, 10]> : tensor<4xi64>}
-  // CHECK-DAG: [[PADDED_SHAPE:%.+]] = "tf.Add"([[PADDINGS_SUM]], [[INPUT_SHAPE]])
-  // CHECK-DAG: [[PADDED_SHAPE_0:%.+]] = "tf.Slice"([[PADDED_SHAPE]], [[I0]], [[I1]])
-  // CHECK-DAG: [[PADDED_SHAPE_1:%.+]] = "tf.Slice"([[PADDED_SHAPE]], [[I1]], [[I1]])
-  // CHECK-DAG: [[PADDED_SHAPE_2:%.+]] = "tf.Slice"([[PADDED_SHAPE]], [[I2]], [[I1]])
-  // CHECK-DAG: [[PADDED_SHAPE_3:%.+]] = "tf.Slice"([[PADDED_SHAPE]], [[I3]], [[I1]])
-  // CHECK-DAG: [[BLOCK_SHAPE_0:%.+]] = "tf.Slice"(%arg1, [[I0]], [[I1]])
-  // CHECK-DAG: [[BLOCK_SHAPE_1:%.+]] = "tf.Slice"(%arg1, [[I1]], [[I1]])
-  // CHECK-DAG: [[OUTER_SHAPE_0:%.+]] = "tf.Div"([[PADDED_SHAPE_1]], [[BLOCK_SHAPE_0]])
-  // CHECK-DAG: [[OUTER_SHAPE_1:%.+]] = "tf.Div"([[PADDED_SHAPE_2]], [[BLOCK_SHAPE_1]])
-  // CHECK-DAG: [[RESHAPED_SHAPE:%.+]] = "tf.ConcatV2"([[PADDED_SHAPE_0]], [[OUTER_SHAPE_0]], [[BLOCK_SHAPE_0]], [[OUTER_SHAPE_1]], [[BLOCK_SHAPE_1]], [[PADDED_SHAPE_3]], [[AXIS]])
+  // CHECK-DAG: [[PADDED_SHAPE:%.+]] = "tf.AddV2"([[PADDINGS_SUM]], [[INPUT_SHAPE]])
+  // CHECK-DAG: [[PADDED_SHAPE_SPLITS:%.+]]:4 = "tf.Split"([[ZERO_I32]], [[PADDED_SHAPE]])
+  // CHECK-DAG: [[BLOCK_SHAPE_SPLITS:%.+]]:2 = "tf.Split"([[ZERO_I32]], %arg1)
+  // CHECK-DAG: [[OUTER_SHAPE_0:%.+]] = "tf.Div"([[PADDED_SHAPE_SPLITS]]#1, [[BLOCK_SHAPE_SPLITS]]#0)
+  // CHECK-DAG: [[OUTER_SHAPE_1:%.+]] = "tf.Div"([[PADDED_SHAPE_SPLITS]]#2, [[BLOCK_SHAPE_SPLITS]]#1)
+  // CHECK-DAG: [[RESHAPED_SHAPE:%.+]] = "tf.ConcatV2"([[PADDED_SHAPE_SPLITS]]#0, [[OUTER_SHAPE_0]], [[BLOCK_SHAPE_SPLITS]]#0, [[OUTER_SHAPE_1]], [[BLOCK_SHAPE_SPLITS]]#1, [[PADDED_SHAPE_SPLITS]]#3, [[ZERO_I64]])
   // CHECK-DAG: [[PERMUTATION:%.+]] = "tf.Const"() {value = dense<[2, 4, 0, 1, 3, 5]> : tensor<6xi64>}
-  // CHECK-DAG: [[OUTPUT_BATCH_PART:%.+]] = "tf.Mul"([[PADDED_SHAPE_0]], [[BLOCK_SHAPE_0]])
-  // CHECK-DAG: [[OUTPUT_BATCH:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART]], [[BLOCK_SHAPE_1]])
-  // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[PADDED_SHAPE_3]], [[AXIS]])
+  // CHECK-DAG: [[OUTPUT_BATCH_PART:%.+]] = "tf.Mul"([[PADDED_SHAPE_SPLITS]]#0, [[BLOCK_SHAPE_SPLITS]]#0)
+  // CHECK-DAG: [[OUTPUT_BATCH:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART]], [[BLOCK_SHAPE_SPLITS]]#1)
+  // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[PADDED_SHAPE_SPLITS]]#3, [[ZERO_I64]])
   // CHECK-DAG: [[RESHAPED:%.+]] = "tf.Reshape"([[PADDED]], [[RESHAPED_SHAPE]])
   // CHECK-DAG: [[PERMUTED:%.+]] = "tf.Transpose"([[RESHAPED]], [[PERMUTATION]])
   // CHECK-DAG: [[RESULT:%.+]] = "tf.Reshape"([[PERMUTED]], [[OUTPUT_SHAPE]])
   // CHECK-DAG: return [[RESULT]]
-  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<*xf32>
-  return %0 : tensor<*xf32>
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x10xf32>, tensor<2xi64>, tensor<2x2xi64>) -> tensor<?x?x?x10xf32>
+  return %0 : tensor<?x?x?x10xf32>
+}
+
+// Verify the result shape for the tf.PadV2 op.
+// CHECK-LABEL: const_paddings_space_to_batch_nd
+func @const_paddings_space_to_batch_nd(%arg0: tensor<1x8x2xf32>) -> (tensor<3x5x2xf32>) {
+  %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<[[3, 4]]> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+
+
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<[3, 5, 2]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 5, 3, 2]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<{{\[\[}}0, 0], [3, 4], [0, 0{{\]\]}}> : tensor<3x2xi64>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<[2, 0, 1, 3]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.PadV2"(%arg0, [[VAL2]], [[VAL3]])
+  // CHECK-SAME: tensor<1x15x2xf32>
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Reshape"([[VAL5]], [[VAL1]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Transpose"([[VAL6]], [[VAL4]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Reshape"([[VAL7]], [[VAL0]])
+  %2 = "tf.SpaceToBatchND"(%arg0, %0, %1) : (tensor<1x8x2xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<3x5x2xf32>
+
+  // CHECK: return [[VAL8]]
+  return %2 : tensor<3x5x2xf32>
+}
+
+// CHECK-LABEL: avoid_lowering_space_to_batch_nd
+func @avoid_lowering_space_to_batch_nd(%arg0: tensor<1x8x2xf32>, %arg1: tensor<*xi32>) -> (tensor<3x5x2xf32>) {
+  %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.SpaceToBatchND"(%arg0, %0, %arg1) : (tensor<1x8x2xf32>, tensor<1xi32>, tensor<*xi32>) -> tensor<3x5x2xf32>
+  return %1 : tensor<3x5x2xf32>
+
+  // CHECK: "tf.SpaceToBatchND"
+}
+
+// %input has 1 batch dimension then 3 block dimensions then 2 remainder
+// dimensions. This checks only ops that are specific to the case with 3 block
+// dimension and 2 remainder dimensions.
+// CHECK-LABEL: sixdim_space_to_batch_nd
+func @sixdim_space_to_batch_nd(%input: tensor<3x5x7x9x10x11xf32>, %block_shape: tensor<3xi64>, %paddings: tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32> {
+  // CHECK-DAG: [[PAD00:%.+]] = "tf.Const"()
+  // CHECK-DAG: [[FULL_PADDINGS:%.+]] = "tf.ConcatV2"([[PAD00]], %arg2, [[PAD00]], [[PAD00]], {{.+}})
+  // CHECK-DAG: [[INPUT_SHAPE:%.+]] = "tf.Const"() {value = dense<[3, 5, 7, 9, 10, 11]> : tensor<6xi64>}
+  // CHECK-DAG: [[PADDED_SHAPE_SPLITS:%.+]]:6 = "tf.Split"
+  // CHECK-DAG: [[BLOCK_SHAPE_SPLITS:%.+]]:3 = "tf.Split"
+  // CHECK-DAG: [[OUTER_SHAPE_0:%.+]] = "tf.Div"([[PADDED_SHAPE_SPLITS]]#1, [[BLOCK_SHAPE_SPLITS]]#0)
+  // CHECK-DAG: [[OUTER_SHAPE_1:%.+]] = "tf.Div"([[PADDED_SHAPE_SPLITS]]#2, [[BLOCK_SHAPE_SPLITS]]#1)
+  // CHECK-DAG: [[OUTER_SHAPE_2:%.+]] = "tf.Div"([[PADDED_SHAPE_SPLITS]]#3, [[BLOCK_SHAPE_SPLITS]]#2)
+  // CHECK-DAG: [[RESHAPED_SHAPE:%.+]] = "tf.ConcatV2"([[PADDED_SHAPE_SPLITS]]#0, [[OUTER_SHAPE_0]], [[BLOCK_SHAPE_SPLITS]]#0, [[OUTER_SHAPE_1]], [[BLOCK_SHAPE_SPLITS]]#1, [[OUTER_SHAPE_2]], [[BLOCK_SHAPE_SPLITS]]#2, [[PADDED_SHAPE_SPLITS]]#4, [[PADDED_SHAPE_SPLITS]]#5, {{.+}})
+  // CHECK-DAG: [[PERMUTATION:%.+]] = "tf.Const"() {value = dense<[2, 4, 6, 0, 1, 3, 5, 7, 8]> : tensor<9xi64>}
+  // CHECK-DAG: [[OUTPUT_BATCH_PART1:%.+]] = "tf.Mul"([[PADDED_SHAPE_SPLITS]]#0, [[BLOCK_SHAPE_SPLITS]]#0)
+  // CHECK-DAG: [[OUTPUT_BATCH_PART2:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART1]], [[BLOCK_SHAPE_SPLITS]]#1)
+  // CHECK-DAG: [[OUTPUT_BATCH:%.+]] = "tf.Mul"([[OUTPUT_BATCH_PART2]], [[BLOCK_SHAPE_SPLITS]]#2)
+  // CHECK-DAG: [[OUTPUT_SHAPE:%.+]] = "tf.ConcatV2"([[OUTPUT_BATCH]], [[OUTER_SHAPE_0]], [[OUTER_SHAPE_1]], [[OUTER_SHAPE_2]], [[PADDED_SHAPE_SPLITS]]#4, [[PADDED_SHAPE_SPLITS]]#5, {{.+}})
+  %0 = "tf.SpaceToBatchND"(%input, %block_shape, %paddings) : (tensor<3x5x7x9x10x11xf32>, tensor<3xi64>, tensor<3x2xi64>) -> tensor<?x?x?x?x10x11xf32>
+  return %0 : tensor<?x?x?x?x10x11xf32>
+}
+
+// CHECK-LABEL: func @batchToSpace
+func @batchToSpace(%arg0: tensor<3x5x2xf32>) -> (tensor<1x8x2xf32>) {
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<[3, 1, 5, 2]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 2, 0, 3]> : tensor<4xi64>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<[1, 15, 2]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<[0, 3, 0]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<[1, 8, 2]> : tensor<3xi64>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.Reshape"(%arg0, [[VAL0]])
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Transpose"([[VAL5]], [[VAL1]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Reshape"([[VAL6]], [[VAL2]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Slice"([[VAL7]], [[VAL3]], [[VAL4]])
+  %0 = "tf.Const"() {value = dense<3> : tensor<1xi32>} : () -> tensor<1xi32>
+  %1 = "tf.Const"() {value = dense<[[3, 4]]> : tensor<1x2xi32>} : () -> tensor<1x2xi32>
+  %2 = "tf.BatchToSpaceND"(%arg0, %0, %1) {device = ""} : (tensor<3x5x2xf32>, tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x8x2xf32>
+
+  // CHECK: return [[VAL8]] : tensor<1x8x2xf32>
+  return %2 : tensor<1x8x2xf32>
+}
+
+func @fake_quant_with_min_max_args(%arg0 : tensor<?x?xf32>) -> tensor<?x?xf32> {
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<1.275000e+02> : tensor<f32>}
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<1.00392163> : tensor<f32>}
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<-0.996078491> : tensor<f32>}
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<0.00784313772> : tensor<f32>}
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.ClipByValue"(%arg0, [[VAL2]], [[VAL1]])
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Sub"([[VAL5]], [[VAL2]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Mul"([[VAL6]], [[VAL0]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.AddV2"([[VAL7]], [[VAL4]])
+  // CHECK-DAG: [[VAL9:%.+]] = "tf.Floor"([[VAL8]])
+  // CHECK-DAG: [[VAL10:%.+]] = "tf.Mul"([[VAL9]], [[VAL3]])
+  // CHECK-DAG: [[VAL11:%.+]] = "tf.AddV2"([[VAL10]], [[VAL2]])
+  %0 = "tf.FakeQuantWithMinMaxArgs"(%arg0) {max = 1.0 : f32, min = -1.0 : f32, narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>) -> tensor<?x?xf32>
+
+  // CHECK: return [[VAL11]]
+  return %0 : tensor<?x?xf32>
+}
+
+func @fake_quant_with_min_max_vars(%arg0 : tensor<?x?xf32>, %arg1 : tensor<f32>, %arg2 : tensor<f32>) -> tensor<?x?xf32> {
+  // CHECK-DAG: [[VAL0:%.+]] = "tf.Const"() {value = dense<0.000000e+00>
+  // CHECK-DAG: [[VAL1:%.+]] = "tf.Const"() {value = dense<2.550000e+02>
+  // CHECK-DAG: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00>
+  // CHECK-DAG: [[VAL3:%.+]] = "tf.Const"() {value = dense<5.000000e-01>
+  // CHECK-DAG: [[VAL4:%.+]] = "tf.Sub"(%arg2, %arg1)
+  // CHECK-DAG: [[VAL5:%.+]] = "tf.Div"([[VAL4]], [[VAL1]])
+  // CHECK-DAG: [[VAL6:%.+]] = "tf.Div"([[VAL1]], [[VAL4]])
+  // CHECK-DAG: [[VAL7:%.+]] = "tf.Div"(%arg1, [[VAL5]])
+  // CHECK-DAG: [[VAL8:%.+]] = "tf.Sub"([[VAL0]], [[VAL7]])
+  // CHECK-DAG: [[VAL9:%.+]] = "tf.Floor"([[VAL8]])
+  // CHECK-DAG: [[VAL10:%.+]] = "tf.Sub"([[VAL8]], [[VAL9]])
+  // CHECK-DAG: [[VAL11:%.+]] = "tf.Less"([[VAL10]], [[VAL3]])
+  // CHECK-DAG: [[VAL12:%.+]] = "tf.AddV2"([[VAL9]], [[VAL2]])
+  // CHECK-DAG: [[VAL13:%.+]] = "tf.Select"([[VAL11]], [[VAL9]], [[VAL12]])
+  // CHECK-DAG: [[VAL14:%.+]] = "tf.ClipByValue"([[VAL13]], [[VAL0]], [[VAL1]]) :
+  // CHECK-DAG: [[VAL15:%.+]] = "tf.Sub"([[VAL0]], [[VAL14]])
+  // CHECK-DAG: [[VAL16:%.+]] = "tf.Sub"([[VAL1]], [[VAL14]])
+  // CHECK-DAG: [[VAL17:%.+]] = "tf.Mul"([[VAL15]], [[VAL5]])
+  // CHECK-DAG: [[VAL18:%.+]] = "tf.Mul"([[VAL16]], [[VAL5]])
+  // CHECK-DAG: [[VAL19:%.+]] = "tf.ClipByValue"(%arg0, [[VAL17]], [[VAL18]])
+  // CHECK-DAG: [[VAL20:%.+]] = "tf.Sub"([[VAL19]], [[VAL17]])
+  // CHECK-DAG: [[VAL21:%.+]] = "tf.Mul"([[VAL20]], [[VAL6]])
+  // CHECK-DAG: [[VAL22:%.+]] = "tf.AddV2"([[VAL21]], [[VAL3]])
+  // CHECK-DAG: [[VAL23:%.+]] = "tf.Floor"([[VAL22]])
+  // CHECK-DAG: [[VAL24:%.+]] = "tf.Mul"([[VAL23]], [[VAL5]])
+  // CHECK-DAG: [[VAL25:%.+]] = "tf.AddV2"([[VAL24]], [[VAL17]])
+  %0 = "tf.FakeQuantWithMinMaxVars"(%arg0, %arg1, %arg2) {narrow_range = false, num_bits = 8 : i64} : (tensor<?x?xf32>, tensor<f32>, tensor<f32>) -> tensor<?x?xf32>
+
+  // CHECK: return [[VAL25]]
+  return %0 : tensor<?x?xf32>
 }
 
 // CHECK-LABEL: SoftmaxCrossEntropyWithLogits
@@ -389,6 +528,16 @@ func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf
   return %0 : tensor<!tf.variant<tensor<2xi32>>>
 }
 
+// CHECK-LABEL: func @OnesLike_unranked
+func @OnesLike_unranked(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[SHAPE:.*]] = "tf.Shape"(%arg0) : (tensor<*xi32>) -> tensor<?xi64>
+  // CHECK: "tf.BroadcastTo"(%[[ONE]], %[[SHAPE]]) : (tensor<i32>, tensor<?xi64>) -> tensor<*xi32>
+
+  %0 = "tf.OnesLike"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
 // CHECK-LABEL: func @addN_2
 func @addN_2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
@@ -436,9 +585,11 @@ func @addN_variant(%arg0: tensor<!tf.variant<tensor<2xf32>>>, %arg1: tensor<!tf.
 
 // CHECK-LABEL: func @DynamicStitch_simple
 func @DynamicStitch_simple(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
-  // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
-  // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[ITEMS]]#0, %[[AXIS]]) : (tensor<2xf32>, tensor<2xf32>, tensor<i64>) -> tensor<2x2xf32>
+  // CHECK: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
+  // CHECK: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  // CHECK-DAG: %[[ITEMS_1:.*]] = "tf.ExpandDims"(%[[ITEMS]]#1, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS_0:.*]] = "tf.ExpandDims"(%[[ITEMS]]#0, %[[AXIS]])
+  // CHECK: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS_1]], %[[ITEMS_0]], %[[AXIS]]) : (tensor<1x2xf32>, tensor<1x2xf32>, tensor<i64>) -> tensor<2x2xf32>
   // CHECK: return %[[RESULT]]
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -454,7 +605,12 @@ func @DynamicStitch_scalar_matrix_indices(%arg0: tensor<2xf32>, %arg1: tensor<2x
   // CHECK-DAG: %[[INP1:.*]] = "tf.Reshape"(%arg1, %[[SHAPE]]) : (tensor<2x2x2xf32>, tensor<2xi64>) -> tensor<4x2xf32>
   // CHECK-DAG: %[[ITEMS1:.*]]:4 = "tf.Unpack"(%[[INP1]]) {axis = 0 : i64} : (tensor<4x2xf32>) -> (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
-  // CHECK-DAG: %6 = "tf.ConcatV2"(%[[ITEMS1]]#3, %[[ITEMS1]]#2, %[[ITEMS1]]#1, %[[ITEMS1]]#0, %[[ITEMS0]], %[[AXIS]]) : (tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<2xf32>, tensor<i64>) -> tensor<5x2xf32>
+  // CHECK-DAG: %[[ITEMS1_3:.*]] = "tf.ExpandDims"(%[[ITEMS1]]#3, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS1_2:.*]] = "tf.ExpandDims"(%[[ITEMS1]]#2, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS1_1:.*]] = "tf.ExpandDims"(%[[ITEMS1]]#1, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS1_0:.*]] = "tf.ExpandDims"(%[[ITEMS1]]#0, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS0_0:.*]] = "tf.ExpandDims"(%[[ITEMS0]], %[[AXIS]])
+  // CHECK-DAG: "tf.ConcatV2"(%[[ITEMS1_3]], %[[ITEMS1_2]], %[[ITEMS1_1]], %[[ITEMS1_0]], %[[ITEMS0_0]], %[[AXIS]]) : (tensor<1x2xf32>, tensor<1x2xf32>, tensor<1x2xf32>, tensor<1x2xf32>, tensor<1x2xf32>, tensor<i64>) -> tensor<5x2xf32>
 
   %indices0 = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
   %indices1 = "tf.Const"() {value = dense<[[3, 2], [1, 0]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
@@ -476,7 +632,9 @@ func @DynamicStitch_uint8(%arg0: tensor<2x2xui8>) -> tensor<2x2xui8> {
 func @DynamicStitch_scalar_item(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK-DAG: %[[ITEMS]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2xf32>) -> (tensor<f32>, tensor<f32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
-  // CHECK-DAG: %[[RESULT]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[ITEMS]]#0, %[[AXIS]]) : (tensor<f32>, tensor<f32>, tensor<i64>) -> tensor<2xf32>
+  // CHECK-DAG: %[[ITEMS_1:.*]] = "tf.ExpandDims"(%[[ITEMS]]#1, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS_0:.*]] = "tf.ExpandDims"(%[[ITEMS]]#0, %[[AXIS]])
+  // CHECK-DAG: %[[RESULT]] = "tf.ConcatV2"(%[[ITEMS_1]], %[[ITEMS_0]], %[[AXIS]]) : (tensor<1xf32>, tensor<1xf32>, tensor<i64>) -> tensor<2xf32>
   // CHECK: return %[[RESULT]]
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -488,7 +646,9 @@ func @DynamicStitch_scalar_item(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 func @DynamicStitch_matrix_item(%arg0: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
   // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
-  // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[ITEMS]]#0, %[[AXIS]]) : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<i64>) -> tensor<2x2x2xf32>
+  // CHECK-DAG: %[[ITEMS_1:.*]] = "tf.ExpandDims"(%[[ITEMS]]#1, %[[AXIS]])
+  // CHECK-DAG: %[[ITEMS_0:.*]] = "tf.ExpandDims"(%[[ITEMS]]#0, %[[AXIS]])
+  // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS_1]], %[[ITEMS_0]], %[[AXIS]]) : (tensor<1x2x2xf32>, tensor<1x2x2xf32>, tensor<i64>) -> tensor<2x2x2xf32>
   // CHECK: return %[[RESULT]]
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
@@ -507,12 +667,21 @@ func @DynamicStitch_dynamic(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tenso
 func @DynamicStitch_duplicates(%arg0: tensor<2x2xf32>) -> tensor<1x2xf32> {
   // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
-  // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[AXIS]]) : (tensor<2xf32>, tensor<i64>) -> tensor<1x2xf32>
+  // CHECK-DAG: %[[ITEMS_1:.*]] = "tf.ExpandDims"(%[[ITEMS]]#1, %[[AXIS]])
+  // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS_1]], %[[AXIS]]) : (tensor<1x2xf32>, tensor<i64>) -> tensor<1x2xf32>
   // CHECK: return %[[RESULT]]
 
   %indices = "tf.Const"() {value = dense<[0, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
   %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<1x2xf32>
   return %0 : tensor<1x2xf32>
+}
+
+// CHECK-LABEL: func @ParallelDynamicStitch
+func @ParallelDynamicStitch(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK-NOT: tf.ParallelDynamicStitch
+  %0 = "tf.ParallelDynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
 }
 
 // CHECK-LABEL: @Reciprocal_i32
@@ -550,7 +719,7 @@ func @Reciprocal_complexf64(%arg0: tensor<*xcomplex<f64>>) -> tensor<*xcomplex<f
 // CHECK-LABEL: @ScatterNd
 func @ScatterNd(%arg0: tensor<4x1xi32>, %arg1: tensor<4xf32>) -> tensor<8xf32> {
   // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<8xf32>} : () -> tensor<8xf32>
-  // CHECK: "tf.TensorScatterUpdate"(%[[ZERO]], %arg0, %arg1) : (tensor<8xf32>, tensor<4x1xi32>, tensor<4xf32>) -> tensor<8xf32>
+  // CHECK: "tf.TensorScatterAdd"(%[[ZERO]], %arg0, %arg1) : (tensor<8xf32>, tensor<4x1xi32>, tensor<4xf32>) -> tensor<8xf32>
 
   %shape = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.ScatterNd"(%arg0, %arg1, %shape) : (tensor<4x1xi32>, tensor<4xf32>, tensor<1xi32>) -> tensor<8xf32>
@@ -568,4 +737,212 @@ func @_UnaryOpsComposition(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 
   %0 = "tf._UnaryOpsComposition"(%arg0) {op_names = ["Asin", "Abs", "Log"]} : (tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
+}
+
+
+// CHECK-LABEL: @round_int
+func @round_int(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: [[IDENTITY:%.+]] = "tf.Identity"(%arg0)
+  %0 = "tf.Round"(%arg0) : (tensor<2xi32>) -> tensor<2xi32>
+  // CHECK: return [[IDENTITY]]
+  return %0 : tensor<2xi32>
+}
+
+// CHECK-LABEL: @round
+func @round(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
+  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
+  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
+  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
+  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
+  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  %0 = "tf.Round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+
+  // CHECK: return [[SELECT]]
+  return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @round_dynamic
+func @round_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-DAG: [[FLOOR:%.+]] = "tf.Floor"(%arg0)
+  // CHECK-DAG: [[SUB:%.+]] = "tf.Sub"(%arg0, [[FLOOR]])
+  // CHECK-DAG: [[HALF:%.+]] = "tf.Const"() {value = dense<5.000000e-01> : tensor<f32>}
+  // CHECK-DAG: [[CMP:%.+]] = "tf.Less"([[SUB]], [[HALF]])
+  // CHECK-DAG: [[ONE:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK-DAG: [[ADD:%.+]] = "tf.AddV2"([[FLOOR]], [[ONE]])
+  // CHECK-DAG: [[SELECT:%.+]] = "tf.Select"([[CMP]], [[FLOOR]], [[ADD]])
+  %0 = "tf.Round"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return [[SELECT]]
+  return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @round_unranked
+func @round_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.Round"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @lgamma
+func @lgamma(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // The lowering for lgamma is complicated, which makes it awkward to write a
+  // complete test for it here. Instead we test that Lgamma is at least being
+  // lowered here and rely on UnaryOpsTest.testFloatOps and other TensorFlow
+  // tests to check it is lowered correctly and with sufficient precision.
+  // CHECK-NOT: tf.Lgamma
+  %0 = "tf.Lgamma"(%arg0) : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @imag_resize_nearest
+func @imag_resize_nearest(%arg0: tensor<1x7x7x1xi32>) -> tensor<1x3x3x1xi32> {
+  %shape = "tf.Const"() {device = "", value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
+
+  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<[1, 3, 3, 1]>
+  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<[1, 49, 1]>
+  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<[0, 2, 4, 14, 16, 18, 28, 30, 32]> : tensor<9xi32>}
+  // CHECK: [[VAL4:%.+]] = "tf.Reshape"(%arg0, [[VAL2]])
+  // CHECK: [[VAL5:%.+]] = "tf.GatherV2"([[VAL4]], [[VAL3]], [[VAL0]]) {batch_dims = 0 : i64}
+  // CHECK: [[VAL6:%.+]] = "tf.Reshape"([[VAL5]], [[VAL1]])
+  // CHECK: return [[VAL6]]
+  %resize = "tf.ResizeNearestNeighbor"(%arg0, %shape) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x7x7x1xi32>, tensor<2xi32>) -> tensor<1x3x3x1xi32>
+  return %resize: tensor<1x3x3x1xi32>
+}
+
+// CHECK-LABEL: func @imag_resize_nearest_dyn_img
+func @imag_resize_nearest_dyn_img(%arg0: tensor<1x?x?x1xi32>) -> tensor<1x3x3x1xi32> {
+  %shape = "tf.Const"() {device = "", value = dense<3> : tensor<2xi32>} : () -> tensor<2xi32>
+
+  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<[3, 1]> : tensor<2xi32>}
+  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<9> : tensor<1xi32>}
+  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
+  // CHECK: [[VAL4:%.+]] = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>}
+  // CHECK: [[VAL5:%.+]] = "tf.Const"() {value = dense<[0.000000e+00, 1.000000e+00, 2.000000e+00]>
+  // CHECK: [[VAL6:%.+]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>}
+  // CHECK: [[VAL7:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK: [[VAL8:%.+]] = "tf.Shape"(%arg0)
+  // CHECK: [[VAL9:%.+]] = "tf.Cast"([[VAL8]])
+  // CHECK: [[VAL10:%.+]]:4 = "tf.Unpack"([[VAL9]]) {axis = 0 : i64}
+  // CHECK: [[VAL11:%.+]] = "tf.Mul"([[VAL10]]#1, [[VAL10]]#2)
+  // CHECK: [[VAL12:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL7]])
+  // CHECK: [[VAL13:%.+]] = "tf.ExpandDims"([[VAL10]]#3, [[VAL7]])
+  // CHECK: [[VAL14:%.+]] = "tf.ConcatV2"([[VAL12]], [[VAL3]], [[VAL3]], [[VAL13]], [[VAL7]])
+  // CHECK: [[VAL15:%.+]] = "tf.Cast"([[VAL10]]#1)
+  // CHECK: [[VAL16:%.+]] = "tf.Div"([[VAL15]], [[VAL6]])
+  // CHECK: [[VAL17:%.+]] = "tf.Mul"([[VAL16]], [[VAL5]])
+  // CHECK: [[VAL18:%.+]] = "tf.Cast"([[VAL17]])
+  // CHECK: [[VAL19:%.+]] = "tf.Reshape"([[VAL18]], [[VAL1]])
+  // CHECK: [[VAL20:%.+]] = "tf.Mul"([[VAL19]], [[VAL10]]#2)
+  // CHECK: [[VAL21:%.+]] = "tf.Cast"([[VAL10]]#2)
+  // CHECK: [[VAL22:%.+]] = "tf.Div"([[VAL21]], [[VAL6]])
+  // CHECK: [[VAL23:%.+]] = "tf.Mul"([[VAL22]], [[VAL5]])
+  // CHECK: [[VAL24:%.+]] = "tf.Cast"([[VAL23]])
+  // CHECK: [[VAL25:%.+]] = "tf.Reshape"([[VAL24]], [[VAL4]])
+  // CHECK: [[VAL26:%.+]] = "tf.AddV2"([[VAL20]], [[VAL25]])
+  // CHECK: [[VAL27:%.+]] = "tf.Reshape"([[VAL26]], [[VAL2]])
+  // CHECK: [[VAL28:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL7]])
+  // CHECK: [[VAL29:%.+]] = "tf.ExpandDims"([[VAL11]], [[VAL7]])
+  // CHECK: [[VAL30:%.+]] = "tf.ExpandDims"([[VAL10]]#3, [[VAL7]])
+  // CHECK: [[VAL31:%.+]] = "tf.ConcatV2"([[VAL28]], [[VAL29]], [[VAL30]], [[VAL7]])
+  // CHECK: [[VAL32:%.+]] = "tf.Reshape"(%arg0, [[VAL31]])
+  // CHECK: [[VAL33:%.+]] = "tf.GatherV2"([[VAL32]], [[VAL27]], [[VAL0]]) {batch_dims = 0 : i64}
+  // CHECK: [[VAL34:%.+]] = "tf.Reshape"([[VAL33]], [[VAL14]])
+  // CHECK: return [[VAL34]]
+  %resize = "tf.ResizeNearestNeighbor"(%arg0, %shape) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x?x?x1xi32>, tensor<2xi32>) -> tensor<1x3x3x1xi32>
+  return %resize: tensor<1x3x3x1xi32>
+}
+
+// CHECK-LABEL: func @imag_resize_nearest_full_dyn
+func @imag_resize_nearest_full_dyn(%arg0: tensor<1x?x?x1xi32>, %arg1: tensor<2xi32>) -> tensor<1x?x?x1xi32> {
+
+  // CHECK: [[VAL0:%.+]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK: [[VAL1:%.+]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>}
+  // CHECK: [[VAL2:%.+]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>}
+  // CHECK: [[VAL3:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
+  // CHECK: [[VAL4:%.+]] = "tf.Const"() {value = dense<1> : tensor<1xi64>}
+  // CHECK: [[VAL5:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+  // CHECK: [[VAL6:%.+]] = "tf.Shape"(%arg0)
+  // CHECK: [[VAL7:%.+]] = "tf.Cast"([[VAL6]])
+  // CHECK: [[VAL8:%.+]]:4 = "tf.Unpack"([[VAL7]]) {axis = 0 : i64}
+  // CHECK: [[VAL9:%.+]] = "tf.Mul"([[VAL8]]#1, [[VAL8]]#2)
+  // CHECK: [[VAL10:%.+]]:2 = "tf.Unpack"(%arg1) {axis = 0 : i64}
+  // CHECK: [[VAL11:%.+]] = "tf.Mul"([[VAL10]]#0, [[VAL10]]#1)
+  // CHECK: [[VAL12:%.+]] = "tf.ExpandDims"([[VAL8]]#0, [[VAL5]])
+  // CHECK: [[VAL13:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL5]])
+  // CHECK: [[VAL14:%.+]] = "tf.ExpandDims"([[VAL10]]#1, [[VAL5]])
+  // CHECK: [[VAL15:%.+]] = "tf.ExpandDims"([[VAL8]]#3, [[VAL5]])
+  // CHECK: [[VAL16:%.+]] = "tf.ConcatV2"([[VAL12]], [[VAL13]], [[VAL14]], [[VAL15]], [[VAL5]])
+  // CHECK: [[VAL17:%.+]] = "tf.Cast"([[VAL8]]#1)
+  // CHECK: [[VAL18:%.+]] = "tf.Cast"([[VAL10]]#0)
+  // CHECK: [[VAL19:%.+]] = "tf.Div"([[VAL17]], [[VAL18]])
+  // CHECK: [[VAL20:%.+]] = "tf.Range"([[VAL1]], [[VAL18]], [[VAL2]])
+  // CHECK: [[VAL21:%.+]] = "tf.Mul"([[VAL20]], [[VAL19]])
+  // CHECK: [[VAL22:%.+]] = "tf.Cast"([[VAL21]])
+  // CHECK: [[VAL23:%.+]] = "tf.ExpandDims"([[VAL10]]#0, [[VAL5]])
+  // CHECK: [[VAL24:%.+]] = "tf.ConcatV2"([[VAL23]], [[VAL3]], [[VAL5]])
+  // CHECK: [[VAL25:%.+]] = "tf.Reshape"([[VAL22]], [[VAL24]])
+  // CHECK: [[VAL26:%.+]] = "tf.Mul"([[VAL25]], [[VAL8]]#2)
+  // CHECK: [[VAL27:%.+]] = "tf.Cast"([[VAL8]]#2)
+  // CHECK: [[VAL28:%.+]] = "tf.Cast"([[VAL10]]#1)
+  // CHECK: [[VAL29:%.+]] = "tf.Div"([[VAL27]], [[VAL28]])
+  // CHECK: [[VAL30:%.+]] = "tf.Range"([[VAL1]], [[VAL28]], [[VAL2]])
+  // CHECK: [[VAL31:%.+]] = "tf.Mul"([[VAL30]], [[VAL29]])
+  // CHECK: [[VAL32:%.+]] = "tf.Cast"([[VAL31]])
+  // CHECK: [[VAL33:%.+]] = "tf.ExpandDims"([[VAL10]]#1, [[VAL5]])
+  // CHECK: [[VAL34:%.+]] = "tf.ConcatV2"([[VAL3]], [[VAL33]], [[VAL5]])
+  // CHECK: [[VAL35:%.+]] = "tf.Reshape"([[VAL32]], [[VAL34]])
+  // CHECK: [[VAL36:%.+]] = "tf.AddV2"([[VAL26]], [[VAL35]])
+  // CHECK: [[VAL37:%.+]] = "tf.Reshape"([[VAL11]], [[VAL4]])
+  // CHECK: [[VAL38:%.+]] = "tf.Reshape"([[VAL36]], [[VAL37]])
+  // CHECK: [[VAL39:%.+]] = "tf.ExpandDims"([[VAL8]]#0, [[VAL5]])
+  // CHECK: [[VAL40:%.+]] = "tf.ExpandDims"([[VAL9]], [[VAL5]])
+  // CHECK: [[VAL41:%.+]] = "tf.ExpandDims"([[VAL8]]#3, [[VAL5]])
+  // CHECK: [[VAL42:%.+]] = "tf.ConcatV2"([[VAL39]], [[VAL40]], [[VAL41]], [[VAL5]])
+  // CHECK: [[VAL43:%.+]] = "tf.Reshape"(%arg0, [[VAL42]])
+  // CHECK: [[VAL44:%.+]] = "tf.GatherV2"([[VAL43]], [[VAL38]], [[VAL0]]) {batch_dims = 0 : i64}
+  // CHECK: [[VAL45:%.+]] = "tf.Reshape"([[VAL44]], [[VAL16]])
+  // CHECK: return [[VAL45]]
+  %resize = "tf.ResizeNearestNeighbor"(%arg0, %arg1) {align_corners = false, device = "", half_pixel_centers = false} : (tensor<1x?x?x1xi32>, tensor<2xi32>) -> tensor<1x?x?x1xi32>
+  return %resize: tensor<1x?x?x1xi32>
+}
+
+// CHECK-LABEL: func @xdivy
+// CHECK-SAME: (%[[X:.*]]: tensor<*xf32>, %[[Y:.*]]: tensor<*xf32>)
+func @xdivy(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:  %[[IS_ZERO:.*]] = "tf.Equal"(%[[X]], %[[ZERO]]) {incompatible_shape_error = true} : (tensor<*xf32>, tensor<f32>) -> tensor<*xi1>
+  // CHECK:  %[[MUL:.*]] = "tf.Div"(%[[X]], %[[Y]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[IS_ZERO]], %[[ZERO]], %[[MUL]]) : (tensor<*xi1>, tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Xdivy"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @xlog1py
+// CHECK-SAME: (%[[X:.*]]: tensor<*xf32>, %[[Y:.*]]: tensor<*xf32>)
+func @xlog1py(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:  %[[IS_ZERO:.*]] = "tf.Equal"(%[[X]], %[[ZERO]]) {incompatible_shape_error = true} : (tensor<*xf32>, tensor<f32>) -> tensor<*xi1>
+  // CHECK:  %[[LOG:.*]] = "tf.Log1p"(%[[Y]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:  %[[MUL:.*]] = "tf.Mul"(%[[X]], %[[LOG]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[IS_ZERO]], %[[ZERO]], %[[MUL]]) : (tensor<*xi1>, tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Xlog1py"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @xlogy
+// CHECK-SAME: (%[[X:.*]]: tensor<*xf32>, %[[Y:.*]]: tensor<*xf32>)
+func @xlogy(%lhs: tensor<*xf32>, %rhs: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK:  %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK:  %[[IS_ZERO:.*]] = "tf.Equal"(%[[X]], %[[ZERO]]) {incompatible_shape_error = true} : (tensor<*xf32>, tensor<f32>) -> tensor<*xi1>
+  // CHECK:  %[[LOG:.*]] = "tf.Log"(%[[Y]]) : (tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:  %[[MUL:.*]] = "tf.Mul"(%[[X]], %[[LOG]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // CHECK:  %[[RESULT:.*]] = "tf.SelectV2"(%[[IS_ZERO]], %[[ZERO]], %[[MUL]]) : (tensor<*xi1>, tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
+  %0 = "tf.Xlogy"(%lhs, %rhs) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  // CHECK: return %[[RESULT]]
+  return %0 : tensor<*xf32>
 }

@@ -18,18 +18,30 @@ limitations under the License.
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
-#include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
 namespace tensorflow {
 namespace ops {
 
-Status SparseSoftmaxCrossEntropyLoss(
+Status SparseSoftmaxCrossEntropyWithLogits(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
 Status ReluGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status Relu(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status BiasAdd(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status BiasAddGrad(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const char* data_format, const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow

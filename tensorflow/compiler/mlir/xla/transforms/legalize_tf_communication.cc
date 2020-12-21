@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -201,7 +201,7 @@ LogicalResult GetFunctionsToRewrite(
     if (func.getSecond().original.isPublic() &&
         !func.getSecond().original.symbolKnownUseEmpty(module)) {
       auto clone = func.getSecond().original.clone();
-      clone.setVisibility(SymbolTable::Visibility::Private);
+      clone.setPrivate();
       symbol_table.insert(clone);
       func.getSecond().clone = clone;
     }

@@ -24,13 +24,13 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -115,9 +115,8 @@ struct TPUSpaceToDepthPass
 
 // Updates func argument type to have the updated input shape.
 void UpdateFuncType(FuncOp func) {
-  auto arg_types = llvm::to_vector<8>(func.front().getArgumentTypes());
-  auto result_types =
-      llvm::to_vector<4>(func.front().getTerminator()->getOperandTypes());
+  auto arg_types = func.front().getArgumentTypes();
+  auto result_types = func.front().getTerminator()->getOperandTypes();
   func.setType(FunctionType::get(arg_types, result_types, func.getContext()));
 }
 
@@ -201,7 +200,7 @@ void HandleConv2DStride(TF::Conv2DOp conv2d) {
   });
   // TODO(b/157276506): change type of strides to DenseElementsAttr
   auto strides = ArrayAttr::get(llvm::to_vector<4>(attrs), context);
-  conv2d.setAttr("strides", strides);
+  conv2d->setAttr("strides", strides);
 }
 
 // Transforms input shape for the first convolution.
@@ -484,7 +483,7 @@ bool HandleHostReplicatedInputs(int64_t index,
 void HandleCluster(tf_device::ClusterFuncOp cluster_func, int32_t block_size,
                    unsigned arg_num) {
   auto maybe_replicate =
-      llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func.getParentOp());
+      llvm::dyn_cast<tf_device::ReplicateOp>(cluster_func->getParentOp());
 
   llvm::SmallVector<int64_t, 8> transform_input_indices;
   for (auto input : llvm::enumerate(cluster_func.operands())) {

@@ -1,12 +1,15 @@
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")  # buildifier: disable=same-origin-load
-load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_alias")
+load(
+    "//tensorflow/core/profiler/builds:build_config.bzl",
+    "tf_profiler_alias",
+    "tf_profiler_copts",
+    "tf_profiler_pybind_cc_library_wrapper",
+)
 
 package(
-    default_visibility = [
-        "//tensorflow/core/profiler:internal",
-    ],
+    default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -26,11 +29,12 @@ exports_files(
     visibility = ["//tensorflow/core/profiler/rpc:__subpackages__"],
 )
 
+# Linked to pywrap_tensorflow.
 cc_library(
     name = "profiler_service_impl",
     srcs = ["profiler_service_impl.cc"],
     hdrs = ["profiler_service_impl.h"],
-    features = ["-layering_check"],
+    copts = tf_profiler_copts(),
     visibility = tf_external_workspace_visible(
         [
             "//tensorflow/core/data/service:__pkg__",
@@ -41,24 +45,35 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
-        "//tensorflow/core/profiler/lib:profiler_session_headers",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:file_system_utils",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),
     ],
+)
+
+tf_profiler_pybind_cc_library_wrapper(
+    name = "profiler_server_for_pybind",
+    actual = ":profiler_server_impl",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
 )
 
 cc_library(
     name = "profiler_server_impl",
     srcs = ["profiler_server.cc"],
     hdrs = ["profiler_server.h"],
+    copts = tf_profiler_copts(),
     visibility = [
         "//tensorflow/compiler/xla/python:__pkg__",
+        "//tensorflow/core/profiler:internal",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ],
     deps = [
-        ":grpc",
         ":profiler_service_impl",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
@@ -66,12 +81,4 @@ cc_library(
         tf_grpc_cc_dependency(),
     ],
     alwayslink = True,
-)
-
-tf_pybind_cc_library_wrapper(
-    name = "profiler_server_headers",
-    visibility = [
-        "//tensorflow/python/profiler/internal:__pkg__",
-    ],
-    deps = [":profiler_server_impl"],
 )

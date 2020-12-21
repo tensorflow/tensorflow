@@ -18,23 +18,26 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
-
 namespace TF {
+
+// Refines all the shapes in a module.
+LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations = 10);
 
 // Given a list of refined shapes matching the function arguments of func, runs
 // shape inference over the function to propagate this updated information.
 // If arg_shapes are empty, then argument shapes will be left unchanged.
-// TODO(b/154065712): Remove propagate_caller_callee_constants once using
-// SCCP pass instead.
-LogicalResult InferShapeForFunction(
-    FuncOp func, ArrayRef<ArrayRef<int64_t>> arg_shapes, int64_t graph_version,
-    bool propagate_caller_callee_constants = true);
+// Note: This affects the entire module, and changes are not just scoped to the
+// function being inferred.
+LogicalResult InferShapeForFunction(FuncOp func,
+                                    ArrayRef<ArrayRef<int64_t>> arg_shapes,
+                                    int64_t graph_version,
+                                    int64_t max_iterations = 10);
 
 }  // namespace TF
 

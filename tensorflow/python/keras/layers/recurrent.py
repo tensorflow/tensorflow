@@ -19,6 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import warnings
+
 import numpy as np
 
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -43,9 +46,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -182,10 +183,7 @@ class StackedRNNCells(Layer):
   def get_config(self):
     cells = []
     for cell in self.cells:
-      cells.append({
-          'class_name': cell.__class__.__name__,
-          'config': cell.get_config()
-      })
+      cells.append(generic_utils.serialize_keras_object(cell))
     config = {'cells': cells}
     base_config = super(StackedRNNCells, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -276,7 +274,9 @@ class RNN(Layer):
   Call arguments:
     inputs: Input tensor.
     mask: Binary tensor of shape `[batch_size, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is for use with cells that use dropout.
@@ -443,6 +443,16 @@ class RNN(Layer):
       if ds_context.has_strategy():
         raise ValueError('RNNs with stateful=True not yet supported with '
                          'tf.distribute.Strategy.')
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    if self.unroll:
+      # When the RNN layer is unrolled, the time step shape cannot be unknown.
+      # The input spec does not define the time step (because this layer can be
+      # called with any time step value, as long as it is not None), so it
+      # cannot be used as the call function signature when saving to SavedModel.
+      return False
+    return super(RNN, self)._use_input_spec_as_call_signature
 
   @property
   def states(self):
@@ -830,7 +840,7 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if (isinstance(inputs, collections_abc.Sequence)
+    if (isinstance(inputs, collections.abc.Sequence)
         and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
@@ -976,11 +986,7 @@ class RNN(Layer):
     if self.zero_output_for_mask:
       config['zero_output_for_mask'] = self.zero_output_for_mask
 
-    cell_config = self.cell.get_config()
-    config['cell'] = {
-        'class_name': self.cell.__class__.__name__,
-        'config': cell_config
-    }
+    config['cell'] = generic_utils.serialize_keras_object(self.cell)
     base_config = super(RNN, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -1487,7 +1493,9 @@ class SimpleRNN(RNN):
   Call arguments:
     inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[batch, timesteps]` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False` entry
+      indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -1574,7 +1582,6 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2033,7 +2040,9 @@ class GRU(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2109,7 +2118,6 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2545,8 +2553,6 @@ class PeepholeLSTMCell(LSTMCell):
   ```
   """
 
-  @deprecation.deprecated(
-      None, 'Please use tensorflow_addons.rnn.PeepholeLSTMCell instead')
   def __init__(self,
                units,
                activation='tanh',
@@ -2565,6 +2571,10 @@ class PeepholeLSTMCell(LSTMCell):
                dropout=0.,
                recurrent_dropout=0.,
                **kwargs):
+    warnings.warn('`tf.keras.experimental.PeepholeLSTMCell` is deprecated '
+                  'and will be removed in a future version. '
+                  'Please use tensorflow_addons.rnn.PeepholeLSTMCell '
+                  'instead.')
     super(PeepholeLSTMCell, self).__init__(
         units=units,
         activation=activation,
@@ -2706,7 +2716,9 @@ class LSTM(RNN):
   Call arguments:
     inputs: A 3D tensor.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False`
+      entry indicates that the corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -2782,7 +2794,6 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -3043,7 +3054,8 @@ def _caching_device(rnn_cell):
                  'consider updating your code to remove tf.while_loop if '
                  'possible.')
     return None
-  if rnn_cell._dtype_policy.should_cast_variables:
+  if (rnn_cell._dtype_policy.compute_dtype !=
+      rnn_cell._dtype_policy.variable_dtype):
     logging.warn('Variable read device caching has been disabled since it '
                  'doesn\'t work with the mixed precision API. This is '
                  'likely to cause a slowdown for RNN training due to '

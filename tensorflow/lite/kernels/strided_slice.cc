@@ -37,7 +37,7 @@ namespace strided_slice {
 
 enum KernelType {
   kReference,
-  // TODO(soroosh): add kGenericOptimized
+  // TODO(b/175642009): add kGenericOptimized
 };
 
 constexpr int kInputTensor = 0;
@@ -71,17 +71,27 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   op_params.stop_indices_count = op_context->dims;
   op_params.strides_count = op_context->dims;
 
-  for (int i = 0; i < op_context->dims; ++i) {
-    op_params.start_indices[i] = GetTensorData<int32_t>(op_context->begin)[i];
-    op_params.stop_indices[i] = GetTensorData<int32_t>(op_context->end)[i];
-    op_params.strides[i] = GetTensorData<int32_t>(op_context->strides)[i];
-  }
-
   op_params.begin_mask = op_context->params->begin_mask;
   op_params.ellipsis_mask = 0;
   op_params.end_mask = op_context->params->end_mask;
   op_params.new_axis_mask = 0;
   op_params.shrink_axis_mask = op_context->params->shrink_axis_mask;
+
+  int begin_count = GetTensorShape(op_context->begin).Dims(0);
+  for (int i = 0; i < begin_count; ++i) {
+    op_params.start_indices[i] = GetTensorData<int32_t>(op_context->begin)[i];
+    op_params.stop_indices[i] = GetTensorData<int32_t>(op_context->end)[i];
+    op_params.strides[i] = GetTensorData<int32_t>(op_context->strides)[i];
+  }
+
+  // If the length of begin and end smaller than number of input dims, set the
+  // mask bit of begin and end for that index.
+  for (int i = begin_count; i < op_context->dims; ++i) {
+    op_params.start_indices[i] = op_params.stop_indices[i] = 0;
+    op_params.strides[i] = 1;
+    op_params.begin_mask |= (1 << i);
+    op_params.end_mask |= (1 << i);
+  }
   return op_params;
 }
 
@@ -95,7 +105,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   RuntimeShape input_shape = GetTensorShape(op_context->input);
 
   for (int idx = op_context->dims - 1; idx >= 0; --idx) {
-    int32_t stride = GetTensorData<int32_t>(op_context->strides)[idx];
+    int32_t stride = op_params.strides[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
     int32_t begin =
@@ -144,7 +154,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.strides), 1);
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
   // Only INT32 begin/end/strides are supported
-  // TODO(soroosh) add support for INT64
+  // TODO(b/175642009): add support for INT64
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);
@@ -180,11 +190,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
   StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
 
-#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                    \
-  kernel_type::StridedSlice(op_params, GetTensorShape(op_context.input), \
-                            GetTensorData<data_type>(op_context.input),  \
-                            GetTensorShape(op_context.output),           \
-                            GetTensorData<data_type>(op_context.output))
+#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                \
+  kernel_type::StridedSlice<data_type>(                              \
+      op_params, GetTensorShape(op_context.input), op_context.input, \
+      GetTensorShape(op_context.output), op_context.output)
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
@@ -222,6 +231,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_STRIDED_SLICE(reference_ops, bool);
       }
       break;
+    case kTfLiteString:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, string);
+      }
+      break;
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Type %s is currently not supported "
@@ -242,7 +256,6 @@ TfLiteRegistration* Register_STRIDED_SLICE_REF() {
   return &r;
 }
 
-// TODO(soroosh): add optimized
 TfLiteRegistration* Register_STRIDED_SLICE() {
   return Register_STRIDED_SLICE_REF();
 }

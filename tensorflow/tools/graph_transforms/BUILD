@@ -9,13 +9,12 @@ load(
     "tf_copts",
     "tf_py_test",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "transform_utils",
@@ -25,6 +24,7 @@ cc_library(
     hdrs = [
         "transform_utils.h",
     ],
+    compatible_with = get_compatible_with_cloud(),
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -223,6 +223,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 
@@ -336,9 +337,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:_pywrap_transform_graph",
     ],
 )
 

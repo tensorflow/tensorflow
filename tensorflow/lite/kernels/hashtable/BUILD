@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
 package(
     default_visibility = [
         "//visibility:public",
@@ -46,7 +48,24 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+pybind_extension(
+    name = "pywrap_hashtable_ops",
+    srcs = [
+        "hashtable_ops_wrapper.cc",
+    ],
+    hdrs = ["hashtable_ops.h"],
+    additional_exported_symbols = ["HashtableOpsRegisterer"],
+    link_in_framework = True,
+    module_name = "pywrap_hashtable_ops",
+    deps = [
+        ":hashtable_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )

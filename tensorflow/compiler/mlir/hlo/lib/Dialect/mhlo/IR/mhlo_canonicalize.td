@@ -28,3 +28,8 @@ def UnaryEinsumToEinsum : Pat<
   (HLO_UnaryEinsumOp $operand, $equation),
   (HLO_EinsumOp (HLO_ConstOp (GetScalarOfType<1> $operand)),
                 $operand, (UnaryToBinaryEinsumEq $equation))>;
+
+// A dynamic reshape of a dynamic reshape is a dynamic reshape.
+def RemoveRedundantDynamicReshape : Pat<
+  (HLO_DynamicReshapeOp (HLO_DynamicReshapeOp $operand, $shape1), $shape2),
+  (HLO_DynamicReshapeOp $operand, $shape2)>;

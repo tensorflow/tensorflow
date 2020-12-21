@@ -27,7 +27,7 @@ set -x
 function setup_pip () {
   python3.7 -m virtualenv tf_build_env --system-site-packages
   source tf_build_env/bin/activate
-  install_macos_pip_deps
+  install_macos_pip_deps virtualenv
 }
 
 function run_build () {
@@ -52,7 +52,7 @@ function run_build () {
     --strategy=Javac=standalone \
     --strategy=Closure=standalone \
     --genrule_strategy=standalone \
-    -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
+    -- ${DEFAULT_BAZEL_TARGETS}
 
   # Copy log to output to be available to GitHub
   ls -la "$(bazel info output_base)/java.log"

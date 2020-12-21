@@ -26,11 +26,10 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.saving import model_config as model_config_lib
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import json_utils
-from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
@@ -128,7 +127,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
     # TODO(b/128683857): Add integration tests between tf.keras and external
     # Keras, to avoid breaking TF.js users.
     if (include_optimizer and model.optimizer and
-        not isinstance(model.optimizer, optimizers.TFOptimizer)):
+        not isinstance(model.optimizer, optimizer_v1.TFOptimizer)):
       save_optimizer_weights_to_hdf5_group(f, model.optimizer)
 
     f.flush()
@@ -180,7 +179,9 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    model_config = json_utils.decode(model_config.decode('utf-8'))
+    if hasattr(model_config, 'decode'):
+      model_config = model_config.decode('utf-8')
+    model_config = json_utils.decode(model_config)
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
@@ -190,11 +191,13 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     if compile:
       # instantiate optimizer
       training_config = f.attrs.get('training_config')
+      if hasattr(training_config, 'decode'):
+        training_config = training_config.decode('utf-8')
       if training_config is None:
         logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
-      training_config = json_utils.decode(training_config.decode('utf-8'))
+      training_config = json_utils.decode(training_config)
 
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
@@ -402,10 +405,6 @@ def preprocess_weights_for_loading(layer,
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
-    if original_backend == 'theano':
-      weights[0] = conv_utils.convert_kernel(weights[0])
-      if layer.__class__.__name__ == 'ConvLSTM2D':
-        weights[1] = conv_utils.convert_kernel(weights[1])
     if K.int_shape(layer.weights[0]) != weights[0].shape:
       weights[0] = np.transpose(weights[0], (3, 2, 0, 1))
       if layer.__class__.__name__ == 'ConvLSTM2D':
@@ -664,11 +663,15 @@ def load_weights_from_hdf5_group(f, layers):
           and weights file.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version'].decode('utf8')
+    original_keras_version = f.attrs['keras_version']
+    if hasattr(original_keras_version, 'decode'):
+      original_keras_version = original_keras_version.decode('utf8')
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend'].decode('utf8')
+    original_backend = f.attrs['backend']
+    if hasattr(original_backend, 'decode'):
+      original_backend = original_backend.decode('utf8')
   else:
     original_backend = None
 
@@ -735,11 +738,15 @@ def load_weights_from_hdf5_group_by_name(
           and weights file and skip_match=False.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version'].decode('utf8')
+    original_keras_version = f.attrs['keras_version']
+    if hasattr(original_keras_version, 'decode'):
+      original_keras_version = original_keras_version.decode('utf8')
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend'].decode('utf8')
+    original_backend = f.attrs['backend']
+    if hasattr(original_backend, 'decode'):
+      original_backend = original_backend.decode('utf8')
   else:
     original_backend = None
 
@@ -854,13 +861,18 @@ def load_attributes_from_hdf5_group(group, name):
       data: Attributes data.
   """
   if name in group.attrs:
-    data = [n.decode('utf8') for n in group.attrs[name]]
+    data = [
+        n.decode('utf8') if hasattr(n, 'decode') else n
+        for n in group.attrs[name]
+    ]
   else:
     data = []
     chunk_id = 0
     while '%s%d' % (name, chunk_id) in group.attrs:
-      data.extend(
-          [n.decode('utf8') for n in group.attrs['%s%d' % (name, chunk_id)]])
+      data.extend([
+          n.decode('utf8') if hasattr(n, 'decode') else n
+          for n in group.attrs['%s%d' % (name, chunk_id)]
+      ])
       chunk_id += 1
   return data
 

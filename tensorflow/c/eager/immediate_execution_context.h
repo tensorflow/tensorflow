@@ -21,16 +21,38 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_context.h"
+#include "tensorflow/c/eager/immediate_execution_distributed_manager.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+class EagerExecutor;
+
+// LINT.IfChange
+// Note: Keep in sync with exported copy of enum in eager/c_api.h.
+enum ContextDevicePlacementPolicy {
+  // Running operations with input tensors on the wrong device will fail.
+  DEVICE_PLACEMENT_EXPLICIT = 0,
+  // Copy the tensor to the right device but log a warning.
+  DEVICE_PLACEMENT_WARN = 1,
+  // Silently copy the tensor, which has a performance cost since the operation
+  // will be blocked till the copy completes. This is the default policy.
+  DEVICE_PLACEMENT_SILENT = 2,
+  // Placement policy which silently copies int32 tensors but not other dtypes.
+  DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
+};
+// LINT.ThenChange(//tensorflow/c/eager/c_api.h)
 
 // Abstract interface to a context.
 //
@@ -81,14 +103,6 @@ class ImmediateExecutionContext : public AbstractContext {
   // List attributes of available devices
   virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
 
-  virtual void ClearCachesAndThreadExecutors() = 0;
-
-  // Initialize the step resource container for a training step. This is used
-  // in current TF runtime. For tfrt, it is used by fallback op handler.
-  virtual void StartStep() = 0;
-  // Destroy the step resource container for a training step.
-  virtual void EndStep() = 0;
-
   // Block until all pending nodes are finished.
   virtual Status AsyncWait() = 0;
 
@@ -97,10 +111,89 @@ class ImmediateExecutionContext : public AbstractContext {
   // already exists.
   virtual Status AddFunctionDef(const FunctionDef& fdef) = 0;
 
+  // Same as `AddFunctionDef`, but additionally saves the `stack_traces` under
+  // the key of the function definition name (to be retrieved during function
+  // instantiation).
+  virtual Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) = 0;
+
+  // Find and return a added function by its name.
+  virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;
+
+  // Return the ParsedName of Host CPU device.
+  virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
+
+  // Configure soft device placement policy.
+  virtual void SetAllowSoftPlacement(bool enable) = 0;
+
+  // Configure device placement policy logging.
+  virtual void SetLogDevicePlacement(bool enable) = 0;
+
+  // Sets the device placement policy for the current thread.
+  virtual void SetThreadLocalDevicePlacementPolicy(
+      ContextDevicePlacementPolicy policy) = 0;
+  // Returns the device placement policy for the current thread.
+  virtual ContextDevicePlacementPolicy GetDevicePlacementPolicy() const = 0;
+
+  // Configure graph collection in RunMetadata.
+  virtual void SetShouldStoreGraphs(bool value) = 0;
+
+  // Return the collected RunMetadata. This method will transfer the ownership
+  // to the caller.
+  virtual std::unique_ptr<RunMetadata> ExportRunMetadata() = 0;
+
   // For LLVM style RTTI.
   static bool classof(const AbstractContext* ptr) {
     return ptr->getKind() == kEager || ptr->getKind() == kTfrt;
   }
+
+  //===--------------------------------------------------------------------===//
+  // Following are features in current TF Eager Runtime.
+  // TODO(tfrt-devs): Figure out a way to deprecate following features after
+  // migrated to TFRT.
+  //===--------------------------------------------------------------------===//
+  // Clear pending nodes in thread executors and kernel caches.
+  virtual void ClearCachesAndThreadExecutors() = 0;
+
+  // Initialize the step resource container for a training step. This is used
+  // in current TF runtime. For tfrt, it is used by fallback op handler.
+  virtual void StartStep() = 0;
+  // Destroy the step resource container for a training step.
+  virtual void EndStep() = 0;
+
+  // Return the Eager Executor for current thread. Please note that Eager
+  // Executor is only used in current TF but not in TFRT.
+  virtual EagerExecutor& Executor() = 0;
+  // Update the Eager Executor for current thread.
+  virtual void SetExecutorForThread(EagerExecutor* executor) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Following are helper functions to assist integrating TFRT with current
+  // TF eager runtime.
+  // TODO(b/172877902): These helper functions are currently used to support
+  // PyFuncOp on TFRT, and might be useful for ops that directly use low
+  // level TF APIs. Remove/replace the following functions when TFRT native
+  // ops are implemented.
+  //===--------------------------------------------------------------------===//
+  // Create an abstract tensor handle from tensorflow::Tensor.
+  virtual ImmediateExecutionTensorHandle* CreateLocalHandleFromTFTensor(
+      tensorflow::Tensor& t, const char* d_name) = 0;
+
+  // Convert a TFRT TensorHandle to tensorflow::TensorHandle.
+  virtual ImmediateExecutionTensorHandle* TFTensorHandleFromInterface(
+      ImmediateExecutionTensorHandle* handle) = 0;
+
+  //===--------------------------------------------------------------------===//
+  // Distributed runtime related functions.
+  //===--------------------------------------------------------------------===//
+#if !defined(IS_MOBILE_PLATFORM)
+  // Set a distributed manager that helps set up, update, and check liveness
+  // of member tasks in the cluster.
+  virtual void SetDistributedManager(
+      std::unique_ptr<ImmediateExecutionDistributedManager> distributed) = 0;
+
+  virtual ImmediateExecutionDistributedManager* GetDistributedManager() = 0;
+#endif  // !IS_MOBILE_PLATFORM
 
  protected:
   explicit ImmediateExecutionContext(AbstractContextKind kind)

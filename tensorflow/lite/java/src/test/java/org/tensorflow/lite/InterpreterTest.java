@@ -44,6 +44,8 @@ public final class InterpreterTest {
       "tensorflow/lite/testdata/dynamic_shapes.bin";
   private static final String BOOL_MODEL =
       "tensorflow/lite/java/src/testdata/tile_with_bool_input.bin";
+  private static final String MODEL_WITH_SIGNATURE_PATH =
+      "tensorflow/lite/java/src/testdata/mul_add_signature_def.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
@@ -55,6 +57,8 @@ public final class InterpreterTest {
   private static final ByteBuffer DYNAMIC_SHAPES_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(DYNAMIC_SHAPES_MODEL_PATH);
   private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
+  private static final ByteBuffer MODEL_WITH_SIGNATURE_BUFFER =
+      TestUtils.getTestFileAsBuffer(MODEL_WITH_SIGNATURE_PATH);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -394,6 +398,7 @@ public final class InterpreterTest {
   }
 
   @Test
+  // setAllowFp16PrecisionForFp32 is deprecated, suppress the warning to allow testing.
   @SuppressWarnings("deprecation")
   public void testTurnOnNNAPI() throws Exception {
     Interpreter interpreter =
@@ -483,6 +488,10 @@ public final class InterpreterTest {
       fail();
     } catch (IllegalStateException e) {
       // Expected failure.
+    } catch (IllegalArgumentException e) {
+      // As we could apply some TfLite delegate by default, the flex ops preparation could fail if
+      // the flex delegate isn't applied first, in which this type of exception is thrown.
+      // Expected failure
     }
   }
 
@@ -533,6 +542,8 @@ public final class InterpreterTest {
   }
 
   @Test
+  // modifyGraphWithDelegate(...) is deprecated, suppress the warning to allow testing.
+  @SuppressWarnings("deprecation")
   public void testModifyGraphWithDelegate() throws Exception {
     System.loadLibrary("tensorflowlite_test_jni");
     Delegate delegate =
@@ -542,7 +553,8 @@ public final class InterpreterTest {
             return getNativeHandleForDelegate();
           }
         };
-    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setUseXNNPACK(false));
     interpreter.modifyGraphWithDelegate(delegate);
 
     // The native delegate stubs out the graph with a single op that produces the scalar value 7.
@@ -635,6 +647,47 @@ public final class InterpreterTest {
     }
   }
 
+  @Test
+  public void testCancelInference() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter =
+        new Interpreter(MODEL_BUFFER, new Interpreter.Options().setCancellable(true));
+
+    // Part 1: Should be interrupted when flag is set to true.
+    try {
+      interpreter.setCancelled(true);
+      interpreter.run(inputs, parsedOutputs);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // TODO(b/168266570): Return InterruptedException.
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Internal error: Failed to run on the given Interpreter: Client requested cancel"
+                  + " during Invoke()");
+    }
+
+    // Part 2: Should be resumed when flag is set to false.
+    interpreter.setCancelled(false);
+    interpreter.run(inputs, parsedOutputs);
+  }
+
+  @Test
+  public void testCancelInferenceOnNoncancellableInterpreter() throws Exception {
+    Interpreter interpreter = new Interpreter(MODEL_BUFFER);
+
+    try {
+      interpreter.setCancelled(true);
+      fail();
+    } catch (IllegalStateException e) {
+      assertThat(e)
+          .hasMessageThat()
+          .contains(
+              "Cannot cancel the inference. Have you called Interpreter.Options.setCancellable?");
+    }
+  }
+
   private static FloatBuffer fill(FloatBuffer buffer, float value) {
     while (buffer.hasRemaining()) {
       buffer.put(value);
@@ -671,6 +724,91 @@ public final class InterpreterTest {
 
       FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
       assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testModelWithSignatureDef() {
+    try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {"mul_add"};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+
+      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] expectedSignatureInputs = {"x", "y"};
+      assertThat(signatureInputs).isEqualTo(expectedSignatureInputs);
+
+      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] expectedSignatureOutputs = {"output_0"};
+      assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
+
+      FloatBuffer output = FloatBuffer.allocate(1);
+      float[] inputX = {2.0f};
+      float[] inputY = {4.0f};
+      Map<String, Object> inputs = new HashMap<>();
+      inputs.put("x", inputX);
+      inputs.put("y", inputY);
+      Map<String, Object> outputs = new HashMap<>();
+      outputs.put("output_0", output);
+      interpreter.runSignature(inputs, outputs, "mul_add");
+      // Result should be x * 3.0 + y
+      FloatBuffer expected = fill(FloatBuffer.allocate(1), 10.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testModelWithSignatureDefNullMethodName() {
+    try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {"mul_add"};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+
+      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] expectedSignatureInputs = {"x", "y"};
+      assertThat(signatureInputs).isEqualTo(expectedSignatureInputs);
+
+      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] expectedSignatureOutputs = {"output_0"};
+      assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
+
+      FloatBuffer output = FloatBuffer.allocate(1);
+      float[] inputX = {2.0f};
+      float[] inputY = {4.0f};
+      Map<String, Object> inputs = new HashMap<>();
+      inputs.put("x", inputX);
+      inputs.put("y", inputY);
+      Map<String, Object> outputs = new HashMap<>();
+      outputs.put("output_0", output);
+      interpreter.runSignature(inputs, outputs, null);
+      // Result should be x * 3.0 + y
+      FloatBuffer expected = fill(FloatBuffer.allocate(1), 10.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+      output = FloatBuffer.allocate(1);
+      outputs.put("output_0", output);
+      interpreter.runSignature(inputs, outputs);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testModelWithSignatureDefNoSignatures() {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+      Map<String, Object> inputs = new HashMap<>();
+      Map<String, Object> outputs = new HashMap<>();
+      try {
+        interpreter.runSignature(inputs, outputs);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "Input error: SignatureDef methodName should not be null. null is only allowed if"
+                    + " the model has a single Signature");
+      }
     }
   }
 

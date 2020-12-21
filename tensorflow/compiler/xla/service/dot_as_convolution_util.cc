@@ -137,16 +137,19 @@ CreateShardedConvForDotGeneralConvolution(
     wd->set_padding_high(wd->size() - 1);
     wd->set_padding_low(wd->size() - 1);
   }
-  TF_ASSIGN_OR_RETURN(Shape sharded_conv_shape,
-                      ShapeInference::InferConvolveShape(
-                          sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
-                          /*feature_group_count=*/1,
-                          /*batch_group_count=*/1, window, conv_dnums));
+  TF_ASSIGN_OR_RETURN(
+      Shape sharded_conv_shape,
+      ShapeInference::InferConvolveShape(
+          sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
+          /*feature_group_count=*/conv.feature_group_count(),
+          /*batch_group_count=*/conv.batch_group_count(), window, conv_dnums,
+          /*preferred_element_type=*/conv.shape().element_type()));
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
   return HloInstruction::CreateConvolve(
       sharded_conv_shape, sharded_lhs_hlo, sharded_rhs_hlo,
-      /*feature_group_count=*/1,
-      /*batch_group_count=*/1, window, conv_dnums, conv.precision_config());
+      /*feature_group_count=*/conv.feature_group_count(),
+      /*batch_group_count=*/conv.batch_group_count(), window, conv_dnums,
+      conv.precision_config());
 }
 
 DotConvolutionDimsInfo ParseDotGeneralFromDot(const HloInstruction* dot) {

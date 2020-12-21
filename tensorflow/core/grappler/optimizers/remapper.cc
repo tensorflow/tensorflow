@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/core/util/util.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cudnn/cudnn.h"
@@ -306,6 +307,9 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
     return IsCpuCompatibleConv2D(&node);
   } else if (IsDepthwiseConv2dNative(node)) {
 #ifdef INTEL_MKL
+    if (DisableMKL()) {
+      return false;
+    }
     return IsCpuCompatibleDepthwiseConv2dNative(&node);
 #else
     return false;
@@ -366,9 +370,9 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 
 bool IsSupportedActivation(const NodeDef& node) {
 #ifdef INTEL_MKL
-  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsTanh(node);
+  return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node) ||
+         IsTanh(node);
 #else
-  // Disable LeakyRelu temporarily before MKL PR is merged.
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
 #endif
 }
@@ -660,6 +664,7 @@ bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
                                       const utils::MutableNodeView& node_view,
                                       ContractionWithBiasAddAndAdd* matched) {
+  if (DisableMKL()) return false;
   // Fusion with AddN is supported only when it has two inputs.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(node_view) || node_view.NumRegularFanins() != 2)
@@ -710,6 +715,7 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
 bool FindContractionWithBiasAndAddActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAndAddActivation* matched) {
+  if (DisableMKL()) return false;
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -839,11 +845,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
     // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
 #else
-    if (NativeFormatEnabled()) {
-      // Temporarily disable FusedBatchNorm fusion on CPU until
-      // we support it under native format mode
-      if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
-    }
+    if (DisableMKL()) return false;
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
@@ -1281,28 +1283,36 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   const NodeDef& contraction = graph->node(matched.contraction);
   const NodeDef& bias_add = graph->node(matched.bias_add);
 
-  // MKL version only support fusion for Conv2D
-  DCHECK(IsConv2D(contraction));
+  // MKL version only support fusion for Conv2D and MatMul
+  DCHECK(IsConv2D(contraction) || IsMatMul(contraction));
 
-  NodeDef fused_conv2d;
+  NodeDef contraction_node;
   const NodeDef& add = graph->node(matched.add);
-  fused_conv2d.set_name(add.name());
-  fused_conv2d.set_op(kFusedConv2D);
-  fused_conv2d.set_device(contraction.device());
-  fused_conv2d.add_input(contraction.input(0));  // 0: input
-  fused_conv2d.add_input(contraction.input(1));  // 1: filter
-  fused_conv2d.add_input(bias_add.input(1));     // 2: bias
+  contraction_node.set_name(add.name());
+  contraction_node.set_device(contraction.device());
+  contraction_node.add_input(
+      contraction.input(0));  // 0: input(conv) / a (matmul)
+  contraction_node.add_input(
+      contraction.input(1));  // 1: filter(conv) / b (matmul)
+  contraction_node.add_input(bias_add.input(1));  // 2: bias
 
-  // Add OP has two inputs, one is conv+bias pattern matched previously,
-  // the other input to add is fused here.
-  fused_conv2d.add_input(add.input(1 - matched.port_id));
+  // Add OP has two inputs, one is conv+bias/matmul+bias pattern matched
+  // previously, the other input to add is fused here.
+  contraction_node.add_input(add.input(1 - matched.port_id));
 
-  CopyConv2DAttributes(contraction, &fused_conv2d);
-  SetFusedOpAttributes(&fused_conv2d, {"BiasAdd", "Add"}, 2);
+  if (IsConv2D(contraction)) {
+    contraction_node.set_op(kFusedConv2D);
+    CopyConv2DAttributes(contraction, &contraction_node);
+  } else if (IsMatMul(contraction)) {
+    contraction_node.set_op(kFusedMatMul);
+    CopyMatMulAttributes(contraction, &contraction_node);
+  }
+
+  SetFusedOpAttributes(&contraction_node, {"BiasAdd", "Add"}, 2);
 
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
-  mutation->AddNode(std::move(fused_conv2d), &status);
+  mutation->AddNode(std::move(contraction_node), &status);
   TF_RETURN_IF_ERROR(status);
   TF_RETURN_IF_ERROR(mutation->Apply());
 
@@ -1438,29 +1448,41 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   utils::Mutation* mutation = ctx->graph_view.GetMutationBuilder();
   Status status;
 
-  if (fused_node.attr().at(kDataFormat).s() == "NCHW") {
+  string x_format = fused_node.attr().at(kDataFormat).s();
+  if (x_format == "NCHW" or x_format == "NCDHW") {
     // Need to reshape the last 4 inputs
     NodeDef new_shape;
     const string new_shape_name =
-        AddPrefixToNodeName("NCHWShape", fused_node.name());
+        AddPrefixToNodeName(x_format + "Shape", fused_node.name());
     new_shape.set_name(new_shape_name);
     new_shape.set_op("Const");
     new_shape.set_device(fused_node.device());
     *new_shape.add_input() = AsControlDependency(scale);
     (*new_shape.mutable_attr())["dtype"].set_type(DT_INT32);
-    Tensor t(DT_INT32, {4});
-    t.flat<int32>()(0) = 1;
-    t.flat<int32>()(1) = -1;
-    t.flat<int32>()(2) = 1;
-    t.flat<int32>()(3) = 1;
-    t.AsProtoTensorContent(
-        (*new_shape.mutable_attr())["value"].mutable_tensor());
+    if (x_format == "NCHW") {
+      Tensor t(DT_INT32, {4});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = -1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = 1;
+      t.AsProtoTensorContent(
+          (*new_shape.mutable_attr())["value"].mutable_tensor());
+    } else {
+      Tensor t(DT_INT32, {5});
+      t.flat<int32>()(0) = 1;
+      t.flat<int32>()(1) = -1;
+      t.flat<int32>()(2) = 1;
+      t.flat<int32>()(3) = 1;
+      t.flat<int32>()(4) = 1;
+      t.AsProtoTensorContent(
+          (*new_shape.mutable_attr())["value"].mutable_tensor());
+    }
     mutation->AddNode(std::move(new_shape), &status);
     TF_RETURN_IF_ERROR(status);
 
     NodeDef reshaped_scale;
     reshaped_scale.set_name(
-        AddPrefixToNodeName("NCHWShapedScale", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedScale", fused_node.name()));
     reshaped_scale.set_op("Reshape");
     reshaped_scale.set_device(fused_node.device());
     *reshaped_scale.add_input() = scale;
@@ -1473,7 +1495,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_offset;
     reshaped_offset.set_name(
-        AddPrefixToNodeName("NCHWShapedOffset", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedOffset", fused_node.name()));
     reshaped_offset.set_op("Reshape");
     reshaped_offset.set_device(fused_node.device());
     *reshaped_offset.add_input() = offset;
@@ -1486,7 +1508,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_mean;
     reshaped_mean.set_name(
-        AddPrefixToNodeName("NCHWShapedMean", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedMean", fused_node.name()));
     reshaped_mean.set_op("Reshape");
     reshaped_mean.set_device(fused_node.device());
     *reshaped_mean.add_input() = mean;
@@ -1499,7 +1521,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 
     NodeDef reshaped_variance;
     reshaped_variance.set_name(
-        AddPrefixToNodeName("NCHWShapedVariance", fused_node.name()));
+        AddPrefixToNodeName(x_format + "ShapedVariance", fused_node.name()));
     reshaped_variance.set_op("Reshape");
     reshaped_variance.set_device(fused_node.device());
     *reshaped_variance.add_input() = variance;
@@ -1607,19 +1629,25 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 }
 
 #ifdef INTEL_MKL
-bool IsConv2DWithAdd(const RemapperContext& ctx, int node_index) {
+bool IsConv2DOrMatMul(const NodeDef& node) {
+  return IsConv2D(node) || IsMatMul(node);
+}
+
+bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
 
   // Candidate for Conv2D + Add or Conv2D + BiasAdd + Add fusion.
+  //               MatMul + Add or MatMul + BiasAdd + Add fusion.
   auto is_supported_add_input = [](const auto* node_view) -> bool {
-    if (IsConv2D(*node_view->node())) return true;
+    // Currently only support Conv2D and MatMul
+    if (IsConv2DOrMatMul(*node_view->node())) return true;
     if (IsBiasAdd(*node_view->node())) {
       if (node_view->NumRegularFanins() < 2) return false;
       const auto& bias_add_fanin_0 = node_view->GetRegularFanin(0);
       const auto& bias_add_fanin_1 = node_view->GetRegularFanin(1);
-      return IsConv2D(*bias_add_fanin_0.node_view()->node()) ||
-             IsConv2D(*bias_add_fanin_1.node_view()->node());
+      return IsConv2DOrMatMul(*bias_add_fanin_0.node_view()->node()) ||
+             IsConv2DOrMatMul(*bias_add_fanin_1.node_view()->node());
     }
     return false;
   };
@@ -1725,7 +1753,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
 
 #ifdef INTEL_MKL
   return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
-         IsConv2DWithAdd(ctx, node_index);
+         IsContractionWithAdd(ctx, node_index);
 #else
   return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate();

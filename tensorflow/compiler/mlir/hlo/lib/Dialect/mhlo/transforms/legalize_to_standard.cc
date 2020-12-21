@@ -20,9 +20,9 @@ limitations under the License.
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
-#include "mlir/IR/Function.h"
-#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
 namespace {
@@ -193,7 +193,7 @@ std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
 
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                mlir::MLIRContext *ctx) {
-  mlir::populateWithGenerated(ctx, patterns);
+  mlir::populateWithGenerated(ctx, *patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
@@ -201,7 +201,7 @@ void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
 void LegalizeToStandardPass::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
-  applyPatternsAndFoldGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
 }
 
 }  // end namespace mhlo

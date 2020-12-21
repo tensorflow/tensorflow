@@ -16,12 +16,15 @@ load(
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
-load(
-    "//third_party/mkl:build_defs.bzl",
-    "mkl_deps",
-)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
@@ -71,7 +74,6 @@ filegroup(
 filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
-        "abstract_stack_trace.h",
         "batch_util.cc",
         "batch_util.h",
         "bcast.cc",
@@ -94,9 +96,9 @@ filegroup(
         "example_proto_helper.h",
         "guarded_philox_random.cc",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.cc",
         "matmul_autotune.h",
-        "matmul_bcast.cc",
         "matmul_bcast.h",
         "mirror_pad_mode.cc",
         "mirror_pad_mode.h",
@@ -106,7 +108,6 @@ filegroup(
         "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
-        "ragged_to_dense_util_common.cc",
         "ragged_to_dense_util_common.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
@@ -218,7 +219,6 @@ filegroup(
         "example_proto_helper.cc",
         "guarded_philox_random.cc",
         "matmul_autotune.cc",
-        "matmul_bcast.cc",
         "mirror_pad_mode.cc",
         "saved_tensor_slice_util.cc",
         "stat_summarizer.cc",
@@ -274,6 +274,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 
@@ -326,7 +327,6 @@ filegroup(
 filegroup(
     name = "framework_srcs",
     srcs = [
-        "abstract_stack_trace.h",
         "activation_mode.h",
         "batch_util.h",
         "bcast.h",
@@ -339,6 +339,7 @@ filegroup(
         "example_proto_helper.h",
         "gpu_kernel_helper.h",
         "guarded_philox_random.h",
+        "managed_stack_trace.h",
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
@@ -387,9 +388,6 @@ cc_library(
 
 cc_library(
     name = "ragged_to_dense_util_common",
-    srcs = [
-        "ragged_to_dense_util_common.cc",
-    ],
     hdrs = [
         "ragged_to_dense_util_common.h",
     ],
@@ -446,6 +444,7 @@ cc_library(
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:env_impl",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:mutex",
@@ -462,13 +461,14 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     alwayslink = 1,
 )
 
 cc_library(
     name = "abstract_stack_trace",
-    hdrs = ["abstract_stack_trace.h"],
+    hdrs = ["managed_stack_trace.h"],
     visibility = [
         "//tensorflow/c/eager:__pkg__",
         "//tensorflow/core:__pkg__",
@@ -476,6 +476,7 @@ cc_library(
         "//tensorflow/core/platform:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
     deps = [
         "//tensorflow/core/platform:status",
@@ -598,6 +599,7 @@ tf_kernel_library(
     name = "cuda_solvers",
     srcs = ["cuda_solvers.cc"],
     hdrs = ["cuda_solvers.h"],
+    compatible_with = [],
     # @local_config_cuda//cuda:cusolver_static, //third_party/eigen3:blas,
     # and //third_party/libf2c all contain various parts of BLAS, LAPACK,
     # and f2c helper functions in global namespace. Tell the compiler to
@@ -621,6 +623,7 @@ tf_kernel_library(
     name = "rocm_solvers",
     srcs = ["rocm_solvers.cc"],
     hdrs = ["rocm_solvers.h"],
+    compatible_with = [],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
         "//tensorflow/core:framework",
@@ -639,6 +642,7 @@ tf_kernel_library(
     name = "cuda_sparse",
     srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
     hdrs = ["cuda_sparse.h"],
+    compatible_with = [],
     deps = [
         ":cuda_solvers",
         "//tensorflow/core:framework",
@@ -657,7 +661,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:bounds_check",
+        "//tensorflow/core/framework:bounds_check",
         "//third_party/eigen3",
     ],
 )
@@ -692,11 +696,14 @@ tf_cuda_only_cc_test(
     srcs = [
         "gpu_kernel_helper_test.cu.cc",
     ],
+    tags = [
+        "no_cuda_asan",  # TODO(b/171342366): re-enable.
+    ],
     deps = [
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//third_party/eigen3",
-    ] + mkl_deps(),
+    ],
 )
 
 tf_cc_tests(
@@ -726,7 +733,6 @@ tf_cc_tests(
         "tensor_slice_writer_test.cc",
         "work_sharder_test.cc",
     ],
-    create_named_test_suite = True,
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -747,7 +753,6 @@ tf_cc_tests(
         "//tensorflow/core",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -757,6 +762,7 @@ tf_cc_tests(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
         "//third_party/eigen3",

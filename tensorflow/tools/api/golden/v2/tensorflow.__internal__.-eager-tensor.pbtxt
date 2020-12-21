@@ -1,0 +1,92 @@
+path: "tensorflow.__internal__.EagerTensor"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.ops.EagerTensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops._EagerTensorBase\'>"
+  is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "OVERLOADABLE_OPERATORS"
+    mtype: "<type \'set\'>"
+  }
+  member {
+    name: "backing_device"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "device"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "is_packed"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ndim"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "value_index"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cpu"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "eval"
+    argspec: "args=[\'self\', \'feed_dict\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "experimental_ref"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_shape"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "gpu"
+    argspec: "args=[\'self\', \'gpu_index\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "numpy"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ref"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_shape"
+    argspec: "args=[\'self\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+}

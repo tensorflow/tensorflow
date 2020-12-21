@@ -25,7 +25,7 @@ then
 fi
 
 # convert GOPATH's Windows style to UNIX style
-if [ $1 == "win" ]; then
+if [[ $1 == "win" ]]; then
   # eg: convert "D:\go-14;D:\go-13" to "D\go-14;D\go-13"
   GOPATH=${GOPATH//:\\/\\}
   # eg: convert "D\go-14;D\go-13" to "\D\go-14:\D\go-13"

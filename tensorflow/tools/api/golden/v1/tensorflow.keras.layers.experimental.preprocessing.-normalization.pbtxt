@@ -16,7 +16,15 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "compute_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype_policy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -112,6 +120,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "variable_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
@@ -121,7 +133,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'axis\', \'dtype\'], varargs=None, keywords=kwargs, defaults=[\'-1\', \'None\'], "
+    argspec: "args=[\'self\', \'axis\'], varargs=None, keywords=kwargs, defaults=[\'-1\'], "
   }
   member_method {
     name: "adapt"

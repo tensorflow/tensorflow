@@ -45,7 +45,7 @@ def text_to_word_sequence(input_text,
   Arguments:
       input_text: Input text (string).
       filters: list (or concatenation) of characters to filter out, such as
-          punctuation. Default: `'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'`,
+          punctuation. Default: ``'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'``,
             includes basic punctuation, tabs, and newlines.
       lower: boolean. Whether to convert the input to lowercase.
       split: str. Separator for word splitting.
@@ -63,7 +63,7 @@ def one_hot(input_text,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
             lower=True,
             split=' '):
-  """One-hot encodes a text into a list of word indexes of size `n`.
+  r"""One-hot encodes a text into a list of word indexes of size `n`.
 
   This function receives as input a string of text and returns a
   list of encoded integers each corresponding to a word (or token)
@@ -73,8 +73,11 @@ def one_hot(input_text,
       input_text: Input text (string).
       n: int. Size of vocabulary.
       filters: list (or concatenation) of characters to filter out, such as
-          punctuation. Default: ``!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n``,
-            includes basic punctuation, tabs, and newlines.
+        punctuation. Default:
+        ```
+        '!"#$%&()*+,-./:;<=>?@[\]^_`{|}~\t\n
+        ```,
+        includes basic punctuation, tabs, and newlines.
       lower: boolean. Whether to set the text to lowercase.
       split: str. Separator for word splitting.
 

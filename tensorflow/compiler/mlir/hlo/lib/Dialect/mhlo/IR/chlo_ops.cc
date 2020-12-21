@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -190,11 +190,12 @@ LogicalResult BroadcastComplexOp::reifyReturnTypeShapes(
 void BroadcastCompareOp::build(OpBuilder& builder, OperationState& result,
                                Value lhs, Value rhs,
                                DenseIntElementsAttr broadcast_dimensions,
-                               StringAttr comparison_direction) {
+                               StringAttr comparison_direction,
+                               StringAttr compare_type) {
   auto new_type = GetBroadcastType(lhs.getType(), rhs.getType(),
                                    builder.getI1Type(), broadcast_dimensions);
   build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
-        comparison_direction);
+        comparison_direction, compare_type);
 }
 
 LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
@@ -303,8 +304,14 @@ void ConstantLikeOp::getCanonicalizationPatterns(
   results.insert<ConstantLikeToConstant>(context);
 }
 
+}  // namespace chlo
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
+
+namespace mlir {
+namespace chlo {
 
 //===----------------------------------------------------------------------===//
 // chlo Dialect Constructor

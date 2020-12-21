@@ -14,6 +14,10 @@ load(
     "tf_py_logged_benchmark",
 )
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
+load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_additional_rpc_deps",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -60,15 +64,16 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:abstract_stack_trace",
-        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_exception_registry",
-        "//tensorflow/python:py_seq_tensor",
-        "//tensorflow/python:py_util",
-        "//tensorflow/python:safe_ptr",
-        "//tensorflow/python:stack_trace",
+        "//tensorflow/python/lib/core:py_seq_tensor",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:stack_trace",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -178,7 +183,6 @@ cuda_py_test(
     size = "small",
     srcs = ["cancellation_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":cancellation",
         ":test",
@@ -211,6 +215,7 @@ py_library(
         "//tensorflow/python:pywrap_tf_session",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:tf2",
+        "//tensorflow/python:tfrt_utils",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -227,10 +232,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:custom_device_testutil",
-        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        "//tensorflow/python:safe_ptr",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/util:cpp_python_util",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -285,7 +290,6 @@ cuda_py_test(
     name = "monitoring_test",
     srcs = ["monitoring_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":monitoring",
         ":test",
@@ -371,7 +375,12 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
+        "notsan",  #TODO(b/139745667)
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         ":backprop",
@@ -410,7 +419,6 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":context",
         ":core",
@@ -430,7 +438,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_argument_naming_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":backprop",
         ":def_function",
@@ -446,7 +454,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_defun_collection_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
@@ -562,7 +569,6 @@ cuda_py_test(
     name = "graph_only_ops_test",
     srcs = ["graph_only_ops_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "graph_only_ops",
         "//tensorflow/python:client_testlib",
@@ -607,7 +613,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/saved_model:save_context",
-        "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -699,7 +704,6 @@ cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -719,7 +723,6 @@ cuda_py_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -745,7 +748,6 @@ tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
@@ -790,6 +792,7 @@ tf_py_test(
     name = "pywrap_tfe_test",
     srcs = ["pywrap_tfe_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/171756439)
     deps = [
         ":backprop",
         ":context",
@@ -832,6 +835,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
+        "//tensorflow/python/distribute/parallel_device",
         "//tensorflow/python/profiler:trace",
         "//tensorflow/python/training/tracking:base",
     ],
@@ -854,7 +858,6 @@ tf_py_test(
     size = "medium",
     srcs = ["lift_to_graph_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         "lift_to_graph",
         "//tensorflow/python:framework_ops",
@@ -868,7 +871,7 @@ cuda_py_test(
     name = "def_function_test",
     srcs = ["def_function_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
+    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":def_function",
         "//tensorflow/python:client_testlib",
@@ -977,6 +980,26 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "wrap_function_device_test",
+    srcs = ["wrap_function_device_test.py"],
+    python_version = "PY3",
+    xla_enable_strict_auto_jit = False,
+    xla_enabled = False,
+    deps = [
+        ":def_function",
+        ":wrap_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_library(
     name = "remote",
     srcs = ["remote.py"],
@@ -987,7 +1010,7 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-    ],
+    ] + tf_additional_rpc_deps(),
 )
 
 cuda_py_test(
@@ -999,6 +1022,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
+        "notap",  # b/175813762
         "optonly",  # times out
     ],
     deps = [
@@ -1024,6 +1048,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -1044,6 +1069,8 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
+        "notsan",  # TODO(b/170783249)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -1091,6 +1118,7 @@ cuda_py_test(
     size = "small",
     srcs = ["device_placement_test.py"],
     python_version = "PY3",
+    shard_count = 5,
     deps = [
         ":context",
         ":def_function",

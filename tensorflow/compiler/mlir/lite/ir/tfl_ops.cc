@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <numeric>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
@@ -30,21 +31,21 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
 // Returns true when the given operand arguments have the same shape or
@@ -148,18 +149,10 @@ bool IsI64Type(Type element_type) {
 bool VerifyAddOpShapeConstraints(AddOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
-  // Allows F32, QI8, and QUI8 outputs when the operands have valid shapes,
+  // Allows F32, QI8, QUI8 and I32 outputs when the operands have valid shapes,
   // which are broadcastable shapes up to five dimension or have same shapes.
   if (element_type.isF32() || IsQI8Type(element_type) ||
-      IsQUI8Type(element_type)) {
-    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
-        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
-  }
-
-  // Allows I32 output when the operands have valid shapes, which are
-  // broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type)) {
+      IsQUI8Type(element_type) || IsI32Type(element_type)) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -202,7 +195,7 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
   auto element_type = getElementTypeOrSelf(op.output().getType());
 
   // Allows QI8 and QUI8 inputs up to five dimension broadcasting unless the
-  // output type is not QI16. If the output type is Q16, allows onlt the same
+  // output type is not QI16. If the output type is Q16, allows only the same
   // shape operands.
   if (IsQI8Type(element_type) || IsQUI8Type(element_type)) {
     if (IsQI16Type(getElementTypeOrSelf(op.lhs().getType()))) {
@@ -211,20 +204,13 @@ bool VerifyMulOpShapeConstraints(MulOp op) {
     }
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
+        /*max_bcast_rank=*/4);
   }
 
-  // Allows F32 output when the operands have valid shapes, which are
-  // broadcastable shapes up to five dimension or have same shapes.
-  if (element_type.isF32()) {
-    return VerifyOperandsHaveSameShapesOrBroadcastableShape(
-        /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
-        /*max_bcast_rank=*/5);
-  }
-
-  // Allows I32 and QI16 outputs when the operands have valid shapes, which are
-  // broadcastable shapes up to four dimension or have same shapes.
-  if (IsI32Type(element_type) || IsQI16Type(element_type)) {
+  // Allows I32, QI16 and F32 outputs when the operands have valid shapes, which
+  // are broadcastable shapes up to four dimension or have same shapes.
+  if (IsI32Type(element_type) || IsQI16Type(element_type) ||
+      element_type.isF32()) {
     return VerifyOperandsHaveSameShapesOrBroadcastableShape(
         /*op=*/op.getOperation(), /*indices=*/ArrayRef<unsigned>{0, 1},
         /*max_bcast_rank=*/4);
@@ -243,12 +229,17 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *op, Region *dest,
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
+  bool isLegalToInline(Operation *op, Region *dest, bool wouldBeCloned,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
   }
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &valueMapping) const final {
     return isa<WhileOp>(dest->getParentOp());
   }
@@ -301,25 +292,12 @@ inline bool IsF32ShapedType(Type t) {
   return false;
 }
 
-// Performs const folding `calculate` with broadcast behavior on the two
-// attributes `operand1` and `operand2` and returns the result if possible.
-// The two operands are expected to both be scalar values.
-template <class AttrElementT,
-          class ElementValueT = typename AttrElementT::ValueType,
-          class CalculationT =
-              llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
-Attribute ConstFoldBinaryOpScalarScalar(Type result_type, Attribute operand1,
-                                        Attribute operand2,
-                                        const CalculationT &calculate) {
-  auto lhs = operand1.cast<AttrElementT>();
-  auto rhs = operand2.cast<AttrElementT>();
-
-  assert(lhs.getType() == result_type && rhs.getType() == result_type &&
-         "values of incompatible types should be caught by op verification");
-
-  // TODO: Need to handle overflow/underflow cases.
-  return AttrElementT::get(result_type,
-                           calculate(lhs.getValue(), rhs.getValue()));
+// Returns true if it is a shaped type of bf16 elements.
+inline bool IsBF16ShapedType(Type t) {
+  if (auto shaped_type = t.dyn_cast_or_null<ShapedType>()) {
+    return shaped_type.getElementType().isBF16();
+  }
+  return false;
 }
 
 // Returns new shape with rank 'new_dims' with padded ones on the
@@ -391,25 +369,19 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
   }
 
   auto num_elements = type.getNumElements();
-  SmallVector<ElementValueT, 16> lhs_old_values;
-  SmallVector<ElementValueT, 16> rhs_old_values;
-  if (lhs_is_splat)
-    lhs_old_values.push_back(lhs.getSplatValue<ElementValueT>());
-  else
-    lhs_old_values = llvm::to_vector<16>(lhs.getValues<ElementValueT>());
-  if (rhs_is_splat)
-    rhs_old_values.push_back(rhs.getSplatValue<ElementValueT>());
-  else
-    rhs_old_values = llvm::to_vector<16>(rhs.getValues<ElementValueT>());
+
   SmallVector<ElementValueT, 16> new_values;
   new_values.reserve(num_elements);
   const auto result_shape = type.getShape();
   std::vector<int64_t> current_index(type.getRank(), 0);
   // Create the new shape with ones padded to the left.
-  std::vector<int64_t> lhs_new_shape =
+  const std::vector<int64_t> lhs_new_shape =
       GetPaddedShape(lhs.getType().getShape(), type.getRank());
-  std::vector<int64_t> rhs_new_shape =
+  const std::vector<int64_t> rhs_new_shape =
       GetPaddedShape(rhs.getType().getShape(), type.getRank());
+
+  auto lhs_old_values = lhs.getValues<ElementValueT>();
+  auto rhs_old_values = rhs.getValues<ElementValueT>();
 
   // Add each pair of the corresponding values in the dense elements
   // attributes.
@@ -418,16 +390,16 @@ Attribute ConstFoldBinaryOpDenseDense(Type result_type, DenseElementsAttr lhs,
     // in the N-dimension tensor. GetElementIndex returns
     // the index in the flat representation of the original tensor
     // to use.
-    int64_t lhs_index =
+    const int64_t lhs_index =
         lhs_is_splat ? 0 : GetElementIndex(lhs_new_shape, current_index);
-    int64_t rhs_index =
+    const int64_t rhs_index =
         rhs_is_splat ? 0 : GetElementIndex(rhs_new_shape, current_index);
 
-    new_values.push_back(
-        calculate(lhs_old_values[lhs_index], rhs_old_values[rhs_index]));
+    new_values.push_back(calculate(*(lhs_old_values.begin() + lhs_index),
+                                   *(rhs_old_values.begin() + rhs_index)));
     IncrementIndex(result_shape, &current_index);
   }
-  return DenseElementsAttr::get(type, new_values);
+  return DenseElementsAttr::get(type, ArrayRef<ElementValueT>(new_values));
 }
 
 /// Performs const folding `calculate` with broadcast behavior on the two
@@ -439,16 +411,10 @@ template <class AttrElementT,
           class CalculationT =
               llvm::function_ref<ElementValueT(ElementValueT, ElementValueT)>>
 Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
-                            Attribute operand2, const CalculationT &calculate,
-                            bool is_commutative) {
-  if (operand1.dyn_cast_or_null<AttrElementT>()) {
-    // Scalar op scalar case
-    if (operand2.dyn_cast_or_null<AttrElementT>())
-      return ConstFoldBinaryOpScalarScalar<AttrElementT>(result_type, operand1,
-                                                         operand2, calculate);
-  } else if (operand1.dyn_cast_or_null<DenseElementsAttr>() &&
-             operand2.dyn_cast_or_null<DenseElementsAttr>()) {
-    return ConstFoldBinaryOpDenseDense<AttrElementT>(
+                            Attribute operand2, const CalculationT &calculate) {
+  if (operand1.dyn_cast_or_null<DenseElementsAttr>() &&
+      operand2.dyn_cast_or_null<DenseElementsAttr>()) {
+    return ConstFoldBinaryOpDenseDense<AttrElementT, ElementValueT>(
         result_type, operand1.cast<DenseElementsAttr>(),
         operand2.cast<DenseElementsAttr>(), calculate);
   }
@@ -465,8 +431,7 @@ Attribute ConstFoldBinaryOp(Type result_type, Attribute operand1,
 Attribute ConstFoldBinaryOp(
     Type result_type, ArrayRef<Attribute> operands,
     llvm::function_ref<APFloat(APFloat, APFloat)> float_calculate,
-    llvm::function_ref<APInt(APInt, APInt)> int_calculate,
-    bool is_commutative) {
+    llvm::function_ref<APInt(APInt, APInt)> int_calculate) {
   // Note: All types are wrapped in tensor types in TFlite. E.g., f32 is
   // represented as tensor<f32>. So we are only handling tensor types here.
   auto type = result_type.dyn_cast<ShapedType>();
@@ -476,11 +441,11 @@ Attribute ConstFoldBinaryOp(
 
   if (elemType.isa<FloatType>())
     return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
-                                        float_calculate, is_commutative);
+                                        float_calculate);
 
   if (elemType.isSignlessInteger())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
-                                          int_calculate, is_commutative);
+                                          int_calculate);
 
   return {};
 }
@@ -493,8 +458,10 @@ Attribute ConstFoldBinaryOp(
 /// "tfl.logical_not".
 Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
                            llvm::function_ref<APFloat(APFloat)> calculate) {
-  assert(IsF32ShapedType(result_type));
+  assert(IsF32ShapedType(result_type) || IsBF16ShapedType(result_type));
   auto result_shape_type = result_type.cast<ShapedType>();
+
+  if (!result_shape_type.hasStaticShape()) return {};
 
   if (auto dense_elements = operand.dyn_cast_or_null<DenseElementsAttr>()) {
     SmallVector<APFloat, 16> new_values;
@@ -557,7 +524,7 @@ OpFoldResult AddOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a + b; },
-      [](APInt a, APInt b) { return a + b; }, getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a + b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -859,9 +826,9 @@ static void BuildGatherOp(OpBuilder *builder, OperationState &result,
     axis_i += params_rank;
   }
 
-  // params must be atleast rank axis + 1
+  // params must be at least rank axis + 1
   if (params_rank < axis_i + 1) {
-    emitError(result.location, "params must be atleast rank axis + 1");
+    emitError(result.location, "params must be at least rank axis + 1");
   }
 
   if (indices_rank == 0) {
@@ -991,9 +958,30 @@ static LogicalResult Verify(ScatterNdOp op) {
 OpFoldResult MulOp::fold(ArrayRef<Attribute> operands) {
   // TODO(b/142478136): Handle fused ops.
   if (fused_activation_function() != "NONE") return {};
+
+  // This function is performance critical for op fusion patterns, e.g.
+  // FuseBinaryOpToPrecedingAffine and FuseMulOrDivWithConv2dOrDepthwiseConv2d.
+  // So a few specializations are provided to evaluate the math operation
+  // more efficiently.
+
+  // Specialization for f32 type.
+  if (getType().cast<ShapedType>().getElementType().isF32()) {
+    return ConstFoldBinaryOp<FloatAttr, float>(
+        getType(), operands[0], operands[1],
+        [](float a, float b) { return a * b; });
+  }
+
+  // Specialization for bf16 type.
+  if (getType().cast<ShapedType>().getElementType().isBF16()) {
+    return ConstFoldBinaryOp<FloatAttr, Eigen::bfloat16>(
+        getType(), operands[0], operands[1],
+        [](Eigen::bfloat16 a, Eigen::bfloat16 b) { return a * b; });
+  }
+
+  // Generic fallback with APFloat
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a * b; },
-      [](APInt a, APInt b) { return a * b; }, getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a * b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1005,8 +993,7 @@ OpFoldResult DivOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a / b; },
-      [](APInt a, APInt b) { return a.sdiv(b); },
-      getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a.sdiv(b); });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1155,6 +1142,20 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   results.insert<RemoveAdjacentReshape>(context);
+}
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto shape = op.shape().getType().dyn_cast_or_null<mlir::RankedTensorType>();
+  if (!shape || !shape.hasRank()) return success();
+  if (shape.getNumDynamicDims() <= 1) return success();
+
+  op.emitError()
+      << "its shape value, " << shape
+      << ", is invalid because it has more than one dynamic dimensions. You "
+         "need to set up the unspecified size(s) to avoid this problem, for "
+         "example, setting batch size in keras model or setting unspecified "
+         "input size(s) with fixed ones.";
+  return failure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1310,7 +1311,7 @@ TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
   return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
 }
 
-// This will cast donw int64 values for TFL slice op.
+// This will cast down int64 values for TFL slice op.
 // This will require the begin & size are constants.
 struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
   using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
@@ -1364,7 +1365,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
   if (fused_activation_function() != "NONE") return {};
   return ConstFoldBinaryOp(
       getType(), operands, [](APFloat a, APFloat b) { return a - b; },
-      [](APInt a, APInt b) { return a - b; }, getOperation()->isCommutative());
+      [](APInt a, APInt b) { return a - b; });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1470,7 +1471,7 @@ LogicalResult UnpackOp::inferReturnTypes(
 
   if (input_type.hasStaticShape() && input_type.getNumElements() <= 0) {
     return emitOptionalError(
-        loc, "number of elements in input shoule be larger than 0");
+        loc, "number of elements in input should be larger than 0");
   }
 
   const int64_t rank = input_type.getRank();
@@ -1728,7 +1729,8 @@ static LogicalResult Verify(LSTMOp op) {
           op.forget_layer_norm_coefficients().getType().cast<ShapedType>();
       // If this lstm has layer normalization, this input value,
       // "forget_layer_norm_coefficients" should be a 1D tensor.
-      if (forget_layer_norm_coefficients.getRank() != 1 ||
+      if (!forget_layer_norm_coefficients.hasRank() ||
+          forget_layer_norm_coefficients.getRank() != 1 ||
           forget_layer_norm_coefficients.getDimSize(0) != n_cell)
         return op.emitOpError(
             "coefficient inputs have more than 2 dimensions or "
@@ -1892,13 +1894,20 @@ OpFoldResult SqrtOp::fold(ArrayRef<Attribute> operands) {
 
 OpFoldResult RsqrtOp::fold(ArrayRef<Attribute> operands) {
   Type result_type = getType();
-  // Only constant fold for tensor of f32 is implemented.
-  if (!IsF32ShapedType(result_type)) return nullptr;
+  // Only constant fold for tensor of f32/bf16 is implemented.
+  if (!IsF32ShapedType(result_type) && !IsBF16ShapedType(result_type))
+    return nullptr;
 
   auto compute = [](APFloat value) -> APFloat {
+    bool loseInfo;
+    const llvm::fltSemantics &original_float_semantics = value.getSemantics();
+    value.convert(APFloat::IEEEsingle(), APFloat::rmNearestTiesToEven,
+                  &loseInfo);
     float f = value.convertToFloat();
-    float result = 1.f / std::sqrt(f);
-    return APFloat(result);
+    APFloat result(1.f / std::sqrt(f));
+    result.convert(original_float_semantics, APFloat::rmNearestTiesToEven,
+                   &loseInfo);
+    return result;
   };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
@@ -1951,6 +1960,57 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 
   // Return the held attribute value.
   return value();
+}
+
+//===----------------------------------------------------------------------===//
+// CastOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 1);
+  if (getElementTypeOrSelf(input()) == getElementTypeOrSelf(getType())) {
+    return input();
+  }
+
+  // For now, only supports cast between integer types.
+  auto elements_attr = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!elements_attr) {
+    return nullptr;
+  }
+
+  auto result_element_type =
+      getType().cast<ShapedType>().getElementType().dyn_cast<IntegerType>();
+  auto operand_element_type = input()
+                                  .getType()
+                                  .cast<ShapedType>()
+                                  .getElementType()
+                                  .dyn_cast<IntegerType>();
+  // Returns nullptr if either result/operand element type is not integer.
+  if (!result_element_type || !operand_element_type) {
+    return nullptr;
+  }
+
+  const bool is_unsigned = operand_element_type.isUnsigned();
+  const bool involves_bool = operand_element_type.getWidth() == 1 ||
+                             result_element_type.getWidth() == 1;
+  const int output_bitwidth = result_element_type.getWidth();
+  // The integer cast op is the same as C integer cast. Depends on the operand
+  // type's signedness, we will determine whether or not sign extension is
+  // needed.
+  auto cast = [&](APInt value) {
+    if (involves_bool) {
+      // Handle boolean inputs or outputs explicitly as it doesn't have the same
+      // behavior as extension or truncation.
+      // true input should always be cast to 1 and not -1 as the sign extension
+      // would do for signed outputs. Similarly, non-zero inputs should be cast
+      // to true. Truncating even numbers to one bit will result in `false`.
+      return APInt(result_element_type.getWidth(), value != 0);
+    }
+    return is_unsigned ? value.zextOrTrunc(output_bitwidth)
+                       : value.sextOrTrunc(output_bitwidth);
+  };
+
+  return elements_attr.mapValues(result_element_type, cast);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2377,8 +2437,16 @@ LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
 //===----------------------------------------------------------------------===//
 
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
+
+}  // namespace TFL
+}  // namespace mlir
+
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+
+namespace mlir {
+namespace TFL {
+
 #include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
 Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
@@ -2389,6 +2457,8 @@ Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
   if (value.isa<OpaqueElementsAttr>() ||
       (value.isa<ElementsAttr>() && value.getType() != type))
     return builder.create<ConstOp>(loc, type, value.cast<ElementsAttr>());
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
   return nullptr;
 }
 

@@ -343,15 +343,16 @@ class SvdOpGpu : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
     const Tensor& input = context->input(0);
     const int ndims = input.dims();
-    const int64 m = input.dim_size(ndims - 2);
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 p = std::min(m, n);
 
     // Validate inputs.
     OP_REQUIRES_ASYNC(
         context, ndims >= 2,
         errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
         done);
+
+    const int64 m = input.dim_size(ndims - 2);
+    const int64 n = input.dim_size(ndims - 1);
+    const int64 p = std::min(m, n);
 
     // output tensors.
     Tensor* outputU = NULL;

@@ -69,12 +69,14 @@ XLA_TEST_F(DotOperationTest, DotOfInputTupleElem) {
   XlaBuilder builder(TestName());
 
   XlaOp param;
-  auto param_data = CreateParameterAndTransferLiteral(
-      0,
-      LiteralUtil::MakeTupleFromSlices(
-          {LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
-           LiteralUtil::CreateR2<float>({{5, 6}, {7, 8}})}),
-      "arg0", &builder, &param);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto param_data,
+      CreateParameterAndTransferLiteral(
+          0,
+          LiteralUtil::MakeTupleFromSlices(
+              {LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
+               LiteralUtil::CreateR2<float>({{5, 6}, {7, 8}})}),
+          "arg0", &builder, &param));
   auto lhs = GetTupleElement(param, 0);
   auto rhs = GetTupleElement(param, 1);
   Dot(lhs, rhs);
@@ -1208,7 +1210,7 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
           .ValueOrDie(),
       &builder);
   auto config = std::get<2>(GetParam());
-  if (config.find(",") == config.npos) {
+  if (config.find(',') == config.npos) {
     Einsum(x, config);
   } else {
     Einsum(x, y, config);
@@ -1749,6 +1751,22 @@ XLA_TEST_F(DotOperationTest, ReorderContractingDims_Multipass) {
   // and reshape that are moved to the constant side of the dot.
   mutable_debug_options()->clear_xla_disable_hlo_passes();
   ComputeAndCompare(&builder, {}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTextTest, WiderIntegralResultAccumulation) {
+  absl::string_view hlo_string =
+      R"(
+HloModule WiderIntegralAccumulation
+
+ENTRY MatrixVectorComplex {
+  p0 = s8[5,5]{1,0} parameter(0)
+  p1 = s16[5,1]{0,1} parameter(1)
+  ROOT dot = s32[5,1]{1,0} dot(p0, p1), lhs_contracting_dims={1},
+                                        rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
 // This benchmark is to show the performance impact of the following

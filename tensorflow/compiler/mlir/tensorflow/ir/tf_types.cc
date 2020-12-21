@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 namespace {
@@ -356,6 +356,16 @@ bool AreCastCompatible(ArrayRef<Type> types) {
         GetCastCompatibleType(common, type, /*may_ignore_ref_type_a=*/false);
     if (!refined_type) return false;
     common = refined_type;
+  }
+  return true;
+}
+
+bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
+  if (lhs.size() != rhs.size()) return false;
+  for (auto pair : llvm::zip(lhs, rhs)) {
+    auto lhs_i = std::get<0>(pair);
+    auto rhs_i = std::get<1>(pair);
+    if (!AreCastCompatible({lhs_i, rhs_i})) return false;
   }
   return true;
 }

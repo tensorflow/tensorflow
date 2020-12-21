@@ -33,36 +33,16 @@ from tensorflow.python import keras
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
-from tensorflow.python.distribute import parameter_server_strategy
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import optimizer_v1
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
-
-
-# TODO(b/130375202): remove this class which is a temporary solution before we
-# get rid of configure method.
-class ParameterServerStrategy(distribute_lib.Strategy):
-  """Temporarily mock the original strategy to bypass cluster_spec check."""
-
-  def __init__(self, cluster_resolver=None):
-    """Initializes this strategy."""
-    # The `cluster_resolver` must be set so that
-    # `ParameterServerStrategyExtended` will keep num_gpus for `configure`
-    # method.
-    if cluster_resolver is None:
-      cluster_resolver = TFConfigClusterResolver()
-    extended = parameter_server_strategy.ParameterServerStrategyExtended(
-        self, cluster_resolver=cluster_resolver)
-    super(ParameterServerStrategy, self).__init__(extended)
 
 
 def _clone_and_build_model(model, strategy):
@@ -71,11 +51,11 @@ def _clone_and_build_model(model, strategy):
     cloned_model = models.clone_model(model)
 
   # Compile and build model.
-  if isinstance(model.optimizer, optimizers.TFOptimizer):
+  if isinstance(model.optimizer, optimizer_v1.TFOptimizer):
     optimizer = model.optimizer
     # TODO(yuefengz): figure out why the optimizer here is still a
     # TFOptimizer.
-    while isinstance(optimizer, optimizers.TFOptimizer):
+    while isinstance(optimizer, optimizer_v1.TFOptimizer):
       optimizer = optimizer.optimizer
     optimizer = copy.deepcopy(optimizer)
   else:
@@ -259,69 +239,6 @@ class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,
         threads_to_join.extend(ts)
     else:
       threads_to_join = [threads['worker'][0]]
-    self.join_independent_workers(threads_to_join)
-    verification_callback.verify(self)
-
-  @ds_combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          strategy_cls=[ParameterServerStrategy],
-          required_gpus=[0, 1]))
-  def testSimpleModelIndependentWorkerAsync(self, strategy_cls):
-    num_workers = 2
-    num_epoch = 2
-    cluster_spec = test_base.create_cluster_spec(
-        num_workers=num_workers, num_ps=2)
-    self._barrier = dc._Barrier(4)
-
-    # The verification callback will be shared by multiple threads.
-    verification_callback = MultiWorkerVerificationCallback(
-        num_epoch=num_epoch, num_worker=num_workers)
-
-    def _independent_worker_fn(*args, **kwargs):  # pylint: disable=unused-argument
-      """Simulates an Independent Worker inside of a thread."""
-      # TODO(rchao/yuefengz): The following is run by both worker and ps
-      # threads. The distribute coordinator should run std server immediately
-      # without configuring the session (or building the graph) on PS.
-      with test.mock.patch.object(dc, '_run_std_server',
-                                  self._make_mock_run_std_server()):
-        batch_size = 64
-        steps = 2
-        strategy = strategy_cls()
-        verification_callback.is_between_graph = \
-            strategy.extended.experimental_between_graph
-
-        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
-            batch_size, steps)
-        val_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
-            batch_size, steps)
-        with strategy.scope():
-          model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
-
-          # TODO(b/123868066): Verify callback for model.evaluate().
-          callbacks_for_fit = nest.flatten(
-              kwargs.get('verification_callback', []))
-          history = model.fit(
-              x=train_ds,
-              epochs=num_epoch,
-              steps_per_epoch=steps,
-              validation_data=val_ds,
-              validation_steps=steps,
-              callbacks=callbacks_for_fit)
-        self.assertIsInstance(history, keras.callbacks.History)
-
-    threads = self.run_multiple_tasks_in_threads(
-        _independent_worker_fn,
-        cluster_spec,
-        verification_callback=verification_callback)
-
-    threads_to_join = []
-    for task_type, ts in threads.items():
-      # This test can finish once the worker threads complete, and thus
-      # the ps threads don't need to be joined.
-      if task_type == 'ps':
-        continue
-      threads_to_join.extend(ts)
     self.join_independent_workers(threads_to_join)
     verification_callback.verify(self)
 

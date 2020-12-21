@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -26,9 +27,22 @@ limitations under the License.
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace tf_executor {
+
+namespace {
+
+// Checks if a tf_executor.Graph can be pruned.
+// For TensorFlow V1.0 compatibility: when importing a graph without providing
+// feeds/fetches/targets we should not attempt to prune. The best approximation
+// here is to check if the graph is of the "main" function and does not have the
+// "tf.entry_function" attribute defined.
+bool CanPruneGraph(FuncOp func) {
+  return func.getName() != "main" ||
+         func->getAttrOfType<DictionaryAttr>("tf.entry_function") != nullptr;
+}
 
 // Visits an op's operand if it is an output of an Operation in the same
 // tf_executor.graph.
@@ -75,6 +89,8 @@ void VisitOp(GraphOp graph, Operation* op,
   }
 }
 
+}  // namespace
+
 // Prunes unreachable operations of a tf_executor.graph operation.
 void PruneGraph(GraphOp graph) {
   // A graph has a single block which forms a DAG: operations that aren't
@@ -105,29 +121,19 @@ void PruneGraph(GraphOp graph) {
 namespace {
 
 // This transformation pass prunes a TF graph eliminating dead-nodes.
-struct GraphPruning : public PassWrapper<GraphPruning, FunctionPass> {
+struct GraphPruningPass
+    : public TF::ExecutorGraphPruningPassBase<GraphPruningPass> {
   void runOnFunction() override {
-    getFunction().walk([](tf_executor::GraphOp graph) {
-      // For TensorFlow V1.0 compatibility: when importing a graph without
-      // providing feeds/fetches we should not attempt to prune. The best
-      // approximation here is to check if the graph does not have any fetched
-      // values.
-      if (!graph.GetFetch().getNumOperands()) return;
-
-      PruneGraph(graph);
-    });
+    if (!CanPruneGraph(getFunction())) return;
+    getFunction().walk([](tf_executor::GraphOp graph) { PruneGraph(graph); });
   }
 };
 
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass() {
-  return std::make_unique<GraphPruning>();
+  return std::make_unique<GraphPruningPass>();
 }
-
-static PassRegistration<GraphPruning> pass(
-    "tf-executor-graph-pruning",
-    "Prune unreachable nodes in a TensorFlow Graph.");
 
 }  // namespace tf_executor
 }  // namespace mlir

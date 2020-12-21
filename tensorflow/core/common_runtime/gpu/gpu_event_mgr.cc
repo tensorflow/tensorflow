@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-
+#include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -25,11 +24,12 @@ namespace {
 // The EventMgr has 1 thread for the polling loop and one to execute
 // event callback functions. Issues for reconsideration:
 //  - Is this the right number of threads?
-//  - Should EventMgrs be shared between GPUDevices on a multi-GPU machine?
+//  - Should EventMgrs be shared between devices on a machine with multiple
+//  devices of the same type?
 static const int kNumThreads = 2;
 }  // namespace
 
-namespace gpu_event_mgr {
+namespace device_event_mgr {
 class ThreadLabel {
  public:
   static const char* GetValue() { return value_; }
@@ -45,7 +45,7 @@ thread_local const char* ThreadLabel::value_ = "";
 
 void WarnIfInCallback(std::function<void()> f) {
   const char* label = ThreadLabel::GetValue();
-  if (label && !strcmp(label, "gpu_event_mgr")) {
+  if (label && !strcmp(label, "device_event_mgr")) {
     if (f) {
       f();
     } else {
@@ -56,7 +56,7 @@ void WarnIfInCallback(std::function<void()> f) {
 }
 
 void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
-  static const char* label = "gpu_event_mgr";
+  static const char* label = "device_event_mgr";
   mutex mu;
   int init_count = 0;
   condition_variable all_initialized;
@@ -66,7 +66,7 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
   for (int i = 0; i < num_threads; ++i) {
     threadpool->Schedule([num_threads, &mu, &init_count, &all_initialized,
                           &exit_count, &ready_to_exit]() {
-      gpu_event_mgr::ThreadLabel::SetValue(label);
+      device_event_mgr::ThreadLabel::SetValue(label);
       mutex_lock l(mu);
       ++init_count;
       if (init_count == num_threads) {
@@ -87,15 +87,15 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
     }
   }
 }
-}  // namespace gpu_event_mgr
+}  // namespace device_event_mgr
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
       polling_active_delay_usecs_(gpu_options.polling_active_delay_usecs()
                                       ? gpu_options.polling_active_delay_usecs()
                                       : 10),
-      threadpool_(Env::Default(), "GPU_Event_Manager", kNumThreads) {
-  gpu_event_mgr::InitThreadpoolLabels(&threadpool_);
+      threadpool_(Env::Default(), "Device_Event_Manager", kNumThreads) {
+  device_event_mgr::InitThreadpoolLabels(&threadpool_);
   StartPollingLoop();
 }
 
@@ -136,7 +136,7 @@ void EventMgr::StopPollingLoop() {
   }
 }
 
-// A polling loop to detect completion of GPU events.
+// A polling loop to detect completion of device events.
 //
 // While one or more events is outstanding, poll for completed events.  When no
 // events are outstanding, we sleep until one is enqueued.

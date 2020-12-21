@@ -477,6 +477,13 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
     *shape = variable->shape();
   }
 
+  if (!variable->IsOverwritten() && expression->constant_value()) {
+    TF_ASSIGN_OR_RETURN(xla::Literal literal,
+                        HostTensorToLiteral(*expression->constant_value()));
+    *value = xla::ConstantLiteral(ctx->builder(), literal);
+    return Status::OK();
+  }
+
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
                       ctx->compiler()->options().shape_representation_fn(
                           variable->shape(), variable->type(),

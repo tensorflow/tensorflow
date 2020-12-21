@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_db_combiner.h"
+#include "tensorflow/core/profiler/convert/op_stats_combiner.h"
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/diagnostics.pb.h"
-#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
+#include "tensorflow/core/profiler/utils/step_intersection.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -46,7 +47,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-namespace {
 
 DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
   DeviceCapabilities cap;
@@ -61,7 +61,7 @@ DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
         cap.set_num_cores(stat.IntValue());
         break;
       case kDevCapMemoryBandwidth:
-        cap.set_memory_bandwidth(stat.IntValue());  // bytes/s
+        cap.set_memory_bandwidth(stat.UintValue());  // bytes/s
         break;
       case kDevCapMemorySize:
         cap.set_memory_size_in_bytes(stat.UintValue());
@@ -76,8 +76,6 @@ DeviceCapabilities GetDeviceCapFromXPlane(const XPlane& device_plane) {
   });
   return cap;
 }
-
-}  // namespace
 
 PerfEnv MakePerfEnv(double peak_tera_flops_per_second,
                     double peak_hbm_bw_giga_bytes_per_second) {
@@ -98,10 +96,15 @@ PerfEnv GetPerfEnvFromXPlane(const XPlane& device_plane) {
 
 namespace {
 
-void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
+void SetRunEnvironment(const XSpace& space, int32 accelerator_count,
+                       RunEnvironment* env) {
   // Currently, we only support profiling one host and one program.
   env->set_host_count(1);
   env->set_task_count(1);
+  for (const auto& hostname : space.hostnames()) {
+    std::vector<std::string> hostname_split = absl::StrSplit(hostname, ':');
+    (*env->mutable_hostnames())[hostname_split[0]] = true;
+  }
   env->set_device_type(accelerator_count > 0 ? "GPU" : "CPU");
   env->set_device_core_count(accelerator_count);
 }
@@ -153,20 +156,24 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
   // Convert device planes.
   OpMetricsDbCombiner op_metrics_db_combiner(
       op_stats.mutable_device_op_metrics_db());
-  SetRunEnvironment(device_planes.size(), op_stats.mutable_run_environment());
+  SetRunEnvironment(space, device_planes.size(),
+                    op_stats.mutable_run_environment());
 
   KernelReportMap reports;
+  absl::string_view gpu_model = "";
+
   // TODO(b/161942993) parallelize XPlane processing per thread.
   for (const XPlane* device_trace : device_planes) {
     if (options.generate_op_metrics_db) {
       if (!op_stats.has_perf_env()) {
         *op_stats.mutable_perf_env() = GetPerfEnvFromXPlane(*device_trace);
       }
-      const PerfEnv& perf_env = op_stats.perf_env();
-      OpMetricsDb device_op_metrics_db = ConvertDeviceTraceXPlaneToOpMetricsDb(
-          *device_trace, perf_env.peak_tera_flops_per_second(),
-          perf_env.peak_hbm_bw_giga_bytes_per_second());
+      OpMetricsDb device_op_metrics_db =
+          ConvertDeviceTraceXPlaneToOpMetricsDb(*device_trace);
       op_metrics_db_combiner.Combine(device_op_metrics_db);
+    }
+    if (gpu_model.empty()) {
+      gpu_model = GpuModelName(GetDeviceCapFromXPlane(*device_trace));
     }
     if (options.generate_step_db) {
       CombineStepEvents(ConvertDeviceTraceXPlaneToStepEvents(*device_trace),
@@ -176,6 +183,11 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
       ConvertDeviceTraceXPlaneToKernelReports(*device_trace,
                                               /*on_kernel_fn=*/{}, &reports);
     }
+  }
+
+  if (!gpu_model.empty()) {
+    // Overwrites the device type with the more specific GPU model name.
+    op_stats.mutable_run_environment()->set_device_type(std::string(gpu_model));
   }
 
   // Combine into reports.
@@ -199,7 +211,51 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
     *op_stats.mutable_device_op_metrics_db()->mutable_precision_stats() =
         ComputePrecisionStats(nonoverlapped_step_events);
   }
+
+  CoreDetails& details =
+      (*op_stats.mutable_core_id_to_details())[kDefaultGpuLocalCoreId];
+  details.set_hostname(space.hostnames().empty() ? "localhost"
+                                                 : space.hostnames(0));
   return op_stats;
+}
+
+Status ConvertMultiXSpacesToCombinedOpStats(
+    const std::vector<std::string>& xspace_paths, const OpStatsOptions& options,
+    OpStats* combined_op_stats) {
+  // A shortcut code path for a single XSpace. There is no need to merge OpStats
+  // if there is only a single XSpace.
+  if (xspace_paths.size() == 1) {
+    XSpace xspace;
+    Status status = ReadBinaryProto(Env::Default(), xspace_paths[0], &xspace);
+    if (!status.ok()) return status;
+    *combined_op_stats = ConvertXSpaceToOpStats(xspace, options);
+    return Status::OK();
+  }
+
+  // Read multiple XSpaces and convert to multiple OpStats.
+  std::vector<OpStats> all_op_stats;
+  for (const std::string& xspace_path : xspace_paths) {
+    XSpace xspace;
+    Status status = ReadBinaryProto(Env::Default(), xspace_path, &xspace);
+    if (!status.ok()) return status;
+    all_op_stats.push_back(ConvertXSpaceToOpStats(xspace, options));
+  }
+
+  // Combine OpStats.
+  std::vector<OpStatsInfo> all_op_stats_info;
+  all_op_stats_info.reserve(all_op_stats.size());
+  for (int i = 0; i < all_op_stats.size(); i++) {
+    all_op_stats_info.emplace_back(
+        &all_op_stats[i],
+        ParseHardwareType(all_op_stats[i].run_environment().device_type()), i);
+  }
+
+  // Do not limit the maximum number of steps during the merge of OpStats.
+  StepIntersection step_intersection =
+      ComputeStepIntersectionToMergeOpStats(all_op_stats_info, kuint32max);
+  CombineAllOpStats(all_op_stats_info, step_intersection, combined_op_stats);
+
+  return Status::OK();
 }
 
 }  // namespace profiler

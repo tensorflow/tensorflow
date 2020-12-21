@@ -131,8 +131,8 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   output_multipliers->push_back(quant::QuantizeMultiplier(real_multiplier));
 
   // output ranges
-  auto min = rop.getAttrOfType<FloatAttr>("min");
-  auto max = rop.getAttrOfType<FloatAttr>("max");
+  auto min = rop->getAttrOfType<FloatAttr>("min");
+  auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
       (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
@@ -166,8 +166,8 @@ LogicalResult DeviceTarget::DecomposeSameScale(
   if (!o_spec) return failure();
 
   // output ranges
-  auto min = rop.getAttrOfType<FloatAttr>("min");
-  auto max = rop.getAttrOfType<FloatAttr>("max");
+  auto min = rop->getAttrOfType<FloatAttr>("min");
+  auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
       (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),

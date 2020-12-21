@@ -25,8 +25,99 @@ namespace data {
 namespace model {
 namespace {
 
+// Helper function for node traversal that doesn't skip any nodes.
+inline bool IsAnyNode(const std::shared_ptr<Node> node) { return true; }
+
+// Helper function for node traversal that filters out nodes for which
+// autotuning is disabled.
+inline bool IsAutotuneNode(const std::shared_ptr<Node> node) {
+  return node->autotune();
+}
+
 // Wrapper for the square function to reduce verbosity.
 inline double Square(double x) { return x * x; }
+
+// Collects "essential" parallelism parameters and buffer size parameters in the
+// tree rooted in the given node. Which parallelism parameters are essential is
+// determined by the relative processing time spent in the corresponding
+// transformation. The collected parameters are returned via maps that map node
+// names to their respective parameters.
+inline void CollectParameters(
+    std::shared_ptr<Node> node,
+    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
+    absl::flat_hash_map<string, std::shared_ptr<Parameter>>*
+        parallelism_parameters,
+    absl::flat_hash_map<string, std::shared_ptr<Parameter>>*
+        buffer_size_parameters) {
+  // Parallelism parameter is considered to be essential if the corresponding
+  // transformations's processing time is greater than essential rate times the
+  // average transformation self processing time.
+  constexpr double kEssentialRate = 0.3L;
+
+  absl::flat_hash_map<string, double> processing_times;
+  double processing_time = node->TotalProcessingTime(&processing_times);
+  double uniform_share =
+      processing_time / static_cast<double>(processing_times.size());
+  for (auto& pair : parameters) {
+    if (pair.second->name == kParallelism &&
+        processing_times[pair.first] > kEssentialRate * uniform_share) {
+      parallelism_parameters->insert(pair);
+    } else if (pair.second->name == kBufferSize) {
+      buffer_size_parameters->insert(pair);
+    }
+  }
+}
+
+// Applies the gradient descent method once and updates the parameter values. If
+// the new value is out of the range, bound it within the range between the
+// minimal and maximum values.
+inline void UpdateParameterValues(
+    const absl::flat_hash_map<string, double>& gradients,
+    absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) {
+  // Gradient descent step size.
+  constexpr double kDescentStep = 0.1L;
+  double new_value;
+
+  double max_abs_derivative = 1.0;
+  for (auto& pair : *parameters) {
+    if (std::round(pair.second->value) != pair.second->max) {
+      auto* gradient = gtl::FindOrNull(gradients, pair.first);
+      if (gradient) {
+        max_abs_derivative = std::max(max_abs_derivative, std::abs(*gradient));
+      }
+    }
+  }
+  for (auto& pair : *parameters) {
+    auto* gradient = gtl::FindOrNull(gradients, pair.first);
+    if (gradient) {
+      new_value =
+          pair.second->value - kDescentStep * (*gradient) / max_abs_derivative;
+      // Projection on a feasible interval.
+      if (new_value > pair.second->max) {
+        pair.second->value = pair.second->max;
+      } else if (new_value < pair.second->min) {
+        pair.second->value = pair.second->min;
+      } else {
+        pair.second->value = new_value;
+      }
+    }
+  }
+}
+
+// Copies the parameter values (which are for optimization tuning) and updates
+// the state values (which are for the input pipeline to follow).
+inline void UpdateStateValues(
+    absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) {
+  VLOG(2) << "Number of tunable parameters: " << parameters->size();
+  for (auto& pair : *parameters) {
+    auto& parameter = pair.second;
+    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
+            << parameter->value;
+    mutex_lock l(*parameter->state->mu);
+    parameter->state->value = parameter->value;
+    parameter->state->cond_var->notify_all();
+  }
+}
 
 // The first input of InterleaveMany corresponds to the input dataset whose
 // elements are used to create the (derived) input datasets whose elements are
@@ -82,7 +173,8 @@ class InterleaveMany : public Node {
     if (num_inputs() <= 1) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
@@ -94,7 +186,8 @@ class InterleaveMany : public Node {
          (*output_times)[inputs_.front()->long_name()]) /
         static_cast<double>(num_inputs() - 1);
     if (gradients) {
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient /= static_cast<double>(num_inputs() - 1);
@@ -211,7 +304,8 @@ class AsyncInterleaveMany : public Node {
     if (num_inputs() <= 1) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
@@ -245,7 +339,8 @@ class AsyncInterleaveMany : public Node {
           consumer_time_der +
           producer_time_der * inputs_time_der_sum / parallelism;
 
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= (producer_time_der /
@@ -298,6 +393,15 @@ class AsyncInterleaveMany : public Node {
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
   }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kParallelism);
+    if (parameter) {
+      result += (*parameter)->value * AverageBufferedElementSize();
+    }
+    return result;
+  }
 };
 
 class KnownRatio : public Node {
@@ -345,14 +449,16 @@ class KnownRatio : public Node {
     if (ratio_ == 0) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
       return;
     }
     if (gradients) {
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= ratio_;
@@ -483,7 +589,8 @@ class AsyncKnownRatio : public Node {
       consumer_time = input_time;
       producer_time = 0.0L;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
 
@@ -528,7 +635,8 @@ class AsyncKnownRatio : public Node {
       (*output_time_gradients)[long_name()] =
           consumer_time_der + producer_time_der * inputs_time_der_sum;
 
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= (ratio_ * producer_time_der);
@@ -574,6 +682,26 @@ class AsyncKnownRatio : public Node {
         ratio_ * TotalProcessingTimeForInputs(*total_processing_times);
     (*total_processing_times)[long_name()] =
         self_processing_time + inputs_processing_time;
+  }
+
+  double MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+    double result = 0;
+    auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+    if (!parameter) {
+      parameter = gtl::FindOrNull(parameters_, kParallelism);
+    }
+
+    if (parameter) {
+      if (ratio_ == 0) {
+        result += (*parameter)->value * AverageBufferedElementSize();
+      } else {
+        // The estimation is currently not accurate for MapAndBatchDataset for
+        // the maximum buffer size does not match `num_parallel_calls`
+        // parameter.
+        result += (*parameter)->value * AverageBufferedElementSize() / ratio_;
+      }
+    }
+    return result;
   }
 
  private:
@@ -629,7 +757,8 @@ class UnknownRatio : public Node {
         inputs_.front()->num_elements() == 0) {
       (*output_times)[long_name()] = self_processing_time;
       if (gradients) {
-        for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+        for (const auto& node :
+             CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
           gradients->erase(node->long_name());
         }
       }
@@ -640,7 +769,8 @@ class UnknownRatio : public Node {
     double ratio = static_cast<double>(inputs_.front()->num_elements()) /
                    static_cast<double>(num_elements_);
     if (gradients) {
-      for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+      for (const auto& node :
+           CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
         auto* gradient = gtl::FindOrNull(*gradients, node->long_name());
         if (gradient) {
           *gradient *= ratio;
@@ -917,7 +1047,8 @@ void Node::CollectTunableParameters(
     absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const {
   tf_shared_lock l(mu_);
   // Collect tunable parameters from the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
     node->CollectTunableParametersHelper(parameters);
   }
@@ -928,7 +1059,8 @@ string Node::DebugString() const {
   absl::flat_hash_map<string, string> debug_strings;
   tf_shared_lock l(mu_);
   // Build up the debug string from the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->DebugStringHelper(&debug_strings);
   }
@@ -952,7 +1084,7 @@ double Node::OutputTime(absl::flat_hash_map<string, double>* input_times,
   // `nullptr`) and the output time for each node.
   absl::flat_hash_map<string, double> output_time_gradients, output_times;
   tf_shared_lock l(mu_);
-  auto nodes = CollectNodes(TraversalOrder::BFS);
+  auto nodes = CollectNodes(TraversalOrder::BFS, IsAutotuneNode);
 
   // Computes and stores input time for each node from the root to leaves of the
   // nodes tree.
@@ -1001,7 +1133,8 @@ double Node::TotalBufferedBytes() const {
   absl::flat_hash_map<string, double> total_bytes;
   tf_shared_lock l(mu_);
   // Compute total buffered bytes from the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalBufferedBytesHelper(&total_bytes);
   }
@@ -1015,7 +1148,8 @@ double Node::TotalMaximumBufferedBytes() const {
   tf_shared_lock l(mu_);
   // Compute total maximum buffered bytes from the leaves of the nodes tree
   // to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAnyNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalMaximumBufferedBytesHelper(&total_bytes);
   }
@@ -1033,7 +1167,8 @@ double Node::TotalProcessingTime(
 
   // Computes per-element CPU time spent in the subtree rooted in the node from
   // the leaves of the nodes tree to the root.
-  for (const auto& node : CollectNodes(TraversalOrder::REVERSE_BFS)) {
+  for (const auto& node :
+       CollectNodes(TraversalOrder::REVERSE_BFS, IsAutotuneNode)) {
     tf_shared_lock l(node->mu_);
     node->TotalProcessingTimeLocked(processing_times, &total_processing_times);
   }
@@ -1043,11 +1178,34 @@ double Node::TotalProcessingTime(
 }
 
 double Node::AverageBufferedElementSize() const {
-  if (buffered_elements_ == 0) {
-    return 0;
+  DCHECK_GE(num_elements_, 0);
+  DCHECK_GE(buffered_elements_, 0);
+  if (num_elements_ <= 0) {
+    if (buffered_elements_ <= 0) {
+      // If there are no produced elements or buffered elements recorded, return
+      // 0.
+      return 0;
+    }
+    // If there are no produced elements but some buffered elements, return the
+    // average size of all buffered elements.
+    return static_cast<double>(buffered_bytes_) /
+           static_cast<double>(buffered_elements_);
   }
-  return static_cast<double>(buffered_bytes_) /
-         static_cast<double>(buffered_elements_);
+
+  if (buffered_elements_ <= 0) {
+    // If there are no buffered elements but some produced elements, return the
+    // average size of all produced elements.
+    return static_cast<double>(bytes_produced_) /
+           static_cast<double>(num_elements_);
+  }
+
+  // Otherwise, return the mean value of average size of all produced elements
+  // and average size of all buffered elements.
+  return (static_cast<double>(bytes_produced_) /
+              static_cast<double>(num_elements_) +
+          static_cast<double>(buffered_bytes_) /
+              static_cast<double>(buffered_elements_)) /
+         2.0;
 }
 
 double Node::OutputTimeForInputs(
@@ -1123,14 +1281,17 @@ double Node::SelfProcessingTimeLocked() const {
          static_cast<double>(num_elements_);
 }
 
-Node::NodeVector Node::CollectNodes(TraversalOrder order) const
+Node::NodeVector Node::CollectNodes(
+    TraversalOrder order, bool collect_node(const std::shared_ptr<Node>)) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
   NodeVector node_vector;
   std::list<std::shared_ptr<Node>> temp_list;
 
   for (auto& input : inputs_) {
-    node_vector.push_back(input);
-    temp_list.push_back(input);
+    if (collect_node(input)) {
+      node_vector.push_back(input);
+      temp_list.push_back(input);
+    }
   }
 
   while (!temp_list.empty()) {
@@ -1138,8 +1299,10 @@ Node::NodeVector Node::CollectNodes(TraversalOrder order) const
     temp_list.pop_front();
     tf_shared_lock l(cur_node->mu_);
     for (auto& input : cur_node->inputs_) {
-      node_vector.push_back(input);
-      temp_list.push_back(input);
+      if (collect_node(input)) {
+        node_vector.push_back(input);
+        temp_list.push_back(input);
+      }
     }
   }
 
@@ -1246,18 +1409,15 @@ void Node::TotalMaximumBufferedBytesHelper(
     return;
   }
 
-  double result = 0;
-  auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
-  if (!parameter) {
-    parameter = gtl::FindOrNull(parameters_, kParallelism);
-  }
-  if (parameter) {
-    result = (*parameter)->value * AverageBufferedElementSize();
-  }
+  double result = MaximumBufferedBytes();
   for (auto& input : inputs_) {
     result += total_bytes->at(input->long_name());
   }
   total_bytes->insert(std::make_pair(long_name(), result));
+}
+
+double Node::MaximumBufferedBytes() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+  return 0;
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
@@ -1328,27 +1488,37 @@ Model::CollectTunableParameters(std::shared_ptr<Node> node) {
   return parameters;
 }
 
-absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-Model::CollectEssentialParallelism(
-    std::shared_ptr<Node> node,
-    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters) {
-  // Parallelism parameter is considered to be essential if the corresponding
-  // transformations's processing time is greater than essential rate times the
-  // average transformation self processing time.
-  constexpr double kEssentialRate = 0.3L;
+bool Model::ShouldStop(
+    int64 cpu_budget, int64 ram_budget,
+    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
+    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+        parallelism_parameters,
+    const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+        buffer_size_parameters,
+    std::shared_ptr<Node> snapshot, bool* cpu_budget_reached) {
+  if (!(*cpu_budget_reached)) {
+    // If those essential transformations' parallelism reaches the CPU
+    // budget, we will only tune the buffer size parameters in future
+    // iterations.
+    int64 model_parallelism = 0;
+    for (auto& pair : parallelism_parameters) {
+      model_parallelism += std::round(pair.second->value);
+    }
+    *cpu_budget_reached = (model_parallelism > cpu_budget);
+  }
 
-  absl::flat_hash_map<string, double> processing_times;
-  double processing_time = node->TotalProcessingTime(&processing_times);
-  double uniform_share =
-      processing_time / static_cast<double>(processing_times.size());
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>> essential_parameters;
-  for (auto& pair : parameters) {
-    if (pair.second->name == kParallelism &&
-        processing_times[pair.first] > kEssentialRate * uniform_share) {
-      essential_parameters.insert(pair);
+  bool all_max = true;
+  for (auto& pair :
+       (*cpu_budget_reached ? buffer_size_parameters : parameters)) {
+    if (std::round(pair.second->value) < pair.second->max) {
+      all_max = false;
+      break;
     }
   }
-  return essential_parameters;
+
+  // If all parameters have reached their maximum values or RAM budget is
+  // reached, we stop the iterations.
+  return all_max || TotalMaximumBufferedBytes(snapshot) > ram_budget;
 }
 
 void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
@@ -1360,15 +1530,16 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
   }
   VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
   auto parameters = CollectTunableParameters(snapshot);
-  auto essential_parameters = CollectEssentialParallelism(snapshot, parameters);
-  // We add the number of model's buffered bytes because it is excluded from the
-  // memory budget, but it is included in the maximum number of buffered bytes.
-  ram_budget += TotalBufferedBytes(snapshot);
+  // The maps of "essential" parallelism parameters and buffer size parameters.
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
+      parallelism_parameters, buffer_size_parameters;
+  CollectParameters(snapshot, parameters, &parallelism_parameters,
+                    &buffer_size_parameters);
+
+  // Initialize the parameter values to minimal before tuning.
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
-  // Gradient descent step size.
-  constexpr double kDescentStep = 0.1L;
 
   // Optimization is stopped once the `OutputTime` improvement is smaller than
   // this value.
@@ -1379,53 +1550,33 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
 
   double output_time = 0;
   double new_output_time;
-  double new_value;
-  for (int i = 0; i < kMaxIterations; ++i) {
+
+  // When the CPU budget is reached, the parallelism parameter values are fixed
+  // and we only increase the buffer size parameters.
+  bool cpu_budget_reached = false;
+
+  for (int i = 0;
+       i < kMaxIterations &&
+       !ShouldStop(cpu_budget, ram_budget, parameters, parallelism_parameters,
+                   buffer_size_parameters, snapshot, &cpu_budget_reached);
+       ++i) {
     absl::flat_hash_map<string, double> gradients;
     new_output_time = OutputTime(snapshot, model_input_time, &gradients);
-    int64 model_parallelism = 0;
-    for (auto& pair : essential_parameters) {
-      model_parallelism += std::round(pair.second->value);
-    }
-    // We terminate once the improvement of the output latency is too small or
-    // the essential transformations' parallelism reaches the CPU budget or the
-    // worst-case total buffer size exceeds the memory budget.
-    if (std::abs(output_time - new_output_time) < kOptimizationPrecision ||
-        model_parallelism > cpu_budget ||
-        TotalMaximumBufferedBytes(snapshot) > ram_budget) {
+    // We also terminate once the improvement of the output latency is too
+    // small.
+    if (std::abs(output_time - new_output_time) < kOptimizationPrecision) {
       break;
     }
-    double max_abs_derivative = 1.0;
-    for (auto& pair : parameters) {
-      if (pair.second->value != pair.second->max) {
-        max_abs_derivative =
-            std::max(max_abs_derivative, std::abs(gradients[pair.first]));
-      }
-    }
-    for (auto& pair : parameters) {
-      new_value = pair.second->value -
-                  kDescentStep * gradients[pair.first] / max_abs_derivative;
-      // Projection on a feasible interval.
-      if (new_value > pair.second->max) {
-        pair.second->value = pair.second->max;
-      } else if (new_value < pair.second->min) {
-        pair.second->value = pair.second->min;
-      } else {
-        pair.second->value = new_value;
-      }
-    }
+
+    UpdateParameterValues(
+        gradients, &(cpu_budget_reached ? buffer_size_parameters : parameters));
     output_time = new_output_time;
   }
-  VLOG(2) << "Number of tunable parameters: " << parameters.size();
+
   for (auto& pair : parameters) {
     pair.second->value = std::round(pair.second->value);
-    auto& parameter = pair.second;
-    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
-            << parameter->value;
-    mutex_lock l(*parameter->state->mu);
-    parameter->state->value = parameter->value;
-    parameter->state->cond_var->notify_all();
   }
+  UpdateStateValues(&parameters);
 }
 
 void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
@@ -1438,13 +1589,11 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
   VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
-  // We add the number of model's buffered bytes because it is excluded from the
-  // memory budget, but it is included in the maximum number of buffered bytes.
-  ram_budget += TotalBufferedBytes(snapshot);
   // Buffer size parameter will only be incremented if the output latency
   // improvement is greater than this constant.
   constexpr double kBufferSizeMinDelta = 1.0L;
 
+  // Initialize the parameter values to minimal before tuning.
   for (auto& pair : parameters) {
     pair.second->value = pair.second->min;
   }
@@ -1465,7 +1614,7 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
     double best_delta = -1.0L;
     Parameter* best_parameter = nullptr;
     for (auto& pair : parameters) {
-      if (pair.second->value == pair.second->max) {
+      if (pair.second->value >= pair.second->max) {
         continue;
       }
       pair.second->value++;
@@ -1488,15 +1637,7 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
     }
     best_parameter->value++;
   }
-  VLOG(2) << "Number of tunable parameters: " << parameters.size();
-  for (auto& pair : parameters) {
-    auto& parameter = pair.second;
-    VLOG(2) << "Setting tunable parameter " << pair.first << " to "
-            << parameter->value;
-    mutex_lock l(*parameter->state->mu);
-    parameter->state->value = parameter->value;
-    parameter->state->cond_var->notify_all();
-  }
+  UpdateStateValues(&parameters);
 }
 
 double Model::OutputTime(std::shared_ptr<Node> node, double model_input_time,

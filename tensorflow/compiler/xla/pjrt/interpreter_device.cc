@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 
 namespace xla {
@@ -25,10 +26,10 @@ static const char kInterpreterPlatformName[] = "interpreter";
 
 InterpreterDevice::InterpreterDevice(
     int id, std::unique_ptr<LocalDeviceState> local_device_state)
-    : PjRtDevice(id, std::move(local_device_state), kInterpreterPlatformName,
-                 /*device_kind=*/kInterpreterPlatformName) {}
+    : PjRtStreamExecutorDevice(id, std::move(local_device_state),
+                               /*device_kind=*/kInterpreterPlatformName) {}
 
-StatusOr<std::shared_ptr<PjRtClient>> GetInterpreterClient() {
+StatusOr<std::unique_ptr<PjRtClient>> GetInterpreterClient() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Interpreter"));
   if (platform->VisibleDeviceCount() != 1) {
@@ -40,7 +41,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetInterpreterClient() {
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  std::vector<std::unique_ptr<PjRtDevice>> devices;
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
   se::StreamExecutor* executor =
       client->backend().stream_executor(0).ValueOrDie();
   auto device_state = absl::make_unique<LocalDeviceState>(
@@ -50,11 +51,11 @@ StatusOr<std::shared_ptr<PjRtClient>> GetInterpreterClient() {
       absl::make_unique<InterpreterDevice>(0, std::move(device_state));
   devices.push_back(std::move(device));
 
-  return std::make_shared<PjRtClient>(
-      kInterpreterPlatformName, client, std::move(devices), /*host_id=*/0,
+  return std::unique_ptr<PjRtClient>(std::make_unique<PjRtStreamExecutorClient>(
+      "interpreter", client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*should_stage_host_to_device_transfers=*/false,
-      /*gpu_run_options=*/nullptr);
+      /*gpu_run_options=*/nullptr));
 }
 
 }  // namespace xla

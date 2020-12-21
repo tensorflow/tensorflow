@@ -30,14 +30,17 @@ namespace xla {
 namespace py = pybind11;
 namespace pprof = tensorflow::tfprof::pprof;
 
+PyClient::PyClient(std::unique_ptr<PjRtClient> pjrt_client)
+    : pjrt_client_(std::move(pjrt_client)) {}
 PyClient::PyClient(std::shared_ptr<PjRtClient> pjrt_client)
     : pjrt_client_(std::move(pjrt_client)) {}
 
 std::vector<ClientAndPtr<PjRtDevice>> PyClient::Devices() {
   std::vector<ClientAndPtr<PjRtDevice>> devices;
-  devices.reserve(pjrt_client_->devices().size());
-  for (const auto& device : pjrt_client_->devices()) {
-    devices.push_back(WrapWithClient(shared_from_this(), device.get()));
+  auto span = pjrt_client_->devices();
+  devices.reserve(span.size());
+  for (PjRtDevice* device : span) {
+    devices.push_back(WrapWithClient(shared_from_this(), device));
   }
   return devices;
 }
@@ -62,9 +65,9 @@ PyClient::GetDefaultDeviceAssignment(int num_replicas, int num_partitions) {
     result[r].resize(num_partitions);
     for (int p = 0; p < num_partitions; ++p) {
       int device_id = device_assignment(r, p);
-      auto iter = pjrt_client_->id_to_device().find(device_id);
-      CHECK(iter != pjrt_client_->id_to_device().end()) << device_id;
-      result[r][p] = WrapWithClient(shared_from_this(), iter->second);
+      TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                          pjrt_client_->LookupDevice(device_id));
+      result[r][p] = WrapWithClient(shared_from_this(), device);
     }
   }
   return result;
@@ -78,23 +81,24 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
   std::vector<ClientAndPtr<PjRtDevice>> result;
   for (int i = 0; i < num_replicas; ++i) {
     int device_id = device_assignment(i, 0);
-    auto iter = pjrt_client_->id_to_device().find(device_id);
-    CHECK(iter != pjrt_client_->id_to_device().end()) << device_id;
-    result.push_back(WrapWithClient(shared_from_this(), iter->second));
+    TF_ASSIGN_OR_RETURN(PjRtDevice * device,
+                        pjrt_client_->LookupDevice(device_id));
+    result.push_back(WrapWithClient(shared_from_this(), device));
   }
   return result;
 }
 
-StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
+StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
     const pybind11::object& argument, PjRtDevice* device, bool force_copy,
-    PjRtBuffer::HostBufferSemantics host_buffer_semantics) {
+    PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
     TF_RET_CHECK(!pjrt_client_->local_devices().empty());
     device = pjrt_client_->local_devices().front();
   }
   CHECK(device != nullptr);
-  auto iter = pjrt_client_->id_to_device().find(device->id());
-  if (iter->second != device) {
+  TF_ASSIGN_OR_RETURN(PjRtDevice * found_device,
+                      pjrt_client_->LookupDevice(device->id()));
+  if (found_device != device) {
     return InvalidArgument("Cannot copy value to device '%s' with '%s' backend",
                            device->DebugString(),
                            pjrt_client_->platform_name());
@@ -112,11 +116,19 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
   std::unique_ptr<PjRtBuffer> buffer;
   {
     py::gil_scoped_release gil_release;
-    TF_ASSIGN_OR_RETURN(
-        buffer, PjRtBuffer::FromHostBuffer(
-                    c->buf_ptr, c->shape, host_buffer_semantics,
-                    std::move(py_buffer_ref), pjrt_client_.get(), device));
+    TF_ASSIGN_OR_RETURN(buffer, pjrt_client_->BufferFromHostBuffer(
+                                    c->buf_ptr, c->shape, host_buffer_semantics,
+                                    std::move(py_buffer_ref), device));
   }
+  return buffer;
+}
+StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
+    const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+    PjRtClient::HostBufferSemantics host_buffer_semantics) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      PjRtBufferFromPyval(argument, device, force_copy, host_buffer_semantics));
+
   auto traceback = Traceback::Get();
   return std::make_unique<PyBuffer>(shared_from_this(), std::move(buffer),
                                     std::move(traceback));
@@ -129,8 +141,7 @@ StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(executable,
-                        PjRtExecutable::Compile(computation, pjrt_client_.get(),
-                                                std::move(options)));
+                        pjrt_client_->Compile(computation, std::move(options)));
     TF_ASSIGN_OR_RETURN(fingerprint,
                         pjrt_client_->ExecutableFingerprint(*executable));
   }

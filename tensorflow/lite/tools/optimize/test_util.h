@@ -92,16 +92,19 @@ extern const char* kModelPack;
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
 
+// Test model with LSTM op that has peephole, without layer norm, without
+// projection, without cifg.
+extern const char* kLstmCalibrated2;
+extern const char* kLstmQuantized2;
+
+extern const char* kUnidirectionalSequenceLstmCalibrated;
+extern const char* kUnidirectionalSequenceLstmQuantized;
+
 // Test model with a minimum op.
 extern const char* kModelWithMinimumOp;
 
 // Test model with a maximum op.
 extern const char* kModelWithMaximumOp;
-
-// Test model with LSTM op that has peephole, without layer norm, without
-// projection, without cifg.
-extern const char* kLstmCalibrated2;
-extern const char* kLstmQuantized2;
 
 // Test model with a transpose op.
 extern const char* kModelWithTranspose;
@@ -112,6 +115,9 @@ extern const char* kSvdfQuantized;
 
 // Test model with an unpack op.
 extern const char* kModelWithUnpack;
+
+// Test QAT model with fc op.
+extern const char* kQatModelWithFc;
 
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {

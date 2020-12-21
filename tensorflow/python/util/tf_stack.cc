@@ -13,18 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// We extract stack traces in Python using the logic in tf_stack.cc, which
+// stores a list of PyCodeObject*. Such stack trace extraction is really fast.
+//
+// We store the retrieved stack trace within the Node object directly. Then
+// whenever the graph is instantiated/copies, we copy the stack trace with it.
+// Since the graph instantiation goes through the protobuf roundtrip, we store
+// the original stack traces mapping attached in FunctionLibraryDefinition.
+
 #include <Python.h>
 #include <frameobject.h>
 
 #include <algorithm>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "pybind11/stl_bind.h"
+#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/python/util/stack_trace.h"
 
-struct FrameSummary;  // Forward declaration.
+struct StackFrame;  // Forward declaration.
+struct StackTrace;
 
-PYBIND11_MAKE_OPAQUE(std::vector<FrameSummary>);
+PYBIND11_MAKE_OPAQUE(std::vector<StackFrame>);
+PYBIND11_MAKE_OPAQUE(StackTrace);
 
 namespace tensorflow {
 
@@ -32,145 +54,375 @@ namespace {
 
 namespace py = pybind11;
 
-struct FrameSummary {
-  py::str filename;
-  int lineno;
-  py::str name;
-  py::object globals;
+using SourceLoc = std::tuple<std::string, int>;
 
-  py::object line() const {
-    static const auto* linecache =
-        new py::module(py::module::import("linecache"));
-    const auto& checkcache = linecache->attr("checkcache");
-    const auto& getline = linecache->attr("getline");
-    checkcache(filename);
-    const auto& code =
-        py::cast<py::str>(getline(filename, lineno, globals).attr("strip")());
-    ssize_t size = 0;
-#if PY_MAJOR_VERSION == 3
-    if (PyUnicode_AsUTF8AndSize(code.ptr(), &size) == nullptr) {
-      throw py::error_already_set();
-    }
-#else
-    size = PyString_Size(code.ptr());
-#endif
-    return size > 0 ? static_cast<py::object>(code) : py::none();
-  }
+using SourceMap = absl::flat_hash_map<SourceLoc, StackFrame>;
 
-  bool operator==(const FrameSummary& other) const {
-    return filename == other.filename && lineno == other.lineno &&
-           name == other.name && globals == other.globals;
-  }
+using StringSet = absl::flat_hash_set<std::string>;
 
-  bool operator!=(const FrameSummary& other) const { return !(*this == other); }
+// Python wrapper for a SourceMap.
+class PyBindSourceMap {
+ public:
+  PyBindSourceMap() : source_map_(std::make_shared<SourceMap>()) {}
+
+  // Shares ownership with whoever captures traces in the scope of this map.
+  std::shared_ptr<SourceMap> source_map_;
 };
 
-std::vector<FrameSummary> ExtractStack(ssize_t limit, const py::list& mappers,
-                                       const py::list& filters) {
-  const py::dict& source_map =
-      mappers.size() == 0
-          ? py::dict()
-          : mappers[mappers.size() - 1].attr("get_effective_source_map")();
-  const py::set& filtered_filenames =
-      filters.size() == 0
-          ? py::set()
-          : filters[filters.size() - 1].attr("get_filtered_filenames")();
+// Python wrapper for a FileSet.
+class PyBindFileSet {
+ public:
+  PyBindFileSet() : file_set_(std::make_shared<StringSet>()) {}
 
-  const auto* tstate = PyThreadState_GET();
-  // Drop extract_stack() wrapper-function frame from the result.
-  const PyFrameObject* f = tstate->frame->f_back;  // TODO(slebedev): INCREF?
+  // Shares ownership with whoever captures traces in the scope of this set.
+  std::shared_ptr<StringSet> file_set_;
+};
 
-  std::vector<FrameSummary> ret;
-  // 16 is somewhat arbitrary, but TensorFlow stack traces tend to be deep.
-  ret.reserve(limit < 0 ? 16 : static_cast<size_t>(limit));
-  for (; f != nullptr && (limit < 0 || ret.size() < static_cast<size_t>(limit));
-       f = f->f_back) {
-    const PyCodeObject* co = f->f_code;
-    int lineno = PyFrame_GetLineNumber(const_cast<PyFrameObject*>(f));
-    auto filename = py::reinterpret_borrow<py::str>(co->co_filename);
-    auto name = py::reinterpret_borrow<py::str>(co->co_name);
+// Returns contents of the line corresponding to the given frame.
+//
+// Precondition: must be holding Python GIL.
+py::str LineContents(const StackFrame& frame) {
+  DCheckPyGilStateForStackTrace();
+  static const auto* linecache =
+      new py::module(py::module::import("linecache"));
+  const auto& checkcache = linecache->attr("checkcache");
+  const auto& getline = linecache->attr("getline");
+  checkcache(py::str(frame.file_name));
+  return py::cast<py::str>(
+      getline(py::str(frame.file_name), py::int_(frame.line_number))
+          .attr("strip")());
+}
 
-    // TODO(slebedev): consider moving the mappers/filters to C++ as well.
-    if (source_map.size() > 0) {
-      const auto& key = py::make_tuple(filename, lineno);
-      if (source_map.contains(key)) {
-        const py::tuple& mapped = source_map[key];
-        filename = mapped[0];
-        lineno = py::cast<py::int_>(mapped[1]);
-        name = mapped[2];
-      }
+// Ignores the frames containing this substring for common prefix calculation.
+static const char* kFilenameToIgnorePrefix = "<embedded";
+
+// Converts the given stack frame to string, according to options defined in
+// `opts`.
+std::string StackFrameToString(
+    const StackFrame& frame,
+    const AbstractStackTrace::TracePrintingOptions& opts,
+    int shared_prefix_size = 0) {
+  std::string out = absl::StrFormat(
+      "File \"%s\", line %d, in %s",
+      absl::StrContains(frame.file_name, kFilenameToIgnorePrefix)
+          ? frame.file_name
+          : frame.file_name.substr(shared_prefix_size),
+      frame.line_number, frame.function_name);
+
+  if (opts.show_line_contents) {
+    PyGILState_STATE state = PyGILState_Ensure();
+    std::string line_contents = std::string(LineContents(frame));
+    PyGILState_Release(state);
+    if (!line_contents.empty()) {
+      absl::StrAppend(&out, "\n  ", line_contents);
     }
+  }
+  return out;
+}
 
-    if (!ret.empty() &&  // Never filter the innermost frame.
-        filtered_filenames.size() > 0 &&
-        PySet_Contains(filtered_filenames.ptr(), filename.ptr())) {
-      continue;
-    }
+class StackTraceWrapper : public AbstractStackTrace {
+ public:
+  StackTraceWrapper(StackTrace&& captured,
+                    const std::shared_ptr<SourceMap>& source_map,
+                    const std::shared_ptr<StringSet>& filter)
+      : captured_(std::move(captured)),
+        source_map_(source_map),
+        filter_(filter) {}
 
-    const auto& globals = py::reinterpret_borrow<py::object>(f->f_globals);
-    ret.push_back({std::move(filename), lineno, std::move(name), globals});
+  explicit StackTraceWrapper(absl::Span<StackFrame const> stack_frames)
+      : stack_frames_cache_(std::vector<StackFrame>(stack_frames.begin(),
+                                                    stack_frames.end())) {}
+
+  static StackTraceWrapper ExtractStack(
+      const std::shared_ptr<SourceMap>& source_map,
+      const std::shared_ptr<StringSet>& filter) {
+    return StackTraceWrapper{StackTrace::Capture(-1), source_map, filter};
   }
 
-  std::reverse(ret.begin(), ret.end());
-  return ret;
-}
+  absl::Span<StackFrame const> ToFrames() const override {
+    GenerateCache();
+    return *stack_frames_cache_;
+  }
+
+  StackFrame LastUserFrame() const override {
+    GenerateLastFrameCache();
+    return *last_stack_frame_cache_;
+  }
+
+  std::string ToString(const TracePrintingOptions& opts) const override {
+    GenerateCache();
+    std::vector<std::string> files_to_find_prefix;
+    for (const StackFrame& frame : *stack_frames_cache_) {
+      if (!absl::StrContains(frame.file_name, kFilenameToIgnorePrefix)) {
+        files_to_find_prefix.push_back(frame.file_name);
+      }
+    }
+    int shared_prefix_size =
+        opts.filter_common_prefix
+            ? io::CommonPathPrefix(files_to_find_prefix).size()
+            : 0;
+
+    if (!opts.drop_internal_frames) {
+      return ToStringHelper(*stack_frames_cache_, opts, shared_prefix_size);
+    }
+
+    std::vector<StackFrame> filtered_frames;
+    for (const StackFrame& frame : *stack_frames_cache_) {
+      if (!IsInternalFrameForFilename(frame.file_name)) {
+        filtered_frames.push_back(frame);
+      }
+    }
+    return ToStringHelper(filtered_frames, opts, shared_prefix_size);
+  }
+
+  bool IsCacheGenerated() const { return stack_frames_cache_.has_value(); }
+
+  void GenerateCache() const {
+    // TODO(mdan): We don't really need random access; this can be removed.
+    if (stack_frames_cache_) {
+      return;
+    }
+
+    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
+    // 2) ToStackFrames and LineContents actually need it.
+    PyGILState_STATE state = PyGILState_Ensure();
+
+    stack_frames_cache_ = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        [&](const char* f) { return StackTraceFiltering(f); });
+    stack_frames_cache_->pop_back();  // Drop last stack frame.
+    PyGILState_Release(state);
+  }
+
+  void GenerateLastFrameCache() const {
+    if (last_stack_frame_cache_) {
+      return;
+    }
+
+    PyGILState_STATE state = PyGILState_Ensure();
+    auto f = [&](const char* file_name) -> bool {
+      return StackTraceFiltering(file_name) ||
+             IsInternalFrameForFilename(file_name);
+    };
+
+    std::vector<StackFrame> last_frame = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); }, f,
+        /*reverse_traversal=*/true,
+        /*limit=*/1);
+
+    if (last_frame.empty()) {
+      last_stack_frame_cache_ = StackFrame{};
+    } else {
+      DCHECK(last_frame.size() == 1);
+      last_stack_frame_cache_ = last_frame[0];
+    }
+    PyGILState_Release(state);
+  }
+
+  StackTraceWrapper(StackTraceWrapper&&) = default;
+  ~StackTraceWrapper() override {
+    PyGILState_STATE state = PyGILState_Ensure();
+    captured_.Clear();
+    source_map_.reset();
+    filter_.reset();
+    PyGILState_Release(state);
+  }
+
+ private:
+  static std::string ToStringHelper(absl::Span<StackFrame const> stack_frames,
+                                    const TracePrintingOptions& opts,
+                                    int shared_prefix_size) {
+    return absl::StrJoin(
+        stack_frames, "\n", [&](std::string* out, const StackFrame& frame) {
+          absl::StrAppend(out,
+                          StackFrameToString(frame, opts, shared_prefix_size));
+        });
+  }
+
+  static bool IsInternalFrameForFilename(absl::string_view file_name) {
+    // Use a simple heuristic for now.
+    // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
+    return absl::StrContains(file_name, "tensorflow/python") &&
+           !absl::StrContains(file_name, "keras") &&
+           !absl::StrContains(file_name, "test.py");
+  }
+
+  absl::optional<StackFrame> StackTraceMapping(SourceLoc loc) const {
+    if (source_map_->contains(loc)) {
+      return source_map_->at(loc);
+    }
+
+    return absl::nullopt;
+  }
+
+  bool StackTraceFiltering(const char* file_name) const {
+    return filter_->contains(file_name);
+  }
+
+  StackTrace captured_;
+  std::shared_ptr<SourceMap> source_map_;
+  std::shared_ptr<StringSet> filter_;
+
+  // Using optional to force destruction while we hold a GIL.
+  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  mutable absl::optional<StackFrame> last_stack_frame_cache_;
+};
 
 }  // namespace
 
 PYBIND11_MODULE(_tf_stack, m) {
-  py::class_<FrameSummary>(m, "FrameSummary")
-      .def_readonly("filename", &FrameSummary::filename)
-      .def_readonly("lineno", &FrameSummary::lineno)
-      .def_readonly("name", &FrameSummary::name)
-      .def_property_readonly("line", &FrameSummary::line)
+  py::class_<PyBindSourceMap>(m, "PyBindSourceMap")
+      .def(py::init())
+      .def("update_to",
+           [](const PyBindSourceMap& self, const py::tuple& source_map) {
+             self.source_map_->clear();
+             for (const auto& item : source_map) {
+               const auto& tuple_item = py::cast<py::tuple>(item);
+
+               const auto& key = py::cast<py::tuple>(tuple_item[0]);
+               std::string&& k_filename = py::cast<std::string>(key[0]);
+               int k_lineno = py::cast<int>(key[1]);
+
+               const auto& value = py::cast<py::tuple>(tuple_item[1]);
+               std::string&& v_filename = py::cast<std::string>(value[0]);
+               int v_lineno = py::cast<int>(value[1]);
+               const auto& function_name_val = value[2];
+               std::string&& v_function_name =
+                   function_name_val.is_none()
+                       ? ""
+                       : py::cast<std::string>(function_name_val);
+
+               self.source_map_->emplace(
+                   SourceLoc(k_filename, k_lineno),
+                   StackFrame({v_filename, v_lineno, v_function_name}));
+             }
+           });
+
+  py::class_<PyBindFileSet>(m, "PyBindFileSet")
+      .def(py::init())
+      .def("update_to", [](const PyBindFileSet& self, const py::set& file_set) {
+        self.file_set_->clear();
+        for (const auto& item : file_set) {
+          self.file_set_->insert(py::cast<std::string>(item));
+        }
+      });
+
+  py::class_<StackFrame>(m, "StackFrame")
+      .def_property_readonly(
+          "filename",
+          [](const StackFrame& self) { return py::str(self.file_name); })
+      .def_property_readonly(
+          "lineno",
+          [](const StackFrame& self) { return py::int_(self.line_number); })
+      .def_property_readonly(
+          "name",
+          [](const StackFrame& self) { return py::str(self.function_name); })
+      .def_property_readonly(
+          "line", [](const StackFrame& self) { return LineContents(self); })
 
       // For compatibility with the traceback module.
-      .def("__eq__", &FrameSummary::operator==)
-      .def("__ne__", &FrameSummary::operator!=)
+      .def("__eq__", &StackFrame::operator==)
+      .def("__ne__", &StackFrame::operator!=)
       .def("__hash__",
-           [](const FrameSummary& self) {
-             return py::hash(
-                 py::make_tuple(self.filename, self.lineno, self.name));
+           [](const StackFrame& self) {
+             return absl::Hash<std::tuple<std::string, int, std::string>>()(
+                 std::make_tuple(self.file_name, self.line_number,
+                                 self.function_name));
            })
       .def("__getitem__",
-           [](const FrameSummary& self, const py::object& index) -> py::object {
-             return py::make_tuple(self.filename, self.lineno, self.name,
-                                   self.line())[index];
+           [](const StackFrame& self, const py::object& index) -> py::object {
+             return py::make_tuple(
+                 py::str(self.file_name), py::int_(self.line_number),
+                 py::str(self.function_name), LineContents(self))[index];
            })
       .def("__iter__",
-           [](const FrameSummary& self) {
-             return py::iter(py::make_tuple(self.filename, self.lineno,
-                                            self.name, self.line()));
+           [](const StackFrame& self) {
+             return py::iter(py::make_tuple(
+                 py::str(self.file_name), py::int_(self.line_number),
+                 py::str(self.function_name), LineContents(self))
+
+             );
            })
       .def("__repr__",
-           [](const FrameSummary& self) {
-             return py::str("<FrameSummary file {}, line {} in {}>")
-                 .format(self.filename, self.lineno, self.name);
-           })
-      .def("__len__", [](const FrameSummary&) { return 4; });
+           [](const StackFrame& self) { return StackFrameToString(self, {}); })
+      .def("__len__", [](const StackFrame&) { return 4; });
 
-  py::bind_vector<std::vector<FrameSummary>>(m, "StackSummary",
-                                             py::module_local(true))
+  py::class_<StackTraceWrapper>(m, "StackTraceWrapper", py::module_local(true))
       // TODO(slebedev): upstream negative indexing support into pybind11.
       .def(
           "__getitem__",
-          [](const std::vector<FrameSummary>& self, ssize_t index) {
+          [](const StackTraceWrapper& self, ssize_t index) {
+            absl::Span<StackFrame const> frames = self.ToFrames();
             const size_t eff_index =
-                index < 0 ? self.size() + index : static_cast<size_t>(index);
-            if (eff_index > self.size()) {
+                index < 0 ? frames.size() + index : static_cast<size_t>(index);
+            if (eff_index >= frames.size()) {
               throw py::index_error();
             }
-            return self[eff_index];
+            return frames[eff_index];
           },
-          py::return_value_policy::reference_internal);
+          py::return_value_policy::reference_internal)
+      .def(
+          "__getitem__",
+          [](const StackTraceWrapper& self, py::slice slice) {
+            absl::Span<StackFrame const> frames = self.ToFrames();
+            py::ssize_t start, stop, step, slicelength;
+            if (!slice.compute(frames.size(), &start, &stop, &step,
+                               &slicelength)) {
+              throw py::error_already_set();
+            }
+            if (step == 1) {
+              return StackTraceWrapper{frames.subspan(start, slicelength)};
+            }
+            // TODO(cheshire): Cleanup, use Python slicing logic directly
+            // instead.
+            std::vector<StackFrame> out;
+            out.reserve(slicelength);
+            // Python slices allow negative indexing.
+            for (int i = start; i != stop; i += step) {
+              out.push_back(frames[i]);
+            }
+            return StackTraceWrapper{out};
+          },
+          py::return_value_policy::reference_internal)
+      .def("__len__",
+           [](const StackTraceWrapper& self) { return self.ToFrames().size(); })
+      .def("__eq__",
+           [](const StackTraceWrapper& self, const StackTraceWrapper& other) {
+             return self.ToFrames() == other.ToFrames();
+           })
+      .def("__hash__",
+           [](const StackTraceWrapper& self) {
+             self.GenerateCache();
+             return py::hash(py::str(self.ToString({})));
+           })
+      .def("__repr__",
+           [](const StackTraceWrapper& self) {
+             self.GenerateCache();
+             return py::str(self.ToString({}));
+           })
+      .def("last_user_frame",
+           [](const StackTraceWrapper& self) { return self.LastUserFrame(); });
 
-  m.def("extract_stack", [](const py::object& limit, const py::list& mappers,
-                            const py::list& filters) {
-    // In Python 3.X ``traceback.extract_stack`` allows ``limit`` to
-    // either be None or -1.
-    return ExtractStack(limit.is_none() ? -1 : py::cast<ssize_t>(limit),
-                        mappers, filters);
-  });
+  m.def(
+      "extract_stack_for_node",
+      [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set,
+         TF_Operation* op) -> const AbstractStackTrace& {
+        Node* node = reinterpret_cast<Node*>(op);
+        DCHECK(!node->GetStackTrace()) << "Should not reset the stack trace";
+        node->SetStackTrace(
+            std::make_shared<StackTraceWrapper>(StackTraceWrapper::ExtractStack(
+                source_map.source_map_, file_set.file_set_)));
+        return *node->GetStackTrace();
+      },
+      py::return_value_policy::reference);
+
+  m.def(
+      "extract_stack",
+      [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set) {
+        return StackTraceWrapper::ExtractStack(source_map.source_map_,
+                                               file_set.file_set_);
+      },
+      py::return_value_policy::move);
 }
 
 }  // namespace tensorflow

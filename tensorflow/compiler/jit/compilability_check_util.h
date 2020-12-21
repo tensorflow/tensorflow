@@ -24,11 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/device_util.h"
 #include "tensorflow/compiler/jit/flags.h"
-#include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -62,6 +62,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrame {
     std::string name;
     std::string function_name;
+    const Node* n = nullptr;
   };
 
   // Contains information about uncompilable node inside a function body.
@@ -124,6 +125,13 @@ class RecursiveCompilabilityChecker {
     // Whether ops known to have numerical accuracy issues should be considered
     // compilable..
     bool allow_inaccurate_ops = false;
+
+    // Require the function to be always compilable, regardless whether some
+    // control flow branches might be dead for a given input.
+    bool require_always_compilable = false;
+
+    // Whether string constants are compilable.
+    bool allow_string_consts = true;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,
@@ -189,6 +197,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrameView {
     absl::string_view name;
     absl::string_view function_name;
+    const Node* n = nullptr;
   };
 
   bool IsCompilableNode(
@@ -210,6 +219,14 @@ class RecursiveCompilabilityChecker {
                          std::vector<StackFrameView>* stack_trace,
                          NameAttrList* encapsulating_function,
                          UncompilableNodesMap* uncompilable_nodes) const;
+
+  // Tests whether 'case_node' is compilable. Every operator in all branches
+  // must be compilable.
+  bool IsCompilableCase(const Node& case_node,
+                        FunctionLibraryRuntime* lib_runtime,
+                        std::vector<StackFrameView>* stack_trace,
+                        NameAttrList* encapsulating_function,
+                        UncompilableNodesMap* uncompilable_nodes) const;
 
   // Returns compilability of node def retrieved from `node`'s attribute with
   // name `attr_name`.
@@ -281,6 +298,41 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
 // Given a NodeDef `node_def` returns true iff `node_def` has kXlaCompileAttr
 // set.
 bool CanCreateXlaKernel(const NodeDef& node_def);
+
+// Returns memory types for the input.
+// `constant_arg_indices` and `resource_arg_indices` are sorted arrays of
+// indices corresponding to constant and resource arguments respectively.
+//
+// One might wonder, about the case where a compile-time constant argument
+// (which must be in host memory) is also used as an input into an op,
+// e.g. `Add`, that expects its inputs in device memory. Here is how it
+// works now.
+// First, what do we mean by "op expects an input in XYZ memory"?
+// There are two types of "ops" here: the tf2xla kernel and the HLO
+// computation it builds. The tf2xla kernel needs to retrieve the actual
+// numeric value of the compile-time constant tensors, so it really expects
+// them to be on in host memory. However, for other inputs, it refers to them
+// using xla::ComputationDataHandle, which is just a symbolic handle that
+// xla::ComputationBuilder assigns. How does this handle gets assigned for
+// constant arguments? Even constant arguments get an _Arg node in the graph
+// instantiated for Function compilation. The tf2xla kernel for constant _Arg
+// nodes takes the constant value, converts it to XlaLiteral, and feeds it
+// to xla::ComputationBuilder.ConstantLiteral, which returns the handle. This
+// constant XlaLiteral is included in the HLO graph, and subsequently, in
+// the actual executable, which is copied to the device before being
+// executed. Thus, when this executable runs, the constant is available in
+// device memory.
+tensorflow::MemoryTypeVector GetInputMemoryTypes(
+    const tensorflow::FunctionBody* fbody,
+    absl::Span<int const> constant_arg_indices,
+    absl::Span<int const> resource_arg_indices);
+
+// Returns output memory types.
+//
+// XlaLaunch kernel keeps all outputs (including constants, which it copies),
+// in device memory except for resources.
+tensorflow::MemoryTypeVector GetOutputMemoryTypes(
+    const tensorflow::FunctionBody* fbody);
 
 // Check whether graph can trigger XLA compilation.
 bool CanTriggerXlaCompilation(const GraphDef& graph);

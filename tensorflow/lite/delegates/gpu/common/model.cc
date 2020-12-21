@@ -501,6 +501,7 @@ absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
 }
 
 bool IsBatchMatchesForAllValues(const GraphFloat32& model) {
+  if (model.values().empty()) return true;
   const int32_t b = model.values()[0]->tensor.shape.b;
   for (auto value : model.values()) {
     if (value->tensor.shape.b != b) {

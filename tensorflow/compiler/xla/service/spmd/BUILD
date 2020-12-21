@@ -1,5 +1,6 @@
 # Description: SPMD partitioning pass.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
@@ -19,6 +20,7 @@ cc_library(
     srcs = [
         "convolution_handler.cc",
         "dot_handler.cc",
+        "fft_handler.cc",
         "spmd_partitioner.cc",
         "spmd_partitioner_util.cc",
     ],

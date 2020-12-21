@@ -148,13 +148,15 @@ if _running_from_pip_package():
   for _s in _site_packages_dirs:
     # Load first party dynamic kernels.
     _main_dir = _os.path.join(_s, 'tensorflow/core/kernels')
-    if _fi.file_exists(_main_dir):
+    if _os.path.exists(_main_dir):
       _ll.load_library(_main_dir)
 
     # Load third party dynamic kernels.
     _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
-    if _fi.file_exists(_plugin_dir):
+    if _os.path.exists(_plugin_dir):
       _ll.load_library(_plugin_dir)
+      # Load Pluggable Device Library
+      _ll.load_pluggable_device_library(_plugin_dir)
 
 # Delete modules that should be hidden from dir().
 # Don't fail if these modules are not available.

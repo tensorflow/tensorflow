@@ -1,6 +1,8 @@
 # Description:
 #   Host-platform specific StreamExecutor support code.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/stream_executor:build_defs.bzl", "stream_executor_friends")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 

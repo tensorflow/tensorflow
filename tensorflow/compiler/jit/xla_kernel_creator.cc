@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
-#include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include "tensorflow/compiler/tf2xla/mlir_bridge_pass.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -30,53 +30,51 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/ptr_util.h"
 
-namespace {
+namespace tensorflow {
 
-// Utility which searches for values in a sorted list by scanning over it once.
-// No matter how many times ScanForValue is called, the list is scanned at most
-// once. However, if a call to ScanForValue skips over a value, that value is
-// not revisited in future calls to ScanForValue, so callers must take
-// care to order their calls.
-//
-// Useful for merging multiple sorted lists in O(n) time.
-class SinglePassSearch {
- public:
-  // Creates a SinglePassSearch object that can be used to search in `values`.
-  // Does not take ownership of `values`. `values` must outlive this.
-  // `values` must be sorted.
-  explicit SinglePassSearch(const std::vector<int>* values)
-      : current_index_(0), values_(values) {}
+// Returns true iff 'ndef' is a call to a function that is compilable.  A
+// function is compilable iff every operator in the function body is
+// compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
+// null, we will populate 'uncompilable_node_info' with uncompilable node info.
+static bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                         RecursiveCompilabilityChecker::UncompilableNodesMap*
+                             uncompilable_node_info) {
+  Device* device = flr->device();
+  const XlaOpRegistry::DeviceRegistration* registration;
+  CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
+                                            &registration));
 
-  // Scans forward in the vector looking for "value", updating the internal
-  // position in to the vector.
-  // Returns true iff the vector contains the given value at or after current
-  // position.
-  // Not thread-safe.
-  bool ScanForValue(int value) {
-    while (current_index_ < values_->size() &&
-           (*values_)[current_index_] <= value) {
-      if ((*values_)[current_index_] == value) {
-        current_index_++;
-        return true;
-      }
-      current_index_++;
-    }
-    return false;
+  // We can always *compile* resource operations, stateful RNGs and dummy ops,
+  // even if we are sometimes unable to auto-cluster them.
+  RecursiveCompilabilityChecker::OperationFilter op_filter;
+  op_filter.allow_resource_ops_in_called_functions = true;
+  op_filter.allow_stack_ops = true;
+  op_filter.allow_tensor_array_ops = true;
+  op_filter.allow_stateful_rng_ops = true;
+  op_filter.allow_control_trigger = true;
+  op_filter.allow_eliding_assert_and_checknumerics_ops = true;
+  op_filter.allow_ops_producing_or_consuming_variant = true;
+  op_filter.allow_slow_ops = true;
+  op_filter.allow_inaccurate_ops = true;
+
+  RecursiveCompilabilityChecker checker{
+      op_filter, DeviceType{registration->compilation_device_name}};
+  if (!uncompilable_node_info) {
+    // We do not need uncompilable node info. Just return the result.
+    return checker.IsCompilableCall(ndef, flr);
   }
 
- private:
-  int current_index_;
-  const std::vector<int>* values_;
-};
-
-}  // end namespace
-
-namespace tensorflow {
+  RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_node_result =
+      checker.FindUncompilableNodes(ndef, flr);
+  uncompilable_node_info->swap(uncompilable_node_result);
+  return uncompilable_node_info->empty();
+}
 
 bool XlaKernelCreator::CanCreateKernel(
     const FunctionLibraryRuntime& flr,
     const std::shared_ptr<const NodeProperties>& props) const {
-  return CanCreateXlaKernel(props->node_def);
+  return CanCreateXlaKernel(props->node_def) &&
+         !XlaOpRegistry::IsCompilationDevice(flr.device()->device_type());
 }
 
 static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
@@ -91,36 +89,6 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
 
-  // Only check for compilability if the MLIR bridge is not enabled.
-  if (!GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge) {
-    RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
-    if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
-      std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-          uncompilable_node_info;
-      for (const auto& it : uncompilable_nodes_map) {
-        for (const auto& info : it.second.second) {
-          uncompilable_node_info.emplace_back(info);
-        }
-      }
-      string message = absl::StrCat(
-          "Function invoked by the following node is not compilable: ",
-          SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
-      absl::StrAppend(&message, "Uncompilable nodes:");
-      for (const auto& node_info : uncompilable_node_info) {
-        string node_message = absl::StrCat("\n", node_info.name, ": ",
-                                           node_info.uncompilable_reason, "\n",
-                                           "\tStacktrace:\n");
-        for (const auto& stack_frame : node_info.stack_trace) {
-          absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
-                                stack_frame.name, stack_frame.function_name);
-        }
-        absl::StrAppend(&message, node_message);
-      }
-      VLOG(1) << message;
-      return errors::InvalidArgument(message);
-    }
-  }
-
   // Get function body, constant args, and resource args.
   NameAttrList function;
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
@@ -130,52 +98,51 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
       flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
 
-  // Set input and output memory types.
-  MemoryTypeVector input_memory_types(fbody->arg_types.size(), DEVICE_MEMORY);
-  // These indices are used only for optimization purposes. They allow us
-  // to loop over constant_arg_indices and resource_arg_indices only once
-  // while iterating over all the function arguments checking if it is a
-  // resource or a constant.
-  // The reason we optimized this code is because functions can have a lot of
-  // captured arguments. For example, the backward pass of ResNet50 takes in all
-  // 214 variables and a similar number of activations.
-  SinglePassSearch constants_search(&constant_arg_indices);
-  SinglePassSearch resources_search(&resource_arg_indices);
-  for (size_t i = 0; i < fbody->arg_types.size(); ++i) {
-    if (resources_search.ScanForValue(i) || constants_search.ScanForValue(i)) {
-      // Compile-time constants and resource handles are expected to be in
-      // host memory.
-      input_memory_types[i] = HOST_MEMORY;
+  // Only check for compilability if the MLIR bridge is not enabled.
+  absl::optional<ConfigProto> config_proto;
+  if (flr->config_proto()) {
+    config_proto = *flr->config_proto();
+  }
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(*fbody->graph, config_proto);
+  if (policy != MlirBridgeRolloutPolicy::kEnabledByUser) {
+    RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes_map;
+    if (!IsCompilable(flr, node_def, &uncompilable_nodes_map)) {
+      std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
+          uncompilable_node_info;
+      for (const auto& it : uncompilable_nodes_map) {
+        for (const auto& info : it.second.second) {
+          uncompilable_node_info.emplace_back(info);
+        }
+      }
+      std::string message = absl::StrCat(
+          "Function invoked by the following node is not compilable: ",
+          SummarizeNodeDef(node_def, /*max_inputs_in_summary=*/10), ".\n");
+      absl::StrAppend(&message, "Uncompilable operations:");
+      for (const auto& node_info : uncompilable_node_info) {
+        std::string node_message = absl::StrCat(
+            "\n", node_info.name, ": ", node_info.uncompilable_reason, "\n",
+            "The op is created at:\n");
+        const Node* n = node_info.stack_trace.back().n;
+        if (n && n->GetStackTrace()) {
+          AbstractStackTrace::TracePrintingOptions opts;
+          opts.show_line_contents = true;
+          opts.filter_common_prefix = true;
+          opts.drop_internal_frames = true;
+          absl::StrAppend(&node_message, n->GetStackTrace()->ToString(opts));
+        } else {
+          absl::StrAppend(&node_message, "<Unavailable>\n");
+        }
+        absl::StrAppend(&message, node_message);
+      }
+      VLOG(1) << message;
+      return errors::InvalidArgument(message);
     }
   }
-  // One might wonder, about the case where a compile-time constant argument
-  // (which must be in host memory) is also used as an input into an op,
-  // e.g. Add, that expects its inputs in device memory. Here is how it
-  // works now.
-  // First, what do we mean by "op expects an input in XYZ memory"?
-  // There are two types of "ops" here: the tf2xla kernel and the HLO
-  // computation it builds. The tf2xla kernel needs to retrieve the actual
-  // numeric value of the compile-time constant tensors, so it really expects
-  // them to be on in host memory. However, for other inputs, it refers to them
-  // using xla::ComputationDataHandle, which is just a symbolic handle that
-  // xla::ComputationBuilder assigns. How does this handle gets assigned for
-  // constant arguments? Even constant arguments get an _Arg node in the graph
-  // instantiated for Function compilation. The tf2xla kernel for constant _Arg
-  // nodes takes the constant value, converts it to XlaLiteral, and feeds it
-  // to xla::ComputationBuilder.ConstantLiteral, which returns the handle. This
-  // constant XlaLiteral is included in the HLO graph, and subsequently, in
-  // the actual executable, which is copied to the device before being
-  // executed. Thus, when this executable runs, the constant is available in
-  // device memory.
 
-  // XlaLaunch kernel keeps all outputs (including constants, which it copies),
-  // in device memory except for resources.
-  MemoryTypeVector output_memory_types(fbody->ret_types.size(), DEVICE_MEMORY);
-  for (size_t i = 0; i < fbody->ret_types.size(); ++i) {
-    if (fbody->ret_types[i] == DT_RESOURCE) {
-      output_memory_types[i] = HOST_MEMORY;
-    }
-  }
+  MemoryTypeVector input_memory_types =
+      GetInputMemoryTypes(fbody, constant_arg_indices, resource_arg_indices);
+  MemoryTypeVector output_memory_types = GetOutputMemoryTypes(fbody);
 
   // Create the kernel.
   Device* dev = flr->device();

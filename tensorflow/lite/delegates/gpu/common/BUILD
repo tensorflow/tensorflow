@@ -40,8 +40,14 @@ cc_library(
     srcs = ["gpu_info.cc"],
     hdrs = ["gpu_info.h"],
     deps = [
+        ":data_type",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "kernel_info",
+    hdrs = ["kernel_info.h"],
 )
 
 cc_library(
@@ -150,6 +156,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:kernel_api",
@@ -201,6 +208,11 @@ cc_library(
 )
 
 cc_library(
+    name = "model_hints",
+    hdrs = ["model_hints.h"],
+)
+
+cc_library(
     name = "model_transformer",
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],
@@ -241,6 +253,15 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_library(
+    name = "precision",
+    srcs = ["precision.cc"],
+    hdrs = ["precision.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
     ],
 )
 
@@ -366,8 +387,18 @@ cc_library(
     hdrs = ["winograd_util.h"],
     deps = [
         ":data_type",
+        ":operations",
         ":shape",
         ":tensor",
+    ],
+)
+
+cc_test(
+    name = "winograd_util_test",
+    srcs = ["winograd_util_test.cc"],
+    deps = [
+        ":winograd_util",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

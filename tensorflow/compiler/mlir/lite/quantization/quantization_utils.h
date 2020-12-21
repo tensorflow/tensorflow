@@ -19,6 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 
+#include <string>
 #include <unordered_map>
 
 #include "llvm/ADT/SmallVector.h"
@@ -31,11 +32,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
@@ -103,8 +104,11 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
-        mins.push_back(FloatAttr::getValueAsDouble(*it++));
-        maxs.push_back(FloatAttr::getValueAsDouble(*it));
+        double min = FloatAttr::getValueAsDouble(*it++);
+        double max = FloatAttr::getValueAsDouble(*it);
+        TensorRangeSanityCheck(op, min, max);
+        mins.push_back(min);
+        maxs.push_back(max);
       }
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
@@ -112,6 +116,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
                                       narrow_range, expressed, is_signed);
@@ -134,6 +139,19 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
   int num_bits;
   bool narrow_range;
   bool is_signed;
+
+  // Emits an op warning message if the calibrated range is larger than 10.0 and
+  // the storage type is less than or equal to 8 bits.
+  void TensorRangeSanityCheck(quant::StatisticsOp op, double min,
+                              double max) const {
+    double range = std::fabs(max - min);
+    if (num_bits <= 8 && range >= 10.0) {
+      op.emitWarning(
+          "Tensor range is too wide to be quantized. Use tf.clip_by_value or "
+          "tf.relu6 to narrow the tensor range. Range: " +
+          std::to_string(range) + ", bit width: " + std::to_string(num_bits));
+    }
+  }
 };
 
 // A base rewrite pattern which matches any N-in-M-out operations with
@@ -250,7 +268,17 @@ struct QuantizationPattern : public RewritePattern {
       OperationState new_state(quantized_op->getLoc(),
                                quantized_op->getName().getStringRef(), inputs,
                                output_types, quantized_op->getAttrs());
+      for (int i = 0; i < quantized_op->getNumRegions(); ++i) {
+        new_state.addRegion();
+      }
       Operation* new_op = rewriter.createOperation(new_state);
+      if (quantized_op->getNumRegions() != 0) {
+        for (auto indexed_regions :
+             llvm::enumerate(quantized_op->getRegions())) {
+          new_op->getRegion(indexed_regions.index())
+              .takeBody(indexed_regions.value());
+        }
+      }
       for (auto output : outputs_replaced) {
         output.getFirst().replaceAllUsesWith(
             new_op->getResult(output.getSecond()));
@@ -430,7 +458,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor);
 // if it is using signed int symmetric quantization.
 //
 // Note that this method may broadcast min and max to match the dimension length
-// of `input_type`, if the the `quant_dim` is valid. On the other hand, the
+// of `input_type`, if the `quant_dim` is valid. On the other hand, the
 // symmetry of min and max is not adjusted by this method. The QAT workflow
 // should set min/max correctly (and use `narrow_range`=true, `is_signed`=true)
 // if symmetric quantization is required.
@@ -467,7 +495,7 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // are adjusted to be symmetric if `symmetric` flag is set to True. And
 // `symmetric` can only be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
-                                      unsigned num_bits, bool is_sign,
+                                      unsigned num_bits, bool is_signed,
                                       bool narrow_range);
 
 // Returns the per channel quantized type for an element attribute.
@@ -476,7 +504,7 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
 // be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool symmetric, unsigned num_bits,
-                                             bool is_sign, bool narrow_range);
+                                             bool is_signed, bool narrow_range);
 
 // Returns the quantized type of a bias input, given the quantized types of
 // other operands which are multiply-accumulated (the bias is added to the
@@ -490,13 +518,13 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // and the propagation results are materialized by inserting pairs of quantize
 // and dequantize ops to this function. Set `disable_per_channel` to true to not
 // use per channel quantization even the op supports it.
-// Setting `enforce_fixed_output_range` to true, to infer quantization
-// parameters from the fixed output range ops. This is only used for
-// post-training quantization.
+// Setting `infer_tensor_range` to true, to infer quantization parameters from
+// the activation ops and weight constants. This is only used for post-training
+// quantization.
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool enforce_fixed_output_range);
+                                        bool infer_tensor_ranges);
 
 // The function might contain more stats ops than required, and it will
 // introduce requantize if the calibration stats have conflicts. This method

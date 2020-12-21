@@ -17,18 +17,35 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
 
 using tensorflow::string;
+using tensorflow::tstring;
 
 TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, float value) {
   float data[] = {value};
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, nullptr, 0, status);
   memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteTensor(t);
+  TF_DeleteStatus(status);
+  return th;
+}
+
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx,
+                                         const tensorflow::tstring& value) {
+  TF_Status* status = TF_NewStatus();
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_STRING, nullptr, 0, status);
+  tstring* data = static_cast<tstring*>(TF_TensorData(t));
+  *data = value;
   TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);

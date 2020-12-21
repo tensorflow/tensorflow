@@ -283,9 +283,9 @@ class PartitionedHlo {
   // unevenly partitioned dimensions are padded on the right, but this function
   // allows specifying left-padded dimensions, which can be used during the
   // handling of kReverse, etc.
-  PartitionedHlo PadWithValue(
-      HloInstruction* pad_value,
-      absl::Span<const int64> left_padded_dims = {}) const;
+  PartitionedHlo PadWithValue(HloInstruction* pad_value,
+                              absl::Span<const int64> left_padded_dims = {},
+                              absl::Span<const int64> skipped_dims = {}) const;
 
   // Returns the SPMD instruction.
   HloInstruction* hlo() const { return hlo_; }
@@ -338,6 +338,10 @@ class PartitionedHlo {
   absl::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
       const HloSharding& target);
 
+  // Helper function to reshard from partial replicate using AllToAll.
+  absl::optional<PartitionedHlo> ReshardPartialReplicateWithAllToAll(
+      const HloSharding& target);
+
   // SPMD instruction.
   HloInstruction* hlo_;
 
@@ -382,6 +386,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandleDot(HloInstruction* hlo) override;
   Status HandleDynamicSlice(HloInstruction* hlo) override;
   Status HandleDynamicUpdateSlice(HloInstruction* hlo) override;
+  Status HandleFft(HloInstruction* hlo) override;
   Status HandleGather(HloInstruction* hlo) override;
   Status HandleGetTupleElement(HloInstruction* hlo) override;
   Status HandleInfeed(HloInstruction* hlo) override;
@@ -407,10 +412,11 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   Status HandlePartitionId(HloInstruction* hlo) override;
 
   // Implementation of dot partitioning given DotGeneralDimsMapping.
-  Status HandleDotHelper(
-      HloInstruction* hlo, const DotConvDimsMapping& dims_mapping,
-      const std::function<StatusOr<HloInstruction*>(
-          HloInstruction*, HloInstruction*, SpmdBuilder*)>& create_sharded_dot);
+  Status HandleDotHelper(HloInstruction* hlo,
+                         const DotConvDimsMapping& dims_mapping,
+                         const std::function<StatusOr<HloInstruction*>(
+                             HloInstruction*, HloInstruction*, SpmdBuilder*,
+                             const Window& conv_window)>& create_sharded_dot);
 
   // Common handle for elementwise HLOs.
   Status HandleElementwise(HloInstruction* hlo);
@@ -472,6 +478,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     int64 windowed_operand;
     bool windowed_in_contracting_dims;
     bool windowed_in_batch_dims;
+    bool operands_sharded_at_contracting_dims;
   };
 
  private:
@@ -508,6 +515,8 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   SpmdLogger* logger_;
   const SpmdPartitionerOptions options_;
   SpmdPartitioner* partitioner_;
+  std::vector<HloSharding> visiting_hlo_operand_shardings_;
+  absl::optional<HloSharding> visiting_hlo_sharding_;
 };
 
 }  // namespace spmd

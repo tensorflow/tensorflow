@@ -31,10 +31,9 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -244,13 +243,12 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
       func.getArgAttrs(index);
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
   TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
                                        node_def->mutable_attr()));
 
   return node_def;
 }
 
-// TODO(b/160014479): Support exporting function result attributes as optional
-// attributes.
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
     mlir::FuncOp function, Value operand, unsigned index,
     llvm::StringRef name) {
@@ -271,6 +269,18 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetReturnNode(
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          function.getResultAttrOfType<mlir::StringAttr>(index, kDeviceAttr))
+    *node_def->mutable_device() = device_attr.getValue().str();
+
+  llvm::ArrayRef<mlir::NamedAttribute> func_res_i_attrs =
+      function.getResultAttrs(index);
+  absl::flat_hash_set<absl::string_view> attrs_to_ignore = {kDeviceAttr};
+  TF_RETURN_IF_ERROR(ConvertAttributes(func_res_i_attrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
+                                       node_def->mutable_attr()));
+
   return node_def;
 }
 
@@ -448,7 +458,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
   auto dict_attr =
-      function.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+      function->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (dict_attr) {
     TF_RET_CHECK(dict_attr.get("inputs").isa<mlir::StringAttr>())
         << "inputs missing in entry function attribute";
@@ -464,7 +474,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
   // Extract version info.
   VersionDef versions;
-  auto module = function.getParentOfType<mlir::ModuleOp>();
+  auto module = function->getParentOfType<mlir::ModuleOp>();
   if (mlir::succeeded(ExtractTfVersions(module, &versions))) {
     graph->set_versions(versions);
   }
@@ -537,7 +547,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
   auto convert_called_function = [&](llvm::StringRef name) {
     auto func =
-        function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
+        function->getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             name);
     if (func != nullptr) {
       TF_RETURN_IF_ERROR(ConvertLibFunction(configs, tf_dialect, func, flib));
@@ -638,9 +648,9 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
   if (auto attr =
-          function.getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
+          function->getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
     auto grad_func =
-        function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
+        function->getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             attr.getValue());
     TF_RETURN_IF_ERROR(
         ConvertLibFunction(configs, tf_dialect, grad_func, flib));
@@ -651,7 +661,7 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   }
 
   auto stateful_string = mlir::TF::TensorFlowDialect::GetStatefulAttrName();
-  if (auto attr = function.getAttrOfType<mlir::UnitAttr>(stateful_string)) {
+  if (auto attr = function->getAttrOfType<mlir::UnitAttr>(stateful_string)) {
     func_def.mutable_signature()->set_is_stateful(true);
   }
 
@@ -660,9 +670,10 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   absl::flat_hash_set<absl::string_view> attrs_to_ignore = {
       grad_string.data(), stateful_string.data()};
   llvm::SmallVector<mlir::NamedAttribute, 8> funcAttrs(
-      function.getDialectAttrs());
-  TF_RETURN_IF_ERROR(
-      ConvertAttributes(funcAttrs, attrs_to_ignore, func_def.mutable_attr()));
+      function->getDialectAttrs());
+  TF_RETURN_IF_ERROR(ConvertAttributes(funcAttrs, attrs_to_ignore,
+                                       /*remove_ref_type=*/false,
+                                       func_def.mutable_attr()));
 
   for (int i = 0, e = function.getNumArguments(); i < e; ++i) {
     if (auto resource_arg_unique_id_attr =
@@ -679,6 +690,7 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
         kDeviceAttr, kResourceArgUniqueIdAttr};
     FunctionDef::ArgAttrs func_def_arg_i_attrs;
     TF_RETURN_IF_ERROR(ConvertAttributes(func_arg_i_attrs, attrs_to_ignore,
+                                         /*remove_ref_type=*/false,
                                          func_def_arg_i_attrs.mutable_attr()));
     if (func_def_arg_i_attrs.attr().empty()) continue;
     (*func_def.mutable_arg_attr())[i] = std::move(func_def_arg_i_attrs);

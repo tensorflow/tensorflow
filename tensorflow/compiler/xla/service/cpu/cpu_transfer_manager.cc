@@ -250,9 +250,9 @@ StatusOr<Shape> CpuTransferManager::TransferBuffersFromOutfeedInternal(
                              size);
     }
 
-    if (size <= 0) {
-      return InvalidArgument("Outfeed shape must have positive size; got %d",
-                             size);
+    if (size < 0) {
+      return InvalidArgument(
+          "Outfeed shape must have non-negative size; got %d", size);
     }
 
     int32 size_32 = static_cast<int32>(size);

@@ -28,7 +28,7 @@ class ConstantSplat<string value> : NativeCodeCall<
     "hlo::getSplat(&$_builder, $0, " # value # ")">;
 
 class HLO_ConstantLike<string value> : NativeCodeCall<
-    "chlo::getConstantLike($_builder, " # value # ", $0)">;
+    "chlo::getConstantLike($_builder, $_loc, " # value # ", $0)">;
 
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 

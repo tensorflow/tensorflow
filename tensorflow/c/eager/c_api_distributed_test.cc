@@ -545,7 +545,9 @@ TEST(CAPI, DistributedFunctionNoError) {
   TestDistributedFunctionCancellation(false);
 }
 
-TEST(CAPI, DistributedFunctionCancelledOnError) {
+// TODO(b/170399182): Update test once an alternative to using the function
+// optimization hook is in place.
+TEST(CAPI, DISABLED_DistributedFunctionCancelledOnError) {
   TestDistributedFunctionCancellation(true);
 }
 

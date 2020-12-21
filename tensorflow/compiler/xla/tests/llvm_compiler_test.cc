@@ -35,8 +35,8 @@ PLATFORM_DEFINE_ID(kDummyTestId);
 constexpr char kDummyTriple[] = "dummy-triple";
 constexpr char kDummyLayout[] = "e";
 
-// This class is is a dummy implementation of GpuCompiler and is targeted for
-// unit test only
+// This class is a dummy implementation of GpuCompiler and is targeted for unit
+// test only
 class GpuDummyCompiler : public GpuCompiler {
  public:
   GpuDummyCompiler() : GpuCompiler(kDummyTestId, kDummyTriple, kDummyLayout) {}
@@ -57,7 +57,8 @@ class GpuDummyCompiler : public GpuCompiler {
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
       const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec) {
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
+      bool relocatable) {
     if (user_post_optimization_hook_) {
       user_post_optimization_hook_(*llvm_module);
     }

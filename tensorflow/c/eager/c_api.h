@@ -74,7 +74,7 @@ typedef enum TFE_ContextDevicePlacementPolicy {
   // Placement policy which silently copies int32 tensors but not other dtypes.
   TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 } TFE_ContextDevicePlacementPolicy;
-// LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
+// LINT.ThenChange(//tensorflow/c/eager/immediate_execution_context.h)
 
 // Sets the default execution mode (sync/async). Note that this can be
 // overridden per thread using TFE_ContextSetExecutorForThread.

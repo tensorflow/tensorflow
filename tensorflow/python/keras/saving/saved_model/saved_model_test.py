@@ -26,7 +26,6 @@ from __future__ import print_function
 
 import os
 import shutil
-import sys
 
 from absl.testing import parameterized
 import numpy as np
@@ -53,6 +52,8 @@ from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -62,8 +63,6 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import save as tf_save
-from tensorflow.python.util import tf_contextlib
-from tensorflow.python.util import tf_inspect
 
 
 class LayerWithLearningPhase(keras.engine.base_layer.Layer):
@@ -83,6 +82,10 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
 
   def compute_output_shape(self, input_shape):
     return input_shape
+
+  @property
+  def _use_input_spec_as_call_signature(self):
+    return True
 
 
 class LayerWithLoss(keras.layers.Layer):
@@ -114,7 +117,7 @@ class GlobalLayerThatShouldFailIfNotAdded(keras.layers.Layer):
 
 
 @keras_parameterized.run_all_keras_modes
-class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
+class TestSavedModelFormatAllModes(keras_parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
     temp_dir = self.get_temp_dir()
@@ -327,6 +330,10 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
             'a': keras.layers.InputSpec(max_ndim=3, axes={-1: 2}),
             'b': keras.layers.InputSpec(shape=(None, 2, 3), dtype='float16')}
 
+      @property
+      def _use_input_spec_as_call_signature(self):
+        return True
+
     layer = LayerWithNestedSpec()
     saved_model_dir = self._save_model_dir()
     tf_save.save(layer, saved_model_dir)
@@ -411,14 +418,16 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(model.variables))
     saved_model_dir = self._save_model_dir()
 
-    with self.captureWritesToStream(sys.stderr) as captured_logs:
-      model.save(saved_model_dir, save_format='tf')
-      loaded = keras_load.load(saved_model_dir)
+    # TODO(kathywu): Re-enable this check after removing the tf.saved_model.save
+    # metadata warning.
+    # with self.captureWritesToStream(sys.stderr) as captured_logs:
+    model.save(saved_model_dir, save_format='tf')
+    loaded = keras_load.load(saved_model_dir)
 
     # Assert that saving does not log deprecation warnings
     # (even if it needs to set learning phase for compat reasons)
-    if context.executing_eagerly():
-      self.assertNotIn('deprecated', captured_logs.contents())
+    # if context.executing_eagerly():
+    #   self.assertNotIn('deprecated', captured_logs.contents())
 
     input_arr = array_ops.constant([[11], [12], [13]], dtype=dtypes.float32)
     input_arr2 = array_ops.constant([[14], [15], [16]], dtype=dtypes.float32)
@@ -736,8 +745,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
                         predictions)
 
   @parameterized.named_parameters([
-      # TODO(b/148491963): Unrolling does not work with SavedModel
-      # ('with_unrolling', True),
+      ('with_unrolling', True),
       ('no_unrolling', False)
   ])
   def testSaveStatefulRNN(self, unroll):
@@ -829,6 +837,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.evaluate(variables.variables_initializer(loaded.variables))
     self.assertAllClose(model.predict(f), loaded.predict(f))
 
+
+class TestSavedModelFormat(test.TestCase):
+
+  def _save_model_dir(self, dirname='saved_model'):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    return os.path.join(temp_dir, dirname)
+
   def test_load_with_partially_failed_serialization(self):
 
     class BadCustomLayer(keras.layers.Layer):
@@ -857,6 +873,52 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllEqual([[1.0]], self.evaluate(loaded(inp)))
     with self.assertRaisesRegex(ValueError, 'call function was not serialized'):
       loaded.layer(inp)
+
+  def test_save_without_tracing(self):
+
+    class DoNotTrace(keras.layers.Layer):
+
+      def __init__(self):
+        super(DoNotTrace, self).__init__()
+        self.input_spec = keras.layers.InputSpec(shape=[None])
+        self.built = True
+
+      def call(self, inputs):
+        raise ValueError('I said do not trace')
+
+      def get_config(self):
+        return {}
+
+      @property
+      def _use_input_spec_as_call_signature(self):
+        return True
+
+    root = keras.models.Sequential()
+    root.add(keras.layers.Input(shape=(3,)))
+    root.attached_layer = DoNotTrace()
+
+    saved_model_dir = self._save_model_dir()
+
+    # With the default settings, the call function is traced.
+    with self.assertRaisesRegex(ValueError, 'do not trace'):
+      root.save(saved_model_dir, save_format='tf')
+
+    # When saving the config only, the layer call function should not be not
+    # traced.
+    root.save(saved_model_dir, save_format='tf', save_traces=False)
+    loaded = tf_load.load(saved_model_dir)
+    self.assertTrue(hasattr(loaded, 'attached_layer'))
+
+    # This should raise an error when loaded without the custom object
+    loaded = keras_load.load(saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'Cannot call custom layer'):
+      loaded.attached_layer(constant_op.constant([1.]))
+
+    # Try loading with the custom objects
+    with generic_utils.CustomObjectScope({'DoNotTrace': DoNotTrace}):
+      loaded = keras_load.load(saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'I said do not trace'):
+      loaded.attached_layer(constant_op.constant([1.]))
 
 
 class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
@@ -965,33 +1027,34 @@ class MetricTest(test.TestCase, parameterized.TestCase):
                                  num_tensor_args,
                                  shape=(1, 5),
                                  test_sample_weight=True):
-    tf_save.save(metric, save_dir)
-    loaded = keras_load.load(save_dir)
-    self.evaluate([v.initializer for v in loaded.variables])
-    self.assertEqual(metric.name, loaded.name)
-    self.assertEqual(metric.dtype, loaded.dtype)
+    with self.cached_session():
+      tf_save.save(metric, save_dir)
+      loaded = keras_load.load(save_dir)
+      self.evaluate([v.initializer for v in loaded.variables])
+      self.assertEqual(metric.name, loaded.name)
+      self.assertEqual(metric.dtype, loaded.dtype)
 
-    inputs = self.generate_inputs(num_tensor_args, shape)
-    actual = self.evaluate(metric(*inputs))
-    self.assertAllClose(actual, loaded(*inputs))
-    self.assertAllClose(metric.variables, loaded.variables)
-
-    # Test with separate calls to update state and result.
-    inputs = self.generate_inputs(num_tensor_args, shape)
-    self.evaluate(metric.update_state(*inputs))
-    self.evaluate(loaded.update_state(*inputs))
-    actual = self.evaluate(metric.result())
-    self.assertAllClose(actual, loaded.result())
-
-    if test_sample_weight:
-      # Test with sample weights input.
       inputs = self.generate_inputs(num_tensor_args, shape)
-      sample_weight = self.generate_inputs(1, [])[0]
-      inputs.append(sample_weight)
-
       actual = self.evaluate(metric(*inputs))
       self.assertAllClose(actual, loaded(*inputs))
-    return loaded
+      self.assertAllClose(metric.variables, loaded.variables)
+
+      # Test with separate calls to update state and result.
+      inputs = self.generate_inputs(num_tensor_args, shape)
+      self.evaluate(metric.update_state(*inputs))
+      self.evaluate(loaded.update_state(*inputs))
+      actual = self.evaluate(metric.result())
+      self.assertAllClose(actual, loaded.result())
+
+      if test_sample_weight:
+        # Test with sample weights input.
+        inputs = self.generate_inputs(num_tensor_args, shape)
+        sample_weight = self.generate_inputs(1, [])[0]
+        inputs.append(sample_weight)
+
+        actual = self.evaluate(metric(*inputs))
+        self.assertAllClose(actual, loaded(*inputs))
+      return loaded
 
   @parameterized.named_parameters([
       ('mean', keras.metrics.Mean, 1, (1, 5)),
@@ -1054,6 +1117,33 @@ class MetricTest(test.TestCase, parameterized.TestCase):
             num_tensor_args,
             test_sample_weight=False)
 
+  def test_registered_custom_metric(self):
+
+    @generic_utils.register_keras_serializable('Testing')
+    class CustomMeanMetric(keras.metrics.Mean):
+
+      def update_state(self, *args):  # pylint: disable=useless-super-delegation
+        # Sometimes built-in metrics return an op in update_state. Custom
+        # metrics don't support returning ops, so wrap the update_state method
+        # while returning nothing.
+        super(CustomMeanMetric, self).update_state(*args)
+
+    with self.cached_session():
+      metric = CustomMeanMetric()
+      save_dir = self._save_model_dir('first_save')
+      self.evaluate([v.initializer for v in metric.variables])
+      loaded = self._test_metric_save_and_load(
+          metric,
+          save_dir,
+          num_tensor_args=1,
+          test_sample_weight=False)
+
+      self._test_metric_save_and_load(
+          loaded,
+          self._save_model_dir('second_save'),
+          num_tensor_args=1,
+          test_sample_weight=False)
+
   def test_custom_metric_wrapped_call(self):
 
     class NegativeMean(keras.metrics.Mean):
@@ -1068,6 +1158,22 @@ class MetricTest(test.TestCase, parameterized.TestCase):
     with generic_utils.CustomObjectScope({'NegativeMean': NegativeMean}):
       self._test_metric_save_and_load(
           metric, self._save_model_dir(), 1, test_sample_weight=False)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_custom_metric_model(self):
+
+    class CustomMetric(keras.metrics.MeanSquaredError):
+      pass
+
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(loss='mse', optimizer='rmsprop', metrics=[CustomMetric()])
+
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+    with self.assertRaisesRegex(ValueError, 'custom_objects'):
+      keras_load.load(saved_model_dir)
+
+    keras_load.load(saved_model_dir, compile=False)
 
 
 if __name__ == '__main__':

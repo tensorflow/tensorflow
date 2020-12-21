@@ -33,11 +33,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 random_rotation = image.random_rotation
@@ -62,7 +62,7 @@ def smart_resize(x, size, interpolation='bilinear'):
 
   You could simply do:
 
-  ````python
+  ```python
   size = (200, 200)
   ds = ds.map(lambda img: tf.image.resize(img, size))
   ```
@@ -661,8 +661,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
 
   ```python
   (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-  y_train = np_utils.to_categorical(y_train, num_classes)
-  y_test = np_utils.to_categorical(y_test, num_classes)
+  y_train = utils.to_categorical(y_train, num_classes)
+  y_test = utils.to_categorical(y_test, num_classes)
   datagen = ImageDataGenerator(
       featurewise_center=True,
       featurewise_std_normalization=True,

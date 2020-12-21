@@ -146,6 +146,10 @@ class LookupInterface(trackable.TrackableResource):
     """Looks up `keys` in a table, outputs the corresponding values."""
     raise NotImplementedError
 
+  def __getitem__(self, keys):
+    """Looks up `keys` in a table, outputs the corresponding values."""
+    return self.lookup(keys)
+
 
 class InitializableLookupTableBase(LookupInterface):
   """Initializable lookup table interface.
@@ -255,14 +259,28 @@ class StaticHashTable(InitializableLookupTableBase):
 
   Example usage:
 
-  ```python
-  keys_tensor = tf.constant([1, 2])
-  vals_tensor = tf.constant([3, 4])
-  input_tensor = tf.constant([1, 5])
-  table = tf.lookup.StaticHashTable(
-      tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor), -1)
-  print(table.lookup(input_tensor))
-  ```
+  >>> keys_tensor = tf.constant(['a', 'b', 'c'])
+  >>> vals_tensor = tf.constant([7, 8, 9])
+  >>> input_tensor = tf.constant(['a', 'f'])
+  >>> table = tf.lookup.StaticHashTable(
+  ...     tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor),
+  ...     default_value=-1)
+  >>> table.lookup(input_tensor).numpy()
+  array([ 7, -1], dtype=int32)
+
+  Or for more pythonic code:
+
+  >>> table[input_tensor].numpy()
+  array([ 7, -1], dtype=int32)
+
+  The result of a lookup operation has the same shape as the argument:
+
+  >>> input_tensor = tf.constant([['a', 'b'], ['c', 'd']])
+  >>> table[input_tensor].numpy()
+  array([[ 7,  8],
+         [ 9, -1]], dtype=int32)
+
+
   """
 
   def __init__(self, initializer, default_value, name=None):
@@ -422,16 +440,15 @@ class DatasetInitializer(TableInitializerBase):
   """Creates a table initializer from a `tf.data.Dataset`.
 
   Sample usage:
-  ```python
-    keys = tf.data.Dataset.range(100)
-    values = tf.data.Dataset.range(100).map(
-        lambda x: string_ops.as_string(x * 2))
-    ds = tf.data.Dataset.zip((keys, values))
-    init = tf.lookup.experimental.DatasetInitializer(ds)
-    table = tf.lookup.StaticHashTable(init, "")
-    output = table.lookup([0, 1, 2])
-    assertEquals(outputs, ["0", "2", "4"])
-  ```
+
+  >>> keys = tf.data.Dataset.range(100)
+  >>> values = tf.data.Dataset.range(100).map(
+  ...     lambda x: string_ops.as_string(x * 2))
+  >>> ds = tf.data.Dataset.zip((keys, values))
+  >>> init = tf.lookup.experimental.DatasetInitializer(ds)
+  >>> table = tf.lookup.StaticHashTable(init, "")
+  >>> table.lookup(tf.constant([0, 1, 2], dtype=tf.int64)).numpy()
+  array([b'0', b'2', b'4'], dtype=object)
 
   Attributes:
     dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
@@ -441,7 +458,7 @@ class DatasetInitializer(TableInitializerBase):
   """
 
   def __init__(self, dataset):
-    """Creates a table initializser from a `tf.data.Dataset`.
+    """Creates a table initializer from a `tf.data.Dataset`.
 
     Args:
       dataset: A `tf.data.Dataset` object that produces tuples of scalars. The
@@ -479,7 +496,19 @@ class DatasetInitializer(TableInitializerBase):
 
 @tf_export("lookup.KeyValueTensorInitializer")
 class KeyValueTensorInitializer(TableInitializerBase):
-  """Table initializers given `keys` and `values` tensors."""
+  """Table initializers given `keys` and `values` tensors.
+
+  >>> keys_tensor = tf.constant(['a', 'b', 'c'])
+  >>> vals_tensor = tf.constant([7, 8, 9])
+  >>> input_tensor = tf.constant(['a', 'f'])
+  >>> init = tf.lookup.KeyValueTensorInitializer(keys_tensor, vals_tensor)
+  >>> table = tf.lookup.StaticHashTable(
+  ...     init,
+  ...     default_value=-1)
+  >>> table.lookup(input_tensor).numpy()
+  array([ 7, -1], dtype=int32)
+
+  """
 
   def __init__(self, keys, values, key_dtype=None, value_dtype=None, name=None):
     """Constructs a table initializer object based on keys and values tensors.
@@ -537,7 +566,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
 class TextFileIndex(object):
   """The key and value content to get from each line.
 
-  This class defines the key and value used for tf.lookup.TextFileInitializer.
+  This class defines the key and value used for `tf.lookup.TextFileInitializer`.
 
   The key and value content to get from each line is specified either
   by the following, or a value `>=0`.
@@ -555,7 +584,7 @@ class TextFileIndex(object):
 
 @tf_export("lookup.TextFileInitializer")
 class TextFileInitializer(TableInitializerBase):
-  """Table initializers from a text file.
+  r"""Table initializers from a text file.
 
   This initializer assigns one entry in the table for each line in the file.
 
@@ -574,11 +603,11 @@ class TextFileInitializer(TableInitializerBase):
 
   For example if we have a file with the following content:
 
-  ```
-  emerson 10
-  lake 20
-  palmer 30
-  ```
+  >>> import tempfile
+  >>> f = tempfile.NamedTemporaryFile(delete=False)
+  >>> content='\n'.join(["emerson 10", "lake 20", "palmer 30",])
+  >>> f.file.write(content.encode('utf-8'))
+  >>> f.file.close()
 
   The following snippet initializes a table with the first column as keys and
   second column as values:
@@ -587,12 +616,13 @@ class TextFileInitializer(TableInitializerBase):
   * `lake -> 20`
   * `palmer -> 30`
 
-  ```python
-  table = tf.lookup.StaticHashTable(tf.lookup.TextFileInitializer(
-      "test.txt", tf.string, 0, tf.int64, 1, delimiter=" "), -1)
-  ...
-  table.init.run()
-  ```
+  >>> init= tf.lookup.TextFileInitializer(
+  ...    filename=f.name,
+  ...    key_dtype=tf.string, key_index=0,
+  ...    value_dtype=tf.int64, value_index=1,
+  ...    delimiter=" ")
+  >>> table = tf.lookup.StaticHashTable(init, default_value=-1)
+  >>> table.lookup(tf.constant(['palmer','lake','tarkus'])).numpy()
 
   Similarly to initialize the whole line as keys and the line number as values.
 
@@ -600,13 +630,13 @@ class TextFileInitializer(TableInitializerBase):
   * `lake 20 -> 1`
   * `palmer 30 -> 2`
 
-  ```python
-  table = tf.lookup.StaticHashTable(tf.lookup.TextFileInitializer(
-      "test.txt", tf.string, tf.lookup.TextFileIndex.WHOLE_LINE,
-      tf.int64, tf.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
-  ...
-  table.init.run()
-  ```
+  >>> init = tf.lookup.TextFileInitializer(
+  ...   filename=f.name,
+  ...   key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
+  ...   value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER)
+  >>> table = tf.lookup.StaticHashTable(init, -1)
+  >>> table.lookup(tf.constant('palmer 30')).numpy()
+  2
   """
 
   def __init__(self,
@@ -1106,45 +1136,53 @@ class IdTableWithHashBuckets(LookupInterface):
 
 @tf_export("lookup.StaticVocabularyTable", v1=[])
 class StaticVocabularyTable(LookupInterface):
-  r"""String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
+  r"""String to Id table that assigns out-of-vocabulary keys to hash buckets.
 
   For example, if an instance of `StaticVocabularyTable` is initialized with a
   string-to-id initializer that maps:
 
-  * `emerson -> 0`
-  * `lake -> 1`
-  * `palmer -> 2`
+  >>> init = tf.lookup.KeyValueTensorInitializer(
+  ...     keys=tf.constant(['emerson', 'lake', 'palmer']),
+  ...     values=tf.constant([0, 1, 2], dtype=tf.int64))
+  >>> table = tf.lookup.StaticVocabularyTable(
+  ...    init,
+  ...    num_oov_buckets=5)
 
   The `Vocabulary` object will performs the following mapping:
 
   * `emerson -> 0`
   * `lake -> 1`
   * `palmer -> 2`
-  * `<other term> -> bucket_id`, where bucket_id will be between `3` and
-  `3 + num_oov_buckets - 1`, calculated by:
+  * `<other term> -> bucket_id`, where `bucket_id` will be between `3` and
+  `3 + num_oov_buckets - 1 = 7`, calculated by:
   `hash(<term>) % num_oov_buckets + vocab_size`
 
-  If input_tensor is `["emerson", "lake", "palmer", "king", "crimson"]`,
-  the lookup result is `[0, 1, 2, 4, 7]`.
+  If input_tensor is:
+
+  >>> input_tensor = tf.constant(["emerson", "lake", "palmer",
+  ...                             "king", "crimson"])
+  >>> table[input_tensor].numpy()
+  array([0, 1, 2, 6, 7])
 
   If `initializer` is None, only out-of-vocabulary buckets are used.
 
   Example usage:
 
-  ```python
-  num_oov_buckets = 3
-  input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
-  table = tf.lookup.StaticVocabularyTable(
-      tf.lookup.TextFileInitializer(
-          filename,
-          key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
-          value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER,
-          delimiter="\t"),
-      num_oov_buckets)
-  out = table.lookup(input_tensor).
-  table.init.run()
-  print(out.eval())
-  ```
+  >>> num_oov_buckets = 3
+  >>> vocab = ["emerson", "lake", "palmer", "crimnson"]
+  >>> import tempfile
+  >>> f = tempfile.NamedTemporaryFile(delete=False)
+  >>> f.write('\n'.join(vocab).encode('utf-8'))
+  >>> f.close()
+
+  >>> init = tf.lookup.TextFileInitializer(
+  ...     f.name,
+  ...     key_dtype=tf.string, key_index=tf.lookup.TextFileIndex.WHOLE_LINE,
+  ...     value_dtype=tf.int64, value_index=tf.lookup.TextFileIndex.LINE_NUMBER)
+  >>> table = tf.lookup.StaticVocabularyTable(init, num_oov_buckets)
+  >>> table.lookup(tf.constant(["palmer", "crimnson" , "king",
+  ...                           "tarkus", "black", "moon"])).numpy()
+  array([2, 3, 5, 6, 6, 4])
 
   The hash function used for generating out-of-vocabulary buckets ID is
   Fingerprint64.
@@ -1158,8 +1196,8 @@ class StaticVocabularyTable(LookupInterface):
     """Construct a `StaticVocabularyTable` object.
 
     Args:
-      initializer: A TableInitializerBase object that contains the data used to
-        initialize the table. If None, then we only use out-of-vocab buckets.
+      initializer: A `TableInitializerBase` object that contains the data used
+        to initialize the table. If None, then we only use out-of-vocab buckets.
       num_oov_buckets: Number of buckets to use for out-of-vocabulary keys. Must
         be greater than zero.
       lookup_key_dtype: Data type of keys passed to `lookup`. Defaults to
@@ -1810,7 +1848,7 @@ class MutableHashTable(LookupInterface):
 
     return op
 
-  def lookup(self, keys, name=None):
+  def lookup(self, keys, dynamic_default_values=None, name=None):
     """Looks up `keys` in a table, outputs the corresponding values.
 
     The `default_value` is used for keys not present in the table.
@@ -1818,6 +1856,23 @@ class MutableHashTable(LookupInterface):
     Args:
       keys: Keys to look up. Can be a tensor of any shape. Must match the
         table's key_dtype.
+      dynamic_default_values: The values to use if a key is missing in the
+        table. If None (by default), the `table.default_value` will be used.
+        Shape of `dynamic_default_values` must be same with
+        `table.default_value` or the lookup result tensor.
+        In the latter case, each key will have a different default value.
+
+        For example:
+
+          ```python
+          keys = [0, 1, 3]
+          dynamic_default_values = [[1, 3, 4], [2, 3, 9], [8, 3, 0]]
+
+          # The key '0' will use [1, 3, 4] as default value.
+          # The key '1' will use [2, 3, 9] as default value.
+          # The key '3' will use [8, 3, 0] as default value.
+          ```
+
       name: A name for the operation (optional).
 
     Returns:
@@ -1831,8 +1886,9 @@ class MutableHashTable(LookupInterface):
                         (self.resource_handle, keys, self._default_value)):
       keys = ops.convert_to_tensor(keys, dtype=self._key_dtype, name="keys")
       with ops.colocate_with(self.resource_handle):
-        values = gen_lookup_ops.lookup_table_find_v2(self.resource_handle, keys,
-                                                     self._default_value)
+        values = gen_lookup_ops.lookup_table_find_v2(
+            self.resource_handle, keys, dynamic_default_values
+            if dynamic_default_values is not None else self._default_value)
     return values
 
   def insert(self, keys, values, name=None):
@@ -1926,17 +1982,18 @@ class DenseHashTable(LookupInterface):
 
   Example usage:
 
-  ```python
-  table = tf.lookup.DenseHashTable(key_dtype=tf.int64,
-                                   value_dtype=tf.int64,
-                                   default_value=-1,
-                                   empty_key=0,
-                                   deleted_key=-1)
-
-  sess.run(table.insert(keys, values))
-  out = table.lookup(query_keys)
-  print(out.eval())
-  ```
+  >>> table = tf.lookup.experimental.DenseHashTable(
+  ...     key_dtype=tf.string,
+  ...     value_dtype=tf.int64,
+  ...     default_value=-1,
+  ...     empty_key='',
+  ...     deleted_key='$')
+  >>> keys = tf.constant(['a', 'b', 'c'])
+  >>> values = tf.constant([0, 1, 2], dtype=tf.int64)
+  >>> table.insert(keys, values)
+  >>> table.remove(tf.constant(['c']))
+  >>> table.lookup(tf.constant(['a', 'b', 'c','d'])).numpy()
+  array([ 0,  1, -1, -1])
   """
 
   # TODO(andreasst): consider extracting common code with MutableHashTable into
@@ -1985,10 +2042,8 @@ class DenseHashTable(LookupInterface):
     self._checkpoint = checkpoint
     self._name = name
 
-    self._empty_key = ops.convert_to_tensor(
-        empty_key, dtype=key_dtype, name="empty_key")
-    self._deleted_key = ops.convert_to_tensor(
-        deleted_key, dtype=key_dtype, name="deleted_key")
+    self._empty_key = empty_key
+    self._deleted_key = deleted_key
     self._shared_name = None
     if context.executing_eagerly():
       # TODO(allenl): This will leak memory due to kernel caching by the
@@ -2010,9 +2065,13 @@ class DenseHashTable(LookupInterface):
     # training to work correctly. Use the node name if no shared_name has been
     # explicitly specified.
     use_node_name_sharing = self._checkpoint and self._shared_name is None
+    empty_key = ops.convert_to_tensor(
+        self._empty_key, dtype=self._key_dtype, name="empty_key")
+    deleted_key = ops.convert_to_tensor(
+        self._deleted_key, dtype=self._key_dtype, name="deleted_key")
     table_ref = gen_lookup_ops.mutable_dense_hash_table_v2(
-        empty_key=self._empty_key,
-        deleted_key=self._deleted_key,
+        empty_key=empty_key,
+        deleted_key=deleted_key,
         shared_name=self._shared_name,
         use_node_name_sharing=use_node_name_sharing,
         value_dtype=self._value_dtype,

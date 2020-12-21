@@ -20,6 +20,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import functools
+from typing import Any, Dict, Callable, List, Optional, Text, Tuple
+
 from absl import logging
 
 from tensorflow.core.framework import attr_value_pb2
@@ -49,6 +51,8 @@ from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import tracking
+from tensorflow.python.types import core
+from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -63,7 +67,7 @@ _NAME_KEY = "_tpu_embedding_layer"
 # sharded variables that can be used in the PSStrategy with optimizers.
 # We implement just enough of the of a tf.Variable so that this could be passed
 # to an optimizer.
-class TPUShardedVariable(sharded_variable.ShardedVariable):
+class TPUShardedVariable(sharded_variable.ShardedVariableMixin):
   """A ShardedVariable class for TPU."""
 
   @property
@@ -148,7 +152,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   ```python
   distributed_dataset = (
-      strategy.experimental_distribute_datasets_from_function(
+      strategy.distribute_datasets_from_function(
           dataset_fn=...,
           options=tf.distribute.InputOptions(
               experimental_prefetch_to_device=False))
@@ -237,8 +241,11 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   """
 
-  def __init__(self, feature_config, optimizer,
-               pipeline_execution_with_tensor_core=False):
+  def __init__(
+      self,
+      feature_config: Any,
+      optimizer: Optional[tpu_embedding_v2_utils._Optimizer],  # pylint:disable=protected-access
+      pipeline_execution_with_tensor_core: bool = False):
     """Creates the TPUEmbedding mid level API object.
 
     ```python
@@ -330,7 +337,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     self._built = False
 
-  def build(self, per_replica_batch_size=None):
+  def build(self, per_replica_batch_size: Optional[int] = None):
     """Create the underlying variables and initializes the TPU for embeddings.
 
     This method creates the underlying variables (including slot variables). If
@@ -365,8 +372,9 @@ class TPUEmbedding(tracking.AutoTrackable):
 
       self._config_proto = self._create_config_proto()
 
-      logging.info("Initializing TPU Embedding engine with config: %s",
-                   self._config_proto)
+      logging.info("Initializing TPU Embedding engine.")
+      tpu_embedding_v2_utils.log_tpu_embedding_configuration(self._config_proto)
+
       @def_function.function
       def load_config():
         tpu.initialize_system_for_tpu_embedding(self._config_proto)
@@ -385,7 +393,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     # This is internally conditioned self._built and self._using_tpu
     self._load_variables()
 
-  def _maybe_build(self, batch_size):
+  def _maybe_build(self, batch_size: Optional[int]):
     if not self._built:
       # This can be called while tracing a function, so we wrap the
       # initialization code with init_scope so it runs eagerly, this means that
@@ -396,7 +404,9 @@ class TPUEmbedding(tracking.AutoTrackable):
         self.build(batch_size)
 
   @property
-  def embedding_tables(self):
+  def embedding_tables(
+      self
+  ) -> Dict[tpu_embedding_v2_utils.TableConfig, tf_variables.Variable]:
     """Returns a dict of embedding tables, keyed by `TableConfig`.
 
     This property only works when the `TPUEmbedding` object is created under a
@@ -428,7 +438,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     return {table: self._variables[table.name]["parameters"]
             for table in self._table_config}
 
-  def _create_config_proto(self):
+  def _create_config_proto(
+      self
+  ) -> tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration:
     """Creates the TPUEmbeddingConfiguration proto.
 
     This proto is used to initialize the TPU embedding engine.
@@ -499,7 +511,10 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return config_proto
 
-  def _compute_per_table_gradients(self, gradients):
+  def _compute_per_table_gradients(
+      self,
+      gradients
+  ) -> Dict[Text, List[core.Tensor]]:
     """Computes a dict of lists of gradients, keyed by table name.
 
     Args:
@@ -508,7 +523,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     Returns:
       A dict of lists of tensors, keyed by the table names, containing the
-    gradients in the correct order with None gradients repalaced by zeros.
+    gradients in the correct order with None gradients replaced by zeros.
     """
 
     nest.assert_same_structure(self._feature_config, gradients)
@@ -554,7 +569,7 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     return per_table_gradients
 
-  def apply_gradients(self, gradients, name=None):
+  def apply_gradients(self, gradients, name: Text = None):
     """Applies the gradient update to the embedding tables.
 
     If a gradient of `None` is passed in any position of the nested structure,
@@ -569,7 +584,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
     distributed_dataset = (
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
                 experimental_prefetch_to_device=False))
@@ -649,7 +664,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     if name is not None:
       _add_key_attr(op, name)
 
-  def dequeue(self, name=None):
+  def dequeue(self, name: Text = None):
     """Get the embedding results.
 
     Returns a nested structure of `tf.Tensor` objects, matching the structure of
@@ -666,7 +681,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
     distributed_dataset = (
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
                 experimental_prefetch_to_device=False))
@@ -762,7 +777,9 @@ class TPUEmbedding(tracking.AutoTrackable):
     # Pack the list back into the same nested structure as the features.
     return nest.pack_sequence_as(self._feature_config, per_feature_activations)
 
-  def _create_variables_and_slots(self):
+  def _create_variables_and_slots(
+      self
+  ) -> Dict[Text, Dict[Text, tf_variables.Variable]]:
     """Create variables for TPU embeddings.
 
     Note under TPUStrategy this will ensure that all creations happen within a
@@ -854,7 +871,9 @@ class TPUEmbedding(tracking.AutoTrackable):
                                self._variables,
                                self._table_config)
 
-  def _gather_saveables_for_checkpoint(self):
+  def _gather_saveables_for_checkpoint(
+      self
+  ) -> Dict[Text, Callable[[Text], "TPUEmbeddingSaveable"]]:
     """Overrides default Trackable implementation to add load/retrieve hook."""
     # This saveable should be here in both TPU and CPU checkpoints, so when on
     # CPU, we add the hook with no functions.
@@ -907,8 +926,14 @@ class TPUEmbedding(tracking.AutoTrackable):
     else:
       weights.append(float_zeros)
 
-  def _generate_enqueue_op(self, flat_inputs, flat_weights, flat_features,
-                           device_ordinal, mode_override):
+  def _generate_enqueue_op(
+      self,
+      flat_inputs: List[internal_types.NativeObject],
+      flat_weights: List[Optional[internal_types.NativeObject]],
+      flat_features: List[tpu_embedding_v2_utils.FeatureConfig],
+      device_ordinal: int,
+      mode_override: Text
+  ) -> ops.Operation:
     """Outputs a the enqueue op given the inputs and weights.
 
     Args:
@@ -962,8 +987,8 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     # In the following loop we insert casts so that everything is either int32
     # or float32. This is because op inputs which are lists of tensors must be
-    # of the same type within the list. Moreover the CPU implementions of these
-    # ops cast to these types anyway, so we don't lose any data by casting
+    # of the same type within the list. Moreover the CPU implementations of
+    # these ops cast to these types anyway, so we don't lose any data by casting
     # early.
     for inp, weight, (path, feature) in zip(
         flat_inputs, flat_weights, flat_features):
@@ -1088,7 +1113,12 @@ class TPUEmbedding(tracking.AutoTrackable):
       else:
         check_device(path, input_tensor.device)
 
-  def enqueue(self, features, weights=None, training=True, name=None):
+  def enqueue(
+      self,
+      features,
+      weights=None,
+      training: bool = True,
+      name: Optional[Text] = None):
     """Enqueues id tensors for embedding lookup.
 
     This function enqueues a structure of features to be looked up in the
@@ -1096,7 +1126,7 @@ class TPUEmbedding(tracking.AutoTrackable):
     features matches the per core batch size. This will automatically happen if
     your input dataset is batched to the global batch size and you use
     `tf.distribute.TPUStrategy`'s `experimental_distribute_dataset`
-    or if you use `experimental_distribute_datasets_from_function` and batch
+    or if you use `distribute_datasets_from_function` and batch
     to the per core batch size computed by the context passed to your input
     function.
 
@@ -1106,7 +1136,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
     distributed_dataset = (
-        strategy.experimental_distribute_datasets_from_function(
+        strategy.distribute_datasets_from_function(
             dataset_fn=...,
             options=tf.distribute.InputOptions(
                 experimental_prefetch_to_device=False))
@@ -1254,7 +1284,7 @@ class TPUEmbedding(tracking.AutoTrackable):
           enqueue_ops.append(enqueue_op)
       ops.get_default_graph().control_outputs.extend(enqueue_ops)
 
-  def _get_batch_size(self, tensors, in_tpu_context):
+  def _get_batch_size(self, tensors, in_tpu_context: bool):
     """Gets the batch size from a nested structure of features."""
     batch_size = None
     for path, maybe_tensor in nest.flatten_with_joined_string_paths(tensors):
@@ -1284,7 +1314,11 @@ class TPUEmbedding(tracking.AutoTrackable):
 
 
 @def_function.function
-def _load_variables_impl(config, hosts, variables, table_config):
+def _load_variables_impl(
+    config: Text,
+    hosts: List[Tuple[int, Text]],
+    variables: Dict[Text, Dict[Text, tf_variables.Variable]],
+    table_config: tpu_embedding_v2_utils.TableConfig):
   """Load embedding tables to onto TPU for each table and host.
 
   Args:
@@ -1295,11 +1329,21 @@ def _load_variables_impl(config, hosts, variables, table_config):
     table_config: A list of tf.tpu.experimental.embedding.TableConfig objects.
   """
   def select_fn(host_id):
-    return lambda x: x.variables[host_id]
+
+    def select_or_zeros(x):
+      if host_id >= len(x.variables):
+        # In the edge case where we have more hosts than variables, due to using
+        # a small number of rows, we load zeros for the later hosts. We copy
+        # the shape of the first host's variables, which we assume is defined
+        # because TableConfig guarantees at least one row.
+        return array_ops.zeros_like(x.variables[0])
+      return x.variables[host_id]
+
+    return select_or_zeros
 
   for host_id, host in enumerate(hosts):
-    host_variables = nest.map_structure(select_fn(host_id), variables)
     with ops.device(host):
+      host_variables = nest.map_structure(select_fn(host_id), variables)
       for table in table_config:
         table.optimizer._load()(  # pylint: disable=protected-access
             table_name=table.name,
@@ -1315,7 +1359,11 @@ def _load_variables_impl(config, hosts, variables, table_config):
 
 
 @def_function.function
-def _retrieve_variables_impl(config, hosts, variables, table_config):
+def _retrieve_variables_impl(
+    config: Text,
+    hosts: List[Tuple[int, Text]],
+    variables: Dict[Text, Dict[Text, tf_variables.Variable]],
+    table_config: tpu_embedding_v2_utils.TableConfig):
   """Retrieve embedding tables from TPU to host memory.
 
   Args:
@@ -1343,8 +1391,11 @@ def _retrieve_variables_impl(config, hosts, variables, table_config):
                                  table.optimizer._slot_names()):  # pylint: disable=protected-access
           # We must assign the CPU variables the values of tensors that were
           # returned from the TPU.
-          variables[table.name][slot].variables[host_id].assign(
-              retrieved[i])
+          sharded_var = variables[table.name][slot]
+          if host_id < len(sharded_var.variables):
+            # In the edge case where we have more hosts than variables, due to
+            # using a small number of rows, we skip the later hosts.
+            sharded_var.variables[host_id].assign(retrieved[i])
         # Ensure that only the first table/first host gets a config so that we
         # don't bloat graph by attaching this large string to each op.
         # We have num tables * num hosts of these so for models with a large
@@ -1355,7 +1406,11 @@ def _retrieve_variables_impl(config, hosts, variables, table_config):
 class TPUEmbeddingSaveable(saveable_hook.SaveableHook):
   """Save/Restore hook to Retrieve/Load TPUEmbedding variables."""
 
-  def __init__(self, name, load, retrieve):
+  def __init__(
+      self,
+      name: Text,
+      load: Callable[[], Any],
+      retrieve: Callable[[], Any]):
     self._load = load
     self._retrieve = retrieve
     super(TPUEmbeddingSaveable, self).__init__(name=name)
@@ -1369,7 +1424,11 @@ class TPUEmbeddingSaveable(saveable_hook.SaveableHook):
       self._load()
 
 
-def _ragged_embedding_lookup_with_reduce(table, ragged, weights, combiner):
+def _ragged_embedding_lookup_with_reduce(
+    table: tf_variables.Variable,
+    ragged: ragged_tensor.RaggedTensor,
+    weights: ragged_tensor.RaggedTensor,
+    combiner: Text) -> core.Tensor:
   """Compute a ragged lookup followed by a reduce on axis 1.
 
   Args:
@@ -1394,13 +1453,64 @@ def _ragged_embedding_lookup_with_reduce(table, ragged, weights, combiner):
   return ragged_result
 
 
+@tf_export("tpu.experimental.embedding.serving_embedding_lookup")
 def cpu_embedding_lookup(inputs, weights, tables, feature_config):
-  """Uses CPU embedding lookup for embedding ids in features.
+  """Apply standard lookup ops with `tf.tpu.experimental.embedding` configs.
+
+  This function is a utility which allows using the
+  `tf.tpu.experimental.embedding` config objects with standard lookup functions.
+  This can be used when exporting a model which uses
+  `tf.tpu.experimental.embedding.TPUEmbedding` for serving on CPU. In particular
+  `tf.tpu.experimental.embedding.TPUEmbedding` only supports lookups on TPUs and
+  should not be part of your serving graph.
+
+  Note that TPU specific options (such as `max_sequence_length`) in the
+  configuration objects will be ignored.
+
+  In the following example we take a trained model (see the documentation for
+  `tf.tpu.experimental.embedding.TPUEmbedding` for the context) and create a
+  saved model with a serving function that will perform the embedding lookup and
+  pass the results to your model:
+
+  ```python
+  model = model_fn(...)
+  embedding = tf.tpu.experimental.embedding.TPUEmbedding(
+      feature_config=feature_config,
+      batch_size=1024,
+      optimizer=tf.tpu.experimental.embedding.SGD(0.1))
+  checkpoint = tf.train.Checkpoint(model=model, embedding=embedding)
+  checkpoint.restore(...)
+
+  @tf.function(input_signature=[{'feature_one': tf.TensorSpec(...),
+                                 'feature_two': tf.TensorSpec(...),
+                                 'feature_three': tf.TensorSpec(...)}])
+  def serve_tensors(embedding_featurese):
+    embedded_features = tf.tpu.experimental.embedding.serving_embedding_lookup(
+        embedding_features, None, embedding.embedding_tables,
+        feature_config)
+    return model(embedded_features)
+
+  model.embedding_api = embedding
+  tf.saved_model.save(model,
+                      export_dir=...,
+                      signatures={'serving_default': serve_tensors})
+
+  ```
+
+  NOTE: Its important to assign the embedding api object to a member of your
+  model as `tf.saved_model.save` only supports saving variables one `Trackable`
+  object. Since the model's weights are in `model` and the embedding table are
+  managed by `embedding`, we assign `embedding` to and attribute of `model` so
+  that tf.saved_model.save can find the embedding variables.
+
+  NOTE: The same `serve_tensors` function and `tf.saved_model.save` call will
+  work directly from training.
 
   Args:
     inputs: a nested structure of Tensors, SparseTensors or RaggedTensors.
     weights: a nested structure of Tensors, SparseTensors or RaggedTensors or
-      None for no weights.
+      None for no weights. If not None, structure must match that of inputs, but
+      entries are allowed to be None.
     tables: a dict of mapping TableConfig objects to Variables.
     feature_config: a nested structure of FeatureConfig objects with the same
       structure as inputs.
@@ -1451,7 +1561,7 @@ def cpu_embedding_lookup(inputs, weights, tables, feature_config):
   return nest.pack_sequence_as(feature_config, outputs)
 
 
-def get_list_of_hosts(strategy):
+def get_list_of_hosts(strategy: tpu_strategy.TPUStrategy) -> List[Text]:
   """Returns a sorted list of CPU devices for the remote jobs.
 
   Args:
@@ -1470,7 +1580,8 @@ def get_list_of_hosts(strategy):
   return list_of_hosts
 
 
-def extract_variable_info(kwargs):
+def extract_variable_info(
+    kwargs) -> Tuple[Text, Tuple[int, ...], dtypes.DType, Callable[[], Any]]:
   """Extracts the variable creation attributes from the kwargs.
 
   Args:
@@ -1478,7 +1589,7 @@ def extract_variable_info(kwargs):
       scope.
 
   Returns:
-    A tuple of variable name, initialization function, shape, and dtype.
+    A tuple of variable name, shape, dtype, initialization function.
   """
   if (isinstance(kwargs["initial_value"], functools.partial) and (
       "shape" in kwargs["initial_value"].keywords or
@@ -1505,7 +1616,8 @@ def extract_variable_info(kwargs):
             kwargs["initial_value"])
 
 
-def make_sharded_variable_creator(hosts):
+def make_sharded_variable_creator(
+    hosts: List[Text]) -> Callable[..., TPUShardedVariable]:
   """Makes a sharded variable creator given a list of hosts.
 
   Args:
@@ -1515,7 +1627,8 @@ def make_sharded_variable_creator(hosts):
     A variable creator function.
   """
 
-  def sharded_variable_creator(next_creator, *args, **kwargs):
+  def sharded_variable_creator(
+      next_creator: Callable[..., tf_variables.Variable], *args, **kwargs):
     """The sharded variable creator."""
     kwargs["skip_mirrored_creator"] = True
 
@@ -1524,10 +1637,15 @@ def make_sharded_variable_creator(hosts):
     initial_value = kwargs["initial_value"]
     rows = shape[0]
     cols = shape[1]
-    missing = rows % num_hosts
-    # we partition as if we were using MOD sharding.
-    partitions = ([rows // num_hosts + 1] * missing + [rows // num_hosts] *
-                  (num_hosts - missing))
+    partial_partition = rows % num_hosts
+    full_rows_per_host = rows // num_hosts
+    # We partition as if we were using MOD sharding: at least
+    # `full_rows_per_host` rows to `num_hosts` hosts, where the first
+    # `partial_partition` hosts get an additional row when the number of rows
+    # is not cleanly divisible. Note that `full_rows_per_host` may be zero.
+    partitions = (
+        [full_rows_per_host + 1] * partial_partition
+        + [full_rows_per_host] * (num_hosts - partial_partition))
     variables = []
     sharding_aware = "shard_info" in tf_inspect.getargspec(initial_value).args
 
@@ -1535,6 +1653,11 @@ def make_sharded_variable_creator(hosts):
     offset = 0
     kwargs["dtype"] = dtype
     for i, p in enumerate(partitions):
+      if p == 0:
+        # Skip variable creation for empty partitions, resulting from the edge
+        # case of 'rows < num_hosts'. This is safe because both load/restore
+        # can handle the missing values.
+        continue
       with ops.device(hosts[i]):
         kwargs["name"] = "{}_{}".format(name, i)
         kwargs["shape"] = (p, cols)

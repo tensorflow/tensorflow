@@ -5,6 +5,8 @@ package tensorflow.tpu;
 // In the comments here, "layout" refers to the top-level EmbeddingOutputLayout
 // proto contained in the TPUEmbeddingConfiguration.
 
+// This proto is deprecated and its contents are no longer used.
+
 // The embedding output consists of a list of tensors, each specified by an
 // EmbeddingOutputTensor proto within the EmbeddingOutputLayout (the "output"
 // field). Each table and feature lookup is then placed into some number of
@@ -15,6 +17,8 @@ package tensorflow.tpu;
 // EmbeddingOutputLayout.
 
 message TPUEmbeddingOutputLayout {
+  option deprecated = true;
+
   // Location of one copy of the feature's data.
   message OutputLocation {
     // Which output tensor this copy of the feature will go into. Must be

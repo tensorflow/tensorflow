@@ -244,9 +244,12 @@ class AdamOptimizerTest(test.TestCase):
       self.doTestBasic(use_resource=False)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt("b/168527439: invalid runtime fallback "
+                          "resource variable reference on GPU.")
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
+  @test_util.disable_tfrt("b/153089059: cannot create half tensor on GPU.")
   def testBasicCallableParams(self):
     with context.eager_mode():
       self.doTestBasic(use_resource=True, use_callable_params=True)
@@ -335,6 +338,8 @@ class AdamOptimizerTest(test.TestCase):
             self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
             self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.disable_tfrt("b/168527439: invalid runtime fallback "
+                          "resource variable reference on GPU.")
   def testTwoSessions(self):
     optimizer = adam.AdamOptimizer()
 
@@ -360,6 +365,8 @@ class AdamOptimizerTest(test.TestCase):
         # fails.
         optimizer.apply_gradients([(grads0, var0)])
 
+  @test_util.disable_tfrt("b/168527439: invalid runtime fallback "
+                          "resource variable reference on GPU.")
   def testSlotsUniqueEager(self):
     with context.eager_mode():
       v1 = resource_variable_ops.ResourceVariable(1.)

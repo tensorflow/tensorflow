@@ -1,7 +1,20 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "tflite_schema_utils_friends")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
+# This is the package group declaration to which targets for TensorFlow Lite
+# Flatbuffer schema utilities.
+#
+# Its usage should be rare, and is often abused by tools that are doing
+# Flatbuffer creation/manipulation in unofficially supported ways.
+package_group(
+    name = "utils_friends",
+    packages = [
+        "//tensorflow/compiler/mlir/lite/...",
+        "//tensorflow/lite/...",
+    ] + tflite_schema_utils_friends(),
+)
 
 package(
     default_visibility = [
@@ -60,6 +73,7 @@ exports_files([
     "schema_v1.fbs",
     "schema_v2.fbs",
     "schema_v3.fbs",
+    "schema_v3a.fbs",
 ])
 
 flatbuffer_cc_library(
@@ -72,6 +86,7 @@ flatbuffer_cc_library(
 flatbuffer_cc_library(
     name = "schema_fbs_with_mutable",
     srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--gen-mutable",
         "--gen-object-api",
@@ -83,6 +98,7 @@ flatbuffer_cc_library(
 flatbuffer_cc_library(
     name = "schema_fbs_with_reflection",
     srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
     flatc_args = [
         "--reflect-types",
         "--reflect-names",
@@ -100,7 +116,7 @@ cc_test(
     srcs = ["flatbuffer_compatibility_test.cc"],
     data = [
         "schema.fbs",
-        "schema_v3.fbs",
+        "schema_v3a.fbs",
     ],
     tags = [
         "no_oss",
@@ -111,6 +127,32 @@ cc_test(
         "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
+    ],
+)
+
+cc_library(
+    name = "schema_utils",
+    srcs = ["schema_utils.cc"],
+    hdrs = ["schema_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [":utils_friends"],
+    deps = [
+        ":schema_fbs",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "@flatbuffers//:runtime_cc",
+    ],
+)
+
+cc_library(
+    name = "schema_conversion_utils",
+    srcs = ["schema_conversion_utils.cc"],
+    hdrs = ["schema_conversion_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = [":utils_friends"],
+    deps = [
+        ":schema_fbs",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "@flatbuffers",
     ],
 )
 

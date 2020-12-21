@@ -45,6 +45,9 @@ constexpr char kShuffleDatasetV3OpName[] = "ShuffleDatasetV3";
 constexpr char kPrefetchDatasetOpName[] = "PrefetchDataset";
 constexpr char kRebatchDatasetOpName[] = "RebatchDataset";
 constexpr char kRebatchDatasetV2OpName[] = "RebatchDatasetV2";
+constexpr char kTensorDatasetOpName[] = "TensorDataset";
+constexpr char kTensorSliceDatasetOpName[] = "TensorSliceDataset";
+constexpr char kPlaceholderOpName[] = "Placeholder";
 
 constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kNumReplicasAttrName[] = "num_replicas";
@@ -68,23 +71,26 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 25> kPassThroughOps = {
+constexpr std::array<const char*, 28> kPassThroughOps = {
     "_Retval",
     "AssertNextDataset",
     "BatchDataset",
     "CacheDataset",
     "ExperimentalMapAndBatchDataset",
+    "ExperimentalParseExampleDataset",
     "ExperimentalRebatchDataset",
     "FilterDataset",
     "Identity",
     "MapAndBatchDataset",
     "MapDataset",
+    "MaxIntraOpParallelismDataset",
     "ModelDataset",
     "OptimizeDataset",
     "PaddedBatchDataset",
     "ParallelMapDataset",
     "ParseExampleDataset",
     "PrefetchDataset",
+    "PrivateThreadPoolDataset",
     "ReduceDataset",
     "RebatchDataset",
     "RepeatDataset",
@@ -413,6 +419,33 @@ Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
   return Status::OK();
 }
 
+const NodeDef* FindFuncAndTensorSliceDataset(
+    const NodeDef* node, int64 num_workers, int64 index,
+    FunctionLibraryDefinition* flib, MutableGraphView* graph,
+    absl::flat_hash_set<string>* nodes_to_delete) {
+  if (IsDatasetNodeOfType(*node, kFuncDatasetOps)) {
+    const NodeDef* input_node = graph_utils::GetInputNode(*node, *graph, 0);
+    if (input_node->op() == kTensorSliceDatasetOpName ||
+        input_node->op() == kTensorDatasetOpName) {
+      const NodeDef* next_input_node =
+          graph_utils::GetInputNode(*input_node, *graph, 0);
+      if (next_input_node->op() == kPlaceholderOpName) {
+        return node;
+      }
+    }
+  }
+
+  if (!IsDatasetNodeOfType(*node, kPassThroughOps)) {
+    return nullptr;
+  }
+
+  // Sometimes there are other nodes between the last InterleaveDataset and the
+  // second to last FlatMapDataset, so we need to skip over those.
+  const NodeDef* input_node = graph_utils::GetInputNode(*node, *graph, 0);
+  return FindFuncAndTensorSliceDataset(input_node, num_workers, index, flib,
+                                       graph, nodes_to_delete);
+}
+
 Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
                            FunctionLibraryDefinition* flib,
                            MutableGraphView* graph,
@@ -439,6 +472,39 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
                                              flib, graph, nodes_to_delete));
     }
     return Status::OK();
+  }
+
+  // This handles the case for the following subgraph:
+  //   Placeholder -> TensorSliceDataset -> FlatMapDataset -x->
+  //   (other preprocessing datasets) -> InterleaveDataset
+  // and then inserting the shard node immediately after the FlatMapDataset.
+  //
+  // This is used for some training pipelines where a dataset is created with
+  // the following code:
+  //
+  // def make_dataset_pipeline():
+  //   file_globs = [...]
+  //   datasets = []
+  //   for file_glob in file_globs:
+  //     datasets.append(Dataset.list_files(file_glob).map(TFRecordReader))
+  //   dataset = Dataset.from_tensor_slices(datasets)
+  //   dataset = dataset.flat_map(lambda x: x)
+  //   dataset = ...  # additional preprocessing
+  //   dataset = dataset.interleave(lambda x: x, cycle_length=...)
+  //   return dataset
+  if (IsDatasetNodeOfType(node, kFuncDatasetOps)) {
+    const NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
+    const NodeDef* flat_map_node = FindFuncAndTensorSliceDataset(
+        input_node, num_workers, index, flib, graph, nodes_to_delete);
+
+    if (flat_map_node != nullptr) {
+      auto fanouts = graph->GetFanouts(*flat_map_node, false);
+      // FlatMapDataset should only be the input to one other dataset.
+      if (fanouts.size() == 1) {
+        return ProcessDatasetSourceNode(graph, *fanouts.begin()->node,
+                                        nodes_to_delete, num_workers, index);
+      }
+    }
   }
 
   // This handles the case where a reader Dataset is contained within a
@@ -569,7 +635,6 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   *output = item.graph;
   MutableGraphView graph(output);
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
-
 
   NodeDef* sink_node;
   TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));

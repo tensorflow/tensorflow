@@ -93,35 +93,46 @@ class DispatcherState {
     const int64 index;
   };
 
+  struct DistributedEpochState {
+    // The current repetition.
+    int64 repetition = 0;
+    // Number of splits produced so far by the current split provider.
+    int64 split_provider_index = 0;
+  };
+
   // A job for processing a dataset.
   struct Job {
     explicit Job(int64 job_id, int64 dataset_id, ProcessingMode processing_mode,
-                 absl::optional<NamedJobKey> named_job_key)
+                 absl::optional<NamedJobKey> named_job_key,
+                 absl::optional<int64> num_consumers)
         : job_id(job_id),
           dataset_id(dataset_id),
           processing_mode(processing_mode),
-          named_job_key(named_job_key) {}
+          named_job_key(named_job_key),
+          num_consumers(num_consumers) {
+      if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+        distributed_epoch_state = DistributedEpochState();
+      }
+    }
 
     const int64 job_id;
     const int64 dataset_id;
     const ProcessingMode processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
+    absl::optional<DistributedEpochState> distributed_epoch_state;
+    absl::optional<int64> num_consumers;
     int64 num_clients = 0;
     int64 last_client_released_micros = -1;
     bool finished = false;
   };
 
   struct Task {
-    explicit Task(int64 task_id, int64 job_id, int64 dataset_id,
+    explicit Task(int64 task_id, const std::shared_ptr<Job>& job,
                   const std::string& worker_address)
-        : task_id(task_id),
-          job_id(job_id),
-          dataset_id(dataset_id),
-          worker_address(worker_address) {}
+        : task_id(task_id), job(job), worker_address(worker_address) {}
 
     const int64 task_id;
-    const int64 job_id;
-    const int64 dataset_id;
+    const std::shared_ptr<Job> job;
     const std::string worker_address;
     bool finished = false;
   };
@@ -174,6 +185,7 @@ class DispatcherState {
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
   void CreateJob(const CreateJobUpdate& create_job);
+  void ProduceSplit(const ProduceSplitUpdate& produce_split);
   void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
   void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
   void CreateTask(const CreateTaskUpdate& create_task);

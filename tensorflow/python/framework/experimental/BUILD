@@ -60,6 +60,23 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_nn_ops",
+    srcs = ["nn_ops.cc"],
+    module_name = "_nn_ops",
+    deps = [
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/llvm_rtti",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:unified_api_pywrap_required_headers",
+        "@com_google_absl//absl/types:span",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "gradient_registry",
     srcs = ["gradient_registry.py"],
@@ -71,8 +88,16 @@ py_library(
     srcs = ["math_ops.py"],
     deps = [
         ":_math_ops",
-        ":gradient_registry",
-        ":tape_stack",
+        ":context_stack",
+    ],
+)
+
+py_library(
+    name = "nn_ops",
+    srcs = ["nn_ops.py"],
+    deps = [
+        ":_nn_ops",
+        ":context_stack",
     ],
 )
 
@@ -82,7 +107,7 @@ py_library(
     deps = [
         ":_tape",
         ":context_stack",
-        ":tape_stack",
+        ":gradient_registry",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -103,12 +128,6 @@ py_library(
     deps = [":thread_local_stack"],
 )
 
-py_library(
-    name = "tape_stack",
-    srcs = ["tape_stack.py"],
-    deps = [":thread_local_stack"],
-)
-
 cuda_py_test(
     name = "unified_api_test",
     size = "small",
@@ -125,6 +144,7 @@ cuda_py_test(
         ":context_stack",
         ":def_function",
         ":math_ops",
+        ":nn_ops",
         ":tape",
         "//tensorflow/python:client_testlib",
         "@absl_py//absl/testing:parameterized",

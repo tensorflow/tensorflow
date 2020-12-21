@@ -120,6 +120,11 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
@@ -400,7 +405,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         TF_LOCKS_EXCLUDED(*mu_) {
       mutex_lock l(*mu_);
       num_calls_--;
-      RecordBufferEnqueue(ctx.get(), result->return_values);
       result->notification.Notify();
       cond_var_->notify_all();
     }
@@ -423,6 +427,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
       auto done = [this, ctx, result](Status status) {
         result->status.Update(status);
+        RecordBufferEnqueue(ctx.get(), result->return_values);
         CallCompleted(ctx, result);
       };
 
@@ -439,21 +444,24 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         auto fn = std::bind(
             [this, ctx, result](std::vector<Tensor> input_element) {
               return instantiated_captured_func_->Run(
-                  ctx.get(), std::move(input_element), &result->return_values);
+                  ctx.get(), std::move(input_element), &result->return_values,
+                  model_node());
             },
             std::move(input_element));
-        // `ctx->runner()` may execute its logic synchronously so we wrap it in
-        // `RecordStop` and `RecordStart` to prevent invalid nesting of
-        // `RecordStart` calls.
-        RecordStop(ctx.get());
         (*ctx->runner())(
             [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              RecordStart(ctx.get());
-              auto cleanup =
-                  gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(fn());
+              Status s;
+              // Check whether we are already recording to prevent invalid
+              // nesting of `RecordStart` calls.
+              if (IsRecording(ctx.get())) {
+                s = fn();
+              } else {
+                RecordStart(ctx.get());
+                s = fn();
+                RecordStop(ctx.get());
+              }
+              done(s);
             });
-        RecordStart(ctx.get());
       }
     }
 

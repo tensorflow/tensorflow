@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #ifdef INTEL_MKL
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -34,8 +35,9 @@ class MklRemapperTest : public GrapplerTest {
   const string kAddV2Op = "AddV2";
 
  protected:
-  void FuseConv2DWithBiasAndAddNOrAdd(const string& data_format, bool has_relu,
-                                      string add_op, bool add_with_bcast) {
+  void FuseConv2DWithBiasAndAddNOrAdd(const string& data_format,
+                                      const string& activation, string add_op,
+                                      bool add_with_bcast) {
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -70,31 +72,34 @@ class MklRemapperTest : public GrapplerTest {
                     ops::Conv2D::Attrs().DataFormat(data_format));
     auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias,
                                  ops::BiasAdd::Attrs().DataFormat(data_format));
+
+    auto addfetch = [&](::tensorflow::Input addop) {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+      if (activation == "Relu") {
+        ops::Identity(fetch, ops::Relu(activate, addop));
+      } else if (activation == "Relu6") {
+        ops::Identity(fetch, ops::Relu6(activate, addop));
+      } else if (activation == "Elu") {
+        ops::Identity(fetch, ops::Elu(activate, addop));
+      } else if (activation == "LeakyRelu") {
+        ops::Identity(fetch, ops::internal::LeakyRelu(activate, addop));
+      } else {
+        DCHECK(activation == "None");
+        ops::Identity(fetch, addop);
+      }
+    };
+
     if (add_op == kAddNOp) {
       auto addn = ops::AddN(s.WithOpName(add_op),
                             std::initializer_list<Input>{input_addn, bias_add});
-      if (has_relu) {
-        auto relu = ops::Relu(s.WithOpName("relu"), addn);
-        ops::Identity(s.WithOpName("fetch"), relu);
-      } else {
-        ops::Identity(s.WithOpName("fetch"), addn);
-      }
+      addfetch(addn);
     } else if (add_op == kAddV2Op) {
       auto add = ops::AddV2(s.WithOpName(add_op), input_addn, bias_add);
-      if (has_relu) {
-        auto relu = ops::Relu(s.WithOpName("relu"), add);
-        ops::Identity(s.WithOpName("fetch"), relu);
-      } else {
-        ops::Identity(s.WithOpName("fetch"), add);
-      }
+      addfetch(add);
     } else {
       auto add = ops::Add(s.WithOpName(add_op), input_addn, bias_add);
-      if (has_relu) {
-        auto relu = ops::Relu(s.WithOpName("relu"), add);
-        ops::Identity(s.WithOpName("fetch"), relu);
-      } else {
-        ops::Identity(s.WithOpName("fetch"), add);
-      }
+      addfetch(add);
     }
     auto input_tensor = GenerateRandomTensor<DT_FLOAT>(
         TensorShape(input_shape.shape_.dim_sizes()));
@@ -129,7 +134,7 @@ class MklRemapperTest : public GrapplerTest {
     bool check_fusion = !add_with_bcast;
     int found = 0;
     for (const NodeDef& node : output.node()) {
-      auto fetch_node_name = has_relu ? "relu" : add_op;
+      auto fetch_node_name = activation != "None" ? "activation" : add_op;
       if (node.name() == fetch_node_name) {
         if (check_fusion) {
           EXPECT_EQ("_FusedConv2D", node.op());
@@ -141,19 +146,19 @@ class MklRemapperTest : public GrapplerTest {
           EXPECT_EQ("input_addn", node.input(3));
 
           const auto fused_ops = node.attr().at("fused_ops").list().s();
-          if (has_relu) {
+          if (activation != "None") {
             EXPECT_EQ(3, fused_ops.size());
             EXPECT_EQ("BiasAdd", fused_ops[0]);
             EXPECT_EQ("Add", fused_ops[1]);
-            EXPECT_EQ("Relu", fused_ops[2]);
+            EXPECT_EQ(activation, fused_ops[2]);
           } else {
             EXPECT_EQ(2, fused_ops.size());
             EXPECT_EQ("BiasAdd", fused_ops[0]);
             EXPECT_EQ("Add", fused_ops[1]);
           }
         } else {
-          if (has_relu) {
-            EXPECT_EQ(node.op(), "Relu");
+          if (activation != "None") {
+            EXPECT_EQ(node.op(), activation);
             ASSERT_EQ(node.input_size(), 1);
             EXPECT_EQ(node.input(0), add_op);
           } else {
@@ -170,42 +175,44 @@ class MklRemapperTest : public GrapplerTest {
     auto tensors = EvaluateNodes(output, item.fetch, item.feed);
     EXPECT_EQ(1, tensors_expected.size());
     EXPECT_EQ(1, tensors.size());
-    test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+    // Using relative tolerance since oneDNN could produce different results
+    // when float32 numbers need to be rounded during accumulation.
+    test::ExpectClose(tensors_expected[0], tensors[0], 0, 1e-6);
   }
 };
 
-#define CREATE_CONV2DFUSION_TEST(data_format, addop, relu, bcast)                    \
-  TEST_F(                                                                            \
-      MklRemapperTest,                                                               \
-      FuseConv2DWithBiasAnd##addop##_##data_format##_relu##relu##_addbcast##bcast) { \
-    const bool kShouldFuseRelu = relu;                                               \
-    const bool kIsAddWithBcast = bcast;                                              \
-    FuseConv2DWithBiasAndAddNOrAdd(#data_format, relu, #addop, bcast);               \
+#define CREATE_CONV2DFUSION_TEST(data_format, addop, activation, bcast)                          \
+  TEST_F(                                                                                        \
+      MklRemapperTest,                                                                           \
+      FuseConv2DWithBiasAnd##addop##_##data_format##_activation##activation##_addbcast##bcast) { \
+    FuseConv2DWithBiasAndAddNOrAdd(#data_format, #activation, #addop, bcast);                    \
   }
 
-#define CREATE_CONV2DFUSION_ADD_NOBCAST_TEST(addop)    \
-  CREATE_CONV2DFUSION_TEST(NHWC, addop, false, false); \
-  CREATE_CONV2DFUSION_TEST(NHWC, addop, true, false);  \
-  CREATE_CONV2DFUSION_TEST(NCHW, addop, false, false); \
-  CREATE_CONV2DFUSION_TEST(NCHW, addop, true, false);
+#define CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(data_format, addop, bcast) \
+  CREATE_CONV2DFUSION_TEST(data_format, addop, Relu, bcast);               \
+  CREATE_CONV2DFUSION_TEST(data_format, addop, Relu6, bcast);              \
+  CREATE_CONV2DFUSION_TEST(data_format, addop, Elu, bcast);                \
+  CREATE_CONV2DFUSION_TEST(data_format, addop, LeakyRelu, bcast);          \
+  CREATE_CONV2DFUSION_TEST(data_format, addop, None, bcast);
+
+#define CREATE_CONV2DFUSION_ADD_NOBCAST_TEST(addop)            \
+  CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(NHWC, addop, false); \
+  CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(NCHW, addop, false);
 
 CREATE_CONV2DFUSION_ADD_NOBCAST_TEST(AddN);
 
-#define CREATE_CONV2DFUSION_ADD_BCAST_TEST(addop)      \
-  CREATE_CONV2DFUSION_TEST(NHWC, addop, false, false); \
-  CREATE_CONV2DFUSION_TEST(NHWC, addop, true, false);  \
-  CREATE_CONV2DFUSION_TEST(NCHW, addop, false, false); \
-  CREATE_CONV2DFUSION_TEST(NCHW, addop, true, false);  \
-  CREATE_CONV2DFUSION_TEST(NHWC, addop, false, true);  \
-  CREATE_CONV2DFUSION_TEST(NHWC, addop, true, true);   \
-  CREATE_CONV2DFUSION_TEST(NCHW, addop, false, true);  \
-  CREATE_CONV2DFUSION_TEST(NCHW, addop, true, true);
+#define CREATE_CONV2DFUSION_ADD_BCAST_TEST(addop)              \
+  CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(NHWC, addop, false); \
+  CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(NCHW, addop, false); \
+  CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(NHWC, addop, true);  \
+  CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST(NCHW, addop, true);
 
 CREATE_CONV2DFUSION_ADD_BCAST_TEST(Add);
 CREATE_CONV2DFUSION_ADD_BCAST_TEST(AddV2);
 
 #undef CREATE_CONV2DFUSION_ADD_NOBCAST_TEST
 #undef CREATE_CONV2DFUSION_ADD_BCAST_TEST
+#undef CREATE_CONV2DFUSION_ADD_ACTIVATION_TEST
 #undef CREATE_CONV2DFUSION_TEST
 
 #define REGISTER_TEST(NAME, T, INPUT)                                         \
@@ -438,6 +445,84 @@ TEST_F(MklRemapperTest, FuseBatchNormWithRelu) {
       test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
     }
   }
+}
+
+TEST_F(MklRemapperTest, FuseMatMulWithBiasAddAndAdd) {
+  using ::tensorflow::ops::Placeholder;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto input_shape = ops::Placeholder::Shape({4, 32});
+  auto input_shape_add = ops::Placeholder::Shape({4, 8});
+  auto filter_shape = ops::Placeholder::Shape({32, 8});
+  auto bias_shape = ops::Placeholder::Shape({8});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+  auto input_add =
+      Placeholder(s.WithOpName("input_add"), DT_FLOAT, input_shape_add);
+  auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+  auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+
+  auto matmul = ops::MatMul(s.WithOpName("matmul"), input, filter);
+  auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), matmul, bias);
+
+  auto fetch = s.WithOpName("fetch");
+  auto add = ops::Add(s.WithOpName("add"), bias_add, input_add);
+
+  ops::Identity(fetch, add);
+
+  auto input_tensor = GenerateRandomTensor<DT_FLOAT>(
+      TensorShape(input_shape.shape_.dim_sizes()));
+  auto input_add_tensor = GenerateRandomTensor<DT_FLOAT>(
+      TensorShape(input_shape_add.shape_.dim_sizes()));
+  auto filter_tensor = GenerateRandomTensor<DT_FLOAT>(
+      TensorShape(filter_shape.shape_.dim_sizes()));
+  auto bias_tensor = GenerateRandomTensor<DT_FLOAT>(
+      TensorShape(bias_shape.shape_.dim_sizes()));
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_tensor},
+               {"filter", filter_tensor},
+               {"bias", bias_tensor},
+               {"input_add", input_add_tensor}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::AGGRESSIVE);
+  GraphDef output;
+  TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    auto fetch_node_name = "add";
+    if (node.name() == fetch_node_name) {
+      EXPECT_EQ("_FusedMatMul", node.op());
+      EXPECT_EQ("input", node.input(0));
+      EXPECT_EQ("filter", node.input(1));
+
+      EXPECT_EQ(2, node.attr().at("num_args").i());
+      EXPECT_EQ("bias", node.input(2));
+      EXPECT_EQ("input_add", node.input(3));
+
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      EXPECT_EQ(2, fused_ops.size());
+      EXPECT_EQ("BiasAdd", fused_ops[0]);
+      EXPECT_EQ("Add", fused_ops[1]);
+      found++;
+    }
+  }
+  EXPECT_EQ(1, found);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  EXPECT_EQ(1, tensors_expected.size());
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectClose(tensors_expected[0], tensors[0], 0, 1e-6);
 }
 #endif  // ENABLE_MKLDNN_V1
 

@@ -17,10 +17,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -82,15 +82,21 @@ class FuseIntoContractionOp : public RewritePattern {
     // Fusion can't change the type of a fused operation.
     Type result_ty = fuse_into->getResult(0).getType();
 
-    // Copy all operands from a matmul and add additional fusion arguments.
+    // Copy all operands from a base op and add additional fusion arguments.
     SmallVector<Value, 3> operands(fuse_into->getOperands());
     for (int idx : fusion->additional_arguments) {
       operands.push_back(op->getOperand(idx));
     }
 
-    // Copy attributes from a MatMul operation.
+    // Copy attributes from a base op that we fuse into (e.g. copy all
+    // MatMul or Conv attributes to the fused operation).
     SmallVector<NamedAttribute, 4> attrs(fuse_into->getAttrs().begin(),
                                          fuse_into->getAttrs().end());
+
+    // Add fusion specific additional attributes.
+    for (auto attr : fusion->additional_attributes) {
+      attrs.push_back(attr);
+    }
 
     // Add a fused output kernel name to the list of fusions.
     Identifier fusion_id = Identifier::get("fusion", ctx);
@@ -138,7 +144,7 @@ void ContractionFusionPass::runOnFunction() {
 
   OwningRewritePatternList patterns;
   patterns.insert<FuseIntoMatMulOp>();
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

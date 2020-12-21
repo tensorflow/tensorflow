@@ -1,3 +1,6 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -37,6 +40,8 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "//tensorflow/compiler/mlir/tensorflow:translate_lib",
+        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
     ],

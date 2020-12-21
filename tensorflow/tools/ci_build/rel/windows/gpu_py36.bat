@@ -17,7 +17,9 @@ SET PYTHON_DIRECTORY=Python36
 
 CALL tensorflow\tools\ci_build\release\common_win.bat
 
-call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --release_build --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow"
-
-for %%a in ("%~dp0\.") do set "PARENT_DIR=%%~nxa"
-bash -l tensorflow\tools\ci_build\release\windows\%PARENT_DIR%\release_pip_rename.sh
+if "%IS_NIGHTLY%" == "1" (
+    call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --extra_test_flags "--test_env=TF2_BEHAVIOR=1"
+) else (
+    call tensorflow\tools\ci_build\windows\gpu\pip\run.bat --release_build --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow"
+    bash -l tensorflow\tools\ci_build\release\windows\gpu_py36_full\release_pip_rename.sh
+)

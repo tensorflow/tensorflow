@@ -36,6 +36,9 @@ Status DispatcherState::Apply(const Update& update) {
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
+    case Update::kProduceSplit:
+      ProduceSplit(update.produce_split());
+      break;
     case Update::kAcquireJobClient:
       AcquireJobClient(update.acquire_job_client());
       break;
@@ -83,9 +86,14 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_job_key.emplace(create_job.named_job_key().name(),
                           create_job.named_job_key().index());
   }
+  absl::optional<int64> num_consumers;
+  if (create_job.optional_num_consumers_case() ==
+      CreateJobUpdate::kNumConsumers) {
+    num_consumers = create_job.num_consumers();
+  }
   auto job = std::make_shared<Job>(job_id, create_job.dataset_id(),
                                    ProcessingMode(create_job.processing_mode()),
-                                   named_job_key);
+                                   named_job_key, num_consumers);
   DCHECK(!jobs_.contains(job_id));
   jobs_[job_id] = job;
   tasks_by_job_[job_id] = std::vector<std::shared_ptr<Task>>();
@@ -94,6 +102,19 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_jobs_[named_job_key.value()] = job;
   }
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
+}
+
+void DispatcherState::ProduceSplit(const ProduceSplitUpdate& produce_split) {
+  std::shared_ptr<Job> job = jobs_[produce_split.job_id()];
+  DCHECK(job->distributed_epoch_state.has_value());
+  DistributedEpochState& state = job->distributed_epoch_state.value();
+  DCHECK_EQ(produce_split.repetition(), state.repetition);
+  if (produce_split.finished()) {
+    state.repetition++;
+    state.split_provider_index = 0;
+    return;
+  }
+  state.split_provider_index++;
 }
 
 void DispatcherState::AcquireJobClient(
@@ -123,9 +144,9 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
   int64 task_id = create_task.task_id();
   auto& task = tasks_[task_id];
   DCHECK_EQ(task, nullptr);
-  task = std::make_shared<Task>(task_id, create_task.job_id(),
-                                create_task.dataset_id(),
-                                create_task.worker_address());
+  auto& job = jobs_[create_task.job_id()];
+  DCHECK_NE(job, nullptr);
+  task = std::make_shared<Task>(task_id, job, create_task.worker_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
   tasks_by_worker_[create_task.worker_address()][task->task_id] = task;
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
@@ -139,13 +160,13 @@ void DispatcherState::FinishTask(const FinishTaskUpdate& finish_task) {
   task->finished = true;
   tasks_by_worker_[task->worker_address].erase(task->task_id);
   bool all_finished = true;
-  for (const auto& task_for_job : tasks_by_job_[task->job_id]) {
+  for (const auto& task_for_job : tasks_by_job_[task->job->job_id]) {
     if (!task_for_job->finished) {
       all_finished = false;
     }
   }
-  VLOG(3) << "Job " << task->job_id << " finished: " << all_finished;
-  jobs_[task->job_id]->finished = all_finished;
+  VLOG(3) << "Job " << task->job->job_id << " finished: " << all_finished;
+  jobs_[task->job->job_id]->finished = all_finished;
 }
 
 int64 DispatcherState::NextAvailableDatasetId() const {

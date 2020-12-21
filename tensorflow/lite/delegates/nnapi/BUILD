@@ -135,6 +135,7 @@ cc_test(
         ":nnapi_delegate_mock_test",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:deprecated_backends",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/nnapi:nnapi_lib",
@@ -170,6 +171,30 @@ cc_test(
     size = "small",
     srcs = [
         "nnapi_delegate_device_selection_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "nnapi_delegate_nnapi_failure_handling_test",
+    size = "small",
+    srcs = [
+        "nnapi_delegate_nnapi_failure_handling_test.cc",
     ],
     tags = [
         "no_mac",

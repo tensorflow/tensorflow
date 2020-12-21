@@ -3,7 +3,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
-    "tf_proto_library_cc",
     "tf_pyclif_proto_library",
 )
 
@@ -66,7 +65,7 @@ tf_proto_library(
     ],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "worker_proto",
     srcs = ["worker.proto"],
     cc_api_version = 2,
@@ -74,7 +73,7 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "worker_service_proto",
     srcs = ["worker_service.proto"],
     has_services = 1,
@@ -84,7 +83,7 @@ tf_proto_library_cc(
     protodeps = [":worker_proto"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "master_proto",
     srcs = ["master.proto"],
     cc_api_version = 2,
@@ -92,7 +91,7 @@ tf_proto_library_cc(
     visibility = ["//tensorflow:internal"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "master_service_proto",
     srcs = ["master_service.proto"],
     has_services = 1,
@@ -102,7 +101,7 @@ tf_proto_library_cc(
     protodeps = [":master_proto"],
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "eager_service_proto",
     srcs = ["eager_service.proto"],
     has_services = 1,
@@ -113,7 +112,7 @@ tf_proto_library_cc(
     protodeps = tf_additional_all_protos(),
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "replay_log_proto",
     srcs = ["replay_log.proto"],
     cc_api_version = 2,
@@ -139,9 +138,10 @@ exports_files(
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
-        "data/experimental/snapshot.proto",
-        "data/experimental/service_config.proto",
+        "snapshot.proto",
+        "service_config.proto",
         "debug_event.proto",
+        "extension_type_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",
@@ -165,9 +165,13 @@ tf_proto_library(
         "control_flow.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
-        "data/experimental/snapshot.proto",
-        "data/experimental/service_config.proto",
+        # TODO: Move snapshot.proto and service_config.proto to a separate package.
+        # NOTE: Creating an alias and adding the files does not work in OSS.
+        # NOTE: tf_proto_library requires files to be in the same package.
+        "snapshot.proto",
+        "service_config.proto",
         "debug_event.proto",
+        "extension_type_variant.proto",
         "meta_graph.proto",
         "named_tensor.proto",
         "remote_tensor_handle.proto",

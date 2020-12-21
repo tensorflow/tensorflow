@@ -4,6 +4,8 @@
 # Throughout this file, all targets are built with the standard crosstool and
 # do not link against restricted binary blobs.
 
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
@@ -59,7 +61,6 @@ cc_library(
         "blas.h",
         "device_description.h",
         "device_options.h",
-        "dnn.h",
         "event.cc",
         "fft.h",
         "kernel_cache_config.h",
@@ -101,7 +102,6 @@ cc_library(
 cc_library(
     name = "kernel",
     srcs = [
-        "dnn.h",
         "fft.h",
         "kernel.cc",
         "plugin.h",
@@ -298,6 +298,7 @@ cc_library(
     name = "host_or_device_scalar",
     hdrs = ["host_or_device_scalar.h"],
     deps = [
+        ":data_type",
         ":device_memory",
         "//tensorflow/stream_executor/platform",
     ],
@@ -329,7 +330,6 @@ cc_library(
     ],
     hdrs = [
         "blas.h",
-        "dnn.h",
         "executor_cache.h",
         "fft.h",
         "kernel.h",
@@ -422,10 +422,20 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "data_type",
+    hdrs = ["data_type.h"],
+    deps = [
+        ":dnn_proto_cc",
+        "//tensorflow/stream_executor/platform",
+    ],
+)
+
+cc_library(
     name = "dnn",
     srcs = ["dnn.cc"],
     hdrs = ["dnn.h"],
     deps = [
+        ":data_type",
         ":device_memory",
         ":dnn_proto_cc",
         ":stream_executor_headers",
@@ -443,7 +453,6 @@ cc_library(
 cc_library(
     name = "stream_executor_internal",
     srcs = [
-        "dnn.h",
         "stream_executor_internal.cc",
     ],
     hdrs = [
@@ -472,7 +481,6 @@ cc_library(
     name = "stream_executor_pimpl_header",
     hdrs = [
         "device_description.h",
-        "dnn.h",
         "kernel.h",
         "kernel_cache_config.h",
         "stream_executor_pimpl.h",
@@ -679,8 +687,8 @@ cc_library(
         ":device_memory_allocator",
         ":platform",
         ":stream_executor_headers",
-        "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:allocator",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/base:core_headers",

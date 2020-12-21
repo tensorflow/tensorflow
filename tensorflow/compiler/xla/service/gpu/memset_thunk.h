@@ -55,7 +55,7 @@ class Memset32BitValueThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
-  uint32 value_;
+  const uint32 value_;
   const BufferAllocation::Slice dest_;
 };
 

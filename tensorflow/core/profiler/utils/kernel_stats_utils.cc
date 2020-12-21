@@ -42,7 +42,7 @@ const int kMaxNumOfKernels = 1000;
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
                              KernelReport* kernel) {
   const std::vector<absl::string_view> params =
-      absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(":\n"));
+      absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(" :\n"));
 
   constexpr uint32 kNumDimensions = 3;
   for (uint32 dim = 0; dim < kNumDimensions; ++dim) {
@@ -53,33 +53,36 @@ void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
   // Process value pairs.
   for (uint32 ii = 0; ii < params.size(); ii += 2) {
     uint32 value = 0;
-    if (params[ii] == "registers_per_thread" &&
-        absl::SimpleAtoi(params[ii + 1], &value)) {
+    double pct = 0.0;
+    if (params[ii] == "regs" && absl::SimpleAtoi(params[ii + 1], &value)) {
       kernel->set_registers_per_thread(value);
-    } else if (params[ii] == "static_shared_memory_usage" &&
+    } else if (params[ii] == "static_shared" &&
                absl::SimpleAtoi(params[ii + 1], &value)) {
       kernel->set_static_shmem_bytes(value);
-    } else if (params[ii] == "dynamic_shared_memory_usage" &&
+    } else if (params[ii] == "dynamic_shared" &&
                absl::SimpleAtoi(params[ii + 1], &value)) {
       kernel->set_dynamic_shmem_bytes(value);
-    } else if (params[ii] == "block_x" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
-      kernel->mutable_block_dim()->Set(0, value);
-    } else if (params[ii] == "block_y" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
-      kernel->mutable_block_dim()->Set(1, value);
-    } else if (params[ii] == "block_z" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
-      kernel->mutable_block_dim()->Set(2, value);
-    } else if (params[ii] == "grid_x" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
-      kernel->mutable_grid_dim()->Set(0, value);
-    } else if (params[ii] == "grid_y" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
-      kernel->mutable_grid_dim()->Set(1, value);
-    } else if (params[ii] == "grid_z" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
-      kernel->mutable_grid_dim()->Set(2, value);
+    } else if (params[ii] == "block") {
+      const std::vector<absl::string_view>& block =
+          absl::StrSplit(params[ii + 1], ',');
+      uint32 tmp[3];
+      if (block.size() == 3 && absl::SimpleAtoi(block[0], &tmp[0]) &&
+          absl::SimpleAtoi(block[1], &tmp[1]) &&
+          absl::SimpleAtoi(block[2], &tmp[2])) {
+        std::copy_n(tmp, 3, kernel->mutable_block_dim()->begin());
+      }
+    } else if (params[ii] == "grid") {
+      const std::vector<absl::string_view>& grid =
+          absl::StrSplit(params[ii + 1], ',');
+      uint32 tmp[3];
+      if (grid.size() == 3 && absl::SimpleAtoi(grid[0], &tmp[0]) &&
+          absl::SimpleAtoi(grid[1], &tmp[1]) &&
+          absl::SimpleAtoi(grid[2], &tmp[2])) {
+        std::copy_n(tmp, 3, kernel->mutable_grid_dim()->begin());
+      }
+    } else if (params[ii] == "occ_pct" &&
+               absl::SimpleAtod(params[ii + 1], &pct)) {
+      kernel->set_occupancy_pct(pct);
     }
   }
 }
@@ -88,9 +91,11 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
   // Some examples: volta_h884gemm, volta_fp16_s884gemm,
   // turing_fp16_s1688cudnn_fp16
   bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
-                                absl::StrContains(kernel_name, "1688");
+                                absl::StrContains(kernel_name, "1688") ||
+                                absl::StrContains(kernel_name, "hmma") ||
+                                absl::StrContains(kernel_name, "xmma");
   if (possible_tensor_kernel) {
-    VLOG(1) << "Possible tensor kernel: " << kernel_name << "\n";
+    VLOG(3) << "Possible tensor kernel: " << kernel_name;
   }
 
   return (absl::StartsWith(kernel_name, "volta_i884") ||
@@ -104,7 +109,9 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
           absl::StartsWith(kernel_name, "turing_s1688") ||
           absl::StartsWith(kernel_name, "turing_fp16_i1688") ||
           absl::StartsWith(kernel_name, "turing_fp16_h1688") ||
-          absl::StartsWith(kernel_name, "turing_fp16_s1688"));
+          absl::StartsWith(kernel_name, "turing_fp16_s1688") ||
+          absl::StrContains(kernel_name, "hmma") ||
+          absl::StrContains(kernel_name, "xmma"));
 }
 
 // This list is not exhaustive.

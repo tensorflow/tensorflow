@@ -25,11 +25,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
@@ -64,10 +66,38 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 const char kOutputShapes[] = "output_shapes";
 const char kOutputTypes[] = "output_types";
 
+// Safely subtracts x from y avoiding underflow.
+inline uint64 safe_sub(uint64 x, uint64 y) { return x >= y ? x - y : 0; }
+
 }  // namespace
 
 /* static */ constexpr const char* const
     SerializeIteratorOp::kExternalStatePolicy;
+
+IteratorResource::IteratorResource(
+    Env* env, const DataTypeVector& output_dtypes,
+    const std::vector<PartialTensorShape>& output_shapes,
+    std::unique_ptr<DeviceMgr> device_mgr,
+    std::unique_ptr<FunctionLibraryDefinition> flib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+    FunctionLibraryRuntime* flr)
+    : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+      device_mgr_(std::move(device_mgr)),
+      iterator_state_(std::make_shared<State>(std::move(flib_def),
+                                              std::move(pflr), flr,
+                                              /*iterator=*/nullptr)),
+      output_dtypes_(output_dtypes),
+      output_shapes_(output_shapes),
+      // We do not collect iterator resource metrics for non-CPU devices. This
+      // is a heuristic to avoid collecting metrics for device-side iterators
+      // created by the multi-device iterator mechanism.
+      collect_metrics_(flr->device()->device_type() == DEVICE_CPU) {
+  VLOG(2) << "creating iterator resource";
+}
+
+IteratorResource::~IteratorResource() {
+  VLOG(2) << "destroying iterator resource";
+}
 
 Status IteratorResource::GetNext(OpKernelContext* ctx,
                                  std::vector<Tensor>* out_tensors,
@@ -77,35 +107,57 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     tf_shared_lock l(mu_);
     captured_state = iterator_state_;
   }
-  if (captured_state->iterator) {
-    IteratorContext::Params params(ctx);
-    params.flr = captured_state->flr;
-    params.function_handle_cache = captured_state->function_handle_cache.get();
-    params.resource_mgr = &captured_state->resource_mgr;
-    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
-    params.thread_pool = &unbounded_thread_pool_;
-    params.cancellation_manager = &captured_state->cancellation_manager;
-    std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-        ctx->cancellation_manager(),
-        [cm = params.cancellation_manager]() { cm->StartCancel(); },
-        &deregister_fn));
-    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
-    RecordCtx record_ctx = CreateRecordCtx();  // Snapshot state prior to work
-    // TODO(mkuchnik): Replace wallclock time with steady clock
-    const uint64 start_time_us = ctx->env()->NowMicros();
-    RecordGetNextStart(record_ctx, start_time_us);
-    auto val = captured_state->iterator->GetNext(
-        IteratorContext(std::move(params)), out_tensors, end_of_sequence);
-    const uint64 end_time_us = ctx->env()->NowMicros();
-    RecordGetNextEnd(record_ctx, end_time_us);
-    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
-    return val;
+  if (!captured_state->iterator) {
+    return errors::FailedPrecondition(
+        "GetNext() failed because the iterator has not been initialized. "
+        "Ensure that you have run the initializer operation for this iterator "
+        "before getting the next element.");
   }
-  return errors::FailedPrecondition(
-      "GetNext() failed because the iterator has not been initialized. Ensure "
-      "that you have run the initializer operation for this iterator before "
-      "getting the next element.");
+  IteratorContext::Params params(ctx);
+  params.flr = captured_state->flr;
+  params.function_handle_cache = captured_state->function_handle_cache.get();
+  params.resource_mgr = &captured_state->resource_mgr;
+  params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+  params.thread_pool = &unbounded_thread_pool_;
+  params.cancellation_manager = &captured_state->cancellation_manager;
+  std::function<void()> deregister_fn;
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      ctx->cancellation_manager(),
+      [cm = params.cancellation_manager]() { cm->StartCancel(); },
+      &deregister_fn));
+  auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
+  const uint64 start_time_us = ctx->env()->NowMicros();
+  if (collect_metrics_) {
+    mutex_lock l(mu_);
+    if (get_next_end_time_us_ == 0) {
+      // We initialize `get_next_end_time_us_` to the start time of the first
+      // request to make it possible to use the delta between
+      // `get_next_end_time_us_` and subsequent `GetNext()` end time to
+      // incrementally collect the duration of the iterator's lifetime.
+      get_next_end_time_us_ = start_time_us;
+    }
+    if (num_get_next_calls_ == 0) {
+      get_next_start_time_us_ = start_time_us;
+    }
+    num_get_next_calls_++;
+  }
+  auto status = captured_state->iterator->GetNext(
+      IteratorContext(std::move(params)), out_tensors, end_of_sequence);
+  if (collect_metrics_) {
+    const uint64 end_time_us = ctx->env()->NowMicros();
+    metrics::RecordTFDataGetNextDuration(safe_sub(end_time_us, start_time_us));
+    metrics::RecordTFDataBytesFetched(GetTotalBytes(*out_tensors));
+    mutex_lock l(mu_);
+    metrics::RecordTFDataIteratorLifetime(
+        safe_sub(end_time_us, get_next_end_time_us_));
+    get_next_end_time_us_ = std::max(get_next_end_time_us_, end_time_us);
+    num_get_next_calls_--;
+    if (num_get_next_calls_ == 0) {
+      metrics::RecordTFDataIteratorBusy(
+          safe_sub(get_next_end_time_us_, get_next_start_time_us_));
+    }
+  }
+  return status;
 }
 
 Status IteratorResource::Save(SerializationContext* ctx,
@@ -207,71 +259,6 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   mutex_lock l(mu_);
   std::swap(iterator_state_, new_state);
   return Status::OK();
-}
-
-IteratorResource::RecordCtx IteratorResource::CreateRecordCtx()
-    TF_LOCKS_EXCLUDED(mu_) {
-  IteratorResource::RecordCtx record_ctx;
-  {
-    tf_shared_lock l(mu_);
-    record_ctx.last_get_next_end_time_us =
-        iterator_state_->last_get_next_end_time_us;
-  }
-  return record_ctx;
-}
-
-void IteratorResource::RecordGetNextStart(
-    IteratorResource::RecordCtx& record_ctx, const uint64 start_time_us) {
-  record_ctx.get_next_start_time_us = start_time_us;
-  uint64 last_end_time_us = record_ctx.last_get_next_end_time_us;
-
-  // Records the total amount of time that has elapsed between GetNext()
-  // calls. The time between calls is measured from the point of returning
-  // data from GetNext() to the point of requesting data from GetNext().
-  // A steady clock is preferable. There are three parts to the algorithm
-  // under concurrency which maintain the thread local invariant
-  // last_end_time_us <= start_time_us <= end_time_us and the
-  // IteratorResource invariant that last_end_time_us is increasing:
-  // 1) CreateRecordCtx() is called, which copies the
-  //    last_get_next_end_time_us into a thread-local structure
-  // 2) RecordGetNextStart is called with a clock measured after 1),
-  //    thus ensuring that local start_time_us >= last_get_next_end_time_us
-  // 3) RecordGetNextEnd is called with a clock measured after 2),
-  //    thus ensuring that local end_time_us >= start_time_us. Additionally,
-  //    this function updates the IteratorResource last_get_next_end_time_us
-  //    with the most recent time. Thus, if two threads call this method,
-  //    only the most recent one is visible in the time.
-  // It's worth noting that a mutex over all three pieces may be needed for
-  // strict serialization correctness (i.e., local time may grow stale).
-  if (last_end_time_us) {  // last_end_time_us is initialized at 0
-    if (start_time_us >= last_end_time_us) {
-      const uint64 get_next_time_between = start_time_us - last_end_time_us;
-      metrics::RecordTFDataGetNextTimeBetween(get_next_time_between);
-    } else {
-      // Clock went backward (not steady).
-      metrics::RecordTFDataGetNextTimeBetween(0);
-    }
-  }
-}
-
-void IteratorResource::RecordGetNextEnd(
-    const IteratorResource::RecordCtx& record_ctx, const uint64 end_time_us)
-    TF_LOCKS_EXCLUDED(mu_) {
-  uint64 start_time_us = record_ctx.get_next_start_time_us;
-  {
-    mutex_lock l(mu_);
-    // Move last_end_time forward if more recent
-    iterator_state_->last_get_next_end_time_us =
-        std::max(end_time_us, iterator_state_->last_get_next_end_time_us);
-  }
-  DCHECK_NE(start_time_us, 0);
-  if (end_time_us >= start_time_us) {
-    const uint64 get_next_duration = end_time_us - start_time_us;
-    metrics::RecordTFDataGetNextDuration(get_next_duration);
-  } else {
-    // Clock went backward (not steady).
-    metrics::RecordTFDataGetNextDuration(0);
-  }
 }
 
 namespace {
@@ -504,8 +491,8 @@ void IteratorHandleOp::Compute(OpKernelContext* context)
                this](IteratorResource** ret) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                 *ret = new IteratorResource(
                     context->env(), output_dtypes_, output_shapes_,
-                    graph_def_version_, std::move(device_mgr),
-                    std::move(flib_def), std::move(pflr), flr);
+                    std::move(device_mgr), std::move(flib_def), std::move(pflr),
+                    flr);
                 return Status::OK();
               }));
 
@@ -577,8 +564,8 @@ Status AnonymousIteratorHandleOp::CreateResource(
     FunctionLibraryRuntime* lib, IteratorResource** resource) {
   std::unique_ptr<DeviceMgr> device_mgr(nullptr);
   *resource = new IteratorResource(ctx->env(), output_dtypes_, output_shapes_,
-                                   graph_def_version_, std::move(device_mgr),
-                                   std::move(flib_def), std::move(pflr), lib);
+                                   std::move(device_mgr), std::move(flib_def),
+                                   std::move(pflr), lib);
   return Status::OK();
 }
 
@@ -749,7 +736,7 @@ class ReduceDatasetOp : public HybridAsyncOpKernel {
 
       std::vector<Tensor> reduce_func_output;
       TF_RETURN_IF_ERROR(instantiated_captured_func->Run(
-          &iter_ctx, std::move(args), &reduce_func_output));
+          &iter_ctx, std::move(args), &reduce_func_output, /*node=*/nullptr));
       if (reduce_func_output.size() != state.size()) {
         return errors::InvalidArgument(
             "The number of components of the initial state and the "
@@ -873,7 +860,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
                 TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                   *ret = new IteratorResource(
                       ctx->env(), output_dtypes_, output_shapes_,
-                      graph_def_version_, nullptr, std::move(flib_def),
+                      /*device_mgr=*/nullptr, std::move(flib_def),
                       std::move(pflr), flr);
                   return Status::OK();
                 }));
@@ -959,6 +946,17 @@ AsyncOpKernel* IteratorGetNextOp::AsAsync() {
   return type_string() == "IteratorGetNextSync" ? nullptr : this;
 }
 
+void RecordElementSize(const std::vector<Tensor> element,
+                       profiler::TraceMe* traceme) {
+  traceme->AppendMetadata([&]() {
+    int64 element_size = 0;
+    for (const auto& component : element) {
+      element_size += component.TotalBytes();
+    }
+    return profiler::TraceMeEncode({{"element_size", element_size}});
+  });
+}
+
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
@@ -981,6 +979,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   }
   TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
   TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
+  RecordElementSize(components, &traceme);
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
@@ -1008,6 +1007,7 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   if (end_of_sequence) {
     return WriteOptionalNoneToOutput(ctx, 0);
   } else {
+    RecordElementSize(components, &traceme);
     for (int i = 0; i < components.size(); ++i) {
       if (components[i].dtype() != output_types_[i]) {
         return errors::InvalidArgument(

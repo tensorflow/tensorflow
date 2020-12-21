@@ -20,8 +20,7 @@ limitations under the License.
 
 namespace mlir {
 
-class BufferAssignmentPlacer;
-class BufferAssignmentTypeConverter;
+class BufferizeTypeConverter;
 class LLVMTypeConverter;
 class MLIRContext;
 class OwningRewritePatternList;
@@ -34,8 +33,13 @@ namespace tf_framework {
 void PopulateTFFrameworkToLLVMConversionPatterns(
     LLVMTypeConverter *converter, OwningRewritePatternList *patterns);
 
+/// Collects a set of patterns to rewrite functions for use with TF framework
+/// and also replace `alloc` and correspondign free operations with .
+void PopulateEmbedTFFrameworkFunctionAndAllocConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList *patterns);
+
 /// Collects a set of patterns to embed TF Framework.
-void PopulateEmbedTFFrameworkConversionPatterns(
+void PopulateEmbedTFFrameworkAssertConversionPatterns(
     MLIRContext *context, OwningRewritePatternList *patterns);
 
 }  // namespace tf_framework
@@ -44,8 +48,8 @@ namespace transforms {
 
 /// Collects a set of patterns that bufferize operations from the standard
 /// dialect.
-void populateStandardBufferizePattern(MLIRContext *context,
-                                      BufferAssignmentTypeConverter *converter,
+void populateExtraStdBufferizePattern(MLIRContext *context,
+                                      BufferizeTypeConverter *converter,
                                       OwningRewritePatternList *patterns);
 }  // namespace transforms
 }  // namespace kernel_gen

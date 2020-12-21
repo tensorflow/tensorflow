@@ -43,13 +43,6 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-// TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
-// to look up tensorflow op name from hlo_module/hlo_op.
-absl::string_view DummySymbolResolver(absl::string_view hlo_module,
-                                      absl::string_view hlo_op) {
-  return absl::string_view();
-}
-
 const absl::string_view kAnnotationDelimiter = "::";
 
 XEvent CreateXEvent(const XEventMetadata& metadata, int64 offset_ps,
@@ -181,7 +174,8 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     event.ForEachStat([&](const XStatVisitor& stat) {
       if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
-      } else if (stat.Type() == StatType::kLevel0) {
+      } else if (stat.Type() == StatType::kLevel0 ||  // old way to carry tf_op
+                 stat.Type() == StatType::kTfOp) {
         tf_op_full_name = stat.StrOrRefValue();
       } else if (stat.Type() == StatType::kHloOp) {
         hlo_op_names =
@@ -271,7 +265,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         if (stat.Type() == StatType::kGroupId) {
           group_id = stat.IntValue();
         } else if (stat.Type() == StatType::kDeviceId) {
-          device_id = stat.IntValue();
+          device_id = stat.IntOrUintValue();
         } else if (stat.Type() == StatType::kCorrelationId) {
           correlation_id = stat.IntValue();
         }
@@ -284,10 +278,7 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
         Timespan& group_span = group_launch_info.timespan;
         Timespan event_span = event.GetTimespan();
         if (group_launch_info.num_launches) {  // Existing group.
-          uint64 begin_ps =
-              std::min(group_span.begin_ps(), event_span.begin_ps());
-          uint64 end_ps = std::max(group_span.end_ps(), event_span.end_ps());
-          group_span = Timespan::FromEndPoints(begin_ps, end_ps);
+          group_span.ExpandToInclude(event_span);
         } else {
           group_span = event_span;
         }
@@ -338,21 +329,17 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
 
 void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    // Derived timelines only generated for device traces.
-    if (IsGpuPlaneName(plane.name())) {
-      DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map,
-                                  &plane, step_info_only);
-    }
-  }
-}
-
-void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
-                              const std::vector<XPlane*>& device_traces,
-                              bool step_info_only) {
+  // TODO(profiler): Once we capture HLO protos for xla/gpu, we should use that
+  // to look up tensorflow op name from hlo_module/hlo_op.
+  auto dummy_symbol_resolver = [](absl::string_view hlo_module,
+                                  absl::string_view hlo_op) {
+    return absl::string_view();
+  };
+  std::vector<XPlane*> device_traces =
+      FindMutablePlanesWithPrefix(space, kGpuPlanePrefix);
   for (XPlane* plane : device_traces) {
-    DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map, plane,
-                                step_info_only);
+    DeriveEventsFromAnnotations(dummy_symbol_resolver, group_metadata_map,
+                                plane, step_info_only);
   }
 }
 

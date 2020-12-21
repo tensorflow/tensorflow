@@ -21,7 +21,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -135,7 +135,9 @@ class MlirHloBuilder : public XlaBuilder {
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
-      bool has_side_effect) override;
+      bool has_side_effect,
+      absl::Span<const std::pair<ShapeIndex, std::pair<int64, ShapeIndex>>>
+          output_operand_aliasing) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,
@@ -169,6 +171,10 @@ class MlirHloBuilder : public XlaBuilder {
                                 const XlaComputation& body,
                                 XlaOp init) override;
 
+  StatusOr<XlaOp> ReducePrecisionInternal(const Shape& shape, XlaOp operand,
+                                          const int exponent_bits,
+                                          const int mantissa_bits) override;
+
   StatusOr<XlaOp> GatherInternal(
       const Shape& shape, XlaOp input, XlaOp start_indices,
       const GatherDimensionNumbers& dimension_numbers,
@@ -179,6 +185,9 @@ class MlirHloBuilder : public XlaBuilder {
       const XlaComputation& update_computation,
       const ScatterDimensionNumbers& dimension_numbers, bool indices_are_sorted,
       bool unique_indices) override;
+
+  StatusOr<XlaOp> SetDimensionSizeInternal(const Shape& shape, XlaOp operand,
+                                           XlaOp val, int64 dimension) override;
 
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
@@ -203,7 +212,8 @@ class MlirHloBuilder : public XlaBuilder {
                                  absl::Span<const XlaOp> operands) override;
 
   StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                          ComparisonDirection direction) override;
+                          ComparisonDirection direction,
+                          Comparison::Type type) override;
 
   XlaOp BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape, XlaOp lhs,
                             XlaOp rhs) override;

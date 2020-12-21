@@ -36,9 +36,10 @@ py_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/datasets",
+        "//tensorflow/python/keras/distribute",
         "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
+        "//tensorflow/python/keras/mixed_precision:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/preprocessing",
@@ -60,7 +61,6 @@ py_library(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:clip_ops",
-        "//tensorflow/python:composite_tensor_utils",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:ctc_ops",
@@ -95,6 +95,9 @@ py_library(
         "//tensorflow/python/distribute:multi_worker_util",
         "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/utils:control_flow_util",
+        "//tensorflow/python/keras/utils:object_identity",
+        "//tensorflow/python/keras/utils:tf_contextlib",
+        "//tensorflow/python/keras/utils:tf_inspect",
     ],
 )
 
@@ -102,7 +105,9 @@ py_library(
     name = "backend_config",
     srcs = ["backend_config.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:util"],
+    deps = [
+        "//tensorflow/python:util",
+    ],
 )
 
 # TODO(scottzhu): Cleanup this target and point all the user to keras/engine.
@@ -126,6 +131,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
+        "//tensorflow/python/keras/layers:advanced_activations",
         "//tensorflow/python/keras/utils:engine_utils",
     ],
 )
@@ -148,7 +154,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":backend",
-        "//tensorflow/python/distribute:distributed_file_utils",
+        "//tensorflow/python/keras/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:worker_training_state",
         "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
@@ -230,6 +236,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":activations",
         ":backend",
         ":losses",
         "//tensorflow/python:array_ops",
@@ -285,6 +292,7 @@ py_library(
 py_library(
     name = "optimizers",
     srcs = [
+        "optimizer_v1.py",
         "optimizers.py",
     ],
     srcs_version = "PY2AND3",
@@ -452,6 +460,7 @@ tf_py_test(
     srcs = ["metrics_functional_test.py"],
     python_version = "PY3",
     deps = [
+        ":combinations",
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
@@ -573,7 +582,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "notsan",  # b/67509773
     ],
     deps = [

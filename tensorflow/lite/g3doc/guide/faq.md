@@ -72,6 +72,14 @@ If Netron cannot open your TensorFlow Lite model, you can try the
 [visualize.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/visualize.py)
 script in our repository.
 
+If you're using TF 2.5 or a later version
+
+```shell
+python -m tensorflow.lite.tools.visualize model.tflite visualized_model.html
+```
+
+Otherwise, you can run this script with Bazel
+
 *   [Clone the TensorFlow repository](https://www.tensorflow.org/install/source)
 *   Run the `visualize.py` script with bazel:
 
@@ -135,11 +143,9 @@ like this:
     to do this. However, increasing threads results in performance variability
     depending on the environment.
 *   *Use Hardware Accelerators.* TensorFlow Lite supports model acceleration for
-    specific hardware using delegates. For example, to use Android’s Neural
-    Networks API, call
-    [`UseNNAPI`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L343)
-    on the interpreter. Or take a look at our
-    [GPU delegate tutorial](../performance/gpu.md).
+    specific hardware using delegates. See our
+    [Delegates](../performance/delegates.md) guide for information on what
+    accelerators are supported and how to use them with your model on-device.
 *   *(Advanced) Profile Model.* The Tensorflow Lite
     [benchmarking tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
     has a built-in profiler that can show per-operator statistics. If you know

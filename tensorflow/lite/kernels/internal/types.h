@@ -438,7 +438,7 @@ int MatchingArraySize(const ArrayType1& array1, int index1,
 inline int MatchingDim(const RuntimeShape& shape1, int index1,
                        const RuntimeShape& shape2, int index2) {
   TFLITE_DCHECK_EQ(shape1.Dims(index1), shape2.Dims(index2));
-  return shape1.Dims(index1);
+  return std::min(shape1.Dims(index1), shape2.Dims(index2));
 }
 
 template <typename... Args>
@@ -1044,7 +1044,9 @@ struct SoftmaxParams {
   int32_t zero_point;
   float scale;
   float* table;
+  // int16 LUT for exp(x), where x uniform distributed between [-10.0 , 0.0]
   int16_t* exp_lut;
+  // int16 LUT for 1 / (1 + x), where x uniform distributed between [0.0 , 1.0]
   int16_t* one_over_one_plus_x_lut;
   uint8_t* uint8_table1;
   uint8_t* uint8_table2;

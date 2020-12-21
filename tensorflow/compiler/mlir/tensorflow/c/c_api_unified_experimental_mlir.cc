@@ -22,13 +22,12 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -51,8 +50,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
@@ -99,6 +100,13 @@ class MlirTensor : public TracingTensorHandle {
       return tensorflow::DT_INVALID;
     }
     return type;
+  }
+
+  tensorflow::Status Shape(
+      tensorflow::PartialTensorShape* shape) const override {
+    // TODO(b/173074167): Implement this and enable tests in
+    // unified_api_test.cc.
+    return Unimplemented("MlirTensor::Shape is not implemented yet.");
   }
 
   Value getValue() { return value_; }
@@ -249,6 +257,7 @@ class MlirFunctionContext : public TracingContext {
     return new MlirAbstractOp(context_.get(), this);
   }
   Status AddParameter(tensorflow::DataType dtype,
+                      const tensorflow::PartialTensorShape& shape,
                       TracingTensorHandle** handle) override;
 
   Status Finalize(OutputList* outputs, AbstractFunction** f) override;
@@ -511,13 +520,14 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
     return Status::OK();
   }
   PassManager pm(func_.getContext());
+  ::tensorflow::applyTensorflowAndCLOptions(pm);
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(CreateBreakUpIslandsPass());
 
   // In case of failure, the `diag_handler` converts MLIR errors emitted to
   // the MLIRContext into a tensorflow::Status.
   StatusScopedDiagnosticHandler diag_handler(func_.getContext());
-  LogicalResult result = pm.run(func_.getParentOfType<ModuleOp>());
+  LogicalResult result = pm.run(func_->getParentOfType<ModuleOp>());
   (void)result;
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
@@ -545,8 +555,11 @@ Operation* MlirFunctionContext::CreateOperationFromState(
   return builder_.createOperation(state);
 }
 
-Status MlirFunctionContext::AddParameter(tensorflow::DataType dtype,
-                                         TracingTensorHandle** handle) {
+Status MlirFunctionContext::AddParameter(
+    tensorflow::DataType dtype, const tensorflow::PartialTensorShape& shape,
+    TracingTensorHandle** handle) {
+  // TODO(b/173073199): Use shape. Enable tests in unified_api_test.cc once
+  // resolved.
   Type type;
   TF_RETURN_IF_ERROR(ConvertDataTypeToTensor(dtype, builder_, &type));
   *handle = new MlirTensor(func_.getBody().front().addArgument(type));
@@ -653,9 +666,8 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
   }
   builder_.create<ReturnOp>(func_.getLoc(), ret_operands);
 
-  auto arg_types = llvm::to_vector<8>(body.getArgumentTypes());
-  auto result_types =
-      llvm::to_vector<8>(body.getTerminator()->getOperandTypes());
+  auto arg_types = body.getArgumentTypes();
+  auto result_types = body.getTerminator()->getOperandTypes();
   func_.setType(FunctionType::get(arg_types, result_types, func_.getContext()));
   *f = new MlirFunction(std::move(context_), std::move(module_), func_);
   return Status::OK();

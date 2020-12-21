@@ -428,7 +428,7 @@ namespace functor {
       const std::array<int, 2>& padding_left,                           \
       const std::array<int, 2>& padding_right,                          \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
-      T padding_value);                                                 \
+      const T& padding_value);                                          \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);
@@ -462,6 +462,8 @@ void DnnPoolingGradOp<T>::Compute(
   if (!context->status().ok()) {
     return;
   }
+
+  TensorFormat transformed_input_data_format = data_format;
 
 #if CUDNN_VERSION < 7300
   /// For now, cudnn does not support NHWC format, so we need to convert it
@@ -516,6 +518,7 @@ void DnnPoolingGradOp<T>::Compute(
       functor::NHWCToNCHW<GPUDevice, T, 4>()(context->eigen_device<Device>(),
                                              tensor_in->tensor<T, 4>(),
                                              transformed_input.tensor<T, 4>());
+      transformed_input_data_format = FORMAT_NCHW;
     }
     if (tensor_out) {
       // For AvgPoolGrad, the original output tensor is not necessary. However,
@@ -577,6 +580,8 @@ void DnnPoolingGradOp<T>::Compute(
   int64 input_pad_left = 0;
   int64 input_pad_right = 0;
 
+  Tensor transformed_and_padded_input_backprop;
+
   if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
                               params.pad_left != params.pad_right)) {
     // Pad the input in the same way we did during the forward pass, so that
@@ -588,7 +593,6 @@ void DnnPoolingGradOp<T>::Compute(
         std::min(params.pad_left, params.pad_right);
 
     Tensor padded_input;
-    Tensor padded_input_backprop;
     const int64 padding_rows_diff =
         std::abs(params.pad_top - params.pad_bottom);
     const int64 padding_cols_diff =
@@ -607,18 +611,18 @@ void DnnPoolingGradOp<T>::Compute(
             << " stride_rows" << params.row_stride;
 
     OP_REQUIRES_OK(
-        context,
-        context->allocate_temp(DataTypeToEnum<T>::value,
-                               ShapeFromFormat(data_format, batch_size,
-                                               new_in_rows, new_in_cols, depth),
-                               &padded_input));
+        context, context->allocate_temp(
+                     DataTypeToEnum<T>::value,
+                     ShapeFromFormat(transformed_input_data_format, batch_size,
+                                     new_in_rows, new_in_cols, depth),
+                     &padded_input));
 
     OP_REQUIRES_OK(
-        context,
-        context->allocate_temp(DataTypeToEnum<T>::value,
-                               ShapeFromFormat(data_format, batch_size,
-                                               new_in_rows, new_in_cols, depth),
-                               &transformed_input_backprop));
+        context, context->allocate_temp(
+                     DataTypeToEnum<T>::value,
+                     ShapeFromFormat(transformed_input_data_format, batch_size,
+                                     new_in_rows, new_in_cols, depth),
+                     &transformed_and_padded_input_backprop));
 
     input_pad_top = params.pad_top - common_padding_rows;
     input_pad_bottom = params.pad_bottom - common_padding_rows;
@@ -644,7 +648,8 @@ void DnnPoolingGradOp<T>::Compute(
             To32Bit(const_transformed_input.tensor<T, 4>()),
             static_cast<int>(input_pad_top), static_cast<int>(input_pad_bottom),
             static_cast<int>(input_pad_left), static_cast<int>(input_pad_right),
-            To32Bit(padded_input.tensor<T, 4>()), data_format));
+            To32Bit(padded_input.tensor<T, 4>()),
+            transformed_input_data_format));
 
     transformed_input = padded_input;
 
@@ -654,6 +659,8 @@ void DnnPoolingGradOp<T>::Compute(
             << " horizontal padding set to: " << horizontal_padding;
     tensor_in_rows = new_in_rows;
     tensor_in_cols = new_in_cols;
+  } else {
+    transformed_and_padded_input_backprop = transformed_input_backprop;
   }
 
   /// Get ready to call cudnn
@@ -690,9 +697,9 @@ void DnnPoolingGradOp<T>::Compute(
   auto output_backprop_data =
       AsDeviceMemory(transformed_output_backprop.template flat<T>().data(),
                      transformed_output_backprop.template flat<T>().size());
-  auto input_backprop_data =
-      AsDeviceMemory(transformed_input_backprop.template flat<T>().data(),
-                     transformed_input_backprop.template flat<T>().size());
+  auto input_backprop_data = AsDeviceMemory(
+      transformed_and_padded_input_backprop.template flat<T>().data(),
+      transformed_and_padded_input_backprop.template flat<T>().size());
 
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
@@ -722,6 +729,20 @@ void DnnPoolingGradOp<T>::Compute(
   OP_REQUIRES(context, status,
               errors::Internal("dnn PoolBackward launch failed"));
 
+  if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
+                              params.pad_left != params.pad_right)) {
+    // Remove the padding that was added to the input shape above.
+    functor::PadInput<GPUDevice, T, int, 4>()(
+        context->eigen_device<GPUDevice>(),
+        To32Bit(const_cast<const Tensor&>(transformed_and_padded_input_backprop)
+                    .tensor<T, 4>()),
+        {{static_cast<int>(-input_pad_top), static_cast<int>(-input_pad_left)}},
+        {{static_cast<int>(-input_pad_bottom),
+          static_cast<int>(-input_pad_right)}},
+        To32Bit(transformed_input_backprop.template tensor<T, 4>()),
+        transformed_input_data_format, T{});
+  }
+
 #if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC.
@@ -732,18 +753,6 @@ void DnnPoolingGradOp<T>::Compute(
         input_backprop->tensor<T, 4>());
   }
 #endif  // CUDNN_VERSION < 7300
-  if (padding == EXPLICIT && (params.pad_top != params.pad_bottom ||
-                              params.pad_left != params.pad_right)) {
-    // Remove the padding that was added to the input shape above.
-    functor::PadInput<GPUDevice, T, int, 4>()(
-        context->eigen_device<GPUDevice>(),
-        To32Bit(const_cast<const Tensor&>(transformed_input_backprop)
-                    .tensor<T, 4>()),
-        {{static_cast<int>(-input_pad_top), static_cast<int>(-input_pad_left)}},
-        {{static_cast<int>(-input_pad_bottom),
-          static_cast<int>(-input_pad_right)}},
-        To32Bit(input_backprop->tensor<T, 4>()), data_format);
-  }
 }
 
 #define DEFINE_DNN_OPS(T)         \

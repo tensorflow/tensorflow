@@ -18,10 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_
 
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 
@@ -301,6 +301,10 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
 // For example, tensor<*xf32>, tensor<?xf32> and tensor<3xf32> are cast
 // compatible.
 bool AreCastCompatible(ArrayRef<Type> types);
+
+// Returns true if corresponding elements of lhs and rhs AreCastCompatible and
+// lhs and rhs are the same length.
+bool ArraysAreCastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
 
 // If `ty` is a tensor type and its element type has subtypes, then returns a
 // new type of same shape but dropped subtypes for the element type.

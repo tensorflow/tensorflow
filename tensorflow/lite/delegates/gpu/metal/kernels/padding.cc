@@ -73,7 +73,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       code +=
           "      int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
           "params.src_size.x + s_x;\n";
-      code += "      value = src_buffer[buffer_index];\n";
+      code += "      value = src_tensor[buffer_index];\n";
     } else {
       code += "      int start_channel = static_cast<int>(gid.z) * 4;\n";
       for (int i = 0; i < 4; ++i) {
@@ -91,7 +91,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
         code +=
             "        int buffer_index = ((s_z / 4) * params.src_size.y + s_y) "
             "* params.src_size.x + s_x;\n";
-        code += "        FLT4 t = src_buffer[buffer_index];\n";
+        code += "        FLT4 t = src_tensor[buffer_index];\n";
         code += "        FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
         code += "        value" + s + " = t_ar[s_z % 4];\n";
         code += "      }\n";
@@ -109,13 +109,13 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       code +=
           "        int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
           "params.src_size.x + s_x;\n";
-      code += "        value = src_buffer[buffer_index];\n";
+      code += "        value = src_tensor[buffer_index];\n";
     } else if (attr.prepended.c % 4 == 0) {
       code += R"(
         int s_z = static_cast<int>(gid.z) - params.padding.z / 4;
         if (s_z >= 0 && s_z < params.src_size.w) {
           int buffer_index = (s_z * params.src_size.y + s_y) * params.src_size.x + s_x;
-          value = src_buffer[buffer_index];
+          value = src_tensor[buffer_index];
         })";
     } else {
       for (int i = 0; i < 4; ++i) {
@@ -129,7 +129,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
             "      int buffer_index = ((s_z / 4) * params.src_size.y + s_y) * "
             "params.src_size.x + "
             "s_x;\n";
-        code += "      FLT4 t = src_buffer[buffer_index];\n";
+        code += "      FLT4 t = src_tensor[buffer_index];\n";
         code += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
         code += "      value" + s + " = t_ar[s_z % 4];\n";
         code += "    }\n";
@@ -143,46 +143,35 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       "params.dst_size.x + "
       "int(gid.x);\n";
   code += "  $2\n";
-  code += "  dst_buffer[linear_index] = value;\n";
+  code += "  dst_tensor[linear_index] = value;\n";
   code += "}\n";
   return code;
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
-                                              ValueId output_id,
-                                              const PadAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetPaddingCode(attr);
+ComputeTaskDescriptor Padding(const OperationDef& definition,
+                              const PadAttributes& attr) {
+  ComputeTaskDescriptor desc(definition);
+  desc.shader_source = GetPaddingCode(attr);
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
-
-  desc->uniform_buffers = {
+  desc.uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          std::vector<int> uniform_params{
              // int4 src_size
-             dimension.w,
-             dimension.h,
-             dimension.c,
-             DivideRoundUp(dimension.c, 4),
+             src_shapes[0].w,
+             src_shapes[0].h,
+             src_shapes[0].c,
+             DivideRoundUp(src_shapes[0].c, 4),
              // int4 dst_size
-             output_dimension.w,
-             output_dimension.h,
-             output_dimension.c,
-             DivideRoundUp(output_dimension.c, 4),
+             dst_shapes[0].w,
+             dst_shapes[0].h,
+             dst_shapes[0].c,
+             DivideRoundUp(dst_shapes[0].c, 4),
              // int4 prepended padding
              attr.prepended.w,
              attr.prepended.h,
@@ -193,19 +182,17 @@ std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
        }},
   };
 
-  desc->resize_function = [input_id,
-                           attr](const std::map<ValueId, BHWC>& buffers) {
+  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
+                                const std::vector<BHWC>& dst_shapes) {
     const uint3 groups_size{16, 16, 1};
-    const auto& src_shape = buffers.find(input_id)->second;
-    BHWC dst_shape = CalculateOutputShape(src_shape, attr);
-    const int dst_layers = DivideRoundUp(dst_shape.c, 4);
-    int groups_x = DivideRoundUp(dst_shape.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_shape.h, groups_size.y);
+    const int dst_layers = DivideRoundUp(dst_shapes[0].c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
     int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

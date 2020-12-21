@@ -19,7 +19,7 @@ limitations under the License.
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher_impl.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,8 +42,8 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(WorkerHeartbeat);
   HANDLER(WorkerUpdate);
   HANDLER(GetDatasetDef);
+  HANDLER(GetSplit);
   HANDLER(GetOrRegisterDataset);
-  HANDLER(CreateJob);
   HANDLER(ReleaseJobClient);
   HANDLER(GetOrCreateJob);
   HANDLER(GetTasks);

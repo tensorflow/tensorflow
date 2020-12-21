@@ -18,46 +18,40 @@ echo on
 @REM Set Environment Variables
 @REM
 IF NOT DEFINED PYTHON_DIRECTORY (
-  SET PYTHON_DIRECTORY=Python36
+  SET PYTHON_DIRECTORY=Python37
 )
 SET PY_EXE=C:\%PYTHON_DIRECTORY%\python.exe
-SET PIP_EXE=C:\%PYTHON_DIRECTORY%\Scripts\pip.exe
 SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 
-@REM TODO(amitpatankar): Make an image with these packages and remove this.
-
-%PIP_EXE% install flatbuffers --upgrade --no-deps
-%PIP_EXE% install setuptools --upgrade
-%PIP_EXE% install future>=0.17.1 --no-deps
-%PIP_EXE% install --ignore-installed --force-reinstall --upgrade tf-estimator-nightly --no-deps
-%PIP_EXE% install tb-nightly --no-deps
-%PIP_EXE% install numpy==1.16.0 --upgrade --no-deps
-%PIP_EXE% install opt_einsum --upgrade
-%PIP_EXE% install pandas --upgrade --no-deps
-%PIP_EXE% install protobuf --upgrade --no-deps
-%PIP_EXE% install keras_preprocessing==1.1.0 --upgrade --no-deps
-%PIP_EXE% install wrapt --upgrade --no-deps
-
-IF "%PYTHON_DIRECTORY%"=="Python37" (
-    %PIP_EXE% install absl-py==0.5.0
-    %PIP_EXE% install colorama==0.3.9
-    %PIP_EXE% install cycler==0.10.0
-    %PIP_EXE% install jedi==0.11.1
-    %PIP_EXE% install oauth2client==4.1.2
-    %PIP_EXE% install portpicker==1.2.0
-    %PIP_EXE% install parso==0.1.1
-    %PIP_EXE% install protobuf==3.8.0
-    %PIP_EXE% install scikit-learn==0.19.2
-    %PIP_EXE% install scipy==1.1.0
-    %PIP_EXE% install termcolor==1.1.0
-)
-
-@REM TODO(amitpatankar): this is just a quick fix so that windows build doesn't
-@REM break with gast upgrade to 0.3.3. Need to figure out the right way to
-@REM handle this case.
-%PIP_EXE% install gast==0.3.3
-%PIP_EXE% install astunparse==1.6.3
-%PIP_EXE% install typing_extensions
+@REM To have reproducible builds, these dependencies should be pinned always.
+@REM Prefer pinning to the same version as in setup.py
+@REM First, upgrade pypi wheels
+%PY_EXE% -m pip install --upgrade setuptools pip wheel
+@REM Now, install the deps, as listed in setup.py
+%PY_EXE% -m pip install "absl-py ~= 0.10"
+%PY_EXE% -m pip install "astunparse ~= 1.6.3"
+%PY_EXE% -m pip install "flatbuffers ~= 1.12.0"
+%PY_EXE% -m pip install "google_pasta ~= 0.2"
+%PY_EXE% -m pip install "h5py ~= 3.1.0"
+%PY_EXE% -m pip install "keras_preprocessing ~= 1.1.2"
+%PY_EXE% -m pip install "numpy ~= 1.19.2"
+%PY_EXE% -m pip install "opt_einsum ~= 3.3.0"
+%PY_EXE% -m pip install "protobuf >= 3.9.2"
+%PY_EXE% -m pip install "six ~= 1.15.0"
+%PY_EXE% -m pip install "termcolor ~= 1.1.0"
+%PY_EXE% -m pip install "typing_extensions ~= 3.7.4"
+%PY_EXE% -m pip install "wheel ~= 0.35"
+%PY_EXE% -m pip install "wrapt ~= 1.12.1"
+@REM We need to pin gast dependency exactly
+%PY_EXE% -m pip install "gast == 0.3.3"
+@REM Finally, install tensorboard and estimator
+@REM Note that here we want the latest version that matches (b/156523241)
+%PY_EXE% -m pip install --upgrade --force-reinstall "tb-nightly ~= 2.4.0.a"
+%PY_EXE% -m pip install --upgrade --force-reinstall "tensorflow_estimator ~= 2.3.0"
+@REM Test dependencies
+%PY_EXE% -m pip install "grpcio ~= 1.32.0"
+%PY_EXE% -m pip install "portpicker ~= 1.3.1"
+%PY_EXE% -m pip install "scipy ~= 1.5.2"
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (

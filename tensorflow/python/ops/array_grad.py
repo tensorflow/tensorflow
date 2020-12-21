@@ -568,15 +568,9 @@ def _IndexedSlicesToTensorNoWarning(indexed_slices):
 def _GatherGrad(op, grad):
   """Gradient for Gather op."""
   # params can be large, so colocate the shape calculation with it.
-  #
-  # params can be very large for sparse model, array_ops.shape raises
-  # exception on the Windows platform when any dimension is larger than
-  # int32. params_shape is not used in optimizer apply_sparse gradients,
-  # so it's fine to convert it back to int32 regardless of truncation.
   params = op.inputs[0]
   with ops.colocate_with(params):
-    params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.cast(params_shape, dtypes.int32)
+    params_shape = array_ops.shape(params)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
@@ -665,7 +659,7 @@ def _GatherV2Grad(op, grad):
   # For axis 0 gathers, build an appropriately shaped IndexedSlices.
   if axis_static == 0:
     if context.executing_eagerly():
-      with ops.device("/cpu:0"):
+      with ops.device(indices_size.device):
         params_tail_shape = array_ops.identity(params_shape)[1:]
     else:
       params_tail_shape = params_shape[1:]
@@ -1138,6 +1132,37 @@ def _TensorScatterAddGrad(op, grad):
   updates_grad = array_ops.gather_nd(grad, indices)
   tensor_grad = array_ops.identity(grad)
   return [tensor_grad, None, updates_grad]
+
+
+def _TensorScatterMinOrMaxGrad(op, grad):
+  """Gradient for TensorScatterMin and TensorScatterMax."""
+  indices = op.inputs[1]
+  x = op.inputs[0]
+  y = op.inputs[2]
+  output = op.outputs[0]
+  x_indicators = math_ops.cast(math_ops.equal(x, output), grad.dtype)
+  y_output = array_ops.gather_nd(output, indices)
+  y_indicators = math_ops.cast(math_ops.equal(y, y_output), grad.dtype)
+  ys_indicators = array_ops.scatter_nd(indices, y_indicators,
+                                       array_ops.shape(x))
+  indicators = x_indicators + ys_indicators  # All elements are >= 1.
+  # If there are multiple minimum or maximum elements then the gradient will be
+  # divided between them.
+  x_grad = grad * x_indicators / indicators
+  y_grad = array_ops.gather_nd(grad / indicators, indices) * y_indicators
+  return [x_grad, None, y_grad]
+
+
+@ops.RegisterGradient("TensorScatterMax")
+def _TensorScatterMaxGrad(op, grad):
+  """Gradient for TensorScatterMax op."""
+  return _TensorScatterMinOrMaxGrad(op, grad)
+
+
+@ops.RegisterGradient("TensorScatterMin")
+def _TensorScatterMinGrad(op, grad):
+  """Gradient for TensorScatterMin op."""
+  return _TensorScatterMinOrMaxGrad(op, grad)
 
 
 @ops.RegisterGradient("TensorScatterSub")

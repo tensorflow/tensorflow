@@ -5,11 +5,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "testdata",
-    srcs = [
-        "testdata/cat_q20.jpg",
-        "testdata/cat_q72.jpg",
-        "testdata/cat_q95.jpg",
-    ],
+    actual = "//tensorflow/core/lib/psnr/testdata:psnr_testdata",
 )

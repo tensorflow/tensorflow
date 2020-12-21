@@ -131,8 +131,8 @@ class GraphPartitionHelper {
 // Specialized partitioner for graphs that possibly contain fp16 tensors.
 //
 // From nodes that accept fp16 inputs, this delegates the following:
-// 1. All nodes (except DEQUANTIZE) that are supported with fp16 inputs by the
-// delegate (in the TFLite graph, these nodes take in dequantized FP32
+// 1. All nodes (except DEQUANTIZE) that are supported with constant fp16 inputs
+// by the delegate (in the TFLite graph, these nodes take in dequantized FP32
 // outputs).
 // 2. All fp16 DEQUANTIZE nodes that have *all* their consumers in the *first*
 // delegated partition. This is because TFLite's partitioning algorithm
@@ -168,11 +168,12 @@ class FP16GraphPartitionHelper : public GraphPartitionHelper {
 
   // ('dequantize' here refers to fp16 DEQUANTIZE)
   // Mapping of dequantize nodes' output tensor-id to its node id.
-  std::unordered_map<int, int> dequant_nodes_;
+  // TODO(b/156707497): Use absl hash_maps here.
+  std::unordered_map<int, int> constant_dequant_nodes_;
   // Mapping of DEQUANTIZE node's output (fp32) to its input (fp16).
-  std::unordered_map<int, int> dequant_map_;
+  std::unordered_map<int, int> constant_dequant_map_;
   // mapping of DEQUANTIZE output tensor-id to its number of consumers.
-  std::unordered_map<int, int> dequant_consumers_;
+  std::unordered_map<int, int> constant_dequant_consumers_;
 };
 
 }  // namespace delegates

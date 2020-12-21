@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
@@ -286,7 +287,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                                                default_worker_name));
     worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
         config, worker_env_.device_mgr, std::move(dev_resolver),
-        std::move(param_resolver), worker_cache, default_worker_name));
+        std::move(param_resolver), MaybeCreateNcclCommunicator(), worker_cache,
+        default_worker_name));
   }
 
   // Set up worker environment.
@@ -454,8 +456,8 @@ Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
           dev_resolver.get(), worker_cache, default_worker_name));
   worker_env_.collective_executor_mgr.reset(new RpcCollectiveExecutorMgr(
       server_def_.default_session_config(), worker_env_.device_mgr,
-      std::move(dev_resolver), std::move(param_resolver), worker_cache,
-      default_worker_name));
+      std::move(dev_resolver), std::move(param_resolver),
+      MaybeCreateNcclCommunicator(), worker_cache, default_worker_name));
 
   master_env_.worker_cache = worker_cache;
   master_env_.collective_executor_mgr =

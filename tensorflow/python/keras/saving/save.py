@@ -18,17 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import six
 
 from tensorflow.python import tf2
 from tensorflow.python.keras.saving import hdf5_format
+from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
+from tensorflow.python.keras.saving.saved_model import load_context
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.saved_model import load_context
 from tensorflow.python.saved_model import loader_impl
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
@@ -38,12 +39,6 @@ except ImportError:
   h5py = None
 # pylint: enable=g-import-not-at-top
 
-_HDF5_EXTENSIONS = ['.h5', '.hdf5', '.keras']
-
-
-# TODO(kathywu): Remove this when Keras SavedModel is not experimental.
-_KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = True
-
 
 @keras_export('keras.models.save_model')
 def save_model(model,
@@ -52,8 +47,13 @@ def save_model(model,
                include_optimizer=True,
                save_format=None,
                signatures=None,
-               options=None):
+               options=None,
+               save_traces=True):
+  # pylint: disable=line-too-long
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
+
+  See the [Serialization and Saving guide](https://keras.io/guides/serialization_and_saving/)
+  for details.
 
   Usage:
 
@@ -65,28 +65,38 @@ def save_model(model,
   >>> x = tf.random.uniform((10, 3))
   >>> assert np.allclose(model.predict(x), loaded_model.predict(x))
 
-  The saved model contains:
+  The SavedModel and HDF5 file contains:
 
-      - the model's configuration (topology)
-      - the model's weights
-      - the model's optimizer's state (if any)
+  - the model's configuration (topology)
+  - the model's weights
+  - the model's optimizer's state (if any)
 
-  Thus the saved model can be reinstantiated in
-  the exact same state, without any of the code
-  used for model definition or training.
+  Thus models can be reinstantiated in the exact same state, without any of the
+  code used for model definition or training.
 
   Note that the model weights may have different scoped names after being
   loaded. Scoped names include the model/layer names, such as
   `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
   access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
-  _SavedModel serialization_
+  __SavedModel serialization format__
 
-  The SavedModel serialization path uses `tf.saved_model.save` to save the model
-  and all trackable objects attached to the model (e.g. layers and variables).
-  `@tf.function`-decorated methods are also saved. Additional trackable objects
-  and functions are added to the SavedModel to allow the model to be
-  loaded back as a Keras Model object.
+  Keras SavedModel uses `tf.saved_model.save` to save the model and all
+  trackable objects attached to the model (e.g. layers and variables). The model
+  config, weights, and optimizer are saved in the SavedModel. Additionally, for
+  every Keras layer attached to the model, the SavedModel stores:
+
+    * the config and metadata -- e.g. name, dtype, trainable status
+    * traced call and loss functions, which are stored as TensorFlow subgraphs.
+
+  The traced functions allow the SavedModel format to save and load custom
+  layers without the original class definition.
+
+  You can choose to not save the traced functions by disabling the `save_traces`
+  option. This will decrease the time it takes to save the model and the
+  amount of disk space occupied by the output SavedModel. If you enable this
+  option, then you _must_ provide all custom class definitions when loading
+  the model. See the `custom_objects` argument in `tf.keras.models.load_model`.
 
   Arguments:
       model: Keras model instance to be saved.
@@ -102,12 +112,19 @@ def save_model(model,
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
-      options: Optional `tf.saved_model.SaveOptions` object that specifies
-        options for saving to SavedModel.
+      options: (only applies to SavedModel format) `tf.saved_model.SaveOptions`
+        object that specifies options for saving to SavedModel.
+      save_traces: (only applies to SavedModel format) When enabled, the
+        SavedModel will store the function traces for each layer. This
+        can be disabled, so that only the configs of each layer are stored.
+        Defaults to `True`. Disabling this will decrease serialization time and
+        reduce file size, but it requires that all custom layers/models
+        implement a `get_config()` method.
 
   Raises:
       ImportError: If save format is hdf5, and h5py is not available.
   """
+  # pylint: enable=line-too-long
   from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
 
   default_format = 'tf' if tf2.enabled() else 'h5'
@@ -117,7 +134,7 @@ def save_model(model,
 
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
-      os.path.splitext(filepath)[1] in _HDF5_EXTENSIONS):
+      saving_utils.is_hdf5_filepath(filepath)):
     # TODO(b/130258301): add utility method for detecting model type.
     if (not model._is_graph_network and  # pylint:disable=protected-access
         not isinstance(model, sequential.Sequential)):
@@ -132,7 +149,7 @@ def save_model(model,
         model, filepath, overwrite, include_optimizer)
   else:
     saved_model_save.save(model, filepath, overwrite, include_optimizer,
-                          signatures, options)
+                          signatures, options, save_traces)
 
 
 @keras_export('keras.models.load_model')
@@ -192,3 +209,7 @@ def load_model(filepath, custom_objects=None, compile=True, options=None):  # py
   raise IOError(
       'Unable to load model. Filepath is not an hdf5 file (or h5py is not '
       'available) or SavedModel.')
+
+# Inject the load_model function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_load_model_function(load_model)
