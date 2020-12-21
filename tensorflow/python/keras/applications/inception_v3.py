@@ -67,7 +67,7 @@ def InceptionV3(
   For InceptionV3, call `tf.keras.applications.inception_v3.preprocess_input`
   on your inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: Boolean, whether to include the fully-connected
       layer at the top, as the last layer of the network. Default to `True`.
     weights: One of `None` (random initialization),
@@ -369,7 +369,7 @@ def conv2d_bn(x,
               name=None):
   """Utility function to apply conv + BN.
 
-  Arguments:
+  Args:
     x: input tensor.
     filters: filters in `Conv2D`.
     num_row: height of the convolution kernel.

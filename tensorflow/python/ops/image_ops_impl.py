@@ -4033,7 +4033,7 @@ def psnr(a, b, max_val, name=None):
       # psnr1 and psnr2 both have type tf.float32 and are almost equal.
   ```
 
-  Arguments:
+  Args:
     a: First set of images.
     b: Second set of images.
     max_val: The dynamic range of the images (i.e., the difference between the
@@ -4077,7 +4077,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
   For SSIM measure with unbiased covariance estimators, pass as `compensation`
   argument (1 - \sum_i w_i ^ 2).
 
-  Arguments:
+  Args:
     x: First set of images.
     y: Second set of images.
     reducer: Function that computes 'local' averages from the set of images. For
@@ -4334,7 +4334,7 @@ def ssim_multiscale(img1,
   structural similarity for image quality assessment." Signals, Systems and
   Computers, 2004.
 
-  Arguments:
+  Args:
     img1: First image batch.
     img2: Second image batch. Must have the same rank as img1.
     max_val: The dynamic range of the images (i.e., the difference between the
@@ -4482,7 +4482,7 @@ def image_gradients(image):
       [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
     ```
 
-  Arguments:
+  Args:
     image: Tensor with shape [batch_size, h, w, d].
 
   Returns:
@@ -4545,7 +4545,7 @@ def sobel_edges(image):
   Image.fromarray(sobel_x[..., 0] / 4 + 0.5).show()
   ```
 
-  Arguments:
+  Args:
     image: Image tensor with shape [batch_size, h, w, d] and type float32 or
       float64.  The image(s) must be 2x2 or larger.
 

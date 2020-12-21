@@ -617,7 +617,7 @@ class LecunNormal(VarianceScaling):
   >>> initializer = tf.keras.initializers.LecunNormal()
   >>> layer = tf.keras.layers.Dense(3, kernel_initializer=initializer)
 
-  Arguments:
+  Args:
     seed: A Python integer. Used to seed the random generator.
 
   References:
@@ -661,7 +661,7 @@ class LecunUniform(VarianceScaling):
   >>> initializer = tf.keras.initializers.LecunUniform()
   >>> layer = tf.keras.layers.Dense(3, kernel_initializer=initializer)
 
-  Arguments:
+  Args:
     seed: A Python integer. An initializer created with a given seed will
       always produce the same random tensor for a given shape and dtype.
 
@@ -704,7 +704,7 @@ class HeNormal(VarianceScaling):
   >>> initializer = tf.keras.initializers.HeNormal()
   >>> layer = tf.keras.layers.Dense(3, kernel_initializer=initializer)
 
-  Arguments:
+  Args:
     seed: A Python integer. An initializer created with a given seed will
       always produce the same random tensor for a given shape and dtype.
 
@@ -744,7 +744,7 @@ class HeUniform(VarianceScaling):
   >>> initializer = tf.keras.initializers.HeUniform()
   >>> layer = tf.keras.layers.Dense(3, kernel_initializer=initializer)
 
-  Arguments:
+  Args:
     seed: A Python integer. An initializer created with a given seed will
       always produce the same random tensor for a given shape and dtype.
 

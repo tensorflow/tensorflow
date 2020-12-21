@@ -738,7 +738,7 @@ class OptimizerV2(trackable.Trackable):
 
     Should be used only in legacy v1 graph mode.
 
-    Arguments:
+    Args:
       loss: Loss tensor.
       params: List of variables.
 
@@ -1037,7 +1037,7 @@ class OptimizerV2(trackable.Trackable):
     capable of instantiating the same optimizer from the config
     dictionary.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
         custom_objects: A Python dictionary mapping names to additional Python
           objects used to create this optimizer, such as a function used for a
@@ -1131,7 +1131,7 @@ class OptimizerV2(trackable.Trackable):
     >>> opt.iterations
     <tf.Variable 'RMSprop/iter:0' shape=() dtype=int64, numpy=10>
 
-    Arguments:
+    Args:
         weights: weight values as a list of numpy arrays.
     """
     params = self.weights

@@ -44,7 +44,7 @@ def model_from_config(config, custom_objects=None):
   tf.keras.Sequential().from_config(model.get_config())
   ```
 
-  Arguments:
+  Args:
       config: Configuration dictionary.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -80,7 +80,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
   ... except ImportError:
   ...   pass
 
-  Arguments:
+  Args:
       yaml_string: YAML string or open file encoding a model configuration.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -117,7 +117,7 @@ def model_from_json(json_string, custom_objects=None):
   >>> config = model.to_json()
   >>> loaded_model = tf.keras.models.model_from_json(config)
 
-  Arguments:
+  Args:
       json_string: JSON string encoding a model configuration.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be

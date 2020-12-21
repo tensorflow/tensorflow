@@ -371,7 +371,7 @@ def map_subgraph(init_tensor, sources, disallowed_placeholders, visited_ops,
 
   Note: This function mutates visited_ops and op_outputs.
 
-  Arguments:
+  Args:
     init_tensor:  A Tensor or Operation where the subgraph terminates.
     sources:  A set of Tensors where subgraph extraction should stop.
     disallowed_placeholders: An optional set of ops which may not appear in the
