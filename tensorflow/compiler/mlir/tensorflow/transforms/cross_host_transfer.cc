@@ -128,13 +128,13 @@ void CrossHostTransferPass::runOnFunction() {
       std::string key = GetNextKey();
       auto send_op =
           builder.create<tf_device::SendOp>(op->getLoc(), arg, key, dst_host);
-      send_op.setAttr(kOpDeviceAttr,
-                      builder.getStringAttr(src_host + kCPUDevice));
+      send_op->setAttr(kOpDeviceAttr,
+                       builder.getStringAttr(src_host + kCPUDevice));
 
       auto receive_op = builder.create<tf_device::ReceiveOp>(
           op->getLoc(), arg.getType(), key, src_host);
-      receive_op.setAttr(kOpDeviceAttr,
-                         builder.getStringAttr(dst_host + kCPUDevice));
+      receive_op->setAttr(kOpDeviceAttr,
+                          builder.getStringAttr(dst_host + kCPUDevice));
 
       transferred_value_by_host[dst_host] = receive_op.getResult();
       op->replaceUsesOfWith(arg, receive_op.getResult());

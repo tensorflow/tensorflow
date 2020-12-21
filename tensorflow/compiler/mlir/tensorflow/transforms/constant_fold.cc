@@ -105,6 +105,10 @@ LogicalResult ConstantFoldFallbackHook(
     // The TFE_Context is created without an accompanying delete due to current
     // lifetime. This does not result in memory leaks reported (see totw/110).
     TFE_ContextOptions* opts = TFE_NewContextOptions();
+    // Input tensors are placed on the host CPU so use the explicit device
+    // policy to fail if no CPU kernels are available for the op.
+    TFE_ContextOptionsSetDevicePlacementPolicy(opts,
+                                               TFE_DEVICE_PLACEMENT_EXPLICIT);
     auto ctx = TFE_NewContext(opts, status);
     TFE_DeleteContextOptions(opts);
     TF_DeleteStatus(status);

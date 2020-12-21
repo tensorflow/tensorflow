@@ -129,6 +129,9 @@ class RecursiveCompilabilityChecker {
     // Require the function to be always compilable, regardless whether some
     // control flow branches might be dead for a given input.
     bool require_always_compilable = false;
+
+    // Whether string constants are compilable.
+    bool allow_string_consts = true;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,

@@ -1643,7 +1643,8 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     self._testBrightness(x_np, y_np, delta=-10. / 255.)
 
 
-class PerImageWhiteningTest(test_util.TensorFlowTestCase):
+class PerImageWhiteningTest(test_util.TensorFlowTestCase,
+                            parameterized.TestCase):
 
   def _NumpyPerImageWhitening(self, x):
     num_pixels = np.prod(x.shape)
@@ -1656,13 +1657,19 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     y /= stddev
     return y
 
-  def testBasic(self):
+  @parameterized.named_parameters([("_int8", np.int8), ("_int16", np.int16),
+                                   ("_int32", np.int32), ("_int64", np.int64),
+                                   ("_uint8", np.uint8), ("_uint16", np.uint16),
+                                   ("_uint32", np.uint32),
+                                   ("_uint64", np.uint64),
+                                   ("_float32", np.float32)])
+  def testBasic(self, data_type):
     x_shape = [13, 9, 3]
-    x_np = np.arange(0, np.prod(x_shape), dtype=np.float32).reshape(x_shape)
+    x_np = np.arange(0, np.prod(x_shape), dtype=data_type).reshape(x_shape)
     y_np = self._NumpyPerImageWhitening(x_np)
 
     with self.cached_session(use_gpu=True):
-      x = constant_op.constant(x_np, shape=x_shape)
+      x = constant_op.constant(x_np, dtype=data_type, shape=x_shape)
       y = image_ops.per_image_standardization(x)
       y_tf = self.evaluate(y)
       self.assertAllClose(y_tf, y_np, atol=1e-4)
@@ -1684,17 +1691,6 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       whiten_tf = self.evaluate(whiten)
       for w_tf, w_np in zip(whiten_tf, whiten_np):
         self.assertAllClose(w_tf, w_np, atol=1e-4)
-
-  def testPreservesDtype(self):
-    imgs_npu8 = np.random.uniform(0., 255., [2, 5, 5, 3]).astype(np.uint8)
-    imgs_tfu8 = constant_op.constant(imgs_npu8)
-    whiten_tfu8 = image_ops.per_image_standardization(imgs_tfu8)
-    self.assertEqual(whiten_tfu8.dtype, dtypes.uint8)
-
-    imgs_npf16 = np.random.uniform(0., 255., [2, 5, 5, 3]).astype(np.float16)
-    imgs_tff16 = constant_op.constant(imgs_npf16)
-    whiten_tff16 = image_ops.per_image_standardization(imgs_tff16)
-    self.assertEqual(whiten_tff16.dtype, dtypes.float16)
 
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
