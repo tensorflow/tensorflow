@@ -354,6 +354,25 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "perception_ops_utils",
+    srcs = [
+        "utils/perception_ops_utils.cc",
+    ],
+    hdrs = [
+        "utils/perception_ops_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/lite/c:common",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "stateful_ops_utils",
     srcs = [
         "utils/stateful_ops_utils.cc",
@@ -382,6 +401,23 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "perception_ops_utils_test",
+    size = "small",
+    srcs = ["utils/perception_ops_utils_test.cc"],
+    deps = [
+        ":perception_ops_utils",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -414,6 +450,7 @@ cc_library(
         ":constant_utils",
         ":lstm_utils",
         ":nms_utils",
+        ":perception_ops_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tftext_utils",
