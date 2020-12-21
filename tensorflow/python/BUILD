@@ -1591,6 +1591,7 @@ py_library(
     deps = [
         ":platform",
         "//tensorflow/python/util",
+        # TODO(mdan): Remove this once the transitive dependency is fixed.
         "//tensorflow/python/util:tf_stack",
     ],
 )
