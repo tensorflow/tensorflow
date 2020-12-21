@@ -55,17 +55,31 @@ class GpuExecutable : public Executable {
     int allocation_index = -1;
   };
 
+  struct OutputInfo {
+    // Output is passed-through from a parameter.
+    bool passthrough;
+
+    // Corresponding allocation index.
+    int allocation_index;
+  };
+
+  struct Params {
+    std::string asm_text;
+    std::vector<uint8> binary;
+    GpuVersion gpu_version;
+    std::unique_ptr<const ThunkSchedule> thunk_schedule;
+    std::vector<ConstantInfo> constants;
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
+    std::unique_ptr<HloModule> hlo_module;
+    std::unique_ptr<const BufferAssignment> assignment;
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
+  };
+
   // We need to share ownership of hlo_module and assignment with profiler to
   // safely keep a reference to these objects during tracing period, thus they
   // are passed as shared pointers.
-  GpuExecutable(const string& text, const std::vector<uint8>& binary,
-                GpuVersion gpu_version,
-                std::unique_ptr<const ThunkSchedule> thunk_schedule,
-                std::shared_ptr<HloModule> hlo_module,
-                std::shared_ptr<const BufferAssignment> assignment,
-                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-                std::vector<ConstantInfo> constants);
+  explicit GpuExecutable(Params params);
   ~GpuExecutable() override;
 
   int64 SizeOfGeneratedCodeInBytes() const override;
@@ -108,10 +122,6 @@ class GpuExecutable : public Executable {
                        const BufferAllocations& buffer_allocations,
                        bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
-
-  // Returns the value set of the root instruction of the entry
-  // computation. Uses dataflow analysis from buffer assignment.
-  const InstructionValueSet& GetRootValueSet() const;
 
   using BufferAllocToDeviceMemoryMap =
       absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
@@ -177,9 +187,13 @@ class GpuExecutable : public Executable {
       module_globals_ TF_GUARDED_BY(module_handle_mutex_);
 
   std::vector<ConstantInfo> constants_;
+  const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };
+
+StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
+GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment);
 
 }  // namespace gpu
 }  // namespace xla
