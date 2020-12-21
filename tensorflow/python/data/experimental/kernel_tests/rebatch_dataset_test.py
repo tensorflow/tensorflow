@@ -437,7 +437,7 @@ class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testCanHandleUnknownDims(self):
-    dataset = dataset_ops.Dataset.range(1001)
+    dataset = dataset_ops.Dataset.range(1000)
     dataset = dataset.batch(10, drop_remainder=False)
     dataset = dataset.batch(10, drop_remainder=False)
     self.assertEqual([[None, None]], _flat_shapes(dataset))
