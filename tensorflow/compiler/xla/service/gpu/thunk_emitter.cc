@@ -219,8 +219,8 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     CHECK(feature_index->IsConstant());
     int64 feature_index_value = feature_index->literal().Get<int64>({});
 
-    CHECK_EQ(custom_call->shape().tuple_shapes_size(), 3);
-    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape().tuple_shapes(0),
+    CHECK(custom_call->shape().IsArray());
+    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape(),
                                            custom_call->operand(0)->shape()));
     CheckBatchNormInputOutputPrimitivetypeAreValid(custom_call);
     CudnnBatchNormConfig config = GetCudnnBatchNormConfig(

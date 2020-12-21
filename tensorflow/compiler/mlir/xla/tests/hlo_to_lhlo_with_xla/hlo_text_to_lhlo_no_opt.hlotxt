@@ -335,3 +335,68 @@ ENTRY main {
   %side = f16[32]{0} parameter(3)
   ROOT %custom-call.2 = (f16[1,32,9,9]{1,3,2,0}, u8[0]{0}) custom-call(f16[1,17,9,9]{1,3,2,0} %input, f16[3,3,17,32]{2,1,0,3} %filter, f16[32]{0} %bias, f16[32]{0} %side), window={size=3x3 pad=1_1x1_1}, dim_labels=bf01_01io->bf01, custom_call_target="__cudnn$convBiasActivationForward", backend_config="{\"algorithm\":\"0\",\"tensor_ops_enabled\":false,\"conv_result_scale\":1,\"activation_mode\":\"2\",\"side_input_scale\":1}"
 }
+
+// -----
+
+HloModule BatchNormForwardTraining
+
+// CHECK: func @main
+// CHECK: "lmhlo_gpu.batch_norm_training"
+// CHECK-SAME: epsilon = 1.000000e-03 : f32
+// CHECK-SAME: feature_index = 3 : i64
+// CHECK-SAME: (memref<1x1x10x1xf32>, memref<1xf32>, memref<1xf32>, memref<1x1x10x1xf32>, memref<1xf32>, memref<1xf32>) -> ()
+
+ENTRY main {
+  %input = f32[1,1,10,1]{3,2,1,0} parameter(0)
+  %scale = f32[1]{0} parameter(1)
+  %offset = f32[1]{0} parameter(2)
+  %constant = f32[] constant(0.001)
+  %constant_1 = s64[] constant(3)
+  %custom-call = (f32[1,1,10,1]{3,2,1,0}, f32[1]{0}, f32[1]{0})
+                 custom-call(f32[1,1,10,1]{3,2,1,0} %input, f32[1]{0} %scale, f32[1]{0} %offset, f32[] %constant, s64[] %constant_1),
+                 custom_call_target="__cudnn$batchNormalizationForwardTraining"
+}
+
+// -----
+
+HloModule BatchNormBackward
+
+// CHECK: func @main
+// CHECK: "lmhlo_gpu.batch_norm_grad"
+// CHECK-SAME: epsilon = 1.000000e-03 : f32
+// CHECK-SAME: feature_index = 2 : i64
+// CHECK-SAME: (memref<2x2x2x1xf16>, memref<2xf32>, memref<2xf32>, memref<2xf32>, memref<2x2x2x1xf16>, memref<2x2x2x1xf16>, memref<2xf32>, memref<2xf32>)
+ENTRY main {
+  %input = f16[2,2,2,1]{3,2,1,0} parameter(0)
+  %scale = f32[2]{0} parameter(1)
+  %mean = f32[2]{0} parameter(2)
+  %stddev = f32[2]{0} parameter(3)
+  %grad = f16[2,2,2,1]{3,2,1,0} parameter(4)
+  %constant = f32[] constant(0.001)
+  %constant_2 = s64[] constant(2)
+  ROOT %custom-call = (f16[2,2,2,1]{3,2,1,0}, f32[2]{0}, f32[2]{0})
+                      custom-call(f16[2,2,2,1]{3,2,1,0} %input, f32[2]{0} %scale, f32[2]{0} %mean, f32[2]{0} %stddev, f16[2,2,2,1]{3,2,1,0} %grad, f32[] %constant, s64[] %constant_2),
+                      custom_call_target="__cudnn$batchNormalizationBackward"
+}
+
+// -----
+
+HloModule BatchNormForwardInference
+
+// CHECK: func @main
+// CHECK: lmhlo_gpu.batch_norm_inference"
+// CHECK-SAME: epsilon = 1.000000e-03 : f32
+// CHECK-SAME: feature_index = 0 : i64
+// CHECK-SAME: (memref<2x2x2x2xf32>, memref<2xf32>, memref<2xf32>, memref<2xf32>, memref<2xf32>, memref<2x2x2x2xf32>) -> ()
+ENTRY main {
+  %input = f32[2,2,2,2]{3,2,1,0} parameter(0)
+  %offset = f32[2]{0} parameter(1)
+  %scale = f32[2]{0} parameter(2)
+  %mean = f32[2]{0} parameter(3)
+  %variance = f32[2]{0} parameter(4)
+  %constant = f32[] constant(0.001)
+  %constant_1 = s64[] constant(0)
+  ROOT %custom-call = f32[2,2,2,2]{3,2,1,0}
+                      custom-call(f32[2,2,2,2]{3,2,1,0} %input, f32[2]{0} %offset, f32[2]{0} %scale, f32[2]{0} %mean, f32[2]{0} %variance, f32[] %constant, s64[] %constant_1),
+                      custom_call_target="__cudnn$batchNormalizationForwardInference"
+}

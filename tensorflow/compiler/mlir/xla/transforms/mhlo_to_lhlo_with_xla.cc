@@ -198,11 +198,16 @@ class XlaHloToLhloPass
 
 }  // namespace
 
+// Creates MLIR operands corresponding to operands and results of the XLA HLO
+// instruction. If `num_operands` is not -1, then only the first `num_operands`
+// operands of the HLO instruction will be considered.
 Status LhloDialectEmitter::CreateOperands(
     HloInstruction* instr, llvm::SmallVectorImpl<Value>& operands,
-    size_t& num_arguments, size_t& num_results) {
-  for (const HloInstruction* operand : instr->operands()) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(operand, &operands));
+    size_t& num_arguments, size_t& num_results,
+    absl::optional<xla::int64> num_operands) {
+  for (xla::int64 i = 0; i < num_operands.value_or(instr->operand_count());
+       i++) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(i), &operands));
   }
   num_arguments = operands.size();
   TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands));
@@ -211,17 +216,17 @@ Status LhloDialectEmitter::CreateOperands(
 }
 
 template <typename OpType>
-StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(HloInstruction* instr,
-                                                          size_t& num_arguments,
-                                                          size_t& num_results) {
+StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
+    HloInstruction* instr, size_t& num_arguments, size_t& num_results,
+    absl::optional<xla::int64> num_operands) {
   Location loc = getLocation(instr);
   std::pair<Identifier, Attribute> attrs[] = {
       {Identifier::get("name", builder_.getContext()),
        builder_.getStringAttr(instr->name())},
   };
   llvm::SmallVector<Value, 4> operands;
-  TF_RETURN_IF_ERROR(
-      CreateOperands(instr, operands, num_arguments, num_results));
+  TF_RETURN_IF_ERROR(CreateOperands(instr, operands, num_arguments, num_results,
+                                    num_operands));
   return builder_.create<OpType>(loc, llvm::None, operands, attrs);
 }
 
@@ -562,6 +567,10 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitCustomCallOp(
     return EmitDnnConvolution(custom_call_instr);
   }
 
+  if (xla::gpu::IsCustomCallToDnnBatchNorm(*instr)) {
+    return EmitDnnBatchNorm(custom_call_instr);
+  }
+
   size_t num_arguments, num_results;
   TF_ASSIGN_OR_RETURN(auto custom_call,
                       CreateOpWithoutAttrs<lmhlo::CustomCallOp>(
@@ -771,6 +780,52 @@ StatusOr<Operation*> LhloDialectEmitter::EmitDnnConvolution(
       return set_common_conv_attributes(cnn_fused_side_input);
     }
   }
+}
+
+StatusOr<Operation*> LhloDialectEmitter::EmitDnnBatchNorm(
+    HloCustomCallInstruction* custom_call) {
+  const xla::int64 num_operands = custom_call->operand_count();
+  auto set_batchnorm_attributes = [&](auto op) -> StatusOr<Operation*> {
+    // The last 2 operands of a custom call for batch norm are the epsilon and
+    // feature_index.
+    const HloInstruction* epsilon = custom_call->operand(num_operands - 2);
+    TF_RET_CHECK(epsilon->IsConstant());
+    float epsilon_value = epsilon->literal().Get<float>({});
+
+    const HloInstruction* feature_index =
+        custom_call->operand(num_operands - 1);
+    TF_RET_CHECK(feature_index->IsConstant());
+    xla::int64 feature_index_value =
+        feature_index->literal().Get<xla::int64>({});
+
+    op.epsilonAttr(builder_.getF32FloatAttr(epsilon_value));
+    op.feature_indexAttr(builder_.getI64IntegerAttr(feature_index_value));
+    return op.getOperation();
+  };
+
+  const std::string& target = custom_call->custom_call_target();
+  if (target == xla::gpu::kCudnnBatchNormForwardTrainingCallTarget) {
+    TF_ASSIGN_OR_RETURN(auto fwd_training,
+                        CreateOpWithoutAttrs<lmhlo_gpu::BatchNormTrainingOp>(
+                            custom_call, num_operands - 2));
+    return set_batchnorm_attributes(fwd_training);
+  }
+
+  if (target == xla::gpu::kCudnnBatchNormBackwardCallTarget) {
+    TF_ASSIGN_OR_RETURN(auto backward,
+                        CreateOpWithoutAttrs<lmhlo_gpu::BatchNormGradOp>(
+                            custom_call, num_operands - 2));
+    return set_batchnorm_attributes(backward);
+  }
+
+  if (target == xla::gpu::kCudnnBatchNormForwardInferenceCallTarget) {
+    TF_ASSIGN_OR_RETURN(auto fwd_inference,
+                        CreateOpWithoutAttrs<lmhlo_gpu::BatchNormInferenceOp>(
+                            custom_call, num_operands - 2));
+    return set_batchnorm_attributes(fwd_inference);
+  }
+
+  return xla::Unimplemented("Unsupported batch norm operation");
 }
 
 // Convert an XLA HLO constant to a global_memref + get_global_memref pair.
