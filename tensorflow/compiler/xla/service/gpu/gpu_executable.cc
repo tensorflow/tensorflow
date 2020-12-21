@@ -62,18 +62,19 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       binary_(std::move(params.binary)),
       gpu_version_(params.gpu_version),
       thunk_schedule_(std::move(params.thunk_schedule)),
-      assignment_(std::move(params.assignment)),
+      allocations_(std::move(params.allocations)),
+      debug_buffer_assignment_(std::move(params.debug_buffer_assignment)),
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
-  CHECK(has_module() && assignment_);
+  CHECK(has_module());
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
-                                             assignment_);
+                                             debug_buffer_assignment_);
 }
 
 GpuExecutable::~GpuExecutable() {
-  CHECK(has_module() && assignment_);
+  CHECK(has_module());
   GpuDebugInfoManager::Get()->UnregisterModule(module().name(), shared_module(),
-                                               assignment_);
+                                               debug_buffer_assignment_);
 
   {
     // We could have issued host->device mem copies in ResolveConstantGlobals.
@@ -376,11 +377,11 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
       [&] { return std::string("Build buffer allocations"); },
       tensorflow::profiler::TraceMeLevel::kInfo);
 
-  const int64 num_buffers = assignment_->Allocations().size();
+  const int64 num_buffers = allocations_.size();
   std::vector<se::DeviceMemoryBase> buffers;
   buffers.reserve(num_buffers);
   for (int64 i = 0; i < num_buffers; ++i) {
-    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+    const BufferAllocation& allocation = allocations_[i];
     TF_ASSIGN_OR_RETURN(
         se::DeviceMemoryBase buffer,
         BufferForAllocation(arguments, globals, allocation, memory_allocator,
@@ -537,7 +538,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
 
   // Free all temporary allocations.
   TF_RETURN_IF_ERROR(
-      buffer_allocations.TearDown(buffers_in_result, assignment_.get()));
+      buffer_allocations.TearDown(buffers_in_result, allocations_));
 
   // Free allocations for arguments.
   MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
@@ -551,9 +552,8 @@ int64 GpuExecutable::SizeOfGeneratedCodeInBytes() const {
     return -1;
   }
   int64 size = binary().size();
-  for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();
-       ++i) {
-    const BufferAllocation& allocation = assignment_->GetAllocation(i);
+  for (BufferAllocation::Index i = 0; i < allocations_.size(); ++i) {
+    const BufferAllocation& allocation = allocations_[i];
     if (allocation.is_constant()) {
       size += allocation.size();
     }

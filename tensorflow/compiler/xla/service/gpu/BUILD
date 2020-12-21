@@ -672,8 +672,8 @@ cc_library(
         "gpu_debug_info_manager.h",
     ],
     deps = [
-        "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -685,15 +685,10 @@ tf_cc_test(
     srcs = ["gpu_debug_info_manager_test.cc"],
     tags = tf_cuda_tests_tags(),
     deps = [
-        ":gpu_constants",
         ":gpu_debug_info_manager",
-        ":gpu_hlo_schedule",
-        ":stream_assignment",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
     ],
 )
 

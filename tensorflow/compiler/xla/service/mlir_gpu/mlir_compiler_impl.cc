@@ -589,13 +589,14 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
 
   TF_ASSIGN_OR_RETURN(auto output_info,
                       xla::gpu::GetOutputInfo(*module, *buffer_assignment));
+  std::vector<BufferAllocation> allocations =
+      buffer_assignment->ReleaseAllocations();
 
   // TODO(b/137624192): Add profiling support.
   return {absl::make_unique<GpuExecutable>(GpuExecutable::Params{
       std::move(ptx), std::move(cubin), GetGpuVersion(stream_exec),
       std::move(thunk_schedule), std::vector<GpuExecutable::ConstantInfo>(),
-      std::move(output_info), std::move(module),
-      std::move(buffer_assignment)})};
+      std::move(output_info), std::move(module), std::move(allocations)})};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(

@@ -71,7 +71,8 @@ class GpuExecutable : public Executable {
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
     std::unique_ptr<HloModule> hlo_module;
-    std::unique_ptr<const BufferAssignment> assignment;
+    std::vector<BufferAllocation> allocations;
+    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
   };
@@ -108,8 +109,8 @@ class GpuExecutable : public Executable {
       std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
-    return assignment_;
+  absl::Span<const BufferAllocation> GetAllocations() const {
+    return allocations_;
   }
 
  private:
@@ -176,7 +177,9 @@ class GpuExecutable : public Executable {
 
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::shared_ptr<const BufferAssignment> assignment_;
+  const std::vector<BufferAllocation> allocations_;
+
+  std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.

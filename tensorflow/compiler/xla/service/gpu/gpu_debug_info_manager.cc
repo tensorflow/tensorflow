@@ -22,7 +22,7 @@ namespace gpu {
 
 void GpuDebugInfoManager::RegisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
-    std::shared_ptr<const BufferAssignment> buffer_assignment) {
+    std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
   tensorflow::mutex_lock lock(mutex_);
   if (active_modules_.find(module_id) != active_modules_.end()) {
     active_modules_[module_id].instances.emplace_back(hlo_module,
@@ -40,7 +40,7 @@ void GpuDebugInfoManager::RegisterModule(
 // However during tracing, we will defer the cleanup after serialization.
 void GpuDebugInfoManager::UnregisterModule(
     const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
-    std::shared_ptr<const BufferAssignment> buffer_assignment) {
+    std::shared_ptr<const BufferAssignmentProto> buffer_assignment) {
   tensorflow::mutex_lock lock(mutex_);
   CHECK(active_modules_.find(module_id) != active_modules_.end());
   GpuModuleEntry& active_module = active_modules_[module_id];
@@ -146,8 +146,10 @@ void GpuDebugInfoManager::StopTracing(
       // non-nullptr. Due to the inconvenience of creation of buffer_assignment
       // object in test, we set it to nullptr and guard this for it.
       if (m.instances[0].hlo_module && m.instances[0].buffer_assignment) {
-        info.hlo_proto = absl::make_unique<HloProto>(MakeHloProto(
-            *m.instances[0].hlo_module, *m.instances[0].buffer_assignment));
+        info.hlo_proto = absl::make_unique<HloProto>(
+            MakeHloProto(*m.instances[0].hlo_module));
+        *info.hlo_proto->mutable_buffer_assignment() =
+            *m.instances[0].buffer_assignment;
       }
       module_debug_info->emplace_back(std::move(info));
     }
