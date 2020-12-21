@@ -357,7 +357,7 @@ func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x 
 
 func @testMulInvalidOperands(tensor<? x f32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x i32>):
-  // expected-error @+1 {{failed to verify that operands have same element type}}
+  // expected-error @+1 {{failed to verify that binary op operands have same element type}}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x f32>, tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -366,7 +366,7 @@ func @testMulInvalidOperands(tensor<? x f32>, tensor<? x i32>) -> tensor<? x i32
 
 func @testMulInvalidQuantizedOperands(tensor<* x !quant.any<i16:f32>>, tensor<* x !quant.any<i8:f32>>) -> tensor<* x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<* x !quant.any<i16:f32>>, %arg1: tensor<* x !quant.any<i8:f32>>):
-  // expected-error @+1 {{failed to verify that operands have same element type}}
+  // expected-error @+1 {{failed to verify that binary op operands have same element type}}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<* x !quant.any<i16:f32>>, tensor<* x !quant.any<i8:f32>>) -> tensor<* x !quant.any<i16:f32>>
   return %0#0 : tensor<* x !quant.any<i16:f32>>
 }
@@ -412,7 +412,7 @@ func @testFloorDivF32(tensor<? x f32>, tensor<? x f32>) -> tensor<? x f32> {
 // -----
 
 func @testFloorDivF32(%arg0: tensor<2 x f32>, %arg1: tensor<2 x i32>) -> tensor<2 x f32> {
-  // expected-error @+1 {{failed to verify that operands have same element type}}
+  // expected-error @+1 {{failed to verify that binary op operands have same element type}}
   %0 = "tfl.floor_div"(%arg0, %arg1) : (tensor<2 x f32>, tensor<2 x i32>) -> tensor<2 x f32>
   return %0#0 : tensor<2 x f32>
 }
