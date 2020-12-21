@@ -69,8 +69,8 @@ inline LogicalResult GetIntegerArraySafe(
 LogicalResult ConvertMaxUnpoolingFunc::RewriteFunc() {
   func_.eraseBody();
   func_.addEntryBlock();
-  func_.setAttr(kTFImplements,
-                StringAttr::get(kMaxUnpooling, func_.getContext()));
+  func_->setAttr(kTFImplements,
+                 StringAttr::get(kMaxUnpooling, func_.getContext()));
 
   OpBuilder builder(func_.getBody());
   std::string custom_option_buffer;
