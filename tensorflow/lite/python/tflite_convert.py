@@ -26,6 +26,8 @@ import warnings
 
 import six
 from six.moves import zip
+# Needed to enable TF2 by default.
+import tensorflow as tf  # pylint: disable=unused-import
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import register_custom_opdefs
