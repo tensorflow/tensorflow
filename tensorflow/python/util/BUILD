@@ -76,6 +76,7 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
+        "//tensorflow/core/platform:platform_port",
     ],
 )
 
