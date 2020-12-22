@@ -24,13 +24,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -438,7 +438,7 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::InitializeFromFuncAttributes() {
-  auto attr = fused_func_op_.getAttrOfType<StringAttr>(kTFImplements);
+  auto attr = fused_func_op_->getAttrOfType<StringAttr>(kTFImplements);
   if (!attr) {
     return fused_func_op_.emitError()
            << "Invalid function attribute, expected " << kTFImplements
@@ -639,7 +639,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   // TFL lstm only supports time-majored inputs, so if it's not time-majored,
   // we will transpose the inputs and outputs.
-  auto time_major_attr = func_op.getAttrOfType<BoolAttr>("tf.time_major");
+  auto time_major_attr = func_op->getAttrOfType<BoolAttr>("tf.time_major");
   if (time_major_attr == nullptr) return failure();
 
   bool time_majored = time_major_attr.getValue();
@@ -654,7 +654,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   // Handle go_backwards:
   // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
-  auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
+  auto go_backwards_attr = func_op->getAttrOfType<BoolAttr>("tf.go_backwards");
 
   if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
     int time_dim = time_majored ? 0 : 1;

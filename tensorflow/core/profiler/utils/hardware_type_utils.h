@@ -26,6 +26,9 @@ namespace profiler {
 // streaming multiprocessor.
 double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap);
 
+// Returns the GPU model name from the given DeviceCapabilities.
+absl::string_view GpuModelName(const DeviceCapabilities& device_cap);
+
 HardwareType ParseHardwareType(absl::string_view device_type);
 
 // Returns true if the given hardware type has a device.

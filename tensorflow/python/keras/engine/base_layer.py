@@ -676,6 +676,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     information, nor the layer class name. These are handled
     by `Network` (one layer of abstraction above).
 
+    Note that `get_config()` does not guarantee to return a fresh copy of dict
+    every time it is called. The callers should make a copy of the returned dict
+    if they want to modify it.
+
     Returns:
         Python dictionary.
     """
@@ -920,6 +924,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         for `inputs` by the previous layer (if `input` did come from
         a layer that generated a corresponding mask, i.e. if it came from
         a Keras layer with masking support.
+      - If the layer is not built, the method will call `build`.
 
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).

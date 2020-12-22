@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
@@ -1409,6 +1410,13 @@ Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
     size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
+  tensorflow::profiler::AnnotatedTraceMe activity(
+      [&]() {
+        return tensorflow::profiler::TraceMeOpOverride("TRTEngineOp",
+                                                       "BuildEngine");
+      },
+      tensorflow::profiler::TraceMeLevel::kInfo);
+
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);

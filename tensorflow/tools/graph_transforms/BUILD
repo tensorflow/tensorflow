@@ -223,6 +223,7 @@ filegroup(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 
@@ -336,9 +337,9 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:_pywrap_transform_graph",
     ],
 )
 

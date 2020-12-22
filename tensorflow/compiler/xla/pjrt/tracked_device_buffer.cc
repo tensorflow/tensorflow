@@ -160,13 +160,6 @@ void TrackedDeviceBuffer::AddToInputAsDonated(
   }
 }
 
-namespace {
-
-using MoveIterator =
-    absl::Span<const std::shared_ptr<BufferSequencingEvent>>::iterator;
-
-}  // namespace
-
 TrackedDeviceBuffer::TrackedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
@@ -175,9 +168,8 @@ TrackedDeviceBuffer::TrackedDeviceBuffer(
     : allocator_(allocator),
       device_ordinal_(device_ordinal),
       device_memory_(device_memory.begin(), device_memory.end()),
-      definition_events_(
-          std::move_iterator<MoveIterator>(definition_events.begin()),
-          std::move_iterator<MoveIterator>(definition_events.end())),
+      definition_events_(std::make_move_iterator(definition_events.begin()),
+                         std::make_move_iterator(definition_events.end())),
       in_use_(true),
       on_delete_callback_(std::move(on_delete_callback)) {}
 

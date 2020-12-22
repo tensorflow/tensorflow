@@ -179,7 +179,7 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 
 }  // anonymous namespace
 
-absl::Span<const DataType> GetXlaConvTypes() {
+std::vector<DataType> GetXlaConvTypes() {
   return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
 }
 

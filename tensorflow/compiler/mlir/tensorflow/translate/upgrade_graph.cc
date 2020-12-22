@@ -22,7 +22,7 @@ namespace tensorflow {
 // Returns the set of ops that we want to generate shared_names for them if
 // empty.
 const llvm::StringSet<>& GetSharedNameGenerationCompatibleOps() {
-  static auto* const ops = new llvm::StringSet<>({"VariableV2"});
+  static auto* const ops = new llvm::StringSet<>({"VariableV2", "Variable"});
   return *ops;
 }
 

@@ -27,7 +27,7 @@ set -x
 function setup_pip () {
   python3.7 -m virtualenv tf_build_env --system-site-packages
   source tf_build_env/bin/activate
-  install_macos_pip_deps
+  install_macos_pip_deps virtualenv
 }
 
 function run_build () {

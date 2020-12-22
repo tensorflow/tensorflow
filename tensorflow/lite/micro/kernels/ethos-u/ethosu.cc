@@ -20,10 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace ops {
-namespace micro {
-namespace custom {
-namespace ethosu {
+namespace {
 
 constexpr uint8_t CO_TYPE_ETHOSU = 1;
 
@@ -93,7 +90,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   tensor = context->GetEvalTensor(context, node->inputs->data[0]);
   cms_data = reinterpret_cast<void*>(tensor->data.uint8);
 
-  // Get adresses to weights/scratch/input data
+  // Get addresses to weights/scratch/input data
   for (i = 1; i < node->inputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->inputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
@@ -105,7 +102,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     num_tensors++;
   }
 
-  // Get adresses to output data
+  // Get addresses to output data
   for (i = 0; i < node->outputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->outputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
@@ -130,13 +127,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-}  // namespace ethosu
+}  // namespace
 
 TfLiteRegistration* Register_ETHOSU() {
-  static TfLiteRegistration r = {ethosu::Init,
-                                 ethosu::Free,
-                                 ethosu::Prepare,
-                                 ethosu::Eval,
+  static TfLiteRegistration r = {Init,
+                                 Free,
+                                 Prepare,
+                                 Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,
                                  /*custom_name=*/nullptr,
@@ -146,7 +143,4 @@ TfLiteRegistration* Register_ETHOSU() {
 
 const char* GetString_ETHOSU() { return "ethos-u"; }
 
-}  // namespace custom
-}  // namespace micro
-}  // namespace ops
 }  // namespace tflite

@@ -16,6 +16,7 @@ limitations under the License.
 /* This file is a modification of the Tensorflow Micro Lite file _main.c */
 
 #include <stdint.h>
+
 #include "am_bsp.h"
 #include "am_mcu_apollo.h"  // Defines AM_CMSIS_REGS
 #include "am_util.h"

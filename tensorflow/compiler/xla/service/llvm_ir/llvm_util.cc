@@ -169,7 +169,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F64:
       return llvm::Type::getDoubleTy(module->getContext());
     case C64: {
-      auto cplx_t = module->getTypeByName("complex64");
+      auto cplx_t =
+          llvm::StructType::getTypeByName(module->getContext(), "complex64");
       if (cplx_t == nullptr) {
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
@@ -186,7 +187,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return cplx_t;
     }
     case C128: {
-      auto cplx_t = module->getTypeByName("complex128");
+      auto cplx_t =
+          llvm::StructType::getTypeByName(module->getContext(), "complex128");
       if (cplx_t == nullptr) {
         return llvm::StructType::create(
             {llvm::Type::getDoubleTy(module->getContext()),

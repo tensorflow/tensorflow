@@ -29,11 +29,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
@@ -532,7 +532,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   // quantization pass. These ops can be removed without losing original
   // program accuracy.
   // TODO(fengliuai): make the attribute being part of op definition.
-  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+  quantize->setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
 
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
@@ -709,10 +709,11 @@ void QuantizationDriver::PreprocessConstantOps() {
         // so the quantization parameter are propagated from or determined by
         // other values. Duplicate this constant in case it is shared by
         // different users.
-        if (indexed_use.index() > 0) {
-          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        if (uses.size() > 1) {
+          auto new_cst =
+              builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+          user->setOperand(operand_num, new_cst);
         }
-        user->setOperand(operand_num, cst);
       }
     }
   });

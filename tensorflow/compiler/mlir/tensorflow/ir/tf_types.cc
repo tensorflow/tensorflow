@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 namespace {

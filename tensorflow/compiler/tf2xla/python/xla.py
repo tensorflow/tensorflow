@@ -342,6 +342,8 @@ recv = gen_xla_ops.xla_recv
 reduce = gen_xla_ops.xla_reduce
 variadic_reduce = gen_xla_ops.xla_variadic_reduce
 
+ops.no_gradient("XlaVariadicReduce")
+
 
 def reduce_window(operand,
                   init,

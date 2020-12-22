@@ -73,6 +73,7 @@ const char* kSvdfCalibrated = "svdf_calibrated.bin";
 const char* kSvdfQuantized = "svdf_quantized.bin";
 
 const char* kModelWithUnpack = "unpack.bin";
+const char* kQatModelWithFc = "fc_qat.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];

@@ -3,7 +3,7 @@
 Compilation with XLA can greatly improve the performance of your programs, but
 the TensorFlow interop has a number of known sharp corners.
 
-## TensorArray TF/XLA interconversion
+## TensorArray TF/XLA interconversion is not supported
 
 *Error message*:
 `Support for TensorList crossing the XLA/TF boundary is not implemented`.
@@ -31,7 +31,7 @@ intermediate results in a `TensorArray`, but XLA only supports bounded
 parameter set to a constant value known at compile time, or backpropagation
 disabled using `back_prop=False`.
 
-## Dynamic `tf.TensorArray`
+## Dynamic `tf.TensorArray` is not supported
 
 Writes into `tf.TensorArray(..., dynamic_size=True)` are not compilable with
 XLA, as such writes require an unknown number of reallocations when the array
@@ -39,9 +39,16 @@ exceeds the original bound.
 
 *Workaround*: provide a statically known bound to your arrays.
 
-## Random number generation
+## Random number generation ignores TF seed
 
 XLA currently ignores TF seeds to random operations. This affects stateful TF
 random operations, such as `tf.random.normal`, or `tf.nn.dropout`.  XLA will
 behave as if the compilation was seeded with a new unique seed at each run. This
 limitation does not apply to stateless random ops.
+
+## TensorFlow Asserts are ignored
+
+Assertions created using `tf.Assert` and similar functions are noops when
+compiled to XLA. While proper assertion support is in principle possible, it
+might make certain optimizations impossible (mainly fusing the buffer on which
+the assertion is performed).

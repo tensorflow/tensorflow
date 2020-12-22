@@ -199,7 +199,6 @@ cc_library(
     hdrs = ["work_group_picking.h"],
     deps = [
         ":tuning_type",
-        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:kernel_info",
         "//tensorflow/lite/delegates/gpu/common:types",

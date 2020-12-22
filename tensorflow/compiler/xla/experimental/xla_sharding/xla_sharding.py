@@ -47,6 +47,16 @@ class Sharding(object):
         proto=xla_data_pb2.OpSharding(type=xla_data_pb2.OpSharding.REPLICATED))
 
   @classmethod
+  def manual(cls):
+    """Returns a manuall sharding attribute.
+
+    This means the op is manually partitioned by the user and XLA will not
+    change the shapes.
+    """
+    return Sharding(
+        proto=xla_data_pb2.OpSharding(type=xla_data_pb2.OpSharding.MANUAL))
+
+  @classmethod
   def assign_device(cls, core):
     """Returns an AssignDevice sharding attribute.
 
@@ -223,7 +233,7 @@ def copy_sharding(from_tensor, to_tensor, use_sharding_op=False):
     return to_tensor
 
   if use_sharding_op:
-    to_tensor = tf2xla.sharding(from_tensor)
+    to_tensor = tf2xla.sharding(to_tensor)
   attr_value = attr_value_pb2.AttrValue(s=sharding)
   # pylint: disable=protected-access
   to_tensor.op._set_attr('_XlaSharding', attr_value)

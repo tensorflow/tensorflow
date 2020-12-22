@@ -19,9 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
@@ -31,7 +31,7 @@ namespace metal {
 absl::Status RegisterCustomOps(const GraphFloat32& graph, const Node* node,
                                const std::vector<ValueId>& inputs,
                                const std::vector<ValueId>& outputs,
-                               const RuntimeOptions& options,
+                               CalculationsPrecision precision,
                                std::vector<ComputeTaskDescriptorPtr>* tasks);
 
 }  // namespace metal

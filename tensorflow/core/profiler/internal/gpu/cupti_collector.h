@@ -127,6 +127,7 @@ struct CuptiTracerEvent {
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
+  absl::string_view nvtx_range;
   uint64 start_time_ns = 0;
   uint64 end_time_ns = 0;
   uint32 device_id = 0;
@@ -156,11 +157,17 @@ struct CuptiTracerCollectorOptions {
 
 class AnnotationMap {
  public:
+  struct AnnotationInfo {
+    absl::string_view annotation;
+    absl::string_view nvtx_range;
+  };
+
   explicit AnnotationMap(uint64 max_size, uint32 num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
   void Add(uint32 device_id, uint32 correlation_id,
-           const std::string& annotation);
-  absl::string_view LookUp(uint32 device_id, uint32 correlation_id);
+           const absl::string_view annotation,
+           const absl::string_view nvtx_range);
+  AnnotationInfo LookUp(uint32 device_id, uint32 correlation_id);
 
  private:
   struct PerDeviceAnnotationMap {
@@ -170,7 +177,8 @@ class AnnotationMap {
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
     absl::node_hash_set<std::string> annotations;
-    absl::flat_hash_map<uint32, absl::string_view> correlation_map;
+    absl::node_hash_set<std::string> nvtx_ranges;
+    absl::flat_hash_map<uint32, AnnotationInfo> correlation_map;
   };
   const uint64 max_size_;
   absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;

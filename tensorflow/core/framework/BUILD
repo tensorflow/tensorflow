@@ -67,7 +67,6 @@ exports_files(
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
-        "numeric_op_base.h",
         "op_kernel.h",
         "op_requires.h",
         "op_segment.h",
@@ -203,7 +202,6 @@ filegroup(
         "node_def_util.h",
         "node_properties.h",
         "numeric_op.h",
-        "numeric_op_base.h",
         "numeric_types.h",
         "op.h",
         "op_def_builder.h",
@@ -304,7 +302,6 @@ filegroup(
         "kernel_shape_util.h",
         "log_memory.cc",
         "log_memory.h",
-        "numeric_op_base.h",
         "numeric_types.h",
         "op_requires.h",
         "ops_util.cc",
@@ -1248,6 +1245,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 

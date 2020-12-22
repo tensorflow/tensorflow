@@ -61,7 +61,7 @@ RecordWriter::RecordWriter(WritableFile* dest,
                            const RecordWriterOptions& options)
     : dest_(dest), options_(options) {
 #if defined(IS_SLIM_BUILD)
-  if (compression_type != compression::kNone) {
+  if (options.compression_type != RecordWriterOptions::NONE) {
     LOG(FATAL) << "Compression is unsupported on mobile platforms.";
   }
 #else

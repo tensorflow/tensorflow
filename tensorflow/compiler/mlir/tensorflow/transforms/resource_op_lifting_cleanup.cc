@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/BitVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -117,7 +117,7 @@ void EliminateUnusedResults(
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
 FuncOp CloneFunctionIfNeeded(FuncOp func) {
-  ModuleOp module = func.getParentOfType<ModuleOp>();
+  ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/status.h"
 
-
 namespace tensorflow {
 namespace gradients {
 namespace internal {
@@ -68,12 +67,6 @@ Status ReluGradModel(AbstractContext* ctx,
                      absl::Span<AbstractTensorHandle*> outputs,
                      const GradientRegistry& registry);
 
-// Test Model to verify SoftmaxGrad functionality
-Status SoftmaxLossGradModel(AbstractContext* ctx,
-                            absl::Span<AbstractTensorHandle* const> inputs,
-                            absl::Span<AbstractTensorHandle*> outputs,
-                            const GradientRegistry& registry);
-
 // Test Model to verify Multi-grad functionality for MNIST
 Status MNISTGradModel(AbstractContext* ctx,
                       absl::Span<AbstractTensorHandle* const> inputs,
@@ -95,11 +88,6 @@ Status MulModel(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs,
                 const GradientRegistry& registry);
-
-Status SoftmaxModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry);
 
 }  // namespace internal
 }  // namespace gradients

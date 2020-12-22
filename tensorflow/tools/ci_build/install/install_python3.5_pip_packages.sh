@@ -87,7 +87,7 @@ pip3.5 install --upgrade termcolor
 
 # Keras
 pip3.5 install keras_preprocessing==1.0.5
-pip3.5 install --upgrade h5py==2.8.0
+pip3.5 install --upgrade h5py==3.1.0
 
 # Estimator
 pip3.5 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps

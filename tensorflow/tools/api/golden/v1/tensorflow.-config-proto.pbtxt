@@ -229,6 +229,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_INT64
       }
+      field {
+        name: "use_tfrt"
+        number: 18
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
       enum_type {
         name: "MlirBridgeRollout"
         value: {
@@ -242,6 +248,10 @@ tf_proto {
         value: {
           name: "MLIR_BRIDGE_ROLLOUT_DISABLED"
           number: 2
+        }
+        value: {
+          name: "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED"
+          number: 3
         }
       }
       reserved_range {

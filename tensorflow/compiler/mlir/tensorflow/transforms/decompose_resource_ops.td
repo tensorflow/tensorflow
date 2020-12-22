@@ -447,3 +447,30 @@ def DecomposeResourceApplyRMSProp :
      (TF_AssignSubVariableOp $var_resource, $mom_new)
    ]
    >;
+
+def DecomposeResourceApplyProximalAdagrad :
+  Pattern<
+    (TF_ResourceApplyProximalAdagradOp:$src_op
+       $var_resource, $accum_resource, $lr, $l1, $l2, $grad,
+       ConstBoolAttrFalse:$use_locking
+    ),
+    [(TF_ConstOp:$one (GetScalarOfType<1> $grad)),
+     (TF_ConstOp:$zero (GetScalarOfType<0> $grad)),
+     (TF_AddV2Op:$accum_new
+       (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+       (TF_SquareOp $grad)),
+     (TF_MulOp:$adagrad_lr $lr, (TF_RsqrtOp $accum_new)),
+     (TF_SubOp:$prox_var
+       (CreateTFReadVariableOp $src_op, $grad, $var_resource),
+       (TF_MulOp $grad, $adagrad_lr)),
+     (TF_MulOp:$l1_gt_zero (TF_SignOp $prox_var),
+       (TF_MaximumOp
+          (TF_SubOp (TF_AbsOp $prox_var), (TF_MulOp $adagrad_lr, $l1)), $zero)),
+     (TF_SelectV2Op:$var_numerator (TF_GreaterOp $l1, $zero),
+       $l1_gt_zero, $prox_var),
+     (TF_DivOp:$var_new
+       $var_numerator, (TF_AddOp $one, (TF_MulOp $adagrad_lr, $l2))),
+     (TF_AssignVariableOp $var_resource, $var_new),
+     (TF_AssignVariableOp $accum_resource, $accum_new)
+   ]
+   >;

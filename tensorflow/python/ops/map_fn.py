@@ -239,7 +239,7 @@ def map_fn(fn,
            [2, 3, 4]], dtype=int32)>
 
   In some cases, `tf.vectorized_map` can be used to automatically convert a
-  function to a vectorized eqivalent.
+  function to a vectorized equivalent.
 
   #### Eager execution
 

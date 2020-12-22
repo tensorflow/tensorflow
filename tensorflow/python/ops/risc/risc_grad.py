@@ -28,6 +28,27 @@ def _RiscAddGrad(_, grad):
   return None, None
 
 
+@ops.RegisterGradient("RiscBinaryArithmetic")
+def _RiscBinaryArithmeticGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscBinaryComparison")
+def _RiscBinaryComparisonGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscBitcast")
+def _RiscBitcastGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
 @ops.RegisterGradient("RiscBroadcast")
 def _RiscBroadcastGrad(_, grad):
   # pylint: disable=unused-argument
@@ -35,8 +56,29 @@ def _RiscBroadcastGrad(_, grad):
   return None, None
 
 
+@ops.RegisterGradient("RiscCast")
+def _RiscCastGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscCholesky")
+def _RiscCholeskyGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
 @ops.RegisterGradient("RiscConcat")
 def _RiscConcatGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscCondition")
+def _RiscConditionGrad(_, grad):
   # pylint: disable=unused-argument
   # TODO(b/171294012): Implement gradient of RISC with RISC ops.
   return None, None
@@ -51,6 +93,48 @@ def _RiscConvGrad(_, grad):
 
 @ops.RegisterGradient("RiscDot")
 def _RiscDotGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscFft")
+def _RiscFftGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscGather")
+def _RiscGatherGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscIsFinite")
+def _RiscIsFiniteGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscLogicalAnd")
+def _RiscLogicalAndGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscLogicalNot")
+def _RiscLogicalNotGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscLogicalOr")
+def _RiscLogicalOrGrad(_, grad):
   # pylint: disable=unused-argument
   # TODO(b/171294012): Implement gradient of RISC with RISC ops.
   return None, None
@@ -77,8 +161,36 @@ def _RiscPoolGrad(_, grad):
   return None, None
 
 
+@ops.RegisterGradient("RiscRandomUniform")
+def _RiscRandomUniformGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscReduce")
+def _RiscReduceGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
 @ops.RegisterGradient("RiscReshape")
 def _RiscReshapeGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscReverse")
+def _RiscReverseGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscScatter")
+def _RiscScatterGrad(_, grad):
   # pylint: disable=unused-argument
   # TODO(b/171294012): Implement gradient of RISC with RISC ops.
   return None, None
@@ -93,6 +205,48 @@ def _RiscShapeGrad(_, grad):
 
 @ops.RegisterGradient("RiscSlice")
 def _RiscSliceGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscSort")
+def _RiscSortGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscSqueeze")
+def _RiscSqueezeGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscTranspose")
+def _RiscTransposeGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscTriangularSolve")
+def _RiscTriangularSolvesGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscUnary")
+def _RiscUnaryGrad(_, grad):
+  # pylint: disable=unused-argument
+  # TODO(b/171294012): Implement gradient of RISC with RISC ops.
+  return None, None
+
+
+@ops.RegisterGradient("RiscWhile")
+def _RiscWhileGrad(_, grad):
   # pylint: disable=unused-argument
   # TODO(b/171294012): Implement gradient of RISC with RISC ops.
   return None, None

@@ -151,10 +151,12 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   // not considered uncompilable.
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+      stack_trace.emplace_back(
+          StackFrameView{frame.name, frame.function_name, frame.stack_trace});
     }
   }
-  stack_trace.emplace_back(StackFrameView{node.name(), ""});
+  stack_trace.emplace_back(
+      StackFrameView{node.name(), "", node.GetStackTrace()});
 
   RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
   IsCompilableNode(node, lib_runtime, &stack_trace,
@@ -173,10 +175,11 @@ RecursiveCompilabilityChecker::FindUncompilableNodes(
   std::vector<StackFrameView> stack_trace;
   if (node_stack_trace != nullptr) {
     for (const auto& frame : *node_stack_trace) {
-      stack_trace.emplace_back(StackFrameView{frame.name, frame.function_name});
+      stack_trace.emplace_back(
+          StackFrameView{frame.name, frame.function_name, frame.stack_trace});
     }
   }
-  stack_trace.emplace_back(StackFrameView{call_def.name(), ""});
+  stack_trace.emplace_back(StackFrameView{call_def.name(), "", nullptr});
 
   RecursiveCompilabilityChecker::UncompilableNodesMap uncompilable_nodes;
   IsCompilableCall(call_def, lib_runtime, &stack_trace,
@@ -194,12 +197,11 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
         "SymbolicGradient should be handled by IsCompilableCall().";
     return false;
   }
+
   if (node.type_string() == "Const") {
-    // Skip Const op with type DT_STRING, since XLA doesn't support it, but the
-    // registered Const KernelDef says that it does, to support no-op Assert for
-    // tfcompile.
     const AttrValue* attr = node.attrs().Find("dtype");
-    if (attr != nullptr && attr->type() == DT_STRING) {
+    if (!op_filter_.allow_string_consts && attr != nullptr &&
+        attr->type() == DT_STRING) {
       *uncompilable_reason =
           "Const op with type DT_STRING is not supported by XLA.";
       return false;
@@ -359,7 +361,8 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
   const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
   bool is_compilable = true;
   for (const Node* node : fbody->graph->op_nodes()) {
-    stack_trace->emplace_back(StackFrameView{node->name(), function.name()});
+    stack_trace->emplace_back(
+        StackFrameView{node->name(), function.name(), node->GetStackTrace()});
     is_compilable &= IsCompilableNode(*node, lib_runtime, stack_trace,
                                       &function, uncompilable_nodes);
     stack_trace->pop_back();
@@ -583,7 +586,8 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
                     [](const StackFrameView& stack_element) {
                       return StackFrame{
                           std::string(stack_element.name),
-                          std::string(stack_element.function_name)};
+                          std::string(stack_element.function_name),
+                          stack_element.stack_trace};
                     });
 
   node_info.name = std::string(stack_trace.back().name);

@@ -45,7 +45,7 @@ def text_to_word_sequence(input_text,
   Arguments:
       input_text: Input text (string).
       filters: list (or concatenation) of characters to filter out, such as
-          punctuation. Default: `'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'`,
+          punctuation. Default: ``'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'``,
             includes basic punctuation, tabs, and newlines.
       lower: boolean. Whether to convert the input to lowercase.
       split: str. Separator for word splitting.

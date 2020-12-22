@@ -20,7 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
@@ -175,6 +175,9 @@ InspectResult InspectWeight(
   } else if (auto cst = dyn_cast<QConstOp>(inst)) {
     attr = cst.value();
     type = cst.getType().cast<ShapedType>();
+  } else {
+    result.can_compress = false;
+    return result;
   }
 
   // Currently we only support compressing weights of ops:
@@ -222,6 +225,8 @@ std::vector<T> BuildSparsityParameterAttribute(
   } else if (auto cst = dyn_cast<QConstOp>(inst)) {
     attr = cst.value();
     type = cst.getType().cast<ShapedType>();
+  } else {
+    assert(false && "Expected a constant-like op");
   }
   const int dims_count = type.getRank();
   std::vector<int> shape(dims_count);
@@ -239,8 +244,8 @@ std::vector<T> BuildSparsityParameterAttribute(
   tflite::optimize::sparsity::FormatConverter<T> format_converter(
       shape, traversal_order, format, b_size, b_map);
   format_converter.DenseToSparse(dense_buffer);
-  auto metadata = format_converter.GetDimMetadata();
-  auto compressed_data = format_converter.GetData();
+  const auto& metadata = format_converter.GetDimMetadata();
+  const auto& compressed_data = format_converter.GetData();
   const int dim_size = metadata.size() / 2;
   std::vector<Attribute> dim_metadata(traversal_order.size());
   for (int i = 0; i < dim_size; i++) {

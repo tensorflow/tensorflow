@@ -23,6 +23,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
@@ -862,6 +864,19 @@ def _get_accumulator(tensor):
   return None
 
 
+OptimizedReductionOpsCacheKey = collections.namedtuple(
+    "OptimizedReductionOpsCacheKey", [
+        "op_type",
+        "inputs",
+        "dtypes",
+        "input_types",
+        "name",
+        "attrs",
+        "op_def",
+        "compute_device",
+    ])
+
+
 class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   """FuncGraph for the gradient function of the body of a While op.
 
@@ -957,29 +972,25 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     # This optimization is currently also disabled when under a persistent tape,
     # since it leads to an unbounded number of side outputs. With caching it may
     # be possible to re-enable it.
-    if (op_type in {"Shape", "Size", "Rank"} and
+    optimized_reduction_ops = {
+        "Shape", "Size", "Rank", "TensorListElementShape", "TensorListLength"
+    }
+    if (op_type in optimized_reduction_ops and
+        not util.output_all_intermediates() and
         all(input.graph is self._forward_graph for input in inputs) and
         all(_get_accumulator(input) is None for input in inputs) and
         not util_v1.GraphOrParentsInXlaContext(self._forward_graph) and
         not util.graph_wrapped_for_higher_order_tape_gradients(
             self._forward_graph)):
-      with self._forward_graph.as_default():
-        # `name` was built using name_scope stack of gradient graph and may not
-        # be unique in the forward graph. `Graph.create_op` does not uniquify
-        # names which are name scopes i.e. end in `/`. To ensure that the op
-        # created gets a unique name in the forward graph we get rid of the
-        # trailing slash.
-        name = ops.name_from_scope_name(name)
-        result = self._forward_graph._create_op_internal(
-            op_type,
-            inputs,
-            dtypes=dtypes,
-            input_types=input_types,
-            name=name,
-            attrs=attrs,
-            op_def=op_def,
-            compute_device=compute_device)
-        return result
+      return self._move_op_to_forward_graph(
+          op_type,
+          inputs,
+          dtypes=dtypes,
+          input_types=input_types,
+          name=name,
+          attrs=attrs,
+          op_def=op_def,
+          compute_device=compute_device)
 
     return super(_WhileBodyGradFuncGraph, self)._create_op_internal(
         op_type,
@@ -990,6 +1001,83 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         attrs=attrs,
         op_def=op_def,
         compute_device=compute_device)
+
+  def _move_op_to_forward_graph(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # We have a cache of reduction ops that have already been moved to the
+    # forward graph, and we will check it first to avoid moving an op twice.
+    if not hasattr(self._forward_graph, "_optimized_reduction_ops_cache"):
+      self._forward_graph._optimized_reduction_ops_cache = {}
+    cache_key = self._get_optimized_reduction_ops_cache_key(
+        op_type, inputs, dtypes, input_types, name, attrs, op_def,
+        compute_device)
+    cached_op = self._forward_graph._optimized_reduction_ops_cache.get(
+        cache_key)
+    if cached_op is not None:
+      # This op has already been moved to the forward graph and we have it in
+      # the cache.
+      return cached_op
+
+    with self._forward_graph.as_default():
+      # `name` was built using name_scope stack of gradient graph and may not
+      # be unique in the forward graph. `Graph.create_op` does not uniquify
+      # names which are name scopes i.e. end in `/`. To ensure that the op
+      # created gets a unique name in the forward graph we get rid of the
+      # trailing slash.
+      name = ops.name_from_scope_name(name)
+      result = self._forward_graph._create_op_internal(
+          op_type,
+          inputs,
+          dtypes=dtypes,
+          input_types=input_types,
+          name=name,
+          attrs=attrs,
+          op_def=op_def,
+          compute_device=compute_device)
+
+      # Store the op we just moved to the forward graph so that it does
+      # not need to be added there again.
+      self._forward_graph._optimized_reduction_ops_cache[cache_key] = result
+      return result
+
+  def _get_optimized_reduction_ops_cache_key(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
+    # We need all elements of CacheKey to be hashable.
+    inputs = tuple(map(lambda t: t.ref(), inputs))
+
+    if dtypes is not None:
+      dtypes = tuple(dtypes)
+
+    if input_types is not None:
+      input_types = tuple(input_types)
+
+    if attrs is not None:
+      hashable_attrs = []
+      for attr_name, attr_value in sorted(attrs.items()):
+        hashable_attrs.append((attr_name, attr_value.SerializeToString()))
+      attrs = tuple(hashable_attrs)
+
+    if op_def is not None:
+      op_def = op_def.SerializeToString()
+
+    return OptimizedReductionOpsCacheKey(op_type, inputs, dtypes, input_types,
+                                         name, attrs, op_def, compute_device)
 
   def _capture_helper(self, tensor, name):
     """Implements the capturing described in the class docstring."""

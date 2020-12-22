@@ -33,6 +33,10 @@ limitations under the License.
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#endif
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #endif
 
@@ -215,8 +219,8 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
     CHECK(feature_index->IsConstant());
     int64 feature_index_value = feature_index->literal().Get<int64>({});
 
-    CHECK_EQ(custom_call->shape().tuple_shapes_size(), 3);
-    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape().tuple_shapes(0),
+    CHECK(custom_call->shape().IsArray());
+    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape(),
                                            custom_call->operand(0)->shape()));
     CheckBatchNormInputOutputPrimitivetypeAreValid(custom_call);
     CudnnBatchNormConfig config = GetCudnnBatchNormConfig(
@@ -258,8 +262,7 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
             /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
             /*output_data=*/output_data,
             /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev,
-            /*output_tuple=*/GetAllocationSlice(*custom_call)));
+            /*output_inv_stddev=*/output_inv_stddev));
     return Status::OK();
   }
 
@@ -295,82 +298,13 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
         /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
         /*output_grad_data=*/output_grad_data,
         /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset,
-        /*output_tuple=*/GetAllocationSlice(*custom_call)));
+        /*output_grad_offset=*/output_grad_offset));
     return Status::OK();
   }
 
-  if (IsCustomCallToDnnConvolution(*custom_call)) {
-    std::vector<BufferAllocation::Slice> operand_slices;
-    operand_slices.reserve(custom_call->operand_count());
-    for (const auto* operand : custom_call->operands()) {
-      operand_slices.push_back(GetAllocationSlice(*operand));
-    }
-    auto tuple_result_slice = GetAllocationSlice(*custom_call);
-    auto conv_result_slice = GetAllocationSlice(*custom_call, {0});
-    auto scratch_slice = GetAllocationSlice(*custom_call, {1});
 
-    TF_ASSIGN_OR_RETURN(
-        GpuConvConfig config,
-        GetGpuConvConfig(Cast<HloCustomCallInstruction>(custom_call)));
-    AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
-        context_->GetThunkInfo(custom_call), std::move(config),
-        std::move(operand_slices), conv_result_slice, scratch_slice,
-        tuple_result_slice));
-    return Status::OK();
-  }
-
-  if (IsCublasGemm(*custom_call)) {
-    AddThunkToThunkSequence(BuildGemmThunk(custom_call));
-    return Status::OK();
-  }
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-  if (custom_call->custom_call_target() == kCusolverCholeskyCallTarget) {
-    TF_ASSIGN_OR_RETURN(CholeskyOptions options,
-                        custom_call->backend_config<CholeskyOptions>());
-
-    const Shape& shape = custom_call->operand(0)->shape();
-    int ndim = shape.dimensions_size();
-    CHECK_GE(ndim, 2);
-    int64 n = shape.dimensions(ndim - 1);
-
-    const auto& dims = shape.dimensions();
-    int64 batch_size = std::accumulate(dims.begin(), dims.end() - 2, int64{1},
-                                       [](int64 a, int64 b) { return a * b; });
-
-    auto operand_buffer = GetAllocationSlice(*custom_call->operand(0));
-
-    auto a_buffer = GetAllocationSlice(*custom_call, {0});
-    auto workspace_buffer = GetAllocationSlice(*custom_call, {1});
-    auto info_buffer = GetAllocationSlice(*custom_call, {2});
-
-    std::vector<std::unique_ptr<Thunk>> thunks;
-
-    if (operand_buffer != a_buffer) {
-      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-          context_->GetThunkInfo(custom_call),
-          /*source_address=*/operand_buffer,
-          /*destination_buffer=*/a_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-    }
-
-    thunks.push_back(absl::make_unique<CholeskyThunk>(
-        context_->GetThunkInfo(custom_call), options, a_buffer,
-        workspace_buffer, info_buffer,
-        custom_call->operand(0)->shape().element_type(), batch_size, n));
-
-    // Elide the sequential thunk if there's no copy.
-    if (thunks.size() == 1) {
-      AddThunkToThunkSequence(std::move(thunks[0]));
-    } else {
-      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-          context_->GetThunkInfo(custom_call), std::move(thunks)));
-    }
-
-    return Status::OK();
-  }
-
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
           custom_call->custom_call_target(), std::string(platform_name()))) {
     auto get_slices_for_instr = [&](const HloInstruction* instr) {

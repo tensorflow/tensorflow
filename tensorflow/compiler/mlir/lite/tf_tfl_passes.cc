@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -182,6 +181,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // to match 'kTFLiteDataLayout'
     mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
     layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    layout_optimization_options.skip_fold_transpose_in_ops = true;
     mlir::TF::CreateLayoutOptimizationPipeline(
         pass_manager->nest<mlir::FuncOp>(), layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to

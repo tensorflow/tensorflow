@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
-// This is a fuzzer for tensorflow::io::CleanPath.
+// This is a fuzzer for tensorflow::io::ParseURI.
 
 namespace {
 

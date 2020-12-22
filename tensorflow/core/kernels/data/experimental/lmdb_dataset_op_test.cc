@@ -23,7 +23,11 @@ namespace {
 
 constexpr char kNodeName[] = "lmdb_dataset";
 constexpr char kIteratorPrefix[] = "Iterator";
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+constexpr char kDataFileName[] = "data_bigendian.mdb";
+#else
 constexpr char kDataFileName[] = "data.mdb";
+#endif
 constexpr char kDataFileLoc[] = "core/lib/lmdb/testdata";
 
 class LMDBDatasetParams : public DatasetParams {

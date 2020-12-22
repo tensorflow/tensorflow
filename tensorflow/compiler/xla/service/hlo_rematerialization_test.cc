@@ -780,13 +780,11 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
   const HloInstruction* concat = slice->operand(0);
   const HloInstruction* bcast = concat->operand(0)->operand(0);
 
-  LOG(INFO) << module->ToString();
   // Computation requires 16KB without rematerialization, but uses only 12KB
   // with rematerialization so pick a memory limit between these values (14KB).
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           RunHloRematerialization(
                               /*memory_limit_bytes=*/14 * 1024, module.get()));
-  LOG(INFO) << module->ToString();
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -813,6 +811,40 @@ ENTRY %mycomp (param: f32[1]) -> f32[1] {
                 .sequence(computation)
                 .instructions()[computation->instruction_count() - 4],
             remat_broadcast);
+}
+
+// Test that the "deny list for move remats" engages when we rematerialize
+// through bitcasts.
+TEST_F(HloRematerializationTest, ThroughBitcastRematInfiniteLoop) {
+  const string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+ENTRY %mycomp (param: f32[1]) -> f32[1024] {
+  %param = f32[1]{0} parameter(0)
+  %reshape = f32[] reshape(f32[1]{0} %param)
+  %broadcast = f32[1024,1]{1,0} broadcast(f32[] %reshape), dimensions={}
+  %bitcast = f32[1024]{0} bitcast(f32[1024,1]{1,0} %broadcast)
+  %broadcast2 = f32[1024,1]{1,0} broadcast(f32[] %reshape), dimensions={}
+  %bitcast2 = f32[1024]{0} bitcast(f32[1024,1]{1,0} %broadcast2)
+  ROOT %add = f32[1024]{0} add(f32[1024]{0} %bitcast, f32[1024]{0} %bitcast2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  auto* computation = module->entry_computation();
+  // Find and save the original broadcasts instruction which should be
+  // rematerialized.
+  const HloInstruction* add = computation->root_instruction();
+  // Run with a low rematerialization limit that cannot be satisfied to make
+  // sure that we don't get stuck in a loop trying to lower it.
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/1024, module.get()));
+  ASSERT_THAT(add, op::Add(op::Bitcast(op::Broadcast(_)),
+                           op::Bitcast(op::Broadcast(_))));
+  EXPECT_TRUE(changed);
 }
 
 }  // namespace

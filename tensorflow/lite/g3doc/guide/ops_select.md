@@ -147,17 +147,13 @@ section for more details.
   pod 'TensorFlowLiteSelectTfOps', '~> 0.0.1-nightly'
 ```
 
-After running `pod install`, you need to provide additional linker flags to
+After running `pod install`, you need to provide an additional linker flag to
 force load the select TF ops framework into your project. In your Xcode project,
 go to `Build Settings` -> `Other Linker Flags`, and add:
 
 ```text
 -force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
--u _TF_AcquireFlexDelegate
 ```
-
-Note that the `-u` flag is only required in the current nightly versions and the
-upcoming v2.4.0 release.
 
 You should then be able to run any models converted with the `SELECT_TF_OPS` in
 your iOS app. For example, you can modify the
@@ -192,13 +188,13 @@ similar steps described under the
 [Xcode project settings](./build_ios.md#modify_xcode_project_settings_directly)
 section in the iOS build guide.
 
-After adding the framework into your app project, additional linker flags should
-be specified in your app project to force load the select TF ops framework. In
-your Xcode project, go to `Build Settings` -> `Other Linker Flags`, and add:
+After adding the framework into your app project, an additional linker flag
+should be specified in your app project to force load the select TF ops
+framework. In your Xcode project, go to `Build Settings` -> `Other Linker
+Flags`, and add:
 
 ```text
 -force_load <path/to/your/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps>
--u _TF_AcquireFlexDelegate
 ```
 
 ### C++
@@ -265,15 +261,11 @@ TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
     input/output types that are typically available in TensorFlow.
 *   Unsupported ops: Control flow ops and ops that require explicit
     initialization from resources, like `HashTableV2`, are not yet supported.
-*   Unsupported optimizations: If you apply an optimization known as
-    [post training quantization](../performance/post_training_quantization.md),
-    only the TensorFlow Lite ops will be quantized (or optimized), but the
-    TensorFlow ops will remain as float (or unoptimized).
 
-## Future plans
+## Updates
 
-The following is a list of improvements to this pipeline that are in progress:
-
-*   *Improved performance* - Work is being done to ensure TensorFlow Lite with
-    TensorFlow ops nicely cooperates with hardware accelerated delegates, for
-    example, NNAPI and GPU delegates.
+*   Version 2.5 (not yet officially released)
+    -   You can apply an optimization known as
+        [post training quantization](../performance/post_training_quantization.md)
+*   Version 2.4
+    -   Compatibility with hardware accelerated delegates has improved

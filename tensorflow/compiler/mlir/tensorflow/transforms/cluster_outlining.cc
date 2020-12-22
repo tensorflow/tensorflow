@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -108,8 +108,8 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
 
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
-  cluster_op.setAttr(builder->getIdentifier(kFuncAttr),
-                     builder->getSymbolRefAttr(outlined_func.getName()));
+  cluster_op->setAttr(builder->getIdentifier(kFuncAttr),
+                      builder->getSymbolRefAttr(outlined_func.getName()));
 
   builder->setInsertionPoint(cluster_op);
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(

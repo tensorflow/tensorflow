@@ -87,7 +87,7 @@ DEPENDENCY_DENYLIST = [
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
     "//tensorflow/python:framework/test_file_system.so",
-    "//tensorflow/python:util_nest_test_main_lib",
+    "//tensorflow/python/util:nest_test_main_lib",
     # lite
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell",
     "//tensorflow/lite/experimental/examples/lstm:rnn_cell.py",
