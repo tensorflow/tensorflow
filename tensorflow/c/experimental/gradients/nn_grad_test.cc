@@ -29,6 +29,12 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
+Status ReluModel(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> inputs,
+                 absl::Span<AbstractTensorHandle*> outputs) {
+  return ops::Relu(ctx, inputs, outputs, "Relu");
+}
+
 Status ReluGradModel(AbstractContext* ctx,
                      absl::Span<AbstractTensorHandle* const> inputs,
                      absl::Span<AbstractTensorHandle*> outputs) {
@@ -150,7 +156,7 @@ class CppGradients
 TEST_P(CppGradients, TestReluGrad) {
   // Mathematically, Relu isn't differentiable at `0`. So `gradient_checker`
   // does not work with it.
-  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 0.0f, -1.0f};
+  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 10.0f, -1.0f};
   int64_t X_dims[] = {2, 2};
   AbstractTensorHandlePtr X;
   {
@@ -161,9 +167,19 @@ TEST_P(CppGradients, TestReluGrad) {
     X.reset(X_raw);
   }
 
+  ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
+      ReluModel, ReluGradModel, ctx_.get(), {X.get()}, UseFunction()));
+
+  AbstractTensorHandlePtr Y;
+  {
+    AbstractTensorHandle* Y_raw;
+    Status s = TestScalarTensorHandle(ctx_.get(), 0.0f, &Y_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Y.reset(Y_raw);
+  }
+
   ASSERT_NO_FATAL_FAILURE(CompareManualAndAutodiffGradients(
-      ReluGradModel, ctx_.get(), {X.get()},
-      {1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f}, UseFunction()));
+      ReluGradModel, ctx_.get(), {Y.get()}, {0.0f}, UseFunction()));
 }
 
 TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
