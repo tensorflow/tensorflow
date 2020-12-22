@@ -98,4 +98,13 @@ def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
 }
 
+def MapParallelLoopsPass
+    : FunctionPass<"map-parallel-loops-to-gpu"> {
+  let summary = "Greedily maps loops to GPU hardware dimensions.";
+  let constructor = "transforms::CreateMapParallelLoopsPass()";
+  let description = [{
+    Greedily maps loops to GPU hardware dimensions.
+  }];
+}
+
 #endif // TF_KERNEL_GEN_PASSES

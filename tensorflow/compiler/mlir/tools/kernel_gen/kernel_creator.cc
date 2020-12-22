@@ -157,7 +157,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Greedily map the remaining loop to GPU hardware dimensions.
-  pm.addNestedPass<::mlir::FuncOp>(xla::mlir_gpu::createMapParallelLoopsPass());
+  pm.addNestedPass<::mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
 
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
