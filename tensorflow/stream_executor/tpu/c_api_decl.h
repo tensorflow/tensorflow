@@ -140,6 +140,7 @@ typedef struct SE_DeviceDescription {
   int cuda_compute_capability_minor;
 
   int rocm_amdgpu_isa_version;
+  char* rocm_amdgpu_gcn_arch_name;
 
   int numa_node;
   int core_count;
