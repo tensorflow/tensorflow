@@ -41,7 +41,6 @@ cuda_py_tests(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "optonly",
     ],
     # TODO(timshen): re-enable after resolving flakiness (b/149426657).
