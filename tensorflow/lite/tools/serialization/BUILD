@@ -63,6 +63,10 @@ cc_test(
     name = "writer_lib_test",
     size = "small",
     srcs = ["writer_lib_test.cc"],
+    tags = [
+        "noasan",
+        "nomsan",
+    ],  # b/175903398
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",
