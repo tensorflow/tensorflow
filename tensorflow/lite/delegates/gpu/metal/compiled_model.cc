@@ -533,6 +533,9 @@ NodeDescriptor FuseChain(const FusionSequence& chain) {
       absl::Substitute(non_linkable.task->shader_source, function_code + "$0",
                        buffer_declarations + "$1", call_code);
   fused_descriptor->AddDstTensor("", {});
+  fused_descriptor->src_tensors_names = non_linkable.task->src_tensors_names;
+  fused_descriptor->dst_tensors_names = non_linkable.task->dst_tensors_names;
+  fused_descriptor->tensors_as_args = non_linkable.task->tensors_as_args;
   fused_descriptor->resize_function = non_linkable.task->resize_function;
   node_desc.dst_tensors_ids = {fused_id};
   node_desc.task = fused_descriptor;
