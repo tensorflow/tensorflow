@@ -591,16 +591,11 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+
     case BuiltinOperator_SPACE_TO_DEPTH: {
-      auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_SpaceToDepthOptions()) {
-        params->block_size = schema_params->block_size();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
+      return ParseSpaceToDepth(op, error_reporter, allocator, builtin_data);
     }
+
     case BuiltinOperator_DEPTH_TO_SPACE: {
       auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -1638,6 +1633,31 @@ TfLiteStatus ParseSoftmax(const Operator* op, ErrorReporter* error_reporter,
 
   if (schema_params != nullptr) {
     params->beta = schema_params->beta();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseSpaceToDepth(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteSpaceToDepthParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const auto* schema_params = op->builtin_options_as_SpaceToDepthOptions();
+  if (schema_params != nullptr) {
+    params->block_size = schema_params->block_size();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
