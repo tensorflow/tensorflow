@@ -260,7 +260,7 @@ class ReportErrorOpConverter
                                        op.getOperation()->getAttrDictionary());
 
     Location loc = op.getLoc();
-    auto module = op.getParentOfType<ModuleOp>();
+    auto module = op->getParentOfType<ModuleOp>();
     Value message_constant = GenerateErrorMessageConstant(
         loc, module, transformed.msg().getValue(), rewriter);
 

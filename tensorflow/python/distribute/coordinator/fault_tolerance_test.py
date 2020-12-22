@@ -175,7 +175,8 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
     model.schedule_training_functions(4)
     # Model does infinite training step, so at this moment, we expect to have 2
     # infinite closures inflight, and 2 closures in the queue.
-    while self.cluster_coord.cluster._closure_queue._inflight_closure_count < 2:
+    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
+           < 2):
       time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._restart(downtime_secs=2, job="worker")
@@ -356,7 +357,8 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
 
     # Model does infinite training step, so at this moment, we expect to have 2
     # infinite closures inflight, and 8 closures in the queue.
-    while self.cluster_coord.cluster._closure_queue._inflight_closure_count < 2:
+    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
+           < 2):
       time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
@@ -380,7 +382,8 @@ class FaultToleranceTest(test.TestCase):  # pylint: disable=missing-docstring
 
     # Model does infinite training step, so at this moment, we expect to have 2
     # infinite closures inflight, and 8 closures in the queue.
-    while self.cluster_coord.cluster._closure_queue._inflight_closure_count < 2:
+    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
+           < 2):
       time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)

@@ -745,3 +745,42 @@ func @constant() {
   return
 }
 // CHECK: %[[CONSTANT:.*]] = constant dense<10> : tensor<i32>
+
+// -----
+
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @float_pow
+func @float_pow(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: ^{{[a-z0-9_]*}}
+  // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: f32
+  // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: f32
+  // CHECK: %[[RESULT:[a-zA-Z0-9_]*]] = powf %[[ARG0]], %[[ARG1]]
+  // CHECK: linalg.yield %[[RESULT]]
+  %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xf32>,
+                                   tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @integer_pow
+func @integer_pow(%lhs: tensor<2x2xi32>,
+                %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
+                    // CHECK: linalg.generic
+  // CHECK: ^{{[a-z0-9_]*}}
+  // CHECK-SAME: %[[ARG0:[a-zA-Z0-9_]*]]: i32
+  // CHECK-SAME: %[[ARG1:[a-zA-Z0-9_]*]]: i32
+  // CHECK: %[[UPPER:.*]] = index_cast %[[ARG1]]
+  // CHECK: %[[RESULT:.*]] = scf.for {{.*}} to %[[UPPER]]
+  // CHECK-SAME: step %c1{{[a-zA-Z0-9_]*}}
+  // CHECK-SAME: iter_args(%[[ITER:.*]] = %c1{{.*}}) -> (i32) {
+  //   CHECK: %[[ACCUM:[a-zA-Z0-9_]*]] = muli %[[ARG0]], %[[ITER]]
+  //   CHECK: scf.yield %[[ACCUM]]
+  // CHECK: linalg.yield %[[RESULT]]
+  %0 = "mhlo.power"(%lhs, %rhs) : (tensor<2x2xi32>,
+                                   tensor<2x2xi32>) -> tensor<2x2xi32>
+  return %0 : tensor<2x2xi32>
+}

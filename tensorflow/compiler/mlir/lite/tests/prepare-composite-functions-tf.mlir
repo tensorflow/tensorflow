@@ -583,3 +583,68 @@ func private @tflite_custom_nms_missing_func_args(%arg0: tensor<1x100x4xf32>, %a
   return %0, %1, %2, %3 : tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>
 }
 }
+
+// -----
+
+module {
+func @max_unpooling_2d(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>} {
+  %0 = "tf.Const"() {value = dense<[4, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  %2 = "tf.Const"() {value = dense<0> : tensor<1x1x2x1xi32>} : () -> tensor<1x1x2x1xi32>
+  %3 = "tf.Const"() {value = dense<[1, 2, 4, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %4 = "tf.Const"() {value = dense<4> : tensor<i32>} : () -> tensor<i32>
+  %5 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %6 = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %7 = "tf.FloorDiv"(%arg1, %5) {device = ""} : (tensor<1x1x2x1xi32>, tensor<i32>) -> tensor<1x1x2x1xi32>
+  %8 = "tf.FloorMod"(%7, %4) {device = ""} : (tensor<1x1x2x1xi32>, tensor<i32>) -> tensor<1x1x2x1xi32>
+  %9 = "tf.FloorDiv"(%arg1, %4) {device = ""} : (tensor<1x1x2x1xi32>, tensor<i32>) -> tensor<1x1x2x1xi32>
+  %10 = "tf.Pack"(%2, %9, %8, %2) {axis = 0 : i64, device = ""} : (tensor<1x1x2x1xi32>, tensor<1x1x2x1xi32>, tensor<1x1x2x1xi32>, tensor<1x1x2x1xi32>) -> tensor<4x1x1x2x1xi32>
+  %11 = "tf.Reshape"(%10, %0) {device = ""} : (tensor<4x1x1x2x1xi32>, tensor<2xi32>) -> tensor<4x2xi32>
+  %12 = "tf.Transpose"(%11, %6) {device = ""} : (tensor<4x2xi32>, tensor<2xi32>) -> tensor<2x4xi32>
+  %13 = "tf.Reshape"(%arg0, %1) {device = ""} : (tensor<1x1x2x1xf32>, tensor<1xi32>) -> tensor<2xf32>
+  %14 = "tf.ScatterNd"(%12, %13, %3) {device = ""} : (tensor<2x4xi32>, tensor<2xf32>, tensor<4xi32>) -> tensor<1x2x4x1xf32>
+  %15 = "tf.Identity"(%14) {device = ""} : (tensor<1x2x4x1xf32>) -> tensor<1x2x4x1xf32>
+  return %15 : tensor<1x2x4x1xf32>
+}
+
+// CHECK-LABEL: func @max_unpooling_2d(
+// CHECK-SAME:                         %[[VAL_0:.*]]: tensor<1x1x2x1xf32>,
+// CHECK-SAME:                         %[[VAL_1:.*]]: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = "MaxUnpooling2D"} {
+// CHECK-NEXT:    %[[VAL_2:.*]] = "tfl.custom"(%[[VAL_0]], %[[VAL_1]]) {custom_code = "MaxUnpooling2D", custom_option = opaque<"tfl", "0x01000000020000000200000002000000020000000000000000000000000000000000000000000000"> : tensor<40xi8>} : (tensor<1x1x2x1xf32>, tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32>
+// CHECK-NEXT:    return %[[VAL_2]] : tensor<1x2x4x1xf32>
+// CHECK-NEXT:  }
+}
+
+// -----
+
+module {
+// expected-error @+1 {{Invalid number of results from MaxUnpooling2D}}
+func private @max_unpooling_2d_invalid_results(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> (tensor<1x2x4x1xf32>, tensor<1x2x4x1xi32>) attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>}
+
+// expected-error @+1 {{Invalid number of arguments to MaxUnpooling2D}}
+func private @max_unpooling_2d_invalid_args(%arg0: tensor<1x1x2x1xf32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2]}>}
+
+// expected-error @+1 {{Padding for MaxUnpooling2D must be 'SAME' or 'VALID'}}
+func private @max_unpooling_2d_wrong_padding(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "NO", pool_size = [2, 2], strides = [2, 2]}>}
+
+// expected-error @+1 {{'pool_size' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_wrong_filter(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2], strides = [2, 2]}>}
+
+// expected-error @+1 {{'strides' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_wrong_strides(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = [2, 2, 2]}>}
+
+// expected-error @+1 {{'padding' attribute for MaxUnpooling2D is not set or not a string}}
+func private @max_unpooling_2d_no_padding(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {pool_size = [2, 2], strides = [2, 2]}>}
+
+// expected-error @+1 {{'pool_size' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_no_filter(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", strides = [2, 2]}>}
+
+// expected-error @+1 {{'strides' attribute for MaxUnpooling2D must be set and has size of 2}}
+func private @max_unpooling_2d_no_strides(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2]}>}
+
+// expected-error @+1 {{'pool_size' attribute for MaxUnpooling2D does not contain integer values}}
+func private @max_unpooling_2d_filter_wrong_type(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = ["a", "b"], strides = [2, 2]}>}
+
+  // expected-error @+1 {{'strides' attribute for MaxUnpooling2D does not contain integer values}}
+func private @max_unpooling_2d_strides_wrong_type(%arg0: tensor<1x1x2x1xf32>, %arg1: tensor<1x1x2x1xi32>) -> tensor<1x2x4x1xf32> attributes {tf._implements = #tf.func<@"addons:MaxUnpooling2D", {padding = "SAME", pool_size = [2, 2], strides = ["2", "2"]}>}
+}

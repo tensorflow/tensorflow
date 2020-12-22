@@ -1591,6 +1591,7 @@ py_library(
     deps = [
         ":platform",
         "//tensorflow/python/util",
+        # TODO(mdan): Remove this once the transitive dependency is fixed.
         "//tensorflow/python/util:tf_stack",
     ],
 )
@@ -2018,6 +2019,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 10,
     tags = [
+        "no_rocm",
         "noasan",
         "optonly",
     ],

@@ -324,7 +324,7 @@ class BufferReuseAnalysis {
 
 struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
   void runOnFunction() override {
-    if (!getFunction().getAttrOfType<UnitAttr>(
+    if (!getFunction()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))
       return;
 

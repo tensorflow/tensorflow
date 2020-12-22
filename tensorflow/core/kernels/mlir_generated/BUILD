@@ -135,6 +135,7 @@ tf_kernel_library(
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
         "gpu_op_equal.cc",
+        "gpu_op_floor_div.cc",
         "gpu_op_greater.cc",
         "gpu_op_greater_equal.cc",
         "gpu_op_left_shift.cc",
@@ -155,6 +156,7 @@ tf_kernel_library(
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
         ":equal_kernels",
+        ":floor_div_kernels",
         ":gpu_ops_base",
         ":greater_equal_kernels",
         ":greater_kernels",
@@ -536,6 +538,20 @@ gen_kernel_library(
         "neg",
     ]
 ]
+
+gen_kernel_library(
+    name = "floor_div",
+    tile_size = "256",
+    # TODO(172804967): Enable for integer types also once unsigned integers are
+    # supported.
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
+)
 
 # Kernels that support all floating-point types.
 [

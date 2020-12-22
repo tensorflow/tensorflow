@@ -1032,9 +1032,12 @@ Status IrEmitterUnnested::EmitSliceToDynamicFromMlir(
 }
 
 Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
+  using mlir::dyn_cast;
+  using mlir::isa;
+
   TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(custom_call));
 
-  if (auto call = mlir::dyn_cast<mlir::lmhlo::CustomCallOp>(input.op)) {
+  if (auto call = dyn_cast<mlir::lmhlo::CustomCallOp>(input.op)) {
     if (call.call_target_name() == "PadToStatic") {
       return EmitPadToStaticFromMlir(input);
     }
@@ -1044,8 +1047,7 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     return ThunkEmitter(this).HandleCustomCall(custom_call);
   }
 
-  if (mlir::isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(
-          input.op)) {
+  if (isa<mlir::lmhlo_gpu::GEMMOp, mlir::lmhlo_gpu::GEMM_BiasOp>(input.op)) {
     return EmitGemmThunkFromMlir(input);
   }
 
@@ -1055,6 +1057,12 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
                 mlir::lmhlo_gpu::ConvBackwardFilterOp,
                 mlir::lmhlo_gpu::ConvBackwardInputOp>(input.op)) {
     return EmitConvolutionThunkFromMlir(input);
+  }
+
+  if (isa<mlir::lmhlo_gpu::BatchNormTrainingOp,
+          mlir::lmhlo_gpu::BatchNormInferenceOp,
+          mlir::lmhlo_gpu::BatchNormGradOp>(input.op)) {
+    return ThunkEmitter(this).HandleCustomCall(custom_call);
   }
 
 #if GOOGLE_CUDA
