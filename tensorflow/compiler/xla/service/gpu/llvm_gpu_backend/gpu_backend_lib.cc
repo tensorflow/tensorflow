@@ -787,13 +787,13 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                 const HloModuleConfig& hlo_module_config,
                                 const string& device_bitcode_dir_path) {
   // Link the input module with ROCDL.
-  auto amdgpu_version = absl::get_if<int>(&gpu_version);
+  auto amdgpu_version = absl::get_if<std::pair<int, std::string>>(&gpu_version);
   if (!amdgpu_version) {
     return xla::InternalError(
         "Incompatible AMD GCN ISA version was specified.");
   }
-  TF_RETURN_IF_ERROR(
-      LinkROCDLIfNecessary(module, *amdgpu_version, device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(LinkROCDLIfNecessary(module, amdgpu_version->first,
+                                          device_bitcode_dir_path));
 
   return Status::OK();
 }
@@ -861,13 +861,14 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
         tensorflow::profiler::TraceMeLevel::kInfo);
     XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
 
-    auto amdgpu_version = absl::get_if<int>(&gpu_version);
+    auto amdgpu_version =
+        absl::get_if<std::pair<int, std::string>>(&gpu_version);
     if (!amdgpu_version) {
       return xla::InternalError(
           "Incompatible AMD GCN ISA version was specified.");
     }
     uint64_t hash;
-    if (HsacoCache::Find(str, hash, *amdgpu_version, hsaco)) {
+    if (HsacoCache::Find(str, hash, amdgpu_version->first, hsaco)) {
       VLOG(1) << "HSACO cache hit";
       return hsaco;
     }
@@ -885,7 +886,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
     // Construct LLVM TargetMachine for AMDGPU.
     std::unique_ptr<llvm::TargetMachine> target_machine =
-        AMDGPUGetTargetMachine(default_target_triple, *amdgpu_version,
+        AMDGPUGetTargetMachine(default_target_triple, amdgpu_version->first,
                                hlo_module_config);
 
     // Link with ROCm-Device-Libs, and optimize the LLVM module.
@@ -896,7 +897,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
-    HsacoCache::Add(str, hash, *amdgpu_version, hsaco);
+    HsacoCache::Add(str, hash, amdgpu_version->first, hsaco);
   }
   return hsaco;
 }
