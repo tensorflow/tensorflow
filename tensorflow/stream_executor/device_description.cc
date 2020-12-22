@@ -51,6 +51,7 @@ DeviceDescription::DeviceDescription()
       cuda_compute_capability_major_(-1),
       cuda_compute_capability_minor_(-1),
       rocm_amdgpu_isa_version_(-1),
+      rocm_amdgpu_gcn_arch_name_(kUndefinedString),
       numa_node_(-1),
       core_count_(-1),
       ecc_enabled_(false) {}
@@ -94,6 +95,8 @@ std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
 
   result["CUDA Compute Capability"] = absl::StrCat(
       cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
+
+  result["AMDGPU GCN Arch Name"] = absl::StrCat(rocm_amdgpu_gcn_arch_name_);
 
   result["NUMA Node"] = absl::StrCat(numa_node());
   result["Core Count"] = absl::StrCat(core_count());
