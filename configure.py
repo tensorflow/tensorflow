@@ -55,8 +55,7 @@ NCCL_LIB_PATHS = [
 
 # List of files to configure when building Bazel on Apple platforms.
 APPLE_BAZEL_FILES = [
-    'tensorflow/lite/ios/BUILD',
-    'tensorflow/lite/objc/BUILD',
+    'tensorflow/lite/ios/BUILD', 'tensorflow/lite/objc/BUILD',
     'tensorflow/lite/swift/BUILD',
     'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
@@ -1174,7 +1173,9 @@ def set_windows_build_flags(environ_cp):
   # First available in VS 16.4. Speeds up Windows compile times by a lot. See
   # https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
   # pylint: disable=line-too-long
-  write_to_bazelrc('build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions')
+  write_to_bazelrc(
+      'build --copt=/d2ReducedOptimizeHugeFunctions --host_copt=/d2ReducedOptimizeHugeFunctions'
+  )
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1333,7 +1334,6 @@ def main():
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
-    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
 
   if ((environ_cp.get('TF_NEED_ROCM') == '1') and
       (environ_cp.get('TF_ENABLE_MLIR_GENERATED_GPU_KERNELS') == '1')):
