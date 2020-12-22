@@ -22,6 +22,7 @@ import numpy as np
 
 import tensorflow as tf
 
+from tensorflow.python.keras.benchmarks import benchmark_util
 from tensorflow.python.keras.benchmarks import distribution_util
 
 
@@ -281,7 +282,10 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     metrics, wall_time = self.measure_performance(model, train_dataset, loss_fn,
                                                   optimizer, batch_size,
                                                   run_iters, self.epochs)
-    self.report_benchmark(iters=run_iters, wall_time=wall_time, metrics=metrics)
+    extras = benchmark_util.get_keras_examples_metadata('conv', batch_size,
+                                                        '.keras.ctl_graph')
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_custom_training_mnist_bs_256(self):
     """Measure performance with batch_size=256 and run_iters=5."""
@@ -300,7 +304,10 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     metrics, wall_time = self.measure_performance(model, train_dataset, loss_fn,
                                                   optimizer, batch_size,
                                                   run_iters, self.epochs)
-    self.report_benchmark(iters=run_iters, wall_time=wall_time, metrics=metrics)
+    extras = benchmark_util.get_keras_examples_metadata('conv', batch_size,
+                                                        '.keras.ctl_graph')
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_custom_training_mnist_bs_512(self):
     """Measure performance with batch_size=512 and run_iters=10."""
@@ -319,7 +326,10 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     metrics, wall_time = self.measure_performance(model, train_dataset, loss_fn,
                                                   optimizer, batch_size,
                                                   run_iters, self.epochs)
-    self.report_benchmark(iters=run_iters, wall_time=wall_time, metrics=metrics)
+    extras = benchmark_util.get_keras_examples_metadata('conv', batch_size,
+                                                        '.keras.ctl_graph')
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_custom_training_mnist_bs_512_gpu_2(self):
     """Measure performance with batch_size=512, run_iters=10, gpu=2 and
@@ -353,7 +363,10 @@ class CustomMnistBenchmark(tf.test.Benchmark):
                                                   optimizer, batch_size,
                                                   run_iters, self.epochs,
                                                   strategy)
-    self.report_benchmark(iters=run_iters, wall_time=wall_time, metrics=metrics)
+    extras = benchmark_util.get_keras_examples_metadata('conv', batch_size,
+                                                        '.keras.ctl_graph')
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
 
 if __name__ == '__main__':

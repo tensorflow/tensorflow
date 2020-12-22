@@ -67,6 +67,9 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         loss='binary_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'bidirectional_lstm', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_bidirect_lstm_imdb_bs_256(self):
@@ -81,6 +84,9 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         loss='binary_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'bidirectional_lstm', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_bidirect_lstm_imdb_bs_512(self):
@@ -95,6 +101,9 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         loss='binary_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'bidirectional_lstm', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_bidirect_lstm_imdb_bs_512_gpu_2(self):
@@ -114,6 +123,9 @@ class BidirectionalLSTMBenchmark(tf.test.Benchmark):
         loss='binary_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'bidirectional_lstm', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 

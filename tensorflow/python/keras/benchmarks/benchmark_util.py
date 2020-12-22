@@ -64,6 +64,16 @@ def generate_benchmark_params_cpu_gpu(*params_list):
   return benchmark_params
 
 
+def get_keras_examples_metadata(keras_model,
+                                batch_size,
+                                impl='.keras.cfit_graph'):
+  return {
+      'model_name': 'keras_examples',
+      'implementation': keras_model + impl,
+      'parameters': 'bs_' + str(batch_size),
+  }
+
+
 class TimerCallBack(tf.keras.callbacks.Callback):
   """Callback for logging time in each epoch or batch."""
 
