@@ -1697,6 +1697,73 @@ TEST_F(QuantizeQatTest, VerifySingleQuantize) {
   EXPECT_EQ(model_.operator_codes[2]->version, 4);
 }
 
+class QuantizeBroadcastToModelTest
+    : public QuantizeModelTest,
+      public testing::WithParamInterface<TensorType> {
+ protected:
+  QuantizeBroadcastToModelTest() {
+    tensor_type_ = GetParam();
+    input_model_ = ReadModel(internal::kModelWithBroadcastToOp);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+  TensorType tensor_type_;
+};
+
+INSTANTIATE_TEST_SUITE_P(QuantizeBroadcastToModelTestInst,
+                         QuantizeBroadcastToModelTest,
+                         testing::ValuesIn({TensorType_INT8,
+                                            TensorType_INT16}));
+
+TEST_P(QuantizeBroadcastToModelTest, VerifyBroadcastToQuantization) {
+  auto status =
+      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
+                                false, tensor_type_, &error_reporter_);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  // There is only one subgraph.
+  const int32_t subgraph_idx = 0;
+  const auto& subgraph = model_.subgraphs[subgraph_idx];
+  const auto& readonly_subgraph =
+      readonly_model_->subgraphs()->Get(subgraph_idx);
+
+  // There should be a single broadcast_to op.
+  EXPECT_EQ(readonly_subgraph->operators()->size(), 1);
+  EXPECT_EQ(subgraph->operators.size(), 1);
+  const auto& broadcast_to = subgraph->operators[0];
+  EXPECT_EQ(model_.operator_codes[broadcast_to->opcode_index]->builtin_code,
+            BuiltinOperator_BROADCAST_TO);
+
+  // There should be 3 tensors: input, output, and BroadcastTo/shape.
+  EXPECT_EQ(subgraph->tensors.size(), 3);
+
+  // Input Tensor
+  EXPECT_EQ(subgraph->tensors[0]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[0]->name, "input_1");
+  EXPECT_EQ(subgraph->tensors[0]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[0]->quantization->zero_point.size(), 1);
+
+  // Output Tensor. The name given in the generated
+  // .bin test file is 'Identity' and should be preserved
+  EXPECT_EQ(subgraph->tensors[2]->type, tensor_type_);
+  EXPECT_EQ(subgraph->tensors[2]->name, "Identity");
+  EXPECT_EQ(subgraph->tensors[2]->quantization->scale.size(), 1);
+  EXPECT_EQ(subgraph->tensors[2]->quantization->zero_point.size(), 1);
+
+  // The BroadCastTo shape is of type INT32 and should not be quantized
+  EXPECT_EQ(subgraph->tensors[1]->type, TensorType_INT32);
+  EXPECT_EQ(subgraph->tensors[1]->name,
+            "model/tf.broadcast_to/BroadcastTo/shape");
+  EXPECT_EQ(subgraph->tensors[1]->quantization->scale.size(), 0);
+  EXPECT_EQ(subgraph->tensors[1]->quantization->zero_point.size(), 0);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 1);
+  EXPECT_EQ(model_.operator_codes[0]->builtin_code,
+            BuiltinOperator_BROADCAST_TO);
+  EXPECT_EQ(model_.operator_codes[0]->version, 3);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite
