@@ -76,6 +76,7 @@ cc_library(
         "bufferize_pass.cc",
         "embed_memref_prints.cc",
         "embed_tf_framework_pass.cc",
+        "fuse_inner_parallel_loops_pass.cc",
         "gpu_kernel_to_blob_pass.cc",
         "map_parallel_loops_to_gpu.cc",
         "parallel_loops_to_sequential.cc",

@@ -83,6 +83,11 @@ std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass();
 /// Greedily maps loops to GPU hardware dimensions.
 std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass();
 
+/// We need to direct fusion to the inner loops. This cannot be done with
+/// a passmanager alone ATM, as nested pass managers require operations to
+/// be closed from above.
+std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION

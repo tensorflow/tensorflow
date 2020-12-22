@@ -107,4 +107,15 @@ def MapParallelLoopsPass
   }];
 }
 
+def FuseInnerParallelLoopsPass
+    : FunctionPass<"fuse-inner-parallel-loops"> {
+  let summary = "Limited pass to forward stores to loads.";
+  let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
+  let description = [{
+    Directs parallel loop fusion to the inner loops. This cannot be done with
+    a passmanager alone ATM, as nested pass managers require operations to
+    be closed from above.
+  }];
+}
+
 #endif // TF_KERNEL_GEN_PASSES

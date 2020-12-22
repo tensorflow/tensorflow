@@ -57,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
-#include "tensorflow/compiler/xla/service/mlir_gpu/passes.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -145,7 +144,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Fuse the inner-most loops.
   pm.addNestedPass<mlir::FuncOp>(
-      xla::mlir_gpu::createFuseInnerParallelLoopsPass());
+      mlir::kernel_gen::transforms::CreateFuseInnerParallelLoopsPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
