@@ -53,7 +53,25 @@ data::DataType ToFB(DataType type) {
       return data::DataType::FLOAT16;
     case DataType::FLOAT32:
       return data::DataType::FLOAT32;
-    default:
+    case DataType::FLOAT64:
+      return data::DataType::FLOAT64;
+    case DataType::UINT8:
+      return data::DataType::UINT8;
+    case DataType::INT8:
+      return data::DataType::INT8;
+    case DataType::UINT16:
+      return data::DataType::UINT16;
+    case DataType::INT16:
+      return data::DataType::INT16;
+    case DataType::UINT32:
+      return data::DataType::UINT32;
+    case DataType::INT32:
+      return data::DataType::INT32;
+    case DataType::UINT64:
+      return data::DataType::UINT64;
+    case DataType::INT64:
+      return data::DataType::INT64;
+    case DataType::UNKNOWN:
       return data::DataType::UNKNOWN;
   }
 }
@@ -118,7 +136,25 @@ DataType ToEnum(data::DataType type) {
       return DataType::FLOAT16;
     case data::DataType::FLOAT32:
       return DataType::FLOAT32;
-    default:
+    case data::DataType::FLOAT64:
+      return DataType::FLOAT64;
+    case data::DataType::UINT8:
+      return DataType::UINT8;
+    case data::DataType::INT8:
+      return DataType::INT8;
+    case data::DataType::UINT16:
+      return DataType::UINT16;
+    case data::DataType::INT16:
+      return DataType::INT16;
+    case data::DataType::UINT32:
+      return DataType::UINT32;
+    case data::DataType::INT32:
+      return DataType::INT32;
+    case data::DataType::UINT64:
+      return DataType::UINT64;
+    case data::DataType::INT64:
+      return DataType::INT64;
+    case data::DataType::UNKNOWN:
       return DataType::UNKNOWN;
   }
 }

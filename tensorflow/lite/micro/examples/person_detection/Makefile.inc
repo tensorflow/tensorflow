@@ -1,5 +1,3 @@
-$(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
-
 person_detection_MODEL_SRCS := \
 tensorflow/lite/micro/examples/person_detection/model_settings.cc \
 $(MAKEFILE_DIR)/downloads/person_model_int8/person_detect_model_data.cc

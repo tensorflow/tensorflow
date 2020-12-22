@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -57,11 +59,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/dump_graph.h"
-
-#ifndef LIBTPU_ON_GCE
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
-#endif
 
 namespace tensorflow {
 namespace {
@@ -805,13 +802,6 @@ Status XlaCompiler::CompileFunction(
   VLOG(1) << "====================================================";
   MlirBridgeRolloutPolicy policy =
       GetMlirBridgeRolloutPolicy(*graph, config_proto);
-#ifdef LIBTPU_ON_GCE
-  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
-    VLOG(1) << "MLIR is not supported in this environment.";
-  }
-  TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, result));
-#else
   if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
@@ -828,7 +818,6 @@ Status XlaCompiler::CompileFunction(
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
-#endif
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -1287,6 +1276,20 @@ Status XlaCompiler::CompileGraph(
     CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
 
+  absl::optional<ConfigProto> config_proto;
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(*graph, config_proto);
+  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
+    VLOG(1) << "Using MLIR bridge";
+    GraphDebugInfo debug_info;
+    TF_RETURN_IF_ERROR(CompileGraphToXlaHlo(
+        std::move(*graph), mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        {}, options_.device_type.type_string(), options.use_tuple_arg,
+        *options_.flib_def, debug_info, options_.shape_representation_fn,
+        result));
+    return Status::OK();
+  }
+
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
   TF_RETURN_IF_ERROR(RearrangeFunctionArguments(
@@ -1309,7 +1312,7 @@ Status XlaCompiler::CompileGraph(
                                    options_.device_type, name));
 
   xla::XlaBuilder builder(name);
-  XlaContext* context = new XlaContext(this, &builder);
+  XlaContext* context = new XlaContext(this, &builder, graph.get());
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());

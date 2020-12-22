@@ -46,10 +46,10 @@ py_library(
     deps = [
         ":build_info",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:_pywrap_util_port",
-        "//tensorflow/python:lib",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:util",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/util:_pywrap_util_port",
         "@absl_py//absl/flags",
         "@rules_python//python/runfiles",
         "@six_archive//:six",

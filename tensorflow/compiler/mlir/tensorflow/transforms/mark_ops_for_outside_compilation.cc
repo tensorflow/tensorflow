@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
@@ -44,13 +45,9 @@ auto* auto_outside_compilation_gauge =
         "/tensorflow/core/use_auto_outside_compilation",
         "Tracks if auto outside compilation is enabled");
 
-// This pass marks unsupported ops in a device cluster with
-// `_xla_outside_compilation` attribute so the operations will run on the host
-// instead of the device.  Unsupported ops are ops that can not be code
-// generated to run on the device for the cluster.
 struct MarkOpsForOutsideCompilation
-    : public PassWrapper<MarkOpsForOutsideCompilation,
-                         OperationPass<ModuleOp>> {
+    : public TF::MarkOpsForOutsideCompilationPassBase<
+          MarkOpsForOutsideCompilation> {
   void runOnOperation() override;
 };
 
@@ -201,6 +198,9 @@ LogicalResult MarkUncompilableOps(
   int outside_compiled_cluster_counter = 0;
   block->walk([&](Operation* op) {
     if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
+      VLOG(3) << "Cloud TPU: Op " << op->getName().getStringRef().str()
+              << " isn't compilable, adding outside_compilation attr. "
+                 "This op will automatically be placed on CPU.";
       op->setAttr(
           kXlaOutsideCompilationAttr,
           StringAttr::get(
@@ -264,7 +264,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // Only if `allow_soft_placement` attribute is true should we mark ops
     // for outside compilation.
     auto soft_placement_attr =
-        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
     if (!(soft_placement_attr && soft_placement_attr.getValue())) {
       return WalkResult::advance();
     }
@@ -281,7 +281,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     // Only if `allow_soft_placement` attribute is true should we unmark ops
     // for outside compilation.
     auto soft_placement_attr =
-        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+        cluster->getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
     if (!(soft_placement_attr && soft_placement_attr.getValue())) {
       return;
     }
@@ -295,10 +295,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkOpsForOutsideCompilationPass() {
   return std::make_unique<MarkOpsForOutsideCompilation>();
 }
-
-static PassRegistration<MarkOpsForOutsideCompilation> pass(
-    "tf-mark-ops-for-outside-compilation",
-    "Marks unsupported ops a device cluster for outside compilation.");
 
 }  // namespace TFDevice
 }  // namespace mlir

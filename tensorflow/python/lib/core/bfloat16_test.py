@@ -29,7 +29,9 @@ from absl.testing import parameterized
 import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
-from tensorflow.python import _pywrap_bfloat16
+from tensorflow.python.framework import dtypes
+from tensorflow.python.lib.core import _pywrap_bfloat16
+from tensorflow.python.platform import test
 
 bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 

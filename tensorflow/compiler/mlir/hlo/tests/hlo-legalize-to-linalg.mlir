@@ -29,6 +29,18 @@ func @integer_add(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: complex_add
+func @complex_add(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: addcf
+  %0 = "mhlo.add"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+      tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_mul
 func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -108,6 +120,18 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
   %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
+}
+
+// -----
+
+// CHECK-LABEL: complex_sub
+func @complex_sub(%lhs: tensor<2x2xcomplex<f32>>,
+                  %rhs: tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>> {
+  // CHECK: linalg.generic
+  // CHECK: subcf
+  %0 = "mhlo.subtract"(%lhs, %rhs) : (tensor<2x2xcomplex<f32>>,
+      tensor<2x2xcomplex<f32>>) -> tensor<2x2xcomplex<f32>>
+  return %0 : tensor<2x2xcomplex<f32>>
 }
 
 // -----
@@ -228,6 +252,20 @@ func @float_cmp(%lhs: tensor<2x2xf32>,
 // CHECK: linalg.generic
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
 // CHECK-NEXT:   %[[RESULT:.*]] = cmpf "oeq", %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @float_cmp_ne
+func @float_cmp_ne(%lhs: tensor<2x2xf32>,
+                %rhs: tensor<2x2xf32>) -> (tensor<2x2xi1>) {
+  %0 = "mhlo.compare"(%lhs, %rhs) {comparison_direction = "NE"}
+          : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xi1>
+  return %0 : tensor<2x2xi1>
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = cmpf "une", %[[LHS_IN]], %[[RHS_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
 
 // -----
@@ -696,3 +734,14 @@ func @shift_right_logical(%lhs: tensor<2x2xi32>,
 // CHECK-NEXT: ^bb0(%[[LHS:.*]]: i32, %[[RHS:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = shift_right_unsigned %[[LHS]], %[[RHS]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-LABEL: func @constant
+func @constant() {
+  %result = "mhlo.constant"() {
+    value = dense<10> : tensor<i32>
+  } : () -> (tensor<i32>)
+  return
+}
+// CHECK: %[[CONSTANT:.*]] = constant dense<10> : tensor<i32>

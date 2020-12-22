@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu_device.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 
 #ifdef NCCL_ENABLED
 #include "third_party/nccl/nccl.h"

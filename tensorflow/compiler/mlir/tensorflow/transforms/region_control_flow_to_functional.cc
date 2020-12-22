@@ -210,8 +210,8 @@ using ArgMatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 bool MatchCallArgs(CallOp first, CallOp second, ArgMatcherFn matcher) {
   if (first.getNumOperands() != second.getNumOperands()) return false;
 
-  Region& first_region = *first.getParentRegion();
-  Region& second_region = *second.getParentRegion();
+  Region& first_region = *first->getParentRegion();
+  Region& second_region = *second->getParentRegion();
 
   for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
     // Get the defining Op, skipping over casts.

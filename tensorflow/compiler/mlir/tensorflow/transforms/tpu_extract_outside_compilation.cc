@@ -25,10 +25,10 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -53,39 +54,9 @@ constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 using OutsideClusterMap =
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<Operation*, 8>, 8>;
 
-// This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-// annotation from a TPU cluster. Each outside compilation cluster is moved to
-// a parallel_execute region. The TPU cluster is also moved to a
-// parallel_execute region. Communication ops between device and host are
-// added to pass inputs/outputs to/from the outside compiled region.
-//
-// A simple example:
-//   "tf_device.cluster"() ( {
-//     "tf.A"()
-//     "tf.B"() {_xla_outside_compilation = "cluster1"}
-//     "tf.C"()
-//     tf_device.return
-//   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
-//
-// Would become the following ops (unimportant attribute, type are omitted):
-//   "tf_device.parallel_execute"() ( {
-//     "tf_device.launch"() ( {
-//       "tf.B()
-//       tf_device.return
-//     })
-//     tf_device.return
-//   }, {
-//     "tf_device.cluster"( {
-//       "tf.A"()
-//       "tf.C"()
-//       tf_device.return
-//     })
-//    tf_device.return
-//  })
-
 struct TPUExtractOutsideCompilation
-    : public PassWrapper<TPUExtractOutsideCompilation,
-                         OperationPass<ModuleOp>> {
+    : public TF::TPUExtractOutsideCompilationPassBase<
+          TPUExtractOutsideCompilation> {
   void runOnOperation() override;
 };
 
@@ -755,7 +726,7 @@ void MoveOutsideCompiledOps(
     // If there is no replication/data parallelism, it is assumed the device
     // ordinal is always 0 (e.g. /device:TPU:0). In that case, a constant 0
     // attribute can be used instead for _XlaSendFromHost/_XlaRecvAtHost ops.
-    if (tpu_cluster.getParentOfType<tf_device::ReplicateOp>()) {
+    if (tpu_cluster->getParentOfType<tf_device::ReplicateOp>()) {
       auto device_ordinal_op =
           builder.create<TF::_TPUDeviceOrdinalPlaceholderOp>(
               host_launch_op.getLoc(),
@@ -892,10 +863,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass() {
   return std::make_unique<TPUExtractOutsideCompilation>();
 }
-
-static PassRegistration<TPUExtractOutsideCompilation> pass(
-    "tf-tpu-extract-outside-compilation",
-    "Extracts TPU outside compilation to separate parallel_execute.");
 
 }  // namespace TFTPU
 }  // namespace mlir

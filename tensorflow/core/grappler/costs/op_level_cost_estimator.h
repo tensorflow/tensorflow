@@ -51,21 +51,21 @@ struct NodeCosts {
   int64 internal_write_bytes = 0;
 
   // Convenience functions.
-  int64 num_total_input_bytes() {
+  int64 num_total_input_bytes() const {
     return std::accumulate(num_input_bytes_accessed.begin(),
                            num_input_bytes_accessed.end(), 0LL);
   }
-  int64 num_total_read_bytes() {
+  int64 num_total_read_bytes() const {
     return num_total_input_bytes() + internal_read_bytes;
   }
-  int64 num_total_output_bytes() {
+  int64 num_total_output_bytes() const {
     return std::accumulate(num_output_bytes_accessed.begin(),
                            num_output_bytes_accessed.end(), 0LL);
   }
-  int64 num_total_write_bytes() {
+  int64 num_total_write_bytes() const {
     return num_total_output_bytes() + internal_write_bytes;
   }
-  int64 num_bytes_accessed() {
+  int64 num_bytes_accessed() const {
     return num_total_read_bytes() + num_total_write_bytes();
   }
 

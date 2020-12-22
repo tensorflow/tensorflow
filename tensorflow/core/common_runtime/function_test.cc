@@ -401,9 +401,7 @@ TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
       return "DummyStackTrace";
     }
 
-    absl::optional<StackFrame> LastUserFrame() const override {
-      return absl::nullopt;
-    }
+    StackFrame LastUserFrame() const override { return StackFrame{}; }
   };
 
   FunctionDef func = test::function::XTimesTwo();
@@ -1291,7 +1289,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndPlaceInlinedNodes) {
     auto g = absl::make_unique<Graph>(OpRegistry::Global());
     TF_ASSERT_OK(construct_graph(&g));
 
-    const string merged_device = "/job:call/replica:0/task:1/device:CPU:*";
+    const string merged_device = "/job:body/replica:0/task:1/device:CPU:*";
 
     ExpandInlineFunctions(flr0_, g.get(), opts);
     GraphDef expected = expected_graph({/*a*/ arg_device,                //

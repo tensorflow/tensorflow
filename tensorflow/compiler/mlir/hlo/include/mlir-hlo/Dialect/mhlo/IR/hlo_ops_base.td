@@ -958,6 +958,17 @@ def HLO_PrecisionConfigAttr:
     OptionalAttr<
           TypedArrayAttrBase<HLO_PrecisionAttr, "Precision Config attribute">>;
 
+def BoolElementsAttr :
+    ElementsAttrBase<
+      And<[CPred<"$_self.isa<::mlir::DenseIntOrFPElementsAttr>()">,
+           CPred<"$_self.cast<::mlir::DenseIntOrFPElementsAttr>().getType().getElementType().isInteger(1)">]>,
+      "constant boolean vector/tensor attribute"> {
+  let storageType = [{ ::mlir::DenseElementsAttr }];
+  let returnType = [{ ::mlir::DenseElementsAttr }];
+
+  let convertFromStorage = "$_self";
+}
+
 def ConvolutionAttributes {
   dag attributes = (ins
     // Default value: one for each of the spatial dimension.
@@ -968,6 +979,8 @@ def ConvolutionAttributes {
     OptionalAttr<I64ElementsAttr>:$lhs_dilation,
     // Default value: one for each of the spatial dimension.
     OptionalAttr<I64ElementsAttr>:$rhs_dilation,
+    // Default value: one for each of the spatial dimension.
+    OptionalAttr<BoolElementsAttr>:$window_reversal,
     ConvDimensionNumbers:$dimension_numbers,
     I64Attr:$feature_group_count,
     I64Attr:$batch_group_count,
@@ -982,6 +995,14 @@ class BASE_HLO_ConvOp {
     Computes a convolution of the kind used in neural networks.
 
     See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
+
+  code extraClassDeclaration = [{
+    bool hasWindowReversal() {
+      auto reversal = window_reversalAttr();
+      return reversal && llvm::any_of(reversal.getBoolValues(),
+                                      [](bool v) { return v; });
+    }
   }];
 }
 

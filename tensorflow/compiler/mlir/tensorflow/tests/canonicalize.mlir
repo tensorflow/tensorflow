@@ -1341,3 +1341,16 @@ func @testVariableToVariableV2() {
   return
 }
 
+// CHECK-LABEL: testUnpackAndCwiseUnary
+func @testUnpackAndCwiseUnary(%arg0: tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+
+  // CHECK: %[[NEG:.*]] = "tf.Neg"(%arg0)
+  // CHECK: %[[UNPACK:.*]]:2 = "tf.Unpack"(%[[NEG]])
+  %unpacked:2 = "tf.Unpack"(%arg0) {axis = 1 : i64, device = ""}
+                : (tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  %0 = "tf.Neg"(%unpacked#0): (tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tf.Neg"(%unpacked#1): (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return %[[UNPACK]]#0, %[[UNPACK]]#1
+  return %0, %1 : tensor<?xf32>, tensor<?xf32>
+}

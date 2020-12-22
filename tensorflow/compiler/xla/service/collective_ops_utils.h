@@ -236,7 +236,7 @@ class Rendezvous {
           "rendezvous: %p",
           rendezvous.get());
     });
-    return p.first;
+    return std::move(p.first);
   }
 
  protected:

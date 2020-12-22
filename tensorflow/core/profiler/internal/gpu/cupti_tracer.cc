@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/container/node_hash_set.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -26,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
+#include "tensorflow/core/profiler/internal/gpu/nvtx_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -418,8 +421,10 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
   event.context_id = kernel->contextId;
   event.stream_id = kernel->streamId;
   event.correlation_id = kernel->correlationId;
-  event.annotation = collector->annotation_map()->LookUp(event.device_id,
-                                                         event.correlation_id);
+  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
+      event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
+  event.nvtx_range = info.nvtx_range;
   event.kernel_info.registers_per_thread = kernel->registersPerThread;
   event.kernel_info.static_shared_memory_usage = kernel->staticSharedMemory;
   event.kernel_info.dynamic_shared_memory_usage = kernel->dynamicSharedMemory;
@@ -464,8 +469,9 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memcpy->contextId;
   event.stream_id = memcpy->streamId;
   event.correlation_id = memcpy->correlationId;
-  event.annotation = collector->annotation_map()->LookUp(event.device_id,
-                                                         event.correlation_id);
+  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
+      event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
   event.memcpy_info.kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
@@ -488,8 +494,9 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memcpy2->contextId;
   event.stream_id = memcpy2->streamId;
   event.correlation_id = memcpy2->correlationId;
-  event.annotation = collector->annotation_map()->LookUp(event.device_id,
-                                                         event.correlation_id);
+  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
+      event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
   event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy2->bytes;
   event.memcpy_info.destination = memcpy2->dstDeviceId;
@@ -946,8 +953,9 @@ class CudaEventRecorder {
     event.context_id = stream_info.ctx_info->context_id;
     event.stream_id = stream_info.stream_id;
     event.correlation_id = record.correlation_id;
-    event.annotation =
-        annotation_map->LookUp(event.device_id, event.correlation_id);
+    AnnotationMap::AnnotationInfo info = collector_->annotation_map()->LookUp(
+        event.device_id, event.correlation_id);
+    event.annotation = info.annotation;
     event.kernel_info = record.details;
     collector_->AddEvent(std::move(event));
     return Status::OK();
@@ -974,8 +982,9 @@ class CudaEventRecorder {
     event.context_id = stream_info.ctx_info->context_id;
     event.stream_id = stream_info.stream_id;
     event.correlation_id = record.correlation_id;
-    event.annotation =
-        annotation_map->LookUp(event.device_id, event.correlation_id);
+    AnnotationMap::AnnotationInfo info = collector_->annotation_map()->LookUp(
+        event.device_id, event.correlation_id);
+    event.annotation = info.annotation;
     event.memcpy_info.num_bytes = record.size_bytes;
     // TODO: support MemcpyD2D where destination != source;
     event.memcpy_info.destination = ordinal_;
@@ -1063,7 +1072,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
           // Because annotation are per device, therefore we need to populate
           // annotation for each device involved.
           collector_->annotation_map()->Add(*dev_id, cbdata->correlationId,
-                                            annotation);
+                                            annotation, "");
           record_indices.push_back(
               cuda_event_recorders_[*dev_id]->StartKernel<CUDA_LAUNCH_PARAMS>(
                   "CooperativeKernelMultiDevice", *context,
@@ -1425,6 +1434,11 @@ Status CuptiTracer::EnableApiTracing() {
     RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
         1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
   }
+
+  if (option_->enable_nvtx_tracking) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
+        1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
+  }
   return Status::OK();
 }
 
@@ -1441,6 +1455,11 @@ Status CuptiTracer::DisableApiTracing() {
   } else {
     RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
         0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
+  }
+
+  if (option_->enable_nvtx_tracking) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
+        0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
   }
 
   VLOG(1) << "Disable subscriber";
@@ -1510,11 +1529,31 @@ Status CuptiTracer::Finalize() {
   return 0;
 }
 
+Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
+                                       const CUpti_CallbackData *cbdata) {
+  const CUpti_NvtxData *pdata =
+      reinterpret_cast<const CUpti_NvtxData *>(cbdata);
+  if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePushEx) {
+    const nvtxDomainRangePushEx_params *params =
+        reinterpret_cast<const nvtxDomainRangePushEx_params *>(
+            pdata->functionParams);
+    // TODO(profiler): The messageType is actually NVTX_MESSAGE_TYPE_REGISTERED
+    // (which is 3), However it seems to me that we can not get the registered
+    // string from nvtxDomainRegisterStringA_params. If we reinterpret the
+    // payload as ascii, it happen to work.
+    NVTXRangeTracker::EnterRange(params->core.eventAttrib->message.ascii);
+  } else if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePop) {
+    NVTXRangeTracker::ExitRange();
+  }
+  return Status::OK();
+}
+
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
   if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
   if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
+  if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
   if (internalCuCall) return Status::OK();
 
@@ -1546,11 +1585,12 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
         // we need to populate per device annotation map respectively.
         for (int i = 0; i < num_gpus_; ++i) {
           collector_->annotation_map()->Add(i, cbdata->correlationId,
-                                            annotation);
+                                            annotation, "");
         }
       } else {
+        absl::string_view nvtx_range = NVTXRangeTracker::CurrentRange();
         collector_->annotation_map()->Add(device_id, cbdata->correlationId,
-                                          annotation);
+                                          annotation, nvtx_range);
       }
     }
 

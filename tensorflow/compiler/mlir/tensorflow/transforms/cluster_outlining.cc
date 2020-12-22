@@ -108,8 +108,8 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
 
   FuncOp outlined_func =
       BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
-  cluster_op.setAttr(builder->getIdentifier(kFuncAttr),
-                     builder->getSymbolRefAttr(outlined_func.getName()));
+  cluster_op->setAttr(builder->getIdentifier(kFuncAttr),
+                      builder->getSymbolRefAttr(outlined_func.getName()));
 
   builder->setInsertionPoint(cluster_op);
   auto cluster_func_op = builder->create<tf_device::ClusterFuncOp>(

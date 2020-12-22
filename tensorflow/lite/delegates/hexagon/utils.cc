@@ -94,6 +94,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinSlice:
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
+    case kTfLiteBuiltinDepthToSpace:
     case kTfLiteBuiltinSplit:
     case kTfLiteBuiltinStridedSlice:
     case kTfLiteBuiltinSub:

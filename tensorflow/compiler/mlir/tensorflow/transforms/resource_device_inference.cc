@@ -192,7 +192,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
             if (auto device = result->DeviceForResource(output)) {
               LLVM_DEBUG(llvm::dbgs()
                          << " Setting device = " << *device << "\n");
-              identity.setAttr(kDeviceAttr, builder.getStringAttr(*device));
+              identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
             }
           }
         } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {

@@ -53,13 +53,14 @@ class GpuKernelToBlobPass
  public:
   GpuKernelToBlobPass(mlir::StringRef blob_annotation,
                       llvm::ArrayRef<std::string> architectures,
-                      bool generate_fatbin, bool print_ptx) {
+                      bool generate_fatbin, bool print_ptx, bool enable_ftz) {
     if (!blob_annotation.empty()) {
       blob_annotation_ = blob_annotation.str();
     }
     architectures_ = architectures;
     generate_fatbin_ = generate_fatbin;
     print_ptx_ = print_ptx;
+    enable_ftz_ = enable_ftz;
   }
 
   void runOnOperation() override {
@@ -99,7 +100,9 @@ class GpuKernelToBlobPass
     llvmModule->setModuleIdentifier("acme");
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(enable_ftz_);
+    config.set_debug_options(options);
 
     using AmdGpuHsaco = std::vector<tensorflow::uint8>;
     std::vector<tensorflow::se::HsacoImage> images;
@@ -148,7 +151,9 @@ class GpuKernelToBlobPass
     llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
     xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
+    xla::DebugOptions options = xla::GetDebugOptionsFromFlags();
+    options.set_xla_gpu_ftz(enable_ftz_);
+    config.set_debug_options(options);
 
     auto enable_fusion = [](llvm::TargetMachine* target) {
       target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
@@ -241,15 +246,16 @@ class GpuKernelToBlobPass
     return InternalError(
         "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
   }
+  bool enable_ftz_;
 };
 
 }  // namespace
 
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation, ArrayRef<std::string> architectures,
-    bool generate_fatbin, bool print_ptx) {
-  return std::make_unique<GpuKernelToBlobPass>(blob_annotation, architectures,
-                                               generate_fatbin, print_ptx);
+    bool generate_fatbin, bool print_ptx, bool enable_ftz) {
+  return std::make_unique<GpuKernelToBlobPass>(
+      blob_annotation, architectures, generate_fatbin, print_ptx, enable_ftz);
 }
 
 }  // namespace transforms

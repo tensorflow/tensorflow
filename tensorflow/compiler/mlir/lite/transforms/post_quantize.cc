@@ -130,7 +130,7 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
                                 PatternRewriter& rewriter) const override {
     auto input_op = op.input().getDefiningOp();
     if (auto q = llvm::dyn_cast_or_null<QuantizeOp>(input_op)) {
-      if (!q.getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
+      if (!q->getAttr(mlir::quant::kVolatileOpAttrName)) return failure();
 
       op.replaceAllUsesWith(q.input());
       return success();
@@ -171,6 +171,7 @@ void PostQuantizePass::runOnFunction() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
+  patterns.insert<PruneUnusedLstm<TFL::LSTMOp>>(ctx);
   patterns.insert<PruneUnusedLstm<TFL::UnidirectionalSequenceLSTMOp>>(ctx);
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 

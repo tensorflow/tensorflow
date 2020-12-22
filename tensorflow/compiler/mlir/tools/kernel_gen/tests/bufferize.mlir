@@ -2,14 +2,14 @@
 // RUN: kernel-gen-opt %s --func-bufferize --final-bufferize --promote-buffers-to-stack | FileCheck %s  --check-prefixes=CHECK,ALLOCA
 
 
-// CHECK-LABEL: @extract_element
+// CHECK-LABEL: @tensor.extract
 // CHECK-SAME: (%[[ARG:.*]]: memref<?xf32>) -> f32
-func @extract_element(%arg : tensor<?xf32>) -> f32 {
+func @tensor.extract(%arg : tensor<?xf32>) -> f32 {
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[RESULT:.*]] = load %[[ARG]][%[[C0]]]
   // CHECK: return %[[RESULT]]
   %c0 = constant 0 : index
-  %result = extract_element %arg[%c0] : tensor<?xf32>
+  %result = tensor.extract %arg[%c0] : tensor<?xf32>
   return %result : f32
 }
 
@@ -30,7 +30,7 @@ func @tensor_from_elements(%a : f32) -> f32 {
   %c = constant 2.3 : f32
   %tfe = tensor_from_elements %a, %b, %c : tensor<3xf32>
   %c0 = constant 0 : index
-  %result = extract_element %tfe[%c0] : tensor<3xf32>
+  %result = tensor.extract %tfe[%c0] : tensor<3xf32>
   return %result : f32
 }
 
@@ -54,7 +54,7 @@ func @dynamic_tensor_from_elements(%arg : tensor<*xf32>) -> index {
     yield %elem : index
   } : tensor<?xindex>
   %c0 = constant 0 : index
-  %result = extract_element %tfe[%c0] : tensor<?xindex>
+  %result = tensor.extract %tfe[%c0] : tensor<?xindex>
   return %result : index
 }
 

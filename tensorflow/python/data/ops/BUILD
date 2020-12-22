@@ -56,9 +56,9 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python/data/util:convert",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

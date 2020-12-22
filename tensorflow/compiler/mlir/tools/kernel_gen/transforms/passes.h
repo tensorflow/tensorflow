@@ -62,9 +62,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateHloBufferizePass();
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 
-// Pass to materialize broadcasts.
-std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();
-
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
@@ -72,10 +69,7 @@ std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation = {},
     ArrayRef<std::string> architectures = {}, bool generate_fatbin = true,
-    bool print_ptx = false);
-
-// Pass to unfuse batch norm.
-std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
+    bool print_ptx = false, bool enable_ftz = false);
 
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();

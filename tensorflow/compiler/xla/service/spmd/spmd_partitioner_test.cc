@@ -5542,6 +5542,55 @@ ENTRY entry {
   EXPECT_THAT(root, partially_replicated);
 }
 
+TEST_F(SpmdPartitioningTest, TileToPartialReplicateReshardUnevenPartition) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0),
+    sharding={devices=[2,3]0,1,2,3,4,5}
+  ROOT %copy0 = f32[8,8] copy(%param0),
+    sharding={devices=[1,2,3]0,1,2,3,4,5 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/6));
+  VLOG(1) << module->ToString();
+  auto tiled = AllOf(op::Shape("f32[4,3]"), op::Parameter(0));
+  auto partially_replicated = AllOf(
+      op::Shape("f32[8,4]"),
+      op::Copy(op::Reshape(
+          op::Transpose(op::AllToAll(op::Reshape(op::Slice(op::AllReduce(
+              op::DynamicUpdateSlice(op::Broadcast(), tiled, _, _)))))))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, partially_replicated);
+}
+
+TEST_F(SpmdPartitioningTest, PartialReplicateToTileReshardUnevenPartition) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0),
+    sharding={devices=[1,2,3]0,1,2,3,4,5 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%param0),
+    sharding={devices=[2,3]0,1,2,3,4,5}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/6));
+  VLOG(1) << module->ToString();
+  auto partial_replicated = AllOf(op::Shape("f32[8,4]"), op::Parameter(0));
+  auto tiled = AllOf(
+      op::Shape("f32[4,3]"),
+      op::Copy(op::DynamicSlice(op::Pad(op::Reshape(op::Transpose(op::AllToAll(
+                                            op::Reshape(partial_replicated)))),
+                                        _),
+                                _, _)));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, tiled);
+}
+
 TEST_F(SpmdPartitioningTest, PartialReplicateToTileReshard) {
   const char* const hlo_string = R"(
 HloModule module

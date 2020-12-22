@@ -186,7 +186,10 @@ py_library(
 py_test(
     name = "lite_test",
     srcs = ["lite_test.py"],
-    data = ["@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb"],
+    data = [
+        "//tensorflow/lite/python/testdata:control_flow_v1.pbtxt",
+        "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
+    ],
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
@@ -205,6 +208,9 @@ py_test(
 py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
+    data = [
+        "//tensorflow/lite/python/testdata/control_flow_v1_saved_model:saved_model.pb",
+    ],
     python_version = "PY3",
     shard_count = 12,
     srcs_version = "PY2AND3",

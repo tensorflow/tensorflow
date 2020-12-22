@@ -382,9 +382,11 @@ void SelectDetectionsAboveScoreThreshold(const std::vector<float>& values,
 
 bool ValidateBoxes(const TfLiteTensor* decoded_boxes, const int num_boxes) {
   for (int i = 0; i < num_boxes; ++i) {
-    // ymax>=ymin, xmax>=xmin
     auto& box = ReInterpretTensor<const BoxCornerEncoding*>(decoded_boxes)[i];
-    if (box.ymin >= box.ymax || box.xmin >= box.xmax) {
+    // Note: `ComputeIntersectionOverUnion` properly handles degenerated boxes
+    // (xmin == xmax and/or ymin == ymax) as it just returns 0 in case the box
+    // area is <= 0.
+    if (box.ymin > box.ymax || box.xmin > box.xmax) {
       return false;
     }
   }

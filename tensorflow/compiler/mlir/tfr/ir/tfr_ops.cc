@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/FunctionImplementation.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -38,7 +39,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
@@ -119,6 +119,13 @@ TFRDialect::TFRDialect(MLIRContext *context)
       >();
 
   addInterfaces<TFRInlinerInterface>();
+}
+
+Operation *TFRDialect::materializeConstant(OpBuilder &builder, Attribute value,
+                                           Type type, Location loc) {
+  if (ConstantOp::isBuildableWith(value, type))
+    return builder.create<ConstantOp>(loc, type, value);
+  return nullptr;
 }
 
 bool TFRType::classof(Type type) {
@@ -224,7 +231,7 @@ static LogicalResult Verify(TFRFuncOp func) {
   // Collect all the undefined attributes used in the inputs.
   llvm::SmallVector<StringAttr, 4> undefined_attrs;
   for (auto attr : input_used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }
@@ -288,7 +295,7 @@ static LogicalResult Verify(TFRFuncOp func) {
 
   // Collect all the undefined attributes used in the outputs.
   for (auto attr : output_used_attrs) {
-    if (!func.getAttr(attr.getValue())) {
+    if (!func->getAttr(attr.getValue())) {
       undefined_attrs.push_back(attr);
     }
   }

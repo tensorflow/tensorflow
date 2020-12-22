@@ -113,9 +113,9 @@ py_library(
         ":warm_starting_util",
         "//tensorflow/python:learning_rate_decay",
         "//tensorflow/python:sdca_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -139,7 +139,7 @@ py_library(
         ":training_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -154,7 +154,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -170,7 +170,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -186,8 +186,8 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -197,7 +197,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:errors",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -226,11 +226,11 @@ py_library(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -242,8 +242,8 @@ py_library(
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -256,7 +256,7 @@ py_library(
         ":server_lib",
         "//tensorflow/python:device",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -297,7 +297,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -311,7 +311,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -335,10 +335,10 @@ py_library(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:summary",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -352,7 +352,7 @@ py_library(
         ":training_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -368,11 +368,11 @@ py_library(
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -390,7 +390,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -399,6 +398,7 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -413,7 +413,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -426,7 +426,7 @@ py_library(
         ":training_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -436,8 +436,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:_pywrap_quantize_training",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -450,9 +450,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -474,7 +474,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -488,8 +488,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -532,11 +532,11 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -573,10 +573,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -795,11 +795,11 @@ py_library(
     name = "py_checkpoint_reader",
     srcs = ["py_checkpoint_reader.py"],
     deps = [
-        "//tensorflow/python:_pywrap_checkpoint_reader",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:_pywrap_checkpoint_reader",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -818,10 +818,10 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -867,13 +867,13 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
@@ -996,8 +996,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -1007,7 +1007,7 @@ py_library(
     name = "session_run_hook",
     srcs = ["session_run_hook.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:tf_export"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_library(
@@ -1025,10 +1025,10 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1065,8 +1065,8 @@ py_library(
     deps = [
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tf_session",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1082,10 +1082,10 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -1351,10 +1351,10 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
         "//tensorflow/python:summary",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_coordinator_context",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )

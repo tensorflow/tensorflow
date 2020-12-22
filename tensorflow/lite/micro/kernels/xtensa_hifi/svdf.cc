@@ -1,23 +1,3 @@
-/*******************************************************************************
- * Copyright (c) 2019-2020 Cadence Design Systems, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to use this Software with Cadence processor cores only and
- * not with any other processors and platforms, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- ******************************************************************************/
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -488,76 +468,75 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, activation_state->dims->data[1],
                     memory_size * num_filters);
 
-    TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
 
-    if (input->type == kTfLiteInt8) {
-      TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
-      TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteInt16);
-      TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteInt16);
-      if (bias != nullptr) {
-        TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
-      }
-
-      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
-
-      const auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-          input->quantization.params);
-      const auto* weights_feature_params =
-          static_cast<const TfLiteAffineQuantization*>(
-              weights_feature->quantization.params);
-      const auto* state_params = static_cast<const TfLiteAffineQuantization*>(
-          activation_state->quantization.params);
-      const auto* weight_time_params =
-          static_cast<const TfLiteAffineQuantization*>(
-              weights_time->quantization.params);
-      const auto* output_params = static_cast<const TfLiteAffineQuantization*>(
-          output->quantization.params);
-      const double effective_scale_1 =
-          static_cast<double>(input_params->scale->data[0] *
-                              weights_feature_params->scale->data[0] /
-                              state_params->scale->data[0]);
-      const double effective_scale_2 = static_cast<double>(
-          state_params->scale->data[0] * weight_time_params->scale->data[0] /
-          output_params->scale->data[0]);
-
-      TFLITE_DCHECK(node->user_data != nullptr);
-      OpData* data = static_cast<OpData*>(node->user_data);
-
-      QuantizeMultiplier(effective_scale_1, &(data->effective_scale_1_a),
-                         &(data->effective_scale_1_b));
-      QuantizeMultiplier(effective_scale_2, &(data->effective_scale_2_a),
-                         &(data->effective_scale_2_b));
-
-      TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
-
-      const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
-          context, batch_size * num_filters * sizeof(int32_t),
-          &(data->scratch_tensor_index));
-      TF_LITE_ENSURE_OK(context, scratch_status);
-
-      const TfLiteStatus scratch_output_status =
-          context->RequestScratchBufferInArena(
-              context, batch_size * num_units * sizeof(int32_t),
-              &(data->scratch_output_tensor_index));
-      TF_LITE_ENSURE_OK(context, scratch_output_status);
-    } else {
-      TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
-      TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteFloat32);
-      TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteFloat32);
-      if (bias != nullptr) {
-        TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
-      }
-      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
-
-      TFLITE_DCHECK(node->user_data != nullptr);
-      OpData* data = static_cast<OpData*>(node->user_data);
-
-      TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
-      const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
-          context, batch_size * num_filters * sizeof(float),
-          &(data->scratch_tensor_index));
-      TF_LITE_ENSURE_OK(context, scratch_status);
+  if (input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteInt8);
+    TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteInt16);
+    TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteInt16);
+    if (bias != nullptr) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
     }
+
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
+
+    const auto* input_params =
+        reinterpret_cast<TfLiteAffineQuantization*>(input->quantization.params);
+    const auto* weights_feature_params =
+        static_cast<const TfLiteAffineQuantization*>(
+            weights_feature->quantization.params);
+    const auto* state_params = static_cast<const TfLiteAffineQuantization*>(
+        activation_state->quantization.params);
+    const auto* weight_time_params =
+        static_cast<const TfLiteAffineQuantization*>(
+            weights_time->quantization.params);
+    const auto* output_params = static_cast<const TfLiteAffineQuantization*>(
+        output->quantization.params);
+    const double effective_scale_1 = static_cast<double>(
+        input_params->scale->data[0] * weights_feature_params->scale->data[0] /
+        state_params->scale->data[0]);
+    const double effective_scale_2 = static_cast<double>(
+        state_params->scale->data[0] * weight_time_params->scale->data[0] /
+        output_params->scale->data[0]);
+
+    TFLITE_DCHECK(node->user_data != nullptr);
+    OpData* data = static_cast<OpData*>(node->user_data);
+
+    QuantizeMultiplier(effective_scale_1, &(data->effective_scale_1_a),
+                       &(data->effective_scale_1_b));
+    QuantizeMultiplier(effective_scale_2, &(data->effective_scale_2_a),
+                       &(data->effective_scale_2_b));
+
+    TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
+
+    const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
+        context, batch_size * num_filters * sizeof(int32_t),
+        &(data->scratch_tensor_index));
+    TF_LITE_ENSURE_OK(context, scratch_status);
+
+    const TfLiteStatus scratch_output_status =
+        context->RequestScratchBufferInArena(
+            context, batch_size * num_units * sizeof(int32_t),
+            &(data->scratch_output_tensor_index));
+    TF_LITE_ENSURE_OK(context, scratch_output_status);
+  } else {
+    TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, weights_time->type, kTfLiteFloat32);
+    TF_LITE_ENSURE_EQ(context, activation_state->type, kTfLiteFloat32);
+    if (bias != nullptr) {
+      TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+    }
+    TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
+
+    TFLITE_DCHECK(node->user_data != nullptr);
+    OpData* data = static_cast<OpData*>(node->user_data);
+
+    TFLITE_DCHECK(context->RequestScratchBufferInArena != nullptr);
+    const TfLiteStatus scratch_status = context->RequestScratchBufferInArena(
+        context, batch_size * num_filters * sizeof(float),
+        &(data->scratch_tensor_index));
+    TF_LITE_ENSURE_OK(context, scratch_status);
+  }
 
   return kTfLiteOk;
 }

@@ -922,6 +922,11 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
            absl::c_linear_search(reduce_dims, space_dim);
   }
 
+  if (consumer->opcode() == HloOpcode::kReduceWindow &&
+      consumer->shape().IsTuple()) {
+    // TODO (b/73062247) variadic reduce window is not yet supported.
+    return false;
+  }
   if (consumer->opcode() == HloOpcode::kReduceWindow ||
       consumer->opcode() == HloOpcode::kSelectAndScatter) {
     auto first_operand = consumer->mutable_operand(0);
@@ -981,12 +986,14 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
     auto dim_map_val = instr_to_dim_map_[producer];
     auto new_consumer = computation->AddInstruction(consumer->Clone());
 
+    bool is_pivot_producer_modified = false;
     // For elementwise binary ops, both of whose operands have been space-to-
     // batched, if their new spatial sizes don't match, choose the bigger one
     // as the producer.
     if (consumer->IsElementwiseBinary() &&
         old_to_new_instrs_.contains(consumer->mutable_operand(0)) &&
         old_to_new_instrs_.contains(consumer->mutable_operand(1))) {
+      is_pivot_producer_modified = true;
       if (old_to_new_instrs_[consumer->mutable_operand(0)]
               ->shape()
               .dimensions() > old_to_new_instrs_[consumer->mutable_operand(1)]
@@ -1038,7 +1045,8 @@ StatusOr<bool> ConvolutionVisitor::Propagate(HloInstruction* consumer,
               pivot_new_instr->shape().dimensions(space_dim) * batch_size /
               old_batch_size;
 
-          CHECK_GT(pivot_space_size, new_dimensions[space_dim]);
+          CHECK(pivot_space_size > new_dimensions[space_dim] ||
+                !is_pivot_producer_modified);
 
           PaddingConfig padding_config =
               MakeNoPaddingConfig(reshape->shape().dimensions_size());

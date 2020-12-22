@@ -198,7 +198,7 @@ void PropagateDevicesInGraph(
       if (auto sink =
               llvm::dyn_cast<tf_executor::NextIterationSinkOp>(op_to_update)) {
         auto source = sink.GetSource();
-        source.setAttr(kDeviceAttr, new_device_attr);
+        source->setAttr(kDeviceAttr, new_device_attr);
         PopulateDeviceForOpResults(*source, new_device_attr.getValue(),
                                    value_to_device);
         updated_next_iteration = true;
