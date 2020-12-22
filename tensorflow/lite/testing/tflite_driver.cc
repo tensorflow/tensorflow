@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -82,7 +81,7 @@ unique_void_ptr make_type_erased_array(size_t size) {
 }
 
 bool IsQuantized(const TfLiteTensor& tensor) {
-  if (tensor.quantization.type == kTfLiteNoQuantization) return false;
+  if (tensor.type != kTfLiteInt8 && tensor.type != kTfLiteInt16) return false;
 
   if (tensor.quantization.params != nullptr) {
     auto* quantization =
