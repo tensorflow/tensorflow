@@ -392,31 +392,6 @@ StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
   return {{buffers, executor->device_ordinal(), memory_allocator}};
 }
 
-// Returns `true` if the entire tuple contents is aliased.
-static bool EntireTupleContentsAliased(
-    const Shape& output_shape, const ShapeIndex& index,
-    const HloInputOutputAliasConfig& alias_config) {
-  const Shape& indexed_shape = ShapeUtil::GetSubshape(output_shape, index);
-  if (!indexed_shape.IsTuple()) {
-    return false;
-  }
-  bool all_aliased = true;
-  ShapeUtil::ForEachSubshape(
-      indexed_shape, [&](const Shape& subshape, const ShapeIndex& subindex) {
-        if (subindex.empty()) {
-          return;
-        }
-        std::vector<int64> full_index;
-        absl::c_copy(index, std::back_inserter(full_index));
-        absl::c_copy(subindex, std::back_inserter(full_index));
-        if (!alias_config.OutputHasAlias(
-                ShapeIndex(full_index.begin(), full_index.end()))) {
-          all_aliased = false;
-        }
-      });
-  return all_aliased;
-}
-
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
@@ -450,28 +425,37 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
                                                 memory_allocator, executor));
   VLOG(2) << buffer_allocations.ToString();
   std::set<se::DeviceMemoryBase> buffers_in_result;
+
+  const bool is_entire_tuple_contents_aliased = [&] {
+    for (auto& p : result.MutableResult()->buffers().leaves()) {
+      const OutputInfo& output_info = output_info_.at(p.first);
+      if (!output_info.alias_config.has_value()) {
+        return false;
+      }
+    }
+    return true;
+  }();
+
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
     const OutputInfo& output_info = output_info_.at(index);
+    const BufferAllocation* allocation =
+        &allocations_[output_info.allocation_index];
     se::DeviceMemoryBase& result_buffer = p.second;
 
     VLOG(4) << "Looking at: allocation " << output_info.allocation_index
             << " @ index: " << index.ToString();
 
-    const HloInputOutputAliasConfig& input_output_alias =
-        module().input_output_alias_config();
-    absl::optional<HloInputOutputAliasConfig::Alias> alias =
-        input_output_alias.GetAliasedParameter(index);
-    if (alias) {
-      CHECK_LT(alias->parameter_number, arguments.size());
-      ExecutionInput& input = arguments[alias->parameter_number];
+    if (output_info.alias_config) {
+      ExecutionInput& input = arguments[allocation->parameter_number()];
       MaybeOwningDeviceMemory* maybe_owning_memory =
-          input.MutableBuffer(alias->parameter_index);
-      if (alias->must_alias() && !maybe_owning_memory->HasOwnership()) {
+          input.MutableBuffer(allocation->param_shape_index());
+      if (output_info.alias_config->must_alias() &&
+          !maybe_owning_memory->HasOwnership()) {
         return InvalidArgument(
             "An input was configured to be must-alias at "
-            "compile time but not donated at runtime: %s",
-            alias->ToString());
+            "compile time but not donated at runtime: allocation %d",
+            output_info.allocation_index);
       }
       if (absl::optional<se::OwningDeviceMemory> owning =
               maybe_owning_memory->Release()) {
@@ -521,8 +505,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
 
       // If the entire tuple contents is aliased, the copy insertion will *not*
       // materialize a new tuple, so we mark it as aliased as well.
-      if (EntireTupleContentsAliased(root->shape(), index,
-                                     input_output_alias)) {
+      if (is_entire_tuple_contents_aliased) {
         result.AddAliasedIndex(index);
       }
     }
@@ -593,6 +576,9 @@ GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment) {
             assignment.GetUniqueSlice(src_hlo, sources.values()[0]->index()));
         CHECK_EQ(slice.offset(), 0) << "Parameter should get its own slice";
         info.allocation_index = slice.index();
+
+        output[index].alias_config =
+            hlo_module.input_output_alias_config().GetAliasedParameter(index);
 
         return Status::OK();
       }));

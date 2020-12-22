@@ -61,6 +61,10 @@ class GpuExecutable : public Executable {
 
     // Corresponding allocation index.
     int allocation_index;
+
+    // Whether this output is hinted to alias a parameter (BufferAllocation*
+    // would indicate the aliased parameter), and what kind of alias it is.
+    absl::optional<HloInputOutputAliasConfig::Alias> alias_config;
   };
 
   struct Params {
