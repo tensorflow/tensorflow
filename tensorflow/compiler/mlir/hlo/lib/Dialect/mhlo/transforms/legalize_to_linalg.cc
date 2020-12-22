@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
@@ -957,6 +958,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<lmhlo::NegOp>,
                    PointwiseToLinalgConverter<lmhlo::NotOp>,
                    PointwiseToLinalgConverter<lmhlo::OrOp>,
+                   PointwiseToLinalgConverter<lmhlo::PowOp>,
                    PointwiseToLinalgConverter<lmhlo::RealOp>,
                    PointwiseToLinalgConverter<lmhlo::RemOp>,
                    PointwiseToLinalgConverter<lmhlo::RsqrtOp>,
@@ -1021,13 +1023,14 @@ struct LhloLegalizeToLinalgPass
 struct HloLegalizeToLinalgPass
     : public PassWrapper<HloLegalizeToLinalgPass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<linalg::LinalgDialect>();
+    registry.insert<linalg::LinalgDialect, scf::SCFDialect>();
   }
 
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
-    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
+    target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
+                           scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1075,6 +1078,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::NegOp, false>,
                PointwiseToLinalgConverter<mhlo::NotOp, false>,
                PointwiseToLinalgConverter<mhlo::OrOp, false>,
+               PointwiseToLinalgConverter<mhlo::PowOp, false>,
                PointwiseToLinalgConverter<mhlo::RealOp, false>,
                PointwiseToLinalgConverter<mhlo::RemOp, false>,
                PointwiseToLinalgConverter<mhlo::RsqrtOp, false>,

@@ -28,6 +28,7 @@ from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
+from tensorflow.lite.python import interpreter as _interpreter
 from tensorflow.lite.python import lite as _lite
 from tensorflow.lite.python import util as _util
 from tensorflow.python.client import session as _session
@@ -170,7 +171,9 @@ def _check_model_quantized_to_16x8(tflite_model):
     raise ValueError("Could not find int16 activations.")
 
 
-def _get_tflite_interpreter(tflite_model, input_shapes_resize=None):
+def _get_tflite_interpreter(tflite_model,
+                            input_shapes_resize=None,
+                            custom_op_registerers=None):
   """Creates a TFLite interpreter with resized input tensors.
 
   Args:
@@ -178,11 +181,15 @@ def _get_tflite_interpreter(tflite_model, input_shapes_resize=None):
     input_shapes_resize: A map where the key is the input tensor name and the
       value is the shape of the input tensor. This resize happens after model
       conversion, prior to calling allocate tensors. (default None)
+    custom_op_registerers: Op registerers for custom ops.
 
   Returns:
     lite.Interpreter
   """
-  interpreter = _lite.Interpreter(model_content=tflite_model)
+  if custom_op_registerers is None:
+    custom_op_registerers = []
+  interpreter = _interpreter.InterpreterWithCustomOps(
+      model_content=tflite_model, custom_op_registerers=custom_op_registerers)
   if input_shapes_resize:
     input_details = interpreter.get_input_details()
     input_details_map = {
@@ -194,17 +201,19 @@ def _get_tflite_interpreter(tflite_model, input_shapes_resize=None):
   return interpreter
 
 
-def _get_input_data_map(tflite_model, input_data):
+def _get_input_data_map(tflite_model, input_data, custom_op_registerers=None):
   """Generates a map of input data based on the TFLite model.
 
   Args:
     tflite_model: Serialized TensorFlow Lite model.
     input_data: List of np.ndarray.
+    custom_op_registerers: Op registerers for custom ops.
 
   Returns:
     {str: [np.ndarray]}.
   """
-  interpreter = _get_tflite_interpreter(tflite_model)
+  interpreter = _get_tflite_interpreter(
+      tflite_model, custom_op_registerers=custom_op_registerers)
   interpreter.allocate_tensors()
   input_details = interpreter.get_input_details()
   return {
@@ -216,7 +225,8 @@ def _get_input_data_map(tflite_model, input_data):
 def _generate_random_input_data(tflite_model,
                                 seed=None,
                                 input_data_range=None,
-                                input_shapes_resize=None):
+                                input_shapes_resize=None,
+                                custom_op_registerers=None):
   """Generates input data based on the input tensors in the TFLite model.
 
   Args:
@@ -230,11 +240,15 @@ def _generate_random_input_data(tflite_model,
     input_shapes_resize: A map where the key is the input tensor name and the
       value is the shape of the input tensor. This resize happens after model
       conversion, prior to calling allocate tensors. (default None)
+    custom_op_registerers: Op registerers for custom ops.
 
   Returns:
     ([np.ndarray], {str : [np.ndarray]}).
   """
-  interpreter = _get_tflite_interpreter(tflite_model, input_shapes_resize)
+  interpreter = _get_tflite_interpreter(
+      tflite_model,
+      input_shapes_resize,
+      custom_op_registerers=custom_op_registerers)
   interpreter.allocate_tensors()
   input_details = interpreter.get_input_details()
 
@@ -254,11 +268,15 @@ def _generate_random_input_data(tflite_model,
             ) * val + input_data_range[input_tensor["name"]][0]
     input_data.append(np.array(val, dtype=input_tensor["dtype"]))
 
-  input_data_map = _get_input_data_map(tflite_model, input_data)
+  input_data_map = _get_input_data_map(
+      tflite_model, input_data, custom_op_registerers=custom_op_registerers)
   return input_data, input_data_map
 
 
-def _evaluate_tflite_model(tflite_model, input_data, input_shapes_resize=None):
+def _evaluate_tflite_model(tflite_model,
+                           input_data,
+                           input_shapes_resize=None,
+                           custom_op_registerers=None):
   """Returns evaluation of input data on TFLite model.
 
   Args:
@@ -267,11 +285,15 @@ def _evaluate_tflite_model(tflite_model, input_data, input_shapes_resize=None):
     input_shapes_resize: A map where the key is the input tensor name and the
       value is the shape of the input tensor. This resize happens after model
       conversion, prior to calling allocate tensors. (default None)
+    custom_op_registerers: Op registerers for custom ops.
 
   Returns:
     List of np.ndarray.
   """
-  interpreter = _get_tflite_interpreter(tflite_model, input_shapes_resize)
+  interpreter = _get_tflite_interpreter(
+      tflite_model,
+      input_shapes_resize,
+      custom_op_registerers=custom_op_registerers)
   interpreter.allocate_tensors()
 
   input_details = interpreter.get_input_details()
@@ -403,6 +425,31 @@ def compare_models(tflite_model,
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 
 
+def _compare_tf_tflite_results(tf_results,
+                               tflite_results,
+                               tflite_labels,
+                               tolerance=5):
+  """Compare the result of TF and TFLite model.
+
+  Args:
+    tf_results: results returned by the TF model.
+    tflite_results: results returned by the TFLite model.
+    tflite_labels: names of the output tensors in the TFlite model.
+    tolerance: Decimal place to check accuracy to. (default 5).
+  """
+  # Convert the output TensorFlow results into an ordered list.
+  if isinstance(tf_results, dict):
+    if len(tf_results) == 1:
+      tf_results = [tf_results[list(tf_results.keys())[0]]]
+    else:
+      tf_results = [tf_results[tflite_label] for tflite_label in tflite_labels]
+  else:
+    tf_results = [tf_results]
+
+  for tf_result, tflite_result in zip(tf_results, tflite_results):
+    np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
+
+
 def compare_models_v2(tflite_model,
                       tf_eval_func,
                       input_data=None,
@@ -444,17 +491,49 @@ def compare_models_v2(tflite_model,
   tflite_results, tflite_labels = _evaluate_tflite_model(
       tflite_model, input_data)
 
-  # Convert the output TensorFlow results into an ordered list.
-  if isinstance(tf_results, dict):
-    if len(tf_results) == 1:
-      tf_results = [tf_results[list(tf_results.keys())[0]]]
-    else:
-      tf_results = [tf_results[tflite_label] for tflite_label in tflite_labels]
-  else:
-    tf_results = [tf_results]
+  _compare_tf_tflite_results(tf_results, tflite_results, tflite_labels,
+                             tolerance)
 
-  for tf_result, tflite_result in zip(tf_results, tflite_results):
-    np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
+
+def compare_tflite_keras_models_v2(tflite_model,
+                                   keras_model,
+                                   input_data=None,
+                                   input_data_range=None,
+                                   tolerance=5,
+                                   custom_op_registerers=None):
+  """Similar to compare_models_v2 but accept Keras model.
+
+  Unless the input data is provided, the models are compared with random data.
+  Currently only 1 input and 1 output are supported by this function.
+
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
+    keras_model: Keras model to evaluate.
+    input_data: np.ndarray to pass into models during inference. (default None).
+    input_data_range: A map where the key is the input tensor name and the value
+      is a tuple (min_val, max_val) which specifies the value range of
+      the corresponding input tensor. For example, '{'input1': (1, 5)}' means to
+      generate a random value for tensor `input1` within range [1.0, 5.0)
+      (half-inclusive). (default None)
+    tolerance: Decimal place to check accuracy to. (default 5)
+    custom_op_registerers: Op registerers for custom ops.
+  """
+  # Generate random input data if not provided.
+  if input_data is None:
+    input_data, _ = _generate_random_input_data(
+        tflite_model=tflite_model,
+        input_data_range=input_data_range,
+        custom_op_registerers=custom_op_registerers)
+
+  if len(input_data) > 1:
+    tf_results = keras_model.predict(input_data)
+  else:
+    tf_results = keras_model.predict(input_data[0])
+  tflite_results, tflite_labels = _evaluate_tflite_model(
+      tflite_model, input_data, custom_op_registerers=custom_op_registerers)
+
+  _compare_tf_tflite_results(tf_results, tflite_results, tflite_labels,
+                             tolerance)
 
 
 def compare_model_golden(tflite_model,

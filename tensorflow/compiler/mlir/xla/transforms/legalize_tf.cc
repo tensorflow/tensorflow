@@ -5409,7 +5409,8 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
     window_dims[axis] = input_shape[axis];
 
     SmallVector<int64_t, 8> paddings(rank * 2, 0);
-    paddings[axis * 2] = input_shape[axis] - 1;
+    paddings[axis * 2] =
+        std::max(input_shape[axis] - 1, static_cast<int64_t>(0));
     auto paddings_attr = DenseIntElementsAttr::get(
         RankedTensorType::get({rank, 2}, rewriter.getIntegerType(64)),
         paddings);

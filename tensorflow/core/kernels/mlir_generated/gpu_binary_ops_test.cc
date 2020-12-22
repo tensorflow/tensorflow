@@ -597,5 +597,25 @@ GENERATE_DEFAULT_TESTS_2(LogicalOr, /*test_name=*/Bool, /*T=*/bool,
                          /*BaselineOutT=*/bool, baseline_logical_or,
                          /*use_constraint=*/false)
 
+/// Test `tf.FloorDiv`.
+template <typename T>
+T baseline_floor_div(T lhs, T rhs) {
+  return std::floor(lhs / rhs);
+}
+
+template <>
+Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
+  return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
+}
+
+GENERATE_DEFAULT_TESTS(FloorDiv,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_floor_div);
+GENERATE_DEFAULT_TESTS(FloorDiv,
+                       /*test_name=*/Float, float, float, baseline_floor_div);
+GENERATE_DEFAULT_TESTS(FloorDiv,
+                       /*test_name=*/Double, double, double,
+                       baseline_floor_div);
+
 }  // namespace
 }  // end namespace tensorflow

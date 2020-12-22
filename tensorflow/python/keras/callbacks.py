@@ -72,6 +72,7 @@ except ImportError:
   requests = None
 
 
+# Note: `configure_callbacks` is only used in TF1.
 def configure_callbacks(callbacks,
                         model,
                         do_validation=False,

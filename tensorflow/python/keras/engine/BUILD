@@ -608,6 +608,7 @@ tf_py_test(
     tags = [
         "no_rocm",
         "no-internal-py3",
+        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
