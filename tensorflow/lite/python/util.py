@@ -652,7 +652,12 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
     if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
       quant_opcode_idxs.append(idx)
   if operators and not quant_opcode_idxs:
-    raise ValueError("Model input is not quantized.")
+    for input_idx in subgraph.inputs:
+      input_type = _convert_tflite_enum_type_to_tf_type(tensors[input_idx].type)
+      if input_type == dtypes.float32:
+        raise ValueError("Model input is not dequantized.")
+    # None of the inputs have float32, then they must be int16, int8, or bool
+    return
 
   # Validate that the model input is quantized
   input_quant_ops = []
@@ -663,10 +668,13 @@ def _modify_model_input_type(model, inference_input_type=dtypes.float32):
       # If found, validate that the operator's input type is float
       float_type = _convert_tflite_enum_type_to_tf_type(float_tensor.type)
       if float_type != dtypes.float32:
-        raise ValueError(
-            "Initial model input type must be tf.float32. Expected type for "
-            "tensor with name '{}' is tf.float32, instead type is {}".format(
-                float_tensor.name, _get_tf_type_name(float_type)))
+        if float_type == inference_input_type:
+          continue
+        else:
+          raise ValueError(
+              "Initial model input type must be tf.float32. Expected type for "
+              "tensor with name '{}' is tf.float32, instead type is {}".format(
+                  float_tensor.name, _get_tf_type_name(float_type)))
       # If found, validate that the operator output is quantized and compatible
       # with the final model input type
       quant_type = _convert_tflite_enum_type_to_tf_type(quant_tensor.type)
@@ -737,7 +745,12 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
     if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
       dequant_opcode_idxs.append(idx)
   if operators and not dequant_opcode_idxs:
-    raise ValueError("Model output is not dequantized.")
+    for output in subgraph.outputs:
+      output_type = _convert_tflite_enum_type_to_tf_type(tensors[output].type)
+      if output_type == dtypes.float32:
+        raise ValueError("Model output is not dequantized.")
+    # None of the outputs have float32, then they must be int16, int8, or bool
+    return
 
   # Validate that the model output is dequantized
   output_dequant_ops = []
@@ -749,10 +762,13 @@ def _modify_model_output_type(model, inference_output_type=dtypes.float32):
       quant_tensor, float_tensor = tensors[op.inputs[0]], tensors[op.outputs[0]]
       float_type = _convert_tflite_enum_type_to_tf_type(float_tensor.type)
       if float_type != dtypes.float32:
-        raise ValueError(
-            "Initial model output type must be tf.float32. Expected type for "
-            "tensor with name '{}' is tf.float32, instead type is {}".format(
-                float_tensor.name, _get_tf_type_name(float_type)))
+        if float_type == inference_output_type:
+          continue
+        else:
+          raise ValueError(
+              "Initial model output type must be tf.float32. Expected type for "
+              "tensor with name '{}' is tf.float32, instead type is {}".format(
+                  float_tensor.name, _get_tf_type_name(float_type)))
       # If found, validate that the operator input is quantized and compatible
       # with the final model output type
       quant_type = _convert_tflite_enum_type_to_tf_type(quant_tensor.type)
