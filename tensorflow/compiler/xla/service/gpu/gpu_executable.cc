@@ -55,34 +55,6 @@ using ::tensorflow::profiler::ScopedAnnotation;
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
-<<<<<<< HEAD
-GpuExecutable::GpuExecutable(
-    const string& text, const std::vector<uint8>& binary,
-    GpuVersion gpu_version, std::unique_ptr<const ThunkSchedule> thunk_schedule,
-    std::shared_ptr<HloModule> hlo_module,
-    std::shared_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
-    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
-    std::vector<ConstantInfo> globals)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
-                 std::move(hlo_profile_index_map)),
-      text_(text),
-      binary_(binary),
-      gpu_version_(gpu_version),
-      thunk_schedule_(std::move(thunk_schedule)),
-      assignment_(std::move(assignment)),
-      constants_(std::move(globals)) {
-  CHECK(has_module() && assignment_);
-#if TENSORFLOW_USE_ROCM
-  // ROCm uses hsaco hashes to distinguish between modules.
-  // Bad things happen if multiple modules with identical code are loaded.
-  binary_.resize(binary_.size() + 16);
-  *(uint64_t*)(&binary_[binary_.size() - 16]) = tensorflow::EnvTime::NowNanos();
-  *(uint64_t*)(&binary_[binary_.size() - 8]) = tensorflow::random::New64();
-  // workaround for a bug in ROCm 3.3 hipModuleLoadData
-  binary_.reserve(binary_.size() + 256);
-#endif
-=======
 GpuExecutable::GpuExecutable(GpuExecutable::Params params)
     : Executable(std::move(params.hlo_module),
                  std::move(params.hlo_profile_printer_data),
@@ -96,7 +68,15 @@ GpuExecutable::GpuExecutable(GpuExecutable::Params params)
       constants_(std::move(params.constants)),
       output_info_(std::move(params.output_info)) {
   CHECK(has_module());
->>>>>>> upstream/master
+#if TENSORFLOW_USE_ROCM
+  // ROCm uses hsaco hashes to distinguish between modules.
+  // Bad things happen if multiple modules with identical code are loaded.
+  binary_.resize(binary_.size() + 16);
+  *(uint64_t*)(&binary_[binary_.size() - 16]) = tensorflow::EnvTime::NowNanos();
+  *(uint64_t*)(&binary_[binary_.size() - 8]) = tensorflow::random::New64();
+  // workaround for a bug in ROCm 3.3 hipModuleLoadData
+  binary_.reserve(binary_.size() + 256);
+#endif
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              debug_buffer_assignment_);
 }

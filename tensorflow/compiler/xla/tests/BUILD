@@ -929,10 +929,7 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
-<<<<<<< HEAD
-=======
         "no_rocm",  # ROCm 3.9 regression
->>>>>>> upstream/master
         "optonly",
     ],
     deps = [
@@ -966,10 +963,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
-<<<<<<< HEAD
-=======
         "no_rocm",  # ROCm 3.9 regression
->>>>>>> upstream/master
         "optonly",
         # TODO(b/151340488): Timed out on 2020-03-12.
         "nozapfhahn",
@@ -1036,10 +1030,7 @@ xla_test(
     },
     shard_count = 20,
     tags = [
-<<<<<<< HEAD
-=======
         "no_rocm",  # ROCm 3.9 regression
->>>>>>> upstream/master
         "optonly",
     ],
     deps = [
