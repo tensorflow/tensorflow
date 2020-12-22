@@ -585,11 +585,18 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
                             "thunk_schedule", thunk_schedule->ToString());
   }
 
+  module = emission_context.releaseHloModule();
+
+  TF_ASSIGN_OR_RETURN(auto output_info,
+                      xla::gpu::GetOutputInfo(*module, *buffer_assignment));
+  std::vector<BufferAllocation> allocations =
+      buffer_assignment->ReleaseAllocations();
+
   // TODO(b/137624192): Add profiling support.
-  return {absl::make_unique<GpuExecutable>(
-      ptx, cubin, GetGpuVersion(stream_exec), std::move(thunk_schedule),
-      emission_context.releaseHloModule(), std::move(buffer_assignment),
-      nullptr, nullptr, std::vector<GpuExecutable::ConstantInfo>())};
+  return {absl::make_unique<GpuExecutable>(GpuExecutable::Params{
+      std::move(ptx), std::move(cubin), GetGpuVersion(stream_exec),
+      std::move(thunk_schedule), std::vector<GpuExecutable::ConstantInfo>(),
+      std::move(output_info), std::move(module), std::move(allocations)})};
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> MlirCompilerImpl::Compile(

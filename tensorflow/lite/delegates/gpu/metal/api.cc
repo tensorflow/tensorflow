@@ -124,10 +124,10 @@ std::unique_ptr<ComputeTaskDescriptor> SelectSoftmax(const OperationDef& op_def,
                                                      const BHWC& src_shape,
                                                      const GpuInfo& gpu_info) {
   if (src_shape.w == 1 && src_shape.h == 1) {
-    auto gpu_op = Softmax1x1(op_def, gpu_info, src_shape.c);
+    auto gpu_op = Softmax1x1(op_def, gpu_info);
     return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = Softmax(op_def, src_shape.c);
+    auto gpu_op = Softmax(op_def);
     return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }

@@ -62,7 +62,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrame {
     std::string name;
     std::string function_name;
-    const Node* n = nullptr;
+    std::shared_ptr<AbstractStackTrace> stack_trace;
   };
 
   // Contains information about uncompilable node inside a function body.
@@ -197,7 +197,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrameView {
     absl::string_view name;
     absl::string_view function_name;
-    const Node* n = nullptr;
+    std::shared_ptr<AbstractStackTrace> stack_trace;
   };
 
   bool IsCompilableNode(
