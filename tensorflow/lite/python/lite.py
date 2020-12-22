@@ -1337,7 +1337,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     if calibrate_quantize:
       result = self._calibrate_quantize_model(result, **flags)
 
-    if self.experimental_new_converter:
+    if self.experimental_new_converter or self._experimental_new_quantizer:
       flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
           self.inference_input_type, self.inference_output_type)
       if flags_modify_model_io_type:

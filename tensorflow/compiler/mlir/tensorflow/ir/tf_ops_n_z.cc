@@ -898,7 +898,7 @@ static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
     dimensions.push_back(APInt(out_width, shape[i]));
 
   auto result_type = RankedTensorType::get(
-      {rank}, IntegerType::get(out_width, input_ty.getContext()));
+      {rank}, IntegerType::get(input_ty.getContext(), out_width));
   return DenseElementsAttr::get(result_type, dimensions);
 }
 
@@ -2967,6 +2967,18 @@ void WhileRegionOp::getCanonicalizationPatterns(
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<XdivyWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaSetDynamicDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.assign({operands.front().getType()});
+  return success();
 }
 
 }  // namespace TF

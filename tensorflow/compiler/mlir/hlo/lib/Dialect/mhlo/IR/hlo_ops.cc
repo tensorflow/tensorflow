@@ -621,7 +621,7 @@ OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
 static LogicalResult Verify(TupleOp op) {
   SmallVector<Type, 8> operandTypes = {op.operand_type_begin(),
                                        op.operand_type_end()};
-  auto expectedType = TupleType::get(operandTypes, op.getContext());
+  auto expectedType = TupleType::get(op.getContext(), operandTypes);
   if (op.getType() != expectedType) {
     return op.emitOpError(llvm::formatv("has return type {0}, but expected {1}",
                                         op.getType(), expectedType));
@@ -1967,7 +1967,7 @@ LogicalResult ReplicaIdOp::inferReturnTypes(
     MLIRContext* context, Optional<Location>, ValueRange operands,
     DictionaryAttr, RegionRange, SmallVectorImpl<Type>& inferredReturnTypes) {
   inferredReturnTypes.push_back(RankedTensorType::get(
-      /*shape=*/{}, IntegerType::get(32, IntegerType::Unsigned, context)));
+      /*shape=*/{}, IntegerType::get(context, 32, IntegerType::Unsigned)));
   return success();
 }
 

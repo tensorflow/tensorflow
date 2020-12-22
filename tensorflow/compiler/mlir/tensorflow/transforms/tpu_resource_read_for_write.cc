@@ -118,8 +118,8 @@ void TPUResourceReadForWrite::runOnOperation() {
     for (Value read_operand : read_operands)
       block.addArgument(read_operand.getType());
 
-    func.setType(FunctionType::get(block.getArgumentTypes(),
-                                   func.getCallableResults(), &getContext()));
+    func.setType(FunctionType::get(&getContext(), block.getArgumentTypes(),
+                                   func.getCallableResults()));
     cluster_func.erase();
   }
 }

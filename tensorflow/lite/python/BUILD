@@ -62,6 +62,7 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_main_lib",
+        "//tensorflow:tensorflow_py",
         "@six_archive//:six",
     ],
 )
@@ -73,6 +74,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_lib",
+        "//tensorflow:tensorflow_py",
         "@six_archive//:six",
     ],
 )

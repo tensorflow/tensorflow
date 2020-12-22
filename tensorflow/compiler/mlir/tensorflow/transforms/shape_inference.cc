@@ -1150,8 +1150,8 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
     }
 
     FunctionType func_type = func.getType();
-    func.setType(FunctionType::get(input_types, func_type.getResults(),
-                                   func.getContext()));
+    func.setType(FunctionType::get(func.getContext(), input_types,
+                                   func_type.getResults()));
 
     auto res =
         PropagateShapeToRegions(input_types, {&func.getBody()}, max_iteration);
@@ -1493,8 +1493,8 @@ void ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
   }
 
   DCOMMENT("Updating function type");
-  func.setType(FunctionType::get(
-      func.getArgumentTypes(), return_op.getOperandTypes(), func.getContext()));
+  func.setType(FunctionType::get(func.getContext(), func.getArgumentTypes(),
+                                 return_op.getOperandTypes()));
 
   if (changed) EnqueueCallers(func);
 }
@@ -1611,8 +1611,8 @@ LogicalResult InferShapeForFunction(FuncOp func,
     return failure();
 
   context.InferShapeForFunctionReturnType(func);
-  func.setType(FunctionType::get(new_arg_types, func.getType().getResults(),
-                                 func.getContext()));
+  func.setType(FunctionType::get(func.getContext(), new_arg_types,
+                                 func.getType().getResults()));
 
   return success();
 }

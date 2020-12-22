@@ -257,8 +257,8 @@ struct RewriteKernelSignaturePass
       auto new_kernel = kernel_builder.create<mlir::gpu::GPUFuncOp>(
           kernel.getLoc(), kernel.getName(),
           kernel_builder.getFunctionType(operand_types, {}));
-      new_kernel.setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
-                         kernel_builder.getUnitAttr());
+      new_kernel->setAttr(mlir::gpu::GPUDialect::getKernelFuncAttrName(),
+                          kernel_builder.getUnitAttr());
 
       // Create a map from old kernel argument to new one.
       mlir::BlockAndValueMapping old_kernel_to_new;

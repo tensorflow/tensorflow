@@ -121,7 +121,7 @@ void ExtractSingleBlockRegion(Region& region, StringRef name,
   if (extern_values_passthrough)
     for (auto input : extern_values) return_types.push_back(input.getType());
 
-  auto type = FunctionType::get(input_types, return_types, region.getContext());
+  auto type = FunctionType::get(region.getContext(), input_types, return_types);
 
   // Create new function and extract region body into the function.
   auto outlined_func = builder.create<FuncOp>(loc, name, type);

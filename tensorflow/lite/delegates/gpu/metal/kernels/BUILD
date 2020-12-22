@@ -169,18 +169,6 @@ macos_unit_test(
 )
 
 cc_library(
-    name = "custom_registry",
-    srcs = ["custom_registry.cc"],
-    hdrs = ["custom_registry.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:precision",
-        "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-    ],
-)
-
-cc_library(
     name = "depthwise_conv",
     srcs = ["depthwise_conv.cc"],
     hdrs = ["depthwise_conv.h"],
@@ -803,9 +791,12 @@ objc_library(
     name = "test_util",
     testonly = 1,
     srcs = [
-        "test_util.mm",
+        "test_util.cc",
     ],
     hdrs = ["test_util.h"],
+    copts = [
+        "-ObjC++",
+    ],
     sdk_frameworks = [
         "Metal",
     ],
@@ -824,8 +815,10 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/delegates/gpu/metal:metal_spatial_tensor",
         "@FP16",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 

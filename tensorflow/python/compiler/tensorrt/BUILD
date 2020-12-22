@@ -97,7 +97,6 @@ cuda_py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
-        "no_rocm",
         "no_windows",
         "nomac",
     ],

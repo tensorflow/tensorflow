@@ -547,8 +547,8 @@ struct ConvertTensorListResize
     Type branch_args_type[] = {input_handle.getType(), input_shape.getType(),
                                size_diff.getType(), size.getType()};
     Type branch_result_type[] = {result_type};
-    auto func_type = FunctionType::get(branch_args_type, branch_result_type,
-                                       rewriter.getContext());
+    auto func_type = FunctionType::get(rewriter.getContext(), branch_args_type,
+                                       branch_result_type);
 
     // Constructs `then_branch`, which is executed when `if_cond` evaluates to
     // true.
@@ -775,8 +775,8 @@ LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
     // Change `func`'s argument type to `unranked_argument_types`. If it
     // return types contain a `DT_VARIANT`, change it to the unranked type
     // derived from the corresponding argument.
-    func.setType(FunctionType::get(updated_argument_types, updated_result_types,
-                                   op.getContext()));
+    func.setType(FunctionType::get(op.getContext(), updated_argument_types,
+                                   updated_result_types));
 
     // Change the argument type for the first block.
     llvm::for_each(func.getArguments(), [&](BlockArgument &arg) {

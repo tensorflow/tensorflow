@@ -123,13 +123,14 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
         std::string node_message = absl::StrCat(
             "\n", node_info.name, ": ", node_info.uncompilable_reason, "\n",
             "The op is created at:\n");
-        const Node* n = node_info.stack_trace.back().n;
-        if (n && n->GetStackTrace()) {
+        if (node_info.stack_trace.back().stack_trace) {
           AbstractStackTrace::TracePrintingOptions opts;
           opts.show_line_contents = true;
           opts.filter_common_prefix = true;
           opts.drop_internal_frames = true;
-          absl::StrAppend(&node_message, n->GetStackTrace()->ToString(opts));
+          absl::StrAppend(
+              &node_message,
+              node_info.stack_trace.back().stack_trace->ToString(opts));
         } else {
           absl::StrAppend(&node_message, "<Unavailable>\n");
         }

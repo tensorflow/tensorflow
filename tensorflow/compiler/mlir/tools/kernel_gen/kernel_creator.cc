@@ -315,7 +315,7 @@ StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module) {
     return InternalError("There should be exactly one GPU Module");
   }
   mlir::gpu::GPUModuleOp gpu_mod = *gpu_modules.begin();
-  auto blob = gpu_mod.getAttrOfType<mlir::StringAttr>(kGpuBinaryAttrName);
+  auto blob = gpu_mod->getAttrOfType<mlir::StringAttr>(kGpuBinaryAttrName);
   if (blob == nullptr) {
     return InternalError("No binary blob found in the module");
   }

@@ -537,8 +537,7 @@ endif
 # will be separating the project generation from the Makefile in the future.
 TARGETS_WITHOUT_MAKEFILES := \
 $(HOST_OS) \
-arduino \
-chre
+arduino
 
 # ${TARGET}_makefile.inc can set this to true to allow it to defined a custom
 # implementation for `make test`. See bluepill_makefile as an example.

@@ -569,9 +569,9 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
     for (mlir::BlockArgument& arg : main_fn.getArguments())
       updated_argument_types.push_back(arg.getType());
 
-    main_fn.setType(mlir::FunctionType::get(updated_argument_types,
-                                            main_fn.getType().getResults(),
-                                            main_fn.getContext()));
+    main_fn.setType(mlir::FunctionType::get(main_fn.getContext(),
+                                            updated_argument_types,
+                                            main_fn.getType().getResults()));
   }
 
   for (int idx : llvm::reverse(args_to_erase)) main_fn.eraseArgument(idx);

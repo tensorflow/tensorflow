@@ -150,7 +150,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   mlir::Location loc = mlir::UnknownLoc::get(context);
   mlir::ModuleOp module = mlir::ModuleOp::create(loc);
   mlir::FunctionType func_type =
-      mlir::FunctionType::get(input_tys, output_tys, context);
+      mlir::FunctionType::get(context, input_tys, output_tys);
   llvm::StringRef func_name_str(func_name.data(), func_name.size());
   auto func = mlir::FuncOp::create(loc, func_name_str, func_type, {});
   module.push_back(func);

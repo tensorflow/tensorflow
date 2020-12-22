@@ -785,9 +785,9 @@ void RemoveUnusedResourceArgumentsAndForwardedRetvals(
     }
   }
   func_op.eraseArguments(indices_to_erase);
-  func_op.setType(FunctionType::get(
-      new_types, llvm::to_vector<4>(return_op->getOperandTypes()),
-      func_op.getContext()));
+  func_op.setType(
+      FunctionType::get(func_op.getContext(), new_types,
+                        llvm::to_vector<4>(return_op->getOperandTypes())));
 }
 
 // Lifts reads/writes of resource arguments from func_op and changes its
@@ -841,10 +841,9 @@ LogicalResult LiftArgRetResourcesForFunction(
     assign_variable_op.erase();
   }
 
-  func_op.setType(
-      FunctionType::get(func_op.front().getArgumentTypes(),
-                        func_op.front().getTerminator()->getOperandTypes(),
-                        func_op.getContext()));
+  func_op.setType(FunctionType::get(
+      func_op.getContext(), func_op.front().getArgumentTypes(),
+      func_op.front().getTerminator()->getOperandTypes()));
 
   return success();
 }
@@ -1153,9 +1152,9 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto new_return =
       builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
-  callee.setType(FunctionType::get(
-      callee.getType().getInputs(),
-      llvm::to_vector<4>(new_return.getOperandTypes()), callee.getContext()));
+  callee.setType(
+      FunctionType::get(callee.getContext(), callee.getType().getInputs(),
+                        llvm::to_vector<4>(new_return.getOperandTypes())));
   return success();
 }
 

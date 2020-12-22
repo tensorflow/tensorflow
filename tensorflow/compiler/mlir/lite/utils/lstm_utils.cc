@@ -382,8 +382,8 @@ void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   auto input_types = fused_func_op_.getType().getInputs();
   auto output_type = mlir::RankedTensorType::get(
       output_shape, input_.getType().cast<RankedTensorType>().getElementType());
-  fused_func_op_.setType(mlir::FunctionType::get(input_types, output_type,
-                                                 fused_func_op_.getContext()));
+  fused_func_op_.setType(mlir::FunctionType::get(fused_func_op_.getContext(),
+                                                 input_types, output_type));
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
@@ -820,8 +820,8 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   }
 
   // Update function signatures.
-  func_op.setType(mlir::FunctionType::get(func_op.getType().getInputs(),
-                                          output_types, func_op.getContext()));
+  func_op.setType(mlir::FunctionType::get(
+      func_op.getContext(), func_op.getType().getInputs(), output_types));
 
   builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
   return success();

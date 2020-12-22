@@ -63,7 +63,6 @@ tf_cc_test(
     srcs = ["conv_emitter_test.cc"],
     tags = [
         "no_oss",  # TODO(b/148143101): Test should pass in OSS.
-        "no_rocm",
     ],
     deps = [
         ":conv_emitter",

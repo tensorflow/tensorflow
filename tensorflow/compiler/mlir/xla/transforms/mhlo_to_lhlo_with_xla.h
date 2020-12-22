@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_MHLO_TO_LHLO_WITH_XLA_H_
 
+#include "absl/types/optional.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -65,6 +66,8 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
       ::xla::HloCustomCallInstruction* custom_call);
   ::xla::StatusOr<Operation*> EmitDnnConvolution(
       ::xla::HloCustomCallInstruction* custom_call);
+  ::xla::StatusOr<Operation*> EmitDnnBatchNorm(
+      ::xla::HloCustomCallInstruction* custom_call);
 
   ::xla::StatusOr<lmhlo::ReduceOp> EmitReduceOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<GetGlobalMemrefOp> EmitConstant(
@@ -84,20 +87,23 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       ::xla::HloInstruction* instr);
 
-  ::xla::Status CreateOperands(::xla::HloInstruction* instr,
-                               SmallVectorImpl<Value>& operands,
-                               size_t& num_arguments, size_t& num_results);
+  ::xla::Status CreateOperands(
+      ::xla::HloInstruction* instr, SmallVectorImpl<Value>& operands,
+      size_t& num_arguments, size_t& num_results,
+      absl::optional<xla::int64> num_operands = absl::nullopt);
 
   template <typename OpType>
-  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr) {
+  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(
+      ::xla::HloInstruction* instr,
+      absl::optional<xla::int64> num_operands = absl::nullopt) {
     size_t unused;
-    return CreateOpWithoutAttrs<OpType>(instr, unused, unused);
+    return CreateOpWithoutAttrs<OpType>(instr, unused, unused, num_operands);
   }
 
   template <typename OpType>
-  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(::xla::HloInstruction* instr,
-                                               size_t& num_arguments,
-                                               size_t& num_results);
+  ::xla::StatusOr<OpType> CreateOpWithoutAttrs(
+      ::xla::HloInstruction* instr, size_t& num_arguments, size_t& num_results,
+      absl::optional<xla::int64> num_operands = absl::nullopt);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {

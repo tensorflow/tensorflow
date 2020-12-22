@@ -4,6 +4,21 @@
 // CHECK-LABEL: func @element_wise
 func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                    %result: memref<2x2xf32>) {
+  "lmhlo.power"(%lhs, %rhs, %result)
+      : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: f32, %[[RHS_IN:.*]]: f32, %[[RESULT_OUT:.*]]: f32):
+// CHECK-NEXT:   %[[RESULT:.*]] = powf %[[LHS_IN]], %[[RHS_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK: #map = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @element_wise
+func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
+                   %result: memref<2x2xf32>) {
   "lmhlo.add"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
