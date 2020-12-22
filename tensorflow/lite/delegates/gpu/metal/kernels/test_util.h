@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 
@@ -60,14 +59,6 @@ class SingleOpModel {
 
 absl::Status CompareVectors(const std::vector<float>& reference,
                             const std::vector<float>& output, float max_error);
-
-/// Helper function that compiles previously configured graph (with added
-/// tasks), initializes graph with specified inputs, invokes and fills specified
-/// outputs
-absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes,
-                      id<MTLDevice> device,
-                      const std::map<ValueId, TensorFloat32>& inputs,
-                      std::map<ValueId, TensorFloat32>* outputs);
 
 class MetalExecutionEnvironment {
  public:
