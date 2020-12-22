@@ -100,7 +100,6 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
     case kTfLiteBuiltinTranspose:
-    case kTfLiteBuiltinTransposeConv:
       return registration->version <= 2;
     case kTfLiteBuiltinRelu:
       return registration->version == 2;
@@ -108,6 +107,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinDepthwiseConv2d:
     case kTfLiteBuiltinResizeBilinear:
     case kTfLiteBuiltinResizeNearestNeighbor:
+    case kTfLiteBuiltinTransposeConv:
       return registration->version <= 3;
     case kTfLiteBuiltinFullyConnected:
       return registration->version <= 4;
