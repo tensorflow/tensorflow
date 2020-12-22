@@ -58,8 +58,8 @@ FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins,
   operand_types.reserve(live_ins.size());
   for (Value v : live_ins) operand_types.emplace_back(v.getType());
 
-  auto func_type = FunctionType::get(operand_types, cluster_op.getResultTypes(),
-                                     builder->getContext());
+  auto func_type =
+      builder->getFunctionType(operand_types, cluster_op.getResultTypes());
 
   // TODO(lyandy): Define better name for outlined function. Potentially some
   // name can be added during cluster formation.

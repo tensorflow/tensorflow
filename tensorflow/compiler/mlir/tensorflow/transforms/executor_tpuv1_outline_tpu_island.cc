@@ -100,7 +100,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     for (Value operand : island_op.GetYield().getOperands())
       func_result_types.push_back(operand.getType());
     FunctionType func_type =
-        FunctionType::get(func_operand_types, func_result_types, ctx);
+        FunctionType::get(ctx, func_operand_types, func_result_types);
 
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;

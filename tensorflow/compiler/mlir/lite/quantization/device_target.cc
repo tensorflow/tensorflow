@@ -37,10 +37,10 @@ constexpr unsigned kSigned = quant::QuantizationFlags::Signed;
 
 DeviceTarget::DeviceTarget(MLIRContext* ctx) : ctx_(ctx) {
   f32_ = FloatType::getF32(ctx_);
-  i8_ = IntegerType::get(k8Bits, ctx_);
+  i8_ = IntegerType::get(ctx_, k8Bits);
   i8_min_ = QuantizedType::getDefaultMinimumForInteger(kSigned, k8Bits);
   i8_max_ = QuantizedType::getDefaultMaximumForInteger(kSigned, k8Bits);
-  i32_ = IntegerType::get(k32Bits, ctx_);
+  i32_ = IntegerType::get(ctx_, k32Bits);
   i32_min_ = QuantizedType::getDefaultMinimumForInteger(kSigned, k32Bits);
   i32_max_ = QuantizedType::getDefaultMaximumForInteger(kSigned, k32Bits);
   any_ = AnyQuantizedType();

@@ -137,9 +137,9 @@ void ModifyFunctionSignature(
   if (handle_new_size_vars) {
     handle_new_size_vars(func.getArguments().drop_front(original_arg_count));
   }
-  func.setType(FunctionType::get(
-      new_input_types, func.front().getTerminator()->getOperandTypes(),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), new_input_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Contains cached information for decomposed callee functions for (stateful)
