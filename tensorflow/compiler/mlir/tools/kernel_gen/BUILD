@@ -56,7 +56,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/compiler/xla/service/mlir_gpu:kernel_lowering",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:cuda_libdevice_path",
         "@llvm-project//llvm:Support",

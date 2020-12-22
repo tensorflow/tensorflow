@@ -88,6 +88,14 @@ std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass();
 /// be closed from above.
 std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass();
 
+/// Pass that transforms gpu modules in standard dialect to NNVM.
+std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
+CreateGpuKernelToNvvmPass();
+
+/// Pass that transforms gpu modules in standard dialect to ROCDL.
+std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
+CreateGpuKernelToRocdlPass();
+
 }  // namespace transforms
 
 #define GEN_PASS_REGISTRATION
