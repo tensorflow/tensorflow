@@ -35,7 +35,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
+        "//tensorflow/lite/delegates/gpu/metal/selectors:operation_selector",
         "//tensorflow/lite/delegates/gpu/metal/selectors:subgraph",
     ],
 )
