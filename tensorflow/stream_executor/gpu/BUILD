@@ -231,7 +231,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
-        "//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
