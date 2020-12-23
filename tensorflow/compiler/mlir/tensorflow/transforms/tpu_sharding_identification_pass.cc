@@ -306,8 +306,8 @@ void IdentifyXlaShardingForTPUComputation(
       xla::sharding_builder::AssignDevice(0).SerializeAsString();
 
   bool use_spmd = false;
-  if (auto use_spmd_attr =
-          cluster_func.getAttrOfType<BoolAttr>("use_spmd_for_xla_partitioning"))
+  if (auto use_spmd_attr = cluster_func->getAttrOfType<BoolAttr>(
+          "use_spmd_for_xla_partitioning"))
     use_spmd = use_spmd_attr.getValue();
 
   IdentifyXlaShardingForComputationInputs(logical_core_0_sharding, use_spmd,
