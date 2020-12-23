@@ -40,9 +40,9 @@ namespace tensorflow {
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 // Set the default padding value for FusedConv test.
-// Padding type will be `SAME` if padding value is INVALID_PADDING_VALUE,
-// otherwise it will be 'EXPLICIT' for Mkl ops and 'VALID' for Eigen op.
-static const int INVALID_PADDING_VALUE = -1;
+// Padding type will be `SAME` if padding value is kInvalidPaddingValue,
+// otherwise it will be `EXPLICIT` for Mkl ops and `VALID` for Eigen op.
+static const int kInvalidPaddingValue = -1;
 
 using BiasAddGraphRunner =
     std::function<void(const Tensor& input_data, const Tensor& filter_data,
@@ -147,7 +147,7 @@ class CommonTestUtilities : public OpsTestBase {
       int filter_size, int filter_count, int bias_size,
       const std::vector<string>& fused_ops, const FusedGraphRunner& run_default,
       const FusedGraphRunner& run_fused,
-      const int padding = INVALID_PADDING_VALUE) {
+      const int padding = kInvalidPaddingValue) {
     DataType dtype = DataTypeToEnum<T>::v();
 
     Tensor image(dtype, {image_batch_count, image_height, image_width, depth});
@@ -219,22 +219,21 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     auto root = tensorflow::Scope::NewRootScope();
     auto input_data_op =
         ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
-    Output next_op = input_data_op;
 
-    if (padding != INVALID_PADDING_VALUE) {
+    if (padding != kInvalidPaddingValue) {
       Tensor padding_data(DT_INT32, {4, 2});
       test::FillValues<int32>(&padding_data,
                               {0, 0, padding, padding, padding, padding, 0, 0});
-      next_op = ops::Pad(root.WithOpName("pad"), next_op,
-                         ops::Const(root.WithOpName("input_data"),
-                                    Input::Initializer(padding_data)));
+      input_data_op = ops::Pad(root.WithOpName("pad"), input_data_op,
+                               ops::Const(root.WithOpName("padding_data"),
+                                          Input::Initializer(padding_data)));
     }
 
-    next_op = ops::Conv2D(
-        root.WithOpName("conv"), next_op,
+    Output next_op = ops::Conv2D(
+        root.WithOpName("conv"), input_data_op,
         ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
         {1, stride, stride, 1},
-        padding == INVALID_PADDING_VALUE ? "SAME" : "VALID");
+        padding == kInvalidPaddingValue ? "SAME" : "VALID");
 
     string last_op = "";
     if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
@@ -297,7 +296,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
             .Attr("num_args", num_args)
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding",
-                  padding == INVALID_PADDING_VALUE ? "SAME" : "EXPLICIT")
+                  padding == kInvalidPaddingValue ? "SAME" : "EXPLICIT")
             .Attr("fused_ops", fused_ops)
             .Attr("_kernel", NativeFormatEnabled() ? "MklNameChangeOp"
                                                    : "MklLayoutDependentOp");
@@ -307,7 +306,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
           .Input(FakeInput(DT_UINT8))
           .Input(FakeInput(num_args, DT_UINT8));
 
-    if (padding != INVALID_PADDING_VALUE)
+    if (padding != kInvalidPaddingValue)
       builder.Attr("explicit_paddings",
                    {0, 0, padding, padding, padding, padding, 0, 0});
 
@@ -343,7 +342,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
   // Verifies computing unfused ops in a graph is identical to FusedConv2D.
   void VerifyFusedConv2D(int filter_size, int filter_count,
                          const std::vector<string>& fused_ops,
-                         const int padding = INVALID_PADDING_VALUE,
+                         const int padding = kInvalidPaddingValue,
                          int depth = kDepth, int image_width = kImageWidth,
                          int image_height = kImageHeight,
                          int image_batch_count = kImageBatchCount) {

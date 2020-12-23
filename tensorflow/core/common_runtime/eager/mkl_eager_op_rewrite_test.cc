@@ -107,7 +107,7 @@ REGISTER_TEST_ALL_TYPES(ConvOps_Positive);
                    mkl_op_registry::GetMklNativeOpName(conv_ops[i])); \
     }                                                                 \
   }
-REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Postive);
+REGISTER_TEST_ALL_TYPES(ConvOpsExplicitPadding_Positive);
 #undef REGISTER_TEST
 
 #define REGISTER_TEST(NAME, T, INPUT)                      \

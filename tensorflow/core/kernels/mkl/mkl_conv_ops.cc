@@ -476,7 +476,7 @@ class MklConvOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
 
     // Conv and QuantizedConv ops have different padding attributes
-    // ('padding_list' versus 'explicit_paddings). But one and only one
+    // (`padding_list` versus `explicit_paddings`). But one and only one
     // attribute is expected.
     OP_REQUIRES(
         context,
