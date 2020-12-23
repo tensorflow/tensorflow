@@ -872,6 +872,8 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (!found_node_to_preserve) {
       std::swap(dead_nodes, local_dead_nodes);
       std::swap(dead_merge_inputs, local_dead_merge_inputs);
+      // Found no nodes to preserve in fanout of this switch node. This switch
+      // node can be replaced with Identity node, collect here to process later
       identity_switches.insert(dead);
       VLOG(3) << "Found no nodes to preserve in fanout of switch node: "
               << node.name() << ", fanout port: " << dead_fanout;
@@ -939,12 +941,11 @@ Status LoopOptimizer::RemoveDeadBranches(
     VLOG(3) << "Merge node after cleanup: " << merge_node->DebugString();
   }
 
-  for (const auto& dead_switch : identity_switches) {
-    NodeDef* sw_node = const_cast<NodeDef*>((dead_switch.node));
-    int dead_port_id = dead_switch.port_id;
+  for (const auto& id_switch : identity_switches) {
+    NodeDef* sw_node = const_cast<NodeDef*>((id_switch.node));
+    int dead_port_id = id_switch.port_id;
 
-    // Switch nodes that are dead because of zero-iteration loop, are not
-    // optimized currently.
+    // Switch nodes where predicate are not known constants are not optimized.
     // TODO(intel-tf): For that case, enable optimization only if safe.
     if (IsReallyConstant(*node_map.GetNode(sw_node->input(1)), feed_nodes)) {
       // From the dead_port_id, get the live port id, so we can correct
