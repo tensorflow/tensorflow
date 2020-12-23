@@ -2471,7 +2471,6 @@ cuda_py_test(
     name = "relu_op_test",
     size = "small",
     srcs = ["relu_op_test.py"],
-    tags = ["no_rocm"],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
