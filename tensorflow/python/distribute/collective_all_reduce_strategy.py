@@ -880,7 +880,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   @property
   def should_checkpoint(self):
-    return self._is_chief
+    #return self._is_chief
+    task_type = ['chief', 'worker', 'evaluator']
+    return True if self._task_type in task_type else False
 
   @property
   def should_save_summary(self):
