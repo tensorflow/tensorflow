@@ -279,6 +279,52 @@ func @_func(%arg0: tensor<i32>) -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterOutliningPass()";
 }
 
+def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "ModuleOp"> {
+  let summary = "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads";
+
+  let description = [{
+This pass materializes `tf.ReadVariableOp` inputs to an outlined TPU computation
+for resource variables where only writes are present so later in the pipeline
+such resource variables can be fused with generated `tf.TPUExecute` ops, which
+only supports resource variable read or read + write. For all TPU computations,
+resource variables are required to be initialized prior to execution. Write only
+resource variable uses can be generated currently via packed tensor uses.
+
+For example, the following:
+
+```mlir
+func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
+  %0 = "tf_device.cluster_func"(%value) {func = @cluster} : (tensor<i32>) -> tensor<i32>
+  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  return
+}
+
+func @cluster(%arg0: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
+  %resource_read = "tf.ReadVariableOp"(%resource) : (tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %0 = "tf_device.cluster_func"(%value, %resource_read) {func = @cluster} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  return
+}
+
+func @cluster(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFTPU::CreateTPUResourceReadForWritePass()";
+}
+
 def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
   let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
 
