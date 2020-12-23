@@ -24,7 +24,6 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace {
@@ -330,12 +330,13 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     float score;
   };
   auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-    return bs_i.score > bs_j.score;
+    return bs_i.score < bs_j.score;
   };
-  std::vector<Candidate> candidate_vector;
-  for (int i = 0; i < class_scores_data.size(); ++i) {
+  std::priority_queue<Candidate, std::vector<Candidate>, decltype(cmp)>
+      candidate_priority_queue(cmp);
+  for (int i = 0; i < num_boxes; ++i) {
     if (class_scores_data[i] > score_threshold) {
-      candidate_vector.emplace_back(Candidate({i, class_scores_data[i]}));
+      candidate_priority_queue.emplace(Candidate({i, class_scores_data[i]}));
     }
   }
 
@@ -343,7 +344,6 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   std::vector<float> selected_boxes;
   Candidate next_candidate;
 
-  std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
   // Move class_boxes_data to a tensor
   Eigen::array<Eigen::DenseIndex, 2> boxesShape = {num_boxes, 4};
   typename TTypes<float, 2>::ConstTensor boxes_data_t(class_boxes_data.data(),
@@ -351,9 +351,9 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   int candidate_idx = 0;
   float iou;
   while (selected.size() < size_per_class &&
-         candidate_idx < candidate_vector.size()) {
-    next_candidate = candidate_vector[candidate_idx++];
-
+         !candidate_priority_queue.empty()) {
+    next_candidate = candidate_priority_queue.top();
+    candidate_priority_queue.pop();
     // Overlapping boxes are likely to have similar scores,
     // therefore we iterate through the previously selected boxes backwards
     // in order to see if `next_candidate` should be suppressed.
