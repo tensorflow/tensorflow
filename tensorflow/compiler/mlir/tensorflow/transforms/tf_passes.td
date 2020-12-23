@@ -240,6 +240,45 @@ func @cluster() -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterConstantSinkingPass()";
 }
 
+def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
+  let summary = "Outlines regions of tf_device.cluster operations";
+
+  let description = [{
+This pass outlines the body of a `tf_device.cluster` into a function and
+replaces the `tf_device.cluster` op with an equivalent `tf_device.cluster_func`
+op. Implicit operands will be captured and materialized as explicit arguments to
+the newly created functions and associated `tf_device.cluster_func` ops.
+
+For example, the following:
+
+```mlir
+func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+  %cluster = "tf_device.cluster"() ( {
+    %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) : () -> (tensor<i32>)
+  return %cluster : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+  %cluster = "tf_device.cluster_func"(%arg0) {func = @_func} : (tensor<i32>) -> tensor<i32>
+  return %cluster : tensor<i32>
+}
+
+func @_func(%arg0: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateClusterOutliningPass()";
+}
+
 def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
   let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
 

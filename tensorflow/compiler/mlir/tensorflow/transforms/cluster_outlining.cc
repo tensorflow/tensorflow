@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This pass outlines regions of `tf_device.cluster` into functions and replaces
-// `tf_device.cluster` with equivalent `tf_device.cluster_func` operations.
-
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -29,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -38,7 +36,7 @@ namespace {
 constexpr char kFuncAttr[] = "func";
 
 struct ClusterOutliningPass
-    : public PassWrapper<ClusterOutliningPass, OperationPass<ModuleOp>> {
+    : public TF::ClusterOutliningPassBase<ClusterOutliningPass> {
   void runOnOperation() override;
 };
 
@@ -134,10 +132,6 @@ void ClusterOutliningPass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass() {
   return std::make_unique<ClusterOutliningPass>();
 }
-
-static PassRegistration<ClusterOutliningPass> pass(
-    "tf-device-cluster-outlining",
-    "Outline regions of tf_device.cluster operations.");
 
 }  // namespace TFDevice
 }  // namespace mlir
