@@ -1,5 +1,18 @@
 // RUN: tf-opt -pass-pipeline='func(canonicalize)' %s | FileCheck %s
 
+// Checks that tfl.reshape shape operand is converted to a vector if it is possible
+func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {
+^bb0(%arg0: tensor<4x4x4xf32>) :
+  %shape0 = constant dense<[[16, 4]]> : tensor<1x2xi32>
+  %1 = "tfl.reshape"(%arg0, %shape0) : (tensor<4x4x4xf32>, tensor<1x2xi32>) -> tensor<16x4xf32>
+  return %1 : tensor<16x4xf32>
+
+// CHECK-LABEL: func @reshape_vector_shape
+// CHECK:  %[[CST:.*]] = constant dense<[16, 4]> : tensor<2xi32>
+// CHECK:  %[[RESHAPE:.*]] = "tfl.reshape"(%arg0, %[[CST]]) : (tensor<4x4x4xf32>, tensor<2xi32>) -> tensor<16x4xf32>
+// CHECK:  return %[[RESHAPE]]
+}
+
 // Checks that tfl.reshape should be removed if its output's only user is
 // another tfl.reshape
 func @reshape_removeAdjacent(tensor<4x4x4xf32>) -> tensor<64xf32> {

@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <numeric>
 
 #include "third_party/eigen3/Eigen/Core"
@@ -1079,9 +1080,9 @@ static LogicalResult Verify(PReluOp op) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-/// This pattern matches and merges a tfl.reshape under the following
-/// condition:
-/// * The input's defining op is another tfl.reshape.
+// This pattern matches and merges a tfl.reshape under the following
+// condition:
+// * The input's defining op is another tfl.reshape.
 // TODO(antiagainst): This pattern probably should be moved to the peephole
 // category, after we have the infra for peephole passes.
 struct RemoveAdjacentReshape : public RewritePattern {
@@ -1105,6 +1106,43 @@ struct RemoveAdjacentReshape : public RewritePattern {
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
         op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
+  }
+};
+
+// The kernel expects an 1-D tensor for the shape operand if it presents. If all
+// the dimensions are '1's except the last dimension, it will be reshaped to a
+// 1-D tensor.
+// Note that this pattern doesn't check or change the content of the shape
+// tensor.
+struct ConvertShapeTo1D : public OpRewritePattern<ReshapeOp> {
+  using OpRewritePattern<ReshapeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ReshapeOp reshape,
+                                PatternRewriter &rewriter) const override {
+    if (!reshape.shape().hasOneUse()) return failure();
+
+    DenseIntElementsAttr shape;
+    if (!matchPattern(reshape.shape(), m_Constant(&shape))) {
+      return failure();
+    }
+    // It is already a 1-D constant, no change.
+    auto old_shape = shape.getType().getShape();
+    if (old_shape.size() == 1) {
+      return failure();
+    }
+    // Verify all the leading dimensions are length one, except the last one.
+    for (auto it = ++old_shape.rbegin(); it != old_shape.rend(); ++it) {
+      if (*it != 1) {
+        reshape->emitError(
+            "Non-vector shape input is used, might cause runtime error");
+        return failure();
+      }
+    }
+    auto new_shape = shape.reshape(RankedTensorType::get(
+        {*old_shape.rbegin()}, shape.getType().getElementType()));
+    rewriter.replaceOpWithNewOp<TFL::ConstOp>(reshape.shape().getDefiningOp(),
+                                              new_shape);
+    return success();
   }
 };
 
@@ -1141,7 +1179,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<RemoveAdjacentReshape>(context);
+  results.insert<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
 }
 
 static LogicalResult Verify(ReshapeOp op) {
