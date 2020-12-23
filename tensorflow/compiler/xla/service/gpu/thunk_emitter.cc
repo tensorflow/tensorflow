@@ -119,12 +119,28 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildInfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
 
-  ShapeTree<BufferAllocation::Slice> slices(inst->shape());
-  slices.ForEachMutableElement(
-      [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
-        *slice = GetAllocationSlice(*inst, index);
-      });
-  return absl::make_unique<InfeedThunk>(context_->GetThunkInfo(inst), slices);
+  std::vector<ShapeUtil::IndexedShape> leaf_shapes =
+      ShapeUtil::GetLeafShapes(inst->shape());
+
+  // For an infeed HLO, the output is a 2 element tuple where the first element
+  // of the tuple is all the infeed buffers and the second element is a token.
+  // The infeed thunk does not need to handle this token output, so just drop
+  // it.
+  leaf_shapes.pop_back();
+
+  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  dest_slices.reserve(leaf_shapes.size());
+
+  for (ShapeUtil::IndexedShape& indexed_shape : leaf_shapes) {
+    BufferAllocation::Slice slice =
+        GetAllocationSlice(*inst, indexed_shape.index);
+    const Shape& shape =
+        ShapeUtil::GetSubshape(inst->shape(), indexed_shape.index);
+    dest_slices.emplace_back(InfeedThunk::ShapedSlice{slice, shape});
+  }
+
+  return absl::make_unique<InfeedThunk>(context_->GetThunkInfo(inst),
+                                        std::move(dest_slices));
 }
 
 std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
