@@ -175,12 +175,14 @@ struct QuantizationPattern : public RewritePattern {
   using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER>;
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool single_layer_verify)
+                               float error_tolerance, bool single_layer_verify,
+                               bool log_if_failed = false)
       // Set the score to a large number so it is always preferred.
       : RewritePattern(DQ::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
-        single_layer_verify(single_layer_verify) {}
+        single_layer_verify(single_layer_verify),
+        log_if_failed(log_if_failed) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -312,10 +314,11 @@ struct QuantizationPattern : public RewritePattern {
           }
           rewriter.setInsertionPointAfter(new_op);
           FloatAttr tolerance = rewriter.getF32FloatAttr(error_tolerance);
+          BoolAttr log = rewriter.getBoolAttr(log_if_failed);
           // Verify the quantized value by sending the result to the verifier.
-          rewriter.create<VERIFIER>(quantized_op->getLoc(),
-                                    new_op->getResult(i),
-                                    quantized_op->getResult(i), tolerance);
+          rewriter.create<VERIFIER>(
+              quantized_op->getLoc(), new_op->getResult(i).getType(),
+              new_op->getResult(i), quantized_op->getResult(i), tolerance, log);
 
           if (single_layer_verify) continue;
 
@@ -341,6 +344,7 @@ struct QuantizationPattern : public RewritePattern {
   bool enable_verify;
   float error_tolerance;
   bool single_layer_verify;
+  bool log_if_failed;
 };
 
 // Converts quantize ops with unsigned quantized types to these with signed

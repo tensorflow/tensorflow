@@ -38,8 +38,9 @@ namespace custom {
 namespace numeric_verify {
 
 static constexpr const char kToleranceStr[] = "tolerance";
-static constexpr const char kDebugModeStr[] = "debug_mode";
+static constexpr const char kLogIfFailedStr[] = "log_if_failed";
 static constexpr const int kTemporaryDequantizedTensor = 0;
+static constexpr const int kOutputTensor = 0;
 
 struct OpContext {
   OpContext(TfLiteContext* context, TfLiteNode* node) {
@@ -61,7 +62,7 @@ struct OpData {
   bool float_input_initialized;
   int cache_tensor_id = kTensorNotAllocated;
   // This boolean value is for controlling the behavior of numeric verify op.
-  bool debug_mode;
+  bool log_if_failed;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -71,9 +72,9 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
   const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
   const float tolerance = m[kToleranceStr].AsFloat();
-  const bool debug_mode = m[kDebugModeStr].AsBool();
+  const bool log_if_failed = m[kLogIfFailedStr].AsBool();
   op_data->tolerance = tolerance;
-  op_data->debug_mode = debug_mode;
+  op_data->log_if_failed = log_if_failed;
 
   return op_data;
 }
@@ -84,12 +85,10 @@ void Free(TfLiteContext* context, void* buffer) {
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   OpContext op_context(context, node);
-
-  const int num_output = (op_data->debug_mode) ? 1 : 0;
-  TF_LITE_ENSURE_EQ(context, NumOutputs(node), num_output);
 
   TF_LITE_ENSURE(context, op_context.input->type == kTfLiteUInt8 ||
                               op_context.input->type == kTfLiteInt8 ||
@@ -118,15 +117,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                  context, dequantized,
                                  TfLiteIntArrayCopy(op_context.input->dims)));
 
-  if (op_data->debug_mode) {
-    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, num_output - 1,
-                                             &op_context.output));
-    op_context.output->type = kTfLiteFloat32;
-    op_context.output->allocation_type = kTfLiteArenaRwPersistent;
-    return context->ResizeTensor(context, op_context.output,
-                                 TfLiteIntArrayCopy(op_context.input->dims));
-  }
-  return kTfLiteOk;
+  TF_LITE_ENSURE_OK(
+      context, GetOutputSafe(context, node, kOutputTensor, &op_context.output));
+  op_context.output->type = kTfLiteFloat32;
+  op_context.output->allocation_type = kTfLiteArenaRwPersistent;
+  return context->ResizeTensor(context, op_context.output,
+                               TfLiteIntArrayCopy(op_context.input->dims));
 }
 
 static int32_t GetQuantizedValue(const OpContext& op_context, int index) {
@@ -165,22 +161,37 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     op_data->float_input_initialized = true;
   }
 
-  // If the debug_mode is on, we don't throw any errors.
-  // We just calculate difference between float and quantized values, letting
-  // python debugger deal with the information.
-  if (op_data->debug_mode || op_data->tolerance < 0.1) {
-    const int num_output = (op_data->debug_mode) ? 1 : 0;
-    const int n = NumElements(dequantized);
-    if (op_data->debug_mode) {
-      TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, num_output - 1,
-                                               &op_context.output));
-      auto output_data = GetTensorData<float>(op_context.output);
-      for (int i = 0; i < n; ++i) {
-        float dequant = GetTensorData<float>(dequantized)[i];
-        float reference = GetTensorData<float>(op_context.ref)[i];
-        output_data[i] = dequant - reference;
+  TF_LITE_ENSURE_OK(
+      context, GetOutputSafe(context, node, kOutputTensor, &op_context.output));
+  auto output_data = GetTensorData<float>(op_context.output);
+
+  // If log_if_failed is on, calculate differences between float and
+  // quantized values, their statistics and output logs.
+  // Throw errors if any diff greater than tolerance exists.
+  const int n = NumElements(dequantized);
+  if (op_data->log_if_failed && op_data->tolerance >= 0.1) {
+    // Verify the dequantized output.
+    auto max_diff = op_data->tolerance * op_context.input->params.scale;
+    for (int i = 0; i < n; ++i) {
+      int32_t value = GetQuantizedValue(op_context, i);
+      float dequant = GetTensorData<float>(dequantized)[i];
+      float reference = GetTensorData<float>(op_context.ref)[i];
+      output_data[i] = dequant - reference;
+      float diff = std::abs(output_data[i]);
+      if (diff > max_diff) {
+        TF_LITE_KERNEL_LOG(
+            context,
+            "Mismatch: %f is quantized to %d with (%f, %d). "
+            "abs(%f - %f) = %f > %f (tolerance) range percentage %f.\n",
+            reference, value, op_context.input->params.scale,
+            op_context.input->params.zero_point, reference, dequant, diff,
+            max_diff, op_data->tolerance);
+        return kTfLiteError;
       }
     }
+  } else {
+    // If tolerance is small or log_if_failed is off, then we only care about
+    // statistics.
     // These statistics logging was added to identify some errors in practice.
     std::vector<double> diffs, temp;
     diffs.reserve(n);
@@ -191,6 +202,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       float dequant = GetTensorData<float>(dequantized)[i];
       float reference = GetTensorData<float>(op_context.ref)[i];
       diffs[i] = static_cast<double>(dequant - reference);
+      output_data[i] = dequant - reference;
     }
     double mean =
         std::accumulate(diffs.begin(), diffs.end(), 0.0) / diffs.size();
@@ -208,26 +220,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         "std: %f, mean: %f, max_diff: %f (scale: %f, zero_point: %d).\n", std,
         mean, max_diff, op_context.input->params.scale,
         op_context.input->params.zero_point);
-    return kTfLiteOk;
-  } else {
-    // Verify the dequantized output.
-    auto max_diff = op_data->tolerance * op_context.input->params.scale;
-    for (int i = 0; i < NumElements(op_context.ref); ++i) {
-      int32_t value = GetQuantizedValue(op_context, i);
-      float dequant = GetTensorData<float>(dequantized)[i];
-      float reference = GetTensorData<float>(op_context.ref)[i];
-      float diff = std::abs(reference - dequant);
-      if (diff > max_diff) {
-        TF_LITE_KERNEL_LOG(
-            context,
-            "Mismatch: %f is quantized to %d with (%f, %d). "
-            "abs(%f - %f) = %f > %f (tolerance) range percentage %f.\n",
-            reference, value, op_context.input->params.scale,
-            op_context.input->params.zero_point, reference, dequant, diff,
-            max_diff, op_data->tolerance);
-        return kTfLiteError;
-      }
-    }
   }
   return kTfLiteOk;
 }

@@ -944,7 +944,22 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   float tolerance = op.tolerance().convertToFloat();
-  return BuildCustomOperator(tolerance, "NumericVerify", op, operands, results);
+  bool log_if_failed = op.log_if_failed();
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  fbb->Map([&]() {
+    fbb->Float("tolerance", tolerance);
+    fbb->Bool("log_if_failed", log_if_failed);
+  });
+  fbb->Finish();
+  auto f = std::unique_ptr<flexbuffers::Builder>(fbb.release());
+  auto custom_option = f->GetBuffer();
+  auto opcode_index =
+      GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
@@ -1408,6 +1423,17 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     for (auto val : inst.getResults()) {
       std::string name = UniqueName(val);
+      // For "tfl.numeric_verify" op, the name is used to find out the original
+      // activation tensor rather than its own unique name in the visualization
+      // or debugging tools.
+      auto builtin_code = GetBuiltinOpCode(&inst);
+      if (!builtin_code && dyn_cast<mlir::TFL::NumericVerifyOp>(&inst)) {
+        // The first operand is the quantized activation, the target of this
+        // NumericVerify op.
+        auto quantized_op_val = inst.getOperands().front();
+        name = "NumericVerify/" + UniqueName(quantized_op_val) + ":" +
+               std::to_string(tensor_index_map[quantized_op_val]);
+      }
       if (!build_tensor_and_buffer(val, name)) return llvm::None;
     }
 

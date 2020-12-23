@@ -4257,6 +4257,11 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
   let description = [{
     The NumericVerify op is a debugging op to verify the numericals of the two
     activations. It is a custom op in TFLite.
+    If log_if_failed is true, the NumericVerify op calculates statistics on
+    differences between float and quantized activations, output
+    logs, set differences to the output tensors, and throws an error if errors
+    above tolerance exist. If log_if_failed = false, then it doesn't care about
+    errors.
   }];
 
   let arguments = (ins
@@ -4264,10 +4269,11 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
     TFL_TensorOf<[F32]>:$ref,
 
     // Attributes
-    DefaultValuedAttr<F32Attr, "0.1">:$tolerance
+    DefaultValuedAttr<F32Attr, "0.1">:$tolerance,
+    DefaultValuedAttr<BoolAttr, "false">:$log_if_failed
   );
 
-  let results = (outs);
+  let results = (outs TFL_FpTensor:$output);
 }
 
 // SVDF op.

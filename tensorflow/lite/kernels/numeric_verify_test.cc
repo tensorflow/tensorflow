@@ -45,21 +45,19 @@ class NumericVerifyOpModel : public SingleOpModel {
  public:
   NumericVerifyOpModel(TensorType type, std::initializer_list<int> shape,
                        float scale, int32_t zero_point, int version,
-                       float tolerance = 5.0, bool debug_mode = false) {
+                       float tolerance = 5.0, bool log_if_failed = true) {
     const TensorData input_tensor_data = {type, shape, 0, 0, scale, zero_point};
     input_ = AddInput(input_tensor_data);
     ref_ = AddInput({TensorType_FLOAT32, shape});
-    if (debug_mode) {
-      // The output tensor has the same shape with that of the input tensor.
-      output_ = AddOutput({TensorType_FLOAT32, shape});
-    }
+    // The output tensor has the same shape with that of the input tensor.
+    output_ = AddOutput({TensorType_FLOAT32, shape});
 
     std::vector<uint8_t> custom_options(sizeof(float));
 
     flexbuffers::Builder fbb;
     fbb.Map([&]() {
       fbb.Float("tolerance", tolerance);
-      fbb.Bool("debug_mode", debug_mode);
+      fbb.Bool("log_if_failed", log_if_failed);
     });
     fbb.Finish();
 
@@ -135,7 +133,7 @@ TEST(NumericVerifyOpFailedTest, Int8) {
 
 TEST(NumericVerifyOpDebugModeTest, Int8) {
   // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
-  NumericVerifyOpModel m(TensorType_INT8, {2, 5}, 0.5, -1, 2, 5.0, true);
+  NumericVerifyOpModel m(TensorType_INT8, {2, 5}, 0.5, -1, 2, 5.0, false);
 
   // The 5th element is set to 0.
   m.SetInputs<int8_t>({-128, -127, -126, -125, -124, 0, 124, 125, 126, 127},
