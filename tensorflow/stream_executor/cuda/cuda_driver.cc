@@ -1388,6 +1388,13 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
       "Feature not supported on CUDA platform (GetGpuISAVersion)"};
 }
 
+/* static */ port::Status GpuDriver::GetGpuGCNArchName(
+    CUdevice device, std::string* gcnArchName) {
+  return port::Status{
+      port::error::INTERNAL,
+      "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
+}
+
 // Helper function that turns the integer output of cuDeviceGetAttribute to type
 // T and wraps it in a StatusOr.
 template <typename T>
