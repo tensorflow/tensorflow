@@ -108,8 +108,7 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
         executeWithOutputKernel(WithBiasAddAndElu<T>(bias_add_args));
         break;
       case FusedComputationType::kBiasAddWithLeakyRelu:
-        out.device(d) = lhs.contract(rhs, dim_pair,
-                                     WithBiasAddAndLeakyRelu<T>(bias_add_args));
+        executeWithOutputKernel(WithBiasAddAndLeakyRelu<T>(bias_add_args));
         break;
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));

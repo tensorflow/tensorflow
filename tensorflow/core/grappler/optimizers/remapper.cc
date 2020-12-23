@@ -472,7 +472,7 @@ bool FindContractionWithBiasAndActivation(
   if (!IsMatMul(*contraction_node_def) && IsTanh(*node_def)) return false;
 
   // Currently, only (conv | matmul) + bias + leakyrelu is enabled
-  if ((!IsConv2D(*contraction_node_def) && !IsMatMul(*contraction_node_def)) &&
+  if (!(IsConv2D(*contraction_node_def) || IsMatMul(*contraction_node_def)) &&
       IsLeakyRelu(*node_def))
     return false;
 

@@ -712,7 +712,6 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           if (activation == "LeakyRelu") {
             EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), leakyrelu_alpha);
           }
-
           found++;
         }
       }
