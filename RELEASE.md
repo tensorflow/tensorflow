@@ -71,6 +71,7 @@
         * TFLiteConverter exports models with SignatureDef
         * Interpreter supports getting a list of signatures and getting callable
           function for a given signaturedef.
+    * Add int8 support for `ReshapeV2`.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with
