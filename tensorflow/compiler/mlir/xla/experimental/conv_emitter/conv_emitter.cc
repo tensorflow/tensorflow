@@ -25,7 +25,7 @@ limitations under the License.
 // * Use milr::AffineExpr to analyze all accesses. It aims to algorithmically
 //   find memory access strategies for given input layouts and tiling configs.
 
-#include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter.h"
+#include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter.h"
 
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
@@ -38,8 +38,8 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter_transforms.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {

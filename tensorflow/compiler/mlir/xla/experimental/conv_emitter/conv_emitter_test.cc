@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter.h"
+#include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter.h"
 
 #include <vector>
 
