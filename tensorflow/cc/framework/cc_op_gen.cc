@@ -586,7 +586,7 @@ OpInfo::OpInfo(const OpDef& graph_op_def, const ApiDef& api_def,
   if (!api_def.description().empty()) {
     strings::StrAppend(&comment, "\n", api_def.description(), "\n");
   }
-  strings::StrAppend(&comment, "\nArguments:\n* scope: A Scope object\n");
+  strings::StrAppend(&comment, "\nArgs:\n* scope: A Scope object\n");
 
   // Process inputs
   for (int i = 0; i < api_def.arg_order_size(); ++i) {

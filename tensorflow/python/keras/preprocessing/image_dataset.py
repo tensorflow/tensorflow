@@ -67,7 +67,7 @@ def image_dataset_from_directory(directory,
   Supported image formats: jpeg, png, bmp, gif.
   Animated gifs are truncated to the first frame.
 
-  Arguments:
+  Args:
     directory: Directory where the data is located.
         If `labels` is "inferred", it should contain
         subdirectories, each containing images for a class.

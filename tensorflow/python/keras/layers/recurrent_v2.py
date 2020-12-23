@@ -133,7 +133,7 @@ class GRUCell(recurrent.GRUCell):
   >>> print(final_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
       (`tanh`). If you pass None, no activation is applied
@@ -266,7 +266,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   >>> print(final_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -566,7 +566,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
   counterpart. The RNN step logic has been simplified, eg dropout and mask is
   removed since CuDNN implementation does not support that.
 
-  Arguments:
+  Args:
     inputs: Input tensor of GRU layer.
     init_h: Initial state tensor for the cell output.
     kernel: Weights for cell kernel.
@@ -882,7 +882,7 @@ class LSTMCell(recurrent.LSTMCell):
   >>> print(final_carry_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
       (`tanh`). If you pass `None`, no activation is applied (ie. "linear"
@@ -1008,7 +1008,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   >>> print(final_carry_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation

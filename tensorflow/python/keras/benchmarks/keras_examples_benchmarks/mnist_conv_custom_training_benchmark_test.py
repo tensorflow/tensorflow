@@ -67,7 +67,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
   def train_step(self, inputs, model, loss_fn, optimizer, batch_size):
     """Compute loss and optimize model by optimizer.
 
-    Arguments:
+    Args:
       inputs: `tf.data`.
       model: See `model` in `train_function()` method.
       loss_fn: See `loss_fn` in `train_function()` method.
@@ -90,7 +90,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
                              batch_size, distribution_strategy):
     """Train step in distribution strategy setting.
 
-    Arguments:
+    Args:
       batch_dataset: `tf.data`.
       model: See `model` in `train_function()` method.
       loss_fn: See `loss_fn` in `train_function()` method.
@@ -126,7 +126,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
     train_step_time.
 
-    Arguments:
+    Args:
       model: Model function to be benchmarked.
       train_dataset: `tf.data` dataset. Should return a tuple of either (inputs,
         targets) or (inputs, targets, sample_weights).
@@ -181,7 +181,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
                           distribution_strategy=None):
     """Run models and measure the performance.
 
-    Arguments:
+    Args:
       model_fn: Model function to be benchmarked.
       dataset: `tf.data` dataset. Should return a tuple of either (inputs,
         targets) or (inputs, targets, sample_weights).

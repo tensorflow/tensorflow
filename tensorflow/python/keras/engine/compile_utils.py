@@ -52,7 +52,7 @@ class Container(object):
     (2) Fill missing keys in a dict w/ `None`s.
     (3) Map a single item to all outputs.
 
-    Arguments:
+    Args:
       outputs: Model predictions.
       struct: Arbitrary nested structure (e.g. of labels, sample_weights,
         losses, or metrics).
@@ -73,7 +73,7 @@ class Container(object):
     NOTE: This method should only be called for Metrics / Losses, not for
     y_true / sample_weight.
 
-    Arguments:
+    Args:
       outputs: Model predictions.
       objects: Arbitrary nested structure (e.g. of losses or metrics)
 
@@ -168,7 +168,7 @@ class LossesContainer(Container):
                regularization_losses=None):
     """Computes the overall loss.
 
-    Arguments:
+    Args:
       y_true: An arbitrary structure of Tensors representing the ground truth.
       y_pred: An arbitrary structure of Tensors representing a Model's outputs.
       sample_weight: An arbitrary structure of Tensors representing the
@@ -251,7 +251,7 @@ class LossesContainer(Container):
     Converts the user-supplied loss to a `Loss` object. Also allows
     `SUM_OVER_BATCH_SIZE` reduction to be used for this loss.
 
-    Arguments:
+    Args:
       loss: A string, function, or `Loss` object.
 
     Returns:
@@ -437,7 +437,7 @@ class MetricsContainer(Container):
   def _get_metric_object(self, metric, y_t, y_p):
     """Converts user-supplied metric to a `Metric` object.
 
-    Arguments:
+    Args:
       metric: A string, function, or `Metric` object.
       y_t: Sample of label.
       y_p: Sample of output.
@@ -534,7 +534,7 @@ def _create_pseudo_names(tensors, prefix):
   `[x, y]` becomes:
   `['output_1', 'output_2']`
 
-  Arguments:
+  Args:
     tensors: `Model`'s outputs or inputs.
     prefix: 'output_' for outputs, 'input_' for inputs.
 
@@ -579,7 +579,7 @@ def map_to_output_names(y_pred, output_names, struct):
   This mapping preserves backwards compatibility for `compile` and
   `fit`.
 
-  Arguments:
+  Args:
     y_pred: Sample outputs of the Model, to determine if this convenience
       feature should be applied (`struct` is returned unmodified if `y_pred`
       isn't a flat list).
@@ -660,7 +660,7 @@ def apply_mask(y_p, sw, mask):
 def get_custom_object_name(obj):
   """Returns the name to use for a custom loss or metric callable.
 
-  Arguments:
+  Args:
     obj: Custom loss of metric callable
 
   Returns:

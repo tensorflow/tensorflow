@@ -98,7 +98,7 @@ def save_model(model,
   option, then you _must_ provide all custom class definitions when loading
   the model. See the `custom_objects` argument in `tf.keras.models.load_model`.
 
-  Arguments:
+  Args:
       model: Keras model instance to be saved.
       filepath: One of the following:
         - String or `pathlib.Path` object, path where to save the model
@@ -171,7 +171,7 @@ def load_model(filepath, custom_objects=None, compile=True, options=None):  # py
   `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
   access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
-  Arguments:
+  Args:
       filepath: One of the following:
           - String or `pathlib.Path` object, path to the saved model
           - `h5py.File` object from which to load the model

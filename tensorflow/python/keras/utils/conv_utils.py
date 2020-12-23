@@ -51,7 +51,7 @@ def convert_data_format(data_format, ndim):
 def normalize_tuple(value, n, name):
   """Transforms a single integer or iterable of integers into an integer tuple.
 
-  Arguments:
+  Args:
     value: The value to validate and convert. Could an int, or any iterable of
       ints.
     n: The size of the tuple to be returned.
@@ -90,7 +90,7 @@ def normalize_tuple(value, n, name):
 def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
   """Determines output length of a convolution given input length.
 
-  Arguments:
+  Args:
       input_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full", "causal"
@@ -116,7 +116,7 @@ def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
 def conv_input_length(output_length, filter_size, padding, stride):
   """Determines input length of a convolution given output length.
 
-  Arguments:
+  Args:
       output_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full".
@@ -145,7 +145,7 @@ def deconv_output_length(input_length,
                          dilation=1):
   """Determines output length of a transposed convolution given input length.
 
-  Arguments:
+  Args:
       input_length: Integer.
       filter_size: Integer.
       padding: one of `"same"`, `"valid"`, `"full"`.

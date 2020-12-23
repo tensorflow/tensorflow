@@ -108,7 +108,7 @@ def MobileNet(input_shape=None,
   For MobileNet, call `tf.keras.applications.mobilenet.preprocess_input`
   on your inputs before passing them to the model.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, only to be specified if `include_top`
       is False (otherwise the input shape has to be `(224, 224, 3)` (with
       `channels_last` data format) or (3, 224, 224) (with `channels_first`
@@ -315,7 +315,7 @@ def MobileNet(input_shape=None,
 def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """Adds an initial convolution layer (with batch normalization and relu6).
 
-  Arguments:
+  Args:
     inputs: Input tensor of shape `(rows, cols, 3)` (with `channels_last`
       data format) or (3, rows, cols) (with `channels_first` data format).
       It should have exactly 3 inputs channels, and width and height should
@@ -373,7 +373,7 @@ def _depthwise_conv_block(inputs,
   batch normalization, relu6, pointwise convolution,
   batch normalization and relu6 activation.
 
-  Arguments:
+  Args:
     inputs: Input tensor of shape `(rows, cols, channels)` (with
       `channels_last` data format) or (channels, rows, cols) (with
       `channels_first` data format).
