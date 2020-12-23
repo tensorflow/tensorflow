@@ -879,6 +879,7 @@ objc_library(
         "resize_test.mm",
         "slice_test.mm",
         "softmax_test.mm",
+        "space_to_depth_test.mm",
         "transpose_conv_test.mm",
         "winograd_test.mm",
     ],
