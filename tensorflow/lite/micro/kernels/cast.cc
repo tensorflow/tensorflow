@@ -126,7 +126,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           output, num_elements);
     default:
       // Unsupported type.
-      TF_LITE_UNSUPPORTED_TYPE(context, input->type, "Cast");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(intput->type), intput->type);
   }
   return kTfLiteOk;
 }
