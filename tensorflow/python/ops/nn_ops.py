@@ -3470,23 +3470,6 @@ def relu6(features, name=None):
     features = ops.convert_to_tensor(features, name="features")
     return gen_nn_ops.relu6(features, name=name)
 
-@tf_export("nn.gelu",v1=["nn.gelu"])
-def gelu(features, name=None):
-  """Gaussian Error Linear Unit.
- 
-  This is a smoother version of the RELU.
-  Original paper: https://arxiv.org/abs/1606.08415
-  Args:
-    features: float Tensor to perform activation.
-    name: A name for the operation (optional).
-        
-  Returns:
-    `features` with the GELU activation applied.
-  """
-  with ops.name_scope(name, "gelu", [features]) as name:
-    features = ops.convert_to_tensor(features, name="features")
-    return gen_nn_ops.gelu(features, name=name)
-
 @tf_export("nn.leaky_relu")
 @dispatch.add_dispatch_support
 def leaky_relu(features, alpha=0.2, name=None):
@@ -3557,10 +3540,7 @@ def gelu(features, approximate=False, name=None):
   with ops.name_scope(name, "Gelu", [features]):
     features = ops.convert_to_tensor(features, name="features")
     if approximate:
-      coeff = math_ops.cast(0.044715, features.dtype)
-      return 0.5 * features * (
-          1.0 + math_ops.tanh(0.7978845608028654 *
-                              (features + coeff * math_ops.pow(features, 3))))
+      return gen_nn_ops.gelu(features, name=name)
     else:
       return 0.5 * features * (1.0 + math_ops.erf(
           features / math_ops.cast(1.4142135623730951, features.dtype)))
