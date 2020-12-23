@@ -45,6 +45,7 @@ COMMON_PROTO_SRCS = [
         "graph_debug_info",
         "meta_graph",
         "saved_model",
+        "tensorflow_server",
     ]
 ]
 
