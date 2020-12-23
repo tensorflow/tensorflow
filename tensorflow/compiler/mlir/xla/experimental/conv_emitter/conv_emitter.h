@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
 
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
-namespace mlir_gpu {
+namespace experimental {
 
 // Builds MLIR using custom_call that represents a foward convolution.
 //
@@ -42,7 +42,7 @@ StatusOr<mlir::FuncOp> EmitConvolutionForwardAsMlir(
 // Returns Status::OK() if convolution can be implemented by this emitter.
 Status ConvIsImplemented(const HloInstruction* conv);
 
-}  // namespace mlir_gpu
+}  // namespace experimental
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_H_

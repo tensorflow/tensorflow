@@ -34,7 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-namespace gpu_mlir {
+namespace experimental {
 namespace {
 
 std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
@@ -53,8 +53,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 
   mlir::FuncOp function =
-      xla::mlir_gpu::EmitConvolutionForwardAsMlir(conv, "Conv", &context)
-          .ValueOrDie();
+      EmitConvolutionForwardAsMlir(conv, "Conv", &context).ValueOrDie();
 
   mlir_module->push_back(function);
   mlir_module->verify();
@@ -77,7 +76,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
   return mlir_text;
 }
 
-// TODO(timshen): integrate this with mlir_gpu's testing infrastructure.
+// TODO(timshen): integrate this with mlir's testing infrastructure.
 TEST(ConvEmitterTest, TestDefault) {
   std::string hlo_text = R"(HloModule TestModule
 ENTRY %TestComputation {
@@ -141,5 +140,5 @@ CHECK-NEXT: }
 }
 
 }  // namespace
-}  // namespace gpu_mlir
+}  // namespace experimental
 }  // namespace xla

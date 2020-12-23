@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-namespace mlir_gpu {
+namespace experimental {
 
 using mlir::OpBuilder;
 
@@ -147,5 +147,5 @@ void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
   mlir::permuteLoops(loops, permutation);
 }
 
-}  // namespace mlir_gpu
+}  // namespace experimental
 }  // namespace xla

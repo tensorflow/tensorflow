@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
-namespace mlir_gpu {
+namespace experimental {
 namespace {
 
 using mlir::OpBuilder;
@@ -600,5 +600,5 @@ Status ConvIsImplemented(const HloInstruction* conv) {
   return Status::OK();
 }
 
-}  // namespace mlir_gpu
+}  // namespace experimental
 }  // namespace xla
