@@ -49,10 +49,6 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
     #include <metal_stdlib>
     using namespace metal;
 
-    struct FilterStripe {
-      FLT4 vals[$0];
-    };
-
     constant int src_depth = $1;
     constant int dst_depth = $2;
     constant int dst_channels = $3;
@@ -60,17 +56,12 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
 
     $5
 
-    struct uniforms {
-      int2 src_size;
-      int2 dst_size;
-    };
-
     $$0
     kernel void ComputeFunction(
                                 $$1
                                 uint2 ugid[[thread_position_in_grid]]) {
-      if (static_cast<int>(ugid.x) >= params.dst_size.x ||
-          static_cast<int>(ugid.y) >= params.dst_size.y) {
+      if (static_cast<int>(ugid.x) >= args.dst_tensor.Width() ||
+          static_cast<int>(ugid.y) >= args.dst_tensor.Height()) {
         return;
       }
 
@@ -95,16 +86,15 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
           const short2 src_coord = (short2(ugid) + index + padding - kernel_offset) / stride;
           index = kernel_size - short2(1, 1) - index;
           bool outside = src_coord.x < 0 || src_coord.y < 0 ||
-            src_coord.x >= params.src_size.x || src_coord.y >= params.src_size.y;
+            src_coord.x >= args.src_tensor.Width() || src_coord.y >= args.src_tensor.Height();
           const int kernel_index = index.y * kernel_size.x + index.x;
+          device FLT4* weights_cache = args.weights.GetPtr() + kernel_index * $0;
           bool belong = inside_kernel && !outside;
           if (belong) {
             for (int l = 0; l < src_depth; ++l) {
-              const int src_index = (l * params.src_size.y + src_coord.y)
-                * params.src_size.x + src_coord.x;
-              FLT4 srcColor = src_tensor[src_index];
+              FLT4 srcColor = args.src_tensor.Read(src_coord.x, src_coord.y, l);
               for (int k = 0; k < dst_channels; ++k) {
-                out[k] += dot(srcColor, filters[kernel_index].vals[l * dst_channels_aligned + k]);
+                out[k] += dot(srcColor, weights_cache[l * dst_channels_aligned + k]);
               }
             }
           }
@@ -112,12 +102,10 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
       }
 
       for (short l = 0; l < dst_depth; ++l) {
-        FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + biases[l];
-        const int linear_index = (l * params.dst_size.y + int(ugid.y))
-          * params.dst_size.x + int(ugid.x);
-        uint3 gid = uint3(ugid.x, ugid.y, uint(l));
+        FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
+        args.dst_tensor.GetAddress(linear_index, ugid.x, ugid.y, l);
         $$2
-        dst_tensor[linear_index] = value;
+        args.dst_tensor.Write(value, ugid.x, ugid.y, l);
       }
     }
   )";
@@ -150,10 +138,6 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
     #include <metal_stdlib>
     using namespace metal;
 
-    struct FilterStripe {
-      FLT4 vals[$0];
-    };
-
     constant int src_depth = $1;
     constant int dst_depth = $2;
     constant int dst_channels = $3;
@@ -162,11 +146,6 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
     $5
 
     constant short2 src_local_size = {$6, $7};
-
-    struct uniforms {
-      int2 src_size;
-      int2 dst_size;
-    };
 
     $$0
     kernel void ComputeFunction(
@@ -208,18 +187,16 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
         for (int z = 0; z < src_depth; ++z) {
           const short2 src_coord = first_src_coord + short2(tid);
           bool outside = src_coord.x < 0 || src_coord.y < 0 ||
-            src_coord.x >= params.src_size.x || src_coord.y >= params.src_size.y;
-          const int src_index = (z * params.src_size.y + src_coord.y)
-            * params.src_size.x + src_coord.x;
-          FLT4 src = !outside ? src_tensor[src_index] : FLT4(0.0f);
+            src_coord.x >= args.src_tensor.Width() || src_coord.y >= args.src_tensor.Height();
+          FLT4 src = !outside ? args.src_tensor.Read(src_coord.x, src_coord.y, z) : FLT4(0.0f);
           src_shared[tid.x][tid.y][z] = src;
         }
       }
 
       threadgroup_barrier(mem_flags::mem_threadgroup);
 
-      if (static_cast<int>(ugid.x) >= params.dst_size.x ||
-          static_cast<int>(ugid.y) >= params.dst_size.y) {
+      if (static_cast<int>(ugid.x) >= args.dst_tensor.Width() ||
+          static_cast<int>(ugid.y) >= args.dst_tensor.Height()) {
         return;
       }
 
@@ -230,15 +207,16 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
           const short2 src_coord = (short2(ugid) + index + padding - kernel_offset) / stride;
           index = kernel_size - short2(1, 1) - index;
           bool outside = src_coord.x < 0 || src_coord.y < 0 ||
-            src_coord.x >= params.src_size.x || src_coord.y >= params.src_size.y;
+            src_coord.x >= args.src_tensor.Width() || src_coord.y >= args.src_tensor.Height();
           const int kernel_index = index.y * kernel_size.x + index.x;
+          device FLT4* weights_cache = args.weights.GetPtr() + kernel_index * $0;
           bool belong = inside_kernel && !outside;
           if (belong) {
             for (int k = 0; k < dst_channels; ++k) {
               for (int l = 0; l < src_depth; ++l) {
                 short2 src_index = src_coord - first_src_coord;
                 out[k] += dot(src_shared[src_index.x][src_index.y][l],
-                              filters[kernel_index].vals[l * dst_channels_aligned + k]);
+                              weights_cache[l * dst_channels_aligned + k]);
               }
             }
           }
@@ -246,12 +224,10 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
       }
 
       for (short l = 0; l < dst_depth; ++l) {
-        FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + biases[l];
-        const int linear_index = (l * params.dst_size.y + int(ugid.y))
-          * params.dst_size.x + int(ugid.x);
-        uint3 gid = uint3(ugid.x, ugid.y, uint(l));
+        FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
+        args.dst_tensor.GetAddress(linear_index, ugid.x, ugid.y, l);
         $$2
-        dst_tensor[linear_index] = value;
+        args.dst_tensor.Write(value, ugid.x, ugid.y, l);
       }
     }
   )";
@@ -287,25 +263,14 @@ std::string GetDeconvolution4x4(const int2& block_size,
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    struct uniforms {
-      int4 src_size;
-      int4 dst_size;
-      int filter_offset;
-      int dummy_0;
-      int dummy_1;
-      int dummy_2;
-    };
-)";
-  c += R"(
-    $0
-    kernel void ComputeFunction(
-                                $1
-                                uint3 group_id[[threadgroup_position_in_grid]],
-                                uint3 tid3d[[thread_position_in_threadgroup]],
-                                uint3 ugid[[thread_position_in_grid]]) {
+#include <metal_stdlib>
+using namespace metal;
+$0
+kernel void ComputeFunction(
+                            $1
+                            uint3 group_id[[threadgroup_position_in_grid]],
+                            uint3 tid3d[[thread_position_in_threadgroup]],
+                            uint3 ugid[[thread_position_in_grid]]) {
 )";
   c += "  int X = static_cast<int>(group_id.y * 8u + tid3d.x);\n";
   c += "  int Y = static_cast<int>(group_id.z * 4u + tid3d.y);\n";
@@ -313,8 +278,8 @@ std::string GetDeconvolution4x4(const int2& block_size,
   c += "  X *= " + std::to_string(block_size.x) + ";\n";
   c += "  Y *= " + std::to_string(block_size.y) + ";\n";
   if (!use_local_mem) {
-    c += "  if (X * 2 > params.dst_size.x || Y * 2 > params.dst_size.y || Z >= "
-         "params.dst_size.z) return;\n";
+    c += "  if (X * 2 > args.dst_tensor.Width() || Y * 2 > "
+         "args.dst_tensor.Height() || Z >= args.dst_tensor.Slices()) return;\n";
   }
   for (int y = 0; y < block_size.y; ++y) {
     for (int x = 0; x < block_size.x; ++x) {
@@ -329,7 +294,7 @@ std::string GetDeconvolution4x4(const int2& block_size,
            "_11 = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
     }
   }
-  c += "  int f_offset = Z * params.filter_offset;\n";
+  c += "  int f_offset = Z * 64 * args.src_tensor.Slices();\n";
   if (use_local_mem) {
     c += "  threadgroup FLT4 weights_cache[64];\n";
     c += "  int local_id = static_cast<int>(tid3d.y * 8u + tid3d.x);\n";
@@ -339,40 +304,44 @@ std::string GetDeconvolution4x4(const int2& block_size,
     const std::string xc =
         x == 0 ? std::string("X - 1") : "X + " + std::to_string(x - 1);
     c += "  bool in_x" + sx + " = " + xc + " >= 0 && " + xc +
-         " < params.src_size.x;\n";
-    c += "  int xc" + sx + " = clamp(" + xc + ", 0, params.src_size.x - 1);\n";
+         " < args.src_tensor.Width();\n";
+    c += "  int xc" + sx + " = clamp(" + xc +
+         ", 0, args.src_tensor.Width() - 1);\n";
   }
   for (int y = 0; y < block_size.y + 1; ++y) {
     const std::string sy = std::to_string(y);
     const std::string yc =
         y == 0 ? std::string("Y - 1") : "Y + " + std::to_string(y - 1);
     c += "  bool in_y" + std::to_string(y) + " = " + yc + " >= 0 && " + yc +
-         " < params.src_size.y;\n";
-    c += "  int yc" + sy + " = clamp(" + yc + ", 0, params.src_size.y - 1);\n";
+         " < args.src_tensor.Height();\n";
+    c += "  int yc" + sy + " = clamp(" + yc +
+         ", 0, args.src_tensor.Height() - 1);\n";
   }
   for (int y = 0; y < block_size.y + 1; ++y) {
     for (int x = 0; x < block_size.x + 1; ++x) {
       const std::string sx = std::to_string(x);
       const std::string sy = std::to_string(y);
       c += "  FLT m_" + sx + sy + " = in_x" + sx + " && in_y" + sy + ";\n";
-      c += "  device FLT4* src_ptr_" + sx + sy + " = src_tensor + yc" + sy +
-           " * params.src_size.x + xc" + sx + ";\n";
+      c += "  device FLT4* src_ptr_" + sx + sy +
+           " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(xc" +
+           sx + ", yc" + sy + ");\n";
     }
   }
-  c += "  for (int s = 0; s < params.src_size.z; ++s) {\n";
+  c += "  for (int s = 0; s < args.src_tensor.Slices(); ++s) {\n";
   if (use_local_mem) {
     c += "    " + barrier + "(mem_flags::mem_none);\n";
-    c += "    weights_cache[local_id] = filters[f_offset + local_id];\n";
-    c += "    weights_cache[local_id + 32] = filters[f_offset + local_id + "
-         "32];\n";
+    c += "    weights_cache[local_id] = args.weights.Read(f_offset + "
+         "local_id);\n";
+    c += "    weights_cache[local_id + 32] = args.weights.Read(f_offset + "
+         "local_id + 32);\n";
   } else {
-    c += "    device FLT4* weights_cache = filters + f_offset;\n";
+    c += "    device FLT4* weights_cache = args.weights.GetPtr() + f_offset;\n";
   }
   for (int y = 0; y < block_size.y + 1; ++y) {
     for (int x = 0; x < block_size.x + 1; ++x) {
       const std::string id = std::to_string(x) + std::to_string(y);
       c += "    FLT4 src_" + id + " = *src_ptr_" + id + " * m_" + id +
-           "; src_ptr_" + id + " += params.src_size.w;\n";
+           "; src_ptr_" + id + " += args.src_tensor.SliceStride();\n";
     }
   }
   c += "    f_offset += 64;\n";
@@ -405,16 +374,12 @@ std::string GetDeconvolution4x4(const int2& block_size,
   c += "  }\n";
   c += "\n";
   if (use_local_mem) {
-    c += "  if (X * 2 > params.dst_size.x || Y * 2 > params.dst_size.y || Z >= "
-         "params.dst_size.z) return;\n";
+    c += "  if (X * 2 > args.dst_tensor.Width() || Y * 2 > "
+         "args.dst_tensor.Height() || Z >= args.dst_tensor.Slices()) return;\n";
   }
   c += "  X = X * 2 - 1;\n";
   c += "  Y = Y * 2 - 1;\n";
-  c += "\n";
-  c += "  const int dst_offset = (Z * params.dst_size.y + Y) * "
-       "params.dst_size.x "
-       "+ X;\n";
-  c += "  FLT4 bias_val = biases[Z];\n";
+  c += "  FLT4 bias_val = args.biases.Read(Z);\n";
   for (int y = 0; y < block_size.y; ++y) {
     for (int x = 0; x < block_size.x; ++x) {
       for (int sub_y = 0; sub_y < 2; ++sub_y) {
@@ -426,20 +391,20 @@ std::string GetDeconvolution4x4(const int2& block_size,
                                 std::to_string(sub_y);
           const std::string dst_x = "X + " + std::to_string(x_offset);
           const std::string dst_y = "Y + " + std::to_string(y_offset);
-          const std::string x_check = x_offset == 0
-                                          ? std::string("X >= 0")
-                                          : dst_x + " < params.dst_size.x";
-          const std::string y_check = y_offset == 0
-                                          ? std::string("Y >= 0")
-                                          : dst_y + " < params.dst_size.y";
+          const std::string x_check =
+              x_offset == 0 ? std::string("X >= 0")
+                            : dst_x + " < args.dst_tensor.Width()";
+          const std::string y_check =
+              y_offset == 0 ? std::string("Y >= 0")
+                            : dst_y + " < args.dst_tensor.Height()";
           c += "  if (" + x_check + " && " + y_check + ") {\n";
           c += "    FLT4 value = FLT4(" + R + ") + bias_val;\n";
-          c += "    int linear_index = dst_offset + params.dst_size.x * " +
-               std::to_string(y_offset) + " + " + std::to_string(x_offset) +
-               ";\n";
-          c += "    uint3 gid = uint3(" + dst_x + ", " + dst_y + ", Z);\n";
+          std::string dst_coords = dst_x + ", " + dst_y + ", Z";
+          c += "    args.dst_tensor.GetAddress(linear_index, " + dst_coords +
+               ");\n";
+          c += "    uint3 gid = uint3(" + dst_coords + ");\n";
           c += "    $2\n";
-          c += "    dst_tensor[linear_index] = value;\n";
+          c += "    args.dst_tensor.Write(value, " + dst_coords + ");\n";
           c += "  }\n";
         }
       }
@@ -455,6 +420,7 @@ ComputeTaskDescriptor ConvolutionTransposed(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info) {
   ComputeTaskDescriptor desc(definition);
+  desc.tensors_as_args = true;
 
   const int src_local_size_x =
       (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
@@ -503,27 +469,22 @@ ComputeTaskDescriptor ConvolutionTransposed(
   }
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  auto filters = GetByteBufferConverted(filters_reordered, data_type);
-  desc.immutable_buffers = {
-      {"device FilterStripe* const filters", filters},
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(params.bias.data, data_type,
-                                     params.weights.shape.o)},
-  };
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = data_type;
+  weights_desc.element_size = 4;
+  weights_desc.data = GetByteBufferConverted(filters_reordered, data_type);
+  weights_desc.size = weights_desc.data.size();
+  desc.args.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         std::vector<int> uniform_params{
-             src_shapes[0].w,
-             src_shapes[0].h,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(params.bias.data, data_type,
+                                                 params.weights.shape.o);
+  bias_desc.size = bias_desc.data.size();
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {
@@ -590,6 +551,7 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
                                               params.weights.shape.o);
 
   ComputeTaskDescriptor desc(definition);
+  desc.tensors_as_args = true;
 
   bool recommended_2x = false;
   if (gpu_info.IsApple()) {
@@ -609,33 +571,21 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.immutable_buffers = {
-      {"device FLT4* const filters", filters},
-      {"device FLT4* const biases", biases},
-  };
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = data_type;
+  weights_desc.element_size = 4;
+  weights_desc.data = filters;
+  weights_desc.size = weights_desc.data.size();
+  desc.args.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [params](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-         const int src_depth = DivideRoundUp(src_shapes[0].c, 4);
-         std::vector<int> uniform_params{
-             src_shapes[0].w,
-             src_shapes[0].h,
-             src_depth,
-             src_shapes[0].w * src_shapes[0].h,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             0,
-             4 * 16 * src_depth,
-             0,
-             0,
-             0,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = biases;
+  bias_desc.size = bias_desc.data.size();
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.resize_function = [block_size](const std::vector<BHWC>& src_shapes,
                                       const std::vector<BHWC>& dst_shapes) {
