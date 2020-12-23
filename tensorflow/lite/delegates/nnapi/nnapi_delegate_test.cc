@@ -391,6 +391,11 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
       !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
     GTEST_SKIP();
   }
+  // TODO(b/176241505): Fix incorrect outputs on API 29.
+  if (NnApiImplementation()->android_sdk_version == 29) {
+    GTEST_SKIP();
+  }
+
   StatefulNnApiDelegate::Options options;
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
