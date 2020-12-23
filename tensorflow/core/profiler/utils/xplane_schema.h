@@ -161,12 +161,8 @@ enum StatType {
   kDeviceId,
   kContextId,
   kCorrelationId,
-  // TODO(b/176137043): These "details" should differentiate between activity
-  // and API event sources.
   kMemcpyDetails,
   kMemallocDetails,
-  kMemFreeDetails,
-  kMemsetDetails,
   kKernelAnnotation,
   kNVTXRange,
   kKernelDetails,
