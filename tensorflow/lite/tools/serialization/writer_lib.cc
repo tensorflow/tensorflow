@@ -188,11 +188,6 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
     if (tensor_to_written_tensor_[tensor_index] == -1) continue;
 
     if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
-      // We only need to convert non temporaries
-      if (tensor->allocation_type != kTfLiteArenaRw &&
-          tensor->allocation_type != kTfLiteMmapRo &&
-          tensor->allocation_type != kTfLiteArenaRwPersistent)
-        continue;
       // Allocate a buffer index
       int buffer_index = 0;  // This is null
       if (tensor->allocation_type == kTfLiteMmapRo) {

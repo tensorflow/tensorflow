@@ -341,7 +341,27 @@ INSTANTIATE_TEST_SUITE_P(
       return name;
     });
 
-class WhileTest : public subgraph_test_util::ControlFlowOpTest {};
+class WhileTest : public subgraph_test_util::ControlFlowOpTest {
+ protected:
+  TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes,
+                                        int required_alignment) {
+    // Extra memory to ensure alignment.
+    char* new_alloc = new char[num_bytes + required_alignment];
+    char* new_underlying_buffer_aligned_ptr = reinterpret_cast<char*>(
+        AlignTo(required_alignment, reinterpret_cast<intptr_t>(new_alloc)));
+    custom_alloc_buffers_.emplace_back(new_alloc);
+
+    return TfLiteCustomAllocation(
+        {new_underlying_buffer_aligned_ptr, num_bytes});
+  }
+
+  intptr_t AlignTo(size_t alignment, intptr_t offset) {
+    return offset % alignment == 0 ? offset
+                                   : offset + (alignment - offset % alignment);
+  }
+
+  std::vector<std::unique_ptr<char[]>> custom_alloc_buffers_;
+};
 
 // The test builds a model that produces the i-th number of
 // triangular number sequence: 1, 3, 6, 10, 15, 21, 28.
@@ -359,7 +379,15 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
