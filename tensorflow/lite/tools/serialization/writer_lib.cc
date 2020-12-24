@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -326,7 +327,9 @@ TfLiteStatus SubgraphWriter::RegisterCustomWriter(
 TfLiteStatus SubgraphWriter::CheckInputOutput(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const std::vector<int>& execution_plan) {
-  std::unordered_set<int> known_tensors(inputs.begin(), inputs.end());
+  absl::flat_hash_set<int> known_tensors(inputs.begin(), inputs.end());
+  known_tensors.insert(subgraph_->variables().begin(),
+                       subgraph_->variables().end());
   // Scan execution plan and confirm input tensors are known before each node
   // executes. Then append output tensors to known tensors.
   for (int op_index : execution_plan) {

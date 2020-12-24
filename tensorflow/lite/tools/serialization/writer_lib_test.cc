@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -228,6 +229,50 @@ TEST_P(SingleSubgraphTest, CustomInputOutputErrorCasesTest) {
   EXPECT_EQ(writer.SetCustomInputOutput(/*inputs=*/{0, 1}, /*outputs=*/{3},
                                         /*execution_plan=*/{0, 1}),
             kTfLiteOk);
+}
+
+// Tests if SetCustomInputOutput handles variable tensors correctly.
+TEST_P(SingleSubgraphTest, CustomInputOutputVariableTensorTest) {
+  Interpreter interpreter;
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+
+  // Create tensors.
+  interpreter.AddTensors(3);
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "a", {3},
+                                           TfLiteQuantization());
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "b", {3},
+                                           TfLiteQuantization(),
+                                           /*is_variable=*/true);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "c", {3},
+                                           TfLiteQuantization());
+  interpreter.SetInputs({0});
+  interpreter.SetOutputs({2});
+  interpreter.SetVariables({1});
+
+  // Create an Add node.
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  interpreter.AddNodeWithParameters({0, 1}, {2}, nullptr, 0,
+                                    reinterpret_cast<void*>(builtin_data),
+                                    resolver.FindOp(BuiltinOperator_ADD, 1));
+
+  // Write model to file.
+  const std::string test_file = CreateFilePath("test_variables.tflite");
+  SubgraphWriter writer(&interpreter.primary_subgraph());
+  EXPECT_EQ(writer.SetCustomInputOutput(/*inputs=*/{0}, /*outputs=*/{2},
+                                        /*execution_plan=*/{0}),
+            kTfLiteOk);
+  writer.Write(test_file);
+
+  // Read model and test.
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+  CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
 }
 
 TEST_P(SingleSubgraphTest, PerTensorQuantizedModelTest) {
