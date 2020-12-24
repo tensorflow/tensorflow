@@ -18,7 +18,7 @@ set -e
 
 sudo add-apt-repository -y ppa:deadsnakes/ppa
 sudo apt-get -y update
-sudo apt-get install python3.8
+sudo apt-get install -y python3.8
 
 # Get the latest version of pip so it recognize manylinux2010
 wget https://bootstrap.pypa.io/get-pip.py
