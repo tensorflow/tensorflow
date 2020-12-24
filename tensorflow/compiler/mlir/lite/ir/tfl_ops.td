@@ -2469,7 +2469,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>, AffineQuantizedOpInterface]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
@@ -2487,6 +2487,12 @@ def TFL_PReluOp : TFL_Op<"prelu", [
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return -1; }
+  }];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
