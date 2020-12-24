@@ -1182,18 +1182,129 @@ void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<RemoveAdjacentReshape, ConvertShapeTo1D>(context);
 }
 
-static LogicalResult Verify(ReshapeOp op) {
-  auto shape = op.shape().getType().dyn_cast_or_null<mlir::RankedTensorType>();
-  if (!shape || !shape.hasRank()) return success();
-  if (shape.getNumDynamicDims() <= 1) return success();
+using ReshapeErrorHandler =
+    llvm::function_ref<LogicalResult(const llvm::Twine &)>;
 
-  op.emitError()
-      << "its shape value, " << shape
-      << ", is invalid because it has more than one dynamic dimensions. You "
-         "need to set up the unspecified size(s) to avoid this problem, for "
-         "example, setting batch size in keras model or setting unspecified "
-         "input size(s) with fixed ones.";
-  return failure();
+LogicalResult GetReshapeOutputType(Value input, Value shape,
+                                   ReshapeErrorHandler error_handler,
+                                   TensorType &output_ty) {
+  auto input_ty = input.getType().cast<TensorType>();
+  auto element_ty = input_ty.getElementType();
+  output_ty = UnrankedTensorType::get(element_ty);
+
+  auto shape_ty = shape.getType().dyn_cast<RankedTensorType>();
+  if (!shape_ty) return success();
+  if (shape_ty.getRank() != 1)
+    return error_handler(llvm::formatv(
+        "requires 'shape' to be rank 1, but got {0}", shape_ty.getRank()));
+
+  DenseIntElementsAttr shape_attr;
+  if (!matchPattern(shape, m_Constant(&shape_attr))) {
+    // If only shape of `shape` is known, return ranked but dynamic output
+    // shape.
+    if (shape_ty.hasStaticShape()) {
+      llvm::SmallVector<int64_t, 8> dynamic_shape(shape_ty.getDimSize(0),
+                                                  ShapedType::kDynamicSize);
+      output_ty = RankedTensorType::get(dynamic_shape, element_ty);
+    }
+    return success();
+  }
+
+  // Detect if reshape output shape is folded.
+  bool shape_ty_zero_dim = false;
+  int unknown_index = -1;
+  // The product of constant shape argument excluding unknown dimension.
+  int64_t shape_ty_size = 1;
+  llvm::SmallVector<int64_t, 8> output_ty_shape;
+  output_ty_shape.reserve(shape_attr.getNumElements());
+  for (const auto &dim : llvm::enumerate(shape_attr.getIntValues())) {
+    const int64_t size = dim.value().getSExtValue();
+    if (size == ShapedType::kDynamicSize) {
+      if (unknown_index != -1)
+        return error_handler(llvm::formatv(
+            "requires 'shape' to have at most one dynamic dimension, but got "
+            "multiple dynamic dimensions at indices {0} and {1}. You need to "
+            "set up the unspecified size(s) to avoid this problem, for example,"
+            "setting batch size in keras model or setting unspecified input "
+            "size(s) with fixed ones.",
+            unknown_index, dim.index()));
+
+      unknown_index = dim.index();
+    } else if (size == 0) {
+      shape_ty_zero_dim = true;
+    } else if (size > 0) {
+      shape_ty_size *= size;
+    } else {
+      return error_handler(
+          llvm::formatv("requires 'shape' to have dimensions greater than -1, "
+                        "but got {0} at index {1}",
+                        size, dim.index()));
+    }
+    output_ty_shape.push_back(size);
+  }
+
+  if (!input_ty.hasStaticShape()) {
+    output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+    return success();
+  }
+
+  // Compute the value of the unknown dimension.
+  if (unknown_index != -1) {
+    // Compute number of elements in tensor shape.
+    int64_t input_ty_size = 1;
+    bool input_ty_zero_dim = false;
+    for (const auto &dim : input_ty.getShape()) {
+      if (dim > 0 || !shape_ty_zero_dim) {
+        input_ty_size *= dim;
+      } else {
+        input_ty_zero_dim = true;
+      }
+    }
+
+    const int64_t missing_dim = input_ty_size / shape_ty_size;
+    if (!input_ty_zero_dim && shape_ty_size * missing_dim != input_ty_size)
+      return error_handler(
+          llvm::formatv("requires 'input' number of elements be a multiple of "
+                        "{0}, but got {1}",
+                        shape_ty_size, input_ty_size));
+
+    // Set the unknown dimension such that total number of elements remain
+    // constant.
+    output_ty_shape[unknown_index] = missing_dim;
+  }
+
+  output_ty = RankedTensorType::get(output_ty_shape, element_ty);
+
+  return success();
+}
+
+static LogicalResult Verify(ReshapeOp op) {
+  auto error_handler = [&op](const llvm::Twine &message) -> LogicalResult {
+    return op.emitOpError() << message;
+  };
+  TensorType expected_ty;
+  if (failed(GetReshapeOutputType(op.input(), op.shape(), error_handler,
+                                  expected_ty)))
+    return failure();
+
+  auto output_ty = op.getType().dyn_cast<RankedTensorType>();
+  if (!output_ty) return success();
+  auto input_ty = op.input().getType().cast<TensorType>();
+  if (output_ty.hasStaticShape() && input_ty.hasStaticShape()) {
+    const int64_t output_ty_size = output_ty.getNumElements();
+    const int64_t input_ty_size = input_ty.getNumElements();
+    if (input_ty_size != output_ty_size)
+      return op.emitOpError() << "requires 'output' number of elements to "
+                                 "match 'input' number of elements, but got "
+                              << output_ty_size << " and " << input_ty_size;
+  }
+
+  if (!TF::AreCastCompatible({output_ty, expected_ty}))
+    return op.emitOpError()
+           << "requires 'output' type " << output_ty
+           << " to be cast compatible with expected type " << expected_ty;
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
