@@ -18,7 +18,7 @@ func @lstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3x4xf32>, %arg2: tens
     %0 = "tf.BatchMatMulV2"(%arg3, %arg1) {adj_x = false, adj_y = false} : (tensor<1x3xf32>, tensor<3x4xf32>) -> tensor<1x4xf32>
     %1 = constant dense<[[2.3, 3.4, 4.5, 5.5]]> : tensor<1x4xf32>
     %2 = "tf.Add"(%0, %1) : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
-    %3 = tensor_cast %2 : tensor<1x4xf32> to tensor<1x?xf32>
+    %3 = tensor.cast %2 : tensor<1x4xf32> to tensor<1x?xf32>
     return %3 : tensor<1x?xf32>
 }
 
@@ -26,7 +26,7 @@ func @layernormalizedlstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3x4xf3
     %0 = "tf.BatchMatMulV2"(%arg3, %arg1) {adj_x = false, adj_y = false} : (tensor<1x3xf32>, tensor<3x4xf32>) -> tensor<1x4xf32>
     %1 = constant dense<[[2.3, 3.4, 4.5, 5.5]]> : tensor<1x4xf32>
     %2 = "tf.Add"(%0, %1) : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
-    %3 = tensor_cast %2 : tensor<1x4xf32> to tensor<1x?xf32>
+    %3 = tensor.cast %2 : tensor<1x4xf32> to tensor<1x?xf32>
     return %3 : tensor<1x?xf32>
 }
 
@@ -87,7 +87,7 @@ func @layernormalizedlstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3x4xf3
 // CHECK:           [[VAL_48:%.*]] = constant dense<0.000000e+00> : tensor<1x1xf32>
 // CHECK:           [[VAL_49:%.*]] = "tfl.lstm"([[VAL_0]], [[VAL_16]], [[VAL_19]], [[VAL_13]], [[VAL_22]], [[VAL_28]], [[VAL_31]], [[VAL_25]], [[VAL_34]], [[VAL_10]], [[VAL_10]], [[VAL_10]], [[VAL_40]], [[VAL_41]], [[VAL_37]], [[VAL_42]], [[VAL_45]], [[VAL_46]], [[VAL_47]], [[VAL_48]], [[VAL_10]], [[VAL_10]], [[VAL_10]], [[VAL_10]]) ( {
 // CHECK:           }) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = "FULL", proj_clip = 0.000000e+00 : f32} : (tensor<1x?xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, none, none, none, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<3x1xf32>, tensor<3xf32>, tensor<1x3xf32>, tensor<1x1xf32>, none, none, none, none) -> tensor<1x3xf32>
-// CHECK:           [[VAL_50:%.*]] = tensor_cast [[VAL_51:%.*]] : tensor<1x3xf32> to tensor<1x?xf32>
+// CHECK:           [[VAL_50:%.*]] = tensor.cast [[VAL_51:%.*]] : tensor<1x3xf32> to tensor<1x?xf32>
 // CHECK:           return [[VAL_50]] : tensor<1x?xf32>
 
 // CHECK-LABEL:   func @layernormalizedlstmcellsimple(
@@ -147,7 +147,7 @@ func @layernormalizedlstmcellsimple(%arg0: tensor<1x?xf32>, %arg1: tensor<3x4xf3
 // CHECK:           [[VAL_102:%.*]] = constant dense<0.000000e+00> : tensor<1xf32>
 // CHECK:           [[VAL_103:%.*]] = "tfl.lstm"([[VAL_0]], [[VAL_62]], [[VAL_65]], [[VAL_59]], [[VAL_68]], [[VAL_74]], [[VAL_77]], [[VAL_71]], [[VAL_80]], [[VAL_56]], [[VAL_56]], [[VAL_56]], [[VAL_86]], [[VAL_87]], [[VAL_83]], [[VAL_88]], [[VAL_91]], [[VAL_92]], [[VAL_93]], [[VAL_94]], [[VAL_100]], [[VAL_101]], [[VAL_97]], [[VAL_102]]) ( {
 // CHECK:           }) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", kernel_type = "FULL", proj_clip = 0.000000e+00 : f32} : (tensor<1x?xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x0xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, tensor<1x3xf32>, none, none, none, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<3x1xf32>, tensor<3xf32>, tensor<1x3xf32>, tensor<1x1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>, tensor<1xf32>) -> tensor<1x3xf32>
-// CHECK:           [[VAL_104:%.*]] = tensor_cast [[VAL_105:%.*]] : tensor<1x3xf32> to tensor<1x?xf32>
+// CHECK:           [[VAL_104:%.*]] = tensor.cast [[VAL_105:%.*]] : tensor<1x3xf32> to tensor<1x?xf32>
 // CHECK:           return [[VAL_104]] : tensor<1x?xf32>
 }
 
@@ -160,7 +160,7 @@ func @lstmcellsimple(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*
     %0 = "tf.BatchMatMulV2"(%arg3, %arg1) {adj_x = false, adj_y = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %1 = constant dense<[[2.3, 3.4, 4.5, 5.5]]> : tensor<1x4xf32>
     %2 = "tf.Add"(%0, %1) : (tensor<*xf32>, tensor<1x4xf32>) -> tensor<*xf32>
-    %3 = tensor_cast %2 : tensor<*xf32> to tensor<*xf32>
+    %3 = tensor.cast %2 : tensor<*xf32> to tensor<*xf32>
     return %3 : tensor<*xf32>
 }
 
@@ -169,7 +169,7 @@ func @layernormalizedlstmcellsimple(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, 
     %0 = "tf.BatchMatMulV2"(%arg3, %arg1) {adj_x = false, adj_y = false} : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     %1 = constant dense<[[2.3, 3.4, 4.5, 5.5]]> : tensor<1x4xf32>
     %2 = "tf.Add"(%0, %1) : (tensor<*xf32>, tensor<1x4xf32>) -> tensor<*xf32>
-    %3 = tensor_cast %2 : tensor<*xf32> to tensor<*xf32>
+    %3 = tensor.cast %2 : tensor<*xf32> to tensor<*xf32>
     return %3 : tensor<*xf32>
 }
 

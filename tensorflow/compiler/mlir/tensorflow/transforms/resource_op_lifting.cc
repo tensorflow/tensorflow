@@ -445,6 +445,7 @@ LogicalResult RegionResourceHoister::Analyze() {
 // Generates hoisted reads for all resources that need them just before the op.
 void RegionResourceHoister::GenerateHoistedReads() {
   OpBuilder builder(op_);
+  DictionaryAttr empty_attrs = builder.getDictionaryAttr({});
   for (auto& resource_it : GetResources()) {
     Value resource = resource_it.first;
     auto& info = resource_it.second;
@@ -452,7 +453,7 @@ void RegionResourceHoister::GenerateHoistedReads() {
     if (info.is_read) {
       Operation* read = builder.create<TF::ReadVariableOp>(
           op_->getLoc(), info.data_type, resource);
-      read->setAttrs(info.read_attrs);
+      read->setAttrs(info.read_attrs ? info.read_attrs : empty_attrs);
       info.hoisted_read = read->getResult(0);
     }
   }

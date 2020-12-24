@@ -628,7 +628,7 @@ func @shape_assuming_tensor(%arg0: tensor<?xf16>) -> tensor<?xf16> {
   // CHECK: shape.assuming %{{.*}} -> (memref<?xf16>)
   %2 = shape.assuming %1 -> (tensor<?xf16>) {
     %3 = shape.shape_of %arg0 : tensor<?xf16> -> tensor<?xindex>
-    %4 = tensor_cast %3 : tensor<?xindex> to tensor<1xindex>
+    %4 = tensor.cast %3 : tensor<?xindex> to tensor<1xindex>
     %5 = "mhlo.dynamic_broadcast_in_dim"(%0, %4) {broadcast_dimensions = dense<> : tensor<0xi64>} : (tensor<f16>, tensor<1xindex>) -> tensor<?xf16>
     %6 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %4) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<?xf16>, tensor<1xindex>) -> tensor<?xf16>
     // CHECK: "lmhlo.maximum"(%{{.*}}, %{{.*}}, %{{.*}}) : (memref<?xf16>, memref<?xf16>, memref<?xf16>) -> ()
@@ -638,3 +638,5 @@ func @shape_assuming_tensor(%arg0: tensor<?xf16>) -> tensor<?xf16> {
   }
   return %2 : tensor<?xf16>
 }
+
+

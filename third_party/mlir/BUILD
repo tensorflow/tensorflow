@@ -1470,6 +1470,7 @@ gentbl(
     td_file = "lib/Dialect/Shape/IR/ShapeCanonicalization.td",
     td_srcs = [
         ":StdOpsTdFiles",
+        ":TensorOpsTdFiles",
         "include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "include/mlir/Dialect/Shape/IR/ShapeOps.td",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -1493,6 +1494,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -4756,7 +4758,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
-        "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
     ],
     includes = ["include"],

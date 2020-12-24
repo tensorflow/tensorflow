@@ -221,7 +221,7 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   inst->getName().print(os);
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
-  if (!inst->getMutableAttrDict().getAttrs().empty()) {
+  if (!inst->getAttrDictionary().empty()) {
     os << " {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
@@ -1547,11 +1547,13 @@ llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
 // Helper method that return list of string for all the StringAttr in the
 // Attribute identified by 'attr_name'.
 std::vector<std::string> GetStringsFromDictionaryAttr(
-    const llvm::SmallVector<mlir::MutableDictionaryAttr, 4>& dict_attrs,
+    const llvm::SmallVector<mlir::DictionaryAttr, 4>& dict_attrs,
     const std::string& attr_name) {
   std::vector<std::string> result;
   for (const auto& arg_attr : dict_attrs) {
-    auto attrs = arg_attr.getAttrs();
+    if (!arg_attr) continue;
+
+    auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
       if (attr.first.str() == attr_name) {
         auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
@@ -1571,7 +1573,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   // Fetch inputs and outputs from the signature.
-  llvm::SmallVector<mlir::MutableDictionaryAttr, 4> arg_attrs, res_attrs;
+  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
   main_op.getAllArgAttrs(arg_attrs);
   main_op.getAllResultAttrs(res_attrs);
   std::vector<std::string> sig_def_inputs =

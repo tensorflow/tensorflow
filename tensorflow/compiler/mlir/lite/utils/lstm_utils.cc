@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -430,8 +431,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       func_output_shape,
       input_.getType().cast<RankedTensorType>().getElementType());
 
-  auto tensor_cast = builder_.create<mlir::TensorCastOp>(
-      fused_func_op_.getLoc(), lstm_.getResult(), func_result_type);
+  auto tensor_cast = builder_.create<mlir::tensor::CastOp>(
+      fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
   builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
                                   tensor_cast.getResult());
   return success();
