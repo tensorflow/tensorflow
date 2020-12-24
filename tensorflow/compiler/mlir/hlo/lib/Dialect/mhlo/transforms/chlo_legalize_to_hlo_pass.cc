@@ -20,8 +20,8 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 
 namespace mlir {
 namespace mhlo {
