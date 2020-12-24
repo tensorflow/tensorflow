@@ -13,7 +13,7 @@ load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compil
 load("//third_party/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load(
@@ -1126,6 +1126,19 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
         ],
     )
+    
+    # add cryptopp
+    tf_http_archive(
+        name = "cryptopp",
+        build_file = clean_dep("//third_party/cryptopp:BUILD"),
+        sha256 = "c934d2c427a0ef197ea989a00f7b6d866d110dd55257d2944d0513b382b7e2b4",
+        strip_prefix = "cryptopp-CRYPTOPP_5_6_5",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/weidai11/cryptopp/archive/CRYPTOPP_5_6_5.zip",
+            "https://github.com/weidai11/cryptopp/archive/CRYPTOPP_5_6_5.zip",
+        ],
+    )
+
     tf_http_archive(
         name = "coremltools",
         sha256 = "0d594a714e8a5fd5bd740ad112ef59155c0482e25fdc8f8efa5758f90abdcf1e",

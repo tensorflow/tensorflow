@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <unordered_set>
 
+#include <iomanip>
+#include <sstream>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/lib/io/path.h"
