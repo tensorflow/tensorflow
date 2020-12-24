@@ -95,7 +95,8 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
       break;
     default:
       // Unsupported type.
-      TF_LITE_UNSUPPORTED_TYPE(context, out->type, "Cast");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(out->type), out->type);
   }
   return kTfLiteOk;
 }
