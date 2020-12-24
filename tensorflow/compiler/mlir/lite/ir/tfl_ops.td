@@ -592,7 +592,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
     AccumulatorUniformScale<3, 1, 2>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<0, 2>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<0, 1>,
     TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
@@ -620,7 +620,6 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
     int GetQuantizationDimIndex() { return 0; }
-    int GetAffineOperandIndex() { return 2; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
