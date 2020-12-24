@@ -427,3 +427,67 @@ func @unsupported_op() -> tensor<i32> {
 
   let constructor = "TFDevice::CreateMarkOpsForOutsideCompilationPass()";
 }
+
+def FunctionalControlFlowToRegionsPass : Pass<"tf-functional-control-flow-to-regions", "ModuleOp"> {
+  let summary = "Transforms functional control flow operations to their region-based counterparts";
+
+  let description = [{
+This pass transforms functional control flow operations in the TensorFlow
+dialect to their region-based counterparts, i.e., `tf.If` is transformed to
+`tf.IfRegion` and `tf.While` is transformed to `tf.WhileRegion`.
+
+For example, this functional operation
+
+```mlir
+  %0 = "tf.If"(%arg0, %arg1) {
+    then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
+  } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
+```
+
+will be transformed into this region-based operation
+
+```mlir
+    %0 = "tf.IfRegion"(%arg0) ( {
+      %1 = call @then_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    },  {
+      %1 = call @else_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
+```
+  }];
+
+  let constructor = "TF::CreateTFFunctionalControlFlowToRegions()";
+}
+
+def RegionControlFlowToFunctionalPass : Pass<"tf-region-control-flow-to-functional", "ModuleOp"> {
+  let summary = "Transforms region-based control flow operations to their functional counterparts";
+
+  let description = [{
+This pass transforms region-based control flow operations in the TensorFlow
+dialect to their functional counterparts, i.e., `tf.IfRegion` is transformed to
+`tf.If` and `tf.WhileRegion` is transformed to `tf.While`.
+
+For example, this region-based operation
+
+```mlir
+    %0 = "tf.IfRegion"(%arg0) ( {
+      %1 = call @then_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    },  {
+      %1 = call @else_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
+```
+
+will be transformed into this functional operation
+
+```mlir
+  %0 = "tf.If"(%arg0, %arg1) {
+    then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
+  } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
+```
+  }];
+
+  let constructor = "TF::CreateTFRegionControlFlowToFunctional()";
+}
