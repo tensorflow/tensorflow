@@ -2649,8 +2649,7 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
                                   TFL_SameFirstOperandAndFirstResultElementType,
-                                  SameOperandsAndResultShape,
-                                  NoQuantizableResult]> {
+                                  SameOperandsAndResultShape]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{

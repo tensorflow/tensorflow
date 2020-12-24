@@ -104,11 +104,16 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
-        double min = FloatAttr::getValueAsDouble(*it++);
-        double max = FloatAttr::getValueAsDouble(*it);
-        TensorRangeSanityCheck(op, min, max);
-        mins.push_back(min);
-        maxs.push_back(max);
+        double rmin = FloatAttr::getValueAsDouble(*it++);
+        double rmax = FloatAttr::getValueAsDouble(*it);
+        // The default nudging implementation of mlir quant library might cause
+        // clamping during inference if the calibration range isn't wide enough.
+        // So here we adjust the range to include 0.0.
+        rmin = std::min(rmin, 0.0);
+        rmax = std::max(rmax, 0.0);
+        TensorRangeSanityCheck(op, rmin, rmax);
+        mins.push_back(rmin);
+        maxs.push_back(rmax);
       }
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
@@ -116,6 +121,11 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      // The default nudging implementation of mlir quant library might cause
+      // clamping during inference if the calibration range isn't wide enough.
+      // So here we adjust the range to include 0.0.
+      rmin = std::min(rmin, 0.0);
+      rmax = std::max(rmax, 0.0);
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,

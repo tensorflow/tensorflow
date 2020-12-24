@@ -56,6 +56,28 @@ func @prepareStatistics(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
 // CHECK: return %[[dq2]]
 }
 
+// CHECK-LABEL: prepareStatisticsNudge
+func @prepareStatisticsNudge(%arg0: tensor<8x4x3xf32>) -> tensor<8x4x3xf32> {
+  %0 = "quant.stats"(%arg0) {
+    layerStats = dense<[0.1, 1.0]> : tensor<2xf32>
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  %1 = "quant.stats"(%0) {
+    layerStats = dense<[0.1, 1.0]> : tensor<2xf32>,
+    axisStats = dense<[
+      [-1.0, 1.0],
+      [-8.0, -1.0],
+      [-0.5, 0.5]
+    ]> : tensor<3x2xf32>, axis = 2 : i64
+  } : (tensor<8x4x3xf32>) -> tensor<8x4x3xf32>
+  return %1 : tensor<8x4x3xf32>
+
+// CHECK: %[[q1:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<8x4x3x!quant.uniform<i8:f32, 0.0039215686274509803:-128>>}
+// CHECK: %[[dq1:.*]] = "tfl.dequantize"(%[[q1]])
+// CHECK: %[[q2:.*]] = "tfl.quantize"(%[[dq1]]) {qtype = tensor<8x4x3x!quant.uniform<i8:f32:2, {0.0078431372549019607:-1,0.031372549019607843:127,0.0039215686274509803:-1}>>}
+// CHECK: %[[dq2:.*]] = "tfl.dequantize"(%[[q2]])
+// CHECK: return %[[dq2]]
+}
+
 // CHECK-LABEL: preparePrelu
 func @preparePrelu(%arg0: tensor<1x10x10x3xf32>) -> tensor<1x10x10x3xf32> {
   %cst = "tfl.pseudo_const"() {value = dense<[[[1.66394591, 3.61694336, 2.0382936]]]> : tensor<1x1x3xf32>} : () -> tensor<1x1x3xf32>
