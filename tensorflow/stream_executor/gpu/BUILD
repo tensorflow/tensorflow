@@ -251,7 +251,7 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
-    ]),
+    ]) + ["@com_google_absl//absl/container:flat_hash_set"],
 )
 
 cc_library(
