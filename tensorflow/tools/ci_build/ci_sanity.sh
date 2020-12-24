@@ -377,6 +377,7 @@ do_external_licenses_check(){
   # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
+    -e "@bazel_tools//platforms" \
     -e "@bazel_tools//third_party/" \
     -e "@bazel_tools//tools" \
     -e "@local" \
@@ -395,6 +396,7 @@ do_external_licenses_check(){
     -e "//third_party/mkl" \
     -e "//third_party/mkl_dnn" \
     -e "@bazel_tools//src" \
+    -e "@bazel_tools//platforms" \
     -e "@bazel_tools//tools/" \
     -e "@org_tensorflow//tensorflow" \
     -e "@com_google_absl//" \
