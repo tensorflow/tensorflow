@@ -133,6 +133,30 @@ func @my_fn(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>
   return %identity, %identity_n#0 : tensor<i32>, tensor<i32>
 }
 ```
+### `-tf-functional-control-flow-to-regions`: Transforms functional control flow operations to their region-based counterparts
+This pass transforms functional control flow operations in the TensorFlow
+dialect to their region-based counterparts, i.e., `tf.If` is transformed to
+`tf.IfRegion` and `tf.While` is transformed to `tf.WhileRegion`.
+
+For example, this functional operation
+
+```mlir
+  %0 = "tf.If"(%arg0, %arg1) {
+    then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
+  } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
+```
+
+will be transformed into this region-based operation
+
+```mlir
+    %0 = "tf.IfRegion"(%arg0) ( {
+      %1 = call @then_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    },  {
+      %1 = call @else_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
+```
 ### `-tf-mark-ops-for-outside-compilation`: Marks ops in device cluster for outside compilation if they are unsupported on device.
 This pass marks unsupported ops in a device cluster with
 `_xla_outside_compilation` attribute so the operations will run on the host
@@ -171,6 +195,30 @@ func @unsupported_op() -> tensor<i32> {
   }) {allow_soft_placement = true, device_assignment = [], num_cores_per_replica = 1 : i64, topology = ""} : () -> tensor<i32>
   return %0 : tensor<i32>
 }
+```
+### `-tf-region-control-flow-to-functional`: Transforms region-based control flow operations to their functional counterparts
+This pass transforms region-based control flow operations in the TensorFlow
+dialect to their functional counterparts, i.e., `tf.IfRegion` is transformed to
+`tf.If` and `tf.WhileRegion` is transformed to `tf.While`.
+
+For example, this region-based operation
+
+```mlir
+    %0 = "tf.IfRegion"(%arg0) ( {
+      %1 = call @then_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    },  {
+      %1 = call @else_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
+```
+
+will be transformed into this functional operation
+
+```mlir
+  %0 = "tf.If"(%arg0, %arg1) {
+    then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
+  } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
 ```
 ### `-tf-shape-inference`: Simple Shape Inference on TensorFlow Dialect
 
