@@ -632,10 +632,10 @@ REGISTER_OP("_FusedDepthwiseConv2dNative")
     // Attributes for the LeakyRelu ----------------------------------------- //
     .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
-
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 // --------------------------------------------------------------------------
+
 REGISTER_OP("Conv3D")
     .Input("input: T")
     .Input("filter: T")
