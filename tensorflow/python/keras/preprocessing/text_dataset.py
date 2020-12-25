@@ -59,7 +59,7 @@ def text_dataset_from_directory(directory,
 
   Only `.txt` files are supported at this time.
 
-  Arguments:
+  Args:
     directory: Directory where the data is located.
         If `labels` is "inferred", it should contain
         subdirectories, each containing text files for a class.

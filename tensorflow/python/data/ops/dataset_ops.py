@@ -4562,6 +4562,15 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     if optimization_configs is None:
       optimization_configs = []
 
+    # We sort the options here before embedding as constant tensors to ensure
+    # that serialization to NodeDef is determinstic.
+    if optimizations_enabled:
+      optimizations_enabled.sort()
+    if optimizations_disabled:
+      optimizations_disabled.sort()
+    if optimizations_default:
+      optimizations_default.sort()
+
     self._optimizations_enabled = convert.optional_param_to_tensor(
         argument_name="optimizations_enabled",
         argument_value=optimizations_enabled,

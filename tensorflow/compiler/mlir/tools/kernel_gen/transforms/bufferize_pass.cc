@@ -171,7 +171,7 @@ struct FinalBufferizePass : public FinalBufferizePassBase<FinalBufferizePass> {
 
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addIllegalOp<DynamicTensorFromElementsOp, tensor::ExtractOp,
-                        TensorFromElementsOp, TensorCastOp, TensorLoadOp,
+                        TensorFromElementsOp, tensor::CastOp, TensorLoadOp,
                         TensorToMemrefOp>();
     BufferizeTypeConverter converter;
     auto typesAreLegal = [&converter](Operation* op) {
@@ -212,3 +212,4 @@ std::unique_ptr<OperationPass<ModuleOp> > CreateFinalBufferizePass() {
 }  // namespace transforms
 }  // namespace kernel_gen
 }  // namespace mlir
+

@@ -240,6 +240,91 @@ func @cluster() -> tensor<i32> {
   let constructor = "TFDevice::CreateClusterConstantSinkingPass()";
 }
 
+def ClusterOutliningPass : Pass<"tf-device-cluster-outlining", "ModuleOp"> {
+  let summary = "Outlines regions of tf_device.cluster operations";
+
+  let description = [{
+This pass outlines the body of a `tf_device.cluster` into a function and
+replaces the `tf_device.cluster` op with an equivalent `tf_device.cluster_func`
+op. Implicit operands will be captured and materialized as explicit arguments to
+the newly created functions and associated `tf_device.cluster_func` ops.
+
+For example, the following:
+
+```mlir
+func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+  %cluster = "tf_device.cluster"() ( {
+    %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %identity : tensor<i32>
+  }) : () -> (tensor<i32>)
+  return %cluster : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+  %cluster = "tf_device.cluster_func"(%arg0) {func = @_func} : (tensor<i32>) -> tensor<i32>
+  return %cluster : tensor<i32>
+}
+
+func @_func(%arg0: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFDevice::CreateClusterOutliningPass()";
+}
+
+def TPUResourceReadForWritePass : Pass<"tf-tpu-resource-read-for-write", "ModuleOp"> {
+  let summary = "Inserts tf.ReadVariableOp inputs to a TPU cluster for resource writes with no reads";
+
+  let description = [{
+This pass materializes `tf.ReadVariableOp` inputs to an outlined TPU computation
+for resource variables where only writes are present so later in the pipeline
+such resource variables can be fused with generated `tf.TPUExecute` ops, which
+only supports resource variable read or read + write. For all TPU computations,
+resource variables are required to be initialized prior to execution. Write only
+resource variable uses can be generated currently via packed tensor uses.
+
+For example, the following:
+
+```mlir
+func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
+  %0 = "tf_device.cluster_func"(%value) {func = @cluster} : (tensor<i32>) -> tensor<i32>
+  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  return
+}
+
+func @cluster(%arg0: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
+
+will be transformed into:
+
+```mlir
+func @write_only_resource(%value: tensor<i32>, %resource: tensor<*x!tf.resource<tensor<i32>>>) {
+  %resource_read = "tf.ReadVariableOp"(%resource) : (tensor<*x!tf.resource<tensor<i32>>>) -> tensor<i32>
+  %0 = "tf_device.cluster_func"(%value, %resource_read) {func = @cluster} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  "tf.AssignVariableOp"(%resource, %0) : (tensor<*x!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+  return
+}
+
+func @cluster(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  %identity = "tf.Identity"(%arg0) : (tensor<i32>) -> tensor<i32>
+  return %identity : tensor<i32>
+}
+```
+  }];
+
+  let constructor = "TFTPU::CreateTPUResourceReadForWritePass()";
+}
+
 def TPUExtractOutsideCompilationPass : Pass<"tf-tpu-extract-outside-compilation", "ModuleOp"> {
   let summary = "Extracts TPU outside compilation computation to a separate tf_device.parallel_execute region.";
 
@@ -341,4 +426,68 @@ func @unsupported_op() -> tensor<i32> {
   }];
 
   let constructor = "TFDevice::CreateMarkOpsForOutsideCompilationPass()";
+}
+
+def FunctionalControlFlowToRegionsPass : Pass<"tf-functional-control-flow-to-regions", "ModuleOp"> {
+  let summary = "Transforms functional control flow operations to their region-based counterparts";
+
+  let description = [{
+This pass transforms functional control flow operations in the TensorFlow
+dialect to their region-based counterparts, i.e., `tf.If` is transformed to
+`tf.IfRegion` and `tf.While` is transformed to `tf.WhileRegion`.
+
+For example, this functional operation
+
+```mlir
+  %0 = "tf.If"(%arg0, %arg1) {
+    then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
+  } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
+```
+
+will be transformed into this region-based operation
+
+```mlir
+    %0 = "tf.IfRegion"(%arg0) ( {
+      %1 = call @then_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    },  {
+      %1 = call @else_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
+```
+  }];
+
+  let constructor = "TF::CreateTFFunctionalControlFlowToRegions()";
+}
+
+def RegionControlFlowToFunctionalPass : Pass<"tf-region-control-flow-to-functional", "ModuleOp"> {
+  let summary = "Transforms region-based control flow operations to their functional counterparts";
+
+  let description = [{
+This pass transforms region-based control flow operations in the TensorFlow
+dialect to their functional counterparts, i.e., `tf.IfRegion` is transformed to
+`tf.If` and `tf.WhileRegion` is transformed to `tf.While`.
+
+For example, this region-based operation
+
+```mlir
+    %0 = "tf.IfRegion"(%arg0) ( {
+      %1 = call @then_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    },  {
+      %1 = call @else_branch_func(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+      "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }) {is_stateless = false} : (tensor<i1>) -> tensor<*xf32>
+```
+
+will be transformed into this functional operation
+
+```mlir
+  %0 = "tf.If"(%arg0, %arg1) {
+    then_branch = @then_branch_func, else_branch = @else_branch_func, is_stateless = false
+  } : (tensor<i1>, tensor<*xf32>) -> tensor<*xf32>
+```
+  }];
+
+  let constructor = "TF::CreateTFRegionControlFlowToFunctional()";
 }

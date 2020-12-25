@@ -152,7 +152,7 @@ DOC = """
   For ResNetV2, call `tf.keras.applications.resnet_v2.preprocess_input` on your
   inputs before passing them to the model.
 
-  Arguments:
+  Args:
     include_top: whether to include the fully-connected
       layer at the top of the network.
     weights: one of `None` (random initialization),

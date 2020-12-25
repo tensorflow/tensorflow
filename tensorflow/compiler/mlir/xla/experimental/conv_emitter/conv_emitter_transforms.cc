@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/mlir_gpu/experimental/conv_emitter/conv_emitter_transforms.h"
+#include "tensorflow/compiler/mlir/xla/experimental/conv_emitter/conv_emitter_transforms.h"
 
 #include "absl/algorithm/container.h"
 #include "llvm/ADT/StringRef.h"
@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-namespace mlir_gpu {
+namespace experimental {
 
 using mlir::OpBuilder;
 
@@ -147,5 +147,5 @@ void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
   mlir::permuteLoops(loops, permutation);
 }
 
-}  // namespace mlir_gpu
+}  // namespace experimental
 }  // namespace xla

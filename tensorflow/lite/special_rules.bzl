@@ -24,6 +24,12 @@ def ios_visibility_whitelist():
     """This is a no-op outside of Google."""
     pass
 
+def internal_visibility_allowlist():
+    """Grant public visibility to internal targets so that other repos can depend on them."""
+    return [
+        "//visibility:public",
+    ]
+
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
     return []

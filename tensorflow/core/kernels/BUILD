@@ -4446,6 +4446,16 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "stateless_random_gamma_op",
+    prefix = "stateless_random_gamma_op",
+    deps = [
+        ":stateless_random_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_kernel_library(
     name = "stateless_random_ops",
     prefix = "stateless_random_ops",
     deps = [
@@ -5787,7 +5797,6 @@ filegroup(
         "gather_functor_batched.h",
         "gather_nd_op.cc",
         "gather_nd_op.h",
-        "gather_nd_op_cpu_impl.h",
         "gather_nd_op_cpu_impl_0.cc",
         "gather_nd_op_cpu_impl_1.cc",
         "gather_nd_op_cpu_impl_2.cc",
@@ -5824,7 +5833,6 @@ filegroup(
         "shape_ops.h",
         "slice_op.cc",
         "slice_op.h",
-        "slice_op_cpu_impl.h",
         "slice_op_cpu_impl_1.cc",
         "slice_op_cpu_impl_2.cc",
         "slice_op_cpu_impl_3.cc",
@@ -5841,7 +5849,6 @@ filegroup(
         "split_v_op.cc",
         "strided_slice_op.cc",
         "strided_slice_op.h",
-        "strided_slice_op_impl.h",
         "strided_slice_op_inst_0.cc",
         "strided_slice_op_inst_1.cc",
         "strided_slice_op_inst_2.cc",
@@ -5899,7 +5906,6 @@ filegroup(
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
-        "gemm_functors.h",
         "initializable_lookup_table.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
@@ -5926,7 +5932,6 @@ filegroup(
         "save_restore_tensor.h",
         "scan_ops.h",
         "scatter_nd_op.h",
-        "scatter_nd_op_cpu_impl.h",
         "segment_reduction_ops.h",
         "segment_reduction_ops_impl.h",
         "softplus_op.h",
@@ -5934,6 +5939,7 @@ filegroup(
         "spacetobatch_functor.h",
         "spacetodepth_op.h",
         "spectrogram.h",
+        "stateless_random_gamma_op.h",
         "stateless_random_ops.h",
         "stateless_random_ops_v2.h",
         "sparse_fill_empty_rows_op.h",
@@ -5943,7 +5949,6 @@ filegroup(
         "tensor_array.h",
         "tensor_list.h",
         "tile_functor.h",
-        "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
         "topk_op.h",
         "training_op_helpers.h",
@@ -6202,6 +6207,7 @@ filegroup(
         "stack.cc",
         "stack.h",
         "stack_ops.cc",
+        "stateless_random_gamma_op.cc",
         "stateless_random_ops.cc",
         "stateless_random_ops_v2.cc",
         "string_join_op.cc",
@@ -6416,6 +6422,8 @@ cc_library(
         "manual",
         "notap",
     ],
+    # These headers are not self-contained, so should be included in textual_hdrs only.
+    textual_hdrs = ANDROID_TEXTUAL_HDRS,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_gif_internal",

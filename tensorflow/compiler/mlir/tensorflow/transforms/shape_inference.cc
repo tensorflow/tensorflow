@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -948,7 +949,8 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
     return RefineTypeForPassThroughOperands(op, terminator->getOperands(),
                                             op->getResults());
   }
-  if (op->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+  if (op->hasTrait<OpTrait::SameOperandsAndResultShape>() ||
+      isa<tensor::CastOp>(op)) {
     return RefineShapeForPassThroughOps(op);
   }
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);

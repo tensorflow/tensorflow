@@ -2436,17 +2436,19 @@ func @valid_unranked_inputs_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<*xi
 // -----
 
 // CHECK-LABEL: valid_one_dynamic_dim_on_reshape
-func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<1x?x4xi32>) -> tensor<1x3x4xi32> {
-  // CHECK: "tfl.reshape"(%arg0, %arg1)
-  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<1x?x4xi32>) -> tensor<1x3x4xi32>
+func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi32> {
+  %cst = constant dense<[1, -1, 4]> : tensor<3xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst)
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
 }
 
 // -----
 
-func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<?x?x4xi32>) -> tensor<1x3x4xi32> {
-  // expected-error @+1 {{its shape value, 'tensor<?x?x4xi32>', is invalid because it has more than one dynamic dimensions. You need to set up the unspecified size(s) to avoid this problem, for example, setting batch size in keras model or setting unspecified input size(s) with fixed ones.}}
-  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<?x?x4xi32>) -> tensor<1x3x4xi32>
+func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi32> {
+  %cst = constant dense<[-1, -1, 4]> : tensor<3xi32>
+  // expected-error @+1 {{tfl.reshape' op requires 'shape' to have at most one dynamic dimension, but got multiple dynamic dimensions at indices 0 and 1. You need to set up the unspecified size(s) to avoid this problem, for example,setting batch size in keras model or setting unspecified input size(s) with fixed ones.}}
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
 }
 

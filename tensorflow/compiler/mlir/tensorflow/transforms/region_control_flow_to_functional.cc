@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 
 #define DEBUG_TYPE "tf-region-cf-to-functional"
@@ -46,8 +47,8 @@ namespace TF {
 namespace {
 
 struct RegionControlFlowToFunctional
-    : public PassWrapper<RegionControlFlowToFunctional,
-                         OperationPass<ModuleOp>> {
+    : public TF::RegionControlFlowToFunctionalPassBase<
+          RegionControlFlowToFunctional> {
   void runOnOperation() override;
 
  private:
@@ -444,10 +445,6 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFRegionControlFlowToFunctional() {
   return std::make_unique<RegionControlFlowToFunctional>();
 }
-
-static PassRegistration<RegionControlFlowToFunctional> pass(
-    "tf-region-control-flow-to-functional",
-    "Transform region bases control flow Ops to functional counterparts");
 
 }  // namespace TF
 }  // namespace mlir

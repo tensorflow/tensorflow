@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/mlir_gpu/inject_errors_pass.h"
-
-#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/GPU/ParallelLoopMapper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 
 namespace mlir {
+namespace kernel_gen {
+namespace transforms {
 namespace {
 
-struct InjectErrorsForTestingPass
-    : public PassWrapper<InjectErrorsForTestingPass, FunctionPass> {
+#define GEN_PASS_CLASSES
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
+
+struct MapParallelLoopsPass : MapParallelLoopsPassBase<MapParallelLoopsPass> {
   void runOnFunction() override {
-    getFunction().getBody().walk([&](Operation *op) {
-      op->emitError() << "failed for testing: " << op->getName();
-    });
+    mlir::greedilyMapParallelSCFToGPU(getFunction().getBody());
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createInjectErrorsForTestingPass() {
-  return std::make_unique<InjectErrorsForTestingPass>();
+std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass() {
+  return std::make_unique<MapParallelLoopsPass>();
 }
 
-static PassRegistration<InjectErrorsForTestingPass> pass(
-    "inject-errors", "Emits errors from all operations");
-
+}  // namespace transforms
+}  // namespace kernel_gen
 }  // namespace mlir

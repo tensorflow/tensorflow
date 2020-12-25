@@ -570,7 +570,7 @@ func @callee() -> (tensor<*xf32>) attributes {sym_visibility = "private"} {
   // CHECK: %[[ELEM_SHAPE:.*]] = "tf.Const"() {value = dense<3> : tensor<1xi32>}
   // CHECK: %[[ELEM:.*]] = "tf.Reshape"(%[[SLICE]], %[[ELEM_SHAPE]])
   %val = "tf.TensorArrayReadV3"(%ta#0, %index, %ta#1) : (tensor<!tf.resource<tensor<*xf32>>>, tensor<i32>, tensor<f32>) -> tensor<*xf32>
-  // CHECK: %[[CAST:.*]] = tensor_cast %[[ELEM]] : tensor<3xf32> to tensor<*xf32>
+  // CHECK: %[[CAST:.*]] = tensor.cast %[[ELEM]] : tensor<3xf32> to tensor<*xf32>
   // CHECK: return %[[CAST]] : tensor<*xf32>
   return %val : tensor<*xf32>
 }

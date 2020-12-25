@@ -168,7 +168,7 @@ class MultiHeadAttention(Layer):
   >>> print(output_tensor.shape)
   (None, 5, 3, 4, 16)
 
-  Arguments:
+  Args:
     num_heads: Number of attention heads.
     key_dim: Size of each attention head for query and key.
     value_dim:  Size of each attention head for value.

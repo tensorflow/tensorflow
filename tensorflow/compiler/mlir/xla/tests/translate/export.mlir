@@ -1057,7 +1057,7 @@ func @main(%arg0: tensor<4xui8>) -> tensor<4xui8> {
 // CHECK:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<*xi32> {
   %0 = "mhlo.not"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
-  %1 = tensor_cast %0 : tensor<4xi32> to tensor<*xi32>
+  %1 = tensor.cast %0 : tensor<4xi32> to tensor<*xi32>
   return %1 : tensor<*xi32>
 }
 

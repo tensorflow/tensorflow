@@ -1839,7 +1839,7 @@ def is_categorical_crossentropy(loss):
 def serialize(loss):
   """Serializes loss function or `Loss` instance.
 
-  Arguments:
+  Args:
     loss: A Keras `Loss` instance or a loss function.
 
   Returns:
@@ -1852,7 +1852,7 @@ def serialize(loss):
 def deserialize(name, custom_objects=None):
   """Deserializes a serialized loss class/function instance.
 
-  Arguments:
+  Args:
       name: Loss configuration.
       custom_objects: Optional dictionary mapping names (strings) to custom
         objects (classes and functions) to be considered during deserialization.
@@ -1890,7 +1890,7 @@ def get(identifier):
   >>> type(loss)
   <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
 
-  Arguments:
+  Args:
     identifier: A loss identifier. One of None or string name of a loss
       function/class or loss configuration dictionary or a loss function or a
       loss class instance

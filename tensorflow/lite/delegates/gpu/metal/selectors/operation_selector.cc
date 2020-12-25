@@ -111,10 +111,10 @@ std::unique_ptr<ComputeTaskDescriptor> SelectReshape(
     const OperationDef& op_def, const BHWC& src_shape,
     const ReshapeAttributes& attr) {
   if (src_shape.c % 4 == 0 && attr.new_shape.c % 4 == 0) {
-    auto gpu_op = Reshapex4(op_def, attr);
+    auto gpu_op = Reshapex4(op_def);
     return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   } else {
-    auto gpu_op = Reshape(op_def, attr);
+    auto gpu_op = Reshape(op_def);
     return absl::make_unique<ComputeTaskDescriptor>(std::move(gpu_op));
   }
 }

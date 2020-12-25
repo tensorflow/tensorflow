@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -1905,7 +1906,7 @@ class ConvertFusedBatchNormGradBase
               0.0));
       auto maybe_cast = [&](Value val, Type t) -> Value {
         if (val.getType() == t) return val;
-        return rewriter.create<TensorCastOp>(op.getLoc(), t, val);
+        return rewriter.create<tensor::CastOp>(op.getLoc(), t, val);
       };
       last_val[0] = maybe_cast(const_val, op.getResult(3).getType());
       last_val[1] = maybe_cast(const_val, op.getResult(4).getType());
@@ -2063,7 +2064,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
         Value dummy_const = rewriter.create<ConstOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
-          dummy_const = rewriter.create<TensorCastOp>(
+          dummy_const = rewriter.create<tensor::CastOp>(
               op.getLoc(), reserve_space_3_type, dummy_const);
         rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
                                 /*batch_variance=*/corrected_variance,
@@ -2107,7 +2108,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
         Value dummy_const = rewriter.create<ConstOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
-          dummy_const = rewriter.create<TensorCastOp>(
+          dummy_const = rewriter.create<tensor::CastOp>(
               op.getLoc(), reserve_space_3_type, dummy_const);
         rewriter.replaceOp(op, {/*y=*/y_out,
                                 /*batch_mean=*/op.mean(),
@@ -6183,9 +6184,9 @@ LogicalResult legalizeTF(
   }
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();
-  target.addLegalOp<TensorCastOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.

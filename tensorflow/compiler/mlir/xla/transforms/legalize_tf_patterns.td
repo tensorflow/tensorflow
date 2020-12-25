@@ -17,6 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
@@ -446,7 +447,7 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
-          (TensorCastOp (HLO_ConstOp $value)),
+          (Tensor_CastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//

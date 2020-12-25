@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
 
 #include "absl/types/span.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace mlir_gpu {
+namespace experimental {
 
 struct BoundAffineMap {
   mlir::AffineMap affine_map;
@@ -96,7 +96,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
 void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
                               int rotate_amount);
 
-}  // namespace mlir_gpu
+}  // namespace experimental
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_

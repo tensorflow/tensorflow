@@ -343,10 +343,52 @@ def make_csv_dataset_v2(
 ):
   """Reads CSV files into a dataset.
 
-  Reads CSV files into a dataset, where each element is a (features, labels)
-  tuple that corresponds to a batch of CSV rows. The features dictionary
-  maps feature column names to `Tensor`s containing the corresponding
+  Reads CSV files into a dataset, where each element of the dataset is a
+  (features, labels) tuple that corresponds to a batch of CSV rows. The features
+  dictionary maps feature column names to `Tensor`s containing the corresponding
   feature data, and labels is a `Tensor` containing the batch's label data.
+
+  By default, the first rows of the CSV files are expected to be headers listing
+  the column names. If the first rows are not headers, set `header=False` and
+  provide the column names with the `column_names` argument.
+
+  By default, the dataset is repeated indefinitely, reshuffling the order each
+  time. This behavior can be modified by setting the `num_epochs` and `shuffle`
+  arguments.
+
+  For example, suppose you have a CSV file containing
+
+  | Feature_A | Feature_B |
+  | --------- | --------- |
+  | 1         | "a"       |
+  | 2         | "b"       |
+  | 3         | "c"       |
+  | 4         | "d"       |
+
+  ```
+  # No label column specified
+  dataset = tf.data.experimental.make_csv_dataset(filename, batch_size=2)
+  iterator = ds.as_numpy_iterator()
+  print(dict(next(iterator)))
+  # prints a dictionary of batched features:
+  # OrderedDict([('Feature_A', array([1, 4], dtype=int32)),
+  #              ('Feature_B', array([b'a', b'd'], dtype=object))])
+  ```
+
+  ```
+  # Set Feature_B as label column
+  dataset = tf.data.experimental.make_csv_dataset(
+      filename, batch_size=2, label_name="Feature_B")
+  iterator = ds.as_numpy_iterator()
+  print(next(iterator))
+  # prints (features, labels) tuple:
+  # (OrderedDict([('Feature_A', array([1, 2], dtype=int32))]),
+  #  array([b'a', b'b'], dtype=object))
+  ```
+
+  See the
+  [Load CSV data guide](https://www.tensorflow.org/tutorials/load_data/csv) for
+  more examples of using `make_csv_dataset` to read CSV data.
 
   Args:
     file_pattern: List of files or patterns of file paths containing CSV

@@ -93,7 +93,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
 
     // Convert `output_index` or set it to -1 if the attribute is missing.
     LLVM::LLVMType llvmInt32Type =
-        LLVM::LLVMType::getInt32Ty(rewriter.getContext());
+        LLVM::LLVMIntegerType::get(rewriter.getContext(), 32);
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
         rewriter.getI32IntegerAttr(tf_alloc_op.output_index().hasValue()
@@ -129,10 +129,10 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
 
   LLVMType GetFuncType() const override {
     LLVMType llvm_i32_type =
-        LLVM::LLVMType::getInt32Ty(getDialect().getContext());
-    LLVMType llvm_i32_ptr_type = llvm_i32_type.getPointerTo();
+        LLVM::LLVMIntegerType::get(getDialect().getContext(), 32);
+    LLVMType llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
     LLVMType llvm_void_ptr_type = getVoidPtrType();
-    return LLVMType::getFunctionTy(
+    return LLVM::LLVMFunctionType::get(
         llvm_void_ptr_type,
         llvm::makeArrayRef(
             {/*void* op_kernel_ctx*/ llvm_void_ptr_type,
@@ -140,8 +140,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
              /*size_t element_size*/ getIndexType(),
              /*int32_t output_index*/ llvm_i32_type,
              /*int32_t num_candidates*/ llvm_i32_type,
-             /*int32_t* candidate_input_indices*/ llvm_i32_ptr_type}),
-        /*isVarArg=*/false);
+             /*int32_t* candidate_input_indices*/ llvm_i32_ptr_type}));
   }
 
  private:
@@ -183,8 +182,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
       Location loc, llvm::Optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
     LLVMType llvm_i32_type =
-        LLVM::LLVMType::getInt32Ty(getDialect().getContext());
-    LLVMType llvm_i32_ptr_type = llvm_i32_type.getPointerTo();
+        LLVM::LLVMIntegerType::get(getDialect().getContext(), 32);
+    LLVMType llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
@@ -242,9 +241,8 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
  protected:
   StringRef GetFuncName() const override { return kCInterfaceDealloc; }
   LLVMType GetFuncType() const override {
-    return LLVM::LLVMType::getFunctionTy(getVoidType(),
-                                         {getVoidPtrType(), getVoidPtrType()},
-                                         /*isVarArg=*/false);
+    return LLVM::LLVMFunctionType::get(getVoidType(),
+                                       {getVoidPtrType(), getVoidPtrType()});
   }
 };
 
@@ -280,11 +278,11 @@ class ReportErrorOpConverter
   StringRef GetFuncName() const override { return kCInterfaceReportError; }
   LLVMType GetFuncType() const override {
     MLIRContext *ctx = &getTypeConverter()->getContext();
-    auto i8_ptr_type = LLVM::LLVMType::getInt8Ty(ctx).getPointerTo();
-    auto i32_type = LLVM::LLVMType::getInt32Ty(ctx);
-    return LLVM::LLVMType::getFunctionTy(
-        getVoidType(), {getVoidPtrType(), i32_type, i8_ptr_type},
-        /*isVarArg=*/false);
+    auto i8_ptr_type =
+        LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8));
+    auto i32_type = LLVM::LLVMIntegerType::get(ctx, 32);
+    return LLVM::LLVMFunctionType::get(
+        getVoidType(), {getVoidPtrType(), i32_type, i8_ptr_type});
   }
 
  private:
@@ -312,10 +310,11 @@ class ReportErrorOpConverter
 
       MLIRContext *ctx = &getTypeConverter()->getContext();
       Value c0 = builder.create<LLVM::ConstantOp>(
-          loc, LLVM::LLVMType::getInt64Ty(ctx),
+          loc, LLVM::LLVMIntegerType::get(ctx, 64),
           builder.getIntegerAttr(builder.getIndexType(), 0));
-      return builder.create<LLVM::GEPOp>(loc, LLVM::LLVMType::getInt8PtrTy(ctx),
-                                         globalPtr, ValueRange{c0, c0});
+      return builder.create<LLVM::GEPOp>(
+          loc, LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8)),
+          globalPtr, ValueRange{c0, c0});
     }
     return LLVM::createGlobalString(loc, builder, global_name, generated_error,
                                     LLVM::Linkage::Internal);
@@ -367,11 +366,11 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     Type elem_type = result_type.getElementType();
     LLVM::LLVMType llvm_elem_type =
         typeConverter->convertType(elem_type).cast<LLVMType>();
-    LLVM::LLVMType elem_ptr_ptr_type =
-        llvm_elem_type.getPointerTo(address_space).getPointerTo();
+    LLVM::LLVMType elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
+        LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
     auto nullPtr = rewriter.create<LLVM::NullOp>(
-        loc, llvm_elem_type.getPointerTo(address_space));
+        loc, LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
     UnrankedMemRefDescriptor::setAllocatedPtr(
         rewriter, loc, underlying_desc_ptr, elem_ptr_ptr_type, nullPtr);
     UnrankedMemRefDescriptor::setAlignedPtr(rewriter, loc, *getTypeConverter(),

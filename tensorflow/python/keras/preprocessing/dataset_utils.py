@@ -131,7 +131,7 @@ def iter_valid_files(directory, follow_links, formats):
 def index_subdirectory(directory, class_indices, follow_links, formats):
   """Recursively walks directory and list image paths and their class index.
 
-  Arguments:
+  Args:
     directory: string, target directory.
     class_indices: dict mapping class names to their index.
     follow_links: boolean, whether to recursively follow subdirectories

@@ -33,8 +33,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/metal/api.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
@@ -84,20 +82,13 @@ absl::Status SingleOpModel::Invoke() {
     output_dimensions[output.id] = output.shape;
   }
 
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  std::string device_name = std::string([[device name] UTF8String]);
-  GpuInfo gpu_info;
-  GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
-  CalculationsPrecision precision = CalculationsPrecision::F32;
-  CompiledModel compiled_model;
-  RETURN_IF_ERROR(Compile(graph_, gpu_info, precision, &compiled_model));
-  CompiledModel optimized_model;
-  RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model,
-                                        &optimized_model));
-
+  InferenceContext::CreateInferenceInfo create_info;
+  create_info.precision = CalculationsPrecision::F32;
+  create_info.storage_type = TensorStorageType::BUFFER;
   InferenceContext inference_context;
-  RETURN_IF_ERROR(inference_context.CompileModelWithDevice(
-      device, optimized_model, input_ids, output_ids, precision));
+  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+  RETURN_IF_ERROR(inference_context.InitFromGraph(create_info, graph_, device));
+
   std::map<ValueId, BHWC> input_dimensions;
   std::map<ValueId, id<MTLBuffer>> input_buffers;
   for (auto& input : inputs_) {
@@ -172,100 +163,6 @@ absl::Status CompareVectors(const std::vector<float>& reference,
       return absl::InternalError(message);
     }
   }
-  return absl::OkStatus();
-}
-
-absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes,
-                      id<MTLDevice> device,
-                      const std::map<ValueId, TensorFloat32>& inputs,
-                      std::map<ValueId, TensorFloat32>* outputs) {
-  std::vector<ValueId> inputBufferIDs;
-  inputBufferIDs.reserve(inputs.size());
-  for (const auto& input : inputs) {
-    inputBufferIDs.push_back(input.first);
-  }
-  std::vector<ValueId> outputBufferIDs;
-  outputBufferIDs.reserve(outputs->size());
-  for (const auto& output : *outputs) {
-    outputBufferIDs.push_back(output.first);
-  }
-  std::map<ValueId, BHWC> outputDimensions;
-  CompiledModel raw_model;
-  raw_model.nodes = nodes;
-  for (const auto& input : inputs) {
-    raw_model.tensor_shapes[input.first] = input.second.shape;
-  }
-  for (const auto& output : *outputs) {
-    outputDimensions[output.first] = output.second.shape;
-    raw_model.tensor_shapes[output.first] = output.second.shape;
-  }
-  CompiledModel optimized_model;
-  RETURN_IF_ERROR(ValidateOptimizeModel(inputBufferIDs, outputBufferIDs,
-                                        raw_model, &optimized_model));
-
-  CalculationsPrecision precision = CalculationsPrecision::F32;
-
-  InferenceContext inference_context;
-  RETURN_IF_ERROR(inference_context.CompileModelWithDevice(
-      device, optimized_model, inputBufferIDs, outputBufferIDs, precision));
-  std::map<ValueId, BHWC> inputDimensions;
-  std::map<ValueId, std::vector<float>> inputBuffersCPU;
-  std::map<ValueId, id<MTLBuffer>> inputBuffersGPU;
-  for (auto& input : inputs) {
-    const auto& src = input.second;
-    inputDimensions[input.first] = src.shape;
-    const int paddedDepth = AlignByN(src.shape.c, 4);
-    NSUInteger elementsCount =
-        src.shape.w * src.shape.h * paddedDepth * src.shape.b;
-    std::vector<float> src_gpu(elementsCount);
-    id<MTLBuffer> inputBuffer;
-    RETURN_IF_ERROR(ConvertToPHWC4(absl::MakeConstSpan(src.data), src.shape,
-                                   absl::MakeSpan(src_gpu)));
-    inputBuffer = [device newBufferWithBytes:src_gpu.data()
-                                      length:(elementsCount * sizeof(float))
-                                     options:MTLResourceStorageModeShared];
-    inputBuffersGPU[input.first] = inputBuffer;
-  }
-
-  std::map<ValueId, id<MTLBuffer>> outputBuffers;
-  for (const auto& outputDimension : outputDimensions) {
-    // Uninitialized output buffer.
-    const ValueId key = outputDimension.first;
-    const BHWC& dims = outputDimension.second;
-    const NSUInteger outputDataSize =
-        dims.b * dims.w * dims.h * AlignByN(dims.c, 4) * sizeof(float);
-    outputBuffers[key] =
-        [device newBufferWithLength:outputDataSize
-                            options:MTLResourceStorageModeShared];
-  }
-
-  // Inference itself.
-  std::map<ValueId, id<MTLBuffer>> inputOutputBuffers(inputBuffersGPU.begin(),
-                                                      inputBuffersGPU.end());
-  inputOutputBuffers.insert(outputBuffers.begin(), outputBuffers.end());
-  id<MTLCommandQueue> commandQueue = [device newCommandQueue];
-  id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
-  id<MTLComputeCommandEncoder> commandEncoder =
-      [commandBuffer computeCommandEncoder];
-  inference_context.EncodeWithEncoder(commandEncoder, inputOutputBuffers);
-  [commandEncoder endEncoding];
-  [commandBuffer commit];
-  [commandBuffer waitUntilCompleted];
-
-  for (auto& output : *outputs) {
-    const auto& dim = outputDimensions[output.first];
-    const int paddedDepth = AlignByN(dim.c, 4);
-    NSUInteger elementsCount = dim.w * dim.h * paddedDepth * dim.b;
-    auto& dst = output.second;
-    dst.shape = dim;
-    dst.data.resize(dst.shape.DimensionsProduct());
-    float* outputPointer =
-        reinterpret_cast<float*>([outputBuffers[output.first] contents]);
-    RETURN_IF_ERROR(
-        ConvertFromPHWC4(absl::MakeConstSpan(outputPointer, elementsCount),
-                         dst.shape, absl::MakeSpan(dst.data)));
-  }
-
   return absl::OkStatus();
 }
 

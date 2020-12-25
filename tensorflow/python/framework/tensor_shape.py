@@ -118,7 +118,7 @@ def dimension_value(dimension):
   value = tensor_shape[i]  # Warning: this will return the dim value in V2!
   ```
 
-  Arguments:
+  Args:
     dimension: Either a `Dimension` instance, an integer, or None.
 
   Returns:
@@ -164,7 +164,7 @@ def dimension_at_index(shape, index):
   # instantiated on the fly.
   ```
 
-  Arguments:
+  Args:
     shape: A TensorShape instance.
     index: An integer index.
 

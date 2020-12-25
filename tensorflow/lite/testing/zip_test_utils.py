@@ -368,11 +368,6 @@ def make_zip_of_tests(options,
           "fully_quantize", False) or param_dict.get("quant_16x8", False)):
         continue
 
-      # Skips the new quantizer tests when `fully_quantize` is set to false
-      # or it is not set.
-      if options.mlir_quantizer and not param_dict.get("fully_quantize", False):
-        continue
-
       def generate_inputs_outputs(tflite_model_binary,
                                   min_value=0,
                                   max_value=255):
