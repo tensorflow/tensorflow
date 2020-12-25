@@ -34,7 +34,7 @@ namespace metal {
 absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                                             const NodeDescriptor& desc,
                                             CalculationsPrecision precision) {
-  size_t offset = desc.task->src_tensors_names.size() +
+  size_t offset = desc.src_tensors_ids.size() +
                   desc.task->uniform_buffers.size() +
                   desc.task->immutable_buffers.size() + 1;
   RETURN_IF_ERROR(metal_args_.Init(device, offset, &desc.task->args,
@@ -231,7 +231,7 @@ std::vector<ValueId> ComputeTask::GetInputIds() const {
 
 void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
   input_buffers_[index].metal_handle = tensor.GetBufferHandle();
-  if (tensors_as_args_) {
+  if (tensors_as_args_ && index < src_tensors_names_.size()) {
     auto name = src_tensors_names_[index];
     // extracting tensor_name from "device FLT4* tensor_name_buffer";
     name = name.substr(13, name.size() - 20);

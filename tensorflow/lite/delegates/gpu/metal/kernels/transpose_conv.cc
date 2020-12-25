@@ -104,6 +104,7 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
       for (short l = 0; l < dst_depth; ++l) {
         FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
         args.dst_tensor.GetAddress(linear_index, ugid.x, ugid.y, l);
+        uint3 gid = uint3(ugid.x, ugid.y, uint(l));
         $$2
         args.dst_tensor.Write(value, ugid.x, ugid.y, l);
       }
@@ -226,6 +227,7 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
       for (short l = 0; l < dst_depth; ++l) {
         FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
         args.dst_tensor.GetAddress(linear_index, ugid.x, ugid.y, l);
+        uint3 gid = uint3(ugid.x, ugid.y, uint(l));
         $$2
         args.dst_tensor.Write(value, ugid.x, ugid.y, l);
       }
