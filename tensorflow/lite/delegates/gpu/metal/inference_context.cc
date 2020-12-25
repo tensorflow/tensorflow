@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -47,6 +48,37 @@ void AddUsage(ValueId id, int task_index,
     // updating end index(.y)
     (*usage_records)[id].y = task_index;
   }
+}
+
+// Generic add is add that have several runtime inputs and they are not
+// broadcasted, i.e. pointwise add for N tensors where N > 1.
+bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
+                  const std::vector<Value*>& outputs) {
+  if (inputs.size() == 1) {
+    return false;
+  }
+  const OperationType op_type = OperationTypeFromString(node.operation.type);
+  if (op_type != OperationType::ADD) {
+    return false;
+  }
+
+  const auto dst_shape = outputs[0]->tensor.shape;
+  for (int i = 0; i < inputs.size(); ++i) {
+    const auto src_shape = inputs[i]->tensor.shape;
+    if (dst_shape.b != src_shape.b && src_shape.b == 1) {
+      return false;
+    }
+    if (dst_shape.h != src_shape.h && src_shape.h == 1) {
+      return false;
+    }
+    if (dst_shape.w != src_shape.w && src_shape.w == 1) {
+      return false;
+    }
+    if (dst_shape.c != src_shape.c && src_shape.c == 1) {
+      return false;
+    }
+  }
+  return true;
 }
 
 // Allows to get result about the graph compilation to validate graph. This
@@ -178,14 +210,8 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
         bool fused = false;
         for (auto& chain : *chains) {
           // We can fuse only single output for now.
-          bool can_link = false;
-          if (task_descriptor.task->is_associative_op) {
-            can_link = Contains(task_descriptor.src_tensors_ids,
-                                chain.back().dst_tensors_ids[0]);
-          } else {
-            can_link = task_descriptor.src_tensors_ids[0] ==
-                       chain.back().dst_tensors_ids[0];
-          }
+          const bool can_link = task_descriptor.src_tensors_ids[0] ==
+                                chain.back().dst_tensors_ids[0];
           if (can_link && CanFuseOperations(chain.back(), task_descriptor,
                                             output_ids, *descriptors, chains)) {
             chain.push_back(task_descriptor);
@@ -603,10 +629,36 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     compiled_model->tensor_shapes[value->id] = value->tensor.shape;
     last_value_id = std::max(last_value_id, static_cast<int>(value->id));
   }
-  int node_linear_id = 0;
-  for (const auto& node : graph.nodes()) {
-    auto inputs = graph.FindInputs(node->id);
-    auto outputs = graph.FindOutputs(node->id);
+  std::map<ValueId, int>
+      tensor_usages;  // keeps latest index of operation that updated tensor
+  for (const auto& input_id : input_ids_) {
+    tensor_usages[input_id] = -1;  // so as inputs "updated" before operation 0,
+                                   // we will mark them with -1
+  }
+  std::vector<Node*> graph_nodes = graph.nodes();
+  for (int i = 0; i < graph_nodes.size(); ++i) {
+    const Node& node = *graph_nodes[i];
+    auto inputs = graph.FindInputs(node.id);
+    auto outputs = graph.FindOutputs(node.id);
+    // Reordering of input ids and updating of temporary tensors_usage struct.
+    // This stage is necessary because we are building OperationDef that rely
+    // on order of input ids. But we also should have input id on first
+    // position that potentially can be "linking" tensor and as result
+    // eliminated(unused) We apply it only for ADD operation, because of ADD
+    // associativity and ADD can be linked. In current approach "linking"
+    // tensor can be only latest written tensor(during linear order of
+    // execution) among input tensors.
+    if (IsGenericAdd(node, inputs, outputs)) {
+      int latest_written_tensor_index = 0;
+      int last_usage = tensor_usages[inputs[0]->id];
+      for (int j = 1; j < inputs.size(); ++j) {
+        if (tensor_usages[inputs[j]->id] > last_usage) {
+          last_usage = tensor_usages[inputs[j]->id];
+          latest_written_tensor_index = j;
+        }
+      }
+      std::swap(inputs[0], inputs[latest_written_tensor_index]);
+    }
     DataType data_type = DeduceDataTypeFromPrecision(precision);
     TensorDescriptor tensor_descriptor =
         TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC};
@@ -620,7 +672,7 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     }
     GPUOperationsSubgraph gpu_subgraph;
     RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, inputs, outputs,
-                                         *node, &gpu_subgraph));
+                                         node, &gpu_subgraph));
     std::map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
@@ -645,13 +697,14 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
         int id = gpu_op.output_ids[j];
         if (id >= 0) {
           metal_node.dst_tensors_ids[j] = id;
+          tensor_usages[id] = i;
         } else {
           metal_node.dst_tensors_ids[j] = mapping_to_global_ids[-(id + 1)];
         }
       }
       metal_node.description =
-          node->operation.type + " " + std::to_string(node->id);
-      metal_node.id = node_linear_id++;
+          node.operation.type + " " + std::to_string(node.id);
+      metal_node.id = i;
       compiled_model->nodes.push_back(std::move(metal_node));
     }
   }
