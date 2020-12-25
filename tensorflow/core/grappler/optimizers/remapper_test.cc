@@ -637,8 +637,14 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
   void RunTest() {
     using ::tensorflow::ops::Placeholder;
 
-    for (const string& activation :
-         {"Relu", "Relu6", "Elu", "Tanh", "LeakyRelu"}) {
+#ifdef INTEL_MKL
+    std::vector<string> activations = {"Relu", "Relu6", "Elu", "Tanh",
+                                       "LeakyRelu"};
+#else
+    std::vector<string> activations = {"Relu", "Relu6", "Elu", "LeakyRelu"};
+#endif
+
+    for (const string& activation : activations) {
       tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
       auto lhs_shape = ops::Placeholder::Shape({8, 32});
@@ -664,8 +670,10 @@ class RemapperFuseMatMulWithBiasAndActivationTest : public RemapperTest {
           return ops::Identity(fetch, ops::Relu6(activate, bias_add));
         } else if (activation == "Elu") {
           return ops::Identity(fetch, ops::Elu(activate, bias_add));
+#ifdef INTEL_MKL
         } else if (activation == "Tanh") {
           return ops::Identity(fetch, ops::Tanh(activate, bias_add));
+#endif
         } else if (activation == "LeakyRelu") {
           auto attr = ops::internal::LeakyRelu::Alpha(leakyrelu_alpha);
           return ops::Identity(
