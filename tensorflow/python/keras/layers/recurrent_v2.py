@@ -60,11 +60,11 @@ _RUNTIME_UNKNOWN = 0
 _RUNTIME_CPU = 1
 _RUNTIME_GPU = 2
 
-_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernel when run on GPU.'
-_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
-                            'doesn\'t meet the cuDNN kernel criteria. It will '
-                            'use generic GPU kernel as fallback when running '
-                            'on GPU')
+_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernels when running on GPU.'
+_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernels since it '
+                            'doesn\'t meet the criteria. It will '
+                            'use a generic GPU kernel as fallback when running '
+                            'on GPU.')
 
 
 def _use_new_code():
