@@ -156,6 +156,7 @@ nn.rnn_cell = rnn_cell
 # Special dunders that we choose to export:
 _exported_dunders = set([
     '__version__',
+    '__version_info__',
     '__git_version__',
     '__compiler_version__',
     '__cxx11_abi_flag__',

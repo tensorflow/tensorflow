@@ -27,12 +27,12 @@ class VersionTest(test.TestCase):
   def testVersion(self):
     self.assertEqual(type(versions.__version__), str)
     self.assertEqual(type(versions.VERSION), str)
-    version_info = (str(versions.__version_info__.major) + '.' +
-      str(versions.__version_info__.minor) + '.' +
-      str(versions.__version_info__.patch)
+    version_info = (str(versions.VERSION_INFO.major) + '.' +
+      str(versions.VERSION_INFO.minor) + '.' +
+      str(versions.VERSION_INFO.patch)
     )
-    if (versions.__version_info__.prerelease):
-      version_info += '.' + versions.__version_info__.prerelease
+    if (versions.VERSION_INFO.prerelease):
+      version_info += '.' + versions.VERSION_INFO.prerelease
     self.assertEqual(versions.VERSION, version_info)
     # This pattern will need to grow as we include alpha, builds, etc.
     self.assertRegex(versions.__version__, r'^\d+\.\d+\.(\d+(\-\w+)?|head)$')
