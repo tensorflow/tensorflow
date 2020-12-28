@@ -73,6 +73,7 @@ tf_python_pybind_extension(
     hdrs = ["util.h"],
     module_name = "_pywrap_utils",
     deps = [
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
