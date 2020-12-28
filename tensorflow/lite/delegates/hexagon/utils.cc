@@ -247,11 +247,22 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
               pool_params->activation == kTfLiteActNone);
     }
     case kTfLiteBuiltinTransposeConv: {
-      if (!InputsWithCorrectTypes(node, context,
-                                  {{kTfLiteInt32},
-                                   {kTfLiteUInt8, kTfLiteInt8},
-                                   {kTfLiteUInt8, kTfLiteInt8}}))
+      if (NumInputs(node) == 3) {
+        if (!InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteInt32},
+                                     {kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteUInt8, kTfLiteInt8}}))
+          return false;
+      } else if (NumInputs(node) == 4) {
+        if (!InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteInt32},
+                                     {kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteInt32}}))
+          return false;
+      } else {
         return false;
+      }
       const TfLiteTransposeConvParams* params =
           reinterpret_cast<const TfLiteTransposeConvParams*>(
               node->builtin_data);
