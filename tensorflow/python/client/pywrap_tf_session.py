@@ -31,7 +31,7 @@ from tensorflow.python._pywrap_tf_session import _TF_NewSessionOptions
 # https://pybind11.readthedocs.io/en/stable/advanced/cast/strings.html#returning-c-strings-to-python
 # pylint: disable=undefined-variable
 __version__ = str(get_version())
-__version_info__ = type('VersionInfo', (object,),get_version_info())
+__version_info__ = get_version_info()
 __git_version__ = str(get_git_version())
 __compiler_version__ = str(get_compiler_version())
 __cxx11_abi_flag__ = get_cxx11_abi_flag()
