@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 #define EIGEN_DONT_PARALLELIZE
 #include "mkl_batch_matmul_helper.h"
@@ -275,3 +276,4 @@ TF_CALL_float(REGISTER_EINSUM_MKL);
 TF_CALL_bfloat16(REGISTER_EINSUM_MKL);
 #endif  // ENABLE_MKL
 }  // namespace tensorflow
+#endif  // INTEL_MKL
