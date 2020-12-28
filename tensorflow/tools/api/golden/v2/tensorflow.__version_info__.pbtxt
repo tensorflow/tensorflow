@@ -1,0 +1,24 @@
+path: "tensorflow.__version_info__"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.versions.VersionInfo\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "major"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "minor"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "patch"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "prerelease"
+    mtype: "<type \'str\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

@@ -24,4 +24,8 @@ tf_module {
     name: "VERSION"
     mtype: "<type \'str\'>"
   }
+  member {
+    name: "VERSION_INFO"
+    mtype: "<type \'type\'>"
+  }
 }
