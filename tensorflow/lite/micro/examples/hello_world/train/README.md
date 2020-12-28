@@ -37,7 +37,7 @@ Jupyter Notebook.
 
 ## Trained Models
 
-| Download Link        | [hello_world.zip](https://storage.googleapis.com/download.tensorflow.org/models/tflite/micro/hello_world_2020_04_13.zip)           |
+| Download Link        | [hello_world.zip](https://storage.googleapis.com/download.tensorflow.org/models/tflite/micro/hello_world_2020_12_28.zip)           |
 | ------------- |-------------|
 
 
