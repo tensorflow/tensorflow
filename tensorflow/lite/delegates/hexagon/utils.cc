@@ -103,6 +103,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
       return registration->version <= 2;
     case kTfLiteBuiltinSquaredDifference:
     case kTfLiteBuiltinRelu:
+    case kTfLiteBuiltinRsqrt:
       return registration->version == 2;
     case kTfLiteBuiltinConv2d:
     case kTfLiteBuiltinDepthwiseConv2d:
@@ -430,6 +431,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     case kTfLiteBuiltinSquaredDifference: {
       return InputsWithCorrectTypes(node, context,
                                     {{kTfLiteInt8}, {kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinRsqrt: {
+      return InputsWithCorrectTypes(node, context, {{kTfLiteInt8}});
     }
     default:
       return false;

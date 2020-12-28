@@ -62,6 +62,7 @@ OpBuilder* CreateMatMulOpBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateStridedSliceBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateSquaredDifferenceOpBuilder(GraphBuilder* graph_builder,
                                             int op_type);
+OpBuilder* CreateRSqrtOpBuilder(GraphBuilder* graph_builder, int op_type);
 
 }  // namespace hexagon
 }  // namespace delegates

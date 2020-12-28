@@ -31,6 +31,7 @@ cc_library(
         "reshape_builder.cc",
         "resize_bilinear_builder.cc",
         "resize_nearest_neighbor_builder.cc",
+        "rsqrt_builder.cc",
         "slice_builder.cc",
         "softmax_builder.cc",
         "space_to_depth_builder.cc",
