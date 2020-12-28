@@ -94,7 +94,7 @@ pip3 install psutil
 pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
-# pylint==2.6.0 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
+# pylint==1.6.4 requires python-astroid (>= 1.4.5) requires lazy-object-proxy
 # Latest version of lazy-object-proxy (1.4.2) fails to install from source
 # when using setuptools 39.1.0.
 # NOTE: Using the updated version of pylint for python3 as python2 is EOL,
@@ -106,7 +106,7 @@ pip3 install lazy-object-proxy==1.4.3
 # thus using the updated version of 2.5.3 only for python3 as python2 is EOL
 # and this version is not available.
 pip2 install pylint==1.6.4
-pip3 install pylint==2.6.0
+pip3 install pylint==2.5.3
 
 # pycodestyle tests require the following:
 pip2 install pycodestyle
