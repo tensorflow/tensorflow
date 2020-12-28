@@ -1154,6 +1154,14 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
   // // Creating getters instead.
 
   m.def("get_version", []() { return TF_VERSION_STRING; });
+  m.def("get_version_info", []() {
+    py::dict ver_info;
+    ver_info["major"] = TF_MAJOR_VERSION;
+    ver_info["minor"] = TF_MINOR_VERSION;
+    ver_info["patch"] = TF_PATCH_VERSION;
+    ver_info["prerelease"] = TF_VERSION_SUFFIX;
+    return ver_info;
+  });
   m.def("get_git_version", []() { return tf_git_version(); });
   m.def("get_compiler_version", []() { return tf_compiler_version(); });
   m.def("get_cxx11_abi_flag", []() { return tf_cxx11_abi_flag(); });
