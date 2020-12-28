@@ -38,8 +38,7 @@ tf_export(
 VERSION_INFO = type('VersionInfo', (object,),__version_info__)
 tf_export(
     "version.VERSION_INFO",
-    "__version_info__",
-    v1=["version.VERSION_INFO", "VERSION_INFO", "__version_info__"])(
+    "__version_info__")(
         VERSION_INFO)
 GIT_VERSION = __git_version__
 tf_export(
