@@ -2856,7 +2856,7 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   nb->Attr("strides", strides);
   nb->Attr("dilations", dilations);
   if (!NativeFormatEnabled()) {
-    nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
+    nb->Attr("T", out_type);  // Added "T" for facilitating MklToTf conversion.
   }
   nb->Attr("data_format", data_format);
   if (has_padding_list) {
@@ -2883,7 +2883,7 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
   nb->Attr("T2", T2);
   nb->Attr("Toutput", Toutput);
   if (!NativeFormatEnabled()) {
-    nb->Attr("T", T1);  // added "T" for facilitating MklToTf conversion.
+    nb->Attr("T", T1);  // Added "T" for facilitating MklToTf conversion.
   }
 
   // Requantization attr Tbias
@@ -2910,7 +2910,7 @@ void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBias(
   nb->Attr("Toutput", Toutput);
   nb->Attr("is_weight_const", weight_node->IsConstant());
   if (!NativeFormatEnabled()) {
-    nb->Attr("T", Toutput);  // added "T" for facilitating MklToTf conversion.
+    nb->Attr("T", Toutput);  // Added "T" for facilitating MklToTf conversion.
   }
 
   // Requantization attr Tbias

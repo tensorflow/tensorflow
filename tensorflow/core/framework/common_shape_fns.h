@@ -280,7 +280,7 @@ Status QuantizedAvgPoolShape(InferenceContext* c);
 Status QuantizeV2Shape(InferenceContext* c);
 
 // Shape function for Dequantize op
-Status DequantizeShape(InferenceContext* c);
+Status MklDequantizeShape(InferenceContext* c);
 
 }  // namespace shape_inference
 

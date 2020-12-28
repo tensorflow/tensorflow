@@ -125,7 +125,7 @@ REGISTER_OP("_MklDequantize")
     .Attr("axis: int = -1")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
     .Attr("dtype: {bfloat16, float} = DT_FLOAT")
-    .SetShapeFn(shape_inference::DequantizeShape);
+    .SetShapeFn(shape_inference::MklDequantizeShape);
 
 REGISTER_OP("_MklNativeQuantizeV2")
     .Input("input: float")
@@ -154,7 +154,7 @@ REGISTER_OP("_MklNativeDequantize")
     .Attr("axis: int = -1")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
     .Attr("dtype: {bfloat16, float} = DT_FLOAT")
-    .SetShapeFn(shape_inference::DequantizeShape);
+    .SetShapeFn(shape_inference::MklDequantizeShape);
 
 }  // namespace tensorflow
 

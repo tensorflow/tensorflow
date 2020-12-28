@@ -161,7 +161,7 @@ inline string GetMklNativeOpName(const string& name) {
   // will just reuse original name of the op if we own that name (the one
   // witout _Mkl prefix). However, we may change the attributes for such ops.
   // There are few quantized ops where we don't own original name. Those will
-  // be prfixed with _MklNative just like native ops.
+  // be prefixed with _MklNative just like native ops.
   if (!IsMklPrefixNeeded(name)) {
     return name;
   }

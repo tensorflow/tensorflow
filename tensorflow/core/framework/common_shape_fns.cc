@@ -2497,7 +2497,7 @@ Status QuantizeV2Shape(InferenceContext* c) {
   return Status::OK();
 }
 
-Status DequantizeShape(InferenceContext* c) {
+Status MklDequantizeShape(InferenceContext* c) {
   TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
