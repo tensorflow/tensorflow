@@ -297,10 +297,6 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
-    name: "VERSION_INFO"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "VarLenFeature"
     mtype: "<type \'type\'>"
   }
