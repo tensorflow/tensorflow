@@ -317,7 +317,7 @@ class BaseSaverBuilder(object):
     # prefix directly, instead of any physical pathname.  (On failure and
     # subsequent restore, an outdated and orphaned temporary directory can be
     # safely removed.)
-    _SHARDED_SUFFIX = "_temp_%s/part" % uuid.uuid4().hex
+    _SHARDED_SUFFIX = os.path.normpath("_temp_%s/part" % uuid.uuid4().hex)
     tmp_checkpoint_prefix = string_ops.string_join(
         [checkpoint_prefix, _SHARDED_SUFFIX])
 
