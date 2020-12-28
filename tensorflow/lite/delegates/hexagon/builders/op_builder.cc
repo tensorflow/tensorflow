@@ -159,6 +159,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type,
       return CreatePackBuilder(this, OP_QuantizedPack_8);
     case kTfLiteBuiltinStridedSlice:
       return CreateStridedSliceBuilder(this, OP_QuantizedStridedSlice_8);
+    case kTfLiteBuiltinSquaredDifference:
+      return CreateSquaredDifferenceOpBuilder(this, OP_QuantizedSub_8p8to8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;

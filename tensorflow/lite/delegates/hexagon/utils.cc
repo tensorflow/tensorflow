@@ -101,6 +101,7 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinTanh:
     case kTfLiteBuiltinTranspose:
       return registration->version <= 2;
+    case kTfLiteBuiltinSquaredDifference:
     case kTfLiteBuiltinRelu:
       return registration->version == 2;
     case kTfLiteBuiltinConv2d:
@@ -425,6 +426,10 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           reinterpret_cast<const TfLiteStridedSliceParams*>(node->builtin_data);
       // Hexagon doesn't support ellipsis/new-axis masks.
       return (params->ellipsis_mask == 0 && params->new_axis_mask == 0);
+    }
+    case kTfLiteBuiltinSquaredDifference: {
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteInt8}, {kTfLiteInt8}});
     }
     default:
       return false;

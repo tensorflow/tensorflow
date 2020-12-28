@@ -35,6 +35,7 @@ cc_library(
         "softmax_builder.cc",
         "space_to_depth_builder.cc",
         "split_builder.cc",
+        "squared_difference.cc",
         "strided_slice_builder.cc",
         "transpose_builder.cc",
         "transpose_conv_2d_builder.cc",
