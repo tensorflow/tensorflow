@@ -1557,6 +1557,14 @@ class AssertTypeTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
 
+  def test_raise_when_tf_type_is_not_dtype(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/45975
+    value = constant_op.constant(0.0)
+    with self.assertRaisesRegexp(
+        TypeError, "Cannot convert.*to a TensorFlow DType"):
+      check_ops.assert_type(value, (dtypes.float32,))
+
 
 class AssertShapesTest(test.TestCase):
 
