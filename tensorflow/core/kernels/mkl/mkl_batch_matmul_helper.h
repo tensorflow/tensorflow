@@ -1,5 +1,5 @@
 /* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
-  
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -106,5 +106,5 @@ struct MklBatchMatMulHelper {
   }
 };
 }  // namespace tensorflow
-#endif //Intel MKL
+#endif  // Intel MKL
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_EINSUM_OP_CC_
