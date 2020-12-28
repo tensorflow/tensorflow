@@ -134,6 +134,8 @@ renames = {
         'tf.compat.v1.TextLineReader',
     'tf.VERSION':
         'tf.version.VERSION',
+    'tf.VERSION_INFO':
+        'tf.version.VERSION_INFO',
     'tf.VarLenFeature':
         'tf.io.VarLenFeature',
     'tf.VariableScope':
