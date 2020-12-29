@@ -873,13 +873,21 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       std::make_unique<BufferAssignmentProto>(buffer_assignment->ToProto());
   std::vector<BufferAllocation> allocations =
       buffer_assignment->ReleaseAllocations();
+  std::string module_name = module->name();
+  Shape output_shape = module->entry_computation()->root_instruction()->shape();
+  size_t profile_index = 0;
+  if (profile_index_map) {
+    profile_index =
+        profile_index_map->GetProfileIndexFor(*module->entry_computation());
+  }
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);
   auto* gpu_executable = new GpuExecutable(
       {std::move(backend_result.first), std::move(backend_result.second),
        gpu_version, std::move(thunk_schedule), std::move(constants),
-       std::move(output_info), std::move(module), std::move(allocations),
-       std::move(buffer_assignment_proto), std::move(profile_printer),
+       std::move(output_info), module_name, output_shape,
+       std::move(allocations), std::move(buffer_assignment_proto),
+       std::move(module), profile_index, std::move(profile_printer),
        std::move(profile_index_map)});
   if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);

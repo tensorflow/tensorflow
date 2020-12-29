@@ -74,9 +74,12 @@ class GpuExecutable : public Executable {
     std::unique_ptr<const ThunkSchedule> thunk_schedule;
     std::vector<ConstantInfo> constants;
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
-    std::unique_ptr<HloModule> hlo_module;
+    std::string module_name;
+    xla::Shape output_shape;
     std::vector<BufferAllocation> allocations;
     std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment;
+    std::unique_ptr<HloModule> debug_module = nullptr;
+    size_t entry_computation_profile_index = 0;
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
   };
@@ -179,11 +182,17 @@ class GpuExecutable : public Executable {
   // IrEmitter.
   const std::unique_ptr<const ThunkSchedule> thunk_schedule_;
 
+  std::string module_name_;
+
+  xla::Shape output_shape_;
+
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::vector<BufferAllocation> allocations_;
 
   std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
+
+  size_t entry_computation_profile_index_ = -1;
 
   // Cache of module handles and constant buffer allocation maps used by
   // `ResolveConstantGlobals`.
