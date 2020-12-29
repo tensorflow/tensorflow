@@ -1730,35 +1730,31 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
-  const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
-  // TODO(b/174275841): This op only supports 4D tensors or smaller.
-  TFLITE_DCHECK_LE(op_params.begin_count, 4);
-  TFLITE_DCHECK_LE(op_params.size_count, 4);
+  const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(5, input_shape);
+  TFLITE_DCHECK_LE(op_params.begin_count, 5);
+  TFLITE_DCHECK_LE(op_params.size_count, 5);
   const int begin_count = op_params.begin_count;
   const int size_count = op_params.size_count;
   // We front-pad the begin and size vectors.
-  const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
-  const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0)
-                         : start_b + op_params.size[0];
-  const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
-  const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1)
-                         : start_h + op_params.size[size_count - 3];
-  const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
-  const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2)
-                         : start_w + op_params.size[size_count - 2];
-  const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
-  const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3)
-                         : start_d + op_params.size[size_count - 1];
+  std::array<int, 5> start;
+  std::array<int, 5> stop;
+  for (int i = 0; i < 5; ++i) {
+    int padded_i = 5 - i;
+    start[i] =
+        begin_count < padded_i ? 0 : op_params.begin[begin_count - padded_i];
+    stop[i] =
+        (size_count < padded_i || op_params.size[size_count - padded_i] == -1)
+            ? ext_shape.Dims(i)
+            : start[i] + op_params.size[size_count - padded_i];
+  }
 
-  for (int in_b = start_b; in_b < stop_b; ++in_b) {
-    for (int in_h = start_h; in_h < stop_h; ++in_h) {
-      for (int in_w = start_w; in_w < stop_w; ++in_w) {
-        for (int in_d = start_d; in_d < stop_d; ++in_d) {
-          writer->Write(Offset(ext_shape, in_b, in_h, in_w, in_d));
+  for (int i0 = start[0]; i0 < stop[0]; ++i0) {
+    for (int i1 = start[1]; i1 < stop[1]; ++i1) {
+      for (int i2 = start[2]; i2 < stop[2]; ++i2) {
+        for (int i3 = start[3]; i3 < stop[3]; ++i3) {
+          for (int i4 = start[4]; i4 < stop[4]; ++i4) {
+            writer->Write(Offset(ext_shape, i0, i1, i2, i3, i4));
+          }
         }
       }
     }

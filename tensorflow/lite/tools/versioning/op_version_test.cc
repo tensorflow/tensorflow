@@ -226,24 +226,35 @@ TEST(OpVersionTest, VersioningSliceTest) {
       .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_INT16},
   };
+  fake_op_sig.options.single_input_op.num_dims = 5;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 5);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SLICE,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_STRING},
   };
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_INT8},
   };
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_SLICE,
       .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
