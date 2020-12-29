@@ -293,7 +293,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
 TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
-  const float values[] = {-64, -62, -60, -58, -56, 54, 56, 58, 60, 62};
+  const float values[] = {64, 66, 68, 70, 72, 182, 184, 186, 188, 190};
   const float input_scale = 2.f;
   const int input_zero_point = 0;
   const float output_scale = 0.5;
@@ -310,7 +310,7 @@ TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8) {
 TF_LITE_MICRO_TEST(QuantizeOpTestUInt8toInt8NoZeroPoint) {
   const int length = 10;
   const int dims[] = {2, 2, 5};
-  const float values[] = {-32, -31, -30, -29, -28, 27, 28, 29, 30, 31};
+  const float values[] = {96, 97, 98, 99, 100, 155, 156, 157, 158, 159};
   const float input_scale = 1.f;
   const int input_zero_point = 0;
   const float output_scale = 0.5;
