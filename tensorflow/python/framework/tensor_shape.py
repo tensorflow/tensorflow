@@ -234,10 +234,6 @@ class Dimension(object):
       return None
     return self._value != other.value
 
-  def __bool__(self):
-    """Equivalent to `bool(self.value)`."""
-    return bool(self._value)
-
   def __int__(self):
     return self._value
 
