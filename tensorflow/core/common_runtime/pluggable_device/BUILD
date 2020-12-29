@@ -6,15 +6,10 @@ load(
     "//tensorflow/core/platform:rules_cc.bzl",
     "cc_library",
 )
-load(
-    "//tensorflow/core/platform:build_config_root.bzl",
-    "if_static",
-)
 
 package(
     default_visibility = [
         "//tensorflow:internal",
-        "//tensorflow_models:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

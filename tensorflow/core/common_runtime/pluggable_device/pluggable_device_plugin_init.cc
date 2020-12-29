@@ -34,15 +34,15 @@ static Status InitDeviceModule(void* dso_handle) {
 
   string device_type, platform_name;
   TF_RETURN_IF_ERROR(stream_executor::InitStreamExecutorPlugin(
-      init_fn, device_type, platform_name));
+      init_fn, &device_type, &platform_name));
 
   DeviceFactory::Register(
       device_type, new PluggableDeviceFactory(device_type, platform_name),
       /*priority*/ 220, /*is_pluggable_device*/ true);
 
-  CopyTensor::DynamicRegister(
+  TF_RETURN_IF_ERROR(CopyTensor::Register(
       DeviceType(device_type), DeviceType(device_type),
-      PluggableDeviceUtil::DeviceToDeviceCopy);  // register the Copy tensor
+      PluggableDeviceUtil::DeviceToDeviceCopy));  // register the Copy tensor
   return Status::OK();
 }
 

@@ -33,7 +33,6 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -58,9 +57,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
-#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -223,7 +223,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   OpKernelContext* context_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
-};
+};  // namespace tensorflow
 
 // This factory helps to ensure that different GPU device objects that refer to
 // the same physical device and stream group id use the same stream group
@@ -776,53 +776,6 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   Eigen::GpuDevice device_;
 };
 
-// Parse 'visible_device_list' into a list of platform GPU ids.
-Status ParseVisibleDeviceList(const string& visible_device_list,
-                              std::vector<PlatformGpuId>* visible_gpu_order) {
-  visible_gpu_order->clear();
-  se::Platform* gpu_manager = GPUMachineManager();
-
-  // If the user wants to remap the visible to virtual GPU mapping,
-  // check for that here.
-  if (visible_device_list.empty()) {
-    visible_gpu_order->resize(gpu_manager->VisibleDeviceCount());
-    // By default, visible to virtual mapping is unchanged.
-    int deviceNo = 0;
-    std::generate(visible_gpu_order->begin(), visible_gpu_order->end(),
-                  [&deviceNo] { return deviceNo++; });
-  } else {
-    const std::vector<string> order_str =
-        str_util::Split(visible_device_list, ',');
-    for (const string& platform_gpu_id_str : order_str) {
-      int32 platform_gpu_id;
-      if (!strings::safe_strto32(platform_gpu_id_str, &platform_gpu_id)) {
-        return errors::InvalidArgument(
-            "Could not parse entry in 'visible_device_list': '",
-            platform_gpu_id_str,
-            "'. visible_device_list = ", visible_device_list);
-      }
-      if (platform_gpu_id < 0 ||
-          platform_gpu_id >= gpu_manager->VisibleDeviceCount()) {
-        return errors::InvalidArgument(
-            "'visible_device_list' listed an invalid GPU id '", platform_gpu_id,
-            "' but visible device count is ",
-            gpu_manager->VisibleDeviceCount());
-      }
-      visible_gpu_order->push_back(PlatformGpuId(platform_gpu_id));
-    }
-  }
-
-  // Validate no repeats.
-  std::set<PlatformGpuId> visible_device_set(visible_gpu_order->begin(),
-                                             visible_gpu_order->end());
-  if (visible_device_set.size() != visible_gpu_order->size()) {
-    return errors::InvalidArgument(
-        "visible_device_list contained a duplicate entry: ",
-        visible_device_list);
-  }
-  return Status::OK();
-}
-
 Status VerifyVirtualDeviceSettings(
     const size_t num_gpus_to_use, const GPUOptions& gpu_options,
     const std::vector<PlatformGpuId>& visible_gpu_order,
@@ -1166,8 +1119,9 @@ Status BaseGPUDeviceFactory::CreateDevices(
   // because it treats an empty gpu_options.visible_device_list as 'all GPUs
   // are visible'.
   if (num_gpus_to_use > 0) {
-    TF_RETURN_IF_ERROR(ParseVisibleDeviceList(gpu_options.visible_device_list(),
-                                              &visible_gpu_order));
+    TF_RETURN_IF_ERROR(DeviceIdUtil::ParseVisibleDeviceList(
+        gpu_options.visible_device_list(), gpu_manager->VisibleDeviceCount(),
+        &visible_gpu_order));
     bool new_gpu_found = false;
     for (int i = 0; i < visible_gpu_order.size(); ++i) {
       int visible_gpu_id = visible_gpu_order[i].value();

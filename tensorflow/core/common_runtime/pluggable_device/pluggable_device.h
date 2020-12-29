@@ -101,7 +101,7 @@ class PluggableDevice : public LocalDevice {
                                          const int& stream_id);
 
   // This method returns an initialization status, in addition to
-  // calling the "done" Statuscallback, if there is a failure to
+  // calling the "done" StatusCallback, if there is a failure to
   // allocate memory or if the tensor "from" is not DMA-copyable.
   // If there is no error prior to enqueueing the copy, an OK status
   // is returned.
