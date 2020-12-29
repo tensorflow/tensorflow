@@ -83,13 +83,6 @@ cc_library(
     ],
 )
 
-exports_files(
-    srcs = [
-        "pluggable_device_plugin_init.h",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "pluggable_device_runtime",
     hdrs = [":pluggable_device_runtime_headers"],
