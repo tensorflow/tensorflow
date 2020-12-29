@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
+#define TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
 
 #include <string.h>
 #include <utility>
@@ -29,7 +29,7 @@ namespace internal {
 //
 // The representation is an open-addressed hash table.  Conceptually,
 // the representation is a flat array of entries.  However we
-// structure it as an array of of buckets where each bucket holds
+// structure it as an array of buckets where each bucket holds
 // kWidth entries along with metadata for the kWidth entries.  The
 // metadata marker is
 //
@@ -45,16 +45,29 @@ template <typename Key, typename Bucket, class Hash, class Eq>
 class FlatRep {
  public:
   // kWidth is the number of entries stored in a bucket.
-  static const uint32 kBase = 3;
-  static const uint32 kWidth = (1 << kBase);
+  static constexpr uint32 kBase = 3;
+  static constexpr uint32 kWidth = (1 << kBase);
 
   FlatRep(size_t N, const Hash& hf, const Eq& eq) : hash_(hf), equal_(eq) {
     Init(N);
   }
-  explicit FlatRep(const FlatRep& src) : hash_(src.hash_), equal_(src.equal_) {
+  FlatRep(const FlatRep& src) : hash_(src.hash_), equal_(src.equal_) {
     Init(src.size());
     CopyEntries(src.array_, src.end_, CopyEntry());
   }
+
+  FlatRep(FlatRep&& src)
+      // Copy rather than move src.hash_ and src.equal_.  This is necessary to
+      // leave src in a valid state -- otherwise e.g. if hash_ is an
+      // std::function, moving it would null it out.
+      : hash_(src.hash_), equal_(src.equal_) {
+    // TODO(jlebar): Init(1) still allocates some memory, so this isn't as cheap
+    // as it could be.  The fundamental problem is that we need to leave src in
+    // a valid state, and FlatRep *always* owns a nonzero amount of memory.
+    Init(1);
+    swap(src);
+  }
+
   ~FlatRep() {
     clear_no_resize();
     delete[] array_;
@@ -75,6 +88,12 @@ class FlatRep {
       delete[] array_;
       Init(src.size());
       CopyEntries(src.array_, src.end_, CopyEntry());
+    }
+  }
+
+  void MoveFrom(FlatRep&& src) {
+    if (this != &src) {
+      swap(src);
     }
   }
 
@@ -328,4 +347,4 @@ class FlatRep {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATREP_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_FLATREP_H_

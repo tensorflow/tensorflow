@@ -12,20 +12,33 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/local_device.h"
+#include "tensorflow/core/common_runtime/scoped_allocator.h"
+#include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/util.h"
+
+#ifdef INTEL_MKL
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+#include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#endif
 
 namespace tensorflow {
 
@@ -34,25 +47,41 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const DeviceLocality& locality,
                                    Allocator* allocator)
     : LocalDevice(options, Device::BuildDeviceAttributes(
-                               name, DEVICE_CPU, memory_limit, locality),
-                  allocator),
-      allocator_(allocator) {}
+                               name, DEVICE_CPU, memory_limit, locality)),
+      allocator_(allocator),
+      scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
+#if !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
+  // Early return when MKL is disabled
+  if (DisableMKL()) return;
+#ifdef _OPENMP
+  const char* user_omp_threads = getenv("OMP_NUM_THREADS");
+  static absl::once_flag omp_setting_flag;
+  if (user_omp_threads == nullptr) {
+    // OMP_NUM_THREADS controls MKL's intra-op parallelization
+    // Default to available physical cores
+    const int mkl_intra_op = port::NumSchedulableCPUs();
+    const int ht = port::NumHyperthreadsPerCore();
+    absl::call_once(omp_setting_flag, omp_set_num_threads,
+                    (mkl_intra_op + ht - 1) / ht);
+  }
+#endif  // _OPENMP
+#endif  // !defined(ENABLE_MKLDNN_THREADPOOL) && defined(INTEL_MKL)
+}
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
-void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  if (port::Tracing::IsActive()) {
-    // TODO(pbar) We really need a useful identifier of the graph node.
-    const uint64 id = Hash64(op_kernel->name());
-    port::Tracing::ScopedActivity region(port::Tracing::EventCategory::kCompute,
-                                         id);
-    op_kernel->Compute(context);
-  } else {
-    op_kernel->Compute(context);
-  }
+Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
+  return allocator_;
 }
 
-Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
+Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,
+                                                int64 step_id) {
+  if (attr.scope_id > 0) {
+    return scoped_allocator_mgr_->GetContainer(step_id)->GetInstance(
+        attr.scope_id);
+  }
+  LOG(FATAL) << "Unexpected call to ThreadPoolDevice::GetScopedAllocator "
+             << "attr.scope_id = " << attr.scope_id;
   return allocator_;
 }
 
@@ -61,13 +90,48 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
     Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      *tensor = parsed;
+    if (parsed.FromProto(allocator_, tensor_proto)) {
+      *tensor = std::move(parsed);
       return Status::OK();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                 ProtoDebugString(tensor_proto));
+                                 tensor_proto.DebugString());
 }
+
+void ThreadPoolDevice::CopyTensorInSameDevice(
+    const Tensor* input_tensor, Tensor* output_tensor,
+    const DeviceContext* device_context, StatusCallback done) {
+  if (input_tensor->NumElements() != output_tensor->NumElements()) {
+    done(errors::Internal(
+        "CPU->CPU copy shape mismatch: input=", input_tensor->shape(),
+        ", output=", output_tensor->shape()));
+    return;
+  }
+  tensor::DeepCopy(*input_tensor, output_tensor);
+  done(Status::OK());
+}
+
+#ifdef INTEL_MKL
+namespace {
+class MklCPUAllocatorFactory : public AllocatorFactory {
+ public:
+  bool NumaEnabled() override { return false; }
+
+  Allocator* CreateAllocator() override { return new MklCPUAllocator; }
+
+  // Note: Ignores numa_node, for now.
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new MklSubAllocator;
+  }
+};
+
+#ifdef ENABLE_MKL
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200),
+                       MklCPUAllocatorFactory);
+#endif  // ENABLE_MKL
+
+}  // namespace
+#endif  // INTEL_MKL
 
 }  // namespace tensorflow

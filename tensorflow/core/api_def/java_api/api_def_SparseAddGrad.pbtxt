@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SparseAddGrad"
+  endpoint {
+    name: "sparse.SparseAddGrad"
+  }
+}

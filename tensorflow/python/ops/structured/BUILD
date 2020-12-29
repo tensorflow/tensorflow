@@ -1,0 +1,134 @@
+# Structured Tensors
+
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+package(
+    default_visibility = [
+        "//tensorflow:internal",
+        "//tensorflow:structured_tensor_whitelist",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
+
+py_library(
+    name = "structured",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    tags = ["nofixdeps"],
+    deps = [
+        ":structured_array_ops",
+        ":structured_tensor",
+    ],
+)
+
+py_library(
+    name = "structured_tensor",
+    srcs = [
+        "structured_array_ops.py",
+        "structured_tensor.py",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:type_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:row_partition",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "structured_array_ops",
+    srcs = [
+        "structured_array_ops.py",
+    ],
+    deps = [
+        ":structured_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:composite_tensor",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:type_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:row_partition",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "structured_tensor_test",
+    srcs = ["structured_tensor_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":structured_array_ops",
+        ":structured_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/ops/ragged:row_partition",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "structured_tensor_spec_test",
+    srcs = ["structured_tensor_spec_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":structured_tensor",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "structured_tensor_slice_test",
+    srcs = ["structured_tensor_slice_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":structured_tensor",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)

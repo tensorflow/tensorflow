@@ -13,19 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SHAPE_OPS_H_
-#define TENSORFLOW_KERNELS_SHAPE_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SHAPE_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_SHAPE_OPS_H_
 
 #include <limits>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 
 namespace tensorflow {
+
+namespace shape_op_helpers {
+inline Status GetShape(OpKernelContext* ctx, int input_index,
+                       TensorShape* shape) {
+  *shape = ctx->input(input_index).shape();
+  return Status::OK();
+}
+}  // namespace shape_op_helpers
 
 template <typename OutType>
 class ShapeOp : public OpKernel {
@@ -33,13 +44,14 @@ class ShapeOp : public OpKernel {
   explicit ShapeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    const int rank = inp.dims();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
+    const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({rank}), &out));
     auto vec = out->vec<OutType>();
     for (int i = 0; i < rank; ++i) {
-      int64 dim_size = inp.dim_size(i);
+      int64 dim_size = shape.dim_size(i);
       if (out->dtype() == DT_INT32) {
         OP_REQUIRES(
             ctx, FastBoundsCheck(dim_size, std::numeric_limits<int32>::max()),
@@ -60,7 +72,8 @@ class ShapeNOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      auto shape = ctx->input(i).shape();
+      TensorShape shape;
+      OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, i, &shape));
       const int dims = shape.dims();
       Tensor* out = nullptr;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(i, {dims}, &out));
@@ -87,8 +100,9 @@ class RankOp : public OpKernel {
   explicit RankOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    const int rank = inp.dims();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
+    const int rank = shape.dims();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     out->scalar<int32>()() = rank;
@@ -103,8 +117,9 @@ class SizeOp : public OpKernel {
   explicit SizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    const int64 size = inp.NumElements();
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, shape_op_helpers::GetShape(ctx, 0, &shape));
+    const int64 size = shape.num_elements();
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
     if (out->dtype() == DT_INT32) {
@@ -119,40 +134,49 @@ class SizeOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
+template <typename Tdim>
 class ExpandDimsOp : public OpKernel {
  public:
   explicit ExpandDimsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    int32 dim = ctx->input(1).flat<int32>()(0);
-    OP_REQUIRES(
-        ctx, (dim >= -1 - ctx->input(0).dims() && dim <= ctx->input(0).dims()),
-        errors::InvalidArgument("Tried to expand dim index ", dim,
-                                " for tensor with ", ctx->input(0).dims(),
-                                " dimensions."));
+    const Tensor& input_t = ctx->input(0);
+    OP_REQUIRES(ctx, input_t.dtype() != DT_VARIANT,
+                errors::InvalidArgument("ExpandDims on Variant not supported"));
 
-    auto existing_dims = ctx->input(0).shape().dim_sizes();
-    // Safe - # elements in tensor dims bounded.
-    const int existing_dims_size = static_cast<int>(existing_dims.size());
-    std::vector<int64> new_shape(existing_dims_size);
-    for (size_t i = 0; i < new_shape.size(); ++i) {
-      new_shape[i] = existing_dims[i];
-    }
+    const Tensor& dim_t = ctx->input(1);
+    OP_REQUIRES(
+        ctx, (dim_t.NumElements() == 1),
+        errors::InvalidArgument("'dim' must be a tensor with a single value"));
+    DCHECK_EQ(dim_t.dtype(), DataTypeToEnum<Tdim>::v());
+    Tdim dim = *static_cast<const Tdim*>(DMAHelper::base(&dim_t));
+    const TensorShape& input_shape = input_t.shape();
+    int input_dims = input_shape.dims();
+    OP_REQUIRES(ctx, dim >= -1 - input_dims && dim <= input_dims,
+                errors::InvalidArgument("Tried to expand dim index ", dim,
+                                        " for tensor with ", input_dims,
+                                        " dimensions."));
 
     // We emulate numpy's interpretation of the dim axis when
     // -input.dims() >= dim <= input.dims().
     if (dim < 0) {
-      dim += existing_dims.size() + 1;
+      // Clamp to the end if needed.
+      dim = std::min<Tdim>(dim + input_dims + 1, input_dims);
     }
 
-    // Clamp to the end if needed.
-    dim = std::min<int32>(dim, existing_dims_size);
-    new_shape.emplace(new_shape.begin() + dim, 1);
-    const TensorShape output_shape(new_shape);
+    // Compute new shape with an additional dimension.
+    absl::InlinedVector<int64, 8> output_shape_vec(input_dims + 1);
+    for (int64 i = 0; i < dim; ++i) {
+      output_shape_vec[i] = input_shape.dim_size(i);
+    }
+    output_shape_vec[dim] = 1;
+    for (int64 i = dim + 1; i < input_dims + 1; ++i) {
+      output_shape_vec[i] = input_shape.dim_size(i - 1);
+    }
+    TensorShape output_shape(output_shape_vec);
 
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {0}, &output));
-    if (!output->CopyFrom(ctx->input(0), output_shape)) {
+    Tensor output_t;
+    if (!output_t.CopyFrom(input_t, output_shape)) {
       // This should never happen, since the sizes of the input and output
       // should always be the same (we only expand the dimension with 1).
       ctx->SetStatus(
@@ -160,6 +184,7 @@ class ExpandDimsOp : public OpKernel {
                            ctx->input(0).shape().DebugString(),
                            " and output shape ", output_shape.DebugString()));
     }
+    ctx->set_output(0, std::move(output_t));
   }
 
   bool IsExpensive() override { return false; }
@@ -174,6 +199,9 @@ class SqueezeOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
+    OP_REQUIRES(ctx, ctx->input(0).dtype() != DT_VARIANT,
+                errors::InvalidArgument("Squeeze on Variant not supported"));
+
     auto existing_dims = ctx->input(0).shape().dim_sizes();
     const int existing_dims_size = static_cast<int>(existing_dims.size());
     std::vector<int64> new_shape;
@@ -203,9 +231,8 @@ class SqueezeOp : public OpKernel {
         if (wrapped_squeeze_dims.count(i) > 0) {
           OP_REQUIRES(ctx, existing_dim == 1,
                       errors::InvalidArgument(
-                          "Tried to explicitly squeeze "
-                          "dimension ",
-                          i, " but dimension was not 1: ", existing_dim));
+                          "Can not squeeze dim[", i,
+                          "], expected a dimension of 1, got ", existing_dim));
         } else {
           // This dimension is not being squeezed.
           new_shape.push_back(existing_dim);
@@ -239,4 +266,4 @@ class SqueezeOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SHAPE_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SHAPE_OPS_H_

@@ -39,14 +39,16 @@ def _DynamicPartitionGrads(op, *grads):
       math_ops.range(math_ops.reduce_prod(prefix_shape)), prefix_shape)
   partitioned_indices = data_flow_ops.dynamic_partition(
       original_indices, indices, num_partitions)
-  reconstructed = data_flow_ops.dynamic_stitch(partitioned_indices, grads)
+  reconstructed = data_flow_ops.parallel_dynamic_stitch(partitioned_indices,
+                                                        grads)
   reconstructed = array_ops.reshape(reconstructed, array_ops.shape(data))
   return [reconstructed, None]
 
 
 @ops.RegisterGradient("DynamicStitch")
+@ops.RegisterGradient("ParallelDynamicStitch")
 def _DynamicStitchGrads(op, grad):
-  """Gradients for DynamicStitch."""
+  """Gradients for DynamicStitch and ParallelDynamicStitch."""
 
   num_values = len(op.inputs) // 2
   indices_grad = [None] * num_values
@@ -78,5 +80,6 @@ ops.NotDifferentiable("StackPop")
 ops.NotDifferentiable("StackClose")
 
 ops.NotDifferentiable("GetSessionHandle")
+ops.NotDifferentiable("GetSessionHandleV2")
 ops.NotDifferentiable("GetSessionTensor")
 ops.NotDifferentiable("DeleteSessionTensor")

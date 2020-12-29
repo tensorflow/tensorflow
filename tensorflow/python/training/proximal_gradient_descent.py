@@ -24,13 +24,18 @@ from tensorflow.python.ops import math_ops
 # pylint: enable=unused-import
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export(v1=["train.ProximalGradientDescentOptimizer"])
 class ProximalGradientDescentOptimizer(optimizer.Optimizer):
   # pylint: disable=line-too-long
   """Optimizer that implements the proximal gradient descent algorithm.
 
-  See this [paper](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting.pdf).
+  References:
+    Efficient Learning using Forward-Backward Splitting:
+      [Duchi et al., 2009](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting)
+      ([pdf](http://papers.nips.cc/paper/3793-efficient-learning-using-forward-backward-splitting.pdf))
   """
 
   def __init__(self, learning_rate, l1_regularization_strength=0.0,

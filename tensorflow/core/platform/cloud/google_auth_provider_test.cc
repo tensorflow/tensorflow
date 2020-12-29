@@ -14,23 +14,28 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+
 #include <stdlib.h>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
 namespace {
 
-constexpr char kTestData[] = "core/platform/cloud/testdata/";
+string TestData() {
+  return io::JoinPath("tensorflow", "core", "platform", "cloud", "testdata");
+}
 
 class FakeEnv : public EnvWrapper {
  public:
   FakeEnv() : EnvWrapper(Env::Default()) {}
 
-  uint64 NowSeconds() override { return now; }
+  uint64 NowSeconds() const override { return now; }
   uint64 now = 10000;
 };
 
@@ -69,31 +74,33 @@ class GoogleAuthProviderTest : public ::testing::Test {
   void TearDown() override { ClearEnvVars(); }
 
   void ClearEnvVars() {
-    unsetenv("GOOGLE_APPLICATION_CREDENTIALS");
     unsetenv("CLOUDSDK_CONFIG");
+    unsetenv("GOOGLE_APPLICATION_CREDENTIALS");
     unsetenv("GOOGLE_AUTH_TOKEN_FOR_TESTING");
+    unsetenv("NO_GCE_CHECK");
   }
 };
 
 TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
   setenv("GOOGLE_APPLICATION_CREDENTIALS",
-         io::JoinPath(
-             io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(),
-             "service_account_credentials.json")
+         GetDataDependencyFilepath(
+             io::JoinPath(TestData(), "service_account_credentials.json"))
              .c_str(),
          1);
-  setenv("CLOUDSDK_CONFIG",
-         io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(),
+  setenv("CLOUDSDK_CONFIG", GetDataDependencyFilepath(TestData()).c_str(),
          1);  // Will not be used.
 
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> requests;
 
   FakeEnv env;
+
+  std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
+      std::make_shared<FakeHttpRequestFactory>(&requests);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
-                              std::unique_ptr<HttpRequest::Factory>(
-                                  new FakeHttpRequestFactory(&requests)),
-                              &env, 0);
+                              metadataClient, &env);
   oauth_client->return_token = "fake-token";
   oauth_client->return_expiration_timestamp = env.NowSeconds() + 3600;
 
@@ -117,17 +124,19 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
 }
 
 TEST_F(GoogleAuthProviderTest, GCloudRefreshToken) {
-  setenv("CLOUDSDK_CONFIG",
-         io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(), 1);
+  setenv("CLOUDSDK_CONFIG", GetDataDependencyFilepath(TestData()).c_str(), 1);
 
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> requests;
 
   FakeEnv env;
+  std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
+      std::make_shared<FakeHttpRequestFactory>(&requests);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
+
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
-                              std::unique_ptr<HttpRequest::Factory>(
-                                  new FakeHttpRequestFactory(&requests)),
-                              &env, 0);
+                              metadataClient, &env);
   oauth_client->return_token = "fake-token";
   oauth_client->return_expiration_timestamp = env.NowSeconds() + 3600;
 
@@ -170,10 +179,12 @@ TEST_F(GoogleAuthProviderTest, RunningOnGCE) {
               })")});
 
   FakeEnv env;
+  std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
+      std::make_shared<FakeHttpRequestFactory>(&requests);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
-                              std::unique_ptr<HttpRequest::Factory>(
-                                  new FakeHttpRequestFactory(&requests)),
-                              &env, 0);
+                              metadataClient, &env);
 
   string token;
   TF_EXPECT_OK(provider.GetToken(&token));
@@ -196,10 +207,12 @@ TEST_F(GoogleAuthProviderTest, OverrideForTesting) {
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> empty_requests;
   FakeEnv env;
+  std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
+      std::make_shared<FakeHttpRequestFactory>(&empty_requests);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
-                              std::unique_ptr<HttpRequest::Factory>(
-                                  new FakeHttpRequestFactory(&empty_requests)),
-                              &env, 0);
+                              metadataClient, &env);
 
   string token;
   TF_EXPECT_OK(provider.GetToken(&token));
@@ -216,14 +229,43 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
       "", errors::NotFound("404"), 404)});
 
   FakeEnv env;
+  std::shared_ptr<HttpRequest::Factory> fakeHttpRequestFactory =
+      std::make_shared<FakeHttpRequestFactory>(&requests);
+  auto metadataClient = std::make_shared<ComputeEngineMetadataClient>(
+      fakeHttpRequestFactory, RetryConfig(0 /* init_delay_time_us */));
   GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
-                              std::unique_ptr<HttpRequest::Factory>(
-                                  new FakeHttpRequestFactory(&requests)),
-                              &env, 0);
+                              metadataClient, &env);
 
   string token;
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
+}
+
+TEST_F(GoogleAuthProviderTest, NoGceCheckEnvironmentVariable) {
+  setenv("NO_GCE_CHECK", "True", 1);
+  auto oauth_client = new FakeOAuthClient;
+
+  FakeEnv env;
+  // If the env var above isn't respected, attempting to fetch a token
+  // from GCE will segfault (as the metadata client is null).
+  GoogleAuthProvider provider(std::unique_ptr<OAuthClient>(oauth_client),
+                              nullptr, &env);
+
+  string token;
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("", token);
+
+  // We confirm that our env var is case insensitive.
+  setenv("NO_GCE_CHECK", "true", 1);
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("", token);
+
+  // We also want to confirm that our empty token has a short expiration set: we
+  // now set a testing token, and confirm that it's returned instead of our
+  // empty token.
+  setenv("GOOGLE_AUTH_TOKEN_FOR_TESTING", "newToken", 1);
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("newToken", token);
 }
 
 }  // namespace tensorflow

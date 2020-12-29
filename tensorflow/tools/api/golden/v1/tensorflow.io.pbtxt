@@ -1,0 +1,187 @@
+path: "tensorflow.io"
+tf_module {
+  member {
+    name: "FixedLenFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FixedLenSequenceFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PaddingFIFOQueue"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PriorityQueue"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "QueueBase"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RaggedFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomShuffleQueue"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordCompressionType"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordWriter"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+  }
+  member {
+    name: "VarLenFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "gfile"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "decode_and_crop_jpeg"
+    argspec: "args=[\'contents\', \'crop_window\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_base64"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "decode_bmp"
+    argspec: "args=[\'contents\', \'channels\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+  }
+  member_method {
+    name: "decode_compressed"
+    argspec: "args=[\'bytes\', \'compression_type\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_csv"
+    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\', \'na_value\', \'select_cols\'], varargs=None, keywords=None, defaults=[\',\', \'True\', \'None\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_gif"
+    argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "decode_image"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\', \'expand_animations\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'uint8\'>\", \'None\', \'True\'], "
+  }
+  member_method {
+    name: "decode_jpeg"
+    argspec: "args=[\'contents\', \'channels\', \'ratio\', \'fancy_upscaling\', \'try_recover_truncated\', \'acceptable_fraction\', \'dct_method\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \'True\', \'False\', \'1\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "decode_json_example"
+    argspec: "args=[\'json_examples\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "decode_png"
+    argspec: "args=[\'contents\', \'channels\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \"<dtype: \'uint8\'>\", \'None\'], "
+  }
+  member_method {
+    name: "decode_proto"
+    argspec: "args=[\'bytes\', \'message_type\', \'field_names\', \'output_types\', \'descriptor_source\', \'message_format\', \'sanitize\', \'name\'], varargs=None, keywords=None, defaults=[\'local://\', \'binary\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "decode_raw"
+    argspec: "args=[\'input_bytes\', \'out_type\', \'little_endian\', \'name\', \'bytes\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "deserialize_many_sparse"
+    argspec: "args=[\'serialized_sparse\', \'dtype\', \'rank\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "encode_base64"
+    argspec: "args=[\'input\', \'pad\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "encode_jpeg"
+    argspec: "args=[\'image\', \'format\', \'quality\', \'progressive\', \'optimize_size\', \'chroma_downsampling\', \'density_unit\', \'x_density\', \'y_density\', \'xmp_metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'95\', \'False\', \'False\', \'True\', \'in\', \'300\', \'300\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "encode_png"
+    argspec: "args=[\'image\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "encode_proto"
+    argspec: "args=[\'sizes\', \'values\', \'field_names\', \'message_type\', \'descriptor_source\', \'name\'], varargs=None, keywords=None, defaults=[\'local://\', \'None\'], "
+  }
+  member_method {
+    name: "extract_jpeg_shape"
+    argspec: "args=[\'contents\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "is_jpeg"
+    argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "match_filenames_once"
+    argspec: "args=[\'pattern\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "matching_files"
+    argspec: "args=[\'pattern\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "parse_example"
+    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "parse_sequence_example"
+    argspec: "args=[\'serialized\', \'context_features\', \'sequence_features\', \'example_names\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "parse_single_example"
+    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "parse_single_sequence_example"
+    argspec: "args=[\'serialized\', \'context_features\', \'sequence_features\', \'example_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "parse_tensor"
+    argspec: "args=[\'serialized\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "read_file"
+    argspec: "args=[\'filename\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "serialize_many_sparse"
+    argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "serialize_sparse"
+    argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "serialize_tensor"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tf_record_iterator"
+    argspec: "args=[\'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "write_file"
+    argspec: "args=[\'filename\', \'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "write_graph"
+    argspec: "args=[\'graph_or_graph_def\', \'logdir\', \'name\', \'as_text\'], varargs=None, keywords=None, defaults=[\'True\'], "
+  }
+}

@@ -25,11 +25,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -44,6 +44,7 @@ using ops::FIFOQueue;
 using ops::QueueClose;
 using ops::QueueDequeue;
 using ops::QueueEnqueue;
+using ops::RandomNormal;
 using ops::Square;
 using ops::Variable;
 
@@ -84,7 +85,7 @@ QueueRunnerDef BuildQueueRunnerDef(
     const std::string& close_op, const std::string& cancel_op,
     const std::vector<Code>& queue_closed_error_codes) {
   QueueRunnerDef queue_runner_def;
-  *queue_runner_def.mutable_queue_name() = kQueueName;
+  *queue_runner_def.mutable_queue_name() = queue_name;
   for (const std::string& enqueue_op : enqueue_ops) {
     *queue_runner_def.mutable_enqueue_op_name()->Add() = enqueue_op;
   }
@@ -342,6 +343,67 @@ TEST(QueueRunnerTest, CallbackCalledOnError) {
   TF_EXPECT_OK(qr->Start(session.get()));
   EXPECT_FALSE(qr->Join().ok());
   EXPECT_TRUE(error_caught);
+}
+
+TEST(QueueRunnerTest, RunMetaDataTest) {
+  Scope root = Scope::NewRootScope();
+  auto q0 = FIFOQueue(root.WithOpName(kQueueName), {DataType::DT_FLOAT});
+  Output rnd = RandomNormal(root.WithOpName("rnd"), {1, 1}, DataType::DT_FLOAT);
+  Output square = Square(root.WithOpName(kSquareOpName), rnd);
+  auto enqueue0 = QueueEnqueue(root.WithOpName(kEnqueueOp0), q0, {square});
+  auto close0 = QueueClose(root.WithOpName(kCloseOp0), q0);
+  auto cancel0 = QueueClose(root.WithOpName(kCancelOp0), q0,
+                            QueueClose::CancelPendingEnqueues(true));
+  auto dequeue0 =
+      QueueDequeue(root.WithOpName(kDequeueOp0), q0, {DataType::DT_FLOAT});
+
+  GraphDef graph_def;
+  TF_EXPECT_OK(root.ToGraphDef(&graph_def));
+  for (auto& node : *graph_def.mutable_node()) {
+    node.set_device("/cpu:0");
+  }
+  SessionOptions sess_options;
+  sess_options.config.mutable_graph_options()->set_build_cost_model(1);
+  std::unique_ptr<Session> session(NewSession(sess_options));
+
+  TF_CHECK_OK(session->Create(graph_def));
+
+  QueueRunnerDef queue_runner_def =
+      BuildQueueRunnerDef(kQueueName, {kEnqueueOp0}, kCloseOp0, kCancelOp0, {});
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  RunOptions run_options;
+  TF_CHECK_OK(qr->StartAndCollectCostGraph(session.get(), run_options));
+
+  // Make sure there was at least one element enqueued in q0: this prevents a
+  // race condition where we close the queue before it was populated.
+  std::vector<Tensor> dq0;
+  TF_EXPECT_OK(session->Run({}, {kDequeueOp0}, {}, &dq0));
+  // Second call to run dequeue op is to make sure the cost graph has been
+  // stored.
+  TF_EXPECT_OK(session->Run({}, {kDequeueOp0}, {}, &dq0));
+
+  CostGraphDef cost_graph;
+  TF_CHECK_OK(qr->ExportCostGraph(&cost_graph));
+  EXPECT_TRUE(cost_graph.node_size() > 0);
+
+  qr->Stop(session.get());
+}
+
+TEST(QueueRunnerTest, NoRunMetaDataTest) {
+  GraphDef graph_def = BuildSimpleGraph();
+  auto session = BuildSessionAndInitVariable(graph_def);
+
+  QueueRunnerDef queue_runner_def = BuildQueueRunnerDef(
+      kQueueName, {kCountUpToOpName}, kSquareOpName, "", {});
+  std::unique_ptr<QueueRunner> qr;
+  TF_EXPECT_OK(QueueRunner::New(queue_runner_def, &qr));
+  TF_CHECK_OK(qr->Start(session.get()));
+
+  TF_EXPECT_OK(qr->Join());
+  CostGraphDef cost_graph;
+  EXPECT_EQ(qr->ExportCostGraph(&cost_graph).code(),
+            error::FAILED_PRECONDITION);
 }
 
 }  // namespace

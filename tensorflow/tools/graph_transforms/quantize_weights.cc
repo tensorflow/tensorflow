@@ -16,14 +16,13 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/constant_folding.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -35,11 +34,15 @@ namespace graph_transforms {
 Status QuantizeWeights(const GraphDef& input_graph_def,
                        const TransformFuncContext& context,
                        GraphDef* output_graph_def) {
+  int32 minimum_size;
+  TF_RETURN_IF_ERROR(
+      context.GetOneInt32Parameter("minimum_size", 1024, &minimum_size));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def, {"Const"},
-      [](const NodeMatch& match, const std::set<string>& input_nodes,
-         const std::set<string>& output_nodes,
-         std::vector<NodeDef>* new_nodes) {
+      [minimum_size](const NodeMatch& match,
+                     const std::set<string>& input_nodes,
+                     const std::set<string>& output_nodes,
+                     std::vector<NodeDef>* new_nodes) {
         const NodeDef& old_const_node = match.node;
         if (!old_const_node.attr().count("dtype")) {
           return errors::InvalidArgument("No 'dtype' attribute for Const node ",
@@ -58,7 +61,7 @@ Status QuantizeWeights(const GraphDef& input_graph_def,
         const size_t num_elements = old_tensor.NumElements();
         // If this isn't a float constant, or it's too small, then reuse the
         // same node with no changes.
-        if ((old_dtype != DT_FLOAT) || (num_elements < 16)) {
+        if ((old_dtype != DT_FLOAT) || (num_elements < minimum_size)) {
           new_nodes->push_back(old_const_node);
           return Status::OK();
         }
@@ -70,6 +73,10 @@ Status QuantizeWeights(const GraphDef& input_graph_def,
           min = std::min(min, value);
           max = std::max(max, value);
         }
+        // Make sure the quantization range includes 0.0f. Not all quantized
+        // Ops behave properly if 0.0f is not in the range.
+        min = std::min(min, 0.0f);
+        max = std::max(0.0f, max);
         // min_value == max_value is a tricky case. It can occur for general
         // tensors, and of course for scalars. The quantized ops cannot deal
         // with this case, so we set max_value to something else.

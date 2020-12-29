@@ -15,40 +15,51 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-
-namespace se = ::perftools::gputools;
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/kernel.h"
 
 namespace xla {
 namespace gpu {
 
-KernelThunk::KernelThunk(
-    tensorflow::gtl::ArraySlice<BufferAllocation::Slice> io_buffers,
-    const string& kernel_name, const HloInstruction* hlo_instruction)
-    : Thunk(Kind::kKernel, hlo_instruction),
-      io_buffers_(io_buffers.begin(), io_buffers.end()),
+KernelThunk::KernelThunk(ThunkInfo thunk_info,
+                         absl::Span<const BufferAllocation* const> args,
+                         const string& kernel_name)
+    : Thunk(Kind::kKernel, thunk_info),
+      args_(args.begin(), args.end()),
       kernel_name_(kernel_name) {}
 
-tensorflow::Status KernelThunk::Initialize(const GpuExecutable& executable) {
+Status KernelThunk::Initialize(const GpuExecutable& executable,
+                               se::StreamExecutor* executor) {
   tensorflow::mutex_lock lock(mutex_);
-  if (loader_spec_) {
-    // Already initialized by another thread.
-    return tensorflow::Status::OK();
+
+  // Load the kernel into the device if necessary.
+  //
+  // We could alternatively do this within ExecuteOnStream, but doing it here
+  // lets the time spent loading the kernel not count towards our execution
+  // profiles.
+  auto it = kernel_cache_.find(executor);
+  if (kernel_cache_.end() == it) {
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<se::KernelBase> kernel,
+        CreateKernel(kernel_name_, args_.size(), executable.text(),
+                     executable.binary(), executor));
+
+    kernel_cache_.emplace(executor, std::move(kernel));
   }
 
-  loader_spec_.reset(new se::MultiKernelLoaderSpec(io_buffers_.size() + 1));
-  tensorflow::StringPiece ptx = executable.ptx();
-  // Convert tensorflow::StringPiece to se::port::StringPiece because
-  // StreamExecutor uses the latter.
-  loader_spec_->AddCudaPtxInMemory(
-      se::port::StringPiece(ptx.data(), ptx.size()), kernel_name_);
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
@@ -56,41 +67,56 @@ void KernelThunk::SetLaunchDimensions(const LaunchDimensions& launch_dims) {
   launch_dimensions_ = launch_dims;
 }
 
-tensorflow::Status KernelThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+static void PrintBufferContents(
+    se::Stream* stream, absl::Span<const se::DeviceMemoryBase> buffer_args) {
+  int input_idx = 0;
+  for (const se::DeviceMemoryBase& buf : buffer_args) {
+    auto host_buffer = absl::make_unique<char[]>(buf.size());
+    CHECK(stream->ThenMemcpy(host_buffer.get(), buf, buf.size()).ok());
+    CHECK(stream->BlockHostUntilDone().ok());
+
+    std::string buffer_contents;
+    for (int i = 0; i < buf.size(); i++) {
+      absl::StrAppendFormat(&buffer_contents, "%x ",
+                            static_cast<unsigned>(host_buffer[i]));
+    }
+    VLOG(100) << "BUF(" << input_idx++ << ") = " << buffer_contents;
+  }
+}
+
+Status KernelThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Load the kernel.
-  se::StreamExecutor* executor = stream->parent();
+  se::StreamExecutor* executor = params.stream->parent();
   LaunchDimensions launch_dimensions;
   const se::KernelBase* kernel = nullptr;
+
   {
     tensorflow::mutex_lock lock(mutex_);
     auto it = kernel_cache_.find(executor);
-    if (kernel_cache_.end() == it) {
-      it = kernel_cache_.emplace(executor, se::KernelBase(executor)).first;
-      if (!executor->GetKernel(*loader_spec_, &it->second)) {
-        return InternalError("Unable to load kernel %s", kernel_name_.c_str());
-      }
-    }
+    CHECK(it != kernel_cache_.end())
+        << "Initialize() not called for StreamExecutor " << executor;
     launch_dimensions = launch_dimensions_;
-    kernel = &it->second;
+    kernel = it->second.get();
   }
 
-  // Launch the kernel with potentially multiple blocks and threads.
-  static constexpr int kKernelArgsLimit = 1024;
-  auto kernel_args = MakeUnique<se::KernelArgsArray<kKernelArgsLimit>>();
-  for (const BufferAllocation::Slice io_buffer : io_buffers_) {
-    kernel_args->add_device_memory_argument(
-        buffer_allocations.GetDeviceAddress(io_buffer));
+  VLOG(3) << "Launching " << kernel->name();
+  absl::InlinedVector<se::DeviceMemoryBase, 4> buffer_args;
+  for (const BufferAllocation* arg : args_) {
+    se::DeviceMemoryBase buf =
+        params.buffer_allocations->GetDeviceAddress(arg->index());
+    VLOG(3) << "  Arg: alloc #" << arg->index() << ": " << buf.opaque() << "  ("
+            << buf.size() << "B)";
+    buffer_args.push_back(buf);
   }
-  kernel_args->add_device_memory_argument(
-      buffer_allocations.GetTempBufferBase());
-  if (!stream->parent()->Launch(
-          stream, se::ThreadDim(launch_dimensions.threads_per_block()),
-          se::BlockDim(launch_dimensions.block_count()), *kernel,
-          *kernel_args)) {
-    return InternalError("Unable to launch kernel %s", kernel_name_.c_str());
+
+  if (VLOG_IS_ON(100)) {
+    PrintBufferContents(params.stream, buffer_args);
   }
-  return tensorflow::Status::OK();
+
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
+  return ExecuteKernelOnStream(*kernel, buffer_args, launch_dimensions,
+                               params.stream);
 }
 
 }  // namespace gpu

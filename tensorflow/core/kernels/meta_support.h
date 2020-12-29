@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
+#ifndef TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
+#define TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
 
 #include "meta/multi_thread_gemm.h"
 #include "meta/multi_thread_transform.h"
@@ -64,7 +64,7 @@ bool IsSupportedAndEnabled();
 //     sum((a_data[i, l] + offset_a) * (b_data[l, j] + offset_b)) : l in [0, k)
 //
 // If transpose_a is false the lhs operand has row major layout, otherwise
-// column major. Similarily transpose_b describes the layout of the rhs operand.
+// column major. Similarly transpose_b describes the layout of the rhs operand.
 // lda, ldb, and ldc are the strides of the lhs operand, rhs operand and the
 // result arrays.
 void QuantizedGemm(OpKernelContext* context, bool transpose_a, bool transpose_b,
@@ -109,4 +109,4 @@ void Clamp(OpKernelContext* context, const quint8* input, int input_count,
 }  // namespace meta
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_
+#endif  // TENSORFLOW_CONTRIB_QUANTIZATION_KERNELS_META_SUPPORT_H_

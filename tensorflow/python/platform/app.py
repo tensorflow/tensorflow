@@ -20,34 +20,21 @@ from __future__ import print_function
 
 import sys as _sys
 
+from absl.app import run as _run
+
 from tensorflow.python.platform import flags
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
+def _parse_flags_tolerate_undef(argv):
+  """Parse args, returning any unknown flags (ABSL defaults to crashing)."""
+  return flags.FLAGS(_sys.argv if argv is None else argv, known_only=True)
+
+
+@tf_export(v1=['app.run'])
 def run(main=None, argv=None):
   """Runs the program with an optional 'main' function and 'argv' list."""
-  f = flags.FLAGS
-
-  # Extract the args from the optional `argv` list.
-  args = argv[1:] if argv else None
-
-  # Parse the known flags from that list, or from the command
-  # line otherwise.
-  # pylint: disable=protected-access
-  flags_passthrough = f._parse_flags(args=args)
-  # pylint: enable=protected-access
 
   main = main or _sys.modules['__main__'].main
 
-  # Call the main function, passing through any arguments
-  # to the final program.
-  _sys.exit(main(_sys.argv[:1] + flags_passthrough))
-
-
-_allowed_symbols = [
-    'run',
-    # Allowed submodule.
-    'flags',
-]
-
-remove_undocumented(__name__, _allowed_symbols)
+  _run(main=main, argv=argv, flags_parser=_parse_flags_tolerate_undef)

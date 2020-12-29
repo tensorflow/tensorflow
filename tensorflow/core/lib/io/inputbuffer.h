@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_INPUTBUFFER_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
@@ -43,7 +44,8 @@ class InputBuffer {
   // If successful, returns OK.  If we are already at the end of the
   // file, we return an OUT_OF_RANGE error.  Otherwise, we return
   // some other non-OK status.
-  Status ReadLine(string* result);
+  template <typename T>
+  Status ReadLine(T* result);
 
   // Reads bytes_to_read bytes into *result, overwriting *result.
   //
@@ -60,6 +62,9 @@ class InputBuffer {
   // Reads a single varint32.
   Status ReadVarint32(uint32* result);
 
+  // Reads a single varint64.
+  Status ReadVarint64(uint64* result);
+
   // Like ReadNBytes() without returning the bytes read.
   Status SkipNBytes(int64 bytes_to_skip);
 
@@ -69,6 +74,9 @@ class InputBuffer {
   // data we can.  Otherwise, Seek() throws out the current buffer and the next
   // read will trigger a File::Read().
   Status Seek(int64 position);
+
+  // Provides a hint about future reads, which may improve their performance.
+  Status Hint(int64 bytes_to_read);
 
   // Returns the position in the file.
   int64 Tell() const { return file_pos_ - (limit_ - pos_); }
@@ -81,6 +89,15 @@ class InputBuffer {
 
   // Internal slow-path routine used by ReadVarint32().
   Status ReadVarint32Fallback(uint32* result);
+
+  // Internal slow-path routine used by ReadVarint64().
+  Status ReadVarint64Fallback(uint64* result);
+
+  // Helper method for reading a varint which can span at max `max_bytes`.
+  // If the varint is longer, a DataLoss error status is returned.
+  // If end of file is reached while reading, OutOfRange error is returned.
+  template <typename T>
+  Status ReadVarintFallback(T* result, int max_bytes);
 
   RandomAccessFile* file_;  // Not owned
   int64 file_pos_;          // Next position to read from in "file_"
@@ -95,6 +112,10 @@ class InputBuffer {
 
 // Implementation details.
 
+// Explicit instantiations defined in inputbuffer.cc.
+extern template Status InputBuffer::ReadLine<string>(string* result);
+extern template Status InputBuffer::ReadLine<tstring>(tstring* result);
+
 // Inlined for performance.
 inline Status InputBuffer::ReadVarint32(uint32* result) {
   if (pos_ + core::kMaxVarint32Bytes <= limit_) {
@@ -106,6 +127,20 @@ inline Status InputBuffer::ReadVarint32(uint32* result) {
     return Status::OK();
   } else {
     return ReadVarint32Fallback(result);
+  }
+}
+
+// Inlined for performance.
+inline Status InputBuffer::ReadVarint64(uint64* result) {
+  if (pos_ + core::kMaxVarint64Bytes <= limit_) {
+    // Fast path: directly parse from buffered data.
+    // Reads strictly from the range [pos_, limit_).
+    const char* offset = core::GetVarint64Ptr(pos_, limit_, result);
+    if (offset == nullptr) return errors::OutOfRange("Parsed past limit.");
+    pos_ = const_cast<char*>(offset);
+    return Status::OK();
+  } else {
+    return ReadVarint64Fallback(result);
   }
 }
 

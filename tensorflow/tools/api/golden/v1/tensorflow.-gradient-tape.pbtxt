@@ -1,0 +1,37 @@
+path: "tensorflow.GradientTape"
+tf_class {
+  is_instance: "<class \'tensorflow.python.eager.backprop.GradientTape\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'persistent\', \'watch_accessed_variables\'], varargs=None, keywords=None, defaults=[\'False\', \'True\'], "
+  }
+  member_method {
+    name: "batch_jacobian"
+    argspec: "args=[\'self\', \'target\', \'source\', \'unconnected_gradients\', \'parallel_iterations\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "gradient"
+    argspec: "args=[\'self\', \'target\', \'sources\', \'output_gradients\', \'unconnected_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'UnconnectedGradients.NONE\'], "
+  }
+  member_method {
+    name: "jacobian"
+    argspec: "args=[\'self\', \'target\', \'sources\', \'unconnected_gradients\', \'parallel_iterations\', \'experimental_use_pfor\'], varargs=None, keywords=None, defaults=[\'UnconnectedGradients.NONE\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "reset"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stop_recording"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "watch"
+    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "watched_variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+}

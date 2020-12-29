@@ -13,38 +13,47 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_HEXAGON_GRAPH_TRANSFER_UTILS_H_
-#define TENSORFLOW_PLATFORM_HEXAGON_GRAPH_TRANSFER_UTILS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFER_UTILS_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFER_UTILS_H_
 
 #include <queue>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/hexagon/graph_transferer.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
+class RemoteFusedGraphExecuteInfo;
+
 class GraphTransferUtils {
  public:
   static std::priority_queue<std::tuple<float, int, string>>
   GetTopNFloatResults(const float* const data, const string* const labels,
                       const int element_count);
+
   static void DumpTopNFloatResults(const float* const data,
                                    const string* const labels,
                                    const int element_count, const int top_n);
 
   static GraphDef BuildFusedGraphDef(
-      const IGraphTransferOpsDefinitions& ops_definitions,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions,
       const string& remote_graph_execute_name,
-      const std::vector<GraphTransferer::InputNodeInfo>& inputs,
-      const std::vector<string>& outputs, const GraphDef& def,
-      GraphTransferer* gt);
+      const std::vector<std::pair<string, Tensor>>& inputs,
+      const std::vector<string>& outputs, GraphDef* original_def);
 
  private:
+  static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
+      const GraphDef& graph_def,
+      const std::vector<std::pair<string, Tensor>>& inputs,
+      const std::vector<string>& outputs,
+      const RemoteFusedGraphExecuteUtils::TensorShapeMap& tensor_shape_map);
+
   TF_DISALLOW_COPY_AND_ASSIGN(GraphTransferUtils);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_HEXAGON_GRAPH_TRANSFER_UTILS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFER_UTILS_H_

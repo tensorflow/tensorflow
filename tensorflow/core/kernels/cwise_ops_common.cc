@@ -20,7 +20,9 @@ namespace tensorflow {
 BinaryOpShared::BinaryOpShared(OpKernelConstruction* ctx, DataType out,
                                DataType in)
     : OpKernel(ctx) {
+#if !defined(INTEL_MKL) || !defined(ENABLE_MKL)
   OP_REQUIRES_OK(ctx, ctx->MatchSignature({in, in}, {out}));
+#endif  // !INTEL_MKL || !ENABLE_MKL
 }
 
 void BinaryOpShared::SetUnimplementedError(OpKernelContext* ctx) {
@@ -38,6 +40,11 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   if ((op == "Div" || op == "Mod" || op == "FloorMod" || op == "FloorDiv") &&
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
     ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
+  } else if ((op == "Pow") &&
+             DataTypeIsInteger(ctx->op_kernel().input_type(0)) &&
+             DataTypeIsSigned(ctx->op_kernel().input_type(1))) {
+    ctx->CtxFailure(errors::InvalidArgument(
+        "Integers to negative integer powers are not allowed"));
   } else {
     ctx->CtxFailure(
         errors::Internal("Unexpected error in binary operator "
@@ -50,16 +57,29 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
       in1(ctx->input(1)),
       bcast(BCast::FromShape(in0.shape()), BCast::FromShape(in1.shape())) {
   if (!bcast.IsValid()) {
-    ctx->SetStatus(errors::InvalidArgument("Incompatible shapes: ",
-                                           in0.shape().DebugString(), " vs. ",
-                                           in1.shape().DebugString()));
+    bool incompatible_shape_error;
+    bool has_attr =
+        TryGetNodeAttr(ctx->op_kernel().def(), "incompatible_shape_error",
+                       &(incompatible_shape_error));
+    if (has_attr && !incompatible_shape_error) {
+      const string& op = ctx->op_kernel().type_string();
+      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
+      result = (op == "NotEqual");
+      return;
+    }
+
+    ctx->SetStatus(errors::InvalidArgument(
+        "Incompatible shapes: ", in0.shape().DebugString(), " vs. ",
+        in1.shape().DebugString()));
     return;
   }
-  OP_REQUIRES_OK(
-      ctx, ctx->allocate_output(0, BCast::ToShape(bcast.output_shape()), &out));
-  out_num_elements = out->NumElements();
+
+  const TensorShape output_shape = BCast::ToShape(bcast.output_shape());
+  out_num_elements = output_shape.num_elements();
   in0_num_elements = in0.NumElements();
   in1_num_elements = in1.NumElements();
+  OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                          {0, 1}, 0, output_shape, &out));
 
   ndims = static_cast<int>(bcast.x_reshape().size());
 }

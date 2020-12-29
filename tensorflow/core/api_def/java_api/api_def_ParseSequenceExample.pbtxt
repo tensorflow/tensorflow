@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ParseSequenceExample"
+  endpoint {
+    name: "io.ParseSequenceExample"
+  }
+}

@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import image_ops
@@ -127,8 +128,9 @@ class OptimizeForInferenceTest(test.TestCase):
         graph_def, [], [add_name], dtypes.float32.as_datatype_enum)
     self.assertProtoEquals(expected_output, output)
 
+  @test_util.run_deprecated_v1
   def testFoldBatchNorms(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 1, 6, 2], dtype=dtypes.float32)
@@ -145,7 +147,7 @@ class OptimizeForInferenceTest(test.TestCase):
           np.array([0.1, 0.6]), shape=[2], dtype=dtypes.float32)
       gamma_op = constant_op.constant(
           np.array([1.0, 2.0]), shape=[2], dtype=dtypes.float32)
-      ops.get_default_graph().graph_def_versions.producer = 8
+      test_util.set_producer_version(ops.get_default_graph(), 8)
       gen_nn_ops._batch_norm_with_global_normalization(
           conv_op,
           mean_op,
@@ -160,7 +162,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
         original_graph_def)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -170,8 +172,130 @@ class OptimizeForInferenceTest(test.TestCase):
     for node in optimized_graph_def.node:
       self.assertNotEqual("BatchNormWithGlobalNormalization", node.op)
 
+  @test_util.run_deprecated_v1
+  def testFoldFusedBatchNorms(self):
+    for data_format, use_gpu, conv2d_func in [
+        ("NHWC", False, nn_ops.conv2d), ("NCHW", True, nn_ops.conv2d),
+        ("NHWC", False, nn_ops.depthwise_conv2d_native),
+        ("NCHW", True, nn_ops.depthwise_conv2d_native)
+    ]:
+      with self.cached_session(use_gpu=use_gpu) as sess:
+        inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
+        input_op = constant_op.constant(
+            np.array(inputs),
+            shape=[1, 1, 6, 2] if data_format == "NHWC" else [1, 2, 1, 6],
+            dtype=dtypes.float32)
+        if conv2d_func == nn_ops.conv2d:
+          weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+          weights_op = constant_op.constant(
+              np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32)
+        else:
+          weights = [1, 2, 0.3, 0.4]
+          weights_op = constant_op.constant(
+              np.array(weights), shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        conv_op = conv2d_func(
+            input_op,
+            weights_op, [1, 1, 1, 1],
+            padding="SAME",
+            data_format=data_format,
+            name="conv_op")
+        mean_op = constant_op.constant(
+            np.array([10, 20]), shape=[2], dtype=dtypes.float32)
+        variance_op = constant_op.constant(
+            np.array([0.25, 0.5]), shape=[2], dtype=dtypes.float32)
+        beta_op = constant_op.constant(
+            np.array([0.1, 0.6]), shape=[2], dtype=dtypes.float32)
+        gamma_op = constant_op.constant(
+            np.array([1.0, 2.0]), shape=[2], dtype=dtypes.float32)
+        ops.get_default_graph().graph_def_versions.producer = 9
+        gen_nn_ops._fused_batch_norm(
+            conv_op,
+            gamma_op,
+            beta_op,
+            mean_op,
+            variance_op,
+            0.00001,
+            is_training=False,
+            data_format=data_format,
+            name="output")
+        original_graph_def = sess.graph_def
+        original_result = sess.run(["output:0"])
+      optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
+          original_graph_def)
+
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/output:0"])
+
+      self.assertAllClose(
+          original_result, optimized_result, rtol=1e-04, atol=1e-06)
+
+      for node in optimized_graph_def.node:
+        self.assertNotEqual("FusedBatchNorm", node.op)
+
+  @test_util.run_deprecated_v1
+  def testFoldFusedBatchNormsV3(self):
+    for data_format, conv2d_func in [("NHWC", nn_ops.conv2d),
+                                     ("NCHW", nn_ops.conv2d),
+                                     ("NHWC", nn_ops.depthwise_conv2d_native),
+                                     ("NCHW", nn_ops.depthwise_conv2d_native)]:
+      with self.cached_session() as sess:
+        inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
+        input_op = constant_op.constant(
+            np.array(inputs),
+            shape=[1, 1, 6, 2] if data_format == "NHWC" else [1, 2, 1, 6],
+            dtype=dtypes.float32)
+        if conv2d_func == nn_ops.conv2d:
+          weights = [1, 2, 3, 4, 0.1, 0.2, 0.3, 0.4]
+          weights_op = constant_op.constant(
+              np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32)
+        else:
+          weights = [1, 2, 0.3, 0.4]
+          weights_op = constant_op.constant(
+              np.array(weights), shape=[1, 2, 2, 1], dtype=dtypes.float32)
+        mean_op = constant_op.constant(
+            np.array([10, 20]), shape=[2], dtype=dtypes.float32)
+        variance_op = constant_op.constant(
+            np.array([0.25, 0.5]), shape=[2], dtype=dtypes.float32)
+        beta_op = constant_op.constant(
+            np.array([0.1, 0.6]), shape=[2], dtype=dtypes.float32)
+        gamma_op = constant_op.constant(
+            np.array([1.0, 2.0]), shape=[2], dtype=dtypes.float32)
+        ops.get_default_graph().graph_def_versions.producer = 9
+        conv_op = conv2d_func(
+            input_op,
+            weights_op, [1, 1, 1, 1],
+            padding="SAME",
+            data_format=data_format,
+            name="conv_op")
+        gen_nn_ops.fused_batch_norm_v3(
+            conv_op,
+            gamma_op,
+            beta_op,
+            mean_op,
+            variance_op,
+            0.00001,
+            is_training=False,
+            data_format=data_format,
+            name="output")
+        original_graph_def = sess.graph_def
+        original_result = sess.run(["output:0"])
+      optimized_graph_def = optimize_for_inference_lib.fold_batch_norms(
+          original_graph_def)
+    with self.cached_session() as sess:
+      _ = importer.import_graph_def(
+          optimized_graph_def, input_map={}, name="optimized")
+      optimized_result = sess.run(["optimized/output:0"])
+
+      self.assertAllClose(
+          original_result, optimized_result, rtol=1e-04, atol=1e-06)
+
+      for node in optimized_graph_def.node:
+        self.assertNotEqual("FusedBatchNormV3", node.op)
+
+  @test_util.run_deprecated_v1
   def testFuseResizePadAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -189,7 +313,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -201,8 +325,9 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("MirrorPad", node.op)
       self.assertNotEqual("ResizeBilinear", node.op)
 
+  @test_util.run_deprecated_v1
   def testFuseResizeAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -218,7 +343,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -227,10 +352,12 @@ class OptimizeForInferenceTest(test.TestCase):
 
     for node in optimized_graph_def.node:
       self.assertNotEqual("Conv2D", node.op)
-      self.assertNotEqual("ResizeBilinear", node.op)
+      self.assertNotEqual("MirrorPad", node.op)
 
+
+  @test_util.run_deprecated_v1
   def testFusePadAndConv(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
       input_op = constant_op.constant(
           np.array(inputs), shape=[1, 2, 3, 2], dtype=dtypes.float32)
@@ -246,7 +373,7 @@ class OptimizeForInferenceTest(test.TestCase):
     optimized_graph_def = optimize_for_inference_lib.fuse_resize_and_conv(
         original_graph_def, ["output"])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _ = importer.import_graph_def(
           optimized_graph_def, input_map={}, name="optimized")
       optimized_result = sess.run(["optimized/output:0"])
@@ -255,7 +382,7 @@ class OptimizeForInferenceTest(test.TestCase):
 
     for node in optimized_graph_def.node:
       self.assertNotEqual("Conv2D", node.op)
-      self.assertNotEqual("MirrorPad", node.op)
+      self.assertNotEqual("ResizeBilinear", node.op)
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ namespace tensorflow {
 namespace {
 
 void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit,
+                 int64 per_thread_max_parallelism,
                  thread::ThreadPool* threads) {
   mutex mu;
   int64 num_shards = 0;
@@ -46,9 +47,18 @@ void RunSharding(int64 num_workers, int64 total, int64 cost_per_unit,
             work[start] = true;
           }
         });
-  EXPECT_EQ(num_done_work, total);
   LOG(INFO) << num_workers << " " << total << " " << cost_per_unit << " "
             << num_shards;
+  EXPECT_EQ(num_done_work, total);
+  if (std::min(num_workers, per_thread_max_parallelism) <
+      threads->NumThreads()) {
+    // If the intention is to limit the parallelism explicitly, we'd
+    // better honor it. Ideally, even if per_thread_max_parallelism >
+    // num_workers, we should expect that Shard() implementation do
+    // not over-shard. Unfortunately, ThreadPoolDevice::parallelFor
+    // tends to over-shard.
+    EXPECT_LE(num_shards, 1 + per_thread_max_parallelism);
+  }
 }
 
 TEST(Shard, Basic) {
@@ -56,7 +66,10 @@ TEST(Shard, Basic) {
   for (auto workers : {0, 1, 2, 3, 5, 7, 10, 11, 15, 100, 1000}) {
     for (auto total : {0, 1, 7, 10, 64, 100, 256, 1000, 9999}) {
       for (auto cost_per_unit : {0, 1, 11, 102, 1003, 10005, 1000007}) {
-        RunSharding(workers, total, cost_per_unit, &threads);
+        for (auto maxp : {1, 2, 4, 8, 100}) {
+          ScopedPerThreadMaxParallelism s(maxp);
+          RunSharding(workers, total, cost_per_unit, maxp, &threads);
+        }
       }
     }
   }
@@ -76,12 +89,14 @@ TEST(Shard, OverflowTest) {
   }
 }
 
-void BM_Sharding(int iters, int arg) {
+void BM_Sharding(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
   thread::ThreadPool threads(Env::Default(), "test", 16);
   const int64 total = 1LL << 30;
   auto lambda = [](int64 start, int64 limit) {};
   auto work = std::cref(lambda);
-  for (; iters > 0; iters -= arg) {
+  for (auto s : state) {
     Shard(arg - 1, &threads, total, 1, work);
   }
 }

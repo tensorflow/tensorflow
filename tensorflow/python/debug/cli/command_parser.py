@@ -17,14 +17,40 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import ast
 import re
 import sys
 
 
 _BRACKETS_PATTERN = re.compile(r"\[[^\]]*\]")
-_QUOTES_PATTERN = re.compile(r"\"[^\"]*\"")
+_QUOTES_PATTERN = re.compile(r"(\"[^\"]*\"|\'[^\']*\')")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
+
+_NUMBER_PATTERN = re.compile(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?")
+
+
+class Interval(object):
+  """Represents an interval between a start and end value."""
+
+  def __init__(self, start, start_included, end, end_included):
+    self.start = start
+    self.start_included = start_included
+    self.end = end
+    self.end_included = end_included
+
+  def contains(self, value):
+    if value < self.start or value == self.start and not self.start_included:
+      return False
+    if value > self.end or value == self.end and not self.end_included:
+      return False
+    return True
+
+  def __eq__(self, other):
+    return (self.start == other.start and
+            self.start_included == other.start_included and
+            self.end == other.end and
+            self.end_included == other.end_included)
 
 
 def parse_command(command):
@@ -66,7 +92,8 @@ def parse_command(command):
       argument = command[idx0:start]
 
       # Strip leading and trailing double quote if they are paired.
-      if argument.startswith("\"") and argument.endswith("\""):
+      if (argument.startswith("\"") and argument.endswith("\"") or
+          argument.startswith("'") and argument.endswith("'")):
         argument = argument[1:-1]
       arguments.append(argument)
       idx0 = end
@@ -91,15 +118,26 @@ def extract_output_file_path(args):
   if args and args[-1].endswith(">"):
     raise SyntaxError("Redirect file path is empty")
   elif args and args[-1].startswith(">"):
-    output_file_path = args[-1][1:]
-    args = args[:-1]
+    try:
+      _parse_interval(args[-1])
+      if len(args) > 1 and args[-2].startswith("-"):
+        output_file_path = None
+      else:
+        output_file_path = args[-1][1:]
+        args = args[:-1]
+    except ValueError:
+      output_file_path = args[-1][1:]
+      args = args[:-1]
   elif len(args) > 1 and args[-2] == ">":
     output_file_path = args[-1]
     args = args[:-2]
   elif args and args[-1].count(">") == 1:
     gt_index = args[-1].index(">")
-    output_file_path = args[-1][gt_index + 1:]
-    args[-1] = args[-1][:gt_index]
+    if gt_index > 0 and args[-1][gt_index - 1] == "=":
+      output_file_path = None
+    else:
+      output_file_path = args[-1][gt_index + 1:]
+      args[-1] = args[-1][:gt_index]
   elif len(args) > 1 and args[-2].endswith(">"):
     output_file_path = args[-1]
     args = args[:-1]
@@ -243,6 +281,131 @@ def parse_ranges(range_string):
   return ranges
 
 
+def parse_memory_interval(interval_str):
+  """Convert a human-readable memory interval to a tuple of start and end value.
+
+  Args:
+    interval_str: (`str`) A human-readable str representing an interval
+      (e.g., "[10kB, 20kB]", "<100M", ">100G"). Only the units "kB", "MB", "GB"
+      are supported. The "B character at the end of the input `str` may be
+      omitted.
+
+  Returns:
+    `Interval` object where start and end are in bytes.
+
+  Raises:
+    ValueError: if the input is not valid.
+  """
+  str_interval = _parse_interval(interval_str)
+  interval_start = 0
+  interval_end = float("inf")
+  if str_interval.start:
+    interval_start = parse_readable_size_str(str_interval.start)
+  if str_interval.end:
+    interval_end = parse_readable_size_str(str_interval.end)
+  if interval_start > interval_end:
+    raise ValueError(
+        "Invalid interval %s. Start of interval must be less than or equal "
+        "to end of interval." % interval_str)
+  return Interval(interval_start, str_interval.start_included,
+                  interval_end, str_interval.end_included)
+
+
+def parse_time_interval(interval_str):
+  """Convert a human-readable time interval to a tuple of start and end value.
+
+  Args:
+    interval_str: (`str`) A human-readable str representing an interval
+      (e.g., "[10us, 20us]", "<100s", ">100ms"). Supported time suffixes are
+      us, ms, s.
+
+  Returns:
+    `Interval` object where start and end are in microseconds.
+
+  Raises:
+    ValueError: if the input is not valid.
+  """
+  str_interval = _parse_interval(interval_str)
+  interval_start = 0
+  interval_end = float("inf")
+  if str_interval.start:
+    interval_start = parse_readable_time_str(str_interval.start)
+  if str_interval.end:
+    interval_end = parse_readable_time_str(str_interval.end)
+  if interval_start > interval_end:
+    raise ValueError(
+        "Invalid interval %s. Start must be before end of interval." %
+        interval_str)
+  return Interval(interval_start, str_interval.start_included,
+                  interval_end, str_interval.end_included)
+
+
+def _parse_interval(interval_str):
+  """Convert a human-readable interval to a tuple of start and end value.
+
+  Args:
+    interval_str: (`str`) A human-readable str representing an interval
+      (e.g., "[1M, 2M]", "<100k", ">100ms"). The items following the ">", "<",
+      ">=" and "<=" signs have to start with a number (e.g., 3.0, -2, .98).
+      The same requirement applies to the items in the parentheses or brackets.
+
+  Returns:
+    Interval object where start or end can be None
+    if the range is specified as "<N" or ">N" respectively.
+
+  Raises:
+    ValueError: if the input is not valid.
+  """
+  interval_str = interval_str.strip()
+  if interval_str.startswith("<="):
+    if _NUMBER_PATTERN.match(interval_str[2:].strip()):
+      return Interval(start=None, start_included=False,
+                      end=interval_str[2:].strip(), end_included=True)
+    else:
+      raise ValueError("Invalid value string after <= in '%s'" % interval_str)
+  if interval_str.startswith("<"):
+    if _NUMBER_PATTERN.match(interval_str[1:].strip()):
+      return Interval(start=None, start_included=False,
+                      end=interval_str[1:].strip(), end_included=False)
+    else:
+      raise ValueError("Invalid value string after < in '%s'" % interval_str)
+  if interval_str.startswith(">="):
+    if _NUMBER_PATTERN.match(interval_str[2:].strip()):
+      return Interval(start=interval_str[2:].strip(), start_included=True,
+                      end=None, end_included=False)
+    else:
+      raise ValueError("Invalid value string after >= in '%s'" % interval_str)
+  if interval_str.startswith(">"):
+    if _NUMBER_PATTERN.match(interval_str[1:].strip()):
+      return Interval(start=interval_str[1:].strip(), start_included=False,
+                      end=None, end_included=False)
+    else:
+      raise ValueError("Invalid value string after > in '%s'" % interval_str)
+
+  if (not interval_str.startswith(("[", "("))
+      or not interval_str.endswith(("]", ")"))):
+    raise ValueError(
+        "Invalid interval format: %s. Valid formats are: [min, max], "
+        "(min, max), <max, >min" % interval_str)
+  interval = interval_str[1:-1].split(",")
+  if len(interval) != 2:
+    raise ValueError(
+        "Incorrect interval format: %s. Interval should specify two values: "
+        "[min, max] or (min, max)." % interval_str)
+
+  start_item = interval[0].strip()
+  if not _NUMBER_PATTERN.match(start_item):
+    raise ValueError("Invalid first item in interval: '%s'" % start_item)
+  end_item = interval[1].strip()
+  if not _NUMBER_PATTERN.match(end_item):
+    raise ValueError("Invalid second item in interval: '%s'" % end_item)
+
+  return Interval(start=start_item,
+                  start_included=(interval_str[0] == "["),
+                  end=end_item,
+                  end_included=(interval_str[-1] == "]"))
+
+
 def parse_readable_size_str(size_str):
   """Convert a human-readable str representation to number of bytes.
 
@@ -277,6 +440,34 @@ def parse_readable_size_str(size_str):
                      size_str)
 
 
+def parse_readable_time_str(time_str):
+  """Parses a time string in the format N, Nus, Nms, Ns.
+
+  Args:
+    time_str: (`str`) string consisting of an integer time value optionally
+      followed by 'us', 'ms', or 's' suffix. If suffix is not specified,
+      value is assumed to be in microseconds. (e.g. 100us, 8ms, 5s, 100).
+
+  Returns:
+    Microseconds value.
+  """
+  def parse_positive_float(value_str):
+    value = float(value_str)
+    if value < 0:
+      raise ValueError(
+          "Invalid time %s. Time value must be positive." % value_str)
+    return value
+
+  time_str = time_str.strip()
+  if time_str.endswith("us"):
+    return int(parse_positive_float(time_str[:-2]))
+  elif time_str.endswith("ms"):
+    return int(parse_positive_float(time_str[:-2]) * 1e3)
+  elif time_str.endswith("s"):
+    return int(parse_positive_float(time_str[:-1]) * 1e6)
+  return int(parse_positive_float(time_str))
+
+
 def evaluate_tensor_slice(tensor, tensor_slicing):
   """Call eval on the slicing of a tensor, with validation.
 
@@ -298,3 +489,62 @@ def evaluate_tensor_slice(tensor, tensor_slicing):
     raise ValueError("Invalid tensor-slicing string.")
 
   return tensor[_parse_slices(tensor_slicing)]
+
+
+def get_print_tensor_argparser(description):
+  """Get an ArgumentParser for a command that prints tensor values.
+
+  Examples of such commands include print_tensor and print_feed.
+
+  Args:
+    description: Description of the ArgumentParser.
+
+  Returns:
+    An instance of argparse.ArgumentParser.
+  """
+
+  ap = argparse.ArgumentParser(
+      description=description, usage=argparse.SUPPRESS)
+  ap.add_argument(
+      "tensor_name",
+      type=str,
+      help="Name of the tensor, followed by any slicing indices, "
+      "e.g., hidden1/Wx_plus_b/MatMul:0, "
+      "hidden1/Wx_plus_b/MatMul:0[1, :]")
+  ap.add_argument(
+      "-n",
+      "--number",
+      dest="number",
+      type=int,
+      default=-1,
+      help="0-based dump number for the specified tensor. "
+      "Required for tensor with multiple dumps.")
+  ap.add_argument(
+      "-r",
+      "--ranges",
+      dest="ranges",
+      type=str,
+      default="",
+      help="Numerical ranges to highlight tensor elements in. "
+      "Examples: -r 0,1e-8, -r [-0.1,0.1], "
+      "-r \"[[-inf, -0.1], [0.1, inf]]\"")
+  ap.add_argument(
+      "-a",
+      "--all",
+      dest="print_all",
+      action="store_true",
+      help="Print the tensor in its entirety, i.e., do not use ellipses.")
+  ap.add_argument(
+      "-s",
+      "--numeric_summary",
+      action="store_true",
+      help="Include summary for non-empty tensors of numeric (int*, float*, "
+      "complex*) and Boolean types.")
+  ap.add_argument(
+      "-w",
+      "--write_path",
+      type=str,
+      default="",
+      help="Path of the numpy file to write the tensor data to, using "
+      "numpy.save().")
+  return ap

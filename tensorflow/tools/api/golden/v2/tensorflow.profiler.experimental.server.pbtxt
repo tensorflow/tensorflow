@@ -1,0 +1,7 @@
+path: "tensorflow.profiler.experimental.server"
+tf_module {
+  member_method {
+    name: "start"
+    argspec: "args=[\'port\'], varargs=None, keywords=None, defaults=None"
+  }
+}

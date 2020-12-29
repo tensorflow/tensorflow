@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 // Package internal generates Go source code with functions for TensorFlow operations.
 //
@@ -27,68 +29,111 @@
 // encountered.
 package internal
 
-// #include "tensorflow/c/c_api.h"
+/*
+#include <stdlib.h>
+
+#include "tensorflow/c/c_api.h"
+*/
 import "C"
 
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
+	"path"
 	"reflect"
 	"strings"
 	"text/template"
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework"
+	adpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
+	odpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
 )
 
 // GenerateFunctionsForRegisteredOps writes a Go source code file to w
 // containing functions for each TensorFlow operation registered in the address
 // space of the calling process.
-func GenerateFunctionsForRegisteredOps(w io.Writer) error {
-	ops, err := registeredOps()
+// apidefDirs should be a contain of directories containing api_def_*.pbtxt
+// files to load.
+func GenerateFunctionsForRegisteredOps(
+	w io.Writer, apidefDirs []string) error {
+	ops, apimap, err := registeredOps()
 	if err != nil {
 		return err
 	}
-	return generateFunctionsForOps(w, ops)
+	for _, dir := range apidefDirs {
+		if err = updateAPIDefs(apimap, dir); err != nil {
+			return err
+		}
+	}
+	return generateFunctionsForOps(w, ops, apimap)
 }
 
-func registeredOps() (*pb.OpList, error) {
+func registeredOps() (*odpb.OpList, *apiDefMap, error) {
 	buf := C.TF_GetAllOpList()
 	defer C.TF_DeleteBuffer(buf)
 	var (
-		list = new(pb.OpList)
+		list = new(odpb.OpList)
 		size = int(buf.length)
 		// A []byte backed by C memory.
 		// See: https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices
 		data = (*[1 << 30]byte)(unsafe.Pointer(buf.data))[:size:size]
 		err  = proto.Unmarshal(data, list)
 	)
-	return list, err
+	if err != nil {
+		return nil, nil, err
+	}
+	apimap, err := newAPIDefMap(list)
+	return list, apimap, err
 }
 
-func generateFunctionsForOps(w io.Writer, ops *pb.OpList) error {
+func updateAPIDefs(m *apiDefMap, dir string) error {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".pbtxt") {
+			continue
+		}
+		data, err := ioutil.ReadFile(path.Join(dir, file.Name()))
+		if err != nil {
+			return fmt.Errorf("failed to read %q: %v", file.Name(), err)
+		}
+		if err = m.Put(string(data)); err != nil {
+			return fmt.Errorf("failed to process %q: %v", file.Name(), err)
+		}
+	}
+	return nil
+}
+
+func generateFunctionsForOps(w io.Writer, ops *odpb.OpList, apimap *apiDefMap) error {
 	thisPackage := reflect.TypeOf(tmplArgs{}).PkgPath()
 	if err := tmplHeader.Execute(w, thisPackage); err != nil {
 		return err
 	}
-	blacklist := map[string]bool{
+	denylist := map[string]bool{
 		"Const":           true,
 		"PyFunc":          true,
 		"PyFuncStateless": true,
 	}
 	for _, op := range ops.Op {
-		if blacklist[op.Name] {
+		if denylist[op.Name] {
 			continue
 		}
-		if err := generateFunctionForOp(w, op); err != nil {
+		apidef, err := apimap.Get(op.Name)
+		if err != nil {
+			return err
+		}
+		if err := generateFunctionForOp(w, op, apidef); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func generateFunctionForOp(w io.Writer, op *pb.OpDef) error {
+func generateFunctionForOp(w io.Writer, op *odpb.OpDef, apidef *adpb.ApiDef) error {
 	if strings.HasPrefix(op.Name, "_") { // Internal operation
 		return nil
 	}
@@ -110,12 +155,16 @@ func generateFunctionForOp(w io.Writer, op *pb.OpDef) error {
 			return nil
 		}
 	}
-	if op.Summary == "" {
+	if apidef.Summary == "" {
 		// Undocumented operation, perhaps a sign of not being ready to
 		// export.
 		return nil
 	}
-	return tmplOp.Execute(w, newTmplArgs(op))
+	tmplArgs, err := newTmplArgs(op, apidef)
+	if err != nil {
+		return err
+	}
+	return tmplOp.Execute(w, tmplArgs)
 }
 
 var (
@@ -156,12 +205,13 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 `))
 
 	tmplOp = template.Must(template.New("op").Funcs(template.FuncMap{
-		"MakeComment": makeComment,
-		"GoType":      goType,
-		"CamelCase":   camelCase,
-		"Identifier":  identifier,
-		"IsListArg":   isListArg,
-		"IsListAttr":  isListAttr,
+		"MakeComment":       makeComment,
+		"GoType":            goType,
+		"CamelCase":         camelCase,
+		"Identifier":        identifier,
+		"IsListArg":         isListArg,
+		"IsListAttr":        isListAttr,
+		"StripLeadingColon": stripLeadingColon,
 	}).Parse(`
 {{if .OptionalAttrs -}}
 {{/* Type for specifying all optional attributes. */ -}}
@@ -169,17 +219,17 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 type {{.Op.Name}}Attr func(optionalAttr)
 
 {{range .OptionalAttrs}}
-// {{$.Op.Name}}{{CamelCase .Name}} sets the optional {{.Name}} attribute to value.
+// {{$.Op.Name}}{{CamelCase .RenameTo}} sets the optional {{.RenameTo}} attribute to value.
 {{- if .Description}}
 //
 // value: {{MakeComment .Description}}
 {{- end}}
-// If not specified, defaults to {{.DefaultValue}}
+// If not specified, defaults to {{StripLeadingColon .DefaultValue}}
 {{- if .HasMinimum}}
 //
-// {{if IsListAttr .}}REQUIRES: len(value) >= {{.Minimum}}{{else}}REQUIRES: value >= {{.Minimum}}{{end}}
+// {{if .IsListAttr }}REQUIRES: len(value) >= {{.Minimum}}{{else}}REQUIRES: value >= {{.Minimum}}{{end}}
 {{- end}}
-func {{$.Op.Name}}{{CamelCase .Name}}(value {{GoType .Type}}) {{$.Op.Name}}Attr {
+func {{$.Op.Name}}{{CamelCase .RenameTo}}(value {{GoType .Type}}) {{$.Op.Name}}Attr {
 	return func(m optionalAttr) {
 		m[{{printf "%q" .Name}}] = value
 	}
@@ -189,14 +239,14 @@ func {{$.Op.Name}}{{CamelCase .Name}}(value {{GoType .Type}}) {{$.Op.Name}}Attr 
 
 {{- /* Create a godoc friendly comment. */ -}}
 
-// {{MakeComment .Op.Summary}}
+// {{MakeComment .APIDef.Summary}}
 
 {{- with .Op.Deprecation}}
 //
 // DEPRECATED at GraphDef version {{.Version}}: {{.Explanation}}
 {{- end -}}
 
-{{- with .Op.Description}}
+{{- with .APIDef.Description}}
 //
 // {{MakeComment .}}
 {{- end -}}
@@ -204,11 +254,11 @@ func {{$.Op.Name}}{{CamelCase .Name}}(value {{GoType .Type}}) {{$.Op.Name}}Attr 
 {{- if .DescribeArguments}}
 //
 // Arguments:
-{{- range .Op.InputArg}}
-//	{{if .Description}}{{Identifier .Name}}: {{MakeComment .Description}}{{end}}
+{{- range .InArgsReordered}}
+//	{{if .Description}}{{Identifier .RenameTo}}: {{MakeComment .Description}}{{end}}
 {{- end -}}
 {{- range .RequiredAttrs}}
-//	{{if .Description}}{{Identifier .Name}}: {{MakeComment .Description}}{{end}}
+//	{{if .Description}}{{Identifier .RenameTo}}: {{MakeComment .Description}}{{end}}
 {{- end -}}
 {{- end -}}
 
@@ -218,12 +268,12 @@ func {{$.Op.Name}}{{CamelCase .Name}}(value {{GoType .Type}}) {{$.Op.Name}}Attr 
 {{- else }}
 {{- if .DescribeOutputs}}
 //
-{{- if ((len .Op.OutputArg) eq 1) }}
-// Returns {{range .Op.OutputArg}}{{MakeComment .Description}}{{end}}
+{{- if eq (len .OutArgs) 1 }}
+// Returns {{range .OutArgs}}{{MakeComment .Description}}{{end}}
 {{- else }}
 // Returns:
-{{- range .Op.OutputArg}}
-//	{{Identifier .Name}}{{if .Description}}: {{MakeComment .Description}}{{end}}
+{{- range .OutArgs}}
+//	{{Identifier .RenameTo}}{{if .Description}}: {{MakeComment .Description}}{{end}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -244,15 +294,15 @@ func {{.Op.Name}}
 */ -}}
 
 (scope *Scope
-{{- range $i, $a := .Op.InputArg}}, {{Identifier $a.Name}} {{if IsListArg $a}}[]{{end}}tf.Output{{end -}}
-{{range $i, $a := .RequiredAttrs}}, {{Identifier $a.Name}} {{GoType $a.Type}}{{end -}}
+{{- range $i, $a := .InArgsReordered}}, {{Identifier $a.RenameTo}} {{if $a.IsListArg}}[]{{end}}tf.Output{{end -}}
+{{range $i, $a := .RequiredAttrs}}, {{Identifier $a.RenameTo}} {{GoType $a.Type}}{{end -}}
 {{if .OptionalAttrs}}, optional ...{{.Op.Name}}Attr{{end -}}
 )
 
-{{- /* Construct outputs: len(OpDef.OutputArg) or a *tf.Operation */ -}}
+{{- /* Construct outputs: len(.OutArgs) or a *tf.Operation */ -}}
 
-{{if .Op.OutputArg -}}
-({{range $i,$a := .Op.OutputArg}}{{if $i}}, {{end}}{{Identifier $a.Name}} {{if IsListArg $a}}[]{{end}}tf.Output{{end -}})
+{{if .OutArgs -}}
+({{range $i,$a := .OutArgs}}{{if $i}}, {{end}}{{Identifier $a.RenameTo}} {{if $a.IsListArg}}[]{{end}}tf.Output{{end -}})
 {{- else -}}
 (o *tf.Operation)
 {{- end }} {
@@ -260,7 +310,7 @@ func {{.Op.Name}}
 		return
 	}
 	{{if .HasAttrs -}}
-	attrs := map[string]interface{}{ {{- range .RequiredAttrs}}{{printf "%q" .Name}}: {{Identifier .Name}},{{end}}}
+	attrs := map[string]interface{}{ {{- range .RequiredAttrs}}{{printf "%q" .Name}}: {{Identifier .RenameTo}},{{end}}}
 	{{if .OptionalAttrs -}}
 	for _, a := range optional {
 		a(attrs)
@@ -269,16 +319,16 @@ func {{.Op.Name}}
 	{{end -}}
 	opspec := tf.OpSpec{
 		Type: {{printf "%q" .Op.Name}},
-		{{if .Op.InputArg -}}
+		{{if .InArgs -}}
 		Input: []tf.Input{
-			{{range .Op.InputArg}}{{if IsListArg .}}tf.OutputList({{Identifier .Name}}){{else}}{{Identifier .Name}}{{end}}, {{end}}
+			{{range $i,$a := .InArgs}}{{if $a.IsListArg}}tf.OutputList({{Identifier $a.RenameTo}}){{else}}{{Identifier $a.RenameTo}}{{end}}, {{end}}
 		},
 		{{- end}}
 		{{- if .HasAttrs}}
 		Attrs: attrs,
 		{{- end}}
 	}
-	{{- if .Op.OutputArg}}
+	{{- if .OutArgs}}
 	{{- if .HasListOutput}}
 	op := scope.AddOperation(opspec)
 	if scope.Err() != nil {
@@ -286,43 +336,105 @@ func {{.Op.Name}}
 	}
 	var idx int
 	var err error
-	{{- range $i, $a := .Op.OutputArg}}
-	{{- if IsListArg $a}}
-	if {{Identifier .Name}}, idx, err = makeOutputList(op, idx, {{printf "%q" .Name}}); err != nil {
+	{{- range $i, $a := .OutArgs}}
+	{{- if $a.IsListArg}}
+	if {{Identifier .RenameTo}}, idx, err = makeOutputList(op, idx, {{printf "%q" .Name}}); err != nil {
 		scope.UpdateErr({{printf "%q" $.Op.Name}}, err)
 		return
 	}
 	{{- else }}
-	{{Identifier .Name}} = op.Output(idx)
+	{{Identifier .RenameTo}} = op.Output(idx)
 	{{- end }}{{- /* if IsListArg */}}
-	{{- end }}{{- /* range .Op.OutputArg */}}
-	return {{range $i, $a := .Op.OutputArg}}{{if $i}}, {{end}}{{Identifier .Name}}{{end}}
+	{{- end }}{{- /* range .OutArgs */}}
+	return {{range $i, $a := .OutArgs}}{{if $i}}, {{end}}{{Identifier .RenameTo}}{{end}}
 	{{- else }}
 	op := scope.AddOperation(opspec)
-	return {{range $i, $a := .Op.OutputArg}}{{if $i}}, {{end}}op.Output({{$i}}){{end}}
+	return {{range $i, $a := .OutArgs}}{{if $i}}, {{end}}op.Output({{$i}}){{end}}
 	{{- end }}{{- /* if .HasListOutput */}}
 	{{- else }}
 	return scope.AddOperation(opspec)
-	{{- end }}{{- /* if .Op.OutputArg */}}
+	{{- end }}{{- /* if .OutArgs */}}
 }
 `))
 )
 
+type attrWrapper struct {
+	op  *odpb.OpDef_AttrDef
+	api *adpb.ApiDef_Attr
+}
+
+func (a *attrWrapper) Name() string              { return a.api.Name }
+func (a *attrWrapper) RenameTo() string          { return a.api.RenameTo }
+func (a *attrWrapper) Description() string       { return a.api.Description }
+func (a *attrWrapper) Type() string              { return a.op.Type }
+func (a *attrWrapper) IsListAttr() bool          { return isListAttr(a.op) }
+func (a *attrWrapper) HasMinimum() bool          { return a.op.HasMinimum }
+func (a *attrWrapper) Minimum() int64            { return a.op.Minimum }
+func (a *attrWrapper) DefaultValue() interface{} { return a.api.DefaultValue }
+
+type argWrapper struct {
+	op  *odpb.OpDef_ArgDef
+	api *adpb.ApiDef_Arg
+}
+
+func (a *argWrapper) Name() string        { return a.api.Name }
+func (a *argWrapper) RenameTo() string    { return a.api.RenameTo }
+func (a *argWrapper) Description() string { return a.api.Description }
+func (a *argWrapper) IsListArg() bool     { return isListArg(a.op) }
+
 type tmplArgs struct {
-	Op *pb.OpDef
+	Op     *odpb.OpDef
+	APIDef *adpb.ApiDef
 	// Op.Attr is split into two categories
 	// (1) Required: These must be specified by the client and are thus
 	//     included in the function signature.
 	// (2) Optional: These need not be specified (as they have default
 	//     values) and thus do not appear in the function signature.
-	RequiredAttrs []*pb.OpDef_AttrDef
-	OptionalAttrs []*pb.OpDef_AttrDef
+	RequiredAttrs []*attrWrapper
+	OptionalAttrs []*attrWrapper
+	InArgs        []*argWrapper
+	// Input arguments ordered based on arg_order field of ApiDef.
+	InArgsReordered []*argWrapper
+	OutArgs         []*argWrapper
 }
 
-func newTmplArgs(op *pb.OpDef) *tmplArgs {
-	ret := tmplArgs{Op: op}
+func newTmplArgs(op *odpb.OpDef, apidef *adpb.ApiDef) (*tmplArgs, error) {
+	ret := tmplArgs{Op: op, APIDef: apidef}
+
+	// Setup InArgs field
+	for i, in := range op.InputArg {
+		argCombined := argWrapper{op: in, api: apidef.InArg[i]}
+		ret.InArgs = append(ret.InArgs, &argCombined)
+	}
+
+	// Setup OutArgs field
+	for i, out := range op.OutputArg {
+		argCombined := argWrapper{op: out, api: apidef.OutArg[i]}
+		ret.OutArgs = append(ret.OutArgs, &argCombined)
+	}
+
+	// Setup InArgsReordered field
+	for _, argName := range apidef.ArgOrder {
+		// Find the argument in op.InputArg
+		argIndex := -1
+		for i, in := range op.InputArg {
+			if in.Name == argName {
+				argIndex = i
+				break
+			}
+		}
+		if argIndex == -1 {
+			return nil, fmt.Errorf(
+				"couldn't find argument %s in ApiDef for op %s",
+				argName, op.Name)
+		}
+		argCombined := argWrapper{
+			op: op.InputArg[argIndex], api: apidef.InArg[argIndex]}
+		ret.InArgsReordered = append(ret.InArgsReordered, &argCombined)
+	}
+
 	if len(op.Attr) == 0 {
-		return &ret
+		return &ret, nil
 	}
 	// Attributes related to the InputArg's type are inferred automatically
 	// and are not exposed to the client.
@@ -338,28 +450,29 @@ func newTmplArgs(op *pb.OpDef) *tmplArgs {
 			inferred[in.NumberAttr] = true
 		}
 	}
-	for _, attr := range op.Attr {
+	for i, attr := range op.Attr {
 		if inferred[attr.Name] {
 			continue
 		}
+		attrCombined := attrWrapper{op: attr, api: apidef.Attr[i]}
 		if attr.DefaultValue == nil {
-			ret.RequiredAttrs = append(ret.RequiredAttrs, attr)
+			ret.RequiredAttrs = append(ret.RequiredAttrs, &attrCombined)
 		} else {
-			ret.OptionalAttrs = append(ret.OptionalAttrs, attr)
+			ret.OptionalAttrs = append(ret.OptionalAttrs, &attrCombined)
 		}
 	}
-	return &ret
+	return &ret, nil
 }
 
 func (a *tmplArgs) HasAttrs() bool { return len(a.RequiredAttrs)+len(a.OptionalAttrs) > 0 }
 func (a *tmplArgs) DescribeArguments() bool {
-	for _, arg := range a.Op.InputArg {
-		if arg.Description != "" {
+	for _, arg := range a.InArgs {
+		if arg.Description() != "" {
 			return true
 		}
 	}
 	for _, attr := range a.RequiredAttrs {
-		if attr.Description != "" {
+		if attr.Description() != "" {
 			return true
 		}
 	}
@@ -367,16 +480,16 @@ func (a *tmplArgs) DescribeArguments() bool {
 
 }
 func (a *tmplArgs) DescribeOutputs() bool {
-	for _, arg := range a.Op.OutputArg {
-		if arg.Description != "" {
+	for _, arg := range a.OutArgs {
+		if arg.Description() != "" {
 			return true
 		}
 	}
 	return false
 }
 func (a *tmplArgs) HasListOutput() bool {
-	for _, arg := range a.Op.OutputArg {
-		if isListArg(arg) {
+	for _, arg := range a.OutArgs {
+		if arg.IsListArg() {
 			return true
 		}
 	}
@@ -443,13 +556,29 @@ func identifier(s string) string {
 	return s
 }
 
-func isListArg(argdef *pb.OpDef_ArgDef) bool {
+func isListArg(argdef *odpb.OpDef_ArgDef) bool {
 	return argdef.TypeListAttr != "" || argdef.NumberAttr != ""
 }
 
-func isListAttr(attrdef *pb.OpDef_AttrDef) bool {
+func isListAttr(attrdef *odpb.OpDef_AttrDef) bool {
 	list, _ := parseTFType(attrdef.Type)
 	return list
+}
+
+// stripLeadingColon removes the prefix of the string up to the first colon.
+//
+// This is useful when 's' corresponds to a "oneof" protocol buffer message.
+// For example, consider the protocol buffer message:
+//   oneof value { bool b = 1;  int64 i = 2; }
+// proto.CompactTextString) will print "b:true", or "i:7" etc. This function
+// strips out the leading "b:" or "i:".
+func stripLeadingColon(m proto.Message) string {
+	x := proto.CompactTextString(m)
+	y := strings.SplitN(x, ":", 2)
+	if len(y) < 2 {
+		return x
+	}
+	return y[1]
 }
 
 func parseTFType(tfType string) (list bool, typ string) {

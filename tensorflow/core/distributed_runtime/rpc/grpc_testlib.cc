@@ -17,12 +17,22 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace test {
 
 Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
+                                    std::unique_ptr<TestCluster>* out_cluster) {
+  string server_path =
+      strings::StrCat(testing::TensorFlowSrcRoot(),
+                      "/core/distributed_runtime/rpc/grpc_testlib_server");
+  return MakeTestCluster(server_path, options, n, out_cluster);
+}
+
+Status TestCluster::MakeTestCluster(const string& binary_path,
+                                    const SessionOptions& options, int n,
                                     std::unique_ptr<TestCluster>* out_cluster) {
   CHECK_GE(n, 1);
   std::unique_ptr<TestCluster> ret(new TestCluster);
@@ -36,7 +46,7 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
   }
 
   const string tf_jobs = strings::StrCat("--tf_jobs=localhost|",
-                                         str_util::Join(ret->targets_, ";"));
+                                         absl::StrJoin(ret->targets_, ";"));
 
   int num_cpus = 1;
   int num_gpus = 0;
@@ -50,14 +60,15 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
   }
 
   for (int i = 0; i < n; ++i) {
+    if (!options.env->FileExists(binary_path).ok()) {
+      return errors::Internal("Could not find grpc_testlib_server");
+    }
     const std::vector<string> argv(
-        {strings::StrCat(testing::TensorFlowSrcRoot(),
-                         "/core/distributed_runtime/rpc/grpc_testlib_server"),
-         /* see grpc_testlib_server.cc for flags */
+        {binary_path, /* see grpc_testlib_server.cc for flags */
          tf_jobs, "--tf_job=localhost", strings::StrCat("--tf_task=", i),
          strings::StrCat("--num_cpus=", num_cpus),
          strings::StrCat("--num_gpus=", num_gpus)});
-    ret->subprocesses_.emplace_back(testing::CreateSubProcess(argv));
+    ret->subprocesses_.emplace_back(CreateSubProcess(argv));
     bool success = ret->subprocesses_[i]->Start();
     if (!success) {
       return errors::Internal("Could not start subprocess");
@@ -69,8 +80,7 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
 
   std::unique_ptr<GrpcSession> session;
   TF_RETURN_IF_ERROR(GrpcSession::Create(options_copy, &session));
-  std::vector<DeviceAttributes> device_attributes;
-  ret->devices_ = session->ListDevices();
+  TF_RETURN_IF_ERROR(session->ListDevices(&ret->devices_));
 
   *out_cluster = std::move(ret);
   return Status::OK();

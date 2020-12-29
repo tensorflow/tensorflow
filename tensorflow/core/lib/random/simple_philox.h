@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_RANDOM_SIMPLE_PHILOX_H_
-#define TENSORFLOW_LIB_RANDOM_SIMPLE_PHILOX_H_
+#ifndef TENSORFLOW_CORE_LIB_RANDOM_SIMPLE_PHILOX_H_
+#define TENSORFLOW_CORE_LIB_RANDOM_SIMPLE_PHILOX_H_
 
 #include <math.h>
 #include <string.h>
@@ -73,4 +73,4 @@ class SimplePhilox {
 }  // namespace random
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_RANDOM_SIMPLE_PHILOX_H_
+#endif  // TENSORFLOW_CORE_LIB_RANDOM_SIMPLE_PHILOX_H_

@@ -1,0 +1,37 @@
+op {
+  graph_op_name: "SparseSegmentMeanWithNumSegments"
+  in_arg {
+    name: "indices"
+    description: <<END
+A 1-D tensor. Has same rank as `segment_ids`.
+END
+  }
+  in_arg {
+    name: "segment_ids"
+    description: <<END
+A 1-D tensor. Values should be sorted and can be repeated.
+END
+  }
+  in_arg {
+    name: "num_segments"
+    description: <<END
+Should equal the number of distinct segment IDs.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Has same shape as data, except for dimension 0 which has size
+`num_segments`.
+END
+  }
+  summary: "Computes the mean along sparse segments of a tensor."
+  description: <<END
+Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
+missing, the `output` tensor at that position will be zeroed.
+
+Read
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
+for an explanation of segments.
+END
+}

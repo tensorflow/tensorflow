@@ -1,0 +1,657 @@
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+cc_test(
+    name = "add_test",
+    srcs = ["add_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:add",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "cl_test",
+    testonly = 1,
+    srcs = ["cl_test.cc"],
+    hdrs = ["cl_test.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl:cl_operation",
+        "//tensorflow/lite/delegates/gpu/cl:environment",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "concat_test",
+    srcs = ["concat_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:concat_xy",
+        "//tensorflow/lite/delegates/gpu/common/tasks:concat_z",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv_buffer_1x1_test",
+    srcs = ["conv_buffer_1x1_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_buffer_1x1",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv_constants_test",
+    srcs = ["conv_constants_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_constants",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "conv_powervr_test",
+    srcs = ["conv_powervr_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conv_powervr",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "converter",
+    srcs = ["converter.cc"],
+    hdrs = ["converter.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu:spi",
+        "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
+        "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
+        "//tensorflow/lite/delegates/gpu/cl:cl_errors",
+        "//tensorflow/lite/delegates/gpu/cl:environment",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/common:precision",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common/task:arguments",
+        "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
+        "//tensorflow/lite/delegates/gpu/common/task:util",
+        "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+    ],
+)
+
+cc_test(
+    name = "convolution_transposed_test",
+    srcs = ["convolution_transposed_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "convolution_transposed_3x3_test",
+    srcs = ["convolution_transposed_3x3_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+        "no_mac",  # TODO(b/171880729)
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "convolution_transposed_3x3_thin_test",
+    srcs = ["convolution_transposed_3x3_thin_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_thin",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "convolution_transposed_4x4_test",
+    srcs = ["convolution_transposed_4x4_test.cc"],
+    linkstatic = True,
+    tags = [
+        "linux",
+        "local",
+        "no_mac",  # TODO(b/171880729)
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "convolution_transposed_thin_test",
+    srcs = ["convolution_transposed_thin_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_thin",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwise_conv_test",
+    srcs = ["depthwise_conv_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "depthwise_conv_3x3_test",
+    srcs = ["depthwise_conv_3x3_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "elementwise_test",
+    srcs = ["elementwise_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:elementwise",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "fully_connected_test",
+    srcs = ["fully_connected_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/cl:environment",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "lstm_test",
+    srcs = ["lstm_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "lstm_full_test",
+    srcs = ["lstm_full_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/delegates/gpu:delegate",
+        "//tensorflow/lite/kernels:test_main",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "max_unpooling_test",
+    srcs = ["max_unpooling_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "mean_stddev_normalization_test",
+    srcs = ["mean_stddev_normalization_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "padding_test",
+    srcs = ["padding_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:padding",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "pooling_test",
+    srcs = ["pooling_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:pooling",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "prelu_test",
+    srcs = ["prelu_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:prelu",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "quantize_and_dequantize_test",
+    srcs = ["quantize_and_dequantize_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reduce_test",
+    srcs = ["reduce_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reduce",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "relu_test",
+    srcs = ["relu_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reshape_test",
+    srcs = ["reshape_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reshape",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "reshapex4_test",
+    srcs = ["reshapex4_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:reshapex4",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "softmax_test",
+    srcs = ["softmax_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:softmax",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "softmax1x1_test",
+    srcs = ["softmax1x1_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:softmax1x1",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "space_to_depth_test",
+    srcs = ["space_to_depth_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "strided_slice_test",
+    srcs = ["strided_slice_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "transpose_test",
+    srcs = ["transpose_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:transpose",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "resize_test",
+    srcs = ["resize_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/tasks:resize",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "winograd_test",
+    srcs = ["winograd_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/common/tasks:winograd",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+test_suite(
+    name = "all_tests",
+    tests = [
+        "add_test",
+        "concat_test",
+        "conv_buffer_1x1_test",
+        "conv_constants_test",
+        "conv_powervr_test",
+        "convolution_transposed_3x3_test",
+        "convolution_transposed_3x3_thin_test",
+        "convolution_transposed_4x4_test",
+        "convolution_transposed_test",
+        "convolution_transposed_thin_test",
+        "depthwise_conv_3x3_test",
+        "depthwise_conv_test",
+        "elementwise_test",
+        "fully_connected_test",
+        "lstm_test",
+        "max_unpooling_test",
+        "mean_stddev_normalization_test",
+        "padding_test",
+        "pooling_test",
+        "prelu_test",
+        "reduce_test",
+        "relu_test",
+        "reshape_test",
+        "reshapex4_test",
+        "resize_test",
+        "softmax1x1_test",
+        "softmax_test",
+        "strided_slice_test",
+        "transpose_test",
+        "winograd_test",
+    ],
+)

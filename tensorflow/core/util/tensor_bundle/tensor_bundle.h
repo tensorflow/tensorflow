@@ -31,7 +31,7 @@ limitations under the License.
 // (tensorflow::table::Table).  Each key is a name of a tensor and its value is
 // a serialized BundleEntryProto.  Each BundleEntryProto describes the metadata
 // of a tensor: which of the "data" files contains the content of a tensor, the
-// offset into that file, checksum, some auxilary data, etc.
+// offset into that file, checksum, some auxiliary data, etc.
 //
 // A tensor bundle can be accessed randomly using a BundleReader.  Usage:
 //
@@ -58,10 +58,8 @@ limitations under the License.
 //       "/fs/model/train/ckpt-step/ckpt" /* merged prefix */);
 //
 
-#ifndef TENSORFLOW_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
-#define TENSORFLOW_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
-
-#include "tensorflow/core/protobuf/tensor_bundle.pb.h"
+#ifndef TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
+#define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 
 #include <map>
 #include <string>
@@ -72,12 +70,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/io/cache.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
 
@@ -100,11 +100,21 @@ extern const int kTensorBundleVersion;
 extern const char* const kHeaderEntryKey;
 
 // Builds a string-string table of tensor names to BundleEntryProto (metadata).
+//
+// On construction, attempts to create a directory given by the dirname of
+// "prefix", so "status()" must be checked before calling any member functions.
+//
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
-  BundleWriter(Env* env, StringPiece prefix);
-  ~BundleWriter();
+  struct Options {
+    Options() {}
+    // Alignment, in bytes, for tensor data.
+    // Must be >= 1. The default size of 1 densely packs tensors.
+    int data_alignment{1};
+  };
+  BundleWriter(Env* env, StringPiece prefix,
+               const Options& options = Options());
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
@@ -137,9 +147,11 @@ class BundleWriter {
 
  private:
   Env* const env_;  // Not owned.
+  const Options options_;
   const string prefix_;
-  const string tmp_metadata_path_;
-  const string tmp_data_path_;
+  string metadata_path_;
+  string data_path_;
+  bool use_temp_file_;
   std::unique_ptr<FileOutputBuffer> out_;
   int64 size_;  // Number of bytes written into out_.
   std::map<string, BundleEntryProto> entries_;
@@ -161,7 +173,7 @@ class BundleWriter {
 //
 // Once merged, makes a best effort to delete the old metadata files.
 // Returns OK iff all bundles are successfully merged.
-Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
+Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
                     StringPiece merged_prefix);
 
 // On construction, silently attempts to read the metadata associated with
@@ -206,6 +218,24 @@ class BundleReader {
   // Validates the stored crc32c checksum against the restored bytes.
   // REQUIRES: status().ok()
   Status Lookup(StringPiece key, Tensor* val) TF_MUST_USE_RESULT;
+
+  // Looks up the tensor pointed to by the internal iterator.
+  //
+  // On error, "val" may contain nonsense data.
+  //
+  // Validates the stored crc32c checksum against the restored bytes.
+  // REQUIRES: status().ok() && Valid()
+  Status ReadCurrent(Tensor* val) TF_MUST_USE_RESULT;
+
+  // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
+  // is non-empty if and only if the tensor is a partitioned tensor.
+  //
+  // Warning - there is no guaranteed ordering for the returned slices, so
+  // a slice with a larger start index in some dimension could come before
+  // another slice with a smaller start index in the same dimension.
+  // REQUIRES: status().ok()
+  Status LookupTensorSlices(StringPiece key, std::vector<TensorSlice>* slices)
+      TF_MUST_USE_RESULT;
 
   // Looks up a specific slice of a partitioned tensor.
   // It is only required that the stored slices cover the requested slice,
@@ -259,7 +289,9 @@ class BundleReader {
   Status status_;
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
+  table::Cache* index_cache_;
   table::Iterator* iter_;
+  // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a
@@ -269,6 +301,12 @@ class BundleReader {
   // Expected number of data file shards in the bundle.  Extracted by reading
   // the header entry in the metadata table.
   int num_shards_;
+
+  // Flag that this class sets to true when the endianness of the target bundle
+  // differs from that of the current system's processor architecture.
+  bool need_to_swap_bytes_;
+
+  friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
 };
@@ -314,4 +352,4 @@ class FileOutputBuffer {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
+#endif  // TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_

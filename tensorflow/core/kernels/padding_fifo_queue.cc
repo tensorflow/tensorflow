@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -96,7 +98,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
           [callback, allow_small_batch,
-           this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+           this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             int32 queue_size = queues_[0].size();
             if (closed_ && queue_size < attempt->elements_requested) {
               // If we don't have enough for a full dequeue, we have
@@ -119,7 +121,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                   }
                 }
               }
-              if (allow_small_batch && queues_[0].size() > 0) {
+              if (allow_small_batch && !queues_[0].empty()) {
                 // Request all remaining elements in the queue.
                 queue_size = queues_[0].size();
                 attempt->tuples.clear();
@@ -155,7 +157,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 // Finished.  Allocate attempt->tuple and
                 // copy from attempt->tuples to attempt->tuple.
                 attempt->tuple.reserve(num_components());
-                const std::vector<Tuple>& tuples = attempt->tuples;
+                std::vector<Tuple>& tuples = attempt->tuples;
 
                 std::vector<bool> dynamic_shape;
                 const int64 batch_size = tuples.size();
@@ -205,8 +207,10 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       attempt->context->SetStatus(CopyElementToLargerSlice(
                           tuples[index][i], &attempt->tuple[i], index));
                     } else {
-                      attempt->context->SetStatus(CopyElementToSlice(
-                          tuples[index][i], &attempt->tuple[i], index));
+                      attempt->context->SetStatus(
+                          batch_util::CopyElementToSlice(
+                              std::move(tuples[index][i]), &attempt->tuple[i],
+                              index));
                     }
                     if (!attempt->context->status().ok()) return kComplete;
                   }
@@ -343,7 +347,7 @@ Status HandleElementToLargerSliceWithRank(const Tensor& element, Tensor* parent,
     default:
       return errors::Unimplemented(
           "HandleElementToLargerSliceWithRank Unhandled data type: ",
-          element.dtype());
+          DataTypeString(element.dtype()));
   }
 }
 
@@ -388,7 +392,7 @@ Status PaddingFIFOQueue::SetElementZero(Tensor* element) {
   TF_CALL_ALL_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
   return errors::Unimplemented("SetElementZero Unhandled data type: ",
-                               element->dtype());
+                               DataTypeString(element->dtype()));
 }
 
 std::vector<TensorShape> PaddingFIFOQueue::ConvertShapesPartialDimensionsToZero(

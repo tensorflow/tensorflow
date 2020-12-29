@@ -27,49 +27,55 @@ SnappyInputBuffer::SnappyInputBuffer(
       output_buffer_capacity_(output_buffer_bytes),
       input_buffer_(new char[input_buffer_capacity_]),
       output_buffer_(new char[output_buffer_capacity_]),
-      next_in_(input_buffer_.get()) {}
+      next_in_(input_buffer_.get()),
+      bytes_read_(0) {}
 
-Status SnappyInputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
+Status SnappyInputBuffer::ReadNBytes(int64 bytes_to_read, tstring* result) {
   result->clear();
+  result->resize_uninitialized(bytes_to_read);
+
+  char* result_ptr = result->mdata();
+
   // Read as many bytes as possible from cache.
-  bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);
+  size_t bytes_read = ReadBytesFromCache(bytes_to_read, result_ptr);
+  bytes_to_read -= bytes_read;
+  result_ptr += bytes_read;
 
   while (bytes_to_read > 0) {
     // At this point we can be sure that cache has been emptied.
-    DCHECK(avail_out_ == 0);
+    DCHECK_EQ(avail_out_, 0);
 
     // Now that the cache is empty we need to inflate more data.
     TF_RETURN_IF_ERROR(Inflate());
 
-    bytes_to_read -= ReadBytesFromCache(bytes_to_read, result);
+    bytes_read = ReadBytesFromCache(bytes_to_read, result_ptr);
+    bytes_to_read -= bytes_read;
+    result_ptr += bytes_read;
   }
 
   return Status::OK();
 }
 
-int64 SnappyInputBuffer::Tell() const {
-  // TODO(srbs): Implement this.
-  return -1;
-}
+int64 SnappyInputBuffer::Tell() const { return bytes_read_; }
 
 Status SnappyInputBuffer::Reset() {
   file_pos_ = 0;
   avail_in_ = 0;
   avail_out_ = 0;
   next_in_ = input_buffer_.get();
-
+  bytes_read_ = 0;
   return Status::OK();
 }
 
 size_t SnappyInputBuffer::ReadBytesFromCache(size_t bytes_to_read,
-                                             string* result) {
+                                             char* result_ptr) {
   size_t can_read_bytes = std::min(bytes_to_read, avail_out_);
   if (can_read_bytes > 0) {
-    result->append(next_out_, can_read_bytes);
+    memcpy(result_ptr, next_out_, can_read_bytes);
     next_out_ += can_read_bytes;
     avail_out_ -= can_read_bytes;
   }
-
+  bytes_read_ += can_read_bytes;
   return can_read_bytes;
 }
 
@@ -106,7 +112,7 @@ Status SnappyInputBuffer::Inflate() {
 
   // Output buffer must be large enough to fit the uncompressed block.
   DCHECK_GE(output_buffer_capacity_, uncompressed_length);
-  next_out_ = (char*)output_buffer_.get();
+  next_out_ = output_buffer_.get();
 
   bool status = port::Snappy_Uncompress(next_in_, compressed_block_length,
                                         output_buffer_.get());
@@ -128,8 +134,11 @@ Status SnappyInputBuffer::ReadCompressedBlockLength(uint32* length) {
     }
     size_t readable = std::min(bytes_to_read, avail_in_);
 
-    for (int i = 0; i < readable; i++) {
-      *length = (*length << 8) | next_in_[0];
+    for (size_t i = 0; i < readable; i++) {
+      // The "unsigned char" type cast is intentional to avoid implicit type
+      // casting of the signed char to unsigned int during bitwise OR which
+      // causes weird overflow errors.
+      *length = (*length << 8) | static_cast<unsigned char>(next_in_[0]);
       bytes_to_read--;
       next_in_++;
       avail_in_--;
@@ -180,7 +189,7 @@ Status SnappyInputBuffer::ReadFromFile() {
   // possible that on the last read there isn't enough data in the file to
   // fill up the buffer in which case file_->ReadNBytes would return an
   // OutOfRange error.
-  if (data.size() == 0) {
+  if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {

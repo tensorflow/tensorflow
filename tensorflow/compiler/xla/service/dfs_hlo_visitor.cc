@@ -17,62 +17,62 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-Status DfsHloVisitor::HandleElementwiseUnary(HloInstruction* hlo,
-                                             HloOpcode opcode,
-                                             HloInstruction* operand) {
+template <typename HloInstructionPtr>
+Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseUnary(
+    HloInstructionPtr hlo) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseUnary: %s",
-                       HloOpcodeString(opcode).c_str());
+                       HloOpcodeString(hlo->opcode()));
 }
 
-Status DfsHloVisitor::HandleElementwiseBinary(HloInstruction* hlo,
-                                              HloOpcode opcode,
-                                              HloInstruction* lhs,
-                                              HloInstruction* rhs) {
+template <typename HloInstructionPtr>
+Status DfsHloVisitorBase<HloInstructionPtr>::HandleElementwiseBinary(
+    HloInstructionPtr hlo) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseBinary: %s",
-                       HloOpcodeString(opcode).c_str());
+                       HloOpcodeString(hlo->opcode()));
 }
 
-void DfsHloVisitor::SetVisiting(const HloInstruction& instruction) {
+template <typename HloInstructionPtr>
+typename DfsHloVisitorBase<HloInstructionPtr>::VisitState
+DfsHloVisitorBase<HloInstructionPtr>::GetVisitState(
+    const HloInstruction& instruction) {
+  return GetVisitState(instruction.unique_id());
+}
+
+template <typename HloInstructionPtr>
+void DfsHloVisitorBase<HloInstructionPtr>::SetVisiting(
+    const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visiting: ";
-  CHECK(NotVisited(instruction));
-  visit_state_[&instruction] = VisitState::kVisiting;
+  DCHECK(NotVisited(instruction));
+  visit_state_[instruction.unique_id()] = VisitState::kVisiting;
 }
 
-void DfsHloVisitor::SetVisited(const HloInstruction& instruction) {
+template <typename HloInstructionPtr>
+void DfsHloVisitorBase<HloInstructionPtr>::SetVisited(
+    const HloInstruction& instruction) {
   VLOG(3) << "marking HLO " << &instruction << " as visited: ";
-  CHECK(NotVisited(instruction) || IsVisiting(instruction));
-  visit_state_[&instruction] = VisitState::kVisited;
+  DCHECK(NotVisited(instruction) || IsVisiting(instruction));
+  visit_state_[instruction.unique_id()] = VisitState::kVisited;
 }
 
-bool DfsHloVisitor::IsVisiting(const HloInstruction& instruction) {
-  if (visit_state_.count(&instruction) == 0) {
-    return false;
-  }
-  return visit_state_[&instruction] == VisitState::kVisiting;
-}
-
-bool DfsHloVisitor::DidVisit(const HloInstruction& instruction) {
-  if (visit_state_.count(&instruction) == 0) {
-    return false;
-  }
-  return visit_state_[&instruction] == VisitState::kVisited;
-}
-
-bool DfsHloVisitor::NotVisited(const HloInstruction& instruction) {
-  return visit_state_.count(&instruction) == 0 ||
-         visit_state_[&instruction] == VisitState::kNotVisited;
-}
-
-Status DfsHloVisitor::Preprocess(HloInstruction* hlo) { return Status::OK(); }
-
-Status DfsHloVisitor::Postprocess(HloInstruction* visited) {
+template <typename HloInstructionPtr>
+Status DfsHloVisitorBase<HloInstructionPtr>::Preprocess(HloInstructionPtr) {
   return Status::OK();
 }
+
+template <typename HloInstructionPtr>
+Status DfsHloVisitorBase<HloInstructionPtr>::Postprocess(HloInstructionPtr) {
+  return Status::OK();
+}
+
+// Explicit instantiations.
+template class DfsHloVisitorBase<HloInstruction*>;
+template class DfsHloVisitorBase<const HloInstruction*>;
 
 }  // namespace xla

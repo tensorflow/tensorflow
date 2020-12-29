@@ -16,13 +16,66 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_STACKTRACE_H_
 #define TENSORFLOW_CORE_PLATFORM_DEFAULT_STACKTRACE_H_
 
+// clang-format off
 #include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+#if !defined(IS_MOBILE_PLATFORM) && (defined(__clang__) || defined(__GNUC__))
+#define TF_HAS_STACKTRACE
+#endif
+
+#if defined(TF_HAS_STACKTRACE)
+#include <dlfcn.h>
+#include <execinfo.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#endif  // defined(TF_GENERATE_BACKTRACE)
+
+#include <sstream>
+#include <string>
+#include "tensorflow/core/platform/abi.h"
 
 namespace tensorflow {
 
-inline string CurrentStackTrace() { return "No stack trace available"; }
+// Function to create a pretty stacktrace.
+inline std::string CurrentStackTrace() {
+#if defined(TF_HAS_STACKTRACE)
+  std::stringstream ss("");
+  ss << "*** Begin stack trace ***" << std::endl;
 
-inline void DebugWriteToString(const char* data, void* arg) {}
+  // Get the mangled stack trace.
+  int buffer_size = 128;
+  void* trace[128];
+  buffer_size = backtrace(trace, buffer_size);
+
+  for (int i = 0; i < buffer_size; ++i) {
+    const char* symbol = "";
+    Dl_info info;
+    if (dladdr(trace[i], &info)) {
+      if (info.dli_sname != nullptr) {
+        symbol = info.dli_sname;
+      }
+    }
+
+    std::string demangled = tensorflow::port::MaybeAbiDemangle(symbol);
+    if (demangled.length()) {
+      ss << "\t" << demangled << std::endl;
+    } else {
+      ss << "\t" << symbol << std::endl;
+    }
+  }
+
+  ss << "*** End stack trace ***" << std::endl;
+  return ss.str();
+#else
+  return std::string();
+#endif  // defined(TF_HAS_STACKTRACE)
+}
+
+inline void DebugWriteToString(const char* data, void* arg) {
+  reinterpret_cast<std::string*>(arg)->append(data);
+}
 
 // A dummy class that does nothing.  Someday, add real support.
 class SavedStackTrace {

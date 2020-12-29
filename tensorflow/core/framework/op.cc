@@ -18,15 +18,23 @@ limitations under the License.
 #include <algorithm>
 #include <memory>
 #include <vector>
-#include "tensorflow/core/framework/op_kernel.h"
+
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+Status DefaultValidator(const OpRegistryInterface& op_registry) {
+  LOG(WARNING) << "No kernel validator registered with OpRegistry.";
+  return Status::OK();
+}
 
 // OpRegistry -----------------------------------------------------------------
 
@@ -41,13 +49,14 @@ Status OpRegistryInterface::LookUpOpDef(const string& op_type_name,
   return Status::OK();
 }
 
-OpRegistry::OpRegistry() : initialized_(false) {}
+OpRegistry::OpRegistry()
+    : initialized_(false), op_registry_validator_(DefaultValidator) {}
 
 OpRegistry::~OpRegistry() {
   for (const auto& e : registry_) delete e.second;
 }
 
-void OpRegistry::Register(OpRegistrationDataFactory op_data_factory) {
+void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
   mutex_lock lock(mu_);
   if (initialized_) {
     TF_QCHECK_OK(RegisterAlreadyLocked(op_data_factory));
@@ -56,39 +65,75 @@ void OpRegistry::Register(OpRegistrationDataFactory op_data_factory) {
   }
 }
 
+namespace {
+// Helper function that returns Status message for failed LookUp.
+Status OpNotFound(const string& op_type_name) {
+  Status status = errors::NotFound(
+      "Op type not registered '", op_type_name, "' in binary running on ",
+      port::Hostname(), ". ",
+      "Make sure the Op and Kernel are registered in the binary running in "
+      "this process. Note that if you are loading a saved graph which used ops "
+      "from tf.contrib, accessing (e.g.) `tf.contrib.resampler` should be done "
+      "before importing the graph, as contrib ops are lazily registered when "
+      "the module is first accessed.");
+  VLOG(1) << status.ToString();
+  return status;
+}
+}  // namespace
+
 Status OpRegistry::LookUp(const string& op_type_name,
                           const OpRegistrationData** op_reg_data) const {
-  *op_reg_data = nullptr;
+  if ((*op_reg_data = LookUp(op_type_name))) return Status::OK();
+  return OpNotFound(op_type_name);
+}
+
+const OpRegistrationData* OpRegistry::LookUp(const string& op_type_name) const {
+  {
+    tf_shared_lock l(mu_);
+    if (initialized_) {
+      if (const OpRegistrationData* res =
+              gtl::FindWithDefault(registry_, op_type_name, nullptr)) {
+        return res;
+      }
+    }
+  }
+  return LookUpSlow(op_type_name);
+}
+
+const OpRegistrationData* OpRegistry::LookUpSlow(
+    const string& op_type_name) const {
   const OpRegistrationData* res = nullptr;
 
   bool first_call = false;
+  bool first_unregistered = false;
   {  // Scope for lock.
     mutex_lock lock(mu_);
     first_call = MustCallDeferred();
     res = gtl::FindWithDefault(registry_, op_type_name, nullptr);
+
+    static bool unregistered_before = false;
+    first_unregistered = !unregistered_before && (res == nullptr);
+    if (first_unregistered) {
+      unregistered_before = true;
+    }
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
-    TF_QCHECK_OK(ValidateKernelRegistrations(*this));
+    TF_QCHECK_OK(op_registry_validator_(*this));
   }
   if (res == nullptr) {
-    static bool first_unregistered = true;
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
-      VLOG(1) << "All registered Ops:";
-      for (const auto& op : op_list.op()) {
-        VLOG(1) << SummarizeOpDef(op);
+      if (VLOG_IS_ON(3)) {
+        LOG(INFO) << "All registered Ops:";
+        for (const auto& op : op_list.op()) {
+          LOG(INFO) << SummarizeOpDef(op);
+        }
       }
-      first_unregistered = false;
     }
-    Status status =
-        errors::NotFound("Op type not registered '", op_type_name, "'");
-    VLOG(1) << status.ToString();
-    return status;
   }
-  *op_reg_data = res;
-  return Status::OK();
+  return res;
 }
 
 void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
@@ -96,6 +141,15 @@ void OpRegistry::GetRegisteredOps(std::vector<OpDef>* op_defs) {
   MustCallDeferred();
   for (const auto& p : registry_) {
     op_defs->push_back(p.second->op_def);
+  }
+}
+
+void OpRegistry::GetOpRegistrationData(
+    std::vector<OpRegistrationData>* op_data) {
+  mutex_lock lock(mu_);
+  MustCallDeferred();
+  for (const auto& p : registry_) {
+    op_data->push_back(*p.second);
   }
 }
 
@@ -122,7 +176,7 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   out->Reserve(sorted.size());
 
   for (const auto& item : sorted) {
-    if (include_internal || !StringPiece(item.first).starts_with("_")) {
+    if (include_internal || !absl::StartsWith(item.first, "_")) {
       *out->Add() = item.second->op_def;
     }
   }
@@ -177,7 +231,7 @@ Status OpRegistry::CallDeferred() const {
 }
 
 Status OpRegistry::RegisterAlreadyLocked(
-    OpRegistrationDataFactory op_data_factory) const {
+    const OpRegistrationDataFactory& op_data_factory) const {
   std::unique_ptr<OpRegistrationData> op_reg_data(new OpRegistrationData);
   Status s = op_data_factory(op_reg_data.get());
   if (s.ok()) {
@@ -220,27 +274,32 @@ OpListOpRegistry::~OpListOpRegistry() {
   for (const auto& e : index_) delete e.second;
 }
 
-Status OpListOpRegistry::LookUp(const string& op_type_name,
-                                const OpRegistrationData** op_reg_data) const {
+const OpRegistrationData* OpListOpRegistry::LookUp(
+    const string& op_type_name) const {
   auto iter = index_.find(op_type_name);
   if (iter == index_.end()) {
-    *op_reg_data = nullptr;
-    return errors::NotFound("Op type not registered '", op_type_name, "'");
+    return nullptr;
   }
-  *op_reg_data = iter->second;
-  return Status::OK();
+  return iter->second;
 }
 
-// Other registration ---------------------------------------------------------
+Status OpListOpRegistry::LookUp(const string& op_type_name,
+                                const OpRegistrationData** op_reg_data) const {
+  if ((*op_reg_data = LookUp(op_type_name))) return Status::OK();
+  return OpNotFound(op_type_name);
+}
 
 namespace register_op {
-OpDefBuilderReceiver::OpDefBuilderReceiver(
-    const OpDefBuilderWrapper<true>& wrapper) {
+
+InitOnStartupMarker OpDefBuilderWrapper::operator()() {
   OpRegistry::Global()->Register(
-      [wrapper](OpRegistrationData* op_reg_data) -> Status {
-        return wrapper.builder().Finalize(op_reg_data);
+      [builder =
+           std::move(builder_)](OpRegistrationData* op_reg_data) -> Status {
+        return builder.Finalize(op_reg_data);
       });
+  return {};
 }
-}  // namespace register_op
+
+}  //  namespace register_op
 
 }  // namespace tensorflow

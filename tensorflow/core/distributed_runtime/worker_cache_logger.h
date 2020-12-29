@@ -60,9 +60,17 @@ class WorkerCacheLogger {
                         const string& tensor_name, const string& src_device,
                         const string& dst_device, int64 bytes);
 
+  // Generates a NodeExecStats record with the given data, and saves for
+  // later retrieval by RetrieveLogs().
+  void RecordDataTransfer(int64 step_id, int64 start_usecs, int64 end_usecs,
+                          const string& tensor_name, const string& src_device,
+                          const string& dst_device, int64 bytes,
+                          const string& details,
+                          const string& transfer_method_name);
+
  private:
   mutex count_mu_;
-  int32 want_logging_count_ GUARDED_BY(count_mu_) = 0;
+  int32 want_logging_count_ TF_GUARDED_BY(count_mu_) = 0;
 
   struct StepLog {
     StepStats step_stats;
@@ -70,12 +78,12 @@ class WorkerCacheLogger {
   };
   typedef std::unordered_map<int64, StepLog> LogMap;
   mutex mu_;
-  LogMap log_map_ GUARDED_BY(mu_);
+  LogMap log_map_ TF_GUARDED_BY(mu_);
 
   // Records "ns" in log_map_ under the given device and step.
   void Save(const string& device, int64 step_id, NodeExecStats* ns);
 
-  void ClearLogsWithLock() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void ClearLogsWithLock() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_CACHE_LOGGER_H_

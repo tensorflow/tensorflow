@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/framework/graph.proto";
+
+message DatasetDef {
+  // We represent datasets as tensorflow GraphDefs which define the operations
+  // needed to create a tf.data dataset.
+  GraphDef graph = 1;
+}
+
+message TaskDef {
+  // The dataset to iterate over.
+  oneof dataset {
+    DatasetDef dataset_def = 1;
+    string path = 2;
+  }
+  int64 dataset_id = 3;
+  int64 task_id = 4;
+  int64 job_id = 5;
+  ProcessingModeDef processing_mode = 6;
+  // Optional number of consumers. If set, the results of the task will be
+  // provided to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
+}
+
+message TaskInfo {
+  // The address of the worker processing the task.
+  string worker_address = 1;
+  // The task id.
+  int64 task_id = 2;
+  // The id of the job that the task is part of.
+  int64 job_id = 3;
+}
+
+enum ProcessingModeDef {
+  INVALID = 0;
+  // Each tf.data worker processes an entire epoch.
+  PARALLEL_EPOCHS = 1;
+  // Processing of an epoch is distributed across all tf.data workers.
+  DISTRIBUTED_EPOCH = 2;
+}

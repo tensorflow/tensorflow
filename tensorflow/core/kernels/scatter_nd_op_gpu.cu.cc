@@ -13,18 +13,86 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
+
+namespace {
+
+template <typename T, scatter_nd_op::UpdateOp Op>
+struct LeftUpdate {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val);
+};
+
+template <typename T>
+struct LeftUpdate<T, scatter_nd_op::UpdateOp::ASSIGN> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
+    *out = val;
+  }
+};
+
+template <typename T>
+struct LeftUpdate<T, scatter_nd_op::UpdateOp::ADD> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
+    GpuAtomicAdd(out, val);
+  }
+};
+
+template <typename T>
+struct LeftUpdate<T, scatter_nd_op::UpdateOp::SUB> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
+    GpuAtomicSub(out, val);
+  }
+};
+
+template <typename T>
+struct LeftUpdate<T, scatter_nd_op::UpdateOp::MAX> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
+    GpuAtomicMax(out, val);
+  }
+};
+
+template <typename T>
+struct LeftUpdate<T, scatter_nd_op::UpdateOp::MIN> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(T* out, const T& val) {
+    GpuAtomicMin(out, val);
+  }
+};
+
+// Specializations for std::complex, updating real and imaginary part
+// individually. Even though this is not an atomic op anymore, it is safe
+// because there is only one type of op per kernel.
+template <typename T>
+struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::ADD> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
+      std::complex<T>* out, const std::complex<T>& val) {
+    T* ptr = reinterpret_cast<T*>(out);
+    GpuAtomicAdd(ptr, val.real());
+    GpuAtomicAdd(ptr + 1, val.imag());
+  }
+};
+
+template <typename T>
+struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::SUB> {
+  EIGEN_STRONG_INLINE EIGEN_DEVICE_FUNC void operator()(
+      std::complex<T>* out, const std::complex<T>& val) {
+    T* ptr = reinterpret_cast<T*>(out);
+    GpuAtomicSub(ptr, val.real());
+    GpuAtomicSub(ptr + 1, val.imag());
+  }
+};
+
+}  // namespace
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp op, int IXDIM>
 __global__ void ScatterNdOpKernel(
@@ -32,13 +100,9 @@ __global__ void ScatterNdOpKernel(
     const Eigen::array<Eigen::DenseIndex, IXDIM> output_shape_prefix,
     const Eigen::array<int64, IXDIM> batch_strides, const int64 num_indices,
     const Index slice_size) {
-#define ASSIGN(dst, src) (*(dst) = src)
+  auto update = LeftUpdate<T, op>();
 
-#define OP_OVER_SLICE(op)                                       \
-  for (int si = 0; si < slice_size; si++) {                     \
-    op(out + i + si, ldg(updates + (index * slice_size + si))); \
-  }
-  CUDA_1D_KERNEL_LOOP(index, num_indices) {
+  GPU_1D_KERNEL_LOOP(index, num_indices) {
     Index i = 0;
     bool out_of_bounds = false;
 #pragma unroll
@@ -49,32 +113,12 @@ __global__ void ScatterNdOpKernel(
       i += ix_d * batch_strides[dim] * slice_size;
     }
     if (!out_of_bounds) {
-      switch (op) {
-        case scatter_nd_op::UpdateOp::ASSIGN:
 #pragma unroll
-          OP_OVER_SLICE(ASSIGN);
-          break;
-        case scatter_nd_op::UpdateOp::ADD:
-#pragma unroll
-          OP_OVER_SLICE(CudaAtomicAdd);
-          break;
-        case scatter_nd_op::UpdateOp::SUB:
-#pragma unroll
-          OP_OVER_SLICE(CudaAtomicSub);
-          break;
-        case scatter_nd_op::UpdateOp::MUL:
-#pragma unroll
-          OP_OVER_SLICE(CudaAtomicMul);
-          break;
-        case scatter_nd_op::UpdateOp::DIV:
-#pragma unroll
-          OP_OVER_SLICE(CudaAtomicDiv);
-          break;
+      for (int si = 0; si < slice_size; si++) {
+        update(out + i + si, ldg(updates + (index * slice_size + si)));
       }
     }
   }
-#undef OP_OVER_SLICE
-#undef ASSIGN
 }
 
 namespace functor {
@@ -89,6 +133,11 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
       typename TTypes<Index, 2>::ConstTensor Tindices,
       typename TTypes<T, 2>::ConstTensor Tupdates,
       typename TTypes<T, 2>::Tensor Toutput) {
+    // TODO(ebrevdo): The performance of this for small indices (large
+    // slices) is poor.  Write a kernel whose splitting is
+    // independent of the slice size.  Same for CPU.  See the
+    // gather_nd kernel for an example.
+
     const Eigen::DenseIndex batch_size = Tindices.dimension(0);
 
     // Index batch_strides[IXDIM];
@@ -102,13 +151,13 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
       }
     }
 
-    CudaLaunchConfig config = GetCudaLaunchConfig(Toutput.size(), d);
-    // clang-format off
-    ScatterNdOpKernel<T, Index, op, IXDIM>
-    <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      Tindices.data(), Tupdates.data(), Toutput.data(), output_shape_prefix,
-      batch_strides, batch_size, slice_size);
-    // clang-format on
+    GpuLaunchConfig config = GetGpuLaunchConfig(Toutput.size(), d);
+
+    TF_CHECK_OK(GpuLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), Tindices.data(), Tupdates.data(),
+                                Toutput.data(), output_shape_prefix,
+                                batch_strides, batch_size, slice_size));
 
     return -1;
   }
@@ -124,23 +173,41 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 2); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 3); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 4); \
-  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5)
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 6); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 7);
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                                \
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ASSIGN); \
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ADD);    \
-  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::SUB)
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::SUB);
+
+#define DECLARE_GPU_SPECS_INDEX_MINMAX(T, Index)                     \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::MAX) \
+  DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::MIN);
 
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
+#define DECLARE_GPU_SPECS_MINMAX(T)         \
+  DECLARE_GPU_SPECS_INDEX_MINMAX(T, int32); \
+  DECLARE_GPU_SPECS_INDEX_MINMAX(T, int64)
+
+TF_CALL_int32(DECLARE_GPU_SPECS);
+TF_CALL_int32(DECLARE_GPU_SPECS_MINMAX);
+TF_CALL_int64(DECLARE_GPU_SPECS);
+TF_CALL_int64(DECLARE_GPU_SPECS_MINMAX);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS_MINMAX);
+TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS
+#undef DECLARE_GPU_SPECS_MINMAX
 #undef DECLARE_GPU_SPECS_INDEX
+#undef DECLARE_GPU_SPECS_INDEX_MINMAX
 #undef DECLARE_GPU_SPECS_INDEX_OP
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

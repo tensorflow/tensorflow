@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_ARGMAX_OP_H_
-#define TENSORFLOW_KERNELS_ARGMAX_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_ARGMAX_OP_H_
+#define TENSORFLOW_CORE_KERNELS_ARGMAX_OP_H_
 // Generator definition for ArgMaxOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -25,14 +25,13 @@ namespace tensorflow {
 
 namespace functor {
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tout>
 struct ArgMax {
-#define DECLARE_COMPUTE_SPEC(Dims)                                     \
-  EIGEN_ALWAYS_INLINE static void Reduce##Dims(                        \
-      const Device& d, typename TTypes<T, Dims>::ConstTensor input,    \
-      const int32 dimension,                                           \
-      typename TTypes<int64, Dims - 1>::Tensor output) {               \
-    output.device(d) = input.argmax(dimension).template cast<int64>(); \
+#define DECLARE_COMPUTE_SPEC(Dims)                                             \
+  EIGEN_ALWAYS_INLINE static void Reduce##Dims(                                \
+      const Device& d, typename TTypes<T, Dims>::ConstTensor input,            \
+      const int32 dimension, typename TTypes<Tout, Dims - 1>::Tensor output) { \
+    output.device(d) = input.argmax(dimension).template cast<Tout>();          \
   }
 
   DECLARE_COMPUTE_SPEC(1);
@@ -40,18 +39,19 @@ struct ArgMax {
   DECLARE_COMPUTE_SPEC(3);
   DECLARE_COMPUTE_SPEC(4);
   DECLARE_COMPUTE_SPEC(5);
+  DECLARE_COMPUTE_SPEC(6);
+  DECLARE_COMPUTE_SPEC(7);
 
 #undef DECLARE_COMPUTE_SPEC
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tout>
 struct ArgMin {
-#define DECLARE_COMPUTE_SPEC(Dims)                                     \
-  EIGEN_ALWAYS_INLINE static void Reduce##Dims(                        \
-      const Device& d, typename TTypes<T, Dims>::ConstTensor input,    \
-      const int32 dimension,                                           \
-      typename TTypes<int64, Dims - 1>::Tensor output) {               \
-    output.device(d) = input.argmin(dimension).template cast<int64>(); \
+#define DECLARE_COMPUTE_SPEC(Dims)                                             \
+  EIGEN_ALWAYS_INLINE static void Reduce##Dims(                                \
+      const Device& d, typename TTypes<T, Dims>::ConstTensor input,            \
+      const int32 dimension, typename TTypes<Tout, Dims - 1>::Tensor output) { \
+    output.device(d) = input.argmin(dimension).template cast<Tout>();          \
   }
 
   DECLARE_COMPUTE_SPEC(1);
@@ -59,6 +59,8 @@ struct ArgMin {
   DECLARE_COMPUTE_SPEC(3);
   DECLARE_COMPUTE_SPEC(4);
   DECLARE_COMPUTE_SPEC(5);
+  DECLARE_COMPUTE_SPEC(6);
+  DECLARE_COMPUTE_SPEC(7);
 
 #undef DECLARE_COMPUTE_SPEC
 };
@@ -67,4 +69,4 @@ struct ArgMin {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_ARGMAX_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_ARGMAX_OP_H_

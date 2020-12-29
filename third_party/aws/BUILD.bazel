@@ -1,0 +1,139 @@
+# Description:
+#  AWS C++ SDK
+
+load("@org_tensorflow//third_party:common.bzl", "template_rule")
+
+package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+cc_library(
+    name = "aws",
+    srcs = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:linux_x86_64": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:macos": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:linux_ppc64le": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:raspberry_pi_armeabi": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:freebsd": glob([
+            "aws-cpp-sdk-core/source/platform/linux-shared/*.cpp",
+        ]),
+        "//conditions:default": [],
+    }) + select({
+        "//conditions:default": glob([
+            "aws-cpp-sdk-core/source/net/linux-shared/*.cpp",
+        ]),
+        "@org_tensorflow//tensorflow:windows": glob([
+            "aws-cpp-sdk-core/source/platform/windows/*.cpp",
+            "aws-cpp-sdk-core/source/net/windows/*.cpp",
+        ]),
+    }) + glob([
+        "aws-cpp-sdk-core/include/**/*.h",
+        "aws-cpp-sdk-core/source/*.cpp",
+        "aws-cpp-sdk-core/source/auth/**/*.cpp",
+        "aws-cpp-sdk-core/source/config/**/*.cpp",
+        "aws-cpp-sdk-core/source/client/**/*.cpp",
+        "aws-cpp-sdk-core/source/external/**/*.cpp",
+        "aws-cpp-sdk-core/source/internal/**/*.cpp",
+        "aws-cpp-sdk-core/source/http/*.cpp",
+        "aws-cpp-sdk-core/source/http/curl/**/*.cpp",
+        "aws-cpp-sdk-core/source/http/standard/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/*.cpp",
+        "aws-cpp-sdk-core/source/utils/base64/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/event/*.cpp",
+        "aws-cpp-sdk-core/source/utils/json/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/logging/*.cpp",
+        "aws-cpp-sdk-core/source/utils/logging/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/memory/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/stream/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/threading/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/xml/**/*.cpp",
+        "aws-cpp-sdk-core/source/utils/crypto/*.cpp",
+        "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
+        "aws-cpp-sdk-s3/include/**/*.h",
+        "aws-cpp-sdk-s3/source/**/*.cpp",
+        "aws-cpp-sdk-transfer/include/**/*.h",
+        "aws-cpp-sdk-transfer/source/**/*.cpp",
+        "aws-cpp-sdk-core/source/monitoring/*.cpp",
+        "aws-cpp-sdk-core/source/utils/memory/*.cpp",
+        "aws-cpp-sdk-core/source/utils/crypto/openssl/*.cpp",
+    ]),
+    hdrs = [
+        "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
+    ],
+    copts = [
+        "-DENABLE_OPENSSL_ENCRYPTION",
+        "-DAWS_SDK_VERSION_MAJOR=1",
+        "-DAWS_SDK_VERSION_MINOR=7",
+        "-DAWS_SDK_VERSION_PATCH=266",
+        "-DOPENSSL_IS_BORINGSSL",
+    ],
+    defines = select({
+        "@org_tensorflow//tensorflow:linux_aarch64": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "OPENSSL_IS_BORINGSSL",
+        ],
+        "@org_tensorflow//tensorflow:linux_x86_64": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "OPENSSL_IS_BORINGSSL",
+        ],
+        "@org_tensorflow//tensorflow:macos": [
+            "PLATFORM_APPLE",
+            "ENABLE_CURL_CLIENT",
+            "OPENSSL_IS_BORINGSSL",
+        ],
+        "@org_tensorflow//tensorflow:linux_ppc64le": [
+            "PLATFORM_LINUX",
+            "ENABLE_CURL_CLIENT",
+            "OPENSSL_IS_BORINGSSL",
+        ],
+        "@org_tensorflow//tensorflow:windows": [
+            "PLATFORM_WINDOWS",
+            "ENABLE_CURL_CLIENT",
+            "OPENSSL_IS_BORINGSSL",
+        ],
+        "//conditions:default": [],
+    }),
+    includes = [
+        "aws-cpp-sdk-core/include/",
+        "aws-cpp-sdk-s3/include/",
+        "aws-cpp-sdk-transfer/include/",
+    ],
+    linkopts = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "-DEFAULTLIB:Userenv.lib",
+            "-DEFAULTLIB:Version.lib",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "@aws-c-common",
+        "@aws-c-event-stream",
+        "@aws-checksums",
+        "@boringssl//:crypto",
+        "@curl",
+    ],
+)
+
+template_rule(
+    name = "SDKConfig_h",
+    src = "aws-cpp-sdk-core/include/aws/core/SDKConfig.h.in",
+    out = "aws-cpp-sdk-core/include/aws/core/SDKConfig.h",
+    substitutions = {
+        "cmakedefine": "define",
+    },
+)

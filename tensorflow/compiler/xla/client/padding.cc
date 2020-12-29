@@ -17,17 +17,33 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
+Status ValidatePaddingValues(absl::Span<const int64> input_dimensions,
+                             absl::Span<const int64> window_dimensions,
+                             absl::Span<const int64> window_strides) {
+  bool ok = input_dimensions.size() == window_dimensions.size() &&
+            input_dimensions.size() == window_strides.size();
+  if (!ok) {
+    return InvalidArgument(
+        "Want input dimensions size %u = window dimensions size %u = window "
+        "strides size %u",
+        input_dimensions.size(), window_dimensions.size(),
+        window_strides.size());
+  }
+  return Status::OK();
+}
+
 std::vector<std::pair<int64, int64>> MakePadding(
-    tensorflow::gtl::ArraySlice<int64> input_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_dimensions,
-    tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
-  CHECK_EQ(input_dimensions.size(), window_dimensions.size());
-  CHECK_EQ(input_dimensions.size(), window_strides.size());
+    absl::Span<const int64> input_dimensions,
+    absl::Span<const int64> window_dimensions,
+    absl::Span<const int64> window_strides, Padding padding) {
+  TF_CHECK_OK(ValidatePaddingValues(input_dimensions, window_dimensions,
+                                    window_strides));
   std::vector<std::pair<int64, int64>> low_high_padding;
   switch (padding) {
     case Padding::kValid:
@@ -35,7 +51,7 @@ std::vector<std::pair<int64, int64>> MakePadding(
       return low_high_padding;
 
     case Padding::kSame:
-      for (int64 i = 0; i < input_dimensions.size(); ++i) {
+      for (size_t i = 0; i < input_dimensions.size(); ++i) {
         int64 input_dimension = input_dimensions[i];
         int64 window_dimension = window_dimensions[i];
         int64 window_stride = window_strides[i];
@@ -110,8 +126,8 @@ std::vector<std::pair<int64, int64>> MakePadding(
                                 window_dimension - input_dimension,
                             0);
         low_high_padding.emplace_back(
-            tensorflow::MathUtil::FloorOfRatio(padding_size, 2ll),
-            tensorflow::MathUtil::CeilOfRatio(padding_size, 2ll));
+            tensorflow::MathUtil::FloorOfRatio(padding_size, int64{2}),
+            tensorflow::MathUtil::CeilOfRatio(padding_size, int64{2}));
       }
       break;
   }

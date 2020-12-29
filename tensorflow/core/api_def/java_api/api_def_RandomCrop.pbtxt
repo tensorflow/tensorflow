@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "RandomCrop"
+  endpoint {
+    name: "image.RandomCrop"
+  }
+}

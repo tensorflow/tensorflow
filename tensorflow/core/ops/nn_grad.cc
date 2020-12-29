@@ -31,23 +31,46 @@ Status SoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
       // Ret val defs
       {"grad_x: T"},
       // Attr defs
-      {{"T: {float, double}"}},
+      {{"T: {float, double, bfloat16}"}},
       // Nodes
       // Based on _SoftmaxGrad in nn_grad.py.
       {
         {{"softmax"}, "Softmax", {"x"}, {{"T", "$T"}}},
         {{"n0"}, "Mul", {"grad_softmax", "softmax"}, {{"T", "$T"}}},
-        FDH::Const<int32>("indices", {1}),
-        {{"n1"}, "Sum", {"n0", "indices"}, {{"T", "$T"}}},
-        FDH::Const<int32>("newshape", {-1, 1}),
-        {{"n2"}, "Reshape", {"n1", "newshape"}, {{"T", "$T"}}},
-        {{"n3"}, "Sub", {"grad_softmax", "n2"}, {{"T", "$T"}}},
-        {{"grad_x"}, "Mul", {"n3", "softmax"}, {{"T", "$T"}}}
+        FDH::Const<int32>("indices", {-1}),
+        {{"n1"}, "Sum", {"n0", "indices"}, {{"keep_dims", true}, {"T", "$T"}}},
+        {{"n2"}, "Sub", {"grad_softmax", "n1"}, {{"T", "$T"}}},
+        {{"grad_x"}, "Mul", {"n2", "softmax"}, {{"T", "$T"}}}
       });
   // clang-format on
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Softmax", SoftmaxGrad);
+
+Status LogSoftmaxGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      "LogSoftmaxGrad",
+      // Arg defs
+      {"x: T", "grad_logsoftmax: T"},
+      // Ret val defs
+      {"grad_x: T"},
+      // Attr defs
+      {{"T: {float, double}"}},
+      // Nodes
+      // Based on _LogSoftmaxGrad in nn_grad.py.
+      {
+        {{"softmax"}, "Softmax", {"x"}, {{"T", "$T"}}},
+        FDH::Const<int32>("indices", {-1}),
+        {{"n0"}, "Sum", {"grad_logsoftmax", "indices"},
+         {{"keep_dims", true}, {"T", "$T"}}},
+        {{"n1"}, "Mul", {"n0", "softmax"}, {{"T", "$T"}}},
+        {{"grad_x"}, "Sub", {"grad_logsoftmax", "n1"}, {{"T", "$T"}}}
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("LogSoftmax", LogSoftmaxGrad);
 
 Status ReluGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -180,5 +203,83 @@ Status MaxPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("MaxPool", MaxPoolGrad);
+
+Status AvgPoolGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+    // Arg defs
+    {"input: T", "grad: T"},
+    // Ret val defs
+    {"output: T"},
+    // Attr defs
+    {"T: {float, half} = DT_FLOAT",
+     "ksize: list(int) >= 4",
+     "strides: list(int) >= 4",
+     GetPaddingAttrString()},
+    // Nodes
+    {
+      {{"i_shape"}, "Shape", {"input"}, {{"T", "$T"}}},
+      {{"output"}, "AvgPoolGrad", {"i_shape", "grad"},
+       /*Attrs=*/{{"T", "$T"},
+                  {"ksize", "$ksize"},
+                  {"strides", "$strides"},
+                  {"padding", "$padding"}}}
+    });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("AvgPool", AvgPoolGrad);
+
+Status MaxPoolGradGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+    // Arg defs
+    {"input: T", "grad: T"},
+    // Ret val defs
+    {"output: T"},
+    // Attr defs
+    {"T: {float, half} = DT_FLOAT",
+     "ksize: list(int) >= 4",
+     "strides: list(int) >= 4",
+     GetPaddingAttrString()},
+    // Nodes
+    {
+      // Invoke MaxPool again to recompute the outputs (removed by CSE?).
+      {{"maxpool"}, "MaxPool", {"input"},
+       /*Attrs=*/{{"T", "$T"},
+                  {"ksize", "$ksize"},
+                  {"strides", "$strides"},
+                  {"padding", "$padding"}}},
+      {{"output"}, "MaxPoolGradGrad", {"input", "maxpool", "grad"},
+       /*Attrs=*/{{"T", "$T"},
+                  {"ksize", "$ksize"},
+                  {"strides", "$strides"},
+                  {"padding", "$padding"}}}
+    });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("MaxPoolGrad", MaxPoolGradGrad);
+
+Status BiasAddGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+    // Arg defs
+    {"input: T", "bias: T", "grad: T"},
+    // Ret val defs
+    {"grad: T", "bias_grad: T"},
+    // Attr defs
+    {{"T: {float, double}"},
+     GetConvnetDataFormatAttrString()},
+    // Nodes
+    {
+      {{"bias_grad"}, "BiasAddGrad", {"grad"},
+           /*Attrs=*/{{"T", "$T"},
+                      {"data_format", "$data_format"}}}
+    });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("BiasAdd", BiasAddGrad);
 
 }  // end namespace tensorflow

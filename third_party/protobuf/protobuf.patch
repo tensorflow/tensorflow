@@ -1,0 +1,43 @@
+diff --git a/BUILD b/BUILD
+index dbae719ff..87dc38470 100644
+--- a/BUILD
++++ b/BUILD
+@@ -23,7 +23,7 @@ config_setting(
+ # ZLIB configuration
+ ################################################################################
+
+-ZLIB_DEPS = ["@zlib//:zlib"]
++ZLIB_DEPS = ["@zlib"]
+
+ ################################################################################
+ # Protobuf Runtime Library
+@@ -143,6 +143,7 @@ cc_library(
+     copts = COPTS,
+     includes = ["src/"],
+     linkopts = LINK_OPTS,
++    alwayslink = 1,
+     visibility = ["//visibility:public"],
+ )
+
+@@ -213,6 +214,7 @@ cc_library(
+     copts = COPTS,
+     includes = ["src/"],
+     linkopts = LINK_OPTS,
++    alwayslink = 1,
+     visibility = ["//visibility:public"],
+     deps = [":protobuf_lite"] + PROTOBUF_DEPS,
+ )
+diff --git a/protobuf.bzl b/protobuf.bzl
+index e0653321f..253d9cbb5 100644
+--- a/protobuf.bzl
++++ b/protobuf.bzl
+@@ -84,7 +84,9 @@ def _proto_gen_impl(ctx):
+
+     for dep in ctx.attr.deps:
+         import_flags += dep.proto.import_flags
+         deps += dep.proto.deps
++    import_flags = depset(import_flags).to_list()
++    deps = depset(deps).to_list()
+
+     if not ctx.attr.gen_cc and not ctx.attr.gen_py and not ctx.executable.plugin:
+         return struct(

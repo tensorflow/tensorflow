@@ -24,8 +24,9 @@ namespace tensorflow {
 RecordYielder::RecordYielder(OpKernelConstruction* context,
                              const RecordYielder::Options& opts)
     : opts_(opts),
-      thread_(new thread::ThreadPool(context->env(), "record_yielder",
-                                     1 + opts.parallelism)),
+      thread_(new thread::ThreadPool(context->env(), ThreadOptions(),
+                                     "record_yielder", 1 + opts.parallelism,
+                                     /* low_latency_hint */ false)),
       epoch_(0),
       rnd_(opts.seed) {
   thread_->Schedule([this]() { MainLoop(); });
@@ -43,9 +44,9 @@ RecordYielder::~RecordYielder() {
   delete thread_;
 }
 
-Status RecordYielder::YieldOne(string* value) {
+Status RecordYielder::YieldOne(tstring* value) {
   mutex_lock l(mu_);
-  while (!BufEnough()) {
+  while (!BufEnough() && status_.ok()) {
     buf_enough_.wait(l);
   }
   if (status_.ok()) {
@@ -69,7 +70,7 @@ Status RecordYielder::YieldOne(string* value) {
 
 struct RecordYielder::Shard {
   int index;                      // Shard index.
-  std::vector<string> filenames;  // File names given to this shard.
+  std::vector<tstring> filenames;  // File names given to this shard.
   Notification done;              // Notified when this shard is done.
   Status status;                  // Shard status.
 };
@@ -97,16 +98,21 @@ void RecordYielder::MainLoop() {
   while (true) {
     ++epoch_;
     num_records_yielded_in_epoch_ = 0;
+    num_records_added_in_epoch_ = 0;
 
     // Finds all files.
     std::vector<string> filenames;
     Status s = MatchFiles(opts_.file_pattern, &filenames);
-    if (ShouldFinish(s)) break;
 
     if (filenames.empty()) {
       s = errors::NotFound("Found no files at ", opts_.file_pattern);
-      if (ShouldFinish(s)) break;
+      if (ShouldFinish(s)) {
+        buf_enough_.notify_all();
+        break;
+      }
     }
+
+    if (ShouldFinish(s)) break;
 
     // Shuffles these files according to the epoch # and random seed.
     std::mt19937_64 shuffle_rnd(
@@ -114,7 +120,7 @@ void RecordYielder::MainLoop() {
     std::shuffle(filenames.begin(), filenames.end(), shuffle_rnd);
 
     // Left-shift the filename list.
-    const int64 num = filenames.size();
+    const std::vector<string>::size_type num = filenames.size();
     int64 shift;
     if (0 <= opts_.file_shuffle_shift_ratio &&
         opts_.file_shuffle_shift_ratio < 1) {
@@ -129,7 +135,7 @@ void RecordYielder::MainLoop() {
     for (int i = 0; i < N; ++i) {
       Shard* shard = &shards[i];
       shard->index = i;
-      for (int j = i; j < filenames.size(); j += N) {
+      for (std::vector<string>::size_type j = i; j < filenames.size(); j += N) {
         shard->filenames.push_back(filenames[j]);
       }
       thread_->Schedule([this, shard]() { ShardLoop(shard); });
@@ -138,12 +144,24 @@ void RecordYielder::MainLoop() {
       shards[i].done.WaitForNotification();
       s.Update(shards[i].status);
     }
-    if (ShouldFinish(s)) break;
+
+    if (num_records_added_in_epoch_ < opts_.bufsize) {
+      mutex_lock l(mu_);
+      opts_.bufsize = num_records_added_in_epoch_;
+    }
+
+    if (ShouldFinish(s)) {
+      buf_enough_.notify_all();
+      break;
+    }
 
     // Starts the next epoch once all buffered records are consumed.
     {
       mutex_lock l(mu_);
       epoch_end_ = true;
+      if (BufEnough()) {
+        buf_enough_.notify_all();
+      }
       while (!BufEmpty()) {
         buf_empty_.wait(l);
       }
@@ -169,6 +187,7 @@ bool RecordYielder::Add(std::vector<string>* values) {
       buf_[index] = std::move(values->back());
     }
     values->pop_back();
+    num_records_added_in_epoch_++;
   }
   if (BufEnough()) {
     buf_enough_.notify_all();
@@ -187,9 +206,12 @@ void RecordYielder::ShardLoop(Shard* shard) {
       shard->status = errors::InvalidArgument("Can't open ", filename);
       break;
     }
-    io::RecordReader rdr(file.get());
+    io::RecordReaderOptions options =
+        io::RecordReaderOptions::CreateRecordReaderOptions(
+            opts_.compression_type);
+    io::RecordReader rdr(file.get(), options);
     uint64 offset = 0;
-    string record;
+    tstring record;
     while (true) {
       Status s = rdr.ReadRecord(&offset, &record);
       if (s.ok()) {

@@ -41,28 +41,54 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using test::internal::ExpectEqual;
-
 TEST(GraphRunnerTest, SingleConst) {
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
+  GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(root.graph(), nullptr, Env::Default(), {},
-                              {c.name()}, &outputs);
+  Status s = graph_runner.Run(root.graph(), nullptr, {}, {c.name()}, &outputs);
   TF_ASSERT_OK(s);
-  ExpectEqual(42.0f, outputs[0].scalar<float>()());
+  test::ExpectEqual(test::AsScalar(42.0f), outputs[0]);
+}
+
+// If not using DeepCopy, and the allocator is deleted with the cpu-device,
+// this test will seg-fault.
+TEST(GraphRunnerTest, DeepCopy) {
+  Scope root = Scope::NewRootScope();
+  auto p1 = ops::Placeholder(root.WithOpName("p1"), DT_FLOAT);
+  auto p2 = ops::Placeholder(root.WithOpName("p2"), DT_FLOAT);
+  auto add = ops::Add(root.WithOpName("add"), p1, p2);
+
+  Tensor p1_data(DT_FLOAT, TensorShape({}));
+  Tensor p2_data(DT_FLOAT, TensorShape({}));
+  p1_data.scalar<float>()() = 1.0f;
+  p2_data.scalar<float>()() = 2.0f;
+  std::vector<std::pair<string, Tensor>> inputs = {{"p1:0", p1_data},
+                                                   {"p2:0", p2_data}};
+
+  // Create and destroy the GraphRunner, and ensure that the outputs are
+  // consumable beyond the lifetime of GraphRunner.
+  std::vector<Tensor> outputs;
+  {
+    GraphRunner graph_runner(Env::Default());
+    Status s =
+        graph_runner.Run(root.graph(), nullptr, inputs, {"add:0"}, &outputs);
+    TF_ASSERT_OK(s);
+  }
+  test::ExpectEqual(test::AsScalar(3.0f), outputs[0]);
 }
 
 TEST(GraphRunnerTest, MultiFetchConst) {
   Scope root = Scope::NewRootScope();
   auto c = ops::Const(root, 42.0f);
   auto pi = ops::Const(root, 3.14f);
+  GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(root.graph(), nullptr, Env::Default(), {},
-                              {c.name(), pi.name()}, &outputs);
+  Status s = graph_runner.Run(root.graph(), nullptr, {}, {c.name(), pi.name()},
+                              &outputs);
   TF_ASSERT_OK(s);
-  ExpectEqual(42.0f, outputs[0].scalar<float>()());
-  ExpectEqual(3.14f, outputs[1].scalar<float>()());
+  test::ExpectEqual(test::AsScalar(42.0f), outputs[0]);
+  test::ExpectEqual(test::AsScalar(3.14f), outputs[1]);
 }
 
 TEST(GraphRunnerTest, FeedAndFetch) {
@@ -78,11 +104,12 @@ TEST(GraphRunnerTest, FeedAndFetch) {
   std::vector<std::pair<string, Tensor>> inputs = {{"p1:0", p1_data},
                                                    {"p2:0", p2_data}};
 
+  GraphRunner graph_runner(Env::Default());
   std::vector<Tensor> outputs;
-  Status s = GraphRunner::Run(root.graph(), nullptr, Env::Default(), inputs,
-                              {"add:0"}, &outputs);
+  Status s =
+      graph_runner.Run(root.graph(), nullptr, inputs, {"add:0"}, &outputs);
   TF_ASSERT_OK(s);
-  ExpectEqual(3.0f, outputs[0].scalar<float>()());
+  test::ExpectEqual(test::AsScalar(3.0f), outputs[0]);
 }
 
 }  // namespace

@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
-
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -35,9 +33,9 @@ Status RenameAttribute(const GraphDef& input_graph_def,
       !context.params.count("new_attribute_name") ||
       (context.params.at("new_attribute_name").size() != 1)) {
     return errors::InvalidArgument(
-        "remove_nodes expects exactly one 'old_attribute_name' and one "
+        "rename_attribute expects exactly one 'old_attribute_name' and one "
         "'new_attribute_name' argument, e.g. "
-        "remove_attribute(old_attribute_name=foo, new_attribute_name=bar)");
+        "rename_attribute(old_attribute_name=foo, new_attribute_name=bar)");
   }
 
   string op_name;
@@ -52,7 +50,7 @@ Status RenameAttribute(const GraphDef& input_graph_def,
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
-    new_node->CopyFrom(node);
+    *new_node = node;
     if (((op_name == "*") || (op_name == node.op())) &&
         (node.attr().count(old_attribute_name))) {
       AttrValue attribute_value = node.attr().at(old_attribute_name);

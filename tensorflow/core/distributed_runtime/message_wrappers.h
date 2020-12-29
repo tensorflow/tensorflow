@@ -13,12 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -75,6 +80,18 @@ class RunStepRequestWrapper {
   // Options for the run call.
   virtual const RunOptions& options() const = 0;
 
+  // If true then some errors, e.g., execution errors that have long
+  // error messages, may return an OK RunStepResponse with the actual
+  // error saved in the status_code/status_error_message fields of the
+  // response body. This is a workaround since the RPC subsystem may
+  // truncate long metadata messages.
+  virtual bool store_errors_in_response_body() const = 0;
+
+  // Unique identifier for this request. Every RunGraphRequest must have a
+  // unique request_id, and retried RunGraphRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
+  virtual int64 request_id() const = 0;
+
   // Returns a human-readable representation of this message for debugging.
   virtual string DebugString() const = 0;
 
@@ -93,6 +110,7 @@ class MutableRunStepRequestWrapper : public RunStepRequestWrapper {
   virtual void add_fetch(const string& name) = 0;
   virtual void add_target(const string& name) = 0;
   virtual RunOptions* mutable_options() = 0;
+  virtual void set_store_errors_in_response_body(bool store_errors) = 0;
 };
 
 // Specialized (and mutable) wrapper for RunStep requests between a client and
@@ -113,6 +131,8 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
   const RunOptions& options() const override;
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
+  bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunStepRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -121,6 +141,7 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
   void add_fetch(const string& name) override;
   void add_target(const string& name) override;
   RunOptions* mutable_options() override;
+  void set_store_errors_in_response_body(bool store_errors) override;
 
  private:
   string session_handle_;
@@ -129,6 +150,7 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
   gtl::InlinedVector<string, 4> fetches_;
   gtl::InlinedVector<string, 4> targets_;
   RunOptions options_;
+  bool store_errors_in_response_body_ = false;
 
   // Holds a cached and owned representation of the proto
   // representation of this request, if needed, so that `ToProto()`
@@ -160,6 +182,8 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
   const RunOptions& options() const override;
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
+  bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunStepRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -168,9 +192,11 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
   void add_fetch(const string& name) override;
   void add_target(const string& name) override;
   RunOptions* mutable_options() override;
+  void set_store_errors_in_response_body(bool store_errors) override;
 
  private:
   RunStepRequest request_;
+  friend class MasterInterface;
 };
 
 // Wrapper for immutable RunStep requests that use a non-owned
@@ -197,6 +223,8 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
   const RunOptions& options() const override;
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
+  bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
  private:
   const RunStepRequest* const request_;  // Not owned.
@@ -215,13 +243,20 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Abstract interface for an immutable RunStepRequest message.
+// Abstract interface for an immutable RunGraphRequest message.
 //
 // This interface is typically used by server-side components in the
 // TensorFlow worker.
 class RunGraphRequestWrapper {
  public:
   virtual ~RunGraphRequestWrapper() {}
+
+  // The session handle used to register the graph. If empty, a single global
+  // namespace is used.
+  virtual const string& session_handle() const = 0;
+
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  virtual bool create_worker_session_called() const = 0;
 
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
@@ -253,6 +288,15 @@ class RunGraphRequestWrapper {
   // True if this is the last partial run request in a sequence of requests.
   virtual bool is_last_partial_run() const = 0;
 
+  // If true then some errors, e.g., execution errors that have long
+  // error messages, may return an OK RunStepResponse with the actual
+  // error saved in the status_code/status_error_message fields of the
+  // response body. This is a workaround since the RPC subsystem may
+  // truncate long metadata messages.
+  virtual bool store_errors_in_response_body() const = 0;
+
+  virtual int64 request_id() const = 0;
+
   // Returns the wrapped data as a protocol buffer message.
   virtual const RunGraphRequest& ToProto() const = 0;
 };
@@ -262,6 +306,8 @@ class RunGraphRequestWrapper {
 // See `RunGraphRequestWrapper` above for a description of the fields.
 class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
  public:
+  virtual void set_session_handle(const string& handle) = 0;
+  virtual void set_create_worker_session_called(bool called) = 0;
   virtual void set_graph_handle(const string& handle) = 0;
   virtual void set_step_id(int64 step_id) = 0;
   virtual ExecutorOpts* mutable_exec_opts() = 0;
@@ -271,16 +317,23 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
   virtual Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
       const string& send_key) = 0;
+  virtual Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
+      const string& send_key) = 0;
 
   virtual void add_recv_key(const string& recv_key) = 0;
   virtual void set_is_partial(bool is_partial) = 0;
   virtual void set_is_last_partial_run(bool is_last_partial_run) = 0;
+  virtual void set_store_errors_in_response_body(bool store_errors) = 0;
+  virtual void set_request_id(int64 request_id) = 0;
 };
 
 class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
+  bool create_worker_session_called() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
   size_t num_sends() const override;
@@ -291,19 +344,30 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   bool is_partial() const override;
   bool is_last_partial_run() const override;
   const RunGraphRequest& ToProto() const override;
+  bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunGraphRequestWrapper methods.
+  void set_session_handle(const string& handle) override;
+  void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
       const string& send_key) override;
+  Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
+      const string& send_key) override;
   void add_recv_key(const string& recv_key) override;
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
+  void set_store_errors_in_response_body(bool store_errors) override;
+  void set_request_id(int64 request_id) override;
 
  private:
+  string session_handle_;
+  bool create_worker_session_called_ = false;
   string graph_handle_;
   int64 step_id_;
   ExecutorOpts exec_opts_;
@@ -311,6 +375,8 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   gtl::InlinedVector<string, 4> recvs_;
   bool is_partial_ = false;
   bool is_last_partial_run_ = false;
+  bool store_errors_in_response_body_ = false;
+  int64 request_id_ = 0;
 
   // Holds a cached and owned representation of the proto
   // representation of this request, if needed, so that `ToProto()`
@@ -325,6 +391,8 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
 class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
+  bool create_worker_session_called() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -335,18 +403,27 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   const string& recv_key(size_t i) const override;
   bool is_partial() const override;
   bool is_last_partial_run() const override;
+  bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
+  void set_session_handle(const string& handle) override;
+  void set_create_worker_session_called(bool called) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
   Status AddSendFromRunStepRequest(
       const RunStepRequestWrapper& run_step_request, size_t i,
       const string& send_key) override;
+  Status AddSendFromRunCallableRequest(
+      const RunCallableRequest& run_callable_request, size_t i,
+      const string& send_key) override;
   void add_recv_key(const string& recv_key) override;
   void set_is_partial(bool is_partial) override;
   void set_is_last_partial_run(bool is_last_partial_run) override;
+  void set_store_errors_in_response_body(bool store_errors) override;
+  void set_request_id(int64 request_id) override;
 
  private:
   RunGraphRequest request_;
@@ -357,6 +434,8 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
   ProtoRunGraphRequest(const RunGraphRequest* request);
 
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
+  bool create_worker_session_called() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -367,6 +446,8 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
   const string& recv_key(size_t i) const override;
   bool is_partial() const override;
   bool is_last_partial_run() const override;
+  bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
   const RunGraphRequest& ToProto() const override;
 
  private:
@@ -409,6 +490,14 @@ class MutableRunGraphResponseWrapper {
   // execution, if necessary.
   virtual StepStats* mutable_step_stats() = 0;
   virtual CostGraphDef* mutable_cost_graph() = 0;
+  virtual size_t num_partition_graphs() const = 0;
+  virtual GraphDef* mutable_partition_graph(size_t i) = 0;
+  virtual void AddPartitionGraph(const GraphDef& partition_graph) = 0;
+
+  // Returned status if requested.
+  virtual errors::Code status_code() const = 0;
+  virtual const string& status_error_message() const = 0;
+  virtual void set_status(const Status& status) = 0;
 
  protected:
   // Returns a mutable protobuf message that represents the contents of
@@ -436,6 +525,12 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddRecv(const string& key, const Tensor& value) override;
   StepStats* mutable_step_stats() override;
   CostGraphDef* mutable_cost_graph() override;
+  size_t num_partition_graphs() const override;
+  GraphDef* mutable_partition_graph(size_t i) override;
+  void AddPartitionGraph(const GraphDef& partition_graph) override;
+  errors::Code status_code() const override;
+  const string& status_error_message() const override;
+  void set_status(const Status& status) override;
 
  protected:
   // NOTE: This method is not implemented. See
@@ -446,6 +541,10 @@ class InMemoryRunGraphResponse : public MutableRunGraphResponseWrapper {
   gtl::InlinedVector<std::pair<string, Tensor>, 4> recvs_;
   StepStats step_stats_;
   CostGraphDef cost_graph_;
+  std::vector<GraphDef> partition_graphs_;
+  // Store the code and message separately so that they can be updated
+  // independently by setters.
+  Status status_;
 };
 
 // Proto-based message wrapper for use on the client side of the RunGraph RPC.
@@ -459,6 +558,12 @@ class OwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddRecv(const string& key, const Tensor& value) override;
   StepStats* mutable_step_stats() override;
   CostGraphDef* mutable_cost_graph() override;
+  size_t num_partition_graphs() const override;
+  GraphDef* mutable_partition_graph(size_t i) override;
+  void AddPartitionGraph(const GraphDef& partition_graph) override;
+  errors::Code status_code() const override;
+  const string& status_error_message() const override;
+  void set_status(const Status& status) override;
 
  protected:
   RunGraphResponse* get_proto() override;
@@ -480,6 +585,12 @@ class NonOwnedProtoRunGraphResponse : public MutableRunGraphResponseWrapper {
   void AddRecv(const string& key, const Tensor& value) override;
   StepStats* mutable_step_stats() override;
   CostGraphDef* mutable_cost_graph() override;
+  size_t num_partition_graphs() const override;
+  GraphDef* mutable_partition_graph(size_t i) override;
+  void AddPartitionGraph(const GraphDef& partition_graph) override;
+  errors::Code status_code() const override;
+  const string& status_error_message() const override;
+  void set_status(const Status& status) override;
 
  protected:
   RunGraphResponse* get_proto() override;
@@ -529,6 +640,11 @@ class MutableRunStepResponseWrapper {
   virtual const RunMetadata& metadata() const = 0;
   virtual RunMetadata* mutable_metadata() = 0;
 
+  // Returned status if requested.
+  virtual errors::Code status_code() const = 0;
+  virtual const string& status_error_message() const = 0;
+  virtual void set_status(const Status& status) = 0;
+
  protected:
   // Returns a mutable protobuf message that represents the contents of
   // this wrapper, for passing to an RPC subsystem that will populate
@@ -556,6 +672,9 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
       size_t i) override;
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
+  errors::Code status_code() const override;
+  const string& status_error_message() const override;
+  void set_status(const Status& status) override;
 
  protected:
   // NOTE: This method is not implemented. See
@@ -565,6 +684,9 @@ class InMemoryRunStepResponse : public MutableRunStepResponseWrapper {
  private:
   gtl::InlinedVector<std::pair<string, Tensor>, 4> tensors_;
   RunMetadata metadata_;
+  // Store the code and message separately so that they can be updated
+  // independently by setters.
+  Status status_;
 };
 
 // Proto-based message wrapper for use on the client side of the RunStep RPC.
@@ -579,6 +701,9 @@ class OwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
       size_t i) override;
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
+  errors::Code status_code() const override;
+  const string& status_error_message() const override;
+  void set_status(const Status& status) override;
 
  protected:
   RunStepResponse* get_proto() override;
@@ -601,6 +726,9 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
       size_t i) override;
   const RunMetadata& metadata() const override;
   RunMetadata* mutable_metadata() override;
+  errors::Code status_code() const override;
+  const string& status_error_message() const override;
+  void set_status(const Status& status) override;
 
  protected:
   RunStepResponse* get_proto() override;
@@ -609,6 +737,9 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   RunStepResponse* response_;  // Not owned.
 };
 
+bool ParseTensorProtoToTensor(const TensorProto& tensor_proto,
+                              Tensor* out_tensor);
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_

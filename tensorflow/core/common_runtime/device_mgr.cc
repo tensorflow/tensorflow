@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 
+#include <memory>
 #include <vector>
+
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -24,55 +26,81 @@ limitations under the License.
 
 namespace tensorflow {
 
-DeviceMgr::DeviceMgr(const std::vector<Device*>& devices)
-    : name_backing_store_(128) {
-  for (Device* d : devices) {
-    devices_.push_back(d);
+DeviceMgr::~DeviceMgr() {}
 
-    // Register under both the full name and the local name.
-    string full_name = d->name();
-    device_map_[CopyToBackingStore(full_name)] = d;
-
-    string lname = DeviceNameUtils::LocalName(d->name());
-    device_map_[CopyToBackingStore(lname)] = d;
-    device_type_counts_[d->device_type()]++;
+StaticDeviceMgr::StaticDeviceMgr(std::vector<std::unique_ptr<Device>> devices)
+    : devices_(std::move(devices)),
+      name_backing_store_(128),
+      cpu_device_(nullptr) {
+  for (auto& d : devices_) {
+    // Register under the (1) full name and (2) canonical name.
+    for (const string& name :
+         DeviceNameUtils::GetNamesForDeviceMappings(d->parsed_name())) {
+      device_map_[CopyToBackingStore(name)] = d.get();
+    }
+    // Register under the (3) local name and (4) legacy local name.
+    for (const string& name :
+         DeviceNameUtils::GetLocalNamesForDeviceMappings(d->parsed_name())) {
+      device_map_[CopyToBackingStore(name)] = d.get();
+    }
+    const auto& t = d->device_type();
+    device_type_counts_[t]++;
+    device_incarnation_set_.insert(d->attributes().incarnation());
+    if (cpu_device_ == nullptr && t == "CPU" && d->parsed_name().id == 0) {
+      cpu_device_ = d.get();
+    }
   }
 }
 
-DeviceMgr::~DeviceMgr() {
-  for (auto p : devices_) delete p;
+StaticDeviceMgr::StaticDeviceMgr(std::unique_ptr<Device> device)
+    : StaticDeviceMgr([&device] {
+        std::vector<std::unique_ptr<Device>> vector;
+        vector.push_back(std::move(device));
+        return vector;
+      }()) {}
+
+StaticDeviceMgr::~StaticDeviceMgr() {
+  // Release resources ahead of destroying the device manager as the resource
+  // destructors (e.g. ~IteratorResource) assume devices still exist.
+  for (auto& device : devices_) {
+    device->ClearResourceMgr();
+  }
 }
 
-StringPiece DeviceMgr::CopyToBackingStore(StringPiece s) {
-  int n = s.size();
+StringPiece StaticDeviceMgr::CopyToBackingStore(StringPiece s) {
+  size_t n = s.size();
   char* space = name_backing_store_.Alloc(n);
   memcpy(space, s.data(), n);
   return StringPiece(space, n);
 }
 
-void DeviceMgr::ListDeviceAttributes(
+void StaticDeviceMgr::ListDeviceAttributes(
     std::vector<DeviceAttributes>* devices) const {
   devices->reserve(devices_.size());
-  for (Device* dev : devices_) {
+  for (const auto& dev : devices_) {
     devices->emplace_back(dev->attributes());
   }
 }
 
-std::vector<Device*> DeviceMgr::ListDevices() const {
-  return std::vector<Device*>(devices_.begin(), devices_.end());
+std::vector<Device*> StaticDeviceMgr::ListDevices() const {
+  std::vector<Device*> devices(devices_.size());
+  for (size_t i = 0; i < devices_.size(); ++i) {
+    devices[i] = devices_[i].get();
+  }
+  return devices;
 }
 
-string DeviceMgr::DebugString() const {
+string StaticDeviceMgr::DebugString() const {
   string out;
-  for (Device* dev : devices_) {
+  for (const auto& dev : devices_) {
     strings::StrAppend(&out, dev->name(), "\n");
   }
   return out;
 }
 
-string DeviceMgr::DeviceMappingString() const {
+string StaticDeviceMgr::DeviceMappingString() const {
   string out;
-  for (Device* dev : devices_) {
+  for (const auto& dev : devices_) {
     if (!dev->attributes().physical_device_desc().empty()) {
       strings::StrAppend(&out, dev->name(), " -> ",
                          dev->attributes().physical_device_desc(), "\n");
@@ -81,19 +109,29 @@ string DeviceMgr::DeviceMappingString() const {
   return out;
 }
 
-Status DeviceMgr::LookupDevice(StringPiece name, Device** device) const {
-  Status s;
+Status StaticDeviceMgr::LookupDevice(StringPiece name, Device** device) const {
   auto iter = device_map_.find(name);
   if (iter == device_map_.end()) {
+    std::vector<StringPiece> device_names;
+    for (auto&& itr : device_map_) {
+      device_names.push_back(itr.first);
+    }
+    VLOG(1) << "Unknown device: " << name
+            << " all devices: " << absl::StrJoin(device_names, ", ");
     return errors::InvalidArgument(name, " unknown device.");
   }
   *device = iter->second;
   return Status::OK();
 }
 
-void DeviceMgr::ClearContainers(gtl::ArraySlice<string> containers) const {
+bool StaticDeviceMgr::ContainsDevice(int64 device_incarnation) const {
+  return device_incarnation_set_.contains(device_incarnation);
+}
+
+void StaticDeviceMgr::ClearContainers(
+    gtl::ArraySlice<string> containers) const {
   Status s;
-  for (Device* dev : devices_) {
+  for (const auto& dev : devices_) {
     if (containers.empty()) {
       s.Update(dev->resource_manager()->Cleanup(
           dev->resource_manager()->default_container()));
@@ -108,10 +146,12 @@ void DeviceMgr::ClearContainers(gtl::ArraySlice<string> containers) const {
   }
 }
 
-int DeviceMgr::NumDeviceType(const string& type) const {
+int StaticDeviceMgr::NumDeviceType(const string& type) const {
   auto iter = device_type_counts_.find(type);
   if (iter != device_type_counts_.end()) return iter->second;
   return 0;
 }
+
+Device* StaticDeviceMgr::HostCPU() const { return cpu_device_; }
 
 }  // namespace tensorflow

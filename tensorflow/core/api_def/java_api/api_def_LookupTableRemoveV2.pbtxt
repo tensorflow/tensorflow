@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "LookupTableRemoveV2"
+  endpoint {
+    name: "LookupTableRemove"
+  }
+}

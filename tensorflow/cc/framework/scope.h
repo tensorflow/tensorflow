@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
+#define TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
 
 #include <memory>
 #include <string>
@@ -22,13 +22,15 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
+class Graph;
 class GraphDef;
 class NodeBuilder;
 struct CompositeOpScopes;
@@ -69,8 +71,9 @@ struct CompositeOpScopes;
 ///     // W will be named "linear/W"
 ///     auto W = Variable(linear.WithOpName("W"),
 ///                       {2, 2}, DT_FLOAT);
-///     // b will be named "linear/b"
-///     auto b = Variable(linear.WithOpName("b"),
+///     // b will be named "linear/b_3"
+///     int idx = 3;
+///     auto b = Variable(linear.WithOpName("b_", idx),
 ///                       {2}, DT_FLOAT);
 ///     auto x = Const(linear, {...});  // name: "linear/Const"
 ///     auto m = MatMul(linear, x, W);  // name: "linear/MatMul"
@@ -94,6 +97,10 @@ struct CompositeOpScopes;
 /// op-constructor functions on the same `Scope` object.
 class Scope {
  public:
+  Scope(const Scope& other);
+  ~Scope();
+  Scope& operator=(const Scope& other);
+
   // The following functions are for users making graphs. They return brand new
   // scopes, or scopes derived from an existing scope object.
 
@@ -103,14 +110,17 @@ class Scope {
   static Scope NewRootScope();
 
   /// Return a new scope. Ops created with this scope will have
-  /// <name>/<child_scope_name> as the prefix. The actual name will be unique
+  /// `name/child_scope_name` as the prefix. The actual name will be unique
   /// in the current scope. All other properties are inherited from the current
-  /// scope. If child_scope_name is empty, the '/' is elided.
+  /// scope. If `child_scope_name` is empty, the `/` is elided.
   Scope NewSubScope(const string& child_scope_name) const;
 
   /// Return a new scope. All ops created within the returned scope will have
-  /// names of the form <name>/<op_name>[_<suffix].
-  Scope WithOpName(const string& op_name) const;
+  /// names of the form `name/StrCat(fragments...)[_suffix]`
+  template <typename... Ty>
+  Scope WithOpName(Ty... fragments) const {
+    return WithOpNameImpl(absl::StrCat(fragments...));
+  }
 
   /// Return a new scope. All ops created within the returned scope will have as
   /// control dependencies the union of operations in the control_deps vector
@@ -128,6 +138,14 @@ class Scope {
   /// Return a new scope. All ops created within the returned scope will have
   /// the device field set to 'device'.
   Scope WithDevice(const string& device) const;
+
+  /// Returns a new scope.  All ops created within the returned scope will have
+  /// their assigned device set to `assigned_device`.
+  Scope WithAssignedDevice(const string& assigned_device) const;
+
+  /// Returns a new scope.  All ops created within the returned scope will have
+  /// their _XlaCluster attribute set to `xla_cluster`.
+  Scope WithXlaCluster(const string& xla_cluster) const;
 
   /// Return a new scope. All ops created within the returned scope will be
   /// co-located on the device where op is placed.
@@ -159,25 +177,27 @@ class Scope {
   /// Note: The status object is shared between all children of this scope.
   /// If the resulting status is not Status::OK() and exit_on_error_ is set on
   /// this scope, this function exits by calling LOG(FATAL).
-  void UpdateStatus(const Status s) const;
+  void UpdateStatus(const Status& s) const;
 
   // START_SKIP_DOXYGEN
 
-  /// Update the builder with properties accumulated in this scope.
+  /// Update the builder with properties accumulated in this scope. Does not set
+  /// status().
+  // TODO(skyewm): NodeBuilder is not part of public API
   void UpdateBuilder(NodeBuilder* builder) const;
   // END_SKIP_DOXYGEN
 
   CompositeOpScopes GetCompositeOpScopes(const string& composite_op_name) const;
 
-  bool ok() const { return status_->ok(); }
+  bool ok() const;
 
-  Graph* graph() const { return graph_.get(); }
+  // TODO(skyewm): Graph is not part of public API
+  Graph* graph() const;
 
-  ShapeRefiner* refiner() const { return refiner_.get(); }
+  // TODO(skyewm): Graph is not part of public API
+  std::shared_ptr<Graph> graph_as_shared_ptr() const;
 
-  std::shared_ptr<Graph> graph_as_shared_ptr() const { return graph_; }
-
-  Status status() const { return *status_; }
+  Status status() const;
 
   /// If status() is Status::OK(), convert the Graph object stored in this scope
   /// to a GraphDef proto and return Status::OK(). Otherwise, return the error
@@ -186,84 +206,43 @@ class Scope {
 
   // START_SKIP_DOXYGEN
 
-  /// If status() is Status::OK(), construct a Graph object using the default
+  /// If status() is Status::OK(), construct a Graph object using `opts` as the
   /// GraphConstructorOptions, and return Status::OK if graph construction was
   /// successful. Otherwise, return the error status.
   // TODO(josh11b, keveman): Make this faster; right now it converts
   // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.
-  Status ToGraph(Graph* g) const;
+  Status ToGraph(
+      Graph* g, GraphConstructorOptions opts = GraphConstructorOptions{}) const;
+
+  // Calls AddNode() using this scope's ShapeRefiner. This exists in the public
+  // API to prevent custom op wrappers from needing access to shape_refiner.h or
+  // scope_internal.h.
+  // TODO(skyewm): remove this from public API
+  Status DoShapeInference(Node* node) const;
+
+  // Creates a new root scope that causes all DoShapeInference() calls to return
+  // Status::OK() (on the returned scope and any subscopes). Used for testing.
+  // TODO(skyewm): fix tests that still require this and eventually remove, or
+  // at least remove from public API
+  static Scope DisabledShapeInferenceScope();
   // END_SKIP_DOXYGEN
 
-  const std::vector<Operation>& control_deps() const { return control_deps_; }
+  const std::vector<Operation>& control_deps() const;
+
+  // START_SKIP_DOXYGEN
+  class Impl;
+  Impl* impl() { return impl_.get(); }
+  const Impl* impl() const { return impl_.get(); }
+  // END_SKIP_DOXYGEN
 
  private:
-  // Tag types to choose the constructor to dispatch.
-  struct Tags {
-    enum class ScopeName;
-    enum class OpName;
-    enum class ControlDeps;
-    enum class Device;
-    enum class SingleUseScope;
-    enum class ExitOnError;
-    enum class KernelLabel;
-    enum class Colocate;
-  };
+  Scope WithOpNameImpl(const string& op_name) const;
 
-  // A NameMap is used to keep track of suffixes for names used in a scope. A
-  // name that has not been used so far in a scope will get no suffix. Later
-  // uses of the same name will get suffixes _1, _2, _3, etc. Multiple scopes
-  // can share the same NameMap. For instance, a new scope created using
-  // WithControlDependencies() should would share the same NameMap with the
-  // parent.
-  typedef std::unordered_map<string, int> NameMap;
-
-  Scope(Graph* graph, Status* status, NameMap* name_map, ShapeRefiner* refiner);
-  Scope(const Scope& other, Tags::ScopeName, const string& name,
-        bool copy_names);
-  Scope(const Scope& other, Tags::OpName, const string& name,
-        const string& op_name);
-  Scope(const Scope& other, Tags::ControlDeps,
-        std::vector<Operation> control_deps, bool clear_control_deps);
-  Scope(const Scope& other, Tags::Device, const string& device);
-  Scope(const Scope& other, Tags::SingleUseScope, const string& op_name);
-  Scope(const Scope& other, Tags::ExitOnError);
-  Scope(const Scope& other, Tags::KernelLabel, const string& kernel_label);
-  Scope(const Scope& other, Tags::Colocate, const Operation& colocate_with_op,
-        bool clear_colocations);
-
-  std::unordered_set<string> GetColocationConstraints(
-      const Operation& colocate_with_op) const;
-
-  // Helper functions to get a unique names.
-  string GetUniqueName(const string& prefix, bool check_single_use) const;
-  string GetNameForOp(const string& default_name) const;
-
-  bool single_use_scope() const { return scope_used_ != nullptr; }
-
-  // The graph, status, and name maps are shared by all child scopes
-  // created from a single 'root' scope. A root scope is created by calling the
-  // Scope::NewRootScope function, which creates a new graph, a new status and
-  // the name maps.
-  std::shared_ptr<Graph> graph_ = nullptr;
-  std::shared_ptr<Status> status_ = nullptr;
-  std::shared_ptr<NameMap> name_map_ = nullptr;
-  std::shared_ptr<ShapeRefiner> refiner_ = nullptr;
-
-  // If scope_used_ is not nullptr, op_name_ should be empty and
-  // GetUniqueNameForOp can only be called once on this scope. More calls to
-  // GetUniqueNameForOp will cause an error status to be set on this scope.
-  std::shared_ptr<bool> scope_used_ = nullptr;
-
-  const std::vector<Operation> control_deps_;
-
-  const string name_ = "";
-  const string op_name_ = "";
-  const bool exit_on_error_ = false;
-  const string kernel_label_ = "";
-  const string device_ = "";
-  const std::unordered_set<string> colocation_constraints_;
+  friend class InternalScope;
+  std::unique_ptr<Impl> impl_;
+  explicit Scope(Impl*);
 };
 
 /// A helper struct to hold the scopes that would be used by a function
@@ -276,8 +255,14 @@ struct CompositeOpScopes {
   Scope last;
 };
 
+// Creates a node of the given operation, with the given inputs, and assigns the
+// result to output. This does not support the ability to add additional
+// attributes.
+Status CreateOutputWithScope(string op_name,
+                             absl::Span<const ::tensorflow::Input> inputs,
+                             const Scope& scope, Output* output);
 /// @}
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_SCOPE_H_

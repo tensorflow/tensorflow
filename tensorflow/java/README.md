@@ -1,104 +1,38 @@
 # TensorFlow for Java
 
-Java bindings for TensorFlow.
-
 > *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
-> [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
+> [API stability guarantees](https://www.tensorflow.org/guide/version_compat).
 >
-> For using TensorFlow on Android refer to
-> [contrib/android](https://www.tensorflow.org/code/tensorflow/contrib/android),
-> [makefile](https://www.tensorflow.org/code/tensorflow/contrib/makefile#android)
-> and/or the [Android
-> demo](https://www.tensorflow.org/code/tensorflow/examples/android).
+> For using TensorFlow on Android refer instead to [TensorFlow Lite](https://www.tensorflow.org/code/tensorflow/lite/).
 
 ## Quickstart
 
-1.  Download the Java archive (JAR):
-    [libtensorflow.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-1.0.0-PREVIEW1.jar)
-    (optionally, the Java sources:
-    [libtensorflow-src.jar](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-src-1.0.0-PREVIEW1.jar)).
+-   Refer to [Installing TensorFlow for Java](https://www.tensorflow.org/install/lang_java)
+-   [Javadoc](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary)
+-   [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow)
 
-2.  Download the native library. GPU-enabled versions required CUDA 8 and cuDNN
-    5.1. For other versions, the native library will need to be built from
-    source (see below).
+## Nightly builds
 
-    -   Linux:
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-linux-x86_64-1.0.0-PREVIEW1.tar.gz),
-        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-linux-x86_64-1.0.0-PREVIEW1.tar.gz)
-    -   OS X:
-        [CPU-only](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-cpu-darwin-x86_64-1.0.0-PREVIEW1.tar.gz),
-        [GPU-enabled](https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-gpu-darwin-x86_64-1.0.0-PREVIEW1.tar.gz)
+Releases built from release branches are available on Maven Central.
+Additionally, every day binaries are built from the `master` branch on GitHub:
 
-    The following shell snippet downloads and extracts the native library:
-
-    ```sh
-    TF_TYPE="cpu" # Set to "gpu" to enable GPU support
-    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    mkdir -p ./jni
-    curl -L \
-      "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow_jni-${TF_TYPE}-${OS}-x86_64-1.0.0-PREVIEW1.tar.gz" |
-    tar -xz -C ./jni
-    ```
-
-3.  Include the downloaded `.jar` in the classpath during compilation. For
-    example, if your program looks like the following:
-
-    ```java
-    import org.tensorflow.TensorFlow;
-
-    public class MyClass {
-      public static void main(String[] args) {
-        System.out.println("I'm using TensorFlow version: " +  TensorFlow.version());
-      }
-    }
-    ```
-
-    then it should be compiled with:
-
-    ```sh
-    javac -cp libtensorflow-1.0.0-PREVIEW1.jar MyClass.java
-    ```
-
-    For a more sophisticated example, see
-    [LabelImage.java](https://www.tensorflow.org/code/tensorflow/java/src/main/java/org/tensorflow/examples/LabelImage.java),
-    which can be compiled with:
-
-    ```sh
-    javac \
-      -cp libtensorflow-1.0.0-PREVIEW1.jar \
-      ./src/main/java/org/tensorflow/examples/LabelImage.java
-    ```
-
-4.  Include the downloaded `.jar` in the classpath and the native library in the
-    library path during execution. For example:
-
-    ```sh
-    java -cp libtensorflow-1.0.0-PREVIEW1.jar:. -Djava.library.path=./jni MyClass
-    ```
-
-    or for the `LabelImage` example:
-
-    ```sh
-    java \
-      -Djava.library.path=./jni \
-      -cp libtensorflow-1.0.0-PREVIEW1.jar:./src/main/java \
-      org.tensorflow.examples.LabelImage
-    ```
-
-That's all. These artifacts are not yet available on Maven central, see
-[#6926](https://github.com/tensorflow/tensorflow/issues/6926).
+-   [JAR](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow.jar)
+-   [Source JAR](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow-src.jar)
+-   JNI:
+    -   [Linux CPU-only](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-cpu-linux-x86_64.tar.gz)
+    -   [Linux GPU](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-gpu-linux-x86_64.tar.gz)
+    -   [MacOS](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/lib_package/libtensorflow_jni-cpu-darwin-x86_64.tar.gz)
+    -   Windows: (No nightly builds available yet)
 
 ## Building from source
 
-If the quickstart instructions above do not work out, the TensorFlow native
-libraries will need to be built from source.
+If the quickstart instructions above do not work out, the TensorFlow Java and
+native libraries will need to be built from source.
 
 1.  Install [bazel](https://www.bazel.build/versions/master/docs/install.html)
 
-2.  Setup the environment to buile TensorFlow from source code
-    ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
-    or [Mac OS
-    X](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-mac-os-x)).
+2.  Setup the environment to build TensorFlow from source code
+    ([Linux or macOS](https://www.tensorflow.org/install/source)).
     If you'd like to skip reading those details and do not care about GPU
     support, try the following:
 
@@ -110,7 +44,7 @@ libraries will need to be built from source.
     brew install swig
     ```
 
-3.  [Configure](https://www.tensorflow.org/get_started/os_setup#configure_the_installation)
+3.  [Configure](https://www.tensorflow.org/install/source)
     (e.g., enable GPU support) and build:
 
     ```sh
@@ -120,14 +54,41 @@ libraries will need to be built from source.
       //tensorflow/java:libtensorflow_jni
     ```
 
-The JAR (`libtensorflow.jar`) and native library (`libtensorflow_jni.so`) will 
-be in `bazel-genfiles/tensorflow/tensorflow/java`.
+The command above will produce two files in the `bazel-bin/tensorflow/java`
+directory:
+
+*   An archive of Java classes: `libtensorflow.jar`
+*   A native library: `libtensorflow_jni.so` on Linux, `libtensorflow_jni.dylib`
+    on OS X, or `tensorflow_jni.dll` on Windows.
+
+To compile Java code that uses the TensorFlow Java API, include
+`libtensorflow.jar` in the classpath. For example:
+
+```sh
+javac -cp bazel-bin/tensorflow/java/libtensorflow.jar ...
+```
+
+To execute the compiled program, include `libtensorflow.jar` in the classpath
+and the native library in the library path. For example:
+
+```sh
+java -cp bazel-bin/tensorflow/java/libtensorflow.jar \
+  -Djava.library.path=bazel-bin/tensorflow/java \
+  ...
+```
+
+Installation on Windows requires the more experimental [bazel on
+Windows](https://bazel.build/versions/master/docs/windows.html). Details are
+omitted here, but find inspiration in the script used for building the release
+archive:
+[`tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh`](https://www.tensorflow.org/code/tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh).
 
 ### Maven
 
-To use the library in an external Java project, publish the library to a Maven
-repository. For example, publish the library to the local Maven repository using
-the `mvn` tool (installed separately):
+Details of the release process for Maven Central are in
+[`maven/README.md`](https://www.tensorflow.org/code/tensorflow/java/maven/README.md).
+However, for development, you can push the library built from source to a local
+Maven repository with:
 
 ```sh
 bazel build -c opt //tensorflow/java:pom
@@ -136,15 +97,14 @@ mvn install:install-file \
   -DpomFile=../../bazel-bin/tensorflow/java/pom.xml
 ```
 
-Refer to the library using Maven coordinates. For example, if you're using Maven
-then place this dependency into your `pom.xml` file (replacing 1.0.head with
-the version of the TensorFlow runtime you wish to use).
+And then refer to this library in a project's `pom.xml` with: (replacing
+VERSION with the appropriate version of TensorFlow):
 
 ```xml
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>libtensorflow</artifactId>
-  <version>1.0.head</version>
+  <version>VERSION</version>
 </dependency>
 ```
 

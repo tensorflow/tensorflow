@@ -16,87 +16,71 @@ limitations under the License.
 package org.tensorflow;
 
 /**
- * A Graph node that performs computation on Tensors.
+ * Performs computation on Tensors.
  *
- * <p>An Operation is a node in a {@link Graph} that takes zero or more {@link Tensor}s (produced by
- * other Operations in the Graph) as input, and produces zero or more {@link Tensor}s as output.
- *
- * <p>Operation instances are valid only as long as the Graph they are a part of is valid. Thus, if
- * {@link Graph#close()} has been invoked, then methods on the Operation instance may fail with an
- * {@code IllegalStateException}.
- *
- * <p>Operation instances are immutable and thread-safe.
+ * <p>An Operation takes zero or more {@link Tensor}s (produced by other Operations) as input, and
+ * produces zero or more {@link Tensor}s as output.
  */
-public final class Operation {
-
-  // Create an Operation instance referring to an operation in g, with the given handle to the C
-  // TF_Operation object.  The handle is valid only as long as g has not been closed, hence it is
-  // called unsafeHandle.  Graph.ref() is used to safely use the unsafeHandle.
-  Operation(Graph g, long unsafeNativeHandle) {
-    this.graph = g;
-    this.unsafeNativeHandle = unsafeNativeHandle;
-  }
+public interface Operation {
 
   /** Returns the full name of the Operation. */
-  public String name() {
-    Graph.Reference r = graph.ref();
-    try {
-      return name(unsafeNativeHandle);
-    } finally {
-      r.close();
-    }
-  }
+  String name();
 
   /**
    * Returns the type of the operation, i.e., the name of the computation performed by the
    * operation.
    */
-  public String type() {
-    Graph.Reference r = graph.ref();
-    try {
-      return type(unsafeNativeHandle);
-    } finally {
-      r.close();
-    }
-  }
+  String type();
 
   /** Returns the number of tensors produced by this operation. */
-  public int numOutputs() {
-    Graph.Reference r = graph.ref();
-    try {
-      return numOutputs(unsafeNativeHandle);
-    } finally {
-      r.close();
-    }
-  }
+  int numOutputs();
 
-  /** Returns a symbolic handle to one of the tensors produced by this operation. */
-  public Output output(int idx) {
-    return new Output(this, idx);
-  }
+  /**
+   * Returns the size of the list of Tensors produced by this operation.
+   *
+   * <p>An Operation has multiple named outputs, each of which produces either a single tensor or a
+   * list of tensors. This method returns the size of the list of tensors for a specific named
+   * output of the operation.
+   *
+   * @param name identifier of the list of tensors (of which there may be many) produced by this
+   *     operation.
+   * @return the size of the list of Tensors produced by this named output.
+   * @throws IllegalArgumentException if this operation has no output with the provided name.
+   */
+  int outputListLength(final String name);
 
-  long getUnsafeNativeHandle() {
-    return unsafeNativeHandle;
-  }
+  /**
+   * Returns symbolic handles to a list of tensors produced by this operation.
+   *
+   * @param idx index of the first tensor of the list
+   * @param length number of tensors in the list
+   * @return array of {@code Output}
+   */
+  Output<?>[] outputList(int idx, int length);
 
-  // Package private, meant primarily for the public Output.shape() method.
-  long[] shape(int output) {
-    Graph.Reference r = graph.ref();
-    try {
-      return shape(r.nativeHandle(), unsafeNativeHandle, output);
-    } finally {
-      r.close();
-    }
-  }
+  /**
+   * Returns a symbolic handle to one of the tensors produced by this operation.
+   *
+   * <p>Warning: Does not check that the type of the tensor matches T. It is recommended to call
+   * this method with an explicit type parameter rather than letting it be inferred, e.g. {@code
+   * operation.<Integer>output(0)}
+   *
+   * @param <T> The expected element type of the tensors produced by this output.
+   * @param idx The index of the output among the outputs produced by this operation.
+   */
+  <T> Output<T> output(int idx);
 
-  private final long unsafeNativeHandle;
-  private final Graph graph;
-
-  private static native String name(long handle);
-
-  private static native String type(long handle);
-
-  private static native int numOutputs(long handle);
-
-  private static native long[] shape(long graphHandle, long opHandle, int output);
+  /**
+   * Returns the size of the given inputs list of Tensors for this operation.
+   *
+   * <p>An Operation has multiple named inputs, each of which contains either a single tensor or a
+   * list of tensors. This method returns the size of the list of tensors for a specific named input
+   * of the operation.
+   *
+   * @param name identifier of the list of tensors (of which there may be many) inputs to this
+   *     operation.
+   * @return the size of the list of Tensors produced by this named input.
+   * @throws IllegalArgumentException if this operation has no input with the provided name.
+   */
+  int inputListLength(final String name);
 }

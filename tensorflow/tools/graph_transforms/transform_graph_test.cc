@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -112,12 +113,11 @@ class TransformGraphTest : public ::testing::Test {
     graph_transforms::MapNamesToNodes(out_graph_def, &out_node_map);
 
     for (const NodeDef& node : out_graph_def.node()) {
-      const StringPiece name(node.name());
       const int occurrence_count = out_node_map.count(node.name());
-      if (name.ends_with("expect_removed")) {
+      if (str_util::EndsWith(node.name(), "expect_removed")) {
         EXPECT_EQ(0, occurrence_count) << "node.name()=" << node.name();
       }
-      if (name.ends_with("expect_remains")) {
+      if (str_util::EndsWith(node.name(), "expect_remains")) {
         EXPECT_EQ(1, occurrence_count) << "node.name()=" << node.name();
       }
     }
@@ -138,8 +138,7 @@ class TransformGraphTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
     Status no_such_status =
         TransformGraph({}, {}, {{"test_no_such_transform", {}}}, &graph_def);
-    EXPECT_TRUE(
-        StringPiece(no_such_status.ToString()).contains("not recognized"));
+    EXPECT_TRUE(absl::StrContains(no_such_status.ToString(), "not recognized"));
   }
 
   void TestParseTransformParameters() {
@@ -201,8 +200,21 @@ class TransformGraphTest : public ::testing::Test {
     // is responsible for the hang mentioned in
     // https://github.com/tensorflow/tensorflow/issues/7150
     TransformParameters params_list;
-    ParseTransformParameters("\\\n", &params_list);
+    ParseTransformParameters("\\\n", &params_list).IgnoreError();
     EXPECT_EQ(0, params_list.size());
+  }
+
+  void TestParseExtraSpaces() {
+    TransformParameters params_list;
+    ParseTransformParameters(" ", &params_list).IgnoreError();
+    EXPECT_EQ(0, params_list.size());
+
+    TF_EXPECT_OK(ParseTransformParameters("  foo bar \\\n", &params_list));
+    EXPECT_EQ(2, params_list.size());
+    EXPECT_EQ("foo", params_list[0].first);
+    EXPECT_TRUE(params_list[0].second.empty());
+    EXPECT_EQ("bar", params_list[1].first);
+    EXPECT_TRUE(params_list[1].second.empty());
   }
 
   void TestShouldIgnoreErrors() {

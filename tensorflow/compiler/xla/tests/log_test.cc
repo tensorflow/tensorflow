@@ -16,9 +16,8 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -30,9 +29,9 @@ namespace {
 class LogTest : public ClientLibraryTestBase {};
 
 XLA_TEST_F(LogTest, LogZeroValues) {
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR3FromArray3D<float>(Array3D<float>(3, 0, 0));
-  builder.Log(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR3FromArray3D<float>(&builder, Array3D<float>(3, 0, 0));
+  Log(x);
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 0), {},
                              ErrorSpec(0.0001));
@@ -42,11 +41,12 @@ TEST_F(LogTest, LogTenValues) {
   std::vector<float> input = {-0.0, 1.0, 2.0,  -3.0, -4.0,
                               5.0,  6.0, -7.0, -8.0, 9.0};
 
-  ComputationBuilder builder(client_, TestName());
-  auto x = builder.ConstantR1<float>(input);
-  builder.Log(x);
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, input);
+  Log(x);
 
   std::vector<float> expected;
+  expected.reserve(input.size());
   for (float f : input) {
     expected.push_back(std::log(f));
   }
@@ -56,20 +56,3 @@ TEST_F(LogTest, LogTenValues) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

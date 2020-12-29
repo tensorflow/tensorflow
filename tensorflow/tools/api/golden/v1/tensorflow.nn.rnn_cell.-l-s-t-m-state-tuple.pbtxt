@@ -1,0 +1,27 @@
+path: "tensorflow.nn.rnn_cell.LSTMStateTuple"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.layers.legacy_rnn.rnn_cell_impl.LSTMStateTuple\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.legacy_rnn.rnn_cell_impl.LSTMStateTuple\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "c"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "h"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

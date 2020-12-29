@@ -1,0 +1,53 @@
+op {
+  graph_op_name: "AsString"
+  attr {
+    name: "precision"
+    description: <<END
+The post-decimal precision to use for floating point numbers.
+Only used if precision > -1.
+END
+  }
+  attr {
+    name: "scientific"
+    description: <<END
+Use scientific notation for floating point numbers.
+END
+  }
+  attr {
+    name: "shortest"
+    description: <<END
+Use shortest representation (either scientific or standard) for
+floating point numbers.
+END
+  }
+  attr {
+    name: "width"
+    description: <<END
+Pad pre-decimal numbers to this width.
+Applies to both floating point and integer numbers.
+Only used if width > -1.
+END
+  }
+  attr {
+    name: "fill"
+    description: <<END
+The value to pad if width > -1.  If empty, pads with spaces.
+Another typical value is '0'.  String cannot be longer than 1 character.
+END
+  }
+  summary: "Converts each entry in the given tensor to strings."
+  description: <<END
+Supports many numeric types and boolean.
+
+For Unicode, see the
+[https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+tutorial.
+
+Examples:
+
+>>> tf.strings.as_string([3, 2])
+<tf.Tensor: shape=(2,), dtype=string, numpy=array([b'3', b'2'], dtype=object)>
+>>> tf.strings.as_string([3.1415926, 2.71828], precision=2).numpy()
+array([b'3.14', b'2.72'], dtype=object)
+END
+}

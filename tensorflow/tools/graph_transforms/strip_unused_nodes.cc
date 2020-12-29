@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
-
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -74,43 +72,27 @@ Status TypeForPlaceholder(const TransformFuncContext& context,
   return Status::OK();
 }
 
-// Takes a comma-separated string of numbers and parses them into a shape.
-bool TensorShapeFromString(const string& shape_string, TensorShape* result) {
-  if (shape_string == "") {
-    return false;
-  }
-  std::vector<int64> dims;
-  if (!str_util::SplitAndParseAsInts(shape_string, ',', &dims)) {
-    return false;
-  }
-  *result = TensorShape(dims);
-  return true;
-}
-
 Status ShapeForPlaceholder(const TransformFuncContext& context,
                            const string& node_name, TensorShape* result) {
   // If we don't find anything else, return scalar.
   *result = {};
 
   // Check to see if we have been given a default for all placeholders.
-  if (context.params.count("type")) {
+  if (context.params.count("shape")) {
     if (context.params.at("shape").size() != 1) {
       return errors::InvalidArgument(
           "You must pass no more than one default 'shape' to "
           "strip_unused_nodes");
     }
     const string& shape_string = context.params.at("shape")[0];
-    if (!TensorShapeFromString(shape_string, result)) {
-      return errors::InvalidArgument("Couldn't understand shape argument '",
-                                     shape_string, "'");
-    }
+    TF_RETURN_IF_ERROR(TensorShapeFromString(shape_string, result));
   }
 
   // See if there's a particular type specified for this placeholder.
-  if (context.params.count("name") || context.params.count("type_for_name")) {
+  if (context.params.count("name") || context.params.count("shape_for_name")) {
     if (!context.params.count("name") ||
-        !context.params.count("type_for_name") ||
-        (context.params.at("type_for_name").size() !=
+        !context.params.count("shape_for_name") ||
+        (context.params.at("shape_for_name").size() !=
          context.params.at("name").size())) {
       return errors::InvalidArgument(
           "You must pass a 'shape_for_name' arg for every 'name', e.g. "
@@ -121,10 +103,7 @@ Status ShapeForPlaceholder(const TransformFuncContext& context,
     for (int i = 0; i < name_count; ++i) {
       if (context.params.at("name")[i] == node_name) {
         const string& shape_string = context.params.at("shape_for_name")[i];
-        if (!TensorShapeFromString(shape_string, result)) {
-          return errors::InvalidArgument("Couldn't understand shape argument '",
-                                         shape_string, "'");
-        }
+        TF_RETURN_IF_ERROR(TensorShapeFromString(shape_string, result));
       }
     }
   }
@@ -190,7 +169,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
     if (input_nodes.count(node.name())) {
       NodeDef placeholder_node;
       if (node.op() == "Placeholder") {
-        placeholder_node.CopyFrom(node);
+        placeholder_node = node;
       } else {
         placeholder_node.set_op("Placeholder");
         placeholder_node.set_name(node.name());

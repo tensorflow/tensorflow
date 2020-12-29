@@ -1,0 +1,151 @@
+syntax = "proto3";
+
+package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
+
+// `StructuredValue` represents a dynamically typed value representing various
+// data structures that are inspired by Python data structures typically used in
+// TensorFlow functions as inputs and outputs.
+//
+// For example when saving a Layer there may be a `training` argument. If the
+// user passes a boolean True/False, that switches between two concrete
+// TensorFlow functions. In order to switch between them in the same way after
+// loading the SavedModel, we need to represent "True" and "False".
+//
+// A more advanced example might be a function which takes a list of
+// dictionaries mapping from strings to Tensors. In order to map from
+// user-specified arguments `[{"a": tf.constant(1.)}, {"q": tf.constant(3.)}]`
+// after load to the right saved TensorFlow function, we need to represent the
+// nested structure and the strings, recording that we have a trace for anything
+// matching `[{"a": tf.TensorSpec(None, tf.float32)}, {"q": tf.TensorSpec([],
+// tf.float64)}]` as an example.
+//
+// Likewise functions may return nested structures of Tensors, for example
+// returning a dictionary mapping from strings to Tensors. In order for the
+// loaded function to return the same structure we need to serialize it.
+//
+// This is an ergonomic aid for working with loaded SavedModels, not a promise
+// to serialize all possible function signatures. For example we do not expect
+// to pickle generic Python objects, and ideally we'd stay language-agnostic.
+message StructuredValue {
+  // The kind of value.
+  oneof kind {
+    // Represents None.
+    NoneValue none_value = 1;
+
+    // Represents a double-precision floating-point value (a Python `float`).
+    double float64_value = 11;
+    // Represents a signed integer value, limited to 64 bits.
+    // Larger values from Python's arbitrary-precision integers are unsupported.
+    sint64 int64_value = 12;
+    // Represents a string of Unicode characters stored in a Python `str`.
+    // In Python 3, this is exactly what type `str` is.
+    // In Python 2, this is the UTF-8 encoding of the characters.
+    // For strings with ASCII characters only (as often used in TensorFlow code)
+    // there is effectively no difference between the language versions.
+    // The obsolescent `unicode` type of Python 2 is not supported here.
+    string string_value = 13;
+    // Represents a boolean value.
+    bool bool_value = 14;
+
+    // Represents a TensorShape.
+    tensorflow.TensorShapeProto tensor_shape_value = 31;
+    // Represents an enum value for dtype.
+    tensorflow.DataType tensor_dtype_value = 32;
+    // Represents a value for tf.TensorSpec.
+    TensorSpecProto tensor_spec_value = 33;
+    // Represents a value for tf.TypeSpec.
+    TypeSpecProto type_spec_value = 34;
+    // Represents a value for tf.BoundedTensorSpec.
+    BoundedTensorSpecProto bounded_tensor_spec_value = 35;
+
+    // Represents a list of `Value`.
+    ListValue list_value = 51;
+    // Represents a tuple of `Value`.
+    TupleValue tuple_value = 52;
+    // Represents a dict `Value`.
+    DictValue dict_value = 53;
+    // Represents Python's namedtuple.
+    NamedTupleValue named_tuple_value = 54;
+  }
+}
+
+// Represents None.
+message NoneValue {}
+
+// Represents a Python list.
+message ListValue {
+  repeated StructuredValue values = 1;
+}
+
+// Represents a Python tuple.
+message TupleValue {
+  repeated StructuredValue values = 1;
+}
+
+// Represents a Python dict keyed by `str`.
+// The comment on Unicode from Value.string_value applies analogously.
+message DictValue {
+  map<string, StructuredValue> fields = 1;
+}
+
+// Represents a (key, value) pair.
+message PairValue {
+  string key = 1;
+  StructuredValue value = 2;
+}
+
+// Represents Python's namedtuple.
+message NamedTupleValue {
+  string name = 1;
+  repeated PairValue values = 2;
+}
+
+// A protobuf to represent tf.TensorSpec.
+message TensorSpecProto {
+  string name = 1;
+  tensorflow.TensorShapeProto shape = 2;
+  tensorflow.DataType dtype = 3;
+}
+
+// A protobuf to represent tf.BoundedTensorSpec.
+message BoundedTensorSpecProto {
+  string name = 1;
+  tensorflow.TensorShapeProto shape = 2;
+  tensorflow.DataType dtype = 3;
+  tensorflow.TensorProto minimum = 4;
+  tensorflow.TensorProto maximum = 5;
+}
+
+// Represents a tf.TypeSpec
+message TypeSpecProto {
+  enum TypeSpecClass {
+    UNKNOWN = 0;
+    SPARSE_TENSOR_SPEC = 1;   // tf.SparseTensorSpec
+    INDEXED_SLICES_SPEC = 2;  // tf.IndexedSlicesSpec
+    RAGGED_TENSOR_SPEC = 3;   // tf.RaggedTensorSpec
+    TENSOR_ARRAY_SPEC = 4;    // tf.TensorArraySpec
+    DATA_DATASET_SPEC = 5;    // tf.data.DatasetSpec
+    DATA_ITERATOR_SPEC = 6;   // IteratorSpec from data/ops/iterator_ops.py
+    OPTIONAL_SPEC = 7;        // tf.OptionalSpec
+    PER_REPLICA_SPEC = 8;     // PerReplicaSpec from distribute/values.py
+    VARIABLE_SPEC = 9;        // tf.VariableSpec
+    ROW_PARTITION_SPEC = 10;  // RowPartitionSpec from ragged/row_partition.py
+    NDARRAY_SPEC = 11;        // TF Numpy NDarray spec
+  }
+  TypeSpecClass type_spec_class = 1;
+
+  // The value returned by TypeSpec._serialize().
+  StructuredValue type_state = 2;
+
+  // This is currently redundant with the type_spec_class enum, and is only
+  // used for error reporting.  In particular, if you use an older binary to
+  // load a newer model, and the model uses a TypeSpecClass that the older
+  // binary doesn't support, then this lets us display a useful error message.
+  string type_spec_class_name = 3;
+}

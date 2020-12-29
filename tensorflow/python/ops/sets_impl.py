@@ -23,6 +23,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import gen_set_ops
+from tensorflow.python.util import dispatch
+from tensorflow.python.util.tf_export import tf_export
 
 
 _VALID_DTYPES = set([
@@ -30,6 +32,8 @@ _VALID_DTYPES = set([
     dtypes.uint8, dtypes.uint16, dtypes.string])
 
 
+@tf_export("sets.size", v1=["sets.size", "sets.set_size"])
+@dispatch.add_dispatch_support
 def set_size(a, validate_indices=True):
   """Compute number of unique elements along last dimension of `a`.
 
@@ -99,7 +103,7 @@ def _set_operation(a, b, set_operation, validate_indices=True):
     b: `Tensor` or `SparseTensor` of the same type as `a`. Must be
         `SparseTensor` if `a` is `SparseTensor`. If sparse, indices must be
         sorted in row-major order.
-    set_operation: String indicating set operaiton. See
+    set_operation: String indicating set operation. See
         SetOperationOp::SetOperationFromContext for valid values.
     validate_indices: Whether to validate the order and range of sparse indices
        in `a` and `b`.
@@ -131,6 +135,9 @@ def _set_operation(a, b, set_operation, validate_indices=True):
   return sparse_tensor.SparseTensor(indices, values, shape)
 
 
+@tf_export(
+    "sets.intersection", v1=["sets.intersection", "sets.set_intersection"])
+@dispatch.add_dispatch_support
 def set_intersection(a, b, validate_indices=True):
   """Compute set intersection of elements in last dimension of `a` and `b`.
 
@@ -139,42 +146,47 @@ def set_intersection(a, b, validate_indices=True):
   Example:
 
   ```python
-    a = [
-      [
-        [
-          [1, 2],
-          [3],
-        ],
-        [
-          [4],
-          [5, 6],
-        ],
-      ],
-    ]
-    b = [
-      [
-        [
-          [1, 3],
-          [2],
-        ],
-        [
-          [4, 5],
-          [5, 6, 7, 8],
-        ],
-      ],
-    ]
-    set_intersection(a, b) = [
-      [
-        [
-          [1],
-          [],
-        ],
-        [
-          [4],
-          [5, 6],
-        ],
-      ],
-    ]
+    import tensorflow as tf
+    import collections
+
+    # Represent the following array of sets as a sparse tensor:
+    # a = np.array([[{1, 2}, {3}], [{4}, {5, 6}]])
+    a = collections.OrderedDict([
+        ((0, 0, 0), 1),
+        ((0, 0, 1), 2),
+        ((0, 1, 0), 3),
+        ((1, 0, 0), 4),
+        ((1, 1, 0), 5),
+        ((1, 1, 1), 6),
+    ])
+    a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                               dense_shape=[2,2,2])
+
+    # b = np.array([[{1}, {}], [{4}, {5, 6, 7, 8}]])
+    b = collections.OrderedDict([
+        ((0, 0, 0), 1),
+        ((1, 0, 0), 4),
+        ((1, 1, 0), 5),
+        ((1, 1, 1), 6),
+        ((1, 1, 2), 7),
+        ((1, 1, 3), 8),
+    ])
+    b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                               dense_shape=[2, 2, 4])
+
+    # `tf.sets.intersection` is applied to each aligned pair of sets.
+    tf.sets.intersection(a, b)
+
+    # The result will be equivalent to either of:
+    #
+    # np.array([[{1}, {}], [{4}, {5, 6}]])
+    #
+    # collections.OrderedDict([
+    #     ((0, 0, 0), 1),
+    #     ((1, 0, 0), 4),
+    #     ((1, 1, 0), 5),
+    #     ((1, 1, 1), 6),
+    # ])
   ```
 
   Args:
@@ -194,6 +206,9 @@ def set_intersection(a, b, validate_indices=True):
   return _set_operation(a, b, "intersection", validate_indices)
 
 
+@tf_export(
+    "sets.difference", v1=["sets.difference", "sets.set_difference"])
+@dispatch.add_dispatch_support
 def set_difference(a, b, aminusb=True, validate_indices=True):
   """Compute set difference of elements in last dimension of `a` and `b`.
 
@@ -202,42 +217,48 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
   Example:
 
   ```python
-    a = [
-      [
-        [
-          [1, 2],
-          [3],
-        ],
-        [
-          [4],
-          [5, 6],
-        ],
-      ],
-    ]
-    b = [
-      [
-        [
-          [1, 3],
-          [2],
-        ],
-        [
-          [4, 5],
-          [5, 6, 7, 8],
-        ],
-      ],
-    ]
-    set_difference(a, b, aminusb=True) = [
-      [
-        [
-          [2],
-          [3],
-        ],
-        [
-          [],
-          [],
-        ],
-      ],
-    ]
+    import tensorflow as tf
+    import collections
+
+    # Represent the following array of sets as a sparse tensor:
+    # a = np.array([[{1, 2}, {3}], [{4}, {5, 6}]])
+    a = collections.OrderedDict([
+        ((0, 0, 0), 1),
+        ((0, 0, 1), 2),
+        ((0, 1, 0), 3),
+        ((1, 0, 0), 4),
+        ((1, 1, 0), 5),
+        ((1, 1, 1), 6),
+    ])
+    a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                               dense_shape=[2, 2, 2])
+
+    # np.array([[{1, 3}, {2}], [{4, 5}, {5, 6, 7, 8}]])
+    b = collections.OrderedDict([
+        ((0, 0, 0), 1),
+        ((0, 0, 1), 3),
+        ((0, 1, 0), 2),
+        ((1, 0, 0), 4),
+        ((1, 0, 1), 5),
+        ((1, 1, 0), 5),
+        ((1, 1, 1), 6),
+        ((1, 1, 2), 7),
+        ((1, 1, 3), 8),
+    ])
+    b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                               dense_shape=[2, 2, 4])
+
+    # `set_difference` is applied to each aligned pair of sets.
+    tf.sets.difference(a, b)
+
+    # The result will be equivalent to either of:
+    #
+    # np.array([[{2}, {3}], [{}, {}]])
+    #
+    # collections.OrderedDict([
+    #     ((0, 0, 0), 2),
+    #     ((0, 1, 0), 3),
+    # ])
   ```
 
   Args:
@@ -253,6 +274,13 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
     A `SparseTensor` whose shape is the same rank as `a` and `b`, and all but
     the last dimension the same. Elements along the last dimension contain the
     differences.
+
+  Raises:
+    TypeError: If inputs are invalid types, or if `a` and `b` have
+        different types.
+    ValueError: If `a` is sparse and `b` is dense.
+    errors_impl.InvalidArgumentError: If the shapes of `a` and `b` do not
+        match in any dimension other than the last dimension.
   """
   a, b, flipped = _convert_to_tensors_or_sparse_tensors(a, b)
   if flipped:
@@ -260,6 +288,9 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
   return _set_operation(a, b, "a-b" if aminusb else "b-a", validate_indices)
 
 
+@tf_export(
+    "sets.union", v1=["sets.union", "sets.set_union"])
+@dispatch.add_dispatch_support
 def set_union(a, b, validate_indices=True):
   """Compute set union of elements in last dimension of `a` and `b`.
 
@@ -268,42 +299,56 @@ def set_union(a, b, validate_indices=True):
   Example:
 
   ```python
-    a = [
-      [
-        [
-          [1, 2],
-          [3],
-        ],
-        [
-          [4],
-          [5, 6],
-        ],
-      ],
-    ]
-    b = [
-      [
-        [
-          [1, 3],
-          [2],
-        ],
-        [
-          [4, 5],
-          [5, 6, 7, 8],
-        ],
-      ],
-    ]
-    set_union(a, b) = [
-      [
-        [
-          [1, 2, 3],
-          [2, 3],
-        ],
-        [
-          [4, 5],
-          [5, 6, 7, 8],
-        ],
-      ],
-    ]
+    import tensorflow as tf
+    import collections
+
+    # [[{1, 2}, {3}], [{4}, {5, 6}]]
+    a = collections.OrderedDict([
+        ((0, 0, 0), 1),
+        ((0, 0, 1), 2),
+        ((0, 1, 0), 3),
+        ((1, 0, 0), 4),
+        ((1, 1, 0), 5),
+        ((1, 1, 1), 6),
+    ])
+    a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                               dense_shape=[2, 2, 2])
+
+    # [[{1, 3}, {2}], [{4, 5}, {5, 6, 7, 8}]]
+    b = collections.OrderedDict([
+        ((0, 0, 0), 1),
+        ((0, 0, 1), 3),
+        ((0, 1, 0), 2),
+        ((1, 0, 0), 4),
+        ((1, 0, 1), 5),
+        ((1, 1, 0), 5),
+        ((1, 1, 1), 6),
+        ((1, 1, 2), 7),
+        ((1, 1, 3), 8),
+    ])
+    b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                               dense_shape=[2, 2, 4])
+
+    # `set_union` is applied to each aligned pair of sets.
+    tf.sets.union(a, b)
+
+    # The result will be a equivalent to either of:
+    #
+    # np.array([[{1, 2, 3}, {2, 3}], [{4, 5}, {5, 6, 7, 8}]])
+    #
+    # collections.OrderedDict([
+    #     ((0, 0, 0), 1),
+    #     ((0, 0, 1), 2),
+    #     ((0, 0, 2), 3),
+    #     ((0, 1, 0), 2),
+    #     ((0, 1, 1), 3),
+    #     ((1, 0, 0), 4),
+    #     ((1, 0, 1), 5),
+    #     ((1, 1, 0), 5),
+    #     ((1, 1, 1), 6),
+    #     ((1, 1, 2), 7),
+    #     ((1, 1, 3), 8),
+    # ])
   ```
 
   Args:

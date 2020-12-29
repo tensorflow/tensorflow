@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "AsString"
+  endpoint {
+    name: "dtypes.AsString"
+  }
+}

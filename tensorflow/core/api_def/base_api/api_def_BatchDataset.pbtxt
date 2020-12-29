@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "BatchDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "batch_size"
+    description: <<END
+A scalar representing the number of elements to accumulate in a
+batch.
+END
+  }
+  summary: "Creates a dataset that batches `batch_size` elements from `input_dataset`."
+}

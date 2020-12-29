@@ -1,0 +1,53 @@
+path: "tensorflow.tpu.experimental.Topology"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.topology.Topology\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "device_coordinates"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "mesh_rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "mesh_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "missing_devices"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_tasks"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_tpus_per_task"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'serialized\', \'mesh_shape\', \'device_coordinates\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "cpu_device_name_at_coordinates"
+    argspec: "args=[\'self\', \'device_coordinates\', \'job\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "serialized"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "task_ordinal_at_coordinates"
+    argspec: "args=[\'self\', \'device_coordinates\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tpu_device_name_at_coordinates"
+    argspec: "args=[\'self\', \'device_coordinates\', \'job\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tpu_device_ordinal_at_coordinates"
+    argspec: "args=[\'self\', \'device_coordinates\'], varargs=None, keywords=None, defaults=None"
+  }
+}

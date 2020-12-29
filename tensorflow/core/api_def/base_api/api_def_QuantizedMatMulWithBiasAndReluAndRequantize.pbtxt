@@ -1,0 +1,99 @@
+op {
+  graph_op_name: "QuantizedMatMulWithBiasAndReluAndRequantize"
+  visibility: HIDDEN
+  in_arg {
+    name: "a"
+    description: <<END
+A matrix to be multiplied. Must be a two-dimensional tensor of type `quint8`.
+END
+  }
+  in_arg {
+    name: "b"
+    description: <<END
+A matrix to be multiplied and must be a two-dimensional tensor of type `qint8`.
+END
+  }
+  in_arg {
+    name: "bias"
+    description: <<END
+A 1D bias tensor with size matching with inner dimension of `b` (after being
+transposed if `transposed_b` is non-zero).
+END
+  }
+  in_arg {
+    name: "min_a"
+    description: <<END
+The float value that the lowest quantized `a` value represents.
+END
+  }
+  in_arg {
+    name: "max_a"
+    description: <<END
+The float value that the highest quantized `a` value represents.
+END
+  }
+  in_arg {
+    name: "min_b"
+    description: <<END
+The float value that the lowest quantized `b` value represents.
+END
+  }
+  in_arg {
+    name: "max_b"
+    description: <<END
+The float value that the highest quantized `b` value represents.
+END
+  }
+  in_arg {
+    name: "min_freezed_output"
+    description: <<END
+The float value that the lowest quantized output value after requantize.
+END
+  }
+  in_arg {
+    name: "min_freezed_output"
+    description: <<END
+The float value that the highest quantized output value after requantize.
+END
+  }
+
+  out_arg {
+    name: "min_out"
+    description: <<END
+The float value that the lowest quantized output value represents.
+END
+  }
+  out_arg {
+    name: "max_out"
+    description: <<END
+The float value that the highest quantized output value represents.
+END
+  }
+  attr {
+    name: "transpose_a"
+    description: "If true, `a` is transposed before multiplication."
+  }
+  attr {
+    name: "transpose_b"
+    description: "If true, `b` is transposed before multiplication."
+  }
+  attr {
+    name: "input_quant_mode"
+    description: <<END
+Input data quantization mode. Either MIN_FIRST(default) or SCALED.
+END
+  }
+  summary: <<END
+Perform a quantized matrix multiplication of  `a` by the matrix `b` with bias
+add and relu and requantize fusion.
+END
+  description: <<END
+The inputs must be two-dimensional matrices and 1D bias vector. And the inner
+dimension of `a` (after being transposed if `transpose_a` is non-zero) must
+match the outer dimension of `b` (after being transposed if `transposed_b` is
+non-zero). Then do broadcast add operation with bias values on the matrix
+multiplication result. The bias size must match inner dimension of `b`.  Then do
+relu activation to get non-negative result. Then do requantize operation to get
+final uint8 result.
+END
+}

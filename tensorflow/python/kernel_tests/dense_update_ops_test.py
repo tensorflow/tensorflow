@@ -21,8 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -30,33 +30,33 @@ from tensorflow.python.platform import test
 
 class AssignOpTest(test.TestCase):
 
-  def _initAssignFetch(self, x, y, use_gpu=False):
+  def _initAssignFetch(self, x, y, use_gpu):
     """Initialize a param to init and update it with y."""
     super(AssignOpTest, self).setUp()
-    with self.test_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu=use_gpu):
       p = variables.Variable(x)
       assign = state_ops.assign(p, y)
-      p.initializer.run()
-      new_value = assign.eval()
-      return p.eval(), new_value
+      self.evaluate(p.initializer)
+      new_value = self.evaluate(assign)
+      return self.evaluate(p), new_value
 
-  def _initAssignAddFetch(self, x, y, use_gpu=False):
+  def _initAssignAddFetch(self, x, y, use_gpu):
     """Initialize a param to init, and compute param += y."""
-    with self.test_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu=use_gpu):
       p = variables.Variable(x)
       add = state_ops.assign_add(p, y)
-      p.initializer.run()
-      new_value = add.eval()
-      return p.eval(), new_value
+      self.evaluate(p.initializer)
+      new_value = self.evaluate(add)
+      return self.evaluate(p), new_value
 
-  def _initAssignSubFetch(self, x, y, use_gpu=False):
+  def _initAssignSubFetch(self, x, y, use_gpu):
     """Initialize a param to init, and compute param -= y."""
-    with self.test_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu=use_gpu):
       p = variables.Variable(x)
       sub = state_ops.assign_sub(p, y)
-      p.initializer.run()
-      new_value = sub.eval()
-      return p.eval(), new_value
+      self.evaluate(p.initializer)
+      new_value = self.evaluate(sub)
+      return self.evaluate(p), new_value
 
   def _testTypes(self, vals):
     for dtype in [np.float32, np.float64, np.int32, np.int64]:
@@ -71,111 +71,50 @@ class AssignOpTest(test.TestCase):
       var_value, op_value = self._initAssignSubFetch(x, y, use_gpu=False)
       self.assertAllEqual(x - y, var_value)
       self.assertAllEqual(x - y, op_value)
-      if test.is_built_with_cuda() and dtype in [np.float32, np.float64]:
+      if test.is_built_with_gpu_support() and dtype in [np.float32, np.float64]:
         var_value, op_value = self._initAssignFetch(x, y, use_gpu=True)
         self.assertAllEqual(y, var_value)
         self.assertAllEqual(y, op_value)
         var_value, op_value = self._initAssignAddFetch(x, y, use_gpu=True)
         self.assertAllEqual(x + y, var_value)
         self.assertAllEqual(x + y, op_value)
-        var_value, op_value = self._initAssignSubFetch(x, y, use_gpu=False)
+        var_value, op_value = self._initAssignSubFetch(x, y, use_gpu=True)
         self.assertAllEqual(x - y, var_value)
         self.assertAllEqual(x - y, op_value)
 
   def testBasic(self):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
+  @test_util.run_v1_only("b/120545219")
   def testAssignNonStrictShapeChecking(self):
-    with self.test_session():
+    with self.cached_session():
       data = array_ops.fill([1024, 1024], 0)
-      p = variables.Variable([1])
+      p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
-      self.assertAllEqual(p.eval(), data.eval())
+      self.assertAllEqual(p, self.evaluate(data))
 
       # Assign to yet another shape
       data2 = array_ops.fill([10, 10], 1)
       a2 = state_ops.assign(p, data2, validate_shape=False)
       a2.op.run()
-      self.assertAllEqual(p.eval(), data2.eval())
+      self.assertAllEqual(p, self.evaluate(data2))
 
+  @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignAdd(self):
-    with self.test_session():
-      p = variables.Variable(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    with self.cached_session():
+      p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
       a = state_ops.assign_add(p, array_ops.fill([1024, 1024], 0))
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
 
+  @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignSub(self):
-    with self.test_session():
-      p = variables.Variable(array_ops.fill([1024, 1024], 1), dtypes.int32)
+    with self.cached_session():
+      p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
       a = state_ops.assign_sub(p, array_ops.fill([1024, 1024], 0))
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
-
-  # NOTE(mrry): See also
-  #   dense_update_ops_no_tsan_test.AssignOpTest, which contains a benign
-  #   data race and must run without TSAN.
-  def testParallelUpdateWithLocking(self):
-    with self.test_session() as sess:
-      zeros_t = array_ops.fill([1024, 1024], 0.0)
-      ones_t = array_ops.fill([1024, 1024], 1.0)
-      p = variables.Variable(zeros_t)
-      adds = [
-          state_ops.assign_add(
-              p, ones_t, use_locking=True) for _ in range(20)
-      ]
-      p.initializer.run()
-
-      def run_add(add_op):
-        sess.run(add_op)
-
-      threads = [
-          self.checkedThread(
-              target=run_add, args=(add_op,)) for add_op in adds
-      ]
-      for t in threads:
-        t.start()
-      for t in threads:
-        t.join()
-
-      vals = p.eval()
-      ones = np.ones((1024, 1024)).astype(np.float32)
-      self.assertAllEqual(vals, ones * 20)
-
-  # NOTE(mrry): See also
-  #   dense_update_ops_no_tsan_test.[...].testParallelAssignWithoutLocking,
-  #   which contains a benign data race and must run without TSAN.
-  def testParallelAssignWithLocking(self):
-    with self.test_session() as sess:
-      zeros_t = array_ops.fill([1024, 1024], 0.0)
-      ones_t = array_ops.fill([1024, 1024], 1.0)
-      p = variables.Variable(zeros_t)
-      assigns = [
-          state_ops.assign(
-              p, math_ops.multiply(ones_t, float(i)), use_locking=True)
-          for i in range(1, 21)
-      ]
-      p.initializer.run()
-
-      def run_assign(assign_op):
-        sess.run(assign_op)
-
-      threads = [
-          self.checkedThread(
-              target=run_assign, args=(assign_op,)) for assign_op in assigns
-      ]
-      for t in threads:
-        t.start()
-      for t in threads:
-        t.join()
-
-      vals = p.eval()
-
-      # Assert every element is the same, and taken from one of the assignments.
-      self.assertTrue(vals[0, 0] > 0)
-      self.assertTrue(vals[0, 0] <= 20)
-      self.assertAllEqual(vals, np.ones([1024, 1024]) * vals[0, 0])
 
 
 if __name__ == "__main__":

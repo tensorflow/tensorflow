@@ -27,14 +27,29 @@ limitations under the License.
 
 namespace tensorflow {
 
+// EncapsulateSubgraphs pass takes all the nodes with the same cluster ID
+// (derived from kXlaClusterAttr=ID (kXlaClusterAttr) attribute), puts them into
+// a TF function, and replaces the subgraph in the main graph with a call to
+// that TF function annotated with kXlaCompiledKernelAttr (_XlaCompiledKernel).
+class EncapsulateSubgraphsPass : public GraphOptimizationPass {
+ public:
+  Status Run(const GraphOptimizationPassOptions& options) override;
+};
+
 // A rewriting function to apply to each subgraph during encapsulation.
+// 'arg_source_tensors' are the tensors corresponding to the arguments in the
+// original source graph (*not* 'graph').
+//
 // 'graph' is the subgraph. The rewriting may renumber the inputs and outputs;
 // 'input_permutation' is a mapping from old argument numbers to new argument
 // numbers, whereas 'output_permutation' is the same for outputs. Both
 // 'input_permutation' and 'output_permutation' are initialized to the identity
 // permutation. 'nodedef' is the NodeDef for the call to the function under
 // construction, provided to allow additional attributes to be set.
+// The rewrite may also change the NodeDef's operator name, and that
+// name will be used as the name of the generated function.
 typedef std::function<Status(
+    const std::vector<OutputTensor>& arg_source_tensors,
     std::unique_ptr<Graph>* graph, std::vector<int>* input_permutation,
     std::vector<int>* output_permutation, NodeDef* node_def)>
     RewriteSubgraphFn;
@@ -49,9 +64,8 @@ typedef std::function<Status(
 // If 'rewrite_subgraph_fn' is set, it is applied to each subgraph before
 // function conversion.
 //
-// If 'parallel_checking' is true, the unencapsulated operators are added to the
-// output graph, together with a "ParallelCheck" operator, that verifies that
-// the original and encapsulated subgraphs produce similar results.
+// If 'reuse_existing_functions' is set, use an existing function with the
+// same name, if any.
 //
 // TODO(phawkins): currently, some information in control edges
 // is not preserved. Suppose you have A and B in the main
@@ -60,26 +74,40 @@ typedef std::function<Status(
 // dependency is lost.
 Status EncapsulateSubgraphsInFunctions(
     string group_attribute, const Graph& graph_in,
-    const RewriteSubgraphFn& rewrite_subgraph_fn, bool parallel_checking,
+    const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
     std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library);
 
 // The attribute that marks function calls produced by the encapsulate
-// subgraphs pass and that should in turn be compiled via _XlaLaunch operators.
+// subgraphs pass and that should in turn be compiled via XlaLaunch operators.
 extern const char* const kXlaCompiledKernelAttr;
 
 // Does `node` have the kXlaCompiledKernelAttr attribute?
 bool IsXlaCompiledKernel(const Node& node);
 
-// Functions produce by the EncapsulateSubgraphs pass have their arguments
-// ordered such that compile-time constant arguments are first in the argument
-// order. The functions are annotated with the following attribute giving the
-// number of constant arguments.
+// Functions produced by the EncapsulateSubgraphs pass have their arguments in
+// the order:
+// 1) compile-time constant arguments, in host memory,
+// 2) other arguments, in device memory.
+// 3) resource variable arguments, in host memory. Note that only the resource
+//    Tensor itself is in host memory; the underlying value may be in device
+//    memory.
+// The functions are annotated with the following attributes that describe how
+// many constant and resource arguments there are:
+
+// Name of the attribute containing the number of constant arguments.
 extern const char* const kXlaNumConstantArgsAttr;
 
-class EncapsulateSubgraphsPass : public GraphOptimizationPass {
- public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
-};
+// Name of the attribute containing the number of resource variable arguments.
+extern const char* const kXlaNumResourceArgsAttr;
+
+// Name of the attribute defining whether the cluster has reference variables.
+extern const char* const kXlaHasReferenceVarsAttr;
+
+// Sorts each node's control inputs by their names. This guarantees that for two
+// structurally equivalent GraphDefs, we get the same traversal ordering on
+// node's control input fields.
+// TODO(hpucha): Move the utilities to a more appropriate place.
+void SortControlInputs(GraphDef* gdef);
 
 }  // namespace tensorflow
 

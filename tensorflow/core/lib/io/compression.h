@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
+#define TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
 
 namespace tensorflow {
 namespace io {
@@ -22,9 +22,11 @@ namespace compression {
 
 extern const char kNone[];
 extern const char kGzip[];
+extern const char kSnappy[];
+extern const char kZlib[];
 
-}
-}
-}
+}  // namespace compression
+}  // namespace io
+}  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_COMPRESSION_H_

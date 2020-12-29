@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+#
+# Creates the project file distributions for the TensorFlow Lite Micro test and
+# example targets aimed at embedded platforms.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR=${SCRIPT_DIR}/../../../../..
+cd "${ROOT_DIR}"
+pwd
+
+make -f tensorflow/lite/micro/tools/make/Makefile clean_downloads DISABLE_DOWNLOADS=true
+make -f tensorflow/lite/micro/tools/make/Makefile TAGS=cmsis-nn clean DISABLE_DOWNLOADS=true
+if [ -d tensorflow/lite/micro/tools/make/downloads ]; then
+  echo "ERROR: Downloads directory should not exist, but it does."
+  exit 1
+fi
+
+echo "Running code style checks at `date`"
+tensorflow/lite/micro/tools/ci_build/test_code_style.sh PRESUBMIT
+
+# Add all the test scripts for the various supported platforms here. This
+# enables running all the tests together has part of the continuous integration
+# pipeline and reduces duplication associated with setting up the docker
+# environment.
+
+echo "Starting to run micro tests at `date`"
+
+echo "Running x86 tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_x86.sh PRESUBMIT
+
+echo "Running bluepill tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
+
+# TODO(b/174189223): Skipping mbed tests due to:
+# https://github.com/tensorflow/tensorflow/issues/45164
+# echo "Running mbed tests at `date`"
+# tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT
+
+echo "Running Sparkfun tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_sparkfun.sh
+
+echo "Running stm32f4 tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_stm32f4.sh PRESUBMIT
+
+echo "Running Arduino tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_arduino.sh
+
+echo "Running cortex_m_generic tests at `date`"
+tensorflow/lite/micro/tools/ci_build/test_cortex_m_generic.sh
+
+echo "Finished all micro tests at `date`"

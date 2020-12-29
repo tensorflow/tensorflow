@@ -41,14 +41,19 @@ static Graph* SparseXent(int batch_size, int num_classes) {
   return g;
 }
 
-#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                                \
-  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(int iters) {       \
-    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * CLASS); \
-    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS)).Run(iters);            \
-  }                                                                     \
+#define BM_SparseXentDev(BATCH, CLASS, DEVICE)                               \
+  static void BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE(                  \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, SparseXent(BATCH, CLASS),                       \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * BATCH * \
+                            CLASS);                                          \
+  }                                                                          \
   BENCHMARK(BM_SparseXent##_##BATCH##_##CLASS##_##DEVICE);
 
 /// The representative tests for ptb_word on GPU
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_SparseXentDev(8, 1000000, gpu);
 
 BM_SparseXentDev(16, 10000, gpu);
@@ -62,6 +67,7 @@ BM_SparseXentDev(32, 100000, gpu);
 BM_SparseXentDev(64, 10000, gpu);
 BM_SparseXentDev(64, 30000, gpu);
 BM_SparseXentDev(64, 100000, gpu);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // CPU
 BM_SparseXentDev(8, 1000000, cpu);

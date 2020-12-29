@@ -1,0 +1,10 @@
+{
+    "benchmark_name" : "mobile_net_benchmark",
+    "num_threads" : "4",
+    "num_runs" : "20",
+    "warmup_runs" : "1",
+    "graph" : "mobilenet_v1_1.0_224.tflite",
+    "input_layer" : "input",
+    "input_layer_shape" : "1,224,224,3",
+    "run_delay" : "-1"
+}

@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ApplyAdaMax"
+  endpoint {
+    name: "train.ApplyAdaMax"
+  }
+}

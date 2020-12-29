@@ -20,10 +20,17 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops as tf_data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export(v1=['saved_model.main_op.main_op'])
+@deprecation.deprecated(
+    None,
+    'This function will only be available through the v1 compatibility '
+    'library as tf.compat.v1.saved_model.main_op.main_op.')
 def main_op():
   """Returns a main op to init variables and tables.
 
@@ -35,10 +42,18 @@ def main_op():
   """
   init = variables.global_variables_initializer()
   init_local = variables.local_variables_initializer()
-  init_tables = tf_data_flow_ops.tables_initializer()
+  init_tables = lookup_ops.tables_initializer()
   return control_flow_ops.group(init, init_local, init_tables)
 
 
+# TODO(sukritiramesh): Integrate with Saver for complete restore functionality.
+@tf_export(v1=['saved_model.main_op_with_restore',
+               'saved_model.main_op.main_op_with_restore'])
+@deprecation.deprecated(
+    None,
+    'This function will only be available through the v1 compatibility '
+    'library as tf.compat.v1.saved_model.main_op_with_restore or '
+    'tf.compat.v1.saved_model.main_op.main_op_with_restore.')
 def main_op_with_restore(restore_op_name):
   """Returns a main op to init variables, tables and restore the graph.
 

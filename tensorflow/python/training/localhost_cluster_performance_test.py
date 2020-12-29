@@ -21,47 +21,23 @@ from __future__ import print_function
 import time
 
 import numpy as np
-import portpicker
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_setter
-from tensorflow.python.training import server_lib
-
-
-def create_local_cluster(num_workers, num_ps, protocol="grpc"):
-  """Create local GRPC servers and return their servers."""
-  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
-  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
-  cluster_dict = {
-      "worker": ["localhost:%s" % port for port in worker_ports],
-      "ps": ["localhost:%s" % port for port in ps_ports]
-  }
-  cs = server_lib.ClusterSpec(cluster_dict)
-
-  workers = [
-      server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_workers)
-  ]
-  ps_servers = [
-      server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
-      for ix in range(num_ps)
-  ]
-
-  return workers, ps_servers
 
 
 class CreateLocalClusterTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testCreateLocalCluster(self):
-    workers, _ = create_local_cluster(num_workers=2, num_ps=2)
+    workers, _ = test.create_local_cluster(num_workers=2, num_ps=2)
     worker_sessions = [session_lib.Session(w.target) for w in workers]
     with ops.device("/job:ps/task:0"):
       var0 = variables.Variable(0.0)
@@ -88,7 +64,7 @@ class CreateLocalClusterBenchmark(test.Benchmark):
     iters = 5
     for _ in range(iters):
       start_time = time.time()
-      create_local_cluster(num_workers=1, num_ps=10)
+      test.create_local_cluster(num_workers=1, num_ps=10)
       end_time = time.time()
       deltas.append(end_time - start_time)
 
@@ -104,7 +80,7 @@ class CreateLocalClusterBenchmark(test.Benchmark):
 class PartitionedVariablesBenchmark(test.Benchmark):
 
   def benchmark_create_1000_partitions_with_100_parameter_servers(self):
-    workers, _ = create_local_cluster(num_workers=1, num_ps=100)
+    workers, _ = test.create_local_cluster(num_workers=1, num_ps=100)
     worker_sessions = [session_lib.Session(w.target) for w in workers]
     worker = worker_sessions[0]
     partition_sizes = (1, 512, 1024 * 32, 1024 * 128)

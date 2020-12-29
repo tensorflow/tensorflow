@@ -1,0 +1,27 @@
+op {
+  name: "DenseToCSRSparseMatrix"
+  input_arg {
+    name: "dense_input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "sparse_output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}

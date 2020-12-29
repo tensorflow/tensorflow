@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SERVER_LIB_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SERVER_LIB_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SERVER_LIB_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SERVER_LIB_H_
 
 #include <memory>
 
@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
+
+class DeviceMgr;
 
 // This library supports a registration/factory-based mechanism for
 // creating TensorFlow server objects. Each server implementation must
@@ -63,10 +65,14 @@ class ServerInterface {
 
 class ServerFactory {
  public:
+  struct Options {
+    // Local DeviceMgr to use.
+    const tensorflow::DeviceMgr* local_device_mgr;
+  };
   // Creates a new server based on the given `server_def`, and stores
   // it in `*out_server`. Returns OK on success, otherwise returns an
   // error.
-  virtual Status NewServer(const ServerDef& server_def,
+  virtual Status NewServer(const ServerDef& server_def, const Options& options,
                            std::unique_ptr<ServerInterface>* out_server) = 0;
 
   // Returns true if and only if this factory can create a server
@@ -92,7 +98,10 @@ class ServerFactory {
 // `*out_server`. Returns OK on success, otherwise returns an error.
 Status NewServer(const ServerDef& server_def,
                  std::unique_ptr<ServerInterface>* out_server);
+Status NewServerWithOptions(const ServerDef& server_def,
+                            const ServerFactory::Options& options,
+                            std::unique_ptr<ServerInterface>* out_server);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SERVER_LIB_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SERVER_LIB_H_

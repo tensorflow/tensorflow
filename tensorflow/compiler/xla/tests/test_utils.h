@@ -20,15 +20,16 @@ limitations under the License.
 #include <memory>
 #include <random>
 
+#include "absl/memory/memory.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
-namespace test_utils {
 
 // A class which generates pseudorandom numbers of a given type within a given
 // range. Not cryptographically secure and likely not perfectly evenly
@@ -53,63 +54,64 @@ class PseudorandomGenerator {
   std::mt19937 generator_;
 };
 
-// Convenience function for creating a rank-2 array with arbitrary layout.
-template <typename NativeT>
-std::unique_ptr<Literal> CreateR2LiteralWithLayout(
-    std::initializer_list<std::initializer_list<NativeT>> values,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  auto literal = MakeUnique<Literal>();
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  LiteralUtil::PopulateWithValue<NativeT>(0, {d0, d1}, literal.get());
-  *literal->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout(minor_to_major);
-  TF_CHECK_OK(ShapeUtil::ValidateShape(literal->shape()));
+// Generates fake data in a literal of the given shape, or returns an error
+// status if the element type is currently unhandled for fake data
+// generation. See below for documentation of pseudo_random and use_large_range.
+StatusOr<Literal> MakeFakeLiteral(const Shape& shape, bool pseudo_random = true,
+                                  bool use_large_range = false);
 
-  int64 dim0 = 0;
-  for (auto inner_list : values) {
-    int64 dim1 = 0;
-    for (auto value : inner_list) {
-      LiteralUtil::Set(literal.get(), {dim0, dim1}, value);
-      ++dim1;
-    }
-    ++dim0;
-  }
-  return literal;
-}
+// Generates a vector of arguments containing fake data. The number, shape and
+// layout of the arguments is appropriate for given HLO module.
+//
+// A best-effort attempt is made to generate the data in a way which produce
+// stable computation results across platforms. Specifically:
+//
+//  (1) Init values of reductions should be the identity of the reduction
+//  computation.
+//
+//  (2) Indices of dynamic slices and update slices should be in bounds.
+//
+//  (3) Keys of key/value sorts should contain no duplicates.
+//
+// These constraints are best-effort only.
+//
+// If pseudo_random is true, the generated numbers will be generated
+// deterministically in a pseudo random way unless the values are constrated to
+// be e.g. init values as above. If pseudo_random is false, the returned values
+// will be generated in a faster way that yields less interesting data, e.g. the
+// values may all be just the same value.
+//
+// If use_large_range is false, the generated floating point numbers will be
+// sampled from a small range of possible values. If use_large_range is true,
+// the generated floating point numbers will be sampled from a uniform-log
+// distribution of most possible floats, with a small chance to instead be
+// sampled from a list of special floating point values (such as 0, inf, etc.).
+//
+// TODO(b/79942829): Make interesting argument generation fast enough that using
+// pseudo_random does not save any noticeable amount of time so that the
+// parameter can be removed.
+StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+                                                 bool pseudo_random = true,
+                                                 bool use_large_range = false);
 
-// Convenience function for creating a rank-3 array with arbitrary layout.
-template <typename NativeT>
-std::unique_ptr<Literal> CreateR3LiteralWithLayout(
-    std::initializer_list<std::initializer_list<std::initializer_list<NativeT>>>
-        values,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
-  auto literal = MakeUnique<Literal>();
-  const int64 d0 = values.size();
-  const int64 d1 = values.begin()->size();
-  const int64 d2 = values.begin()->begin()->size();
-  LiteralUtil::PopulateWithValue<NativeT>(0, {d0, d1, d2}, literal.get());
-  *literal->mutable_shape()->mutable_layout() =
-      LayoutUtil::MakeLayout(minor_to_major);
-  TF_CHECK_OK(ShapeUtil::ValidateShape(literal->shape()));
+// Overload which accepts a random number generator. This enables generation of
+// different random values with sequential calls to MakeFakeArguments by reusing
+// the same generator.
+StatusOr<std::vector<Literal>> MakeFakeArguments(HloModule* const module,
+                                                 std::minstd_rand0* engine,
+                                                 bool use_large_range = false);
 
-  int64 dim0 = 0;
-  for (auto inner_list : values) {
-    int64 dim1 = 0;
-    for (auto inner_inner_list : inner_list) {
-      int64 dim2 = 0;
-      for (auto value : inner_inner_list) {
-        LiteralUtil::Set(literal.get(), {dim0, dim1, dim2}, value);
-        ++dim2;
-      }
-      ++dim1;
-    }
-    ++dim0;
-  }
-  return literal;
-}
+// Check that a given module satisfies various constraints before trying to
+// execute it.
+Status VerifyHloModule(HloModule* const module, bool layout_sensitive,
+                       bool allow_mixed_precision);
 
-}  // namespace test_utils
+// Creates a dot op with operands 'lhs' and 'rhs' that contracts dimension 1 of
+// the LHS with dimension 0 of the RHS with no batch dimensions.
+// Both LHS and the RHS must be of rank 2.
+std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
+                                                      HloInstruction* lhs,
+                                                      HloInstruction* rhs);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_UTILS_H_

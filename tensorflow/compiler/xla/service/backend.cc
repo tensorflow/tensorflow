@@ -13,65 +13,86 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/compiler/xla/service/backend.h"
 
 #include <algorithm>
 #include <string>
 #include <utility>
 
-#define EIGEN_USE_THREADS
-
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/legacy_flags/backend_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
+
+BackendOptions& BackendOptions::set_platform(se::Platform* platform) {
+  platform_ = platform;
+  return *this;
+}
+
+se::Platform* BackendOptions::platform() const { return platform_; }
+
+BackendOptions& BackendOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int BackendOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
+}
+
+BackendOptions& BackendOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
+  return *this;
+}
+
+const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
+  return allowed_devices_;
+}
 
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
-struct Backend::EigenThreadPoolWrapper {
-  explicit EigenThreadPoolWrapper()
-      : pool(new tensorflow::thread::ThreadPool(
-            tensorflow::Env::Default(), "XLAEigen",
-            tensorflow::port::NumSchedulableCPUs())),
-        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
-        device(new Eigen::ThreadPoolDevice(wrapper.get(),
-                                           wrapper->NumThreads())) {}
+struct Backend::IntraOpThreadPool {
+  explicit IntraOpThreadPool(const int num_threads)
+      : pool(new tensorflow::thread::ThreadPool(tensorflow::Env::Default(),
+                                                "XLAEigen", num_threads)),
+        device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
+                                           pool->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
 /* static */ StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
-    perftools::gputools::Platform* platform, int64 replica_count) {
-  if (replica_count == -1) {
-    legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
-    replica_count = flags->xla_replicas;
-  }
+    const BackendOptions& options) {
+  se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto stream_executors,
-                      PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSIGN_OR_RETURN(
+      auto stream_executors,
+      PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
-  std::unique_ptr<Backend> backend(new Backend(
-      replica_count, platform, compiler, stream_executors, transfer_manager));
-  TF_RETURN_IF_ERROR(backend->PoolStreams(kInitialStreamsToPool,
-                                          backend->default_stream_executor()));
+  TF_ASSIGN_OR_RETURN(auto computation_placer,
+                      ComputationPlacer::GetForPlatform(platform));
+  std::unique_ptr<Backend> backend(
+      new Backend(platform, compiler, stream_executors, transfer_manager,
+                  computation_placer, options.intra_op_parallelism_threads()));
   return std::move(backend);
 }
 
@@ -79,67 +100,45 @@ struct Backend::EigenThreadPoolWrapper {
 Backend::CreateDefaultBackend() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetDefaultPlatform());
-  return CreateBackend(platform);
+  BackendOptions backend_options;
+  backend_options.set_platform(platform);
+  return CreateBackend(backend_options);
 }
 
-tensorflow::Status Backend::PoolStreams(int n, se::StreamExecutor* executor) {
-  std::vector<StreamPtr> primed;
-  for (int i = 0; i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto stream, BorrowStream(executor));
-    primed.emplace_back(std::move(stream));
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
+  return BorrowStream(executor);
+}
+
+StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
+  tensorflow::mutex_lock l(mu_);
+  if (!stream_pools_.contains(executor)) {
+    stream_pools_.emplace(executor, absl::make_unique<StreamPool>());
   }
-  return tensorflow::Status::OK();
+  return stream_pools_.at(executor)->BorrowStream(executor);
 }
 
-StatusOr<Backend::StreamPtr> Backend::BorrowStream(
-    se::StreamExecutor* executor) {
-  if (0 == stream_pools_.count(executor)) {
-    stream_pools_.emplace(std::piecewise_construct,
-                          std::forward_as_tuple(executor),
-                          std::forward_as_tuple([executor]() {
-                            auto stream = MakeUnique<se::Stream>(executor);
-                            stream->Init();
-                            return stream;
-                          }));
-  }
-  return stream_pools_.at(executor).Allocate();
-}
-
-Backend::Backend(
-    int64 replica_count, perftools::gputools::Platform* platform,
-    Compiler* compiler,
-    tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
-    TransferManager* transfer_manager)
+Backend::Backend(se::Platform* platform, Compiler* compiler,
+                 absl::Span<se::StreamExecutor* const> stream_executors,
+                 TransferManager* transfer_manager,
+                 ComputationPlacer* computation_placer,
+                 int intra_op_parallelism_threads)
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),
-      replica_count_(replica_count) {
-  // The given set of stream executors set may include invalid executors.
-  for (se::StreamExecutor* exec : stream_executors) {
-    if (exec != nullptr) {
-      stream_executors_.push_back(exec);
-    }
-  }
-  CHECK_GE(replica_count, 1) << "Must request at least 1 replica.";
-
+      computation_placer_(computation_placer),
+      stream_executors_(stream_executors.begin(), stream_executors.end()) {
   // Create a memory allocator for the valid stream executors.
-  memory_allocator_ =
-      MakeUnique<StreamExecutorMemoryAllocator>(platform, stream_executors);
-
-  // First check that there are some non-null stream executors to avoid issuing
-  // an error mentioning replicas in the common case of requesting just 1
-  // replica, which means no replication.
+  memory_allocator_ = absl::make_unique<se::StreamExecutorMemoryAllocator>(
+      platform, stream_executors_);
   CHECK(!stream_executors_.empty())
       << "Service found no devices for backend " << platform_->Name() << '.';
-  CHECK_GE(stream_executors_.size(), replica_count)
-      << "Requested more replicas than there are devices for backend "
-      << platform_->Name() << '.';
 
   if (platform->id() == se::host::kHostPlatformId) {
-    inter_op_thread_pool_.reset(new tensorflow::thread::ThreadPool(
-        tensorflow::Env::Default(), "xla_inter_op",
-        tensorflow::port::NumSchedulableCPUs()));
-    intra_op_thread_pool_wrapper_.reset(new EigenThreadPoolWrapper());
+    const int num_threads = intra_op_parallelism_threads > 0
+                                ? intra_op_parallelism_threads
+                                : tensorflow::port::MaxParallelism();
+    intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
   }
 }
 
@@ -149,47 +148,22 @@ int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();
 }
 
-StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Backend::Replicas(
-    int device_ordinal) const {
-  if (stream_executors_[device_ordinal] == nullptr) {
-    return InvalidArgument("device %s not supported by XLA service",
-                           device_name(device_ordinal).c_str());
-  }
-
-  // Find replica_count_ stream executors starting from the given device
-  // ordinal.
-  std::vector<perftools::gputools::StreamExecutor*> replicas;
-  for (se::StreamExecutor* exec : stream_executors_) {
-    CHECK(exec != nullptr);
-    if (exec->device_ordinal() >= device_ordinal) {
-      replicas.push_back(exec);
-      if (replicas.size() >= replica_count_) {
-        return replicas;
-      }
-    }
-  }
-
-  return InvalidArgument(
-      "Not enough devices for replicas for the device ordinal %d",
-      device_ordinal);
-}
-
-std::vector<perftools::gputools::StreamExecutor*> Backend::Replicas() const {
-  CHECK_GE(stream_executors_.size(), replica_count_);
-  return Replicas(default_device_ordinal()).ValueOrDie();
-}
-
-tensorflow::thread::ThreadPool* Backend::inter_op_thread_pool() const {
-  return inter_op_thread_pool_.get();
-}
-
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
     const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) return nullptr;
-  return intra_op_thread_pool_wrapper_->device.get();
+  if (intra_op_thread_pool_ == nullptr) {
+    return nullptr;
+  }
+  return intra_op_thread_pool_->device.get();
 }
 
-StatusOr<perftools::gputools::StreamExecutor*> Backend::stream_executor(
+tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
+  if (intra_op_thread_pool_ == nullptr) {
+    return nullptr;
+  }
+  return intra_op_thread_pool_->pool.get();
+}
+
+StatusOr<se::StreamExecutor*> Backend::stream_executor(
     int device_ordinal) const {
   if (device_ordinal < 0 ||
       device_ordinal > stream_executors_.back()->device_ordinal()) {
@@ -203,7 +177,7 @@ StatusOr<perftools::gputools::StreamExecutor*> Backend::stream_executor(
     }
   }
   return InvalidArgument("device %s not supported by XLA service",
-                         device_name(device_ordinal).c_str());
+                         device_name(device_ordinal));
 }
 
 StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
@@ -212,9 +186,9 @@ StatusOr<bool> Backend::devices_equivalent(int device_ordinal_a,
   // bit crude but works for GPUs which is the important case where we compile
   // an executable for one GPU and want to know if it will run (well) on
   // another.
-  TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * executor_a,
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor_a,
                       stream_executor(device_ordinal_a));
-  TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * executor_b,
+  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor_b,
                       stream_executor(device_ordinal_b));
   return (executor_a->GetDeviceDescription().name() ==
           executor_b->GetDeviceDescription().name());

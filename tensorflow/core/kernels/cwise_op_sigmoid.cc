@@ -17,16 +17,16 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-REGISTER5(UnaryOp, CPU, "Sigmoid", functor::sigmoid, float, Eigen::half, double,
-          complex64, complex128);
-#if GOOGLE_CUDA
+REGISTER6(UnaryOp, CPU, "Sigmoid", functor::sigmoid, bfloat16, float,
+          Eigen::half, double, complex64, complex128);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(UnaryOp, GPU, "Sigmoid", functor::sigmoid, float, Eigen::half,
           double);
 #endif
 
-REGISTER5(SimpleBinaryOp, CPU, "SigmoidGrad", functor::sigmoid_grad, float,
-          Eigen::half, double, complex64, complex128);
-#if GOOGLE_CUDA
+REGISTER6(SimpleBinaryOp, CPU, "SigmoidGrad", functor::sigmoid_grad, bfloat16,
+          float, Eigen::half, double, complex64, complex128);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(SimpleBinaryOp, GPU, "SigmoidGrad", functor::sigmoid_grad, float,
           Eigen::half, double);
 #endif

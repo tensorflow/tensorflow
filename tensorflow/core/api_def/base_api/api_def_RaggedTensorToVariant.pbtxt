@@ -1,0 +1,46 @@
+op {
+  graph_op_name: "RaggedTensorToVariant"
+  visibility: HIDDEN
+  in_arg {
+    name: "rt_nested_splits"
+    description: <<END
+A list of one or more Tensors representing the splits of the input
+`RaggedTensor`.
+END
+  }
+  in_arg {
+    name: "rt_dense_values"
+    description: <<END
+A Tensor representing the values of the input `RaggedTensor`.
+END
+  }
+  out_arg {
+    name: "encoded_ragged"
+    description: <<END
+A `variant` Tensor that containing encoded `RaggedTensor`.
+END
+  }
+  attr {
+    name: "batched_input"
+    description: <<END
+A `bool` denoting whether the input is a batched `RaggedTensor`.
+END
+  }
+  summary: <<END
+Encodes a `RaggedTensor` into a `variant` Tensor.
+END
+  description: <<END
+
+Encodes the given `RaggedTensor` and returns a `variant` Tensor. If
+`batched_input` is True, then input `RaggedTensor` is unbatched along the
+zero-th dimension, each component `RaggedTensor` is encoded into a scalar
+`variant` Tensor, and these are stacked to return a 1-D `variant` Tensor.
+If `batched_input` is False, then the input `RaggedTensor` is encoded as is and
+a scalar `variant` Tensor is returned. A `RaggedTensor` is encoded by first
+creating a 1-D `variant` Tensor with `ragged_rank + 1` elements, containing the
+splits and values Tensors of the `RaggedTensor`. Then the 1-D `variant` Tensor
+is wrapped in a scalar `variant` Tensor. See `RaggedTensorFromVariant` for the
+corresponding decoding logic.
+
+END
+}

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONTROL_FLOW_OPS_H_
-#define TENSORFLOW_KERNELS_CONTROL_FLOW_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONTROL_FLOW_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_CONTROL_FLOW_OPS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -44,6 +44,21 @@ class SwitchOp : public OpKernel {
   ~SwitchOp() override {}
 
   TF_DISALLOW_COPY_AND_ASSIGN(SwitchOp);
+};
+
+// An n-way switch op has two inputs and N outputs. It forwards the value of
+// Input:0 to the output specified by Input:1. Input:1 is an integer tensor.
+// Input:0 is forwarded to output:0 if Input:1 is 0, to output:1 if 1, and so
+// forth. If Input:1 is <0 or >=num_outputs(), Input:0 is forwarded to
+// output:num_outputs()-1.
+class SwitchNOp : public OpKernel {
+ public:
+  explicit SwitchNOp(OpKernelConstruction* context) : OpKernel(context) {}
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~SwitchNOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SwitchNOp);
 };
 
 // A merge op has n inputs and two outputs. It forwards the value of the
@@ -97,6 +112,22 @@ class NextIterationOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
 };
 
+// A LoopCond op has one input and one output. The input is a boolean
+// scalar representing the taken branches of the "pivot" Switch that
+// determines loop termination. As a contract, any high-level front-end
+// should always use port '0' of the "pivot" switches for loop exit.
+class LoopCondOp : public OpKernel {
+ public:
+  explicit LoopCondOp(OpKernelConstruction* context);
+  ~LoopCondOp() override;
+
+  void Compute(OpKernelContext* context) override;
+
+  bool IsExpensive() override;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(LoopCondOp);
+};
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONTROL_FLOW_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONTROL_FLOW_OPS_H_

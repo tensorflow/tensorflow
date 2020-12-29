@@ -1,0 +1,55 @@
+path: "tensorflow.compat"
+tf_module {
+  member {
+    name: "bytes_or_text_types"
+    mtype: "<type \'tuple\'>"
+  }
+  member {
+    name: "complex_types"
+    mtype: "<type \'tuple\'>"
+  }
+  member {
+    name: "integral_types"
+    mtype: "<type \'tuple\'>"
+  }
+  member {
+    name: "real_types"
+    mtype: "<type \'tuple\'>"
+  }
+  member_method {
+    name: "as_bytes"
+    argspec: "args=[\'bytes_or_text\', \'encoding\'], varargs=None, keywords=None, defaults=[\'utf-8\'], "
+  }
+  member_method {
+    name: "as_str"
+    argspec: "args=[\'bytes_or_text\', \'encoding\'], varargs=None, keywords=None, defaults=[\'utf-8\'], "
+  }
+  member_method {
+    name: "as_str_any"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_text"
+    argspec: "args=[\'bytes_or_text\', \'encoding\'], varargs=None, keywords=None, defaults=[\'utf-8\'], "
+  }
+  member_method {
+    name: "dimension_at_index"
+    argspec: "args=[\'shape\', \'index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "dimension_value"
+    argspec: "args=[\'dimension\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "forward_compatibility_horizon"
+    argspec: "args=[\'year\', \'month\', \'day\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "forward_compatible"
+    argspec: "args=[\'year\', \'month\', \'day\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "path_to_str"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+}

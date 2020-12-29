@@ -1,0 +1,42 @@
+path: "tensorflow.estimator.MultiLabelHead"
+tf_class {
+  is_instance: "<class \'tensorflow_estimator.python.estimator.head.multi_label_head.MultiLabelHead\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.head.base_head.Head\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "logits_dimension"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "loss_reduction"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'n_classes\', \'weight_column\', \'thresholds\', \'label_vocabulary\', \'loss_reduction\', \'loss_fn\', \'classes_for_class_based_metrics\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'sum_over_batch_size\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "create_estimator_spec"
+    argspec: "args=[\'self\', \'features\', \'mode\', \'logits\', \'labels\', \'optimizer\', \'trainable_variables\', \'train_op_fn\', \'update_ops\', \'regularization_losses\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "loss"
+    argspec: "args=[\'self\', \'labels\', \'logits\', \'features\', \'mode\', \'regularization_losses\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "metrics"
+    argspec: "args=[\'self\', \'regularization_losses\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "predictions"
+    argspec: "args=[\'self\', \'logits\', \'keys\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "update_metrics"
+    argspec: "args=[\'self\', \'eval_metrics\', \'features\', \'logits\', \'labels\', \'regularization_losses\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

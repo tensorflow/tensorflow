@@ -1,0 +1,43 @@
+path: "tensorflow.keras.regularizers"
+tf_module {
+  member {
+    name: "L1"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "L1L2"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "L2"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Regularizer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "l1"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "l2"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'config\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "l1_l2"
+    argspec: "args=[\'l1\', \'l2\'], varargs=None, keywords=None, defaults=[\'0.01\', \'0.01\'], "
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'regularizer\'], varargs=None, keywords=None, defaults=None"
+  }
+}

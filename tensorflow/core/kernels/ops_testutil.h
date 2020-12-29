@@ -13,54 +13,53 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
-#define TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_
+#define TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_
 
+#include <functional>
+#include <initializer_list>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
 namespace tensorflow {
-
 namespace test {
 
-inline void SetOutputAttrs(OpKernelContext::Params* params,
-                           std::vector<AllocatorAttributes>* attrs) {
-  attrs->clear();
-  for (int index = 0; index < params->op_kernel->num_outputs(); index++) {
-    AllocatorAttributes attr;
-    const bool on_host =
-        (params->op_kernel->output_memory_types()[index] == HOST_MEMORY);
-    attr.set_on_host(on_host);
-    attrs->push_back(attr);
-  }
-  params->output_attr_array = gtl::vector_as_array(attrs);
-}
+void SetOutputAttrs(OpKernelContext::Params* params,
+                    std::vector<AllocatorAttributes>* attrs);
 
 }  // namespace test
 
@@ -70,37 +69,26 @@ inline void SetOutputAttrs(OpKernelContext::Params* params,
 // to use the BrainClient interface.
 class OpsTestBase : public ::testing::Test {
  public:
-  OpsTestBase() : device_type_(DEVICE_CPU) {
-    device_.reset(
-        DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
-    CHECK(device_.get()) << "Could not create CPU device";
-  }
+  OpsTestBase();
 
-  ~OpsTestBase() override {
-    gtl::STLDeleteElements(&tensors_);
-    context_.reset(nullptr);
-    params_.reset(nullptr);
-  }
+  ~OpsTestBase() override;
 
-  void set_node_def(const NodeDef& node_def) { node_def_.CopyFrom(node_def); }
+  // Allow kernel unit tests to run on GPU
+  void SetDevice(const DeviceType& device_type, std::unique_ptr<Device> device);
+
+  void set_node_def(const NodeDef& node_def);
 
   // Clients can manipulate the underlying NodeDef via this accessor.
-  NodeDef* node_def() { return &node_def_; }
+  NodeDef* node_def();
 
   // Initializes an operator that takes in 'input_types' as input
   // and output types as output.
   //
   // Returns the status of initialization.
-  Status InitOp() { return InitOpWithGraphVersion(TF_GRAPH_DEF_VERSION); }
+  Status InitOp();
 
   // Only use this directly if you have a deprecated op that you need to test.
-  Status InitOpWithGraphVersion(int graph_def_version) {
-    Status status;
-    kernel_ = CreateOpKernel(device_type_, device_.get(), allocator(),
-                             node_def_, graph_def_version, &status);
-    if (kernel_ != nullptr) input_types_ = kernel_->input_types();
-    return status;
-  }
+  Status InitOpWithGraphVersion(int graph_def_version);
 
   // Adds an input for every element described by the shape.
   // 'input_mapping' maps an index (0...NumElements(shape)) to a
@@ -109,42 +97,14 @@ class OpsTestBase : public ::testing::Test {
   // TODO(vrv): Replace with something like a BrainClient Feed.
   template <typename T>
   void AddInput(const TensorShape& shape, std::function<T(int)> input_mapping) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
-    bool is_ref = IsRefType(input_types_[inputs_.size()]);
-    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                               DataTypeToEnum<T>::v(), shape);
-    test::FillFn(input, input_mapping);
-    tensors_.push_back(input);
-    if (is_ref) {
-      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
-               DataTypeToEnum<T>::v());
-      inputs_.push_back({&lock_for_refs_, input});
-    } else {
-      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
-      inputs_.push_back({nullptr, input});
-    }
+    test::FillFn(AddInput(DataTypeToEnum<T>::v(), shape), input_mapping);
   }
 
   // Like AddInput but takes in an explicit arrayslice of data.
   template <typename T>
   void AddInputFromArray(const TensorShape& shape,
                          const gtl::ArraySlice<T>& data) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
-    bool is_ref = IsRefType(input_types_[inputs_.size()]);
-    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                               DataTypeToEnum<T>::v(), shape);
-    test::FillValues<T>(input, data);
-    tensors_.push_back(input);
-    if (is_ref) {
-      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
-               DataTypeToEnum<T>::v());
-      inputs_.push_back({&lock_for_refs_, input});
-    } else {
-      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
-      inputs_.push_back({nullptr, input});
-    }
+    test::FillValues<T>(AddInput(DataTypeToEnum<T>::v(), shape), data);
   }
 
   // Convenience function to add an input and populate it with the elements from
@@ -152,78 +112,56 @@ class OpsTestBase : public ::testing::Test {
   template <typename T, typename SrcType>
   void AddInputFromList(const TensorShape& shape,
                         std::initializer_list<SrcType> data) {
+    test::FillValues<T>(AddInput(DataTypeToEnum<T>::v(), shape), data);
+  }
+
+  // Adds a Resource type as input. If <container> is empty, uses the default
+  // container name.
+  template <typename T>
+  void AddResourceInput(const string& container, const string& name,
+                        T* resource) {
     CHECK_GT(input_types_.size(), inputs_.size())
         << "Adding more inputs than types; perhaps you need to call MakeOp";
-    bool is_ref = IsRefType(input_types_[inputs_.size()]);
-    Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                               DataTypeToEnum<T>::v(), shape);
-    test::FillValues<T>(input, data);
-    tensors_.push_back(input);
-    if (is_ref) {
-      CHECK_EQ(RemoveRefType(input_types_[inputs_.size()]),
-               DataTypeToEnum<T>::v());
-      inputs_.push_back({&lock_for_refs_, input});
-    } else {
-      CHECK_EQ(input_types_[inputs_.size()], DataTypeToEnum<T>::v());
-      inputs_.push_back({nullptr, input});
-    }
+    ResourceMgr* rm = device_->resource_manager();
+    std::string container_name =
+        container.empty() ? rm->default_container() : container;
+    EXPECT_TRUE(rm->Create(container_name, name, resource).ok());
+    AddResourceInputInternal(container_name, name, TypeIndex::Make<T>());
   }
 
   // Runs an operation producing 'num_outputs' outputs.
   //
   // Returns the context's status after running the operation.
-  Status RunOpKernel() {
-    // Make sure the old OpKernelContext is deleted before the Params
-    // it was using.
-    context_.reset(nullptr);
-
-    params_.reset(new OpKernelContext::Params);
-    params_.get()->device = device_.get();
-    params_.get()->frame_iter = FrameAndIter(0, 0);
-    params_.get()->inputs = &inputs_;
-    params_.get()->op_kernel = kernel_.get();
-    step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
-    params_->step_container = step_container_.get();
-    std::vector<AllocatorAttributes> attrs;
-    test::SetOutputAttrs(params_.get(), &attrs);
-    checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
-    params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
-    params_.get()->resource_manager = device_.get()->resource_manager();
-
-    context_.reset(new OpKernelContext(params_.get()));
-    device_->Compute(kernel_.get(), context_.get());
-    return context_->status();
-  }
+  Status RunOpKernel();
 
   // Returns the tensor input for 'input_index'.
   //
   // REQUIRES: 0 <= input_index < context_->num_inputs()
-  const Tensor& GetInput(int input_index) const {
-    CHECK_LT(input_index, context_->num_inputs());
-    CHECK(!IsRefType(context_->input_dtype(input_index)));
-    return context_->input(input_index);
-  }
+  const Tensor& GetInput(int input_index) const;
 
-  TensorValue mutable_input(int input_index) {
-    CHECK_LT(input_index, inputs_.size());
-    return inputs_[input_index];
-  }
+  TensorValue mutable_input(int input_index);
+
   // Returns the tensor output for 'output_index'.
   //
   // REQUIRES: 0 <= output_index < context_->num_outputs()
-  Tensor* GetOutput(int output_index) {
-    CHECK_LT(output_index, context_->num_outputs());
-    return context_->mutable_output(output_index);
-  }
+  Tensor* GetOutput(int output_index);
 
-  Allocator* allocator() {
-    return device_->GetAllocator(AllocatorAttributes());
-  }
+  Allocator* allocator();
 
-  const DataTypeVector& output_types() const { return kernel_->output_types(); }
+  const DataTypeVector& output_types() const;
 
  protected:
-  std::unique_ptr<Device> device_;
+  Tensor* AddInput(DataType dtype, const TensorShape& shape);
+  void AddResourceInputInternal(const std::string& container_name,
+                                const std::string& name,
+                                const TypeIndex& type_index);
+
+  // device_mgr_ owns device_.
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  Device* device_;
+
+  // The device allocator, or the managed_allocator_ below if running on GPU.
+  Allocator* allocator_;
 
   std::unique_ptr<OpKernel> kernel_;
   std::unique_ptr<ScopedStepContainer> step_container_;
@@ -236,9 +174,17 @@ class OpsTestBase : public ::testing::Test {
   gtl::InlinedVector<TensorValue, 4> inputs_;
   // Owns Tensors.
   std::vector<Tensor*> tensors_;
+  // Copies of the outputs in unified memory (host and device accessible).
+  std::vector<Tensor*> managed_outputs_;
 
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> context_;
+  // Unified memory allocator, only used when running on GPU.
+  std::unique_ptr<Allocator> managed_allocator_;
+
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(OpsTestBase);
@@ -246,4 +192,4 @@ class OpsTestBase : public ::testing::Test {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_OPS_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_OPS_TESTUTIL_H_

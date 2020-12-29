@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
 from tensorflow.python.platform import googletest
+from tensorflow.tools.common import test_module1
+from tensorflow.tools.common import test_module2
 from tensorflow.tools.common import traverse
 
 
@@ -30,10 +30,6 @@ class TestVisitor(object):
     self.call_log = []
 
   def __call__(self, path, parent, children):
-    # Do not traverse googletest, it's very deep.
-    for item in list(children):
-      if item[1] is googletest:
-        children.remove(item)
     self.call_log += [(path, parent, children)]
 
 
@@ -51,13 +47,12 @@ class TraverseTest(googletest.TestCase):
 
   def test_module(self):
     visitor = TestVisitor()
-    traverse.traverse(sys.modules[__name__], visitor)
+    traverse.traverse(test_module1, visitor)
 
     called = [parent for _, parent, _ in visitor.call_log]
 
-    self.assertIn(TestVisitor, called)
-    self.assertIn(TraverseTest, called)
-    self.assertIn(traverse, called)
+    self.assertIn(test_module1.ModuleClass1, called)
+    self.assertIn(test_module2.ModuleClass2, called)
 
   def test_class(self):
     visitor = TestVisitor()

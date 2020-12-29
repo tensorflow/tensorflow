@@ -1,0 +1,32 @@
+op {
+  name: "SobolSample"
+  input_arg {
+    name: "dim"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "num_results"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "skip"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "samples"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}

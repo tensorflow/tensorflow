@@ -58,54 +58,77 @@ TEST(StateOpsTest, ScatterUpdate_ShapeFn) {
 
   // Resolve shape on first updates dimension.
   INFER_OK(op, "[1,2];[3];[?,2]", "in0");
+
+  // Allow the update to be a scalar.
+  INFER_OK(op, "[1,2];[3];?", "in0");
+
+  // Allow a scalar index.
+  INFER_OK(op, "[1,2];[];[2]", "in0");
+
+  // Check the requirement updates.shape = indices.shape + ref.shape[1:].
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op, "[2];[];[2]");
+}
+
+TEST(StateOpsTest, ResourceScatterNdUpdate_ShapeFn) {
+  ShapeInferenceTestOp op("ResourceScatterNdUpdate");
+  TF_ASSERT_OK(NodeDefBuilder("test", "ResourceScatterNdUpdate")
+                   .Input("ref", 0, DT_RESOURCE)
+                   .Input("indices", 0, DT_INT32)
+                   .Input("updates", 1, DT_FLOAT)
+                   .Finalize(&op.node_def));
+
+  std::vector<ShapeInferenceTestOp::ShapeAndType> shapes_and_types;
+  op.input_resource_handle_shapes_and_types.push_back(&shapes_and_types);
+  op.input_resource_handle_shapes_and_types.push_back(nullptr);
+  op.input_resource_handle_shapes_and_types.push_back(nullptr);
+  shapes_and_types.emplace_back("[?,?]", DT_FLOAT);
+  INFER_OK(op, "[?];[?,2];[?]", "");
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op,
+              "[?];[?,2];[]");
+  INFER_ERROR(
+      "Dimensions [0,1) of indices[shape=[8,2]] = [8] must match "
+      "dimensions [0,1) of updates[shape=[9]] = [9]",
+      op, "[?];[8,2];[9]");
 }
 
 TEST(StateOpsTest, TemporaryVariable_ShapeFn) {
   ShapeInferenceTestOp op("TemporaryVariable");
   TensorShape shape({1, 2, 3});
-  TensorShapeProto shape_proto;
-  shape.AsProto(&shape_proto);
   TF_ASSERT_OK(NodeDefBuilder("test", "TemporaryVariable")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", shape)
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "[1,2,3]");
 }
 
 TEST(StateOpsTest, Variable_ShapeFn) {
   ShapeInferenceTestOp op("Variable");
-  TensorShapeProto shape_proto;
 
   // Unknown rank.
-  PartialTensorShape().AsProto(&shape_proto);
   TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", PartialTensorShape())
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "?");
 
   // For historical reasons an empty TensorShapeProto can be either an unknown
   // rank or a scalar, so the shape function conservatively says "unknown"
-  shape_proto.Clear();
   TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", TensorShape({}))
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "?");
 
   // Specified shape.
-  TensorShape({1, 2, 3}).AsProto(&shape_proto);
   TF_ASSERT_OK(NodeDefBuilder("test", "Variable")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", TensorShape({1, 2, 3}))
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "[1,2,3]");
 }
 
 TEST(StateOpsTest, VariableV2_ShapeFn) {
   ShapeInferenceTestOp op("VariableV2");
-  TensorShapeProto shape_proto;
 
   // Unknown rank.
-  shape_proto.set_unknown_rank(true);
   TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", PartialTensorShape())
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "?");
 
@@ -116,9 +139,8 @@ TEST(StateOpsTest, VariableV2_ShapeFn) {
   INFER_OK(op, "", "[]");
 
   // Specified shape.
-  TensorShape({1, 2, 3}).AsProto(&shape_proto);
   TF_ASSERT_OK(NodeDefBuilder("test", "VariableV2")
-                   .Attr("shape", shape_proto)
+                   .Attr("shape", TensorShape({1, 2, 3}))
                    .Finalize(&op.node_def));
   INFER_OK(op, "", "[1,2,3]");
 }

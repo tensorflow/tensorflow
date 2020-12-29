@@ -20,39 +20,39 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <queue>
 
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 class HostStream : public internal::StreamInterface {
  public:
-  HostStream();
+  // stack_size_in_bytes may be '0', meaning "use the default thread stack
+  // size".
+  explicit HostStream(size_t stack_size_in_bytes);
   ~HostStream() override;
 
   bool EnqueueTask(std::function<void()> task);
 
-  void *CudaStreamHack() override { return nullptr; }
-  void **CudaStreamMemberHack() override { return nullptr; }
+  void *GpuStreamHack() override { return nullptr; }
+  void **GpuStreamMemberHack() override { return nullptr; }
 
   void BlockUntilDone();
 
  private:
-  // Use only one thread and own task queue to preserve FIFO ordering
-  // for the operations enqueued by any given stream.
-  static const int kExecutorThreads = 1;
-  std::unique_ptr<port::ThreadPool> host_executor_;
+  bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void WorkLoop();
 
-  mutex mu_;
-  int pending_tasks_ GUARDED_BY(mu_) = 0;
-  condition_variable completion_condition_;
+  absl::Mutex mu_;
+  std::queue<std::function<void()>> work_queue_ TF_GUARDED_BY(mu_);
+  std::unique_ptr<port::Thread> thread_;
 };
 
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_HOST_HOST_STREAM_H_

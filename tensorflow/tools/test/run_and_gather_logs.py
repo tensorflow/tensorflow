@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,13 +22,13 @@ from __future__ import print_function
 import argparse
 import os
 import shlex
-from string import maketrans
 import sys
 import time
 
+import six
+
 from google.protobuf import json_format
 from google.protobuf import text_format
-
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import app
 from tensorflow.python.platform import gfile
@@ -68,8 +69,10 @@ def main(unused_args):
   name = FLAGS.name
   test_name = FLAGS.test_name
   test_args = FLAGS.test_args
-  test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(name, test_name,
-                                                                test_args)
+  benchmark_type = FLAGS.benchmark_type
+  test_results, _ = run_and_gather_logs_lib.run_and_gather_logs(
+      name, test_name=test_name, test_args=test_args,
+      benchmark_type=benchmark_type)
 
   # Additional bits we receive from bazel
   test_results.build_configuration.CopyFrom(gather_build_configuration())
@@ -81,8 +84,9 @@ def main(unused_args):
   if FLAGS.test_log_output_filename:
     file_name = FLAGS.test_log_output_filename
   else:
-    file_name = (name.strip("/").translate(maketrans("/:", "__")) +
-                 time.strftime("%Y%m%d%H%M%S", time.gmtime()))
+    file_name = (
+        six.ensure_str(name).strip("/").translate(str.maketrans("/:", "__")) +
+        time.strftime("%Y%m%d%H%M%S", time.gmtime()))
   if FLAGS.test_log_output_use_tmpdir:
     tmpdir = test.get_temp_dir()
     output_path = os.path.join(tmpdir, FLAGS.test_log_output_dir, file_name)
@@ -90,7 +94,8 @@ def main(unused_args):
     output_path = os.path.join(
         os.path.abspath(FLAGS.test_log_output_dir), file_name)
   json_test_results = json_format.MessageToJson(test_results)
-  gfile.GFile(output_path + ".json", "w").write(json_test_results)
+  gfile.GFile(six.ensure_str(output_path) + ".json",
+              "w").write(json_test_results)
   tf_logging.info("Test results written to: %s" % output_path)
 
 
@@ -102,6 +107,11 @@ if __name__ == "__main__":
       "--name", type=str, default="", help="Benchmark target identifier.")
   parser.add_argument(
       "--test_name", type=str, default="", help="Test target to run.")
+  parser.add_argument(
+      "--benchmark_type",
+      type=str,
+      default="",
+      help="BenchmarkType enum string (benchmark type).")
   parser.add_argument(
       "--test_args",
       type=str,

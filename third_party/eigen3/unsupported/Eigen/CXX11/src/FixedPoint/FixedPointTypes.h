@@ -7,8 +7,8 @@
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#ifndef EIGEN_CXX11_FIXED_POINT_TYPES_H
-#define EIGEN_CXX11_FIXED_POINT_TYPES_H
+#ifndef CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
+#define CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_
 
 #include <cmath>
 #include <iostream>
@@ -49,7 +49,7 @@ struct scalar_product_traits<QInt32, double> {
 // the compiler from silently type cast the mantissa into a bigger or a smaller
 // representation.
 struct QInt8 {
-  QInt8() {}
+  QInt8() : value(0) {}
   QInt8(const int8_t v) : value(v) {}
   QInt8(const QInt32 v);
 
@@ -59,7 +59,7 @@ struct QInt8 {
 };
 
 struct QUInt8 {
-  QUInt8() {}
+  QUInt8() : value(0) {}
   QUInt8(const uint8_t v) : value(v) {}
   QUInt8(const QInt32 v);
 
@@ -69,7 +69,7 @@ struct QUInt8 {
 };
 
 struct QInt16 {
-  QInt16() {}
+  QInt16() : value(0) {}
   QInt16(const int16_t v) : value(v) {}
   QInt16(const QInt32 v);
   operator int() const { return static_cast<int>(value); }
@@ -78,7 +78,7 @@ struct QInt16 {
 };
 
 struct QUInt16 {
-  QUInt16() {}
+  QUInt16() : value(0) {}
   QUInt16(const uint16_t v) : value(v) {}
   QUInt16(const QInt32 v);
   operator int() const { return static_cast<int>(value); }
@@ -87,7 +87,7 @@ struct QUInt16 {
 };
 
 struct QInt32 {
-  QInt32() {}
+  QInt32() : value(0) {}
   QInt32(const int8_t v) : value(v) {}
   QInt32(const int32_t v) : value(v) {}
   QInt32(const uint32_t v) : value(static_cast<int32_t>(v)) {}
@@ -249,9 +249,7 @@ EIGEN_STRONG_INLINE QInt32& operator/=(QInt32& a, const QInt32 b) {
   a.value /= b.value;
   return a;
 }
-EIGEN_STRONG_INLINE QInt32 operator-(const QInt32 a) {
-  return -a.value;
-}
+EIGEN_STRONG_INLINE QInt32 operator-(const QInt32 a) { return -a.value; }
 
 // Scaling QInt32 by double. We do the arithmetic in double because
 // float only has 23 bits of mantissa, so casting QInt32 to float might reduce
@@ -339,4 +337,4 @@ EIGEN_STRONG_INLINE std::ostream& operator<<(std::ostream& os, QInt32 a) {
 
 }  // namespace Eigen
 
-#endif  // EIGEN_CXX11_FIXED_POINT_TYPES_H
+#endif  // CXX11_SRC_FIXEDPOINT_FIXEDPOINTTYPES_H_

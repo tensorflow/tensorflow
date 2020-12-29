@@ -1,36 +1,27 @@
 # Description:
 # Hadoop file system implementation.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
     name = "hadoop_file_system",
     srcs = ["hadoop_file_system.cc"],
     hdrs = ["hadoop_file_system.h"],
+    compatible_with = [],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:strcat",
         "//third_party/hadoop:hdfs",
     ],
     alwayslink = 1,
@@ -38,7 +29,7 @@ cc_library(
 
 # This test is set to manual because it requires downloading the Hadoop
 # distribution to run. To run this test:
-# 1. Ensure $JAVA_HOME is set.
+# 1. Ensure $JAVA_HOME is set to the location of a JDK 8 installation.
 # 2. Download the binary Hadoop distribution from:
 #    http://hadoop.apache.org/releases.html
 # 3. Extract the Hadoop distribution and run:
@@ -71,5 +62,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:str_util",
     ],
 )

@@ -104,9 +104,9 @@ TEST(PathTest, CleanPath) {
     StringPiece u(uri);                            \
     StringPiece s, h, p;                           \
     ParseURI(u, &s, &h, &p);                       \
-    EXPECT_EQ(scheme, s.ToString());               \
-    EXPECT_EQ(host, h.ToString());                 \
-    EXPECT_EQ(path, p.ToString());                 \
+    EXPECT_EQ(scheme, s);                          \
+    EXPECT_EQ(host, h);                            \
+    EXPECT_EQ(path, p);                            \
     EXPECT_EQ(uri, CreateURI(scheme, host, path)); \
     EXPECT_LE(u.begin(), s.begin());               \
     EXPECT_GE(u.end(), s.begin());                 \
@@ -140,6 +140,15 @@ TEST(PathTest, CreateParseURI) {
   EXPECT_PARSE_URI("hdfs://localhost:8020/", "hdfs", "localhost:8020", "/");
 }
 #undef EXPECT_PARSE_URI
+
+TEST(PathTest, CommonPathPrefix) {
+  EXPECT_EQ(CommonPathPrefix({"/alpha/beta/c", "/alpha/beta/g"}),
+            "/alpha/beta/");
+  EXPECT_EQ(CommonPathPrefix({"/a/b/c", "/a/beta/gamma"}), "/a/");
+  EXPECT_EQ(CommonPathPrefix({}), "");
+  EXPECT_EQ(CommonPathPrefix({"/a/b/c", "", "/a/b/"}), "");
+  EXPECT_EQ(CommonPathPrefix({"alpha", "alphabeta"}), "");
+}
 
 }  // namespace io
 }  // namespace tensorflow

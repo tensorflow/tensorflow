@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
@@ -29,12 +30,16 @@ const char kUnsupportedOperationException[] =
 void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
-  char* message = nullptr;
-  if (vasprintf(&message, fmt, args) >= 0) {
+  // Using vsnprintf() instead of vasprintf() because the latter doesn't seem to
+  // be easily available on Windows.
+  const size_t max_msg_len = 512;
+  char* message = static_cast<char*>(malloc(max_msg_len));
+  if (vsnprintf(message, max_msg_len, fmt, args) >= 0) {
     env->ThrowNew(env->FindClass(clazz), message);
   } else {
     env->ThrowNew(env->FindClass(clazz), "");
   }
+  free(message);
   va_end(args);
 }
 

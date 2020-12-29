@@ -18,19 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import unittest
+
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class NAryOpsTest(XLATestCase):
+class NAryOpsTest(xla_test.XLATestCase):
 
-  def _testNAry(self, op, args, expected):
-    with self.test_session() as session:
+  def _testNAry(self, op, args, expected, equality_fn=None):
+    with self.session() as session:
       with self.test_scope():
         placeholders = [
             array_ops.placeholder(dtypes.as_dtype(arg.dtype), arg.shape)
@@ -39,7 +41,17 @@ class NAryOpsTest(XLATestCase):
         feeds = {placeholders[i]: args[i] for i in range(0, len(args))}
         output = op(placeholders)
       result = session.run(output, feeds)
-      self.assertAllClose(result, expected, rtol=1e-3)
+      if not equality_fn:
+        equality_fn = self.assertAllClose
+      equality_fn(result, expected, rtol=1e-3)
+
+  def _nAryListCheck(self, results, expected, **kwargs):
+    self.assertEqual(len(results), len(expected))
+    for (r, e) in zip(results, expected):
+      self.assertAllClose(r, e, **kwargs)
+
+  def _testNAryLists(self, op, args, expected):
+    self._testNAry(op, args, expected, equality_fn=self._nAryListCheck)
 
   def testFloat(self):
     self._testNAry(math_ops.add_n,
@@ -55,6 +67,44 @@ class NAryOpsTest(XLATestCase):
                     np.array([10], dtype=np.float32),
                     np.array([42], dtype=np.float32)],
                    expected=np.array([48], dtype=np.float32))
+
+  def testComplex(self):
+    for dtype in self.complex_types:
+      self._testNAry(
+          math_ops.add_n, [np.array([[1 + 2j, 2 - 3j, 3 + 4j]], dtype=dtype)],
+          expected=np.array([[1 + 2j, 2 - 3j, 3 + 4j]], dtype=dtype))
+
+      self._testNAry(
+          math_ops.add_n, [
+              np.array([1 + 2j, 2 - 3j], dtype=dtype),
+              np.array([10j, 20], dtype=dtype)
+          ],
+          expected=np.array([1 + 12j, 22 - 3j], dtype=dtype))
+      self._testNAry(
+          math_ops.add_n, [
+              np.array([-4, 5j], dtype=dtype),
+              np.array([2 + 10j, -2], dtype=dtype),
+              np.array([42j, 3 + 3j], dtype=dtype)
+          ],
+          expected=np.array([-2 + 52j, 1 + 8j], dtype=dtype))
+
+  @unittest.skip("IdentityN is temporarily CompilationOnly as workaround")
+  def testIdentityN(self):
+    self._testNAryLists(array_ops.identity_n,
+                        [np.array([[1, 2, 3]], dtype=np.float32)],
+                        expected=[np.array([[1, 2, 3]], dtype=np.float32)])
+    self._testNAryLists(array_ops.identity_n,
+                        [np.array([[1, 2], [3, 4]], dtype=np.float32),
+                         np.array([[3, 2, 1], [6, 5, 1]], dtype=np.float32)],
+                        expected=[
+                            np.array([[1, 2], [3, 4]], dtype=np.float32),
+                            np.array([[3, 2, 1], [6, 5, 1]], dtype=np.float32)])
+    self._testNAryLists(array_ops.identity_n,
+                        [np.array([[1], [2], [3], [4]], dtype=np.int32),
+                         np.array([[3, 2, 1], [6, 5, 1]], dtype=np.float32)],
+                        expected=[
+                            np.array([[1], [2], [3], [4]], dtype=np.int32),
+                            np.array([[3, 2, 1], [6, 5, 1]], dtype=np.float32)])
 
   def testConcat(self):
     self._testNAry(
@@ -75,8 +125,30 @@ class NAryOpsTest(XLATestCase):
         expected=np.array(
             [[1, 2, 3, 7, 8, 9], [4, 5, 6, 10, 11, 12]], dtype=np.float32))
 
+  def testOneHot(self):
+    with self.session() as session, self.test_scope():
+      indices = array_ops.constant(np.array([[2, 3], [0, 1]], dtype=np.int32))
+      op = array_ops.one_hot(indices,
+                             np.int32(4),
+                             on_value=np.float32(7), off_value=np.float32(3))
+      output = session.run(op)
+      expected = np.array([[[3, 3, 7, 3], [3, 3, 3, 7]],
+                           [[7, 3, 3, 3], [3, 7, 3, 3]]],
+                          dtype=np.float32)
+      self.assertAllEqual(output, expected)
+
+      op = array_ops.one_hot(indices,
+                             np.int32(4),
+                             on_value=np.int32(2), off_value=np.int32(1),
+                             axis=1)
+      output = session.run(op)
+      expected = np.array([[[1, 1], [1, 1], [2, 1], [1, 2]],
+                           [[2, 1], [1, 2], [1, 1], [1, 1]]],
+                          dtype=np.int32)
+      self.assertAllEqual(output, expected)
+
   def testSplitV(self):
-    with self.test_session() as session:
+    with self.session() as session:
       with self.test_scope():
         output = session.run(
             array_ops.split(np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 0, 1, 2]],
@@ -94,12 +166,14 @@ class NAryOpsTest(XLATestCase):
                     np.array([1, 1], dtype=np.int32)],
                    expected=np.array([[], []], dtype=np.float32))
 
-    self._testNAry(lambda x: array_ops.strided_slice(*x),
-                   [np.array([[], [], []], dtype=np.float32),
-                    np.array([1, 0], dtype=np.int64),
-                    np.array([3, 0], dtype=np.int64),
-                    np.array([1, 1], dtype=np.int64)],
-                   expected=np.array([[], []], dtype=np.float32))
+    if np.int64 in self.int_types:
+      self._testNAry(
+          lambda x: array_ops.strided_slice(*x), [
+              np.array([[], [], []], dtype=np.float32), np.array(
+                  [1, 0], dtype=np.int64), np.array([3, 0], dtype=np.int64),
+              np.array([1, 1], dtype=np.int64)
+          ],
+          expected=np.array([[], []], dtype=np.float32))
 
     self._testNAry(lambda x: array_ops.strided_slice(*x),
                    [np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],

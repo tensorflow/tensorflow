@@ -15,35 +15,43 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
 namespace gpu {
 
-ForThunk::ForThunk(const int64 loop_limit,
+ForThunk::ForThunk(ThunkInfo thunk_info, const int64 loop_limit,
                    std::unique_ptr<ThunkSequence> body_thunk_sequence,
-                   const HloInstruction* hlo)
-    : Thunk(Kind::kWhile, hlo),
+                   absl::optional<size_t> body_profile_index)
+    : Thunk(Kind::kWhile, thunk_info),
       loop_limit_(loop_limit),
-      body_thunk_sequence_(
-          MakeUnique<SequentialThunk>(std::move(*body_thunk_sequence), hlo)) {}
+      body_thunk_sequence_(absl::make_unique<SequentialThunk>(
+          // Pass nullptr as the HloInstruction* to the body_thunk_sequence_
+          // constructor because this SequentialThunk is logically "part of"
+          // this ForThunk, and shouldn't be profiled separately from it.
+          ThunkInfo(), std::move(*body_thunk_sequence))),
+      body_profile_index_(body_profile_index) {}
 
-tensorflow::Status ForThunk::Initialize(const GpuExecutable& executable) {
-  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable));
-  return tensorflow::Status::OK();
+Status ForThunk::Initialize(const GpuExecutable& executable,
+                            se::StreamExecutor* executor) {
+  TF_RETURN_IF_ERROR(body_thunk_sequence_->Initialize(executable, executor));
+  return Status::OK();
 }
 
-tensorflow::Status ForThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations,
-    perftools::gputools::Stream* stream) {
+Status ForThunk::ExecuteOnStream(const ExecuteParams& params) {
+  VLOG(2) << "Executing ForThunk with " << loop_limit_ << " iters";
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   for (int64 i = 0; i < loop_limit_; ++i) {
+    params.profiler->StartHloComputation();
     // Invoke loop body thunk sequence.
-    TF_RETURN_IF_ERROR(
-        body_thunk_sequence_->ExecuteOnStream(buffer_allocations, stream));
+    TF_RETURN_IF_ERROR(body_thunk_sequence_->ExecuteOnStream(params));
+    params.profiler->FinishHloComputation(body_profile_index_);
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace gpu

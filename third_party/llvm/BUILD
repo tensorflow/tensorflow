@@ -1,8 +1,9 @@
-licenses(["notice"])
-
 py_binary(
     name = "expand_cmake_vars",
     srcs = ["expand_cmake_vars.py"],
     srcs_version = "PY2AND3",
-    visibility = ["@llvm//:__subpackages__"],
+    visibility = [
+        "@llvm-project//:__subpackages__",
+        "@llvm_openmp//:__subpackages__",
+    ],
 )

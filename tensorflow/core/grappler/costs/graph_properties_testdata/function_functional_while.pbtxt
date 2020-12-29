@@ -1,0 +1,246 @@
+node {
+  name: "MyFunc_AenMyWWx1Us"
+  op: "MyFunc_AenMyWWx1Us"
+}
+library {
+  function {
+    signature {
+      name: "MyFunc_AenMyWWx1Us"
+      output_arg {
+        name: "while"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "while_0"
+        type: DT_FLOAT
+      }
+      is_stateful: true
+    }
+    node_def {
+      name: "Const"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_INT32
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_INT32
+            tensor_shape {
+            }
+            int_val: 10
+          }
+        }
+      }
+    }
+    node_def {
+      name: "While/input_1"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 0.0
+          }
+        }
+      }
+    }
+    node_def {
+      name: "While"
+      op: "While"
+      input: "Const:output:0"
+      input: "While/input_1:output:0"
+      attr {
+        key: "T"
+        value {
+          list {
+            type: DT_INT32
+            type: DT_FLOAT
+          }
+        }
+      }
+      attr {
+        key: "body"
+        value {
+          func {
+            name: "Body_8GOMGeZeK5c"
+          }
+        }
+      }
+      attr {
+        key: "cond"
+        value {
+          func {
+            name: "Cond_Xf5ttAHgUCg"
+          }
+        }
+      }
+      attr {
+        key: "output_shapes"
+        value {
+          list {
+          }
+        }
+      }
+    }
+    ret {
+      key: "while"
+      value: "While:output:0"
+    }
+    ret {
+      key: "while_0"
+      value: "While:output:1"
+    }
+    attr {
+      key: "_noinline"
+      value {
+        b: true
+      }
+    }
+  }
+  function {
+    signature {
+      name: "Body_8GOMGeZeK5c"
+      input_arg {
+        name: "n"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "x"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "sub"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "add"
+        type: DT_FLOAT
+      }
+    }
+    node_def {
+      name: "sub/y"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 1.0
+          }
+        }
+      }
+    }
+    node_def {
+      name: "sub_0"
+      op: "Sub"
+      input: "n"
+      input: "sub/y:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    node_def {
+      name: "add_0"
+      op: "Add"
+      input: "x"
+      input: "n"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    ret {
+      key: "add"
+      value: "add_0:z:0"
+    }
+    ret {
+      key: "sub"
+      value: "sub_0:z:0"
+    }
+  }
+  function {
+    signature {
+      name: "Cond_Xf5ttAHgUCg"
+      input_arg {
+        name: "n"
+        type: DT_FLOAT
+      }
+      input_arg {
+        name: "unused_x"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "greater"
+        type: DT_BOOL
+      }
+    }
+    node_def {
+      name: "Greater/y"
+      op: "Const"
+      attr {
+        key: "dtype"
+        value {
+          type: DT_FLOAT
+        }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape {
+            }
+            float_val: 0.0
+          }
+        }
+      }
+    }
+    node_def {
+      name: "Greater"
+      op: "Greater"
+      input: "n"
+      input: "Greater/y:output:0"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    ret {
+      key: "greater"
+      value: "Greater:z:0"
+    }
+  }
+}
+versions {
+  producer: 26
+  min_consumer: 12
+}

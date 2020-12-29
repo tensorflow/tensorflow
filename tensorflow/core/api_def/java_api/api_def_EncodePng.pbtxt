@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "EncodePng"
+  endpoint {
+    name: "image.EncodePng"
+  }
+}

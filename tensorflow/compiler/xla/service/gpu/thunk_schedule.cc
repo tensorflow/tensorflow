@@ -14,22 +14,27 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include <algorithm>
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace xla {
 namespace gpu {
 
 void ThunkSchedule::AddDependenciesOnTransitiveOperands(
     const Thunk& thunk, const HloInstruction& operand,
-    const std::unordered_map<const HloInstruction*, Thunk*>& hlo_to_thunk) {
-  if (hlo_to_thunk.count(&operand)) {
+    const absl::flat_hash_map<const HloInstruction*, Thunk*>& hlo_to_thunk) {
+  if (hlo_to_thunk.contains(&operand)) {
     // If `operand` is mapped to a thunk, adds `operand` to `thunk`'s dependency
     // list if `operand` is assigned to a different stream. As an optimization,
     // we skip `operand`'s operands because `operand` depends on them already.
     if (stream_assignment_->StreamNumberForHlo(operand) !=
-        stream_assignment_->StreamNumberForHlo(*thunk.hlo_instruction())) {
+        stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(&thunk))) {
       depends_on_[&thunk].push_back(FindOrDie(hlo_to_thunk, &operand));
     }
   } else {
@@ -45,22 +50,21 @@ void ThunkSchedule::AddDependenciesOnTransitiveOperands(
 ThunkSchedule::ThunkSchedule(
     std::unique_ptr<ThunkSequence> thunks,
     std::unique_ptr<StreamAssignment> stream_assignment,
-    const std::vector<const HloInstruction*>& hlo_total_order)
+    absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo)
     : thunks_(std::move(thunks)),
-      stream_assignment_(std::move(stream_assignment)) {
-  std::unordered_map<const HloInstruction*, Thunk*> hlo_to_thunk;
-  for (const auto& thunk : *thunks_) {
-    InsertOrDie(&hlo_to_thunk, thunk->hlo_instruction(), thunk.get());
+      stream_assignment_(std::move(stream_assignment)),
+      thunk_to_hlo_(std::move(thunk_to_hlo)) {
+  for (auto& thunk : *thunks_) {
+    thunk_total_order_.push_back(thunk.get());
   }
 
-  for (const HloInstruction* hlo : hlo_total_order) {
-    if (hlo_to_thunk.count(hlo)) {
-      thunk_total_order_.push_back(FindOrDie(hlo_to_thunk, hlo));
-    }
+  absl::flat_hash_map<const HloInstruction*, Thunk*> hlo_to_thunk;
+  for (const auto& thunk : *thunks_) {
+    InsertOrDie(&hlo_to_thunk, thunk_to_hlo_.at(thunk.get()), thunk.get());
   }
 
   for (const Thunk* thunk : thunk_total_order_) {
-    const auto* dst = thunk->hlo_instruction();
+    const auto* dst = thunk_to_hlo_.at(thunk);
     CHECK(stream_assignment_->HasStreamAssigned(*dst));
     for (const auto* src : dst->operands()) {
       AddDependenciesOnTransitiveOperands(*thunk, *src, hlo_to_thunk);
@@ -79,7 +83,7 @@ ThunkSchedule::ThunkSchedule(
 
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
   std::unordered_map<const Thunk*, int> thunk_to_total_order;
-  for (auto i = 0; i < thunk_total_order_.size(); ++i) {
+  for (int i = 0; i < thunk_total_order_.size(); ++i) {
     InsertOrDie(&thunk_to_total_order, thunk_total_order_[i], i);
   }
 
@@ -106,18 +110,18 @@ void ThunkSchedule::RemoveRedundantDependencyEdges() {
   // redundant dependency edge.
   Array2D<int> last_dependency(stream_count, stream_count, -1);
   for (const Thunk* dst : thunk_total_order_) {
-    if (!depends_on_.count(dst)) {
+    if (!depends_on_.contains(dst)) {
       continue;
     }
 
     int dst_stream =
-        stream_assignment_->StreamNumberForHlo(*dst->hlo_instruction());
+        stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(dst));
     std::list<const Thunk*>& sources = FindOrDie(depends_on_, dst);
     for (auto iter = sources.begin(); iter != sources.end();) {
       const Thunk* src = *iter;
       // `dst` depends on `src`.
       int src_stream =
-          stream_assignment_->StreamNumberForHlo(*src->hlo_instruction());
+          stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(src));
       int src_order = FindOrDie(thunk_to_total_order, src);
       if (src_order <= last_dependency(dst_stream, src_stream)) {
         iter = sources.erase(iter);
@@ -134,7 +138,7 @@ void ThunkSchedule::RemoveRedundantDependencyEdges() {
 
 const std::list<const Thunk*>& ThunkSchedule::DependsOn(
     const Thunk* thunk) const {
-  if (depends_on_.count(thunk)) {
+  if (depends_on_.contains(thunk)) {
     return FindOrDie(depends_on_, thunk);
   } else {
     return empty_thunk_list_;
@@ -142,18 +146,38 @@ const std::list<const Thunk*>& ThunkSchedule::DependsOn(
 }
 
 string ThunkSchedule::ToString() const {
+  if (thunk_total_order_.empty()) {
+    return "No thunks.";
+  }
+
+  const Thunk* thunk_with_longest_kind = *absl::c_max_element(
+      thunk_total_order_, [](const Thunk* a, const Thunk* b) {
+        return ThunkKindToString(a->kind()).length() <
+               ThunkKindToString(b->kind()).length();
+      });
+  int64 max_thunk_kind_len =
+      ThunkKindToString(thunk_with_longest_kind->kind()).length();
+
   string result = "Total order:\n";
   for (Thunk* thunk : thunk_total_order_) {
-    tensorflow::strings::StrAppend(&result, "\t",
-                                   thunk->hlo_instruction()->ToString(), "\n");
+    // Write out the thunk kind, padded out to max_thunk_kind_len.
+    absl::string_view kind_str = ThunkKindToString(thunk->kind());
+    absl::StrAppend(&result, kind_str,
+                    string(max_thunk_kind_len - kind_str.length(), ' '), "\t");
+    if (thunk_to_hlo_.at(thunk) != nullptr) {
+      absl::StrAppend(&result, thunk_to_hlo_.at(thunk)->ToString());
+    } else {
+      absl::StrAppend(&result, "(no HloInstruction)");
+    }
+    absl::StrAppend(&result, "\n");
   }
-  tensorflow::strings::StrAppend(&result, "Dependencies:\n");
+  absl::StrAppend(&result, "\nDependencies:\n");
   for (const auto& entry : depends_on_) {
     const Thunk* dependent = entry.first;
     for (const Thunk* dependency : entry.second) {
-      tensorflow::strings::StrAppend(
-          &result, "\t", dependent->hlo_instruction()->name(), " depends on ",
-          dependency->hlo_instruction()->name(), "\n");
+      absl::StrAppend(&result, "\t", thunk_to_hlo_.at(dependent)->name(),
+                      " depends on ", thunk_to_hlo_.at(dependency)->name(),
+                      "\n");
     }
   }
   return result;

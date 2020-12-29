@@ -18,15 +18,13 @@ limitations under the License.
 #include <initializer_list>
 
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
 
-void SetMinorToMajorLayout(Shape* shape,
-                           std::initializer_list<int64> dimensions) {
+void SetMinorToMajorLayout(Shape* shape, std::vector<int64> dimensions) {
   shape->mutable_layout()->clear_minor_to_major();
   for (auto dimension : dimensions) {
     shape->mutable_layout()->add_minor_to_major(dimension);
@@ -123,7 +121,7 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
   std::vector<int64> linear_indexes = {0,        1439999999, 1145567336,
                                        43883404, 617295214,  1117613654};
 
-  std::vector<std::initializer_list<int64>> minor_to_major_orders;
+  std::vector<std::vector<int64>> minor_to_major_orders;
   minor_to_major_orders.push_back({6, 5, 4, 3, 2, 1, 0});
   minor_to_major_orders.push_back({0, 1, 2, 3, 4, 5, 6});
   minor_to_major_orders.push_back({4, 5, 1, 2, 6, 0, 3});
@@ -143,16 +141,13 @@ TEST(IndexUtilTest, LinearToMultiToLinear) {
 TEST(IndexUtilTest, BumpIndices2x2) {
   auto shape = ShapeUtil::MakeShape(S32, {2, 2});
   std::vector<int64> indices = {0, 0};
-  EXPECT_TRUE(IndexUtil::BumpIndices(shape, &indices));
-  EXPECT_MATCH(indices,
-               testing::VectorMatcher<int64>(std::vector<int64>{0, 1}));
-  EXPECT_TRUE(IndexUtil::BumpIndices(shape, &indices));
-  EXPECT_MATCH(indices,
-               testing::VectorMatcher<int64>(std::vector<int64>{1, 0}));
-  EXPECT_TRUE(IndexUtil::BumpIndices(shape, &indices));
-  EXPECT_MATCH(indices,
-               testing::VectorMatcher<int64>(std::vector<int64>{1, 1}));
-  EXPECT_FALSE(IndexUtil::BumpIndices(shape, &indices));
+  EXPECT_TRUE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
+  EXPECT_THAT(indices, ::testing::ElementsAre(0, 1));
+  EXPECT_TRUE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
+  EXPECT_THAT(indices, ::testing::ElementsAre(1, 0));
+  EXPECT_TRUE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
+  EXPECT_THAT(indices, ::testing::ElementsAre(1, 1));
+  EXPECT_FALSE(IndexUtil::BumpIndices(shape, absl::MakeSpan(indices)));
 }
 
 }  // namespace

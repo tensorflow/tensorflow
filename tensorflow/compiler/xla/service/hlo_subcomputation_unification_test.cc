@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -66,13 +65,13 @@ class HloSubcomputationUnificationTest : public HloTestBase {
 };
 
 TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto callee1 =
-      hlo_module->AddEmbeddedComputation(CreateR0S32IdentityComputation());
+      module->AddEmbeddedComputation(CreateR0S32IdentityComputation());
   auto callee2 =
-      hlo_module->AddEmbeddedComputation(CreateR0S32IdentityComputation());
+      module->AddEmbeddedComputation(CreateR0S32IdentityComputation());
 
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(5)));
@@ -83,32 +82,23 @@ TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32_, HloOpcode::kAdd, x, y));
 
-  hlo_module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(3, hlo_module->computations().size());
+  EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*hlo_module->entry_computation(),
-                                "before unification", false, false, nullptr);
-  }
-  EXPECT_TRUE(
-      HloSubcomputationUnification().Run(hlo_module.get()).ValueOrDie());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*hlo_module->entry_computation(),
-                                "after unification", false, false, nullptr);
-  }
-  EXPECT_EQ(2, hlo_module->computations().size());
+  EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(2, module->computation_count());
   EXPECT_EQ(x->to_apply(), y->to_apply());
 }
 
 TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto callee1 =
-      hlo_module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
+      module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
   auto callee2 =
-      hlo_module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
+      module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
 
   auto constant1 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(5)));
@@ -121,38 +111,29 @@ TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(r0s32_, HloOpcode::kAdd, x, y));
 
-  hlo_module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(3, hlo_module->computations().size());
+  EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*hlo_module->entry_computation(),
-                                "before unification", false, false, nullptr);
-  }
-  EXPECT_TRUE(
-      HloSubcomputationUnification().Run(hlo_module.get()).ValueOrDie());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*hlo_module->entry_computation(),
-                                "after unification", false, false, nullptr);
-  }
-  EXPECT_EQ(2, hlo_module->computations().size());
+  EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(2, module->computation_count());
   EXPECT_EQ(x->to_apply(), y->to_apply());
 }
 
 // Do not unify subcomputations with different parameter shapes.
 TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
-  auto callee1 = hlo_module->AddEmbeddedComputation(
-      CreateR1S32AdditionComputation(r1s32_5_));
-  auto callee2 = hlo_module->AddEmbeddedComputation(
-      CreateR1S32AdditionComputation(r1s32_3_));
+  auto callee1 =
+      module->AddEmbeddedComputation(CreateR1S32AdditionComputation(r1s32_5_));
+  auto callee2 =
+      module->AddEmbeddedComputation(CreateR1S32AdditionComputation(r1s32_3_));
 
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, r1s32_5_, "param1"));
   auto param2 = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, r1s32_5_, "param2"));
+      HloInstruction::CreateParameter(1, r1s32_3_, "param2"));
   auto x = builder.AddInstruction(
       HloInstruction::CreateCall(r1s32_5_, {param1, param1}, callee1));
   auto y = builder.AddInstruction(
@@ -160,28 +141,19 @@ TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       ShapeUtil::MakeShape(S32, {8}), {x, y}, 0));
 
-  hlo_module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(3, hlo_module->computations().size());
+  EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*hlo_module->entry_computation(),
-                                "before unification", false, false, nullptr);
-  }
-  EXPECT_FALSE(
-      HloSubcomputationUnification().Run(hlo_module.get()).ValueOrDie());
-  if (VLOG_IS_ON(1)) {
-    hlo_graph_dumper::DumpGraph(*hlo_module->entry_computation(),
-                                "after unification", false, false, nullptr);
-  }
-  EXPECT_EQ(3, hlo_module->computations().size());
+  EXPECT_FALSE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(3, module->computation_count());
   EXPECT_NE(x->to_apply(), y->to_apply());
 }
 
 // Regression test for b/31466798. Checks that entry_computation is still valid
 // after unification.
 TEST_F(HloSubcomputationUnificationTest, TwoIdenticalComputations) {
-  HloModule module(TestName());
+  auto module = CreateNewVerifiedModule();
   for (int i = 0; i < 2; ++i) {
     HloComputation::Builder builder("pow");
     auto x =
@@ -191,15 +163,15 @@ TEST_F(HloSubcomputationUnificationTest, TwoIdenticalComputations) {
     builder.AddInstruction(
         HloInstruction::CreateBinary(r0f32_, HloOpcode::kPower, x, y));
     if (i == 0) {
-      module.AddEmbeddedComputation(builder.Build());
+      module->AddEmbeddedComputation(builder.Build());
     } else {
-      module.AddEntryComputation(builder.Build());
+      module->AddEntryComputation(builder.Build());
     }
   }
 
-  EXPECT_TRUE(HloSubcomputationUnification().Run(&module).ValueOrDie());
-  EXPECT_EQ(1, module.computations().size());
-  EXPECT_EQ(module.computations().front().get(), module.entry_computation());
+  EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
+  EXPECT_EQ(1, module->computation_count());
+  EXPECT_EQ(*module->computations().begin(), module->entry_computation());
 }
 
 }  // namespace xla

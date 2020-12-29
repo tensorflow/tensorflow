@@ -1,0 +1,76 @@
+op {
+  graph_op_name: "TensorArrayV3"
+  endpoint {
+    name: "TensorArray"
+  }
+  in_arg {
+    name: "size"
+    description: <<END
+The size of the array.
+END
+  }
+  out_arg {
+    name: "handle"
+    description: <<END
+The handle to the TensorArray.
+END
+  }
+  out_arg {
+    name: "flow"
+    description: <<END
+A scalar used to control gradient flow.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of the elements on the tensor_array.
+END
+  }
+  attr {
+    name: "element_shape"
+    description: <<END
+The expected shape of an element, if known. Used to
+validate the shapes of TensorArray elements. If this shape is not
+fully specified, gathering zero-size TensorArrays is an error.
+END
+  }
+  attr {
+    name: "dynamic_size"
+    description: <<END
+A boolean that determines whether writes to the TensorArray
+are allowed to grow the size.  By default, this is not allowed.
+END
+  }
+  attr {
+    name: "clear_after_read"
+    description: <<END
+If true (default), Tensors in the TensorArray are cleared
+after being read.  This disables multiple read semantics but allows early
+release of memory.
+END
+  }
+  attr {
+    name: "identical_element_shapes"
+    description: <<END
+If true (default is false), then all
+elements in the TensorArray will be expected to have identical shapes.
+This allows certain behaviors, like dynamically checking for
+consistent shapes on write, and being able to fill in properly
+shaped zero tensors on stack -- even if the element_shape attribute
+is not fully defined.
+END
+  }
+  attr {
+    name: "tensor_array_name"
+    description: <<END
+Overrides the name used for the temporary tensor_array
+resource. Default value is the name of the 'TensorArray' op (which
+is guaranteed unique).
+END
+  }
+  summary: "An array of Tensors of given size."
+  description: <<END
+Write data via Write and read via Read or Pack.
+END
+}

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <utility>
 #include <vector>
-#include "tensorflow/core/framework/types.pb_text.h"
+
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/iterator.h"
 #include "tensorflow/core/lib/io/table.h"
 #include "tensorflow/core/lib/io/table_options.h"
@@ -102,7 +102,8 @@ TensorSliceReader::TensorSliceReader(const string& filepattern)
 
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function)
-    : TensorSliceReader(filepattern, open_function, kLoadAllShards) {}
+    : TensorSliceReader(filepattern, std::move(open_function), kLoadAllShards) {
+}
 
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function,
@@ -195,7 +196,12 @@ const TensorSliceSet* TensorSliceReader::FindTensorSlice(
   return tss;
 }
 
-TensorSliceReader::~TensorSliceReader() { gtl::STLDeleteValues(&tensors_); }
+TensorSliceReader::~TensorSliceReader() {
+  for (auto& temp : tensors_) {
+    delete temp.second;
+  }
+  tensors_.clear();
+}
 
 bool TensorSliceReader::HasTensor(const string& name, TensorShape* shape,
                                   DataType* type) const {
@@ -277,19 +283,30 @@ TensorSliceReader::VarToShapeMap TensorSliceReader::GetVariableToShapeMap()
     const {
   VarToShapeMap name_to_shape;
   if (status().ok()) {
-    for (auto e : Tensors()) {
+    for (auto& e : Tensors()) {
       name_to_shape[e.first] = e.second->shape();
     }
   }
   return name_to_shape;
 }
 
+TensorSliceReader::VarToDataTypeMap
+TensorSliceReader::GetVariableToDataTypeMap() const {
+  VarToDataTypeMap name_to_dtype;
+  if (status().ok()) {
+    for (auto& e : Tensors()) {
+      name_to_dtype[e.first] = e.second->type();
+    }
+  }
+  return name_to_dtype;
+}
+
 const string TensorSliceReader::DebugString() const {
   string shape_str;
   if (status().ok()) {
-    for (auto e : Tensors()) {
+    for (const auto& e : Tensors()) {
       strings::StrAppend(&shape_str, e.first, " (",
-                         EnumName_DataType(e.second->type()), ") ",
+                         DataType_Name(e.second->type()), ") ",
                          e.second->shape().DebugString());
       // Indicates if a tensor has more than 1 slice (i.e., it's partitioned).
       const int num_slices = e.second->Slices().size();

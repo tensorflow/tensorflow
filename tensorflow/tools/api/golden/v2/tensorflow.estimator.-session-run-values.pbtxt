@@ -1,0 +1,27 @@
+path: "tensorflow.estimator.SessionRunValues"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunValues\'>"
+  is_instance: "<class \'tensorflow.python.training.session_run_hook.SessionRunValues\'>"
+  is_instance: "<type \'tuple\'>"
+  member {
+    name: "options"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "results"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "run_metadata"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "count"
+  }
+  member_method {
+    name: "index"
+  }
+}

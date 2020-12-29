@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -95,7 +96,7 @@ void MakeGRPCCluster(const SessionOptions& options, int n,
   options_copy.target = (*workers)[0];
   std::unique_ptr<GrpcSession> session;
   TF_CHECK_OK(GrpcSession::Create(options_copy, &session));
-  *devices = session->ListDevices();
+  TF_CHECK_OK(session->ListDevices(devices));
 }
 
 struct Cluster {
@@ -165,9 +166,9 @@ string DebugString(const Tensor& x, const Tensor& y, int tensor_size) {
 }
 
 // TODO: Support sharding and depth.
-static void BM_Helper(int iters, int width, int num_stages, int tensor_size,
+static void BM_Helper(::testing::benchmark::State& state, int width,
+                      int num_stages, int tensor_size,
                       bool use_multiple_devices) {
-  testing::StopTiming();
   const Cluster* cluster = GetCluster();
 
   // Creates a session.
@@ -183,8 +184,8 @@ static void BM_Helper(int iters, int width, int num_stages, int tensor_size,
 
   testing::SetLabel(
       strings::StrCat(def.node_size(), " nodes; ",
-             use_multiple_devices ? "Multi device" : "Single device",
-             "; tensor bytes/send: ", tensor_size * sizeof(float)));
+                      use_multiple_devices ? "Multi device" : "Single device",
+                      "; tensor bytes/send: ", tensor_size * sizeof(float)));
 
   std::vector<Tensor> outputs;
 
@@ -202,17 +203,18 @@ static void BM_Helper(int iters, int width, int num_stages, int tensor_size,
   }
 
   // Iterations.
-  testing::StartTiming();
-  for (int i = 0; i < iters; i++) {
+  for (auto s : state) {
     outputs.clear();
     TF_CHECK_OK(session->Run({{"x", x}}, {"y:0"}, {}, &outputs));
     CHECK_EQ(size_t{1}, outputs.size());
   }
-  testing::StopTiming();
   TF_CHECK_OK(session->Close());
 }
-static void BM_ShardedProgram(int iters, int width, int num_stages) {
-  BM_Helper(iters, width, num_stages, 2 /*tensor_size*/, true /*multi-device*/);
+static void BM_ShardedProgram(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int num_stages = state.range(1);
+
+  BM_Helper(state, width, num_stages, 2 /*tensor_size*/, true /*multi-device*/);
 }
 BENCHMARK(BM_ShardedProgram)
     ->ArgPair(1, 1)
@@ -231,13 +233,19 @@ BENCHMARK(BM_ShardedProgram)
     ->ArgPair(60, 3)
     ->ArgPair(60, 5);
 
-static void BM_RPC(int iters, int width, int tensor_size) {
-  BM_Helper(iters, width, 2 /*num_stages*/, tensor_size, true /*multi-device*/);
+static void BM_RPC(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int tensor_size = state.range(1);
+
+  BM_Helper(state, width, 2 /*num_stages*/, tensor_size, true /*multi-device*/);
 }
 BENCHMARK(BM_RPC)->ArgPair(30, 2)->ArgPair(30, 1000)->ArgPair(30, 100000);
 
-static void BM_SingleDevice(int iters, int width, int num_stages) {
-  BM_Helper(iters, width, num_stages, 2 /*tensor_size*/,
+static void BM_SingleDevice(::testing::benchmark::State& state) {
+  const int width = state.range(0);
+  const int num_stages = state.range(1);
+
+  BM_Helper(state, width, num_stages, 2 /*tensor_size*/,
             false /*not multi-device*/);
 }
 BENCHMARK(BM_SingleDevice)

@@ -20,18 +20,18 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetCpuCastFromDouble(DataType dst_dtype) {
+CastFunctorType GetCpuCastFromDouble(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, double);
   return nullptr;
 }
 
-#if GOOGLE_CUDA
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetGpuCastFromDouble(DataType dst_dtype) {
-  CURRY_TYPES3(CAST_CASE, GPUDevice, double);
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+CastFunctorType GetGpuCastFromDouble(DataType dst_dtype) {
+  CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, double);
   return nullptr;
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 
 }  // namespace tensorflow

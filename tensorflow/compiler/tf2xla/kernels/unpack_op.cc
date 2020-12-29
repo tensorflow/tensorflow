@@ -22,14 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -66,6 +66,7 @@ class UnpackOp : public XlaOpKernel {
 
     std::vector<int64> start_indices(input_shape.dims(), 0);
     std::vector<int64> limit_indices(input_shape.dims());
+    std::vector<int64> strides(input_shape.dims(), 1);
     for (int i = 0; i < input_shape.dims(); ++i) {
       limit_indices[i] = input_shape.dim_size(i);
     }
@@ -73,9 +74,9 @@ class UnpackOp : public XlaOpKernel {
     for (int i = 0; i < num; ++i) {
       start_indices[axis] = i;
       limit_indices[axis] = i + 1;
-      auto slice = ctx->builder()->Slice(input, start_indices, limit_indices);
+      auto slice = xla::Slice(input, start_indices, limit_indices, strides);
       // Reshape to drop the 'axis' dimension.
-      auto result = ctx->builder()->Reshape(slice, output_shape.dim_sizes());
+      auto result = xla::Reshape(slice, output_shape.dim_sizes());
       ctx->SetOutput(i, result);
     }
   }
@@ -84,7 +85,7 @@ class UnpackOp : public XlaOpKernel {
   int axis_;
 };
 
-REGISTER_XLA_OP("Unpack", UnpackOp);
+REGISTER_XLA_OP(Name("Unpack"), UnpackOp);
 
 }  // namespace
 }  // namespace tensorflow

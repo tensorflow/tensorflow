@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
-
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -93,7 +92,7 @@ Status InsertLogging(const GraphDef& input_graph_def,
   GraphDef logged_graph_def;
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = logged_graph_def.mutable_node()->Add();
-    new_node->CopyFrom(node);
+    *new_node = node;
     if (node_outputs[node.name()].empty()) {
       // There were no outputs found to this node, so skip it.
       continue;
@@ -101,7 +100,7 @@ Status InsertLogging(const GraphDef& input_graph_def,
     const bool op_matches = (ops.count(node.op()) > 0);
     bool prefix_matches = false;
     for (const string& prefix : prefixes) {
-      if (StringPiece(node.name()).starts_with(prefix)) {
+      if (absl::StartsWith(node.name(), prefix)) {
         prefix_matches = true;
       }
     }

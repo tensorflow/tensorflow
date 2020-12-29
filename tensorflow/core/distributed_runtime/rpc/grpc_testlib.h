@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_TESTLIB_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TESTLIB_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TESTLIB_H_
 
 #include <memory>
 #include <string>
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
@@ -48,6 +49,11 @@ class TestCluster {
   // returned.
   static Status MakeTestCluster(const SessionOptions& options, int n,
                                 std::unique_ptr<TestCluster>* out_cluster);
+
+  // As above, but allows overridding the server binary path via `binary_path`.
+  static Status MakeTestCluster(const string& binary_path,
+                                const SessionOptions& options, int n,
+                                std::unique_ptr<TestCluster>* out_cluster);
   ~TestCluster();
 
   // Returns a vector of string "<hostname>:<port>" pairs that may be
@@ -70,4 +76,4 @@ class TestCluster {
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TESTLIB_H_

@@ -17,51 +17,102 @@ limitations under the License.
 
 #include <string>
 
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
+using xla::llvm_ir::IrArray;
+
 namespace xla {
 namespace cpu {
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitFloatUnaryOp(
-    const HloInstruction* op, llvm::Value* operand_value) const {
-  switch (op->opcode()) {
-    case HloOpcode::kTanh: {
-      PrimitiveType element_type = op->shape().element_type();
-      string function_name;
-      switch (element_type) {
-        case F32:
-          function_name = "tanhf";
-          break;
-        case F64:
-          function_name = "tanh";
-          break;
-        default:
-          return Unimplemented("tanh");
-      }
-      // Create function type for the function.
-      llvm::FunctionType* function_type = llvm::FunctionType::get(
-          llvm_ir::PrimitiveTypeToIrType(element_type, ir_builder_),
-          llvm_ir::PrimitiveTypeToIrType(element_type, ir_builder_),
-          /*isVarArg=*/false);
-      // Create function declaration for 'tanhf'.
-      llvm::Function* function =
-          llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-              llvm_ir::AsStringRef(function_name), function_type));
-      function->setCallingConv(llvm::CallingConv::C);
-      function->setDoesNotThrow();
-      function->setDoesNotAccessMemory();
-      // Create instruction to call 'tanhf'.
-      return ir_builder_->CreateCall(function, operand_value);
-    }
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
+                                                        llvm::Value* lhs,
+                                                        llvm::Value* rhs) {
+  string function_name;
+  bool cast_result_to_fp16 = false;
+  switch (prim_type) {
+    case F16:
+      cast_result_to_fp16 = true;
+      lhs = FPCast(lhs, b()->getFloatTy());
+      rhs = FPCast(rhs, b()->getFloatTy());
+      TF_FALLTHROUGH_INTENDED;
+    case F32:
+      function_name = "atan2f";
+      break;
+    case F64:
+      function_name = "atan2";
+      break;
     default:
-      return ElementalIrEmitter::EmitFloatUnaryOp(op, operand_value);
+      return Unimplemented("atan2");
   }
+  // Create a function declaration.
+  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
+      module()
+          ->getOrInsertFunction(function_name, lhs->getType(), lhs->getType(),
+                                rhs->getType())
+          .getCallee());
+  function->setCallingConv(llvm::CallingConv::C);
+  function->setDoesNotThrow();
+  function->setDoesNotAccessMemory();
+  // Create an instruction to call the function.
+  llvm::Value* result = Call(function, {lhs, rhs});
+  if (cast_result_to_fp16) {
+    result = FPCast(result, b()->getHalfTy());
+  }
+  return result;
+}
+
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  bool cast_result_to_fp16 = false;
+  string function_name;
+  switch (prim_type) {
+    case F16:
+      cast_result_to_fp16 = true;
+      value = FPCast(value, b()->getFloatTy());
+      TF_FALLTHROUGH_INTENDED;
+    case F32:
+      function_name = "tanhf";
+      break;
+    case F64:
+      function_name = "tanh";
+      break;
+    default:
+      return Unimplemented("tanh");
+  }
+  // Create a function declaration.
+  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
+      module()
+          ->getOrInsertFunction(function_name, value->getType(),
+                                value->getType())
+          .getCallee());
+  function->setCallingConv(llvm::CallingConv::C);
+  function->setDoesNotThrow();
+  function->setDoesNotAccessMemory();
+  // Create an instruction to call the function.
+  llvm::Value* result = Call(function, value);
+  if (cast_result_to_fp16) {
+    result = FPCast(result, b()->getHalfTy());
+  }
+  return result;
+}
+
+StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitConvolution(
+    const HloInstruction* hlo,
+    const HloToElementGeneratorMap& operand_to_generator,
+    const llvm_ir::IrArray::Index& index) {
+  return ir_emitter_->EmitElementalConvolution(
+      Cast<HloConvolutionInstruction>(hlo),
+      operand_to_generator.at(hlo->operand(0)),
+      operand_to_generator.at(hlo->operand(1)), index);
 }
 
 }  // namespace cpu

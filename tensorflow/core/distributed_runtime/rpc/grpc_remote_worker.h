@@ -13,26 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
-#define THIRD_PARTY_TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
 
 #include <memory>
 
+#include "grpcpp/completion_queue.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
-
-namespace grpc {
-class CompletionQueue;
-}
+#include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
-
 class WorkerCacheLogger;
 class WorkerInterface;
 
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
-                                     WorkerCacheLogger* logger);
+                                     thread::ThreadPool* callback_threadpool,
+                                     WorkerCacheLogger* logger,
+                                     const string& target);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_REMOTE_WORKER_H_

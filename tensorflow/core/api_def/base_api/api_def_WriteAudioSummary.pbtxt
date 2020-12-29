@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "WriteAudioSummary"
+  visibility: HIDDEN
+  summary: "Writes an audio summary."
+  description: <<END
+Writes encoded audio summary `tensor` at `step` with `tag` using summary `writer`.
+`sample_rate` is the audio sample rate is Hz.
+END
+}

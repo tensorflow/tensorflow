@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_CREATE_PROTO_DEBUG_STRING_LIB_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_CREATE_PROTO_DEBUG_STRING_LIB_H_
+#ifndef TENSORFLOW_TOOLS_PROTO_TEXT_GEN_PROTO_TEXT_FUNCTIONS_LIB_H_
+#define TENSORFLOW_TOOLS_PROTO_TEXT_GEN_PROTO_TEXT_FUNCTIONS_LIB_H_
 
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,7 +38,7 @@ struct ProtoTextFunctionCode {
 // 1. For each message:
 //    * ProtoDebugString(m): same as msg.DebugString(), except that google.any
 //      is not expanded.
-//    * ProtoShortDebugString(m): same as msg.ShorDebugString(), except that
+//    * ProtoShortDebugString(m): same as msg.ShortDebugString(), except that
 //      google.any is not expanded.
 //    * ProtoParseFromString(s, m): same as TextFormat.ParseFromString(s, &m);
 // 2. For each enum:
@@ -50,4 +50,4 @@ ProtoTextFunctionCode GetProtoTextFunctionCode(
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_CREATE_PROTO_DEBUG_STRING_LIB_H_
+#endif  // TENSORFLOW_TOOLS_PROTO_TEXT_GEN_PROTO_TEXT_FUNCTIONS_LIB_H_

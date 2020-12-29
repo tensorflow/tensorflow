@@ -17,10 +17,11 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -29,87 +30,111 @@ namespace {
 class PredTest : public ClientLibraryTestBase {
  protected:
   void TestCompare(bool lhs, bool rhs, bool expected,
-                   ComputationDataHandle (ComputationBuilder::*op)(
-                       const ComputationDataHandle&,
-                       const ComputationDataHandle&,
-                       tensorflow::gtl::ArraySlice<int64>)) {
-    ComputationBuilder builder(client_, TestName());
-    ComputationDataHandle lhs_op = builder.ConstantR0<bool>(lhs);
-    ComputationDataHandle rhs_op = builder.ConstantR0<bool>(rhs);
-    ComputationDataHandle result = (builder.*op)(lhs_op, rhs_op, {});
+                   std::function<XlaOp(const xla::XlaOp&, const xla::XlaOp&,
+                                       absl::Span<const int64>)>
+                       op) {
+    XlaBuilder builder(TestName());
+    XlaOp lhs_op = ConstantR0<bool>(&builder, lhs);
+    XlaOp rhs_op = ConstantR0<bool>(&builder, rhs);
+    op(lhs_op, rhs_op, {});
     ComputeAndCompareR0<bool>(&builder, expected, {});
   }
 };
 
 TEST_F(PredTest, ConstantR0PredTrue) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR0<bool>(true);
+  XlaBuilder builder(TestName());
+  ConstantR0<bool>(&builder, true);
   ComputeAndCompareR0<bool>(&builder, true, {});
 }
 
 TEST_F(PredTest, ConstantR0PredFalse) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR0<bool>(false);
+  XlaBuilder builder(TestName());
+  ConstantR0<bool>(&builder, false);
   ComputeAndCompareR0<bool>(&builder, false, {});
 }
 
 TEST_F(PredTest, ConstantR0PredCompareEq) {
-  TestCompare(true, false, false, &ComputationBuilder::Eq);
+  TestCompare(true, false, false, &Eq);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareNe) {
-  TestCompare(true, false, true, &ComputationBuilder::Ne);
+  TestCompare(true, false, true, &Ne);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareLe) {
-  TestCompare(true, false, false, &ComputationBuilder::Le);
+  TestCompare(true, false, false, &Le);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareLt) {
-  TestCompare(true, false, false, &ComputationBuilder::Lt);
+  TestCompare(true, false, false, &Lt);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareGe) {
-  TestCompare(true, false, true, &ComputationBuilder::Ge);
+  TestCompare(true, false, true, &Ge);
 }
 
 TEST_F(PredTest, ConstantR0PredCompareGt) {
-  TestCompare(true, false, true, &ComputationBuilder::Gt);
+  TestCompare(true, false, true, &Gt);
 }
 
 TEST_F(PredTest, ConstantR1Pred) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<bool>({true, false, false, true});
+  XlaBuilder builder(TestName());
+  ConstantR1<bool>(&builder, {true, false, false, true});
   ComputeAndCompareR1<bool>(&builder, {true, false, false, true}, {});
 }
 
 TEST_F(PredTest, ConstantR2Pred) {
-  ComputationBuilder builder(client_, TestName());
-  auto a =
-      builder.ConstantR2<bool>({{false, true, true}, {true, false, false}});
+  XlaBuilder builder(TestName());
+  ConstantR2<bool>(&builder, {{false, true, true}, {true, false, false}});
   const string expected = R"(pred[2,3] {
-  { 011 },
-  { 100 },
+  { 0, 1, 1 },
+  { 1, 0, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
 
+TEST_F(PredTest, AnyR1True) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<bool>(&builder, {true, false});
+  Any(a);
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
+TEST_F(PredTest, AnyR1False) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<bool>(&builder, {false, false});
+  Any(a);
+  ComputeAndCompareR0<bool>(&builder, false, {});
+}
+
+TEST_F(PredTest, AnyR1VacuouslyFalse) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<bool>(&builder, {});
+  Any(a);
+  ComputeAndCompareR0<bool>(&builder, false, {});
+}
+
+TEST_F(PredTest, AnyR2True) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<bool>(&builder, {
+                                          {false, false, false},
+                                          {false, false, false},
+                                          {false, false, true},
+                                      });
+  Any(a);
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
+TEST_F(PredTest, AnyR2False) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR2<bool>(&builder, {
+                                          {false, false, false},
+                                          {false, false, false},
+                                          {false, false, false},
+                                      });
+  Any(a);
+  ComputeAndCompareR0<bool>(&builder, false, {});
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

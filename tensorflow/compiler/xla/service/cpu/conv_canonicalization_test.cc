@@ -17,9 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -27,6 +29,8 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+using ::testing::ElementsAre;
 
 class ConvCanonicalizationTest : public HloTestBase {
  public:
@@ -64,10 +68,14 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
           kOutputFeatureCount, kInputFeatureCount, kWindowSize, kWindowSize))));
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_batch_dimension(1);
-  dnums.add_spatial_dimensions(2);
-  dnums.add_spatial_dimensions(3);
-  dnums.set_feature_dimension(0);
+  dnums.set_input_batch_dimension(1);
+  dnums.set_output_batch_dimension(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.add_input_spatial_dimensions(3);
+  dnums.add_output_spatial_dimensions(3);
+  dnums.set_input_feature_dimension(0);
+  dnums.set_output_feature_dimension(0);
   dnums.add_kernel_spatial_dimensions(2);
   dnums.add_kernel_spatial_dimensions(3);
   dnums.set_kernel_input_feature_dimension(1);
@@ -76,13 +84,18 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      conv_window_, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
-  ConvCanonicalization conv_canonicalization;
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
+      [](int64 shape_size) {
+        return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+      });
+  ConvCanonicalization conv_canonicalization(&target_machine_features);
   EXPECT_TRUE(conv_canonicalization.Run(module.get()).ValueOrDie());
 
   const HloInstruction* output_reshape = entry_computation->root_instruction();
@@ -96,17 +109,14 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
 
   // The input is in CNHW order. input_reshape should produce
   // NHWC for the convolution to hit the Eigen fast path.
-  EXPECT_TRUE(ContainersEqual(input_reshape->dimensions(),
-                              std::vector<int64>({1, 2, 3, 0})));
+  EXPECT_THAT(input_reshape->dimensions(), ElementsAre(1, 2, 3, 0));
   // The kernel is in OIHW order. kernel_reshape should produce
   // HWIO for the convolution to hit the Eigen fast path.
-  EXPECT_TRUE(ContainersEqual(kernel_reshape->dimensions(),
-                              std::vector<int64>({2, 3, 1, 0})));
+  EXPECT_THAT(kernel_reshape->dimensions(), ElementsAre(2, 3, 1, 0));
   // The output of the canonical convolution is in NHWC order (the same as
   // input_reshape's order). output_reshape should restore that order to the
   // order of the computation root (CNHW).
-  EXPECT_TRUE(ContainersEqual(output_reshape->dimensions(),
-                              std::vector<int64>({3, 0, 1, 2})));
+  EXPECT_THAT(output_reshape->dimensions(), ElementsAre(3, 0, 1, 2));
 }
 
 TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
@@ -121,10 +131,14 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
           kWindowSize, kWindowSize, kInputFeatureCount, kOutputFeatureCount))));
 
   ConvolutionDimensionNumbers dnums;
-  dnums.set_batch_dimension(0);
-  dnums.add_spatial_dimensions(1);
-  dnums.add_spatial_dimensions(2);
-  dnums.set_feature_dimension(3);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
   dnums.add_kernel_spatial_dimensions(0);
   dnums.add_kernel_spatial_dimensions(1);
   dnums.set_kernel_input_feature_dimension(2);
@@ -133,12 +147,17 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
   builder.AddInstruction(HloInstruction::CreateConvolve(
       ShapeUtil::MakeShape(
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
-      input, kernel, conv_window_, dnums));
+      input, kernel, /*feature_group_count=*/1, /*batch_group_count=*/1,
+      conv_window_, dnums, DefaultPrecisionConfig(2)));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  ConvCanonicalization conv_canonicalization;
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
+      [](int64 shape_size) {
+        return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+      });
+  ConvCanonicalization conv_canonicalization(&target_machine_features);
   EXPECT_FALSE(conv_canonicalization.Run(module.get()).ValueOrDie());
 }
 

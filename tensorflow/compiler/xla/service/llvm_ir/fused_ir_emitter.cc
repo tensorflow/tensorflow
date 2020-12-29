@@ -15,14 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
+#include <algorithm>
 #include <functional>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/ops.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -32,12 +40,11 @@ namespace xla {
 
 using llvm_ir::IrArray;
 
-Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
-  generators_[hlo] =
+Status FusedIrEmitter::DefaultAction(const HloInstruction* hlo) {
+  indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    if (generated_value_cache_[hlo].count(index.multidim()) > 0) {
-      llvm::Value* generated_value =
-          generated_value_cache_[hlo][index.multidim()];
+    if (llvm::Value* generated_value = FindOrDefault(
+            generated_value_cache_[hlo], index.multidim(), nullptr)) {
       llvm::BasicBlock* generated_value_bb = nullptr;
       if (auto* generated_instruction =
               llvm::dyn_cast<llvm::Instruction>(generated_value)) {
@@ -52,96 +59,137 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
       // that would be regenerated without caching. But this might increase the
       // JIT compilation time.
       if (generated_value_bb == nullptr ||
-          generated_value_bb == ir_builder_->GetInsertBlock()) {
+          generated_value_bb == b_->GetInsertBlock()) {
         VLOG(3) << "The cached generated value is reused.";
         return generated_value;
       }
-      VLOG(3) << "The cached generated value can't be reuse, because it is at "
+      VLOG(3) << "The cached generated value can't be reused, because it is in "
                  "a different BB ("
-              << llvm_ir::AsString(generated_value_bb->getName())
+              << generated_value_bb->getName().str()
               << ") from the current insertion block ("
-              << llvm_ir::AsString(ir_builder_->GetInsertBlock()->getName())
-              << ").";
+              << b_->GetInsertBlock()->getName().str() << ").";
     }
 
-    TF_ASSIGN_OR_RETURN(
-        generated_value_cache_[hlo][index.multidim()],
-        elemental_emitter_->MakeElementGenerator(hlo, generators_)(index));
-    return generated_value_cache_[hlo][index.multidim()];
+    TF_ASSIGN_OR_RETURN(llvm::Value* const generated_value,
+                        elemental_emitter_->MakeElementGenerator(
+                            hlo, indexed_generators_)(index));
+    generated_value_cache_[hlo][index.multidim()] = generated_value;
+    return generated_value;
   };
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleConstant(HloInstruction* constant,
-                                      const Literal& literal) {
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, ir_builder_);
-  llvm::GlobalVariable* global = new llvm::GlobalVariable(
-      *ir_builder_->GetInsertBlock()->getModule(), initializer->getType(),
-      /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
-      /*Name=*/"");
-  generators_[constant] = [=](const IrArray::Index& index) {
-    return IrArray(global, constant->shape())
-        .EmitReadArrayElement(index, ir_builder_);
+Status FusedIrEmitter::HandleConstant(const HloInstruction* constant) {
+  unsigned global_address_space =
+      llvm_ir::GetGlobalMemoryAddressSpace(*module_);
+  indexed_generators_[constant] = [=](const IrArray::Index& index) {
+    const Literal& literal = constant->literal();
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+    llvm::GlobalVariable* global = new llvm::GlobalVariable(
+        *b_->GetInsertBlock()->getModule(), initializer->getType(),
+        /*isConstant=*/true,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/initializer,
+        /*Name=*/"", /*InsertBefore=*/nullptr,
+        /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
+        /*AddressSpace=*/global_address_space,
+        /*isExternallyInitialized=*/false);
+
+    global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
+    llvm::Constant* shape_constant =
+        llvm::ConstantExpr::getPointerBitCastOrAddrSpaceCast(
+            global,
+            llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
+    return IrArray(shape_constant, constant->shape())
+        .EmitReadArrayElement(index, b_);
   };
 
   return Status::OK();
 }
 
-Status FusedIrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element,
-                                             HloInstruction* operand) {
-  // Lookup ir value for 'operand'.
-  auto it = gte_values_.find(operand);
-  if (it == gte_values_.end()) {
-    return Unimplemented(
-        "GetTupleElement fusion currently only supports"
-        " parameter operands, but found operand: %s",
-        operand->name().c_str());
+Status FusedIrEmitter::HandleGetTupleElement(
+    const HloInstruction* get_tuple_element) {
+  return InternalError("Tuple parameters are not supported for fusion");
+}
+
+Status FusedIrEmitter::HandleParameter(const HloInstruction* parameter) {
+  if (indexed_generators_.find(parameter) == indexed_generators_.end()) {
+    return InvalidArgument("Unbound parameter: %s", parameter->ToString());
   }
-  // Emit code to lookup tuple element pointer, and store it in 'gte_values_'.
-  llvm::Value* tuple_element_ptr = llvm_ir::EmitGetTupleElement(
-      get_tuple_element->shape(), get_tuple_element->tuple_index(),
-      /*alignment=*/1, it->second, ir_builder_);
-  gte_values_.insert(std::make_pair(get_tuple_element, tuple_element_ptr));
-  // Emit code to read base tuple element array (if non-tuple shaped).
-  if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
-    generators_[get_tuple_element] =
-        [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-      // TODO(b/34080002) Add aliasing information to tuple element IrArray.
-      return IrArray(tuple_element_ptr, get_tuple_element->shape())
-          .EmitReadArrayElement(index, ir_builder_);
-    };
+  return Status::OK();
+}
+
+Status FusedIrEmitter::HandleTuple(const HloInstruction* tuple) {
+  absl::Span<HloInstruction* const> operands(tuple->operands());
+  std::vector<llvm::Type*> operand_elemental_ir_types;
+  for (HloInstruction* operand : operands) {
+    operand_elemental_ir_types.push_back(llvm_ir::PrimitiveTypeToIrType(
+        operand->shape().element_type(), module_));
   }
-  return Status::OK();
-}
-
-Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
-  generators_[parameter] = [=](const IrArray::Index& index) {
-    return parameter_arrays_[parameter->parameter_number()]
-        .EmitReadArrayElement(index, ir_builder_);
+  indexed_generators_[tuple] =
+      [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+    llvm::Value* ret = llvm::UndefValue::get(
+        llvm::StructType::get(b_->getContext(), operand_elemental_ir_types));
+    for (size_t i = 0; i < ShapeUtil::TupleElementCount(tuple->shape()); ++i) {
+      TF_ASSIGN_OR_RETURN(llvm::Value * val_i,
+                          indexed_generators_[operands[i]](index));
+      ret = b_->CreateInsertValue(ret, val_i, i);
+    }
+    return ret;
   };
-  // Store ir value for fusion operand associated with fusion parameter to be
-  // accessed by subsequent fused GetTupleElement instructions.
-  gte_values_.insert(std::make_pair(
-      parameter,
-      parameter_arrays_[parameter->parameter_number()].GetBasePointer()));
   return Status::OK();
 }
 
-Status FusedIrEmitter::FinishVisit(HloInstruction* root) {
-  fused_root_ = root;
-  return tensorflow::Status::OK();
+bool FusedIrEmitter::IsFusedIrEmitterInefficient(
+    const HloInstruction* consumer, const HloInstruction* producer) {
+  if (consumer->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  FusionNodeIndexingEvaluation eval_consumer(consumer);
+  if (producer->opcode() != HloOpcode::kFusion) {
+    return eval_consumer.CodeDuplicationTooHigh(producer);
+  }
+  // If 'producer' is a fusion node as well, also evaluate it. Pass the
+  // evaluated duplication of the fusion node if it is merged into consumer.
+  FusionNodeIndexingEvaluation eval_producer(
+      producer, eval_consumer.EvaluateEmittedInstructions(producer));
+  return eval_producer.MaxCodeDuplicationTooHigh();
 }
 
-FusedIrEmitter::Generator FusedIrEmitter::GetRootGenerator() const {
-  CHECK_NE(nullptr, fused_root_)
-      << "GetRootGenerator should be called after Accept.";
-  return generators_.at(fused_root_);
-}
-
-FusedIrEmitter::Generator FusedIrEmitter::GetGenerator(
-    const HloInstruction* instruction) const {
-  return generators_.at(instruction);
+StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::GetGenerator(
+    const HloInstruction* instruction) {
+  std::vector<const HloInstruction*> stack;
+  stack.push_back(instruction);
+  while (!stack.empty()) {
+    const HloInstruction* instr = stack.back();
+    stack.pop_back();
+    if (indexed_generators_.count(instr)) {
+      continue;
+    }
+    for (const HloInstruction* operand : instr->operands()) {
+      stack.push_back(operand);
+    }
+    switch (instr->opcode()) {
+      case HloOpcode::kConstant:
+        TF_RETURN_IF_ERROR(HandleConstant(instr));
+        break;
+      case HloOpcode::kGetTupleElement:
+        TF_RETURN_IF_ERROR(HandleGetTupleElement(instr));
+        break;
+      case HloOpcode::kParameter:
+        TF_RETURN_IF_ERROR(HandleParameter(instr));
+        break;
+      case HloOpcode::kTuple:
+        TF_RETURN_IF_ERROR(HandleTuple(instr));
+        break;
+      default:
+        TF_RETURN_IF_ERROR(DefaultAction(instr));
+        break;
+    }
+    CHECK(indexed_generators_.count(instr));
+  }
+  return indexed_generators_.at(instruction);
 }
 
 }  // namespace xla

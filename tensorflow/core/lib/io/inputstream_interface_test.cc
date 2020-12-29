@@ -25,9 +25,9 @@ namespace {
 
 class TestStringStream : public InputStreamInterface {
  public:
-  TestStringStream(const string& content) : content_(content) {}
+  explicit TestStringStream(const string& content) : content_(content) {}
 
-  Status ReadNBytes(int64 bytes_to_read, string* result) override {
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override {
     result->clear();
     if (pos_ + bytes_to_read > content_.size()) {
       return errors::OutOfRange("limit reached");
@@ -51,7 +51,7 @@ class TestStringStream : public InputStreamInterface {
 
 TEST(InputStreamInterface, Basic) {
   TestStringStream ss("This is a test string");
-  string res;
+  tstring res;
   TF_ASSERT_OK(ss.ReadNBytes(4, &res));
   EXPECT_EQ("This", res);
   TF_ASSERT_OK(ss.SkipNBytes(6));

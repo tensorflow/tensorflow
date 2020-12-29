@@ -22,37 +22,42 @@ limitations under the License.
 
 namespace xla {
 
-tensorflow::Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
+Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
   if (!ShapeUtil::Compatible(other_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(other_shape).c_str(),
-                           ShapeUtil::HumanString(shape()).c_str());
+                           ShapeUtil::HumanString(other_shape),
+                           ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status ShapeLayout::AssignLayoutToShape(Shape* other_shape) const {
-  if (!ShapeUtil::Compatible(*other_shape, shape_)) {
+Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
+  if (!ShapeUtil::Compatible(*to_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(*other_shape).c_str(),
-                           ShapeUtil::HumanString(shape()).c_str());
+                           ShapeUtil::HumanString(*to_shape),
+                           ShapeUtil::HumanString(shape()));
   }
-  *other_shape = shape_;
-  return tensorflow::Status::OK();
+  *to_shape = shape_;
+  return Status::OK();
 }
 
 void ShapeLayout::SetToDefaultLayout() {
   LayoutUtil::SetToDefaultLayout(&shape_);
 }
 
-bool ShapeLayout::MatchesLayoutInShape(const Shape& shape) const {
-  return ShapeUtil::Equal(shape, shape_);
+bool ShapeLayout::MatchesLayoutInShape(const Shape& shape,
+                                       bool minor_to_major_only) const {
+  auto equal = Shape::Equal().IgnoreDynamicDimension();
+  if (minor_to_major_only) {
+    equal.MinorToMajorOnlyInLayout();
+  }
+  return equal(shape, shape_);
 }
 
 const Layout& ShapeLayout::layout() const {
   CHECK(LayoutIsSet());
-  CHECK(!ShapeUtil::IsTuple(shape_));
+  CHECK(!shape_.IsTuple());
   return shape_.layout();
 }
 
@@ -61,18 +66,26 @@ void ShapeLayout::Clear() { LayoutUtil::ClearLayout(&shape_); }
 bool ShapeLayout::LayoutIsSet() const { return LayoutUtil::HasLayout(shape_); }
 
 void ShapeLayout::ResetLayout(const Layout& layout) {
-  CHECK(!ShapeUtil::IsTuple(shape_));
-  CHECK(!ShapeUtil::IsOpaque(shape_));
+  CHECK(!shape_.IsTuple());
+  CHECK(!shape_.IsOpaque());
   *shape_.mutable_layout() = layout;
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
 }
 
+void ShapeLayout::ResetLayout(const Layout& layout,
+                              ShapeIndexView shape_index) {
+  CHECK(shape_.IsTuple());
+  *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
+      layout;
+  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
+}
+
 bool ShapeLayout::operator==(const ShapeLayout& other) const {
-  return ShapeUtil::Equal(shape_, other.shape_);
+  return Shape::Equal().IgnoreDynamicDimension()(shape_, other.shape_);
 }
 
 bool ShapeLayout::operator!=(const ShapeLayout& other) const {
-  return !ShapeUtil::Equal(shape_, other.shape_);
+  return !Shape::Equal().IgnoreDynamicDimension()(shape_, other.shape_);
 }
 
 }  // namespace xla

@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
 
-#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
@@ -24,21 +23,32 @@ limitations under the License.
 
 namespace tensorflow {
 
+// Forward declare proto so that kernels don't need to depend on it
+class KernelDef;
+
 // Builder class passed to the REGISTER_KERNEL_BUILDER() macro.
 class KernelDefBuilder {
  public:
   // Starts with just the name field set.
   // Caller MUST call Build() and take ownership of the result.
   explicit KernelDefBuilder(const char* op_name);
-
-  ~KernelDefBuilder() {
-    DCHECK(kernel_def_ == nullptr) << "Did not call Build()";
-  }
+  ~KernelDefBuilder();
 
   // Required: specify the type of device this kernel supports.
   // Returns *this.
   KernelDefBuilder& Device(const char* device_type);
-  //  KernelDefBuilder& Device(DeviceType device_type);
+
+  // Specify that this kernel supports a limited set of values for a
+  // particular type or list(type) attr (a further restriction than
+  // what the Op allows).
+  // Returns *this.
+  template <typename T>
+  KernelDefBuilder& AttrConstraint(const char* attr_name,
+                                   gtl::ArraySlice<T> allowed);
+
+  // Like AttrConstraint above but supports just a single value.
+  template <typename T>
+  KernelDefBuilder& AttrConstraint(const char* attr_name, T allowed);
 
   // Specify that this kernel supports a limited set of values for a
   // particular type or list(type) attr (a further restriction than
@@ -65,14 +75,13 @@ class KernelDefBuilder {
   // "_kernel" attr.  May only be specified once.  Returns *this.
   KernelDefBuilder& Label(const char* label);
 
+  // Specify a priority number for this kernel.
+  KernelDefBuilder& Priority(int32 priority);
+
   // Returns a pointer to a KernelDef with fields set based on the
   // above calls to this instance.
   // Caller takes ownership of the result.
-  const KernelDef* Build() {
-    KernelDef* r = kernel_def_;
-    kernel_def_ = nullptr;
-    return r;
-  }
+  const KernelDef* Build();
 
  private:
   KernelDef* kernel_def_;
@@ -89,4 +98,4 @@ KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* attr_name) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_

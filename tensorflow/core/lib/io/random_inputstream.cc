@@ -30,12 +30,12 @@ RandomAccessInputStream::~RandomAccessInputStream() {
 }
 
 Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
-                                           string* result) {
+                                           tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
   result->clear();
-  result->resize(bytes_to_read);
+  result->resize_uninitialized(bytes_to_read);
   char* result_buffer = &(*result)[0];
   StringPiece data;
   Status s = file_->Read(pos_, bytes_to_read, &data, result_buffer);
@@ -45,14 +45,58 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   result->resize(data.size());
   if (s.ok() || errors::IsOutOfRange(s)) {
     pos_ += data.size();
-  } else {
-    return s;
   }
-  // If the amount of data we read is less than what we wanted, we return an
-  // out of range error. We need to catch this explicitly since file_->Read()
-  // would not do so if at least 1 byte is read (b/30839063).
-  if (data.size() < bytes_to_read) {
-    return errors::OutOfRange("reached end of file");
+  return s;
+}
+
+#if defined(TF_CORD_SUPPORT)
+Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
+                                           absl::Cord* result) {
+  if (bytes_to_read < 0) {
+    return errors::InvalidArgument("Cannot read negative number of bytes");
+  }
+  int64 current_size = result->size();
+  Status s = file_->Read(pos_, bytes_to_read, result);
+  if (s.ok() || errors::IsOutOfRange(s)) {
+    pos_ += result->size() - current_size;
+  }
+  return s;
+}
+#endif
+
+// To limit memory usage, the default implementation of SkipNBytes() only reads
+// 8MB at a time.
+static constexpr int64 kMaxSkipSize = 8 * 1024 * 1024;
+
+Status RandomAccessInputStream::SkipNBytes(int64 bytes_to_skip) {
+  if (bytes_to_skip < 0) {
+    return errors::InvalidArgument("Can't skip a negative number of bytes");
+  }
+  std::unique_ptr<char[]> scratch(new char[kMaxSkipSize]);
+  // Try to read 1 bytes first, if we could complete the read then EOF is
+  // not reached yet and we could return.
+  if (bytes_to_skip > 0) {
+    StringPiece data;
+    Status s = file_->Read(pos_ + bytes_to_skip - 1, 1, &data, scratch.get());
+    if ((s.ok() || errors::IsOutOfRange(s)) && data.size() == 1) {
+      pos_ += bytes_to_skip;
+      return Status::OK();
+    }
+  }
+  // Read kDefaultSkipSize at a time till bytes_to_skip.
+  while (bytes_to_skip > 0) {
+    int64 bytes_to_read = std::min<int64>(kMaxSkipSize, bytes_to_skip);
+    StringPiece data;
+    Status s = file_->Read(pos_, bytes_to_read, &data, scratch.get());
+    if (s.ok() || errors::IsOutOfRange(s)) {
+      pos_ += data.size();
+    } else {
+      return s;
+    }
+    if (data.size() < static_cast<size_t>(bytes_to_read)) {
+      return errors::OutOfRange("reached end of file");
+    }
+    bytes_to_skip -= bytes_to_read;
   }
   return Status::OK();
 }

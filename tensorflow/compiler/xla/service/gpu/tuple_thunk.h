@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -33,11 +34,10 @@ namespace gpu {
 // issue (b/31336476).
 class TupleThunk : public Thunk {
  public:
-  TupleThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Slice>
-                 tuple_element_buffers,
-             const BufferAllocation::Slice& dest_buffer,
-             const HloInstruction* hlo_instruction)
-      : Thunk(Kind::kTuple, hlo_instruction),
+  TupleThunk(ThunkInfo thunk_info,
+             absl::Span<const BufferAllocation::Slice> tuple_element_buffers,
+             const BufferAllocation::Slice& dest_buffer)
+      : Thunk(Kind::kTuple, thunk_info),
         tuple_element_buffers_(tuple_element_buffers.begin(),
                                tuple_element_buffers.end()),
         dest_buffer_(dest_buffer) {}
@@ -45,9 +45,7 @@ class TupleThunk : public Thunk {
   TupleThunk(const TupleThunk&) = delete;
   TupleThunk& operator=(const TupleThunk&) = delete;
 
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const std::vector<BufferAllocation::Slice> tuple_element_buffers_;

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_NUMERIC_OP_H_
-#define TENSORFLOW_FRAMEWORK_NUMERIC_OP_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_NUMERIC_OP_H_
+#define TENSORFLOW_CORE_FRAMEWORK_NUMERIC_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -56,9 +56,9 @@ class UnaryElementWiseOp : public UnaryOp<T> {
   void Compute(OpKernelContext* context) override {
     // Output shape is the same as input shape.
     const Tensor& input = context->input(0);
-    Tensor* output;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
     static_cast<CHILD*>(this)->Operate(context, input, output);
   }
 };
@@ -77,8 +77,9 @@ class BinaryElementWiseOp : public BinaryOp<T> {
       return;
     }
 
-    Tensor* output;
-    OP_REQUIRES_OK(context, context->allocate_output(0, a.shape(), &output));
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0, 1}, 0, a.shape(), &output));
 
     // Dispatch to the descendant's Operate() function.
     switch (a.dims()) {
@@ -109,4 +110,4 @@ class BinaryElementWiseOp : public BinaryOp<T> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_NUMERIC_OP_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_NUMERIC_OP_H_

@@ -13,59 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_MUTEX_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_MUTEX_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/mutex.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/mutex.h
 
-#include <chrono>
-#include <condition_variable>
-#include <mutex>
-#include "tensorflow/core/platform/thread_annotations.h"
 namespace tensorflow {
 
-#undef mutex_lock
+namespace internal {
+std::cv_status wait_until_system_clock(
+    CVData *cv_data, MuData *mu_data,
+    const std::chrono::system_clock::time_point timeout_time);
+}  // namespace internal
 
-enum LinkerInitialized { LINKER_INITIALIZED };
-
-// A class that wraps around the std::mutex implementation, only adding an
-// additional LinkerInitialized constructor interface.
-class LOCKABLE mutex : public std::mutex {
- public:
-  mutex() {}
-  // The default implementation of std::mutex is safe to use after the linker
-  // initializations
-  explicit mutex(LinkerInitialized x) {}
-
-  void lock() ACQUIRE() { std::mutex::lock(); }
-  bool try_lock() EXCLUSIVE_TRYLOCK_FUNCTION(true) {
-    return std::mutex::try_lock();
-  };
-  void unlock() RELEASE() { std::mutex::unlock(); }
-};
-
-class SCOPED_LOCKABLE mutex_lock : public std::unique_lock<std::mutex> {
- public:
-  mutex_lock(class mutex& m) ACQUIRE(m) : std::unique_lock<std::mutex>(m) {}
-  mutex_lock(class mutex& m, std::try_to_lock_t t) ACQUIRE(m)
-      : std::unique_lock<std::mutex>(m, t) {}
-  mutex_lock(mutex_lock&& ml) noexcept
-      : std::unique_lock<std::mutex>(std::move(ml)) {}
-  ~mutex_lock() RELEASE() {}
-};
-
-// Catch bug where variable name is omitted, e.g. mutex_lock (mu);
-#define mutex_lock(x) static_assert(0, "mutex_lock_decl_missing_var_name");
-
-using std::condition_variable;
-
-inline ConditionResult WaitForMilliseconds(mutex_lock* mu,
-                                           condition_variable* cv, int64 ms) {
-  std::cv_status s = cv->wait_for(*mu, std::chrono::milliseconds(ms));
-  return (s == std::cv_status::timeout) ? kCond_Timeout : kCond_MaybeNotified;
+template <class Rep, class Period>
+std::cv_status condition_variable::wait_for(
+    mutex_lock &lock, std::chrono::duration<Rep, Period> dur) {
+  return tensorflow::internal::wait_until_system_clock(
+      &this->cv_, &lock.mutex()->mu_, std::chrono::system_clock::now() + dur);
 }
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_MUTEX_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_MUTEX_H_

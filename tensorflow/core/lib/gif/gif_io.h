@@ -15,7 +15,7 @@ limitations under the License.
 
 // Functions to read and write images in GIF format.
 //
-// The advantage over image/codec/png{enc,dec}ocder.h is that this library
+// The advantage over image/codec/png{enc,dec}oder.h is that this library
 // supports both 8 and 16 bit images.
 //
 // The decoding routine accepts binary image data as a StringPiece.  These are
@@ -43,7 +43,8 @@ namespace tensorflow {
 namespace gif {
 
 uint8* Decode(const void* srcdata, int datasize,
-              std::function<uint8*(int, int, int, int)> allocate_output);
+              const std::function<uint8*(int, int, int, int)>& allocate_output,
+              string* error_string, bool expand_animations = true);
 
 }  // namespace gif
 }  // namespace tensorflow

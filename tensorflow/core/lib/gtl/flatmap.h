@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#define TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
 
 #include <stddef.h>
 #include <functional>
@@ -22,6 +22,7 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 #include "tensorflow/core/lib/gtl/flatrep.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -33,7 +34,7 @@ namespace gtl {
 // The map is implemented using an open-addressed hash table.  A
 // single array holds entire map contents and collisions are resolved
 // by probing at a sequence of locations in the array.
-template <typename Key, typename Val, class Hash = std::hash<Key>,
+template <typename Key, typename Val, class Hash = hash<Key>,
           class Eq = std::equal_to<Key>>
 class FlatMap {
  private:
@@ -75,6 +76,10 @@ class FlatMap {
 
   FlatMap(const FlatMap& src) : rep_(src.rep_) {}
 
+  // Move constructor leaves src in a valid but unspecified state (same as
+  // std::unordered_map).
+  FlatMap(FlatMap&& src) : rep_(std::move(src.rep_)) {}
+
   template <typename InputIter>
   FlatMap(InputIter first, InputIter last, size_t N = 1,
           const Hash& hf = Hash(), const Eq& eq = Eq())
@@ -88,6 +93,13 @@ class FlatMap {
 
   FlatMap& operator=(const FlatMap& src) {
     rep_.CopyFrom(src.rep_);
+    return *this;
+  }
+
+  // Move-assignment operator leaves src in a valid but unspecified state (same
+  // as std::unordered_map).
+  FlatMap& operator=(FlatMap&& src) {
+    rep_.MoveFrom(std::move(src.rep_));
     return *this;
   }
 
@@ -145,8 +157,8 @@ class FlatMap {
     friend class FlatMap;
     Bucket* b_;
     Bucket* end_;
+    char space_ alignas(value_type)[sizeof(value_type)];
     uint32 i_;
-    char space_[sizeof(value_type)];
 
     pointer val() { return reinterpret_cast<pointer>(space_); }
     void FillValue() { new (space_) value_type(b_->key(i_), b_->val(i_)); }
@@ -378,4 +390,4 @@ class FlatMap {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_

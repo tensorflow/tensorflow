@@ -22,11 +22,19 @@ import threading
 import weakref
 
 from tensorflow.core.protobuf import queue_runner_pb2
+from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
+
+_DEPRECATION_INSTRUCTION = (
+    "To construct input pipelines, use the `tf.data` module.")
 
 
+@tf_export(v1=["train.queue_runner.QueueRunner", "train.QueueRunner"])
 class QueueRunner(object):
   """Holds a list of enqueue operations for a queue, each to be run in a thread.
 
@@ -42,8 +50,14 @@ class QueueRunner(object):
   and reporting exceptions, etc.
 
   The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
+
+  @compatibility(eager)
+  QueueRunners are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
+  @deprecation.deprecated(None, _DEPRECATION_INSTRUCTION)
   def __init__(self, queue=None, enqueue_ops=None, close_op=None,
                cancel_op=None, queue_closed_exception_types=None,
                queue_runner_def=None, import_scope=None):
@@ -78,7 +92,13 @@ class QueueRunner(object):
       ValueError: If both `queue_runner_def` and `queue` are both specified.
       ValueError: If `queue` or `enqueue_ops` are not provided when not
         restoring from `queue_runner_def`.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.executing_eagerly():
+      raise RuntimeError(
+          "QueueRunners are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
+
     if queue_runner_def:
       if queue or enqueue_ops:
         raise ValueError("queue_runner_def and queue are mutually exclusive.")
@@ -128,7 +148,7 @@ class QueueRunner(object):
                      for t in queue_closed_exception_types)):
         raise TypeError(
             "queue_closed_exception_types, when provided, "
-            "must be a non-empty list of tf.error types, but saw: %s"
+            "must be a tuple of tf.error types, but saw: %s"
             % queue_closed_exception_types)
     self._queue_closed_exception_types = queue_closed_exception_types
     # Close when no more will be produced, but pending enqueues should be
@@ -227,11 +247,14 @@ class QueueRunner(object):
     """
     decremented = False
     try:
+      # Make a cached callable from the `enqueue_op` to decrease the
+      # Python overhead in the queue-runner loop.
+      enqueue_callable = sess.make_callable(enqueue_op)
       while True:
         if coord and coord.should_stop():
           break
         try:
-          sess.run(enqueue_op)
+          enqueue_callable()
         except self._queue_closed_exception_types:  # pylint: disable=catching-non-exception
           # This exception indicates that a queue was closed.
           with self._lock:
@@ -312,11 +335,17 @@ class QueueRunner(object):
       self._runs_per_session[sess] = len(self._enqueue_ops)
       self._exceptions_raised = []
 
-    ret_threads = [threading.Thread(target=self._run, args=(sess, op, coord))
-                   for op in self._enqueue_ops]
+    ret_threads = []
+    for op in self._enqueue_ops:
+      name = "QueueRunnerThread-{}-{}".format(self.name, op.name)
+      ret_threads.append(threading.Thread(target=self._run,
+                                          args=(sess, op, coord),
+                                          name=name))
     if coord:
+      name = "QueueRunnerThread-{}-close_on_stop".format(self.name)
       ret_threads.append(threading.Thread(target=self._close_on_stop,
-                                          args=(sess, self._cancel_op, coord)))
+                                          args=(sess, self._cancel_op, coord),
+                                          name=name))
     for t in ret_threads:
       if coord:
         coord.register_thread(t)
@@ -362,6 +391,8 @@ class QueueRunner(object):
                        import_scope=import_scope)
 
 
+@tf_export(v1=["train.queue_runner.add_queue_runner", "train.add_queue_runner"])
+@deprecation.deprecated(None, _DEPRECATION_INSTRUCTION)
 def add_queue_runner(qr, collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Adds a `QueueRunner` to a collection in the graph.
 
@@ -380,6 +411,9 @@ def add_queue_runner(qr, collection=ops.GraphKeys.QUEUE_RUNNERS):
   ops.add_to_collection(collection, qr)
 
 
+@tf_export(v1=["train.queue_runner.start_queue_runners",
+               "train.start_queue_runners"])
+@deprecation.deprecated(None, _DEPRECATION_INSTRUCTION)
 def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
                         collection=ops.GraphKeys.QUEUE_RUNNERS):
   """Starts all queue runners collected in the graph.
@@ -398,15 +432,46 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
     collection: A `GraphKey` specifying the graph collection to
       get the queue runners from.  Defaults to `GraphKeys.QUEUE_RUNNERS`.
 
+  Raises:
+    ValueError: if `sess` is None and there isn't any default session.
+    TypeError: if `sess` is not a `tf.compat.v1.Session` object.
+
   Returns:
     A list of threads.
+
+  Raises:
+    RuntimeError: If called with eager execution enabled.
+    ValueError: If called without a default `tf.compat.v1.Session` registered.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To ingest data under eager execution,
+  use the `tf.data` API instead.
+  @end_compatibility
   """
+  if context.executing_eagerly():
+    raise RuntimeError("Queues are not compatible with eager execution.")
   if sess is None:
     sess = ops.get_default_session()
     if not sess:
       raise ValueError("Cannot start queue runners: No default session is "
                        "registered. Use `with sess.as_default()` or pass an "
                        "explicit session to tf.start_queue_runners(sess=sess)")
+
+  if not isinstance(sess, session.SessionInterface):
+    # Following check is due to backward compatibility. (b/62061352)
+    if sess.__class__.__name__ in [
+        "MonitoredSession", "SingularMonitoredSession"]:
+      return []
+    raise TypeError("sess must be a `tf.Session` object. "
+                    "Given class: {}".format(sess.__class__))
+
+  queue_runners = ops.get_collection(collection)
+  if not queue_runners:
+    logging.warning(
+        "`tf.train.start_queue_runners()` was called when no queue runners "
+        "were defined. You can safely remove the call to this deprecated "
+        "function.")
+
   with sess.graph.as_default():
     threads = []
     for qr in ops.get_collection(collection):

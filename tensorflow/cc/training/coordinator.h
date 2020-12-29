@@ -13,27 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
+#ifndef TENSORFLOW_CC_TRAINING_COORDINATOR_H_
+#define TENSORFLOW_CC_TRAINING_COORDINATOR_H_
 
 #include <atomic>
 #include <memory>
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
-/// The abstract interface for runners which must implement the Join function.
+/// The abstract interface for runners which must implement the Join and the
+/// IsRunning function.
 class RunnerInterface {
  public:
   virtual ~RunnerInterface() {}
   virtual Status Join() = 0;
-
+  virtual Status ExportCostGraph(CostGraphDef* cost_graph) const {
+    return Status(error::INVALID_ARGUMENT, "No cost model to export.");
+  }
   /// Returns true iff the runner is running, i.e. if it is trying to populate
   /// its queue.
   virtual bool IsRunning() const = 0;
@@ -101,25 +106,26 @@ class Coordinator {
   /// RequestStop() is called.
   void WaitForStop();
 
+  // Returns the cost graph from stored run metadata in registered runners.
+  Status ExportCostGraph(CostGraphDef* cost_graph) const;
+
  private:
   std::unordered_set<int> clean_stop_errors_;
   condition_variable wait_for_stop_;
 
   mutex mu_;
-  bool should_stop_ GUARDED_BY(mu_);
+  bool should_stop_ TF_GUARDED_BY(mu_);
 
   mutex status_lock_;
-  Status status_ GUARDED_BY(status_lock_);
+  Status status_ TF_GUARDED_BY(status_lock_);
 
-  mutex runners_lock_;
+  mutable mutex runners_lock_;
   std::vector<std::unique_ptr<RunnerInterface>> runners_
-      GUARDED_BY(runners_lock_);
-
-  std::atomic<int> num_runners_to_cancel_;
+      TF_GUARDED_BY(runners_lock_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Coordinator);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_TRAINING_COORDINATOR_H_
+#endif  // TENSORFLOW_CC_TRAINING_COORDINATOR_H_

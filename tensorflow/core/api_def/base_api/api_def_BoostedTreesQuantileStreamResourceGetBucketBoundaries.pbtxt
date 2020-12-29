@@ -1,0 +1,27 @@
+op {
+  graph_op_name: "BoostedTreesQuantileStreamResourceGetBucketBoundaries"
+  visibility: HIDDEN
+  in_arg {
+    name: "quantile_stream_resource_handle"
+    description: <<END
+resource handle referring to a QuantileStreamResource.
+END
+  }
+  out_arg {
+    name: "bucket_boundaries"
+    description: <<END
+float; List of Rank 1 Tensors each containing the bucket boundaries for a feature.
+END
+  }
+  attr {
+    name: "num_features"
+    description: <<END
+inferred int; number of features to get bucket boundaries for.
+END
+  }
+  summary: "Generate the bucket boundaries for each feature based on accumulated summaries."
+  description: <<END
+An op that returns a list of float tensors for a quantile stream resource. Each
+tensor is Rank 1 containing bucket boundaries for a single feature.
+END
+}

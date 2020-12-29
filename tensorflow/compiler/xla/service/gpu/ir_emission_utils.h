@@ -18,53 +18,245 @@ limitations under the License.
 
 #include <utility>
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Value.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+
+// TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
+// don't belong in "ir_emission_utils".
 
 namespace xla {
 namespace gpu {
 
-const int64 kWarpSize = 32;
-
-// Precondition: "hlo" is an operand of a Dot instruction.
+// Different types of convolutions supported by cudnn.
 //
-// Returns whether "hlo" is foldable to its user.
-bool IsOperandFoldableToDot(const HloInstruction& hlo);
+// A way to think about these is that a convolution is defined by three arrays
+// -- the "input", the "filter", and the "output" -- and given any two of these,
+// we can compute the third.  For example, a backward-input convolution takes as
+// input a filter and an "output" and produces an "input" such that if one were
+// to do a forward convolution of "input" using filter, the result would be
+// something with the same shape as "output".
+//
+// This way of thinking is not correct if you look at the values produced. For
+// example, a backward-input convolution is not actually the mathematical
+// inverse of a forward convolution.  But it's right as far as the shapes and
+// "connectivity" (i.e. which elements of the input affect which elements of
+// the output) are concerned.
+enum class CudnnConvKind {
+  kForward,            // input  + filter => output
+  kBackwardInput,      // filter + output => input
+  kBackwardFilter,     // input  + output => filter
+  kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
+                       // (optionally) side_input) => output
+};
 
-// Returns true if GpuCompiler can fold any operands of "dot" into "dot" for
-// better performance.
-bool CanFoldOperandsIntoDot(const HloInstruction& dot);
+StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 
-// Returns true if `hlo` will be implemented as a call to BLAS gemm.
-bool ImplementedAsGemm(const HloInstruction& hlo);
+// Converts a CudnnConvKind value to a string.
+string CudnnConvKindToString(CudnnConvKind kind);
 
-// Returns true if `hlo` will be implemented as a call to cuDNN convolution.
-bool ImplementedAsDnnConvolution(const HloInstruction& hlo);
+// Matrix multiplication before the rewrite.
+//
+// This function should never return "true" on instructions after
+// GemmRewriter pass has finished.
+bool IsMatrixMultiplication(const HloInstruction& dot);
+
+// Matrix multiplication rewritten into a GEMM custom call.
+// All matrix multiplications should be rewritten as such custom calls
+// after a GemmRewriter lowering pass.
+bool IsCublasGemm(const HloInstruction& hlo);
+
+constexpr int64 kWarpSize = 32;
+
+// A call to cuBLAS general matrix multiplication API.
+extern const char* const kGemmCallTarget;
+
+// A call to cuDNN for batch normalization is represented as CustomCall HLO with
+// a call target equal to one of these strings.
+//
+// The operands to and outputs of these calls are the same as those of the
+// corresponding HLOs, except:
+//
+//  - epsilon and feature_index are proper operands, at the end of the operands
+//    list.  They must be HLO constants.
+//  - The cuDNN forward training call returns inv_stddev =
+//    1/sqrt(variance + epsilon) in place of plain variance.
+//  - Similarly, BatchNormGrad accepts inv_stddev in place of the variance
+//    operand.
+extern const char* const kCudnnBatchNormForwardInferenceCallTarget;
+extern const char* const kCudnnBatchNormForwardTrainingCallTarget;
+extern const char* const kCudnnBatchNormBackwardCallTarget;
+
+// Returns true if `hlo` will be implemented as a call to a cuDNN batch
+// normalization routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// one of the kCudnnBatchNormFoo constants above, but returns *false* for HLOs
+// with one of the kBatchNorm opcodes, because these are lowered either to a
+// sequence of generic HLOs or to a cuDNN CustomCall.
+bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
+
+// A call to cuDNN for convolution (forward, backward filter, or backward input)
+// is represented as a CustomCall HLO with a call target equal to one of these
+// strings.
+//
+// These CustomCalls have window() and convolution_dimension_numbers() set like
+// regular convolution ops.  They have the same LHS and RHS operands, plus two
+// additional constant operands: an int64 operand for the cudnn algorithm and
+// a bool operand for whether tensor_ops is enabled. A value of -1 for the cudnn
+// algorithm means that the implementation is free to choose the best algorithm
+// it can.
+//
+// These calls output a tuple (conv_result, scratch_memory), where conv_result
+// is the actual result of the convolution, and scratch_memory is temporary
+// memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
+// is not well-defined.
+//
+// GpuConvRewriter lowers kConvolution HLOs to these custom calls.
+// When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
+// on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
+// algorithm for each conv and sets the amount of scratch space needed.
+//
+// (Representing the scratch memory as an output may seem strange at first, but
+// it's quite sensible, from a certain point of view.  The scratch buffer is a
+// location in memory that the conv can write into, but which it can't legally
+// read from, at least until it's written something first.  But that's exactly
+// the definition of an output buffer.)
+extern const char* const kCudnnConvForwardCallTarget;
+extern const char* const kCudnnConvBackwardInputCallTarget;
+extern const char* const kCudnnConvBackwardFilterCallTarget;
+extern const char* const kCudnnConvBiasActivationForwardCallTarget;
+
+// Returns true if `hlo` will be implemented as a call to a cuDNN convolution
+// routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// one of the kCudnnConvFoo constants above, but returns *false* for HLOs with a
+// kConvolution opcode.
+bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a cuSolver routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// one of the kCusolver... constants, but returns *false* for HLOs with
+// say, a kCholesky opcode.
+bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Cholesky decomposition. Takes a (batched) matrix as input, and returns a
+// tuple of (result, workspace, info), where result is the result of the
+// Cholesky decomposition, workspace is scratch space for cuSolver, and info
+// is a success/failure code per batch element.
+extern const char* const kCusolverCholeskyCallTarget;
 
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
-bool IsReductionToVector(const HloInstruction& reduce);
+// Returns true if either the dimensions being reduced or the dimensions being
+// kept are contiguous in the input of the reduce instruction.
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
+bool IsReductionFromOrToContiguousDimensions(mlir::Operation* reduce);
+
+// Returns whether unnested_hlo is an input fusion whose root is either a slice
+// or a tuple of slices. If verify_no_strides is true, returns false unless all
+// ROOT slices have no strides.
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides = false);
+
+struct ReductionDimensions {
+  // Indicates whether the reduction is a row reduction or a column reduction.
+  bool is_row_reduction;
+
+  // Contains the size of the three contiguous components for
+  // the reduction [depth, height, width] (major-to-minor ordering).
+  //
+  // For row reduction, we do: [D, H, W] -> [D, H].
+  // For column reduction, we do: [D, H, W] -> [D, W].
+  std::array<int64, 3> dimensions;
+};
+
+// Given the input shape and dimensions to reduce for a reduction, returns
+// ReductionDimensions.
+//
+// Prerequisite: the reduction instruction passes the check
+// IsReductionFromOrToContiguousDimensions, which guarantees either the
+// dimensions to reduce or the dimensions to keep are consecutive.
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    const HloInstruction& reduce);
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    mlir::Operation* reduce);
+
+// Get tiling per thread for the given reduction in dimensions [D, H, W] per
+// thread.
+// If the device isn't known pass null for device_description and you will get
+// non-optimized value.
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    absl::optional<CudaComputeCapability> cuda_compute_capability);
 
 // Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+llvm::Value* EmitPrintf(absl::string_view fmt,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same
-// semantics as the PTX "shfl.down" instruction [0] but works for values of any
-// size. The last operand of the emitted "shfl" is `kWarpSize - 1`.
+// semantics as the PTX "shfl.sync.down" instruction but works for values that
+// aren't 32 bits in size. The last operand of the emitted "shfl" is
+// `kWarpSize - 1`.
 //
-// [0]
-// http://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder);
+// This function emits a "full-warp" shuffle, which all threads of a warp
+// participate in.  *Do not use this function from a divergent context:* You
+// can't correctly do so on both Volta and earlier GPUs.
+//
+// https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder);
 
-// Resolves GetTupleElement instruction operands starting with 'hlo'.
-// Returns the first ancestor instruction which is not a GetTupleElement.
-const HloInstruction* LatestNonGteAncestor(const HloInstruction* hlo);
+// Emits code that determines whether the current thread is thread 0 within
+// block 0 of the kernel.
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
+
+// Returns whether the output of a fusion with reduction are consistent with
+// `first_reduce`.
+bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
+                                      const HloInstruction* first_reduce);
+bool IsFusedReductionOutputConsistent(mlir::mhlo::ReduceOp inst,
+                                      mlir::mhlo::ReduceOp first_reduce);
+
+inline bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce) {
+  return absl::c_all_of(output_instructions, [=](const HloInstruction* inst) {
+    return IsFusedReductionOutputConsistent(inst, first_reduce);
+  });
+}
+
+inline std::string MlirToString(mlir::Operation* op) {
+  std::string s;
+  {
+    llvm::raw_string_ostream os(s);
+    op->print(os);
+  }
+  return s;
+}
+
+int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
+std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
+std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+
+bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
+
+template <typename T>
+std::vector<T> ToStdVector(const llvm::SmallVectorImpl<T>& v) {
+  return std::vector<T>(v.begin(), v.end());
+}
 
 }  // namespace gpu
 }  // namespace xla

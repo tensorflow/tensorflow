@@ -19,12 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.platform import test
 
 
@@ -38,16 +39,16 @@ class ReverseSequenceTest(test.TestCase):
                            truth,
                            use_gpu=False,
                            expected_err_re=None):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       ans = array_ops.reverse_sequence(
           x, batch_axis=batch_axis, seq_axis=seq_axis, seq_lengths=seq_lengths)
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
         self.assertShapeEqual(truth, ans)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def _testBothReverseSequence(self,
                                x,
@@ -120,68 +121,65 @@ class ReverseSequenceTest(test.TestCase):
     batch_axis = 2
     seq_lengths = np.asarray([3, 0, 4], dtype=np.int64)
 
-    with self.test_session():
-      input_t = constant_op.constant(x, shape=x.shape)
+    def reverse_sequence(x):
       seq_lengths_t = constant_op.constant(seq_lengths, shape=seq_lengths.shape)
-      reverse_sequence_out = array_ops.reverse_sequence(
-          input_t,
+      return array_ops.reverse_sequence(
+          x,
           batch_axis=batch_axis,
           seq_axis=seq_axis,
           seq_lengths=seq_lengths_t)
-      err = gradient_checker.compute_gradient_error(
-          input_t, x.shape, reverse_sequence_out, x.shape, x_init_value=x)
-    print("ReverseSequence gradient error = %g" % err)
-    self.assertLess(err, 1e-8)
+
+    with self.cached_session():
+      err = gradient_checker_v2.max_error(
+          *gradient_checker_v2.compute_gradient(reverse_sequence, [x]))
+      self.assertLess(err, 1e-8)
 
   def testShapeFunctionEdgeCases(self):
-    t = array_ops.reverse_sequence(
-        array_ops.placeholder(
-            dtypes.float32, shape=None),
-        seq_lengths=array_ops.placeholder(
-            dtypes.int64, shape=(32,)),
-        batch_axis=0,
-        seq_axis=1)
-    self.assertIs(t.get_shape().ndims, None)
+    # Enter graph mode since we want to test partial shapes
+    with context.graph_mode():
+      t = array_ops.reverse_sequence(
+          array_ops.placeholder(dtypes.float32, shape=None),
+          seq_lengths=array_ops.placeholder(dtypes.int64, shape=(32,)),
+          batch_axis=0,
+          seq_axis=1)
+      self.assertIs(t.get_shape().ndims, None)
 
+  def testInvalidArguments(self):
     # Batch size mismatched between input and seq_lengths.
-    with self.assertRaises(ValueError):
-      array_ops.reverse_sequence(
-          array_ops.placeholder(
-              dtypes.float32, shape=(32, 2, 3)),
-          seq_lengths=array_ops.placeholder(
-              dtypes.int64, shape=(33,)),
-          seq_axis=3)
+    # seq_length too long
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                (r"Dimensions must be equal|"
+                                 r"Length of seq_lengths != input.dims\(0\)")):
+      array_ops.reverse_sequence([[1, 2], [3, 4]], [2, 2, 2], seq_axis=1)
+
+    # seq_length too short
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                (r"Dimensions must be equal|"
+                                 r"Length of seq_lengths != input.dims\(0\)")):
+      array_ops.reverse_sequence([[1, 2], [3, 4]], [2], seq_axis=1)
+
+    # Invalid seq_length shape
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                ("Shape must be rank 1 but is rank 2|"
+                                 "seq_lengths must be 1-dim")):
+      array_ops.reverse_sequence([[1, 2], [3, 4]], [[2, 2]], seq_axis=1)
 
     # seq_axis out of bounds.
-    with self.assertRaisesRegexp(ValueError, "seq_dim must be < input rank"):
-      array_ops.reverse_sequence(
-          array_ops.placeholder(
-              dtypes.float32, shape=(32, 2, 3)),
-          seq_lengths=array_ops.placeholder(
-              dtypes.int64, shape=(32,)),
-          seq_axis=3)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "seq_dim must be < input rank"):
+      array_ops.reverse_sequence([[1, 2], [3, 4]], [2, 2], seq_axis=2)
 
     # batch_axis out of bounds.
-    with self.assertRaisesRegexp(ValueError, "batch_dim must be < input rank"):
-      array_ops.reverse_sequence(
-          array_ops.placeholder(
-              dtypes.float32, shape=(32, 2, 3)),
-          seq_lengths=array_ops.placeholder(
-              dtypes.int64, shape=(32,)),
-          seq_axis=0,
-          batch_axis=3)
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "batch_dim must be < input rank"):
+      array_ops.reverse_sequence([[1, 2], [3, 4]], [2, 2],
+                                 seq_axis=1,
+                                 batch_axis=3)
 
-    with self.test_session():
-      inputs = array_ops.placeholder(dtypes.float32, shape=(32, 2, 3))
-      seq_lengths = array_ops.placeholder(dtypes.int64, shape=(32,))
-      output = array_ops.reverse_sequence(
-          inputs, seq_lengths=seq_lengths,
-          seq_axis=0)  # batch_axis default is 0
-      with self.assertRaisesOpError("batch_dim == seq_dim"):
-        output.eval(feed_dict={
-            inputs: np.random.rand(32, 2, 3),
-            seq_lengths: xrange(32)
-        })
+    with self.assertRaisesRegex((errors.OpError, errors.InvalidArgumentError),
+                                "batch_dim == seq_dim == 0"):
+      output = array_ops.reverse_sequence([[1, 2], [3, 4]], [2, 2], seq_axis=0)
+      self.evaluate(output)
 
 
 if __name__ == "__main__":

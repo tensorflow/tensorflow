@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 #include <math.h>
+#include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -52,7 +53,7 @@ void WriteFile(EventsWriter* writer) {
 
 static bool ReadEventProto(io::RecordReader* reader, uint64* offset,
                            Event* proto) {
-  string record;
+  tstring record;
   Status s = reader->ReadRecord(offset, &record);
   if (!s.ok()) {
     return false;
@@ -111,7 +112,7 @@ TEST(EventWriter, WriteFlush) {
   string file_prefix = GetDirName("/writeflush_test");
   EventsWriter writer(file_prefix);
   WriteFile(&writer);
-  EXPECT_TRUE(writer.Flush());
+  TF_EXPECT_OK(writer.Flush());
   string filename = writer.FileName();
   VerifyFile(filename);
 }
@@ -120,7 +121,7 @@ TEST(EventWriter, WriteClose) {
   string file_prefix = GetDirName("/writeclose_test");
   EventsWriter writer(file_prefix);
   WriteFile(&writer);
-  EXPECT_TRUE(writer.Close());
+  TF_EXPECT_OK(writer.Close());
   string filename = writer.FileName();
   VerifyFile(filename);
 }
@@ -141,9 +142,7 @@ TEST(EventWriter, FailFlush) {
   WriteFile(&writer);
   TF_EXPECT_OK(env()->FileExists(filename));
   TF_ASSERT_OK(env()->DeleteFile(filename));
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
-  EXPECT_FALSE(writer.Flush());
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
+  EXPECT_TRUE(writer.Flush().ok());
 }
 
 TEST(EventWriter, FailClose) {
@@ -153,19 +152,17 @@ TEST(EventWriter, FailClose) {
   WriteFile(&writer);
   TF_EXPECT_OK(env()->FileExists(filename));
   TF_ASSERT_OK(env()->DeleteFile(filename));
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
-  EXPECT_FALSE(writer.Close());
-  EXPECT_EQ(errors::Code::NOT_FOUND, env()->FileExists(filename).code());
+  EXPECT_TRUE(writer.Close().ok());
 }
 
 TEST(EventWriter, InitWriteClose) {
   string file_prefix = GetDirName("/initwriteclose_test");
   EventsWriter writer(file_prefix);
-  EXPECT_TRUE(writer.Init());
+  TF_EXPECT_OK(writer.Init());
   string filename0 = writer.FileName();
   TF_EXPECT_OK(env()->FileExists(filename0));
   WriteFile(&writer);
-  EXPECT_TRUE(writer.Close());
+  TF_EXPECT_OK(writer.Close());
   string filename1 = writer.FileName();
   EXPECT_EQ(filename0, filename1);
   VerifyFile(filename1);
@@ -177,7 +174,7 @@ TEST(EventWriter, NameWriteClose) {
   string filename = writer.FileName();
   TF_EXPECT_OK(env()->FileExists(filename));
   WriteFile(&writer);
-  EXPECT_TRUE(writer.Close());
+  TF_EXPECT_OK(writer.Close());
   VerifyFile(filename);
 }
 
@@ -185,7 +182,7 @@ TEST(EventWriter, NameClose) {
   string file_prefix = GetDirName("/nameclose_test");
   EventsWriter writer(file_prefix);
   string filename = writer.FileName();
-  EXPECT_TRUE(writer.Close());
+  TF_EXPECT_OK(writer.Close());
   TF_EXPECT_OK(env()->FileExists(filename));
   TF_ASSERT_OK(env()->DeleteFile(filename));
 }
@@ -198,9 +195,9 @@ TEST(EventWriter, FileDeletionBeforeWriting) {
   env()->SleepForMicroseconds(
       2000000);  // To make sure timestamp part of filename will differ.
   TF_ASSERT_OK(env()->DeleteFile(filename0));
-  EXPECT_TRUE(writer.Init());  // Init should reopen file.
+  TF_EXPECT_OK(writer.Init());  // Init should reopen file.
   WriteFile(&writer);
-  EXPECT_TRUE(writer.Flush());
+  TF_EXPECT_OK(writer.Flush());
   string filename1 = writer.FileName();
   EXPECT_NE(filename0, filename1);
   VerifyFile(filename1);

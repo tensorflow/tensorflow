@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_GLOBAL_DATA_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_GLOBAL_DATA_H_
 
+#include <memory>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -23,18 +27,31 @@ limitations under the License.
 
 namespace xla {
 
-// Wraps a GlobalDataHandle with a lifetime.
+// A GlobalData object represents a globally-accessible allocation of
+// data in the associated XLA service.
 class GlobalData {
  public:
   // Gives ownership of the global data handle to this object.
   GlobalData(ServiceInterface* parent, GlobalDataHandle handle);
 
-  // Unregisters the wrapped handle.
+  // Unregisters the wrapped handle, which causes the service to
+  // deallocate the associated data.
   ~GlobalData();
 
   const GlobalDataHandle& handle() const { return handle_; }
 
+  // Releases a set of GlobalData handles. A single RPC will be issued
+  // per unique ServiceInterface of the given GlobalData objects.
+  static void Release(std::vector<std::unique_ptr<GlobalData>> instances);
+
  private:
+  // Detaches the global data handle from the object, such that the destructor
+  // will not try to release it.
+  GlobalDataHandle Release() {
+    parent_ = nullptr;
+    return handle_;
+  }
+
   GlobalDataHandle handle_;   // Handle being wrapped.
   ServiceInterface* parent_;  // Service used to unregister handle_.
 

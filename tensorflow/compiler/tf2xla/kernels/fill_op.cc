@@ -19,8 +19,10 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -32,43 +34,39 @@ class FillOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     // The output of this Op is a tensor of shape 'dims_shape' with each
     // element set to the scalar 'dims_literal'.
-    const TensorShape dims_shape = ctx->InputShape(0);
-    const TensorShape value_shape = ctx->InputShape(1);
+    const TensorShape dims_shape = ctx->InputShape("dims");
+    const TensorShape value_shape = ctx->InputShape("value");
     OP_REQUIRES(
-        ctx, IsLegacyVector(dims_shape),
+        ctx, TensorShapeUtils::IsVector(dims_shape),
         errors::InvalidArgument("dims must be a vector of int32, got shape ",
                                 dims_shape.DebugString()));
-    OP_REQUIRES(ctx, IsLegacyScalar(value_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(value_shape),
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         value_shape.DebugString()));
-    // Evaluate the 'dims' constant input, reshaping to a vector if it
-    // was a 'legacy' vector (secretly a scalar).
-    xla::Literal dims_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(
-                            0, {dims_shape.num_elements()}, &dims_literal));
 
-    // Convert the dims literal into a vector that we can pass to
-    // ComputationBuilder.
-    std::vector<int64> broadcast;
-    for (int i = 0; i < dims_literal.shape().dimensions(0); ++i) {
-      broadcast.push_back(xla::LiteralUtil::Get<int>(dims_literal, {i}));
-    }
-    // Look up the value input, reshaping to a scalar if it was a
-    // 'legacy' scalar (secretly a vector).
-    xla::ComputationDataHandle data = ctx->Input(1);
-    if (value_shape.dims() > 0) {
-      CHECK_EQ(value_shape.dims(), 1);
-      data = ctx->builder()->Reshape(data, {});
-    }
-    // Emit the actual computation, which broadcasts the scalar to the
-    // desired shape.
-    auto result = ctx->builder()->Broadcast(data, broadcast);
+    std::vector<int64> dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dims));
+    // Set dynamic dimension value to -1 so that we know which dimension is
+    // dynamic.
+    ctx->set_dynamic_dimension_is_minus_one(true);
+    std::vector<int64> dynamic_dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dynamic_dims));
 
-    ctx->SetOutput(0, result);
+    auto output = xla::Broadcast(ctx->Input("value"), dims);
+    for (int64 i = 0; i < dims.size(); ++i) {
+      // If a dimension is dynamic, call set-dimension-size on the output.
+      if (dynamic_dims[i] == -1) {
+        auto dynamic_dim_size = xla::Slice(ctx->Input(0), {i}, {i + 1}, {1});
+        dynamic_dim_size = xla::Reshape(dynamic_dim_size, {});
+        dynamic_dim_size = xla::ConvertElementType(dynamic_dim_size, xla::S32);
+        output = xla::SetDimensionSize(output, dynamic_dim_size, i);
+      }
+    }
+    ctx->SetOutput(0, output);
   }
 };
 
-REGISTER_XLA_OP("Fill", FillOp);
+REGISTER_XLA_OP(Name("Fill").CompileTimeConstantInput("dims"), FillOp);
 
 }  // namespace
 }  // namespace tensorflow

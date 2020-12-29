@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_LOG_MEMORY_H_
-#define TENSORFLOW_FRAMEWORK_LOG_MEMORY_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_LOG_MEMORY_H_
+#define TENSORFLOW_CORE_FRAMEWORK_LOG_MEMORY_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -52,14 +52,14 @@ class LogMemory {
     UNKNOWN_STEP_ID = -6,
   };
 
-  static const string kLogMemoryLabel;
+  static const std::string kLogMemoryLabel;
 
   // Test to see if memory logging is enabled. For now, logging is
   // enabled whenever VLOG_IS_ON(1) for the log_memory module.
   static bool IsEnabled();
 
   // Log the beginning of a step.
-  static void RecordStep(int64 step_id, const string& handle);
+  static void RecordStep(int64 step_id, const std::string& handle);
 
   // Log a tensor buffer allocation. The name indicates which kernel
   // made the allocation. If the allocation is made through an
@@ -67,8 +67,8 @@ class LogMemory {
   // otherwise step_id is one of the SpecialStepIds defined in
   // op_kernel.h, e.g. Op Kernel construction or an optimization pass
   // such as constant folding.
-  static void RecordTensorAllocation(const string& kernel_name, int64 step_id,
-                                     const Tensor& tensor);
+  static void RecordTensorAllocation(const std::string& kernel_name,
+                                     int64 step_id, const Tensor& tensor);
 
   // Log a tensor buffer deallocation. The deallocation is triggered
   // when the buffer's refcount falls to zero, and the tracking
@@ -77,10 +77,10 @@ class LogMemory {
   // corresponding tensor previously passed in to
   // RecordTensorAllocation.
   static void RecordTensorDeallocation(int64 allocation_id,
-                                       const string& allocator_name);
+                                       const std::string& allocator_name);
 
   // Log the use of a tensor as an output from a kernel.
-  static void RecordTensorOutput(const string& kernel_name, int64 step_id,
+  static void RecordTensorOutput(const std::string& kernel_name, int64 step_id,
                                  int index, const Tensor& tensor);
 
   // Log a "raw" allocation, which is just a buffer sized in
@@ -92,7 +92,7 @@ class LogMemory {
   // is executing, otherwise step_id is one of the SpecialStepIds
   // defined in op_kernel.h, e.g. Op Kernel construction or an
   // optimization pass such as constant folding.
-  static void RecordRawAllocation(const string& operation, int64 step_id,
+  static void RecordRawAllocation(const std::string& operation, int64 step_id,
                                   size_t num_bytes, void* ptr,
                                   Allocator* allocator);
 
@@ -101,11 +101,11 @@ class LogMemory {
   // enqueued using the buffer. A deferred deallocation should always
   // be followed by a matching non-deferred deallocation when the
   // buffer is actually returned and can be reused.
-  static void RecordRawDeallocation(const string& operation, int64 step_id,
+  static void RecordRawDeallocation(const std::string& operation, int64 step_id,
                                     void* ptr, Allocator* allocator,
                                     bool deferred);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_LOG_MEMORY_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_LOG_MEMORY_H_

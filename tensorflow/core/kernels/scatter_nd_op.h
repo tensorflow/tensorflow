@@ -18,11 +18,11 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -37,7 +37,7 @@ class OpKernelContext;
 
 namespace scatter_nd_op {
 
-enum class UpdateOp { ASSIGN, ADD, SUB, MUL, DIV };
+enum class UpdateOp { ASSIGN, ADD, SUB, MIN, MAX };
 
 }  // namespace scatter_nd_op
 
@@ -56,6 +56,18 @@ struct ScatterNdFunctor {
       typename TTypes<T, 2>::ConstTensor Tupdates,
       typename TTypes<T, 2>::Tensor Toutput);
 };
+
+// Scatter updates into indices in Tensor out.  The argument allocate
+// controls whether 'out' should be created.  If allocate is true,
+// *out will be updated to the scattered tensor upon successful completion.
+// If allocate is false, out must point to a Tensor allocated with the
+// right type (T) and shape.  This tensor will not be zeroed out
+// before the scatter is executed.
+template <typename Device, typename T, typename Index,
+          scatter_nd_op::UpdateOp Op>
+Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
+                   const Tensor& updates, const TensorShape& shape, Tensor* out,
+                   bool allocate);
 
 }  // namespace functor
 }  // namespace tensorflow

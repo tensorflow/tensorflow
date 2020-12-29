@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_GRAPH_JNI_H_
-#define TENSORFLOW_JAVA_GRAPH_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_JNI_H_
 
 #include <jni.h>
 
@@ -47,6 +47,16 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Graph
+ * Method:    operations
+ * Signature: (JI)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv *,
+                                                                     jclass,
+                                                                     jlong,
+                                                                     jint);
+
+/*
+ * Class:     org_tensorflow_Graph
  * Method:    importGraphDef
  * Signature: (J[BLjava/lang/String;)V
  */
@@ -64,7 +74,25 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Graph_toGraphDef(JNIEnv *,
                                                                   jclass,
                                                                   jlong);
 
+/*
+ * Class:     org_tensorflow_Graph
+ * Method:    name
+ * Signature: (JLjava/lang/String;[J[I[J[I[J[I)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
+    JNIEnv *, jclass, jlong, jstring, jlongArray, jintArray, jlongArray,
+    jintArray, jlongArray, jintArray);
+
+/*
+ * Class:     org_tensorflow_Graph
+ * Method:    whileLoop
+ * Signature:
+ * (J[J[IILjava/lang/String;Lorg/tensorflow/Graph/WhileSubgraphBuilder;Lorg/tensorflow/Graph/WhileSubgraphBuilder;)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_whileLoop(
+    JNIEnv *, jclass, jlong, jlongArray, jintArray, jstring, jobject, jobject);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_GRAPH_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_JNI_H_

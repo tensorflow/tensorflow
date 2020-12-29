@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "LRN"
+  endpoint {
+    name: "nn.local_response_normalization"
+  }
+  endpoint {
+    name: "nn.lrn"
+  }
+}

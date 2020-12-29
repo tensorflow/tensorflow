@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,27 +26,36 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 // Forward declarations of the functor specializations for GPU.
-#define DECLARE_GPU_SPECS_OP(T, Index, op)                   \
-  template <>                                                \
-  Index ScatterFunctor<GPUDevice, T, Index, op>::operator()( \
-      OpKernelContext* c, const GPUDevice& d,                \
-      typename TTypes<T>::Matrix params,                     \
-      typename TTypes<T>::ConstMatrix updates,               \
-      typename TTypes<Index>::ConstFlat indices);            \
-  extern template struct ScatterFunctor<GPUDevice, T, Index, op>;
+#define DECLARE_GPU_SPECS_OP(T, Index, op)                         \
+  template <>                                                      \
+  Index ScatterFunctor<GPUDevice, T, Index, op>::operator()(       \
+      OpKernelContext* c, const GPUDevice& d,                      \
+      typename TTypes<T>::Matrix params,                           \
+      typename TTypes<T>::ConstMatrix updates,                     \
+      typename TTypes<Index>::ConstFlat indices);                  \
+  extern template struct ScatterFunctor<GPUDevice, T, Index, op>;  \
+  template <>                                                      \
+  Index ScatterScalarFunctor<GPUDevice, T, Index, op>::operator()( \
+      OpKernelContext* c, const GPUDevice& d,                      \
+      typename TTypes<T>::Matrix params,                           \
+      const typename TTypes<T>::ConstScalar update,                \
+      typename TTypes<Index>::ConstFlat indices);                  \
+  extern template struct ScatterScalarFunctor<GPUDevice, T, Index, op>;
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                       \
   DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ASSIGN); \
   DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::ADD);    \
   DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::SUB);    \
   DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MUL);    \
-  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);
+  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::DIV);    \
+  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MIN);    \
+  DECLARE_GPU_SPECS_OP(T, Index, scatter_op::UpdateOp::MAX);
 
 #define DECLARE_GPU_SPECS(T)         \
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS
 #undef DECLARE_GPU_SPECS_INDEX
@@ -59,4 +68,4 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPECS);
 
 #include "tensorflow/core/kernels/scatter_functor.h"
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

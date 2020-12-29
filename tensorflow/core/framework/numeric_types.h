@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
-#define TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_
+#define TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_
 
 #include <complex>
-
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 // Disable clang-format to prevent 'FixedPoint' header from being included
 // before 'Tensor' header on which it depends.
@@ -41,28 +40,42 @@ typedef Eigen::QInt32 qint32;
 typedef Eigen::QInt16 qint16;
 typedef Eigen::QUInt16 quint16;
 
-// see framework/bfloat16.h for description.
-struct bfloat16 {
-  EIGEN_DEVICE_FUNC bfloat16() {}
-  EIGEN_DEVICE_FUNC explicit bfloat16(const uint16_t v) : value(v) {}
+}  // namespace tensorflow
 
-  uint16_t value;
-};
-
-}  // end namespace tensorflow
+static inline tensorflow::bfloat16 FloatToBFloat16(float float_val) {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  return *reinterpret_cast<tensorflow::bfloat16*>(
+      reinterpret_cast<uint16_t*>(&float_val));
+#else
+  return *reinterpret_cast<tensorflow::bfloat16*>(
+      &(reinterpret_cast<uint16_t*>(&float_val)[1]));
+#endif
+}
 
 namespace Eigen {
 template <>
-struct NumTraits<tensorflow::bfloat16> : GenericNumTraits<uint16_t> {};
+struct NumTraits<tensorflow::tstring> : GenericNumTraits<tensorflow::tstring> {
+  enum {
+    RequireInitialization = 1,
+    ReadCost = HugeCost,
+    AddCost = HugeCost,
+    MulCost = HugeCost
+  };
 
-EIGEN_STRONG_INLINE bool operator==(const tensorflow::bfloat16 a,
-                                    const tensorflow::bfloat16 b) {
-  return a.value == b.value;
-}
+  static inline int digits10() { return 0; }
+
+ private:
+  static inline tensorflow::tstring epsilon();
+  static inline tensorflow::tstring dummy_precision();
+  static inline tensorflow::tstring lowest();
+  static inline tensorflow::tstring highest();
+  static inline tensorflow::tstring infinity();
+  static inline tensorflow::tstring quiet_NaN();
+};
 
 }  // namespace Eigen
 
-#ifdef COMPILER_MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {
@@ -70,7 +83,14 @@ struct hash<Eigen::half> {
     return static_cast<std::size_t>(a.x);
   }
 };
-}  // namespace std
-#endif  // COMPILER_MSVC
 
-#endif  // TENSORFLOW_FRAMEWORK_NUMERIC_TYPES_H_
+template <>
+struct hash<Eigen::bfloat16> {
+  std::size_t operator()(const Eigen::bfloat16& a) const {
+    return hash<float>()(static_cast<float>(a));
+  }
+};
+}  // namespace std
+#endif  // _MSC_VER
+
+#endif  // TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_

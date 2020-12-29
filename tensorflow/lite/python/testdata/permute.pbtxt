@@ -1,0 +1,98 @@
+node {
+  name: "input"
+  op: "Placeholder"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 1
+        }
+        dim {
+          size: 4
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Const"
+  op: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 4
+          }
+          dim {
+            size: 4
+          }
+        }
+        float_val: 0.0
+        float_val: 0.0
+        float_val: 0.0
+        float_val: 1.0
+
+        float_val: 0.0
+        float_val: 0.0
+        float_val: 1.0
+        float_val: 0.0
+
+        float_val: 0.0
+        float_val: 1.0
+        float_val: 0.0
+        float_val: 0.0
+
+        float_val: 1.0
+        float_val: 0.0
+        float_val: 0.0
+        float_val: 0.0
+      }
+    }
+  }
+}
+node {
+  name: "output"
+  op: "MatMul"
+  input: "input"
+  input: "Const"
+  device: "/device:CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 27
+}

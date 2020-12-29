@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/example/example_parser_configuration.h"
 
-#include "tensorflow/core/example/example.pb.h"
+#include <memory>
+
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -29,10 +32,11 @@ namespace {
 void ReadFileToStringOrDie(Env* env, const string& filename, string* output) {
   TF_CHECK_OK(ReadFileToString(env, filename, output));
 }
-Session* CreateSession() {
+
+std::unique_ptr<Session> CreateSession() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  return NewSession(options);
+  return std::unique_ptr<Session>(NewSession(options));
 }
 
 class ExtractExampleParserConfigurationTest : public ::testing::Test {
@@ -44,19 +48,19 @@ class ExtractExampleParserConfigurationTest : public ::testing::Test {
                      "core/example/testdata/parse_example_graph_def.pbtxt");
     ReadFileToStringOrDie(Env::Default(), filename, &proto_string);
     protobuf::TextFormat::ParseFromString(proto_string, &graph_def_);
-    session_.reset(CreateSession());
+    session_ = CreateSession();
     TF_CHECK_OK(session_->Create(graph_def_));
   }
 
   NodeDef* parse_example_node() {
-    for (int i = 0; i < graph_def_.node_size(); ++i) {
-      auto mutable_node = graph_def_.mutable_node(i);
-      if (mutable_node->name() == "ParseExample/ParseExample") {
-        return mutable_node;
+    for (auto& node : *graph_def_.mutable_node()) {
+      if (node.name() == "ParseExample/ParseExample") {
+        return &node;
       }
     }
     return nullptr;
   }
+
   GraphDef graph_def_;
   std::unique_ptr<Session> session_;
 };

@@ -1,0 +1,35 @@
+path: "tensorflow.experimental"
+tf_module {
+  member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "dlpack"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "numpy"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tensorrt"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "async_clear_error"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "async_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "function_executor_type"
+    argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_filesystem_plugin"
+    argspec: "args=[\'plugin_location\'], varargs=None, keywords=None, defaults=None"
+  }
+}

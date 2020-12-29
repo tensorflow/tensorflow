@@ -13,23 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
 
 #include <memory>
-
-namespace grpc {
-class ServerBuilder;
-}  // namespace grpc
+#include "grpcpp/server_builder.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
 class AsyncServiceInterface;
 class Master;
 
-AsyncServiceInterface* NewGrpcMasterService(Master* master,
-                                            ::grpc::ServerBuilder* builder);
+AsyncServiceInterface* NewGrpcMasterService(
+    Master* master, const ConfigProto& default_session_config,
+    ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_MASTER_SERVICE_H_

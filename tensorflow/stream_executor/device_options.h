@@ -25,8 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Indicates a set of options for a device's usage, which generally must be
 // provided at StreamExecutor device-initialization time.
@@ -40,19 +39,19 @@ struct DeviceOptions {
   // this flag prevents it from ever being deallocated. Potentially saves
   // thrashing the thread stack memory allocation, but at the potential cost of
   // some memory space.
-  static const unsigned kDoNotReclaimStackAllocation = 0x1;
+  static constexpr unsigned kDoNotReclaimStackAllocation = 0x1;
 
   // The following options refer to synchronization options when
   // using SynchronizeStream or SynchronizeContext.
 
   // Synchronize with spinlocks.
-  static const unsigned kScheduleSpin = 0x02;
+  static constexpr unsigned kScheduleSpin = 0x02;
   // Synchronize with spinlocks that also call CPU yield instructions.
-  static const unsigned kScheduleYield = 0x04;
+  static constexpr unsigned kScheduleYield = 0x04;
   // Synchronize with a "synchronization primitive" (e.g. mutex).
-  static const unsigned kScheduleBlockingSync = 0x08;
+  static constexpr unsigned kScheduleBlockingSync = 0x08;
 
-  static const unsigned kMask = 0xf;  // Mask of all available flags.
+  static constexpr unsigned kMask = 0xf;  // Mask of all available flags.
 
   // Constructs an or-d together set of device options.
   explicit DeviceOptions(unsigned flags) : flags_(flags) {
@@ -65,26 +64,26 @@ struct DeviceOptions {
   unsigned flags() const { return flags_; }
 
   bool operator==(const DeviceOptions& other) const {
-    return flags_ == other.flags_;
+    return flags_ == other.flags_ &&
+           non_portable_tags == other.non_portable_tags;
   }
 
   bool operator!=(const DeviceOptions& other) const {
     return !(*this == other);
   }
 
-  string ToString() {
+  std::string ToString() {
     return flags_ == 0 ? "none" : "kDoNotReclaimStackAllocation";
   }
 
   // Platform-specific device options. Expressed as key-value pairs to avoid
   // DeviceOptions subclass proliferation.
-  std::map<string, string> non_portable_tags;
+  std::map<std::string, std::string> non_portable_tags;
 
  private:
   unsigned flags_;
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_OPTIONS_H_

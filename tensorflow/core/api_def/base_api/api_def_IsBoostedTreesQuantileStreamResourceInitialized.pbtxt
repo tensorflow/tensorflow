@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "IsBoostedTreesQuantileStreamResourceInitialized"
+  visibility: HIDDEN
+  in_arg {
+    name: "quantile_stream_resource_handle"
+    description: <<END
+resource; The reference to quantile stream resource handle.
+END
+  }
+  out_arg {
+    name: "is_initialized"
+    description: <<END
+bool; True if the resource is initialized, False otherwise.
+END
+  }
+  summary: "Checks whether a quantile stream has been initialized."
+  description: <<END
+An Op that checks if quantile stream resource is initialized.
+END
+}

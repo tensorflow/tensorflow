@@ -18,18 +18,17 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/rng.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace internal {
 class StreamExecutorInterface;
@@ -63,13 +62,13 @@ class PluginRegistry {
   // with that platform (but execution should be otherwise unaffected).
   template <typename FactoryT>
   port::Status RegisterFactory(Platform::Id platform_id, PluginId plugin_id,
-                               const string& name, FactoryT factory);
+                               const std::string& name, FactoryT factory);
 
   // Registers the specified factory as usable by _all_ platform types.
   // Reports errors just as RegisterFactory.
   template <typename FactoryT>
   port::Status RegisterFactoryForAllPlatforms(PluginId plugin_id,
-                                              const string& name,
+                                              const std::string& name,
                                               FactoryT factory);
 
   // TODO(b/22689637): Setter for temporary mapping until all users are using
@@ -98,6 +97,7 @@ class PluginRegistry {
   // TODO(b/22689637): Deprecated/temporary. Will be deleted once all users are
   // on MultiPlatformManager / PlatformId.
   template <typename FactoryT>
+  ABSL_DEPRECATED("Use MultiPlatformManager / PlatformId instead.")
   port::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
                                       PluginId plugin_id);
 
@@ -122,7 +122,7 @@ class PluginRegistry {
   // Actually performs the work of registration.
   template <typename FactoryT>
   port::Status RegisterFactoryInternal(PluginId plugin_id,
-                                       const string& plugin_name,
+                                       const std::string& plugin_name,
                                        FactoryT factory,
                                        std::map<PluginId, FactoryT>* factories);
 
@@ -155,12 +155,30 @@ class PluginRegistry {
   std::map<Platform::Id, DefaultFactories> default_factories_;
 
   // Lookup table for plugin names.
-  std::map<PluginId, string> plugin_names_;
+  std::map<PluginId, std::string> plugin_names_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+// Explicit specializations are defined in plugin_registry.cc.
+#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                          \
+  template <>                                                                 \
+  port::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
+      Platform::Id platform_id, PluginId plugin_id, const std::string& name,  \
+      PluginRegistry::FACTORY_TYPE factory);                                  \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+      Platform::Id platform_id, PluginId plugin_id);                          \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+      PlatformKind platform_kind, PluginId plugin_id)
+
+DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(FftFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(RngFactory);
+#undef DECL_PLUGIN_SPECIALIZATIONS
+
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_

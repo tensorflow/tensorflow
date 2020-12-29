@@ -2,13 +2,15 @@
 // model training or inference.
 syntax = "proto3";
 
+package tensorflow;
+
 import "tensorflow/core/example/feature.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ExampleProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.example";
-
-package tensorflow;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/example/example_protos_go_proto";
 
 // An Example is a mostly-normalized data format for storing data for
 // training and inference.  It contains a key-value store (features); where
@@ -87,7 +89,7 @@ package tensorflow;
 
 message Example {
   Features features = 1;
-};
+}
 
 // A SequenceExample is an Example representing one or more sequences, and
 // some context.  The context contains features which apply to the entire
@@ -199,7 +201,13 @@ message Example {
 //     to determine if all features within the FeatureList must
 //     have the same size.  The same holds for this FeatureList across multiple
 //     examples.
-//
+//   - For sequence modeling, e.g.:
+//        http://colah.github.io/posts/2015-08-Understanding-LSTMs/
+//        https://github.com/tensorflow/nmt
+//     the feature lists represent a sequence of frames.
+//     In this scenario, all FeatureLists in a SequenceExample have the same
+//     number of Feature messages, so that the ith element in each FeatureList
+//     is part of the ith frame (or time step).
 // Examples of conformant and non-conformant examples' FeatureLists:
 //
 // Conformant FeatureLists:
@@ -292,4 +300,4 @@ message Example {
 message SequenceExample {
   Features context = 1;
   FeatureLists feature_lists = 2;
-};
+}

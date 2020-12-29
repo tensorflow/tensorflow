@@ -18,17 +18,21 @@
 # Run the python unit tests from the source code on the pip installation.
 #
 # Usage:
-#   run_pip_tests.sh [--virtualenv] [--gpu] [--mac]
+#   run_pip_tests.sh [--virtualenv] [--gpu] [--mac] [--oss_serial]
 #
 # If the flag --virtualenv is set, the script will use "python" as the Python
 # binary path. Otherwise, it will use tools/python_bin_path.sh to determine
 # the Python binary path.
 #
 # The --gpu flag informs the script that this is a GPU build, so that the
-# appropriate test blacklists can be applied accordingly.
+# appropriate test denylists can be applied accordingly.
 #
 # The --mac flag informs the script that this is running on mac. Mac does not
 # have flock, so we should skip using parallel_gpu_execute on mac.
+#
+# The --oss_serial flag lets the script run only the py tests with the
+# oss_serial tag, in a serial fashion, i.e., using the bazel flag
+# --local_test_jobs=1
 #
 #   TF_BUILD_APPEND_ARGUMENTS:
 #                      Additional command line arguments for the bazel,
@@ -42,6 +46,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 IS_VIRTUALENV=0
 IS_GPU=0
 IS_MAC=0
+IS_OSS_SERIAL=0
 while true; do
   if [[ "$1" == "--virtualenv" ]]; then
     IS_VIRTUALENV=1
@@ -49,6 +54,8 @@ while true; do
     IS_GPU=1
   elif [[ "$1" == "--mac" ]]; then
     IS_MAC=1
+  elif [[ "$1" == "--oss_serial" ]]; then
+    IS_OSS_SERIAL=1
   fi
   shift
 
@@ -57,7 +64,7 @@ while true; do
   fi
 done
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # PIP tests should have a "different" path. Different than the one we place
 # virtualenv, because we are deleting and recreating it here.
@@ -69,9 +76,20 @@ ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
 
 # Do not run tests with "no_pip" tag. If running GPU tests, also do not run
 # tests with no_pip_gpu tag.
-PIP_TEST_FILTER_TAG="-no_pip"
+PIP_TEST_FILTER_TAG="-no_pip,-no_oss,-benchmark-test"
+if [[ ${IS_OSS_SERIAL} == "1" ]]; then
+  PIP_TEST_FILTER_TAG="$(echo "${PIP_TEST_FILTER_TAG}" | sed s/-no_oss//)"
+  PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},oss_serial"
+else
+  PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},-oss_serial"
+fi
+
 if [[ ${IS_GPU} == "1" ]]; then
-  PIP_TEST_FILTER_TAG="-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+  PIP_TEST_FILTER_TAG="-no_gpu,-no_pip_gpu,${PIP_TEST_FILTER_TAG}"
+fi
+if [[ ${IS_MAC} == "1" ]]; then
+  # TODO(b/122370901): Fix nomac, no_mac inconsistency.
+  PIP_TEST_FILTER_TAG="-nomac,-no_mac,${PIP_TEST_FILTER_TAG}"
 fi
 
 # Bazel flags we need for all tests:
@@ -80,17 +98,20 @@ fi
 #     TF_BUILD_APPEND_ARGUMENTS any user supplied args.
 BAZEL_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --build_tests_only -k --test_tag_filters=${PIP_TEST_FILTER_TAG} \
-  --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS}"
+  --test_timeout 300,450,1200,3600 ${TF_BUILD_APPEND_ARGUMENTS} \
+  --test_output=errors"
 
 BAZEL_TEST_TARGETS="//${PIP_TEST_PREFIX}/tensorflow/contrib/... \
   //${PIP_TEST_PREFIX}/tensorflow/python/... \
-  //${PIP_TEST_PREFIX}/tensorflow/tensorboard/..."
+  -//${PIP_TEST_PREFIX}/tensorflow/contrib/tensorboard/..."
+
+# Clean the bazel cache
+bazel clean
 
 # Run configure again, we might be using a different python path, due to
 # virtualenv.
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
-export TF_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
 
 # Obtain the path to Python binary
 if [[ ${IS_VIRTUALENV} == "1" ]]; then
@@ -101,31 +122,32 @@ else
 fi
 
 export TF_NEED_CUDA=$IS_GPU
-yes "" | ./configure
+${PYTHON_BIN_PATH} configure.py
 
 # Figure out how many concurrent tests we can run and do run the tests.
+BAZEL_PARALLEL_TEST_FLAGS=""
 if [[ $IS_GPU == 1 ]]; then
   # Number of test threads is the number of GPU cards available.
   if [[ $IS_MAC == 1 ]]; then
-    PAR_TEST_JOBS=1
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
   else
     PAR_TEST_JOBS=$TF_GPU_COUNT
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=${TF_GPU_COUNT} \
+        --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute"
   fi
-
-  # Actually run the tests.
-  bazel test ${BAZEL_FLAGS} --local_test_jobs=${PAR_TEST_JOBS} \
-    --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
-    -- ${BAZEL_TEST_TARGETS}
-
 else
   # Number of test threads is the number of physical CPUs.
   if [[ $IS_MAC == 1 ]]; then
-    PAR_TEST_JOBS=$(sysctl -n hw.ncpu)
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(sysctl -n hw.ncpu)"
   else
-    PAR_TEST_JOBS=$(grep -c ^processor /proc/cpuinfo)
+    BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=$(grep -c ^processor /proc/cpuinfo)"
   fi
-
-  # Actually run the tests.
-  bazel test ${BAZEL_FLAGS} --local_test_jobs=${PAR_TEST_JOBS} \
-    -- ${BAZEL_TEST_TARGETS}
 fi
+
+if [[ ${IS_OSS_SERIAL} == 1 ]]; then
+  BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
+fi
+
+# Actually run the tests.
+bazel test ${BAZEL_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} -- \
+    ${BAZEL_TEST_TARGETS}

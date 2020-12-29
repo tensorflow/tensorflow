@@ -29,16 +29,46 @@ limitations under the License.
 
 namespace tensorflow {
 
+// The TestReportFile provides a file abstraction for TF tests to use.
+class TestReportFile {
+ public:
+  // Create a TestReportFile with the test name 'test_name'.
+  TestReportFile(const string& fname, const string& test_name);
+
+  // Initialize the TestReportFile.  If the reporting env flag is set,
+  // try to create the reporting file.  Fails if the file already exists.
+  Status Initialize();
+
+  // Append the report file w/ 'content'.
+  Status Append(const string& content);
+
+  // Close the report file.
+  Status Close();
+
+  bool IsClosed() const { return closed_; }
+
+  ~TestReportFile() { Close().IgnoreError(); }  // Autoclose in destructor.
+
+ private:
+  bool closed_;
+  string fname_;
+  string test_name_;
+  std::unique_ptr<WritableFile> log_file_;
+  TF_DISALLOW_COPY_AND_ASSIGN(TestReportFile);
+};
+
 // The TestReporter writes test / benchmark output to binary Protobuf files when
 // the environment variable "TEST_REPORT_FILE_PREFIX" is defined.
 //
 // If this environment variable is not defined, no logging is performed.
 //
-// The intended use is via the following 4 lines:
+// The intended use is via the following lines:
 //
 //  TestReporter reporter(test_name);
 //  TF_CHECK_OK(reporter.Initialize()));
 //  TF_CHECK_OK(reporter.Benchmark(iters, cpu_time, wall_time, throughput));
+//  TF_CHECK_OK(reporter.SetProperty("some_string_property", "some_value");
+//  TF_CHECK_OK(reporter.SetProperty("some_double_property", double_value);
 //  TF_CHECK_OK(reporter.Close());
 //
 // For example, if the environment variable
@@ -75,17 +105,24 @@ class TestReporter {
   Status Benchmark(int64 iters, double cpu_time, double wall_time,
                    double throughput);
 
-  ~TestReporter() { Close(); }  // Autoclose in destructor.
+  // Set property on Benchmark to the given value.
+  Status SetProperty(const string& name, double value);
+
+  // Set property on Benchmark to the given value.
+  Status SetProperty(const string& name, const string& value);
+
+  // Add the given value to the metrics on the Benchmark.
+  Status AddMetric(const string& name, double value);
+
+  // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
+  ~TestReporter() { Close().IgnoreError(); }  // Autoclose in destructor.
 
  private:
   static string GetLogEnv() {
     const char* fname_ptr = getenv(kTestReporterEnv);
     return (fname_ptr != nullptr) ? fname_ptr : "";
   }
-  bool closed_;
-  string fname_;
-  string test_name_;
-  std::unique_ptr<WritableFile> log_file_;
+  TestReportFile report_file_;
   BenchmarkEntry benchmark_entry_;
   TF_DISALLOW_COPY_AND_ASSIGN(TestReporter);
 };

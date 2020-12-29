@@ -16,19 +16,21 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 
@@ -65,14 +67,14 @@ class LRNFloatTest : public OpsTestBase {
 
     Eigen::Tensor<float, 4, Eigen::RowMajor> expected(batch_size, rows, cols,
                                                       depth);
-    auto out = expected.reshape(Eigen::DSizes<int64, 2>{rest, depth});
+    auto out = expected.reshape(Eigen::DSizes<Eigen::Index, 2>{rest, depth});
     auto in = input.shaped<float, 2>({rest, depth});
 
     for (int64 i = 0; i < rest; ++i) {
       Eigen::Tensor<float, 1, Eigen::RowMajor> out_col(depth);
       for (int64 d = 0; d < depth; ++d) {
         float denom = 0.0f;
-        for (int64 r = std::max(0ll, d - depth_radius);
+        for (int64 r = std::max(int64{0}, d - depth_radius);
              r < std::min(depth, d + depth_radius + 1); ++r) {
           denom += in(i, r) * in(i, r);
         }
@@ -103,7 +105,7 @@ TEST_F(LRNFloatTest, Depth96) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInput<float>(TensorShape({1, 1, 1, 96}),
-                  [this](int i) -> float { return i + 1; });
+                  [](int i) -> float { return i + 1; });
   TF_ASSERT_OK(RunOpKernel());
   auto actual = GetOutput(0)->tensor<float, 4>();
 
@@ -139,7 +141,7 @@ TEST_F(LRNFloatTest, Depth16) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
   AddInput<float>(TensorShape({1, 1, 1, 16}),
-                  [this](int i) -> float { return i + 1; });
+                  [](int i) -> float { return i + 1; });
   TF_ASSERT_OK(RunOpKernel());
   auto actual = GetOutput(0)->tensor<float, 4>();
 
@@ -196,4 +198,44 @@ TCASE(T3, 128,   4,     3,            2.0f, 1.0f,  1.0f)
 // clang-format on
 
 #undef TCASE
+
+static Graph* MakeRNGrad(int batches, int rows, int cols, int depth,
+                         int depth_radius) {
+  Graph* g = new Graph(OpRegistry::Global());
+  Tensor grads(DT_FLOAT, TensorShape({batches, rows, cols, depth}));
+  grads.flat<float>().setRandom();
+
+  Tensor in(DT_FLOAT, TensorShape({batches, rows, cols, depth}));
+  in.flat<float>().setRandom();
+
+  Tensor out(DT_FLOAT, TensorShape({batches, rows, cols, depth}));
+
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("lrn_grad_op"), "LRNGrad")
+                  .Input(test::graph::Constant(g, grads))
+                  .Input(test::graph::Constant(g, in))
+                  .Input(test::graph::Constant(g, out))
+                  .Attr("depth_radius", depth_radius)
+                  .Attr("bias", 1.0f)
+                  .Attr("alpha", 1.0f / 10)
+                  .Attr("beta", 2.0f)
+                  .Finalize(g, &ret));
+  return g;
+}
+
+#define BM_LRNGradDev(DEVICE, B, R, C, D, DR)                                \
+  static void BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR(            \
+      ::testing::benchmark::State& state) {                                  \
+    test::Benchmark(#DEVICE, MakeRNGrad(B, R, C, D, DR),                     \
+                    /*old_benchmark_api*/ false)                             \
+        .Run(state);                                                         \
+    state.SetItemsProcessed(static_cast<int64>(state.iterations()) * B * R * \
+                            C * D * DR * 4);                                 \
+  }                                                                          \
+  BENCHMARK(BM_LRNGrad_##DEVICE##_##B##_##R##_##C##_##D##_##DR)
+
+BM_LRNGradDev(cpu, 128, 12, 12, 64, 4);
+BM_LRNGradDev(cpu, 128, 56, 56, 64, 2);
+BM_LRNGradDev(cpu, 128, 27, 27, 192, 2);
+
 }  // namespace tensorflow

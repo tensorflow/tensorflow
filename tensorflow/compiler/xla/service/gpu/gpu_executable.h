@@ -19,40 +19,75 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace gpu {
 
 // GPU-targeting implementation of the XLA Executable interface.
 //
-// Launches the given CUDA kernel via the StreamExecutor.
+// Launches the given GPU kernel via the StreamExecutor.
 //
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
-  GpuExecutable(tensorflow::StringPiece ptx,
-                std::unique_ptr<ThunkSchedule> thunk_schedule,
-                std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<HloModuleConfig> module_config,
-                std::unique_ptr<BufferAssignment> assignment);
+  struct ConstantInfo {
+    std::string symbol_name;
+    xla::Literal content;
+    int allocation_index = -1;
+  };
+
+  struct OutputInfo {
+    // Output is passed-through from a parameter.
+    bool passthrough;
+
+    // Corresponding allocation index.
+    int allocation_index;
+
+    // Whether this output is hinted to alias a parameter (BufferAllocation*
+    // would indicate the aliased parameter), and what kind of alias it is.
+    absl::optional<HloInputOutputAliasConfig::Alias> alias_config;
+  };
+
+  struct Params {
+    std::string asm_text;
+    std::vector<uint8> binary;
+    GpuVersion gpu_version;
+    std::unique_ptr<const ThunkSchedule> thunk_schedule;
+    std::vector<ConstantInfo> constants;
+    absl::flat_hash_map<ShapeIndex, OutputInfo> output_info;
+    std::unique_ptr<HloModule> hlo_module;
+    std::vector<BufferAllocation> allocations;
+    std::unique_ptr<BufferAssignmentProto> debug_buffer_assignment;
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data = nullptr;
+    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map = nullptr;
+  };
+
+  // We need to share ownership of hlo_module and assignment with profiler to
+  // safely keep a reference to these objects during tracing period, thus they
+  // are passed as shared pointers.
+  explicit GpuExecutable(Params params);
+  ~GpuExecutable() override;
+
+  int64 SizeOfGeneratedCodeInBytes() const override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -62,61 +97,110 @@ class GpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
-  // Returns the compiled PTX for the computation.
-  tensorflow::StringPiece ptx() const { return ptx_; }
+  // Returns the compiled code for the computation. The compiled code is PTX in
+  // Cuda and unused empty string in ROCm.
+  const string& text() const { return text_; }
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
+  // Returns the binary stored in this GpuExecutable. The binary is cubin in
+  // Cuda, and HSA code object in ROCm. It may be empty, in which case
+  // compilation is left up to the GPU driver.
+  const std::vector<uint8>& binary() const { return binary_; }
+
+  // ExecuteAsyncOnStream will fail if the compute capability of the stream
+  // doesn't match the compute capability passed to this object's constructor.
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result_buffer,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+  absl::Span<const BufferAllocation> GetAllocations() const {
+    return allocations_;
+  }
 
  private:
-  Status ExecuteThunks(perftools::gputools::Stream* stream,
+  // If `block_host_until_done` is false, execution will not block the host
+  // until the kernels have completed. This is used as an optimization for
+  // clients, such as Tensorflow, that use a single stream of execution for
+  // computations, and allow host-side deallocation from the allocator before
+  // GPU execution completes.
+  Status ExecuteThunks(const ServiceExecutableRunOptions* run_options,
                        const BufferAllocations& buffer_allocations,
+                       bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
-  // Returns the points-to set of the root instruction of the entry
-  // computation. Uses points-to analysis from buffer assignment.
-  const PointsToSet& GetRootPointsToSet() const;
+  using BufferAllocToDeviceMemoryMap =
+      absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
-  // The LLVM IR, in string format, of the unoptimized module generated for this
-  // GpuExecutable. We save a string instead of an llvm::Module* because leaving
-  // llvm::Module* in a singleton can cause the heap checker to emit false
-  // positives.
+  // Loads the PTX or CUBIN for this executable into `executor` and resolves the
+  // globals corresponding to constant buffers.  Returns a map mapping buffer
+  // allocation indices to GPU pointers.
+  StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
+      stream_executor::Stream* stream);
+
+  // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
+  // version for compute capability, depending on the hardware.
+  Status CheckCompatibilityWithServiceExecutableRunOptions(
+      const ServiceExecutableRunOptions* run_options);
+
+  StatusOr<BufferAllocations> GenerateBufferAllocations(
+      absl::Span<ExecutionInput const> arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      se::DeviceMemoryAllocator* const memory_allocator,
+      se::StreamExecutor* executor);
+
+  StatusOr<se::DeviceMemoryBase> BufferForAllocation(
+      absl::Span<ExecutionInput const> arguments,
+      const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
+      const BufferAllocation& allocation,
+      se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
+      int64 arg_idx);
+
+  // The LLVM IR, in string format, of the unoptimized module generated for
+  // this GpuExecutable. We save a string instead of an llvm::Module* because
+  // leaving llvm::Module* in a singleton can cause the heap checker to emit
+  // false positives.
   //
   // This string should be modified only before ExecuteOnStream.
   string ir_module_string_;
 
-  // The reference to the compiled PTX for the computation.
-  const tensorflow::StringPiece ptx_;
+  // The compiled code for the computation.
+  const string text_;
+
+  // The GPU machine code for the computation, targeting GPUs at
+  // compute_capability_.
+  //
+  // May be empty, in which case we leave compilation up to the GPU driver.
+  const std::vector<uint8> binary_;
+
+  // The GPU version for compute compatibility check.
+  GpuVersion gpu_version_;
 
   // The thunks to be invoked by this GpuExecutable. They are generated by the
   // IrEmitter.
-  const std::unique_ptr<ThunkSchedule> thunk_schedule_;
+  const std::unique_ptr<const ThunkSchedule> thunk_schedule_;
 
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::unique_ptr<BufferAssignment> assignment_;
+  const std::vector<BufferAllocation> allocations_;
+
+  std::shared_ptr<BufferAssignmentProto> debug_buffer_assignment_;
+
+  // Cache of module handles and constant buffer allocation maps used by
+  // `ResolveConstantGlobals`.
+  tensorflow::mutex module_handle_mutex_;
+  std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
+  std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
+      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
+
+  std::vector<ConstantInfo> constants_;
+  const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };
+
+StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>
+GetOutputInfo(const HloModule& hlo_module, const BufferAssignment& assignment);
 
 }  // namespace gpu
 }  // namespace xla

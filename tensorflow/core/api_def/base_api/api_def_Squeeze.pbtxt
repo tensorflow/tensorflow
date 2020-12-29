@@ -1,0 +1,46 @@
+op {
+  graph_op_name: "Squeeze"
+  in_arg {
+    name: "input"
+    description: <<END
+The `input` to squeeze.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Contains the same data as `input`, but has one or more dimensions of
+size 1 removed.
+END
+  }
+  attr {
+    name: "squeeze_dims"
+    rename_to: "axis"
+    description: <<END
+If specified, only squeezes the dimensions listed. The dimension
+index starts at 0. It is an error to squeeze a dimension that is not 1. Must
+be in the range `[-rank(input), rank(input))`.
+END
+  }
+  summary: "Removes dimensions of size 1 from the shape of a tensor."
+  description: <<END
+Given a tensor `input`, this operation returns a tensor of the same type with
+all dimensions of size 1 removed. If you don't want to remove all size 1
+dimensions, you can remove specific size 1 dimensions by specifying
+`squeeze_dims`.
+
+For example:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t)) ==> [2, 3]
+```
+
+Or, to remove specific size 1 dimensions:
+
+```
+# 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
+shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+```
+END
+}

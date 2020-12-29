@@ -15,19 +15,18 @@ limitations under the License.
 
 package org.tensorflow;
 
+import java.util.Objects;
+
 /**
  * A symbolic handle to a tensor produced by an {@link Operation}.
  *
- * <p>An Output is a symbolic handle to a tensor. The value of the Tensor is computed by executing
- * the {@link Operation} in a {@link Session}.
+ * <p>An {@code Output<T>} is a symbolic handle to a {@code Tensor<T>}. The value of the tensor is
+ * computed by executing the {@link Operation} in a {@link Session}.
+ *
+ * <p>By implementing the {@link Operand} interface, instances of this class also act as operands to
+ * {@link org.tensorflow.op.Op Op} instances.
  */
-public final class Output {
-
-  /** Handle to the idx-th output of the Operation {@code op}. */
-  public Output(Operation op, int idx) {
-    operation = op;
-    index = idx;
-  }
+public final class Output<T> implements Operand<T> {
 
   /** Returns the Operation that will produce the tensor referred to by this Output. */
   public Operation op() {
@@ -39,14 +38,71 @@ public final class Output {
     return index;
   }
 
-  /**
-   * Returns the (possibly partially known) shape of the operation that will produce the tensor
-   * referred to by this Output.
-   */
+  /** Returns the (possibly partially known) shape of the tensor referred to by this Output. */
   public Shape shape() {
     return new Shape(operation.shape(index));
   }
 
-  private final Operation operation;
+  /** Returns the DataType of the tensor referred to by this Output. */
+  public DataType dataType() {
+    return operation.dtype(index);
+  }
+
+  /**
+   * Returns the tensor at this output.
+   *
+   * <p>This operation is only supported on the outputs of an operation executed eagerly. For graph
+   * environments, output tensors must be fetched by running a session, using {@link
+   * Session.Runner#fetch(Output)}.
+   *
+   * @return tensor
+   * @throws IllegalStateException if this output results from a graph
+   * @see EagerSession
+   */
+  @SuppressWarnings("unchecked")
+  public Tensor<T> tensor() {
+    return (Tensor<T>) operation.tensor(index);
+  }
+
+  @Override
+  public Output<T> asOutput() {
+    return this;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(operation, index);
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) {
+      return true;
+    }
+    if (o instanceof Output<?>) {
+      Output<?> that = (Output<?>) o;
+      return index == that.index && operation.equals(that.operation);
+    }
+    return false;
+  }
+
+  @Override
+  public String toString() {
+    return String.format(
+        "<%s '%s:%d' shape=%s dtype=%s>",
+        operation.type(), operation.name(), index, shape().toString(), dataType());
+  }
+
+  /** Handle to the idx-th output of the Operation {@code op}. */
+  Output(AbstractOperation op, int idx) {
+    operation = op;
+    index = idx;
+  }
+
+  long getUnsafeNativeHandle() {
+    return operation.getUnsafeNativeHandle(index);
+  }
+
+  private final AbstractOperation operation;
   private final int index;
 }

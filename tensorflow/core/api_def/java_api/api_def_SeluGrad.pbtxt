@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SeluGrad"
+  endpoint {
+    name: "nn.SeluGrad"
+  }
+}

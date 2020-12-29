@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_RANDOM_INPUTSTREAM_H_
-#define TENSORFLOW_LIB_IO_RANDOM_INPUTSTREAM_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_
+#define TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_
 
 #include "tensorflow/core/lib/io/inputstream_interface.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
@@ -32,7 +33,13 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   ~RandomAccessInputStream();
 
-  Status ReadNBytes(int64 bytes_to_read, string* result) override;
+  Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
+
+#if defined(TF_CORD_SUPPORT)
+  Status ReadNBytes(int64 bytes_to_read, absl::Cord* result) override;
+#endif
+
+  Status SkipNBytes(int64 bytes_to_skip) override;
 
   int64 Tell() const override;
 
@@ -52,4 +59,4 @@ class RandomAccessInputStream : public InputStreamInterface {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_RANDOM_INPUTSTREAM_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_

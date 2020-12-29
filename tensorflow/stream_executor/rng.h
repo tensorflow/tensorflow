@@ -22,8 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class Stream;
 template <typename ElemT>
@@ -41,8 +40,8 @@ namespace rng {
 // thread-hostility.
 class RngSupport {
  public:
-  static const int kMinSeedBytes = 16;
-  static const int kMaxSeedBytes = INT_MAX;
+  static constexpr int kMinSeedBytes = 16;
+  static constexpr int kMaxSeedBytes = INT_MAX;
 
   // Releases any random-number-generation resources associated with this
   // support object in the underlying platform implementation.
@@ -89,7 +88,6 @@ class RngSupport {
 };
 
 }  // namespace rng
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_RNG_H_

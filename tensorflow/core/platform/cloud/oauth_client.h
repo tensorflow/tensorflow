@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
 
 #include <memory>
-#include "include/json/json.h"
-#include "tensorflow/core/lib/core/status.h"
+
+#include "json/json.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -59,4 +60,4 @@ class OAuthClient {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_OAUTH_CLIENT_H_

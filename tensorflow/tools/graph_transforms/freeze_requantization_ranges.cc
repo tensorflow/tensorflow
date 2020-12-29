@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
@@ -39,8 +40,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
   for (const string& file_line : file_lines) {
     // We expect to find a line with components separated by semicolons, so to
     // start make sure that the basic structure is in place/
-    StringPiece line(file_line);
-    if (!line.contains(print_suffix + ";" + requant_prefix)) {
+    if (!absl::StrContains(file_line, print_suffix + ";" + requant_prefix)) {
       continue;
     }
     std::vector<string> line_parts = str_util::Split(file_line, ';');
@@ -52,8 +52,7 @@ Status ExtractMinMaxRecords(const string& log_file_name,
     bool min_max_found = false;
     int min_max_index;
     for (int i = 1; i < line_parts.size(); ++i) {
-      StringPiece line_part(line_parts[i]);
-      if (line_part.starts_with(requant_prefix)) {
+      if (absl::StartsWith(line_parts[i], requant_prefix)) {
         min_max_found = true;
         min_max_index = i;
       }
@@ -89,12 +88,11 @@ Status ExtractMinMaxRecords(const string& log_file_name,
       continue;
     }
     StringPiece name_string = line_parts[min_max_index - 1];
-    if (!name_string.ends_with(print_suffix)) {
+    if (!str_util::EndsWith(name_string, print_suffix)) {
       continue;
     }
-    string name =
-        name_string.substr(0, name_string.size() - print_suffix.size())
-            .ToString();
+    string name(
+        name_string.substr(0, name_string.size() - print_suffix.size()));
     records->push_back({name, min, max});
   }
   return Status::OK();
@@ -108,7 +106,7 @@ Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
   string min_max_log_file;
   TF_RETURN_IF_ERROR(
       context.GetOneStringParameter("min_max_log_file", "", &min_max_log_file));
-  if (min_max_log_file == "") {
+  if (min_max_log_file.empty()) {
     return errors::InvalidArgument(
         "You must pass a file name to min_max_log_file");
   }
@@ -198,7 +196,7 @@ Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
       inputs_to_rename[node.name() + ":1"] = max_node->name() + ":0";
     } else {
       NodeDef* new_node = frozen_graph_def.mutable_node()->Add();
-      new_node->CopyFrom(node);
+      *new_node = node;
     }
   }
   return RenameNodeInputs(frozen_graph_def, inputs_to_rename,

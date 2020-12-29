@@ -1,22 +1,43 @@
 syntax = "proto3";
 
 package tensorflow;
-option cc_enable_arenas = true;
-option java_outer_classname = "ConfigProtos";
-option java_multiple_files = true;
-option java_package = "org.tensorflow.framework";
 
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
+import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/rewriter_config.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "ConfigProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message GPUOptions {
-  // A value between 0 and 1 that indicates what fraction of the
-  // available GPU memory to pre-allocate for each process.  1 means
-  // to pre-allocate all of the GPU memory, 0.5 means the process
-  // allocates ~50% of the available GPU memory.
+  // Fraction of the available GPU memory to allocate for each process.
+  // 1 means to allocate all of the GPU memory, 0.5 means the process
+  // allocates up to ~50% of the available GPU memory.
+  //
+  // GPU memory is pre-allocated unless the allow_growth option is enabled.
+  //
+  // If greater than 1.0, uses CUDA unified memory to potentially oversubscribe
+  // the amount of memory available on the GPU device by using host memory as a
+  // swap space. Accessing memory not available on the device will be
+  // significantly slower as that would require memory transfer between the host
+  // and the device. Options to reduce the memory requirement should be
+  // considered before enabling this option as this may come with a negative
+  // performance impact. Oversubscription using the unified memory requires
+  // Pascal class or newer GPUs and it is currently only supported on the Linux
+  // operating system. See
+  // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#um-requirements
+  // for the detailed requirements.
   double per_process_gpu_memory_fraction = 1;
+
+  // If true, the allocator does not pre-allocate the entire specified
+  // GPU memory region, instead starting small and growing as needed.
+  bool allow_growth = 4;
 
   // The type of GPU allocation strategy to use.
   //
@@ -33,25 +54,27 @@ message GPUOptions {
   // a reasonable default (several MBs).
   int64 deferred_deletion_bytes = 3;
 
-  // If true, the allocator does not pre-allocate the entire specified
-  // GPU memory region, instead starting small and growing as needed.
-  bool allow_growth = 4;
-
   // A comma-separated list of GPU ids that determines the 'visible'
   // to 'virtual' mapping of GPU devices.  For example, if TensorFlow
   // can see 8 GPU devices in the process, and one wanted to map
-  // visible GPU devices 5 and 3 as "/gpu:0", and "/gpu:1", then one
-  // would specify this field as "5,3".  This field is similar in
+  // visible GPU devices 5 and 3 as "/device:GPU:0", and "/device:GPU:1",
+  // then one would specify this field as "5,3".  This field is similar in
   // spirit to the CUDA_VISIBLE_DEVICES environment variable, except
   // it applies to the visible GPU devices in the process.
   //
-  // NOTE: The GPU driver provides the process with the visible GPUs
-  // in an order which is not guaranteed to have any correlation to
-  // the *physical* GPU id in the machine.  This field is used for
-  // remapping "visible" to "virtual", which means this operates only
-  // after the process starts.  Users are required to use vendor
-  // specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
-  // physical to visible device mapping prior to invoking TensorFlow.
+  // NOTE:
+  // 1. The GPU driver provides the process with the visible GPUs
+  //    in an order which is not guaranteed to have any correlation to
+  //    the *physical* GPU id in the machine.  This field is used for
+  //    remapping "visible" to "virtual", which means this operates only
+  //    after the process starts.  Users are required to use vendor
+  //    specific mechanisms (e.g., CUDA_VISIBLE_DEVICES) to control the
+  //    physical to visible device mapping prior to invoking TensorFlow.
+  // 2. In the code, the ids in this list are also called "platform GPU id"s,
+  //    and the 'virtual' ids of GPU devices (i.e. the ids in the device
+  //    name "/device:GPU:<id>") are also called "TF GPU id"s. Please
+  //    refer to third_party/tensorflow/core/common_runtime/gpu/gpu_id.h
+  //    for more information.
   string visible_device_list = 5;
 
   // In the event polling loop sleep this many microseconds between
@@ -59,11 +82,128 @@ message GPUOptions {
   // set or set to 0, gets set to a non-zero default.
   int32 polling_active_delay_usecs = 6;
 
-  // In the event polling loop sleep this many millisconds between
-  // PollEvents calls, when the queue is empty.  If value is not
-  // set or set to 0, gets set to a non-zero default.
+  // This field is deprecated and ignored.
   int32 polling_inactive_delay_msecs = 7;
-};
+
+  // Force all tensors to be gpu_compatible. On a GPU-enabled TensorFlow,
+  // enabling this option forces all CPU tensors to be allocated with Cuda
+  // pinned memory. Normally, TensorFlow will infer which tensors should be
+  // allocated as the pinned memory. But in case where the inference is
+  // incomplete, this option can significantly speed up the cross-device memory
+  // copy performance as long as it fits the memory.
+  // Note that this option is not something that should be
+  // enabled by default for unknown or very large models, since all Cuda pinned
+  // memory is unpageable, having too much pinned memory might negatively impact
+  // the overall host system performance.
+  bool force_gpu_compatible = 8;
+
+  message Experimental {
+    // Configuration for breaking down a visible GPU into multiple "virtual"
+    // devices.
+    message VirtualDevices {
+      // Per "virtual" device memory limit, in MB. The number of elements in
+      // the list is the number of virtual devices to create on the
+      // corresponding visible GPU (see "virtual_devices" below).
+      // If empty, it will create single virtual device taking all available
+      // memory from the device.
+      //
+      // For the concept of "visible" and "virtual" GPU, see the comments for
+      // "visible_device_list" above for more information.
+      repeated float memory_limit_mb = 1;
+
+      // Priority values to use with the virtual devices. Use the cuda function
+      // cudaDeviceGetStreamPriorityRange to query for valid range of values for
+      // priority.
+      //
+      // On a P4000 GPU with cuda 10.1, the priority range reported was 0 for
+      // least priority and -1 for greatest priority.
+      //
+      // If this field is not specified, then the virtual devices will be
+      // created with the default. If this field has values set, then the size
+      // of this must match with the above memory_limit_mb.
+      repeated int32 priority = 2;
+    }
+
+    // The multi virtual device settings. If empty (not set), it will create
+    // single virtual device on each visible GPU, according to the settings
+    // in "visible_device_list" above. Otherwise, the number of elements in the
+    // list must be the same as the number of visible GPUs (after
+    // "visible_device_list" filtering if it is set), and the string represented
+    // device names (e.g. /device:GPU:<id>) will refer to the virtual
+    // devices and have the <id> field assigned sequentially starting from 0,
+    // according to the order they appear in this list and the "memory_limit"
+    // list inside each element. For example,
+    //   visible_device_list = "1,0"
+    //   virtual_devices { memory_limit: 1GB memory_limit: 2GB }
+    //   virtual_devices {}
+    // will create three virtual devices as:
+    //   /device:GPU:0 -> visible GPU 1 with 1GB memory
+    //   /device:GPU:1 -> visible GPU 1 with 2GB memory
+    //   /device:GPU:2 -> visible GPU 0 with all available memory
+    //
+    // NOTE:
+    // 1. It's invalid to set both this and "per_process_gpu_memory_fraction"
+    //    at the same time.
+    // 2. Currently this setting is per-process, not per-session. Using
+    //    different settings in different sessions within same process will
+    //    result in undefined behavior.
+    repeated VirtualDevices virtual_devices = 1;
+
+    // If true, uses CUDA unified memory for memory allocations. If
+    // per_process_gpu_memory_fraction option is greater than 1.0, then unified
+    // memory is used regardless of the value for this field. See comments for
+    // per_process_gpu_memory_fraction field for more details and requirements
+    // of the unified memory. This option is useful to oversubscribe memory if
+    // multiple processes are sharing a single GPU while individually using less
+    // than 1.0 per process memory fraction.
+    bool use_unified_memory = 2;
+
+    // If > 1, the number of device-to-device copy streams to create
+    // for each GPUDevice.  Default value is 0, which is automatically
+    // converted to 1.
+    int32 num_dev_to_dev_copy_streams = 3;
+
+    // If non-empty, defines a good GPU ring order on a single worker based on
+    // device interconnect.  This assumes that all workers have the same GPU
+    // topology.  Specify as a comma-separated string, e.g. "3,2,1,0,7,6,5,4".
+    // This ring order is used by the RingReducer implementation of
+    // CollectiveReduce, and serves as an override to automatic ring order
+    // generation in OrderTaskDeviceMap() during CollectiveParam resolution.
+    string collective_ring_order = 4;
+
+    // If true then extra work is done by GPUDevice and GPUBFCAllocator to
+    // keep track of when GPU memory is freed and when kernels actually
+    // complete so that we can know when a nominally free memory chunk
+    // is really not subject to pending use.
+    bool timestamped_allocator = 5;
+
+    // reserved id: 6
+
+    // Parameters for GPUKernelTracker.  By default no kernel tracking is done.
+    // Note that timestamped_allocator is only effective if some tracking is
+    // specified.
+    //
+    // If kernel_tracker_max_interval = n > 0, then a tracking event
+    // is inserted after every n kernels without an event.
+    int32 kernel_tracker_max_interval = 7;
+    // If kernel_tracker_max_bytes = n > 0, then a tracking event is
+    // inserted after every series of kernels allocating a sum of
+    // memory >= n.  If one kernel allocates b * n bytes, then one
+    // event will be inserted after it, but it will count as b against
+    // the pending limit.
+    int32 kernel_tracker_max_bytes = 8;
+    // If kernel_tracker_max_pending > 0 then no more than this many
+    // tracking events can be outstanding at a time.  An attempt to
+    // launch an additional kernel will stall until an event
+    // completes.
+    int32 kernel_tracker_max_pending = 9;
+  }
+
+  // Everything inside experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/guide/version_compat.
+  Experimental experimental = 9;
+}
 
 // Options passed to the graph optimizer
 message OptimizerOptions {
@@ -72,6 +212,13 @@ message OptimizerOptions {
 
   // If true, perform constant folding optimization on the graph.
   bool do_constant_folding = 2;
+
+  // Constant folding optimization replaces tensors whose values can be
+  // predetermined, with constant nodes. To avoid inserting too large constants,
+  // the size of each constant created can be limited. If this value is zero, a
+  // default limit of 10 MiB will be applied. If constant folding optimization
+  // is disabled, this value is ignored.
+  int64 max_folded_constant_in_bytes = 6;
 
   // If true, perform function inlining on the graph.
   bool do_function_inlining = 4;
@@ -88,6 +235,8 @@ message OptimizerOptions {
     L0 = -1;
   }
 
+  // Overall optimization level. The actual optimizations applied will be the
+  // logical OR of the flags that this level implies and any flags already set.
   Level opt_level = 3;
 
   // Control the use of the compiler/jit.  Experimental.
@@ -144,7 +293,12 @@ message GraphOptions {
   // If > 0, record a timeline every this many steps.
   // EXPERIMENTAL: This currently has no effect in MasterSession.
   int32 timeline_step = 8;
-};
+
+  // Options that control the type and amount of graph rewriting.
+  // Not currently configurable via the public Python API (i.e. there is no API
+  // stability guarantee if you import RewriterConfig explicitly).
+  RewriterConfig rewrite_options = 10;
+}
 
 message ThreadPoolOptionProto {
   // The number of threads in the pool.
@@ -152,7 +306,24 @@ message ThreadPoolOptionProto {
   // 0 means the system picks a value based on where this option proto is used
   // (see the declaration of the specific field for more info).
   int32 num_threads = 1;
-};
+
+  // The global name of the threadpool.
+  //
+  // If empty, then the threadpool is made and used according to the scope it's
+  // in - e.g., for a session threadpool, it is used by that session only.
+  //
+  // If non-empty, then:
+  // - a global threadpool associated with this name is looked
+  //   up or created. This allows, for example, sharing one threadpool across
+  //   many sessions (e.g., like the default behavior, if
+  //   inter_op_parallelism_threads is not configured), but still partitioning
+  //   into a large and small pool.
+  // - if the threadpool for this global_name already exists, then it is an
+  //   error if the existing pool was created using a different num_threads
+  //   value as is specified on this call.
+  // - threadpools created this way are never garbage collected.
+  string global_name = 2;
+}
 
 message RPCOptions {
   // If true, always use RPC to contact the session target.
@@ -161,7 +332,40 @@ message RPCOptions {
   // transport for client-master communication that avoids the RPC
   // stack. This option is primarily for used testing the RPC stack.
   bool use_rpc_for_inprocess_master = 1;
-};
+
+  // The compression algorithm to be used. One of "deflate", "gzip".
+  string compression_algorithm = 2;
+
+  // If compression_algorithm is set, the compression level to be used.
+  // From 0 (no compression), up to 3.
+  int32 compression_level = 3;
+
+  // Setting cache_rpc_response to true will enable sender side caching of
+  // response for RecvTensorAsync and RecvBufAsync to allow receiver to retry
+  // requests . This is only necessary when the network fabric is experiencing a
+  // significant error rate.  Without it we'll fail a step on an network error,
+  // while with it we'll be able to complete long steps (like complex
+  // initializations) in the face of some network errors during RecvTensor.
+  bool cache_rpc_response = 4;
+
+  // Disables TCP connection sharing when opening a new RPC channel.
+  bool disable_session_connection_sharing = 5;
+}
+
+// Metadata about the session.
+//
+// This can be used by the runtime and the Ops for debugging, monitoring, etc.
+//
+// The (name, version) tuple is expected to be a unique identifier for
+// sessions within the same process.
+//
+// NOTE: This is currently used and propagated only by the direct session.
+message SessionMetadata {
+  string name = 1;
+
+  // The version is optional. If set, needs to be >= 0.
+  int64 version = 2;
+}
 
 // Session configuration parameters.
 // The system picks appropriate values for fields that are not set.
@@ -175,12 +379,24 @@ message ConfigProto {
   // The execution of an individual op (for some op types) can be
   // parallelized on a pool of intra_op_parallelism_threads.
   // 0 means the system picks an appropriate number.
+  //
+  // If you create an ordinary session, e.g., from Python or C++,
+  // then there is exactly one intra op thread pool per process.
+  // The first session created determines the number of threads in this pool.
+  // All subsequent sessions reuse/share this one global pool.
+  //
+  // There are notable exceptions to the default behavior describe above:
+  // 1. There is an environment variable  for overriding this thread pool,
+  //    named TF_OVERRIDE_GLOBAL_THREADPOOL.
+  // 2. When connecting to a server, such as a remote `tf.train.Server`
+  //    instance, then this option will be ignored altogether.
   int32 intra_op_parallelism_threads = 2;
 
   // Nodes that perform blocking operations are enqueued on a pool of
   // inter_op_parallelism_threads available in each process.
   //
   // 0 means the system picks an appropriate number.
+  // Negative means all operations are performed in caller's thread.
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
@@ -199,13 +415,24 @@ message ConfigProto {
   bool use_per_session_threads = 9;
 
   // This option is experimental - it may be replaced with a different mechanism
-  // in the future. The intended use is for when some session invocations need
-  // to run in a background pool limited to a small number of threads.
+  // in the future.
   //
   // Configures session thread pools. If this is configured, then RunOptions for
   // a Run call can select the thread pool to use.
   //
-  // If a pool's num_threads is 0, then inter_op_parallelism_threads is used.
+  // The intended use is for when some session invocations need to run in a
+  // background pool limited to a small number of threads:
+  // - For example, a session may be configured to have one large pool (for
+  // regular compute) and one small pool (for periodic, low priority work);
+  // using the small pool is currently the mechanism for limiting the inter-op
+  // parallelism of the low priority work.  Note that it does not limit the
+  // parallelism of work spawned by a single op kernel implementation.
+  // - Using this setting is normally not needed in training, but may help some
+  // serving use cases.
+  // - It is also generally recommended to set the global_name field of this
+  // proto, to avoid creating multiple large pools. It is typically better to
+  // run the non-low-priority work, even across sessions, in a single large
+  // pool.
   repeated ThreadPoolOptionProto session_inter_op_thread_pool = 12;
 
   // Assignment of Nodes to Devices is recomputed every placement_period
@@ -243,7 +470,172 @@ message ConfigProto {
 
   // Options that apply when this session uses the distributed runtime.
   RPCOptions rpc_options = 13;
-};
+
+  // Optional list of all workers to use in this session.
+  ClusterDef cluster_def = 14;
+
+  // If true, any resources such as Variables used in the session will not be
+  // shared with other sessions. However, when clusterspec propagation is
+  // enabled, this field is ignored and sessions are always isolated.
+  bool isolate_session_state = 15;
+
+  // When true, WorkerSessions are created with device attributes from the
+  // full cluster.
+  // This is helpful when a worker wants to partition a graph
+  // (for example during a PartitionedCallOp).
+  bool share_cluster_devices_in_session = 17;
+
+  // Everything inside Experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/guide/version_compat.
+  message Experimental {
+    // Task name for group resolution.
+    string collective_group_leader = 1;
+
+    // We removed the flag client_handles_error_formatting. Marking the tag
+    // number as reserved.
+    // TODO(shikharagarwal): Should we just remove this tag so that it can be
+    // used in future for other purpose?
+    reserved 2;
+
+    // Which executor to use, the default executor will be used
+    // if it is an empty string or "DEFAULT"
+    string executor_type = 3;
+
+    // Guidance to formatting of large RecvBuf fields for transfer.
+    // Any positive value sets the max chunk size.  0 defaults to 4096.
+    // Any negative value indicates no max, i.e. one chunk only.
+    int32 recv_buf_max_chunk = 4;
+
+    // If true, and supported by the platform, the runtime will attempt to
+    // use NUMA affinity where applicable.  One consequence will be the
+    // existence of as many CPU devices as there are available NUMA nodes.
+    bool use_numa_affinity = 5;
+
+    // If true, make collective op execution order sequential and deterministic
+    // for potentially concurrent collective instances.
+    bool collective_deterministic_sequential_execution = 6;
+
+    // If true, use NCCL for CollectiveOps.  This feature is highly
+    // experimental.
+    bool collective_nccl = 7;
+
+    // In the following, session state means the value of a variable, elements
+    // in a hash table, or any other resource, accessible by worker sessions
+    // held by a TF server.
+    //
+    // When ClusterSpec propagation is enabled, the value of
+    // isolate_session_state is ignored when deciding whether to share session
+    // states in a TF server (for backwards compatibility reasons).
+    // - If share_session_state_in_clusterspec_propagation is true, the session
+    // states are shared.
+    // - If share_session_state_in_clusterspec_propagation is false, session
+    // states are isolated.
+    //
+    // When clusterspec propagation is not used, the value of
+    // share_session_state_in_clusterspec_propagation is ignored when deciding
+    // whether to share session states in a TF server.
+    // - If isolate_session_state is true, session states are isolated.
+    // - If isolate_session_state is false, session states are shared.
+    //
+    // TODO(b/129330037): Add a single API that consistently treats
+    // isolate_session_state and ClusterSpec propagation.
+    bool share_session_state_in_clusterspec_propagation = 8;
+
+    // If using a direct session, disable spinning while waiting for work in
+    // the thread pool. This may result in higher latency for completing ops,
+    // but in the case where there is a lot of spinning may result in lower
+    // CPU usage.
+    bool disable_thread_spinning = 9;
+
+    // This was promoted to a non-experimental API. Please use
+    // ConfigProto.share_cluster_devices_in_session instead.
+    bool share_cluster_devices_in_session = 10;
+
+    // Metadata about the session.
+    //
+    // If set, this can be used by the runtime and the Ops for debugging,
+    // monitoring, etc.
+    //
+    // NOTE: This is currently used and propagated only by the direct session.
+    SessionMetadata session_metadata = 11;
+
+    // If true, the session may treat the graph as being static for optimization
+    // purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef must be passed in a single call to Session::Create(), and
+    // Session::Extend() may not be supported.
+    bool optimize_for_static_graph = 12;
+
+    // This field will eventually be deprecated and replaced by
+    // mlir_bridge_rollout (b/166038521).
+    //
+    // Whether to enable the MLIR-based TF->XLA bridge.
+    //
+    // This is a replacement to the existing bridge, and not ready for
+    // production usage yet.
+    // If this option is set to true when a session is created, MLIR is used to
+    // perform the set of graph transformations to put the graph in a form that
+    // can be executed with delegation of some computations to an accelerator.
+    // This builds on the model of XLA where a subset of the graph is
+    // encapsulated and attached to a "compile" operation, whose result is fed
+    // to an "execute" operation. The kernel for these operations is responsible
+    // to lower the encapsulated graph to a particular device.
+    bool enable_mlir_bridge = 13;
+
+    // An enum that describes the state of the MLIR bridge rollout.
+    enum MlirBridgeRollout {
+      // If this field is left unspecified, the MLIR bridge may be selectively
+      // enabled on a per graph basis.
+      MLIR_BRIDGE_ROLLOUT_UNSPECIFIED = 0;
+      // Enabling the MLIR bridge enables it for all graphs in this session.
+      MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
+      // Disabling the MLIR bridge disables it for all graphs in this session.
+      MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
+      // Enable the MLIR bridge on a per graph basis based on an analysis of
+      // the features used in the graph. If the features used by the graph are
+      // supported by the MLIR bridge, the MLIR bridge will be used to run the
+      // graph.
+      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
+    }
+    // This field is underdevelopment, for now use enable_mlir_bridge
+    // (b/166038521).
+    //
+    // Whether to enable the MLIR-based TF->XLA bridge.
+    MlirBridgeRollout mlir_bridge_rollout = 17;
+
+    // Whether to enable the MLIR-based Graph optimizations.
+    //
+    // This will become a part of standard Tensorflow graph optimization
+    // pipeline, currently this is only used for gradual migration and testing
+    // new passes that are replacing existing optimizations in Grappler.
+    bool enable_mlir_graph_optimization = 16;
+
+    // If true, the session will not store an additional copy of the graph for
+    // each subgraph.
+    //
+    // If this option is set to true when a session is created, the
+    // `RunOptions.output_partition_graphs` options must not be set.
+    bool disable_output_partition_graphs = 14;
+
+    // Minimum number of batches run through the XLA graph before XLA fusion
+    // autotuner is enabled. Default value of zero disables the autotuner.
+    //
+    // The XLA fusion autotuner can improve performance by executing a heuristic
+    // search on the compiler parameters.
+    int64 xla_fusion_autotuner_thresh = 15;
+
+    // Whether runtime execution uses TFRT.
+    bool use_tfrt = 18;
+
+    // Next: 19
+  }
+
+  Experimental experimental = 16;
+
+  // Next: 18
+}
 
 // Options for a single Run() call.
 message RunOptions {
@@ -261,6 +653,11 @@ message RunOptions {
   int64 timeout_in_ms = 2;
 
   // The thread pool to use, if session_inter_op_thread_pool is configured.
+  // To use the caller thread set this to -1 - this uses the caller thread
+  // to execute Session::Run() and thus avoids a context switch. Using the
+  // caller thread to execute Session::Run() should be done ONLY for simple
+  // graphs, where the overhead of an additional context switch is
+  // comparable with the overhead of Session::Run().
   int32 inter_op_thread_pool = 3;
 
   // Whether the partition graph(s) executed by the executor(s) should be
@@ -269,6 +666,38 @@ message RunOptions {
 
   // EXPERIMENTAL.  Options used to initialize DebuggerState, if enabled.
   DebugOptions debug_options = 6;
+
+  // When enabled, causes tensor allocation information to be included in
+  // the error message when the Run() call fails because the allocator ran
+  // out of memory (OOM).
+  //
+  // Enabling this option can slow down the Run() call.
+  bool report_tensor_allocations_upon_oom = 7;
+
+  // Everything inside Experimental is subject to change and is not subject
+  // to API stability guarantees in
+  // https://www.tensorflow.org/guide/version_compat.
+  message Experimental {
+    // If non-zero, declares that this graph is going to use collective
+    // ops and must synchronize step_ids with any other graph with this
+    // same group_key value (in a distributed computation where tasks
+    // run disjoint graphs).
+    int64 collective_graph_key = 1;
+    // If true, then operations (using the inter-op pool) across all
+    // session::run() calls will be centrally scheduled, optimizing for (median
+    // and tail) latency.
+    // Consider using this option for CPU-bound workloads like inference.
+    bool use_run_handler_pool = 2;
+    // Options for run handler thread pool.
+    message RunHandlerPoolOptions {
+      // Priority of the request. The run handler thread pool will schedule ops
+      // based on the priority number. The larger number means higher priority.
+      int64 priority = 1;
+    }
+    RunHandlerPoolOptions run_handler_pool_options = 3;
+  }
+
+  Experimental experimental = 8;
 
   reserved 4;
 }
@@ -285,4 +714,124 @@ message RunMetadata {
 
   // Graphs of the partitions executed by executors.
   repeated GraphDef partition_graphs = 3;
+
+  message FunctionGraphs {
+    // TODO(nareshmodi): Include some sort of function/cache-key identifier?
+    repeated GraphDef partition_graphs = 1;
+
+    GraphDef pre_optimization_graph = 2;
+    GraphDef post_optimization_graph = 3;
+  }
+  // This is only populated for graphs that are run as functions in TensorFlow
+  // V2. There will be an entry below for each function that is traced.
+  // The main use cases of the post_optimization_graph and the partition_graphs
+  // is to give the caller insight into the graphs that were actually run by the
+  // runtime. Additional information (such as those in step_stats) will match
+  // these graphs.
+  // We also include the pre_optimization_graph since it is usually easier to
+  // read, and is helpful in situations where the caller wants to get a high
+  // level idea of what the built graph looks like (since the various graph
+  // optimization passes might change the structure of the graph significantly).
+  repeated FunctionGraphs function_graphs = 4;
+}
+
+// Defines a connection between two tensors in a `GraphDef`.
+message TensorConnection {
+  // A tensor name. The value of this tensor will be substituted for
+  // the tensor named in `to_tensor`.
+  string from_tensor = 1;
+
+  // A tensor name. The value of this tensor will be bound to the
+  // value of the tensor named in `from_tensor`.
+  string to_tensor = 2;
+}
+
+// Defines a subgraph in another `GraphDef` as a set of feed points and nodes
+// to be fetched or executed.
+//
+// Compare with the arguments to `Session::Run()`.
+message CallableOptions {
+  // Tensors to be fed in the callable. Each feed is the name of a tensor.
+  repeated string feed = 1;
+
+  // Fetches. A list of tensor names. The caller of the callable expects a
+  // tensor to be returned for each fetch[i] (see RunStepResponse.tensor). The
+  // order of specified fetches does not change the execution order.
+  repeated string fetch = 2;
+
+  // Target Nodes. A list of node names. The named nodes will be run by the
+  // callable but their outputs will not be returned.
+  repeated string target = 3;
+
+  // Options that will be applied to each run.
+  RunOptions run_options = 4;
+
+  // Tensors to be connected in the callable. Each TensorConnection denotes
+  // a pair of tensors in the graph, between which an edge will be created
+  // in the callable.
+  repeated TensorConnection tensor_connection = 5;
+
+  // The Tensor objects fed in the callable and fetched from the callable
+  // are expected to be backed by host (CPU) memory by default.
+  //
+  // The options below allow changing that - feeding tensors backed by
+  // device memory, or returning tensors that are backed by device memory.
+  //
+  // The maps below map the name of a feed/fetch tensor (which appears in
+  // 'feed' or 'fetch' fields above), to the fully qualified name of the device
+  // owning the memory backing the contents of the tensor.
+  //
+  // For example, creating a callable with the following options:
+  //
+  // CallableOptions {
+  //   feed: "a:0"
+  //   feed: "b:0"
+  //
+  //   fetch: "x:0"
+  //   fetch: "y:0"
+  //
+  //   feed_devices: {
+  //     "a:0": "/job:localhost/replica:0/task:0/device:GPU:0"
+  //   }
+  //
+  //   fetch_devices: {
+  //     "y:0": "/job:localhost/replica:0/task:0/device:GPU:0"
+  //  }
+  // }
+  //
+  // means that the Callable expects:
+  // - The first argument ("a:0") is a Tensor backed by GPU memory.
+  // - The second argument ("b:0") is a Tensor backed by host memory.
+  // and of its return values:
+  // - The first output ("x:0") will be backed by host memory.
+  // - The second output ("y:0") will be backed by GPU memory.
+  //
+  // FEEDS:
+  // It is the responsibility of the caller to ensure that the memory of the fed
+  // tensors will be correctly initialized and synchronized before it is
+  // accessed by operations executed during the call to Session::RunCallable().
+  //
+  // This is typically ensured by using the TensorFlow memory allocators
+  // (Device::GetAllocator()) to create the Tensor to be fed.
+  //
+  // Alternatively, for CUDA-enabled GPU devices, this typically means that the
+  // operation that produced the contents of the tensor has completed, i.e., the
+  // CUDA stream has been synchronized (e.g., via cuCtxSynchronize() or
+  // cuStreamSynchronize()).
+  map<string, string> feed_devices = 6;
+  map<string, string> fetch_devices = 7;
+
+  // By default, RunCallable() will synchronize the GPU stream before returning
+  // fetched tensors on a GPU device, to ensure that the values in those tensors
+  // have been produced. This simplifies interacting with the tensors, but
+  // potentially incurs a performance hit.
+  //
+  // If this options is set to true, the caller is responsible for ensuring
+  // that the values in the fetched tensors have been produced before they are
+  // used. The caller can do this by invoking `Device::Sync()` on the underlying
+  // device(s), or by feeding the tensors back to the same Session using
+  // `feed_devices` with the same corresponding device name.
+  bool fetch_skip_sync = 8;
+
+  // Next: 9
 }

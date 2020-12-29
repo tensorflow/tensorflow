@@ -14,10 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/ops_testutil.h"
+
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -28,9 +31,22 @@ TEST_F(OpsTestBase, ScopedStepContainer) {
                    .Input(FakeInput(DT_STRING))
                    .Finalize(node_def()));
   TF_EXPECT_OK(InitOp());
-  AddInputFromArray<string>(TensorShape({}), {""});
+  AddInputFromArray<tstring>(TensorShape({}), {""});
   TF_EXPECT_OK(RunOpKernel());
   EXPECT_TRUE(step_container_ != nullptr);
+}
+
+// Verify that a Resource input can be added to the test kernel.
+TEST_F(OpsTestBase, ResourceVariableInput) {
+  TF_EXPECT_OK(NodeDefBuilder("identity", "Identity")
+                   .Input(FakeInput(DT_RESOURCE))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  Var* var = new Var(DT_STRING);
+  AddResourceInput("" /* container */, "Test" /* name */, var);
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* output = GetOutput(0);
+  EXPECT_EQ(output->dtype(), DT_RESOURCE);
 }
 
 }  // namespace tensorflow

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_FUNCTION_TESTLIB_H_
-#define TENSORFLOW_FRAMEWORK_FUNCTION_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_TESTLIB_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_TESTLIB_H_
 
 #include <string>
 
@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,9 +30,33 @@ namespace tensorflow {
 namespace test {
 namespace function {
 
+// A helper class to make AttrSlice from initializer lists
+class Attrs {
+ public:
+  Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
+        std::pair<string, FunctionDefHelper::AttrValueWrapper>>& attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
+  Attrs(
+      const std::vector<std::pair<string, FunctionDefHelper::AttrValueWrapper>>&
+          attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
+  operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
+
+ private:
+  AttrValueMap map_;
+};
+
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    const string& name, const string& op, gtl::ArraySlice<string> inputs,
+    StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");
@@ -43,26 +68,107 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 // For testing convenience, we provide a few simple functions that can
 // be easily executed and tested.
 
-// x:T -> x * 2.
+// x: T -> x * 2.
 FunctionDef XTimesTwo();
 
-// x:T -> (x * 2) * 2.
+// x: T -> cpu(x * 2) + cpu(x * 3).
+FunctionDef TwoDeviceTimesFive();
+
+// x: T -> cpu(x * 2), gpu(x * 3).
+FunctionDef TwoDeviceMult();
+
+// cpu(x): T, gpu(y): T -> cpu(x * 2), gpu(y * 3).
+FunctionDef TwoDeviceInputOutput();
+
+// Function taking a list of Tensors as input.
+FunctionDef FuncWithListInput();
+
+// Function returning a list of Tensors as output.
+FunctionDef FuncWithListOutput();
+
+// x: T -> x + x.
+FunctionDef XAddX();
+
+// x: T, y: T -> x + y.
+FunctionDef XAddY();
+
+// x: T -> x * 2, where x is int32.
+FunctionDef XTimesTwoInt32();
+
+// x: T -> (x * 2) * 2.
 FunctionDef XTimesFour();
 
-// x:T -> ((x * 2) * 2) * 2.
+// x: T -> ((x * 2) * 2) * 2.
 FunctionDef XTimes16();
 
-// w:T, x:T, b:T -> MatMul(w, x) + b
+// w: T, x: T, b: T -> MatMul(w, x) + b
 FunctionDef WXPlusB();
 
-// x:T -> x:T, T is a type which we automatically converts to a bool.
+// x: T -> x: T, T is a type which we automatically converts to a bool.
 FunctionDef NonZero();
 
-// x:T, y:T -> y:T, x:T
+// x: T -> bool.
+FunctionDef IsZero();
+
+// x: T -> int64
+FunctionDef RandomUniform();
+
+// x: T, y:T  -> y: T, x: T
 FunctionDef Swap();
+
+// x: T, y: T -> y: T, x: T, the body has no nodes.
+FunctionDef EmptyBodySwap();
+
+// x: float, y: resource -> y: resource, 2*x: float.
+FunctionDef ResourceOutput();
+
+// x: resource -> x: resource
+FunctionDef ResourceIdentity();
+
+// x: resource -> y: float.
+FunctionDef ReadResourceVariable();
+
+// Contains malformed control flow which can't be run by the executor.
+FunctionDef InvalidControlFlow();
+
+// x: T -> x <= N.
+FunctionDef LessThanOrEqualToN(int64 N);
+
+// x: T, y: T -> x + 1, x * y
+FunctionDef XPlusOneXTimesY();
+
+// x: T, y: T -> x <= N
+FunctionDef XYXLessThanOrEqualToN(int64 N);
+
+// x: T -> bool
+FunctionDef RandomUniformLess();
+
+// start: int64, stop: int64, step: int64 -> y: RangeDatasetOp::Dataset
+FunctionDef MakeRangeDataset();
+
+// input_dataset: variant, batch_size: int64, drop_remainder: bool
+// -> y: BatchDatasetV2::Dataset
+FunctionDef MakeBatchDataset();
+
+// input_dataset: variant, other_arguments: Targuments, f: func,
+// Targuments: list(type), output_types: list(type), output_shapes: list(shape),
+// use_inter_op_parallelism: bool, preserve_cardinality: bool
+// -> y: MapDatasetOp::Dataset
+FunctionDef MakeMapDataset(bool has_other_args);
+
+// input_dataset: variant, count: int64 -> y: TakeDataset::Dataset
+FunctionDef MakeTakeDataset();
+
+// x: T -> y: TensorSliceDatasetOp::Dataset
+FunctionDef MakeTensorSliceDataset();
+
+// x: T -> y: T, idx: out_idx
+FunctionDef Unique();
+
+void FunctionTestSchedClosure(std::function<void()> fn);
 
 }  // end namespace function
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_FUNCTION_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FUNCTION_TESTLIB_H_

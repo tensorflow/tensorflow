@@ -18,27 +18,83 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
+using XlaOpGenerator = std::function<XlaOp(XlaOp, XlaOp)>;
+
+// Creates a scalar computation based on a lambda and returns it.
+XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
+                                       XlaBuilder* builder,
+                                       XlaOpGenerator generator);
+
 // Creates a scalar add computation and returns it.
-Computation CreateScalarAddComputation(PrimitiveType type,
-                                       ComputationBuilder* builder);
+XlaComputation CreateScalarAddComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
+
+// Creates a scalar multiply computation and returns it.
+XlaComputation CreateScalarMultiplyComputation(PrimitiveType type,
+                                               XlaBuilder* builder);
 
 // Creates a scalar ge computation and returns it.
-Computation CreateScalarGeComputation(PrimitiveType type,
-                                      ComputationBuilder* builder);
+XlaComputation CreateScalarGeComputation(PrimitiveType type,
+                                         XlaBuilder* builder);
 
 // Creates a scalar max computation and returns it.
-Computation CreateScalarMaxComputation(PrimitiveType type,
-                                       ComputationBuilder* builder);
+XlaComputation CreateScalarMaxComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
 
 // Creates a scalar min computation and returns it.
-Computation CreateScalarMinComputation(PrimitiveType type,
-                                       ComputationBuilder* builder);
+XlaComputation CreateScalarMinComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
+
+// Creates a scalar logical AND computation and returns it.
+XlaComputation CreateScalarAndComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
+
+// Creates a scalar logical OR computation and returns it.
+XlaComputation CreateScalarOrComputation(PrimitiveType type,
+                                         XlaBuilder* builder);
+
+// This is to be used for general purpose "identity" like reductions with zero
+// for any type (ie. boolean operations for PRED and Add for real numbers).
+// As an example, this operation can be used for a situation of:
+// x_type = type(x)
+// op = CreateScalarIdentityWithZeroComputation(x_type)
+// ASSERT_TRUE(op(x, 0) == x)
+//
+// This functionality is used for operations that are similar to a slice,
+// gather, or broadcast, but are created through a reduction.
+XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
+                                                       XlaBuilder* builder);
+
+// Returns whether any predicate in "predicates" is set.
+//
+// Note: if predicates is zero-sized, Any() vacuously returns false.
+XlaOp Any(XlaOp predicates);
+
+// Returns the argmax of `input` along `axis`. `output_type` is the type to
+// use for the output. The `tie_low` argument drives the index selection is case
+// of same values. If `true` (default behavior) the lowest index will be
+// returned, otherwise the higher. The tie_low argument only applies if `stable`
+// is true or using the ArgMaxTwoPass.
+XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis,
+             bool stable = false, bool tie_low = true);
+XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
+                    bool tie_low = true);
+
+// Returns the argmin of `input` along `axis`. `output_type` is the type to
+// use for the output. The `tie_low` argument drives the index selection is case
+// of same values. If `true` (default behavior) the lowest index will be
+// returned, otherwise the higher. The tie_low argument only applies if `stable`
+// is true or using the ArgMinTwoPass.
+XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis,
+             bool stable = false, bool tie_low = true);
+XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis,
+                    bool tie_low = true);
 
 }  // namespace xla
 

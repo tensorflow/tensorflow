@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 
@@ -40,15 +40,15 @@ Status RetCheckSuccess() {
 TEST(StatusMacros, RetCheckFailing) {
   Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tensorflow::error::INTERNAL);
-  EXPECT_MATCH(status.error_message(),
-               xla::testing::ContainsRegex("RET_CHECK failure.*2 > 3"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("RET_CHECK failure.*2 > 3"));
 }
 
 TEST(StatusMacros, RetCheckFailingWithExtraMessage) {
   Status status = RetCheckFailWithExtraMessage();
   EXPECT_EQ(status.code(), tensorflow::error::INTERNAL);
-  EXPECT_MATCH(status.error_message(),
-               xla::testing::ContainsRegex("RET_CHECK.*2 > 3 extra message"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("RET_CHECK.*2 > 3 extra message"));
 }
 
 TEST(StatusMacros, RetCheckSucceeding) {
@@ -63,7 +63,7 @@ StatusOr<int> CreateIntUnsuccessfully() {
 }
 
 TEST(StatusMacros, AssignOrAssertOnOK) {
-  TF_ASSIGN_OR_ASSERT_OK(int result, CreateIntSuccessfully());
+  TF_ASSERT_OK_AND_ASSIGN(int result, CreateIntSuccessfully());
   EXPECT_EQ(42, result);
 }
 
@@ -73,7 +73,7 @@ Status ReturnStatusError() { return (tensorflow::errors::Internal("foobar")); }
 
 using StatusReturningFunction = std::function<Status()>;
 
-StatusOr<int> CallStatusReturningFunction(StatusReturningFunction func) {
+StatusOr<int> CallStatusReturningFunction(const StatusReturningFunction& func) {
   TF_RETURN_IF_ERROR(func());
   return 42;
 }
@@ -90,7 +90,7 @@ TEST(StatusMacros, ReturnIfErrorOnError) {
   EXPECT_EQ(rc.status().code(), tensorflow::error::INTERNAL);
 }
 
-TEST(StatusMacros, AssignOrReturnSuccessufully) {
+TEST(StatusMacros, AssignOrReturnSuccessfully) {
   Status status = []() {
     TF_ASSIGN_OR_RETURN(int value, CreateIntSuccessfully());
     EXPECT_EQ(value, 42);

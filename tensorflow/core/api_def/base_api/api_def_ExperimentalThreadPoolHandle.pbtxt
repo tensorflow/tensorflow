@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "ExperimentalThreadPoolHandle"
+  out_arg {
+    name: "handle"
+    description: <<END
+A resource that can be consumed by one or more ExperimentalThreadPoolDataset
+ops.
+END
+  }
+  attr {
+    name: "num_threads"
+    description: <<END
+The number of threads in the thread pool.
+END
+  }
+  attr {
+    name: "max_intra_op_parallelism"
+    description: <<END
+The maximum degree of parallelism to use within operations that execute on this
+threadpool.
+END
+  }
+  attr {
+    name: "display_name"
+    description: <<END
+A human-readable name for the threads that may be visible in some
+visualizations.
+threadpool.
+END
+  }
+  summary: <<END
+Creates a dataset that uses a custom thread pool to compute `input_dataset`.
+END
+  visibility: HIDDEN
+}

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/public/session.h"
@@ -59,8 +60,12 @@ class TestReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 class TestFileSystem : public NullFileSystem {
  public:
   ~TestFileSystem() override = default;
+
+  // import non-transactional method from the base class
+  using NullFileSystem::NewReadOnlyMemoryRegionFromFile;
+
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
     float val = 0;
     StringPiece scheme, host, path;
@@ -101,7 +106,7 @@ TEST(ImmutableConstantOpTest, Simple) {
   session_options.env = Env::Default();
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";
@@ -121,7 +126,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   const TensorShape kBadTensorShape({40, 100});
   const TensorShape kTestTensorShapeT({1, 4});
 
-  auto root = Scope::NewRootScope().ExitOnError();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
   auto node1 =
       ops::ImmutableConst(root, DT_FLOAT, kBadTensorShape, "test:///2");
   auto node2 =
@@ -147,8 +152,8 @@ Status CreateTempFile(Env* env, float value, uint64 size, string* filename) {
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   for (uint64 i = 0; i < size; ++i) {
-    StringPiece sp;
-    sp.set(&value, sizeof(value));
+    StringPiece sp(static_cast<char*>(static_cast<void*>(&value)),
+                   sizeof(value));
     TF_RETURN_IF_ERROR(file->Append(sp));
   }
   TF_RETURN_IF_ERROR(file->Close());
@@ -173,7 +178,7 @@ TEST(ImmutableConstantOpTest, FromFile) {
   SessionOptions session_options;
   session_options.config.mutable_graph_options()
       ->mutable_optimizer_options()
-      ->set_opt_level(OptimizerOptions_Level_L0);
+      ->set_opt_level(OptimizerOptions::L0);
   std::unique_ptr<Session> session(NewSession(session_options));
   ASSERT_TRUE(session != nullptr) << "Failed to create session";
   TF_ASSERT_OK(session->Create(graph_def)) << "Can't create test graph";

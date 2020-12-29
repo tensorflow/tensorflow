@@ -45,17 +45,22 @@ Status RewriteQuantizedStrippedModelForHexagon(
     GraphDef* output_graph_def) {
   LOG(INFO) << "Transforming quantized stripped model to a remote fused "
                "graph execute op...";
-  std::vector<GraphTransferer::InputNodeInfo> inputs;
+  std::vector<std::pair<string, Tensor>> inputs;
   std::vector<string> outputs;
-  for (int i = 0; i < context.input_names.size(); ++i) {
+  for (auto i = 0; static_cast<size_t>(i) < context.input_names.size(); ++i) {
     const string& input_name = context.input_names.at(i);
 
     // Get input shape
     string shape_string;
     TF_RETURN_IF_ERROR(context.GetOneStringParameter(
         INPUT_SHAPE_PREFIX + std::to_string(i), "", &shape_string));
+    std::vector<string> split_shape = str_util::Split(shape_string, ',');
     std::vector<int64> dims;
-    CHECK(str_util::SplitAndParseAsInts(shape_string, ',', &dims));
+    for (const string& dim : split_shape) {
+      int64 tmp;
+      CHECK(strings::safe_strto64(dim, &tmp));
+      dims.push_back(tmp);
+    }
 
     // Get input data type
     string data_type_string;
@@ -69,18 +74,16 @@ Status RewriteQuantizedStrippedModelForHexagon(
               << ", shape = " << shape_string
               << ", type = " << data_type_string;
 
-    inputs.emplace_back(GraphTransferer::InputNodeInfo{
-        input_name, {data_type, TensorShape(dims)}});
+    inputs.emplace_back(input_name, Tensor(data_type, TensorShape(dims)));
   }
 
   for (const string& output_name : context.output_names) {
     outputs.emplace_back(output_name);
   }
-  GraphTransferer gt;
-  gt.EnableStrictCheckMode(false);
+  GraphDef mutable_input_graph_def = input_graph_def;
   *output_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       HexagonOpsDefinitions::getInstance(), "remote_fused_graph_execute_node",
-      inputs, outputs, input_graph_def, &gt);
+      inputs, outputs, &mutable_input_graph_def);
   return Status::OK();
 }
 

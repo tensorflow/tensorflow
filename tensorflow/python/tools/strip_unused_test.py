@@ -50,7 +50,7 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
           wanted_input_node, 2.0, name="output_node")
       math_ops.add(output_node, 2.0, name="later_node")
       sess = session.Session()
-      output = sess.run(output_node)
+      output = self.evaluate(output_node)
       self.assertNear(-4.0, output, 0.00001)
       graph_io.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
@@ -58,16 +58,25 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
     # routine.
     input_graph_path = os.path.join(self.get_temp_dir(), input_graph_name)
     input_binary = False
-    input_node_names = "wanted_input_node"
     output_binary = True
     output_node_names = "output_node"
     output_graph_path = os.path.join(self.get_temp_dir(), output_graph_name)
 
-    strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
-                                             output_graph_path, output_binary,
-                                             input_node_names,
-                                             output_node_names,
-                                             dtypes.float32.as_datatype_enum)
+    def strip(input_node_names):
+      strip_unused_lib.strip_unused_from_files(input_graph_path, input_binary,
+                                               output_graph_path, output_binary,
+                                               input_node_names,
+                                               output_node_names,
+                                               dtypes.float32.as_datatype_enum)
+
+    with self.assertRaises(KeyError):
+      strip("does_not_exist")
+
+    with self.assertRaises(ValueError):
+      strip("wanted_input_node:0")
+
+    input_node_names = "wanted_input_node"
+    strip(input_node_names)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.
@@ -104,7 +113,7 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
           input_node1, input_node2, name="output_node")
       math_ops.add(output_node, 2.0, name="later_node")
       sess = session.Session()
-      output = sess.run(output_node)
+      output = self.evaluate(output_node)
       self.assertNear(6.0, output, 0.00001)
       graph_io.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 

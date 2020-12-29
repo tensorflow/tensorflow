@@ -1,0 +1,11 @@
+op {
+  graph_op_name: "Atan2"
+  summary: "Computes arctangent of `y/x` element-wise, respecting signs of the arguments."
+  description: <<END
+This is the angle \( \theta \in [-\pi, \pi] \) such that
+\[ x = r \cos(\theta) \]
+and
+\[ y = r \sin(\theta) \]
+where \(r = \sqrt(x^2 + y^2) \).
+END
+}

@@ -1,0 +1,50 @@
+op {
+  graph_op_name: "DataFormatVecPermute"
+  in_arg {
+    name: "x"
+    description: <<END
+Vector of size 4 or Tensor of shape (4, 2) in source data format.
+END
+  }
+  out_arg {
+    name: "y"
+    description: <<END
+Vector of size 4 or Tensor of shape (4, 2) in destination data format.
+END
+  }
+  attr {
+    name: "src_format"
+    description: <<END
+source data format.
+END
+  }
+  attr {
+    name: "dst_format"
+    description: <<END
+destination data format.
+END
+  }
+  summary: "Permute input tensor from `src_format` to `dst_format`."
+  description: <<END
+Input tensor must be a vector of size 4, or a 4x2 tensor.
+
+For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and inputs:
+```
+[1, 2, 3, 4]
+```
+and
+```
+[[1, 2, 3, 4],
+ [5, 6, 7, 8]]
+```
+, the outputs will be (respectively):
+```
+[1, 4, 2, 3]
+```
+and
+```
+[[1, 4, 2, 3],
+ [5, 8, 6, 7]]
+```
+END
+}

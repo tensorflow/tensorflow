@@ -12,14 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// LINT.IfChange
 
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
 
 #include <algorithm>
+#include <memory>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -38,55 +41,44 @@ namespace ctc_beam_search {
 
 struct EmptyBeamState {};
 
+template <typename T>
 struct BeamProbability {
-  BeamProbability() : total(kLogZero), blank(kLogZero), label(kLogZero) {}
+  BeamProbability()
+      : total(kLogZero<T>()), blank(kLogZero<T>()), label(kLogZero<T>()) {}
   void Reset() {
-    total = kLogZero;
-    blank = kLogZero;
-    label = kLogZero;
+    total = kLogZero<T>();
+    blank = kLogZero<T>();
+    label = kLogZero<T>();
   }
-  float total;
-  float blank;
-  float label;
+  T total;
+  T blank;
+  T label;
 };
 
-template <class CTCBeamState = EmptyBeamState>
+template <class T, class CTCBeamState>
+class BeamRoot;
+
+template <class T, class CTCBeamState = EmptyBeamState>
 struct BeamEntry {
-  // Default constructor does not create a vector of children.
-  BeamEntry() : parent(nullptr), label(-1) {}
-  // Constructor giving parent, label, and number of children does
-  // create a vector of children.  The object pointed to by p
-  // cannot be copied and should not be moved, otherwise parent will
-  // become invalid.
-  BeamEntry(BeamEntry* p, int l, int L, int t) : parent(p), label(l) {
-    PopulateChildren(L);
-  }
-  inline bool Active() const { return newp.total != kLogZero; }
-  inline bool HasChildren() const { return !children.empty(); }
-  void PopulateChildren(int L) {
-    CHECK(!HasChildren());
-    children = std::vector<BeamEntry>(L);
-    int ci = 0;
-    for (auto& c : children) {
-      // The current object cannot be copied, and should not be moved.
-      // Otherwise the child's parent will become invalid.
-      c.parent = this;
-      c.label = ci;
-      ++ci;
+  // BeamRoot<CTCBeamState>::AddEntry() serves as the factory method.
+  friend BeamEntry<T, CTCBeamState>* BeamRoot<T, CTCBeamState>::AddEntry(
+      BeamEntry<T, CTCBeamState>* p, int l);
+  inline bool Active() const { return newp.total != kLogZero<T>(); }
+  // Return the child at the given index, or construct a new one in-place if
+  // none was found.
+  BeamEntry<T, CTCBeamState>& GetChild(int ind) {
+    auto entry = children.emplace(ind, nullptr);
+    auto& child_entry = entry.first->second;
+    // If this is a new child, populate the BeamEntry<CTCBeamState>*.
+    if (entry.second) {
+      child_entry = beam_root->AddEntry(this, ind);
     }
-  }
-  inline std::vector<BeamEntry>* Children() {
-    CHECK(HasChildren());
-    return &children;
-  }
-  inline const std::vector<BeamEntry>* Children() const {
-    CHECK(HasChildren());
-    return &children;
+    return *child_entry;
   }
   std::vector<int> LabelSeq(bool merge_repeated) const {
     std::vector<int> labels;
     int prev_label = -1;
-    const BeamEntry* c = this;
+    const BeamEntry<T, CTCBeamState>* c = this;
     while (c->parent != nullptr) {  // Checking c->parent to skip root leaf.
       if (!merge_repeated || c->label != prev_label) {
         labels.push_back(c->label);
@@ -98,24 +90,56 @@ struct BeamEntry {
     return labels;
   }
 
-  BeamEntry<CTCBeamState>* parent;
+  BeamEntry<T, CTCBeamState>* parent;
   int label;
-  std::vector<BeamEntry<CTCBeamState>> children;
-  BeamProbability oldp;
-  BeamProbability newp;
+  // All instances of child BeamEntry are owned by *beam_root.
+  gtl::FlatMap<int, BeamEntry<T, CTCBeamState>*> children;
+  BeamProbability<T> oldp;
+  BeamProbability<T> newp;
   CTCBeamState state;
 
  private:
+  // Constructor giving parent, label, and the beam_root.
+  // The object pointed to by p cannot be copied and should not be moved,
+  // otherwise parent will become invalid.
+  // This private constructor is only called through the factory method
+  // BeamRoot<CTCBeamState>::AddEntry().
+  BeamEntry(BeamEntry* p, int l, BeamRoot<T, CTCBeamState>* beam_root)
+      : parent(p), label(l), beam_root(beam_root) {}
+  BeamRoot<T, CTCBeamState>* beam_root;
   TF_DISALLOW_COPY_AND_ASSIGN(BeamEntry);
 };
 
+// This class owns all instances of BeamEntry.  This is used to avoid recursive
+// destructor call during destruction.
+template <class T, class CTCBeamState = EmptyBeamState>
+class BeamRoot {
+ public:
+  BeamRoot(BeamEntry<T, CTCBeamState>* p, int l) {
+    root_entry_ = AddEntry(p, l);
+  }
+  BeamRoot(const BeamRoot&) = delete;
+  BeamRoot& operator=(const BeamRoot&) = delete;
+
+  BeamEntry<T, CTCBeamState>* AddEntry(BeamEntry<T, CTCBeamState>* p, int l) {
+    auto* new_entry = new BeamEntry<T, CTCBeamState>(p, l, this);
+    beam_entries_.emplace_back(new_entry);
+    return new_entry;
+  }
+  BeamEntry<T, CTCBeamState>* RootEntry() const { return root_entry_; }
+
+ private:
+  BeamEntry<T, CTCBeamState>* root_entry_ = nullptr;
+  std::vector<std::unique_ptr<BeamEntry<T, CTCBeamState>>> beam_entries_;
+};
+
 // BeamComparer is the default beam comparer provided in CTCBeamSearch.
-template <class CTCBeamState = EmptyBeamState>
+template <class T, class CTCBeamState = EmptyBeamState>
 class BeamComparer {
  public:
   virtual ~BeamComparer() {}
-  virtual bool inline operator()(const BeamEntry<CTCBeamState>* a,
-                                 const BeamEntry<CTCBeamState>* b) const {
+  virtual bool inline operator()(const BeamEntry<T, CTCBeamState>* a,
+                                 const BeamEntry<T, CTCBeamState>* b) const {
     return a->newp.total > b->newp.total;
   }
 };
@@ -126,3 +150,4 @@ class BeamComparer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_beam_entry.h)

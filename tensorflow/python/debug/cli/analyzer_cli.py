@@ -16,8 +16,6 @@
 
 The analyzer performs post hoc analysis of dumped intermediate tensors and
 graph structure information from debugged Session.run() calls.
-
-The other part of the debugger is the stepper (c.f. stepper_cli.py).
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -29,12 +27,16 @@ import re
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import evaluator
 from tensorflow.python.debug.cli import ui_factory
-from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
+from tensorflow.python.debug.lib import source_utils
 
+RL = debugger_cli_common.RichLine
 
 # String constants for the depth-dependent hanging indent at the beginning
 # of each line.
@@ -89,7 +91,7 @@ def _add_main_menu(output,
     menu.append(
         debugger_cli_common.MenuItem(
             "node_info",
-            "node_info -a -d %s" % node_name,
+            "node_info -a -d -t %s" % node_name,
             enabled=enable_node_info))
     menu.append(
         debugger_cli_common.MenuItem(
@@ -128,18 +130,45 @@ def _add_main_menu(output,
 class DebugAnalyzer(object):
   """Analyzer for debug data from dump directories."""
 
-  def __init__(self, debug_dump):
+  _TIMESTAMP_COLUMN_HEAD = "t (ms)"
+  _DUMP_SIZE_COLUMN_HEAD = "Size (B)"
+  _OP_TYPE_COLUMN_HEAD = "Op type"
+  _TENSOR_NAME_COLUMN_HEAD = "Tensor name"
+
+  # Op types to be omitted when generating descriptions of graph structure.
+  _GRAPH_STRUCT_OP_TYPE_DENYLIST = ("_Send", "_Recv", "_HostSend", "_HostRecv",
+                                    "_Retval")
+
+  def __init__(self, debug_dump, config):
     """DebugAnalyzer constructor.
 
     Args:
       debug_dump: A DebugDumpDir object.
+      config: A `cli_config.CLIConfig` object that carries user-facing
+        configurations.
     """
 
     self._debug_dump = debug_dump
+    self._evaluator = evaluator.ExpressionEvaluator(self._debug_dump)
 
     # Initialize tensor filters state.
     self._tensor_filters = {}
 
+    self._build_argument_parsers(config)
+    config.set_callback("graph_recursion_depth",
+                        self._build_argument_parsers)
+
+    # TODO(cais): Implement list_nodes.
+
+  def _build_argument_parsers(self, config):
+    """Build argument parsers for DebugAnalayzer.
+
+    Args:
+      config: A `cli_config.CLIConfig` object.
+
+    Returns:
+      A dict mapping command handler name to `ArgumentParser` instance.
+    """
     # Argument parsers for command handlers.
     self._arg_parsers = {}
 
@@ -154,6 +183,15 @@ class DebugAnalyzer(object):
         type=str,
         default="",
         help="List only Tensors passing the filter of the specified name")
+    ap.add_argument(
+        "-fenn",
+        "--filter_exclude_node_names",
+        dest="filter_exclude_node_names",
+        type=str,
+        default="",
+        help="When applying the tensor filter, exclude node with names "
+        "matching the regular expression. Applicable only if --tensor_filter "
+        "or -f is used.")
     ap.add_argument(
         "-n",
         "--node_name_filter",
@@ -229,7 +267,7 @@ class DebugAnalyzer(object):
         "--depth",
         dest="depth",
         type=int,
-        default=20,
+        default=config.get("graph_recursion_depth"),
         help="Maximum depth of recursion used when showing the input tree.")
     ap.add_argument(
         "-r",
@@ -260,7 +298,7 @@ class DebugAnalyzer(object):
         "--depth",
         dest="depth",
         type=int,
-        default=20,
+        default=config.get("graph_recursion_depth"),
         help="Maximum depth of recursion used when showing the output tree.")
     ap.add_argument(
         "-r",
@@ -277,47 +315,112 @@ class DebugAnalyzer(object):
     self._arg_parsers["list_outputs"] = ap
 
     # Parser for print_tensor.
+    self._arg_parsers["print_tensor"] = (
+        command_parser.get_print_tensor_argparser(
+            "Print the value of a dumped tensor."))
+
+    # Parser for print_source.
     ap = argparse.ArgumentParser(
-        description="Print the value of a dumped tensor.",
+        description="Print a Python source file with overlaid debug "
+        "information, including the nodes (ops) or Tensors created at the "
+        "source lines.",
         usage=argparse.SUPPRESS)
     ap.add_argument(
-        "tensor_name",
+        "source_file_path",
         type=str,
-        help="Name of the tensor, followed by any slicing indices, "
-        "e.g., hidden1/Wx_plus_b/MatMul:0, "
-        "hidden1/Wx_plus_b/MatMul:0[1, :]")
+        help="Path to the source file.")
     ap.add_argument(
-        "-n",
-        "--number",
-        dest="number",
+        "-t",
+        "--tensors",
+        dest="tensors",
+        action="store_true",
+        help="Label lines with dumped Tensors, instead of ops.")
+    ap.add_argument(
+        "-m",
+        "--max_elements_per_line",
         type=int,
-        default=-1,
-        help="0-based dump number for the specified tensor. "
-        "Required for tensor with multiple dumps.")
+        default=10,
+        help="Maximum number of elements (ops or Tensors) to show per source "
+             "line.")
     ap.add_argument(
-        "-r",
-        "--ranges",
-        dest="ranges",
+        "-b",
+        "--line_begin",
+        type=int,
+        default=1,
+        help="Print source beginning at line number (1-based.)")
+    self._arg_parsers["print_source"] = ap
+
+    # Parser for list_source.
+    ap = argparse.ArgumentParser(
+        description="List source files responsible for constructing nodes and "
+        "tensors present in the run().",
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "-p",
+        "--path_filter",
         type=str,
         default="",
-        help="Numerical ranges to highlight tensor elements in. "
-        "Examples: -r 0,1e-8, -r [-0.1,0.1], "
-        "-r \"[[-inf, -0.1], [0.1, inf]]\"")
+        help="Regular expression filter for file path.")
+    ap.add_argument(
+        "-n",
+        "--node_name_filter",
+        type=str,
+        default="",
+        help="Regular expression filter for node name.")
+    self._arg_parsers["list_source"] = ap
 
+    # Parser for eval.
+    ap = argparse.ArgumentParser(
+        description="""Evaluate an arbitrary expression. Can use tensor values
+        from the current debug dump. The debug tensor names should be enclosed
+        in pairs of backticks. Expressions with spaces should be enclosed in
+        a pair of double quotes or a pair of single quotes. By default, numpy
+        is imported as np and can be used in the expressions. E.g.,
+          1) eval np.argmax(`Softmax:0`),
+          2) eval 'np.sum(`Softmax:0`, axis=1)',
+          3) eval "np.matmul((`output/Identity:0`/`Softmax:0`).T, `Softmax:0`)".
+        """,
+        usage=argparse.SUPPRESS)
+    ap.add_argument(
+        "expression",
+        type=str,
+        help="""Expression to be evaluated.
+        1) in the simplest case, use <node_name>:<output_slot>, e.g.,
+          hidden_0/MatMul:0.
+
+        2) if the default debug op "DebugIdentity" is to be overridden, use
+          <node_name>:<output_slot>:<debug_op>, e.g.,
+          hidden_0/MatMul:0:DebugNumericSummary.
+
+        3) if the tensor of the same name exists on more than one device, use
+          <device_name>:<node_name>:<output_slot>[:<debug_op>], e.g.,
+          /job:worker/replica:0/task:0/gpu:0:hidden_0/MatMul:0
+          /job:worker/replica:0/task:2/cpu:0:hidden_0/MatMul:0:DebugNanCount.
+
+        4) if the tensor is executed multiple times in a given `Session.run`
+        call, specify the execution index with a 0-based integer enclose in a
+        pair of brackets at the end, e.g.,
+          RNN/tanh:0[0]
+          /job:worker/replica:0/task:0/gpu:0:RNN/tanh:0[0].""")
     ap.add_argument(
         "-a",
         "--all",
         dest="print_all",
         action="store_true",
-        help="Print the tensor in its entirety, i.e., do not use ellipses.")
-    self._arg_parsers["print_tensor"] = ap
-
-    # TODO(cais): Implement list_nodes.
+        help="Print the tensor in its entirety, i.e., do not use ellipses "
+        "(may be slow for large results).")
+    ap.add_argument(
+        "-w",
+        "--write_path",
+        default="",
+        help="Path of the numpy file to write the evaluation result to, "
+        "using numpy.save()")
+    self._arg_parsers["eval"] = ap
 
   def add_tensor_filter(self, filter_name, filter_callable):
     """Add a tensor filter.
 
-    A tensor filter is a named callable of the siganture:
+    A tensor filter is a named callable of the signature:
       filter_callable(dump_datum, tensor),
 
     wherein dump_datum is an instance of debug_data.DebugTensorDatum carrying
@@ -388,6 +491,10 @@ class DebugAnalyzer(object):
 
     Returns:
       Output text lines as a RichTextLines object.
+
+    Raises:
+      ValueError: If `--filter_exclude_node_names` is used without `-f` or
+        `--tensor_filter` being used.
     """
 
     # TODO(cais): Add annotations of substrings for dumped tensor names, to
@@ -424,8 +531,15 @@ class DebugAnalyzer(object):
         _add_main_menu(output, node_name=None, enable_list_tensors=False)
         return output
 
-      data_to_show = self._debug_dump.find(filter_callable)
+      data_to_show = self._debug_dump.find(
+          filter_callable,
+          exclude_node_names=parsed.filter_exclude_node_names)
     else:
+      if parsed.filter_exclude_node_names:
+        raise ValueError(
+            "The flag --filter_exclude_node_names is valid only when "
+            "the flag -f or --tensor_filter is used.")
+
       data_to_show = self._debug_dump.dumped_tensor_data
 
     # TODO(cais): Implement filter by lambda on tensor value.
@@ -463,7 +577,7 @@ class DebugAnalyzer(object):
       line += op_type
       line += " " * (max_timestamp_width + max_dump_size_width +
                      max_op_type_width - len(line))
-      line += " %s" % dumped_tensor_name
+      line += dumped_tensor_name
 
       output.append(
           line,
@@ -502,19 +616,25 @@ class DebugAnalyzer(object):
     max_timestamp_width = 0
     if data:
       max_rel_time_ms = (data[-1].timestamp - self._debug_dump.t0) / 1000.0
-      max_timestamp_width = len("[%.3f] " % max_rel_time_ms)
+      max_timestamp_width = len("[%.3f] " % max_rel_time_ms) + 1
+    max_timestamp_width = max(max_timestamp_width,
+                              len(self._TIMESTAMP_COLUMN_HEAD) + 1)
 
     max_dump_size_width = 0
     for dump in data:
       dump_size_str = cli_shared.bytes_to_readable_str(dump.dump_size_bytes)
       if len(dump_size_str) + 1 > max_dump_size_width:
         max_dump_size_width = len(dump_size_str) + 1
+    max_dump_size_width = max(max_dump_size_width,
+                              len(self._DUMP_SIZE_COLUMN_HEAD) + 1)
 
     max_op_type_width = 0
     for dump in data:
       op_type = self._debug_dump.node_op_type(dump.node_name)
-      if len(op_type) > max_op_type_width:
-        max_op_type_width = len(op_type)
+      if len(op_type) + 1 > max_op_type_width:
+        max_op_type_width = len(op_type) + 1
+    max_op_type_width = max(max_op_type_width,
+                            len(self._OP_TYPE_COLUMN_HEAD) + 1)
 
     return max_timestamp_width, max_dump_size_width, max_op_type_width
 
@@ -576,7 +696,7 @@ class DebugAnalyzer(object):
       base_command += " -n %s" % parsed.node_name_filter
 
     attr_segs = {0: []}
-    row = "t (ms)"
+    row = self._TIMESTAMP_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TIMESTAMP)
     if parsed.sort_by == SORT_TENSORS_BY_TIMESTAMP and not parsed.reverse:
       command += " -r"
@@ -585,7 +705,7 @@ class DebugAnalyzer(object):
     row += " " * (max_timestamp_width - len(row))
 
     prev_len = len(row)
-    row += "Size"
+    row += self._DUMP_SIZE_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_DUMP_SIZE)
     if parsed.sort_by == SORT_TENSORS_BY_DUMP_SIZE and not parsed.reverse:
       command += " -r"
@@ -594,7 +714,7 @@ class DebugAnalyzer(object):
     row += " " * (max_dump_size_width + max_timestamp_width - len(row))
 
     prev_len = len(row)
-    row += "Op type"
+    row += self._OP_TYPE_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_OP_TYPE)
     if parsed.sort_by == SORT_TENSORS_BY_OP_TYPE and not parsed.reverse:
       command += " -r"
@@ -605,11 +725,11 @@ class DebugAnalyzer(object):
     )
 
     prev_len = len(row)
-    row += " Tensor name"
+    row += self._TENSOR_NAME_COLUMN_HEAD
     command = "%s -s %s" % (base_command, SORT_TENSORS_BY_TENSOR_NAME)
     if parsed.sort_by == SORT_TENSORS_BY_TENSOR_NAME and not parsed.reverse:
       command += " -r"
-    attr_segs[0].append((prev_len + 1, len(row),
+    attr_segs[0].append((prev_len, len(row),
                          [debugger_cli_common.MenuItem("", command), "bold"]))
     row += " " * (
         max_op_type_width + max_dump_size_width + max_timestamp_width - len(row)
@@ -640,7 +760,7 @@ class DebugAnalyzer(object):
 
     # Get a node name, regardless of whether the input is a node name (without
     # output slot attached) or a tensor name (with output slot attached).
-    node_name, unused_slot = debug_data.parse_node_or_tensor_name(
+    node_name, unused_slot = debug_graphs.parse_node_or_tensor_name(
         parsed.node_name)
 
     if not self._debug_dump.node_exists(node_name):
@@ -675,13 +795,17 @@ class DebugAnalyzer(object):
         lines, font_attr_segs=font_attr_segs)
 
     # List node inputs (non-control and control).
-    inputs = self._debug_dump.node_inputs(node_name)
-    ctrl_inputs = self._debug_dump.node_inputs(node_name, is_control=True)
+    inputs = self._exclude_denylisted_ops(
+        self._debug_dump.node_inputs(node_name))
+    ctrl_inputs = self._exclude_denylisted_ops(
+        self._debug_dump.node_inputs(node_name, is_control=True))
     output.extend(self._format_neighbors("input", inputs, ctrl_inputs))
 
     # List node output recipients (non-control and control).
-    recs = self._debug_dump.node_recipients(node_name)
-    ctrl_recs = self._debug_dump.node_recipients(node_name, is_control=True)
+    recs = self._exclude_denylisted_ops(
+        self._debug_dump.node_recipients(node_name))
+    ctrl_recs = self._exclude_denylisted_ops(
+        self._debug_dump.node_recipients(node_name, is_control=True))
     output.extend(self._format_neighbors("recipient", recs, ctrl_recs))
 
     # Optional: List attributes of the node.
@@ -698,6 +822,21 @@ class DebugAnalyzer(object):
     _add_main_menu(output, node_name=node_name, enable_node_info=False)
     return output
 
+  def _exclude_denylisted_ops(self, node_names):
+    """Exclude all nodes whose op types are in _GRAPH_STRUCT_OP_TYPE_DENYLIST.
+
+    Args:
+      node_names: An iterable of node or graph element names.
+
+    Returns:
+      A list of node names that are not denylisted.
+    """
+    return [
+        node_name for node_name in node_names
+        if self._debug_dump.node_op_type(debug_graphs.get_node_name(node_name))
+        not in self._GRAPH_STRUCT_OP_TYPE_DENYLIST
+    ]
+
   def _render_node_traceback(self, node_name):
     """Render traceback of a node's creation in Python, if available.
 
@@ -709,15 +848,20 @@ class DebugAnalyzer(object):
       construction.
     """
 
-    lines = ["", "", "Traceback of node construction:"]
-    font_attr_segs = {len(lines) - 1: [(0, len(lines[-1]), "bold")]}
+    lines = [RL(""), RL(""), RL("Traceback of node construction:", "bold")]
 
     try:
       node_stack = self._debug_dump.node_traceback(node_name)
       for depth, (file_path, line, function_name, text) in enumerate(
           node_stack):
         lines.append("%d: %s" % (depth, file_path))
-        lines.append("  Line:     %d" % line)
+
+        attribute = debugger_cli_common.MenuItem(
+            "", "ps %s -b %d" % (file_path, line)) if text else None
+        line_number_line = RL("  ")
+        line_number_line += RL("Line:     %d" % line, attribute)
+        lines.append(line_number_line)
+
         lines.append("  Function: %s" % function_name)
         lines.append("  Text:     " + (("\"%s\"" % text) if text else "None"))
         lines.append("")
@@ -726,8 +870,7 @@ class DebugAnalyzer(object):
     except LookupError:
       lines.append("(Unavailable because no Python graph has been loaded)")
 
-    return debugger_cli_common.RichTextLines(lines,
-                                             font_attr_segs=font_attr_segs)
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
 
   def list_inputs(self, args, screen_info=None):
     """Command handler for inputs.
@@ -760,7 +903,7 @@ class DebugAnalyzer(object):
         parsed.op_type,
         do_outputs=False)
 
-    node_name = debug_data.get_node_name(parsed.node_name)
+    node_name = debug_graphs.get_node_name(parsed.node_name)
     _add_main_menu(output, node_name=node_name, enable_list_inputs=False)
 
     return output
@@ -782,10 +925,8 @@ class DebugAnalyzer(object):
 
     parsed = self._arg_parsers["print_tensor"].parse_args(args)
 
-    if screen_info and "cols" in screen_info:
-      np_printoptions = {"linewidth": screen_info["cols"]}
-    else:
-      np_printoptions = {}
+    np_printoptions = cli_shared.numpy_printoptions_from_screen_info(
+        screen_info)
 
     # Determine if any range-highlighting is required.
     highlight_options = cli_shared.parse_ranges_highlight(parsed.ranges)
@@ -793,7 +934,7 @@ class DebugAnalyzer(object):
     tensor_name, tensor_slicing = (
         command_parser.parse_tensor_name_with_slicing(parsed.tensor_name))
 
-    node_name, output_slot = debug_data.parse_node_or_tensor_name(tensor_name)
+    node_name, output_slot = debug_graphs.parse_node_or_tensor_name(tensor_name)
     if (self._debug_dump.loaded_partition_graphs() and
         not self._debug_dump.node_exists(node_name)):
       output = cli_shared.error(
@@ -855,7 +996,9 @@ class DebugAnalyzer(object):
             np_printoptions,
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
-            highlight_options=highlight_options)
+            highlight_options=highlight_options,
+            include_numeric_summary=parsed.numeric_summary,
+            write_path=parsed.write_path)
       else:
         output = cli_shared.error(
             "Invalid number (%d) for tensor %s, which generated one dump." %
@@ -901,7 +1044,8 @@ class DebugAnalyzer(object):
             np_printoptions,
             print_all=parsed.print_all,
             tensor_slicing=tensor_slicing,
-            highlight_options=highlight_options)
+            highlight_options=highlight_options,
+            write_path=parsed.write_path)
       _add_main_menu(output, node_name=node_name, enable_print_tensor=False)
 
     return output
@@ -937,9 +1081,194 @@ class DebugAnalyzer(object):
         parsed.op_type,
         do_outputs=True)
 
-    node_name = debug_data.get_node_name(parsed.node_name)
+    node_name = debug_graphs.get_node_name(parsed.node_name)
     _add_main_menu(output, node_name=node_name, enable_list_outputs=False)
 
+    return output
+
+  def evaluate_expression(self, args, screen_info=None):
+    parsed = self._arg_parsers["eval"].parse_args(args)
+
+    eval_res = self._evaluator.evaluate(parsed.expression)
+
+    np_printoptions = cli_shared.numpy_printoptions_from_screen_info(
+        screen_info)
+    return cli_shared.format_tensor(
+        eval_res,
+        "from eval of expression '%s'" % parsed.expression,
+        np_printoptions,
+        print_all=parsed.print_all,
+        include_numeric_summary=True,
+        write_path=parsed.write_path)
+
+  def _reconstruct_print_source_command(self,
+                                        parsed,
+                                        line_begin,
+                                        max_elements_per_line_increase=0):
+    return "ps %s %s -b %d -m %d" % (
+        parsed.source_file_path, "-t" if parsed.tensors else "", line_begin,
+        parsed.max_elements_per_line + max_elements_per_line_increase)
+
+  def print_source(self, args, screen_info=None):
+    """Print the content of a source file."""
+    del screen_info  # Unused.
+
+    parsed = self._arg_parsers["print_source"].parse_args(args)
+
+    source_annotation = source_utils.annotate_source(
+        self._debug_dump,
+        parsed.source_file_path,
+        do_dumped_tensors=parsed.tensors)
+
+    source_lines, line_num_width = source_utils.load_source(
+        parsed.source_file_path)
+
+    labeled_source_lines = []
+    actual_initial_scroll_target = 0
+    for i, line in enumerate(source_lines):
+      annotated_line = RL("L%d" % (i + 1), cli_shared.COLOR_YELLOW)
+      annotated_line += " " * (line_num_width - len(annotated_line))
+      annotated_line += line
+      labeled_source_lines.append(annotated_line)
+
+      if i + 1 == parsed.line_begin:
+        actual_initial_scroll_target = len(labeled_source_lines) - 1
+
+      if i + 1 in source_annotation:
+        sorted_elements = sorted(source_annotation[i + 1])
+        for k, element in enumerate(sorted_elements):
+          if k >= parsed.max_elements_per_line:
+            omitted_info_line = RL("    (... Omitted %d of %d %s ...) " % (
+                len(sorted_elements) - parsed.max_elements_per_line,
+                len(sorted_elements),
+                "tensor(s)" if parsed.tensors else "op(s)"))
+            omitted_info_line += RL(
+                "+5",
+                debugger_cli_common.MenuItem(
+                    None,
+                    self._reconstruct_print_source_command(
+                        parsed, i + 1, max_elements_per_line_increase=5)))
+            labeled_source_lines.append(omitted_info_line)
+            break
+
+          label = RL(" " * 4)
+          if self._debug_dump.debug_watch_keys(
+              debug_graphs.get_node_name(element)):
+            attribute = debugger_cli_common.MenuItem("", "pt %s" % element)
+          else:
+            attribute = cli_shared.COLOR_BLUE
+
+          label += RL(element, attribute)
+          labeled_source_lines.append(label)
+
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(
+        labeled_source_lines,
+        annotations={debugger_cli_common.INIT_SCROLL_POS_KEY:
+                     actual_initial_scroll_target})
+    _add_main_menu(output, node_name=None)
+    return output
+
+  def _make_source_table(self, source_list, is_tf_py_library):
+    """Make a table summarizing the source files that create nodes and tensors.
+
+    Args:
+      source_list: List of source files and related information as a list of
+        tuples (file_path, is_tf_library, num_nodes, num_tensors, num_dumps,
+        first_line).
+      is_tf_py_library: (`bool`) whether this table is for files that belong
+        to the TensorFlow Python library.
+
+    Returns:
+      The table as a `debugger_cli_common.RichTextLines` object.
+    """
+    path_head = "Source file path"
+    num_nodes_head = "#(nodes)"
+    num_tensors_head = "#(tensors)"
+    num_dumps_head = "#(tensor dumps)"
+
+    if is_tf_py_library:
+      # Use color to mark files that are guessed to belong to TensorFlow Python
+      # library.
+      color = cli_shared.COLOR_GRAY
+      lines = [RL("TensorFlow Python library file(s):", color)]
+    else:
+      color = cli_shared.COLOR_WHITE
+      lines = [RL("File(s) outside TensorFlow Python library:", color)]
+
+    if not source_list:
+      lines.append(RL("[No files.]"))
+      lines.append(RL())
+      return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
+
+    path_column_width = max(
+        max(len(item[0]) for item in source_list), len(path_head)) + 1
+    num_nodes_column_width = max(
+        max(len(str(item[2])) for item in source_list),
+        len(num_nodes_head)) + 1
+    num_tensors_column_width = max(
+        max(len(str(item[3])) for item in source_list),
+        len(num_tensors_head)) + 1
+
+    head = RL(path_head + " " * (path_column_width - len(path_head)), color)
+    head += RL(num_nodes_head + " " * (
+        num_nodes_column_width - len(num_nodes_head)), color)
+    head += RL(num_tensors_head + " " * (
+        num_tensors_column_width - len(num_tensors_head)), color)
+    head += RL(num_dumps_head, color)
+
+    lines.append(head)
+
+    for (file_path, _, num_nodes, num_tensors, num_dumps,
+         first_line_num) in source_list:
+      path_attributes = [color]
+      if source_utils.is_extension_uncompiled_python_source(file_path):
+        path_attributes.append(
+            debugger_cli_common.MenuItem(None, "ps %s -b %d" %
+                                         (file_path, first_line_num)))
+
+      line = RL(file_path, path_attributes)
+      line += " " * (path_column_width - len(line))
+      line += RL(
+          str(num_nodes) + " " * (num_nodes_column_width - len(str(num_nodes))),
+          color)
+      line += RL(
+          str(num_tensors) + " " *
+          (num_tensors_column_width - len(str(num_tensors))), color)
+      line += RL(str(num_dumps), color)
+      lines.append(line)
+    lines.append(RL())
+
+    return debugger_cli_common.rich_text_lines_from_rich_line_list(lines)
+
+  def list_source(self, args, screen_info=None):
+    """List Python source files that constructed nodes and tensors."""
+    del screen_info  # Unused.
+
+    parsed = self._arg_parsers["list_source"].parse_args(args)
+    source_list = source_utils.list_source_files_against_dump(
+        self._debug_dump,
+        path_regex_allowlist=parsed.path_filter,
+        node_name_regex_allowlist=parsed.node_name_filter)
+
+    top_lines = [
+        RL("List of source files that created nodes in this run", "bold")]
+    if parsed.path_filter:
+      top_lines.append(
+          RL("File path regex filter: \"%s\"" % parsed.path_filter))
+    if parsed.node_name_filter:
+      top_lines.append(
+          RL("Node name regex filter: \"%s\"" % parsed.node_name_filter))
+    top_lines.append(RL())
+    output = debugger_cli_common.rich_text_lines_from_rich_line_list(top_lines)
+    if not source_list:
+      output.append("[No source file information.]")
+      return output
+
+    output.extend(self._make_source_table(
+        [item for item in source_list if not item[1]], False))
+    output.extend(self._make_source_table(
+        [item for item in source_list if item[1]], True))
+    _add_main_menu(output, node_name=None)
     return output
 
   def _list_inputs_or_outputs(self,
@@ -983,7 +1312,7 @@ class DebugAnalyzer(object):
     font_attr_segs = {}
 
     # Check if this is a tensor name, instead of a node name.
-    node_name, _ = debug_data.parse_node_or_tensor_name(node_name)
+    node_name, _ = debug_graphs.parse_node_or_tensor_name(node_name)
 
     # Check if node exists.
     if not self._debug_dump.node_exists(node_name):
@@ -1073,12 +1402,14 @@ class DebugAnalyzer(object):
     """
 
     # Make a shallow copy of the list because it may be extended later.
-    all_inputs = copy.copy(tracker(node_name, is_control=False))
+    all_inputs = self._exclude_denylisted_ops(
+        copy.copy(tracker(node_name, is_control=False)))
     is_ctrl = [False] * len(all_inputs)
     if include_control:
-      # Sort control inputs or recipients in in alphabetical order of the node
+      # Sort control inputs or recipients in alphabetical order of the node
       # names.
-      ctrl_inputs = sorted(tracker(node_name, is_control=True))
+      ctrl_inputs = self._exclude_denylisted_ops(
+          sorted(tracker(node_name, is_control=True)))
       all_inputs.extend(ctrl_inputs)
       is_ctrl.extend([True] * len(ctrl_inputs))
 
@@ -1108,8 +1439,11 @@ class DebugAnalyzer(object):
 
     hang += DEPTH_TEMPLATE % depth
 
-    for i in xrange(len(all_inputs)):
-      inp = all_inputs[i]
+    for i, inp in enumerate(all_inputs):
+      op_type = self._debug_dump.node_op_type(debug_graphs.get_node_name(inp))
+      if op_type in self._GRAPH_STRUCT_OP_TYPE_DENYLIST:
+        continue
+
       if is_ctrl[i]:
         ctrl_str = CTRL_LABEL
       else:
@@ -1117,7 +1451,7 @@ class DebugAnalyzer(object):
 
       op_type_str = ""
       if show_op_type:
-        op_type_str = OP_TYPE_TEMPLATE % self._debug_dump.node_op_type(inp)
+        op_type_str = OP_TYPE_TEMPLATE % op_type
 
       if i == len(all_inputs) - 1:
         unfinished.pop()
@@ -1132,7 +1466,7 @@ class DebugAnalyzer(object):
       # Recursive call.
       # The input's/output's name can be a tensor name, in the case of node
       # with >1 output slots.
-      inp_node_name, _ = debug_data.parse_node_or_tensor_name(inp)
+      inp_node_name, _ = debug_graphs.parse_node_or_tensor_name(inp)
       self._dfs_from_node(
           lines,
           attr_segs,
@@ -1172,7 +1506,7 @@ class DebugAnalyzer(object):
       lines.append(line)
       font_attr_segs[len(lines) - 1] = [(
           len(line) - len(non_ctrl), len(line),
-          debugger_cli_common.MenuItem(None, "ni -a -d %s" % non_ctrl))]
+          debugger_cli_common.MenuItem(None, "ni -a -d -t %s" % non_ctrl))]
 
     if ctrls:
       lines.append("")
@@ -1182,7 +1516,7 @@ class DebugAnalyzer(object):
         lines.append(line)
         font_attr_segs[len(lines) - 1] = [(
             len(line) - len(ctrl), len(line),
-            debugger_cli_common.MenuItem(None, "ni -a -d %s" % ctrl))]
+            debugger_cli_common.MenuItem(None, "ni -a -d -t %s" % ctrl))]
 
     return debugger_cli_common.RichTextLines(
         lines, font_attr_segs=font_attr_segs)
@@ -1246,7 +1580,11 @@ class DebugAnalyzer(object):
     return output_with_header
 
 
-def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
+def create_analyzer_ui(debug_dump,
+                       tensor_filters=None,
+                       ui_type="curses",
+                       on_ui_exit=None,
+                       config=None):
   """Create an instance of CursesUI based on a DebugDumpDir object.
 
   Args:
@@ -1254,19 +1592,23 @@ def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
     tensor_filters: (dict) A dict mapping tensor filter name (str) to tensor
       filter (Callable).
     ui_type: (str) requested UI type, e.g., "curses", "readline".
+    on_ui_exit: (`Callable`) the callback to be called when the UI exits.
+    config: A `cli_config.CLIConfig` object.
 
   Returns:
     (base_ui.BaseUI) A BaseUI subtype object with a set of standard analyzer
       commands and tab-completions registered.
   """
+  if config is None:
+    config = cli_config.CLIConfig()
 
-  analyzer = DebugAnalyzer(debug_dump)
+  analyzer = DebugAnalyzer(debug_dump, config=config)
   if tensor_filters:
     for tensor_filter_name in tensor_filters:
       analyzer.add_tensor_filter(
           tensor_filter_name, tensor_filters[tensor_filter_name])
 
-  cli = ui_factory.get_ui(ui_type)
+  cli = ui_factory.get_ui(ui_type, on_ui_exit=on_ui_exit, config=config)
   cli.register_command_handler(
       "list_tensors",
       analyzer.list_tensors,
@@ -1292,6 +1634,21 @@ def create_analyzer_ui(debug_dump, tensor_filters=None, ui_type="curses"):
       analyzer.print_tensor,
       analyzer.get_help("print_tensor"),
       prefix_aliases=["pt"])
+  cli.register_command_handler(
+      "print_source",
+      analyzer.print_source,
+      analyzer.get_help("print_source"),
+      prefix_aliases=["ps"])
+  cli.register_command_handler(
+      "list_source",
+      analyzer.list_source,
+      analyzer.get_help("list_source"),
+      prefix_aliases=["ls"])
+  cli.register_command_handler(
+      "eval",
+      analyzer.evaluate_expression,
+      analyzer.get_help("eval"),
+      prefix_aliases=["ev"])
 
   dumped_tensor_names = []
   for datum in debug_dump.dumped_tensor_data:

@@ -22,21 +22,37 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-static ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
-  auto h_dtype = c->input_handle_dtype(input);
-  if (h_dtype == DT_INVALID) {
-    return c->input(input);
+template <bool is_resource>
+ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
+  auto* handle_data = c->input_handle_shapes_and_types(input);
+  if (handle_data != nullptr && !handle_data->empty() &&
+      (*handle_data)[0].dtype != DT_INVALID) {
+    return (*handle_data)[0].shape;
   }
-  return c->input_handle_shape(input);
+  return c->input(input);
 }
 
-// Handle the gradient and, if <sparse>, indices inputs.
+template <>
+ShapeHandle ShapeOrHandleShape<true>(InferenceContext* c, int input) {
+  auto* handle_data = c->input_handle_shapes_and_types(input);
+  if (handle_data != nullptr && !handle_data->empty() &&
+      (*handle_data)[0].dtype != DT_INVALID) {
+    return (*handle_data)[0].shape;
+  }
+  // If a resource input is missing shape information, we should return
+  // UnknownShape rather than the shape of the input, which is a scalar
+  // resource handle.
+  return c->UnknownShape();
+}
+
+// Handle the gradient and, if <is_sparse>, indices inputs.
 // <s> is an input+output parameter, containing the current known input shape to
 // the gradient.
-static Status HandleGradAndIndicesInputs(InferenceContext* c, bool sparse,
-                                         int grad_idx, ShapeHandle* s) {
-  ShapeHandle grad = ShapeOrHandleShape(c, grad_idx);
-  if (!sparse) {
+template <bool is_sparse, bool is_resource>
+static Status HandleGradAndIndicesInputs(InferenceContext* c, int grad_idx,
+                                         ShapeHandle* s) {
+  ShapeHandle grad = ShapeOrHandleShape<is_resource>(c, grad_idx);
+  if (!is_sparse) {
     TF_RETURN_IF_ERROR(c->Merge(*s, grad, s));
     return Status::OK();
   }
@@ -45,7 +61,6 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, bool sparse,
   TF_RETURN_IF_ERROR(c->WithRank(c->input(grad_idx + 1), 1, &indices));
   DimensionHandle unused;
   TF_RETURN_IF_ERROR(c->Merge(c->Dim(indices, 0), c->Dim(grad, 0), &unused));
-
   // Trailing part of grad matches trailing part of *s.
   ShapeHandle grad_unknown_first;
   TF_RETURN_IF_ERROR(
@@ -55,9 +70,10 @@ static Status HandleGradAndIndicesInputs(InferenceContext* c, bool sparse,
   return Status::OK();
 }
 
+template <bool is_resource>
 static Status ApplyGradientDescentShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                  // var
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);     // var
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));  // alpha
   TF_RETURN_IF_ERROR(c->Merge(s, c->input(2), &s));          // delta
   if (c->num_outputs() > 0) {
@@ -73,17 +89,7 @@ REGISTER_OP("ApplyGradientDescent")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(ApplyGradientDescentShapeFn)
-    .Doc(R"doc(
-Update '*var' by subtracting 'alpha' * 'delta' from it.
-
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-delta: The change.
-out: Same as "var".
-use_locking: If `True`, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(ApplyGradientDescentShapeFn<false>);
 
 REGISTER_OP("ResourceApplyGradientDescent")
     .Input("var: resource")
@@ -91,26 +97,17 @@ REGISTER_OP("ResourceApplyGradientDescent")
     .Input("delta: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn(ApplyGradientDescentShapeFn)
-    .Doc(R"doc(
-Update '*var' by subtracting 'alpha' * 'delta' from it.
+    .SetShapeFn(ApplyGradientDescentShapeFn<true>);
 
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-delta: The change.
-use_locking: If `True`, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
-static Status ApplyProximalGradientDescentShapeFn(InferenceContext* c,
-                                                  bool sparse) {
+template <bool is_sparse, bool is_resource>
+Status ApplyProximalGradientDescentShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                  // var
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);     // var
   TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));  // alpha
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // l1
   TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l2
-  TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 4 /* grad_idx */, &s));
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 4 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
@@ -126,23 +123,8 @@ REGISTER_OP("ApplyProximalGradientDescent")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalGradientDescentShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' as FOBOS algorithm with fixed learning rate.
-prox_v = var - alpha * delta
-var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
-
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-delta: The change.
-out: Same as "var".
-use_locking: If True, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(ApplyProximalGradientDescentShapeFn</*is_sparse=*/false,
+                                                    /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyProximalGradientDescent")
     .Input("var: Ref(T)")
@@ -155,26 +137,8 @@ REGISTER_OP("SparseApplyProximalGradientDescent")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalGradientDescentShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Sparse update '*var' as FOBOS algorithm with fixed learning rate.
-
-That is for rows we have grad for, we update var as follows:
-prox_v = var - alpha * grad
-var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
-
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
-use_locking: If True, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(ApplyProximalGradientDescentShapeFn</*is_sparse=*/true,
+                                                    /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyProximalGradientDescent")
     .Input("var: resource")
@@ -184,22 +148,8 @@ REGISTER_OP("ResourceApplyProximalGradientDescent")
     .Input("delta: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalGradientDescentShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' as FOBOS algorithm with fixed learning rate.
-prox_v = var - alpha * delta
-var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
-
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-delta: The change.
-use_locking: If True, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(ApplyProximalGradientDescentShapeFn</*is_sparse=*/false,
+                                                    /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyProximalGradientDescent")
     .Input("var: resource")
@@ -211,37 +161,22 @@ REGISTER_OP("ResourceSparseApplyProximalGradientDescent")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalGradientDescentShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Sparse update '*var' as FOBOS algorithm with fixed learning rate.
+    .SetShapeFn(ApplyProximalGradientDescentShapeFn</*is_sparse=*/true,
+                                                    /*is_resource=*/true>);
 
-That is for rows we have grad for, we update var as follows:
-prox_v = var - alpha * grad
-var = sign(prox_v)/(1+alpha*l2) * max{|prox_v|-alpha*l1,0}
-
-var: Should be from a Variable().
-alpha: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-use_locking: If True, the subtraction will be protected by a lock;
-  otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
-static Status ApplyAdadeltaShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_sparse, bool is_resource>
+static Status ApplyAdadeltaShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      c->Merge(s, ShapeOrHandleShape(c, 2), &s));            // accum update
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // epsilon
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // accum
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 6 /* grad_idx */, &s));
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // accum update
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 6 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
@@ -259,28 +194,8 @@ REGISTER_OP("ApplyAdadelta")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdadeltaShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the adadelta scheme.
-
-accum = rho() * accum + (1 - rho()) * grad.square();
-update = (update_accum + epsilon).sqrt() * (accum + epsilon()).rsqrt() * grad;
-update_accum = rho() * update_accum + (1 - rho()) * update.square();
-var -= update;
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-accum_update: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-rho: Decay factor. Must be a scalar.
-epsilon: Constant factor. Must be a scalar.
-grad: The gradient.
-out: Same as "var".
-use_locking: If True, updating of the var, accum and update_accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(
+        ApplyAdadeltaShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyAdadelta")
     .Input("var: Ref(T)")
@@ -295,22 +210,8 @@ REGISTER_OP("SparseApplyAdadelta")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdadeltaShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-var: Should be from a Variable().
-accum: Should be from a Variable().
-accum_update:: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-rho: Decay factor. Must be a scalar.
-epsilon: Constant factor. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(
+        ApplyAdadeltaShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyAdadelta")
     .Input("var: resource")
@@ -322,27 +223,8 @@ REGISTER_OP("ResourceApplyAdadelta")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdadeltaShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the adadelta scheme.
-
-accum = rho() * accum + (1 - rho()) * grad.square();
-update = (update_accum + epsilon).sqrt() * (accum + epsilon()).rsqrt() * grad;
-update_accum = rho() * update_accum + (1 - rho()) * update.square();
-var -= update;
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-accum_update: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-rho: Decay factor. Must be a scalar.
-epsilon: Constant factor. Must be a scalar.
-grad: The gradient.
-use_locking: If True, updating of the var, accum and update_accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(
+        ApplyAdadeltaShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyAdadelta")
     .Input("var: resource")
@@ -356,29 +238,17 @@ REGISTER_OP("ResourceSparseApplyAdadelta")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdadeltaShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-var: Should be from a Variable().
-accum: Should be from a Variable().
-accum_update:: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-rho: Decay factor. Must be a scalar.
-epsilon: Constant factor. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(ApplyAdadeltaShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-static Status ApplyAdagradShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_sparse, bool is_resource>
+static Status ApplyAdagradShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 3 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
@@ -393,24 +263,9 @@ REGISTER_OP("ApplyAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the adagrad scheme.
-
-accum += grad * grad
-var -= lr * grad * (1 / sqrt(accum))
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-grad: The gradient.
-out: Same as "var".
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(
+        ApplyAdagradShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyAdagrad")
     .Input("var: resource")
@@ -419,33 +274,115 @@ REGISTER_OP("ResourceApplyAdagrad")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the adagrad scheme.
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(ApplyAdagradShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
-accum += grad * grad
-var -= lr * grad * (1 / sqrt(accum))
+REGISTER_OP("SparseApplyAdagrad")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("lr: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(ApplyAdagradShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-grad: The gradient.
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+REGISTER_OP("ResourceSparseApplyAdagrad")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(ApplyAdagradShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-static Status ApplyProximalAdagradShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_sparse, bool is_resource>
+static Status ApplyAdagradV2ShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // l1
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // l2
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 5 /* grad_idx */, &s));
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 4 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyAdagradV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(
+        ApplyAdagradV2ShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
+
+REGISTER_OP("ResourceApplyAdagradV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(
+        ApplyAdagradV2ShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
+
+REGISTER_OP("SparseApplyAdagradV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(
+        ApplyAdagradV2ShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
+
+REGISTER_OP("ResourceSparseApplyAdagradV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("update_slots: bool = true")
+    .SetShapeFn(
+        ApplyAdagradV2ShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
+
+template <bool is_sparse, bool is_resource>
+static Status ApplyProximalAdagradShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // l1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // l2
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 5 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
@@ -462,25 +399,8 @@ REGISTER_OP("ApplyProximalAdagrad")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalAdagradShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
-accum += grad * grad
-prox_v = var - lr * grad * (1 / sqrt(accum))
-var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-grad: The gradient.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(ApplyProximalAdagradShapeFn</*is_sparse=*/false,
+                                            /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyProximalAdagrad")
     .Input("var: resource")
@@ -491,95 +411,49 @@ REGISTER_OP("ResourceApplyProximalAdagrad")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalAdagradShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' and '*accum' according to FOBOS with Adagrad learning rate.
-accum += grad * grad
-prox_v = var - lr * grad * (1 / sqrt(accum))
-var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
+    .SetShapeFn(ApplyProximalAdagradShapeFn</*is_sparse=*/false,
+                                            /*is_resource=*/false>);
 
-var: Should be from a Variable().
-accum: Should be from a Variable().
-grad: The gradient.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
-REGISTER_OP("SparseApplyAdagrad")
+REGISTER_OP("SparseApplyProximalAdagrad")
     .Input("var: Ref(T)")
     .Input("accum: Ref(T)")
     .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
     .Input("grad: T")
     .Input("indices: Tindices")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update relevant entries in '*var' and '*accum' according to the adagrad scheme.
+    .SetShapeFn(
+        ApplyProximalAdagradShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
-That is for rows we have grad for, we update var and accum as follows:
-accum += grad * grad
-var -= lr * grad * (1 / sqrt(accum))
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
-
-REGISTER_OP("ResourceSparseApplyAdagrad")
+REGISTER_OP("ResourceSparseApplyProximalAdagrad")
     .Input("var: resource")
     .Input("accum: resource")
     .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
     .Input("grad: T")
     .Input("indices: Tindices")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update relevant entries in '*var' and '*accum' according to the adagrad scheme.
+    .SetShapeFn(
+        ApplyProximalAdagradShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-That is for rows we have grad for, we update var and accum as follows:
-accum += grad * grad
-var -= lr * grad * (1 / sqrt(accum))
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
-
-static Status ApplyAdagradDAShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_sparse, bool is_resource>
+static Status ApplyAdagradDAShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);  // var
-  TF_RETURN_IF_ERROR(
-      c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // grad_accumulator
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2),
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1),
+                              &s));  // grad_accumulator
+  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2),
                               &s));  // gradient_squared_accumulator
-  TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
-  int idx = sparse ? 5 : 4;
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 3 /* grad_idx */, &s));
+  int idx = is_sparse ? 5 : 4;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // lr
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // l1
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // l2
@@ -602,24 +476,8 @@ REGISTER_OP("ApplyAdagradDA")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradDAShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the proximal adagrad scheme.
-
-var: Should be from a Variable().
-gradient_accumulator: Should be from a Variable().
-gradient_squared_accumulator: Should be from a Variable().
-grad: The gradient.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-global_step: Training step number. Must be a scalar.
-out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(
+        ApplyAdagradDAShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyAdagradDA")
     .Input("var: Ref(T)")
@@ -635,61 +493,8 @@ REGISTER_OP("SparseApplyAdagradDA")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradDAShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update entries in '*var' and '*accum' according to the proximal adagrad scheme.
-
-var: Should be from a Variable().
-gradient_accumulator: Should be from a Variable().
-gradient_squared_accumulator: Should be from a Variable().
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-lr: Learning rate. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-global_step: Training step number. Must be a scalar.
-out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
-REGISTER_OP("SparseApplyProximalAdagrad")
-    .Input("var: Ref(T)")
-    .Input("accum: Ref(T)")
-    .Input("lr: T")
-    .Input("l1: T")
-    .Input("l2: T")
-    .Input("grad: T")
-    .Input("indices: Tindices")
-    .Output("out: Ref(T)")
-    .Attr("T: numbertype")
-    .Attr("Tindices: {int32, int64}")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalAdagradShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Sparse update entries in '*var' and '*accum' according to FOBOS algorithm.
-
-That is for rows we have grad for, we update var and accum as follows:
-accum += grad * grad
-prox_v = var
-prox_v -= lr * grad * (1 / sqrt(accum))
-var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-out: Same as "var".
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(
+        ApplyAdagradDAShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyAdagradDA")
     .Input("var: resource")
@@ -702,23 +507,8 @@ REGISTER_OP("ResourceApplyAdagradDA")
     .Input("global_step: int64")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradDAShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the proximal adagrad scheme.
-
-var: Should be from a Variable().
-gradient_accumulator: Should be from a Variable().
-gradient_squared_accumulator: Should be from a Variable().
-grad: The gradient.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-global_step: Training step number. Must be a scalar.
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
+    .SetShapeFn(
+        ApplyAdagradDAShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyAdagradDA")
     .Input("var: resource")
@@ -733,67 +523,20 @@ REGISTER_OP("ResourceSparseApplyAdagradDA")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdagradDAShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update entries in '*var' and '*accum' according to the proximal adagrad scheme.
+    .SetShapeFn(
+        ApplyAdagradDAShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-var: Should be from a Variable().
-gradient_accumulator: Should be from a Variable().
-gradient_squared_accumulator: Should be from a Variable().
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-lr: Learning rate. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-global_step: Training step number. Must be a scalar.
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
-REGISTER_OP("ResourceSparseApplyProximalAdagrad")
-    .Input("var: resource")
-    .Input("accum: resource")
-    .Input("lr: T")
-    .Input("l1: T")
-    .Input("l2: T")
-    .Input("grad: T")
-    .Input("indices: Tindices")
-    .Attr("T: numbertype")
-    .Attr("Tindices: {int32, int64}")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyProximalAdagradShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Sparse update entries in '*var' and '*accum' according to FOBOS algorithm.
-
-That is for rows we have grad for, we update var and accum as follows:
-accum += grad * grad
-prox_v = var
-prox_v -= lr * grad * (1 / sqrt(accum))
-var = sign(prox_v)/(1+lr*l2) * max{|prox_v|-lr*l1,0}
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-use_locking: If True, updating of the var and accum tensors will be protected by
-a lock; otherwise the behavior is undefined, but may exhibit less contention.
-)doc");
-
-static Status ApplyFtrlShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_sparse, bool is_resource>
+static Status ApplyFtrlShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // linear
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
-  int idx = sparse ? 5 : 4;
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // accum
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // linear
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 3 /* grad_idx */, &s));
+  int idx = is_sparse ? 5 : 4;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // lr
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // l1
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // l2
@@ -816,31 +559,8 @@ REGISTER_OP("ApplyFtrl")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyFtrlShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the Ftrl-proximal scheme.
-
-accum_new = accum + grad * grad
-linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
-quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
-var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
-accum = accum_new
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-linear: Should be from a Variable().
-grad: The gradient.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regulariation. Must be a scalar.
-l2: L2 regulariation. Must be a scalar.
-lr_power: Scaling factor. Must be a scalar.
-out: Same as "var".
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyFtrl")
     .Input("var: Ref(T)")
@@ -856,33 +576,8 @@ REGISTER_OP("SparseApplyFtrl")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyFtrlShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update relevant entries in '*var' according to the Ftrl-proximal scheme.
-
-That is for rows we have grad for, we update var, accum and linear as follows:
-accum_new = accum + grad * grad
-linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
-quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
-var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
-accum = accum_new
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-linear: Should be from a Variable().
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-lr_power: Scaling factor. Must be a scalar.
-out: Same as "var".
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyFtrl")
     .Input("var: resource")
@@ -895,30 +590,8 @@ REGISTER_OP("ResourceApplyFtrl")
     .Input("lr_power: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyFtrlShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the Ftrl-proximal scheme.
-
-accum_new = accum + grad * grad
-linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
-quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
-var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
-accum = accum_new
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-linear: Should be from a Variable().
-grad: The gradient.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regulariation. Must be a scalar.
-l2: L2 regulariation. Must be a scalar.
-lr_power: Scaling factor. Must be a scalar.
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyFtrl")
     .Input("var: resource")
@@ -933,41 +606,85 @@ REGISTER_OP("ResourceSparseApplyFtrl")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyFtrlShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update relevant entries in '*var' according to the Ftrl-proximal scheme.
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-That is for rows we have grad for, we update var, accum and linear as follows:
-accum_new = accum + grad * grad
-linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
-quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
-var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
-accum = accum_new
+REGISTER_OP("ApplyFtrlV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("linear: Ref(T)")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
-var: Should be from a Variable().
-accum: Should be from a Variable().
-linear: Should be from a Variable().
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-lr: Scaling factor. Must be a scalar.
-l1: L1 regularization. Must be a scalar.
-l2: L2 regularization. Must be a scalar.
-lr_power: Scaling factor. Must be a scalar.
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+REGISTER_OP("SparseApplyFtrlV2")
+    .Input("var: Ref(T)")
+    .Input("accum: Ref(T)")
+    .Input("linear: Ref(T)")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
-static Status ApplyMomentumShapeFn(InferenceContext* c, bool sparse) {
+REGISTER_OP("ResourceApplyFtrlV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("linear: resource")
+    .Input("grad: T")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
+
+REGISTER_OP("ResourceSparseApplyFtrlV2")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("linear: resource")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("lr: T")
+    .Input("l1: T")
+    .Input("l2: T")
+    .Input("l2_shrinkage: T")
+    .Input("lr_power: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("multiply_linear_by_lr: bool = false")
+    .SetShapeFn(ApplyFtrlShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
+
+template <bool is_sparse, bool is_resource>
+static Status ApplyMomentumShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // accum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));  // lr
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 3 /* grad_idx */, &s));
-  int idx = sparse ? 5 : 4;
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // accum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 3 /* grad_idx */, &s));
+  int idx = is_sparse ? 5 : 4;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(idx++), 0, &unused));  // momentum
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
@@ -985,29 +702,8 @@ REGISTER_OP("ApplyMomentum")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
     .Attr("use_nesterov: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyMomentumShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the momentum scheme. Set use_nesterov = True if you
-want to use Nesterov momentum.
-
-accum = accum * momentum + grad
-var -= lr * accum
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-grad: The gradient.
-momentum: Momentum. Must be a scalar.
-out: Same as "var".
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
-var - lr * momentum * accum, so in the end, the var you get is actually
-var - lr * momentum * accum.
-)doc");
+    .SetShapeFn(
+        ApplyMomentumShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyMomentum")
     .Input("var: Ref(T)")
@@ -1021,32 +717,8 @@ REGISTER_OP("SparseApplyMomentum")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
     .Attr("use_nesterov: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyMomentumShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update relevant entries in '*var' and '*accum' according to the momentum scheme.
-Set use_nesterov = True if you want to use Nesterov momentum.
-
-That is for rows we have grad for, we update var and accum as follows:
-
-accum = accum * momentum + grad
-var -= lr * accum
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-momentum: Momentum. Must be a scalar.
-out: Same as "var".
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
-var - lr * momentum * accum, so in the end, the var you get is actually
-var - lr * momentum * accum.
-)doc");
+    .SetShapeFn(
+        ApplyMomentumShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyMomentum")
     .Input("var: resource")
@@ -1057,28 +729,8 @@ REGISTER_OP("ResourceApplyMomentum")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
     .Attr("use_nesterov: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyMomentumShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the momentum scheme. Set use_nesterov = True if you
-want to use Nesterov momentum.
-
-accum = accum * momentum + grad
-var -= lr * accum
-
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-grad: The gradient.
-momentum: Momentum. Must be a scalar.
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
-var - lr * momentum * accum, so in the end, the var you get is actually
-var - lr * momentum * accum.
-)doc");
+    .SetShapeFn(
+        ApplyMomentumShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyMomentum")
     .Input("var: resource")
@@ -1091,45 +743,50 @@ REGISTER_OP("ResourceSparseApplyMomentum")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
     .Attr("use_nesterov: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyMomentumShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update relevant entries in '*var' and '*accum' according to the momentum scheme.
-Set use_nesterov = True if you want to use Nesterov momentum.
+    .SetShapeFn(ApplyMomentumShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-That is for rows we have grad for, we update var and accum as follows:
+REGISTER_OP("ResourceApplyKerasMomentum")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("grad: T")
+    .Input("momentum: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn(
+        ApplyMomentumShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
-accum = accum * momentum + grad
-var -= lr * accum
+REGISTER_OP("ResourceSparseApplyKerasMomentum")
+    .Input("var: resource")
+    .Input("accum: resource")
+    .Input("lr: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Input("momentum: T")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn(ApplyMomentumShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-var: Should be from a Variable().
-accum: Should be from a Variable().
-lr: Learning rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var and accum.
-momentum: Momentum. Must be a scalar.
-use_locking: If `True`, updating of the var and accum tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-use_nesterov: If `True`, the tensor passed to compute grad will be 
-var - lr * momentum * accum, so in the end, the var you get is actually
-var - lr * momentum * accum.
-)doc");
-
-static Status ApplyAdamShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_resource>
+static Status ApplyAdamShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // m
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // v
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // beta1_power
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // beta2_power
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // beta1
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // beta2
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));  // epsilon
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 9 /* grad_idx */, &s));
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // v
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // beta2_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));     // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));     // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs</*is_sparse=*/false, is_resource>(
+          c, 9 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
@@ -1150,32 +807,8 @@ REGISTER_OP("ApplyAdam")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdamShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the Adam algorithm.
-
-lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
-m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
-v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
-variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)
-
-var: Should be from a Variable().
-m: Should be from a Variable().
-v: Should be from a Variable().
-beta1_power: Must be a scalar.
-beta2_power: Must be a scalar.
-lr: Scaling factor. Must be a scalar.
-beta1: Momentum factor. Must be a scalar.
-beta2: Momentum factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-grad: The gradient.
-out: Same as "var".
-use_locking: If `True`, updating of the var, m, and v tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn(ApplyAdamShapeFn</*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyAdam")
     .Input("var: resource")
@@ -1190,61 +823,115 @@ REGISTER_OP("ResourceApplyAdam")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyAdamShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the Adam algorithm.
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn(ApplyAdamShapeFn</*is_resource=*/true>);
 
-lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
-m_t <- beta1 * m_{t-1} + (1 - beta1) * g_t
-v_t <- beta2 * v_{t-1} + (1 - beta2) * g_t * g_t
-variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)
-
-var: Should be from a Variable().
-m: Should be from a Variable().
-v: Should be from a Variable().
-beta1_power: Must be a scalar.
-beta2_power: Must be a scalar.
-lr: Scaling factor. Must be a scalar.
-beta1: Momentum factor. Must be a scalar.
-beta2: Momentum factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-grad: The gradient.
-use_locking: If `True`, updating of the var, m, and v tensors will be protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
-
-static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {
+template <bool is_resource>
+static Status ApplyAdamWithAmsgradShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // ms
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // mom
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // momentum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // epsilon
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 7 /* grad_idx */, &s));
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // v
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 3), &s));  // vhat
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // beta2_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));     // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));     // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(9), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs</*is_sparse=*/false, is_resource>(
+          c, 10 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
   return Status::OK();
 }
 
-static Status ApplyCenteredRMSPropShapeFn(InferenceContext* c, bool sparse) {
+REGISTER_OP("ResourceApplyAdamWithAmsgrad")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("v: resource")
+    .Input("vhat: resource")
+    .Input("beta1_power: T")
+    .Input("beta2_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyAdamWithAmsgradShapeFn</*is_resource=*/true>);
+
+template <bool is_resource>
+static Status ApplyAdaMaxShapeFn(InferenceContext* c) {
   ShapeHandle unused;
-  ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 1), &s));  // ms
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 2), &s));  // mg
-  TF_RETURN_IF_ERROR(c->Merge(s, ShapeOrHandleShape(c, 3), &s));  // mom
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));  // lr
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));  // rho
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));  // momentum
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));  // epsilon
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
   TF_RETURN_IF_ERROR(
-      HandleGradAndIndicesInputs(c, sparse, 8 /* grad_idx */, &s));
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // v
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // beta1_power
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // beta1
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));     // beta2
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs</*is_sparse=*/false, is_resource>(
+          c, 8 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyAdaMax")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("v: Ref(T)")
+    .Input("beta1_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyAdaMaxShapeFn</*is_resource=*/false>);
+
+REGISTER_OP("ResourceApplyAdaMax")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("v: resource")
+    .Input("beta1_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyAdaMaxShapeFn</*is_resource=*/true>);
+
+template <bool is_sparse, bool is_resource>
+static Status ApplyRMSPropShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // ms
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // mom
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 7 /* grad_idx */, &s));
   if (c->num_outputs() > 0) {
     c->set_output(0, s);
   }
@@ -1263,85 +950,8 @@ REGISTER_OP("ApplyRMSProp")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyRMSPropShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the RMSProp algorithm.
-Note that in dense implementation of this algorithm, ms and mom will
-update even if the grad is zero, but in this sparse implementation, ms
-and mom will not update in iterations during which the grad is zero.
-
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
-
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
-
-var: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-out: Same as "var".
-use_locking: If `True`, updating of the var, ms, and mom tensors is protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
-
-REGISTER_OP("ApplyCenteredRMSProp")
-    .Input("var: Ref(T)")
-    .Input("mg: Ref(T)")
-    .Input("ms: Ref(T)")
-    .Input("mom: Ref(T)")
-    .Input("lr: T")
-    .Input("rho: T")
-    .Input("momentum: T")
-    .Input("epsilon: T")
-    .Input("grad: T")
-    .Output("out: Ref(T)")
-    .Attr("T: numbertype")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyCenteredRMSPropShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the centered RMSProp algorithm.
-The centered RMSProp algorithm uses an estimate of the centered second moment
-(i.e., the variance) for normalization, as opposed to regular RMSProp, which
-uses the (uncentered) second moment. This often helps with training, but is
-slightly more expensive in terms of computation and memory.
-
-Note that in dense implementation of this algorithm, mg, ms, and mom will
-update even if the grad is zero, but in this sparse implementation, mg, ms,
-and mom will not update in iterations during which the grad is zero.
-
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-mean_grad = decay * mean_grad + (1-decay) * gradient
-
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
-
-mg <- rho * mg_{t-1} + (1-rho) * grad
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
-var <- var - mom
-
-var: Should be from a Variable().
-mg: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-out: Same as "var".
-use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
-  protected by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .SetShapeFn(
+        ApplyRMSPropShapeFn</*is_sparse=*/false, /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyRMSProp")
     .Input("var: Ref(T)")
@@ -1357,35 +967,73 @@ REGISTER_OP("SparseApplyRMSProp")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyRMSPropShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the RMSProp algorithm.
-Note that in dense implementation of this algorithm, ms and mom will
-update even if the grad is zero, but in this sparse implementation, ms
-and mom will not update in iterations during which the grad is zero.
+    .SetShapeFn(ApplyRMSPropShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
+REGISTER_OP("ResourceApplyRMSProp")
+    .Input("var: resource")
+    .Input("ms: resource")
+    .Input("mom: resource")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("momentum: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyRMSPropShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
+REGISTER_OP("ResourceSparseApplyRMSProp")
+    .Input("var: resource")
+    .Input("ms: resource")
+    .Input("mom: resource")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("momentum: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Input("indices: Tindices")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyRMSPropShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-var: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var, ms and mom.
-out: Same as "var".
-use_locking: If `True`, updating of the var, ms, and mom tensors is protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+template <bool is_sparse, bool is_resource>
+static Status ApplyCenteredRMSPropShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // ms
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 2), &s));  // mg
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 3), &s));  // mom
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // rho
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));     // momentum
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));     // epsilon
+  TF_RETURN_IF_ERROR(HandleGradAndIndicesInputs<is_sparse, is_resource>(
+      c, 8 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyCenteredRMSProp")
+    .Input("var: Ref(T)")
+    .Input("mg: Ref(T)")
+    .Input("ms: Ref(T)")
+    .Input("mom: Ref(T)")
+    .Input("lr: T")
+    .Input("rho: T")
+    .Input("momentum: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyCenteredRMSPropShapeFn</*is_sparse=*/false,
+                                            /*is_resource=*/false>);
 
 REGISTER_OP("SparseApplyCenteredRMSProp")
     .Input("var: Ref(T)")
@@ -1402,81 +1050,8 @@ REGISTER_OP("SparseApplyCenteredRMSProp")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyCenteredRMSPropShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the centered RMSProp algorithm.
-The centered RMSProp algorithm uses an estimate of the centered second moment
-(i.e., the variance) for normalization, as opposed to regular RMSProp, which
-uses the (uncentered) second moment. This often helps with training, but is
-slightly more expensive in terms of computation and memory.
-
-Note that in dense implementation of this algorithm, mg, ms, and mom will
-update even if the grad is zero, but in this sparse implementation, mg, ms,
-and mom will not update in iterations during which the grad is zero.
-
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-mean_grad = decay * mean_grad + (1-decay) * gradient
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
-
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
-
-var: Should be from a Variable().
-mg: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var, ms and mom.
-out: Same as "var".
-use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
-  protected by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
-
-REGISTER_OP("ResourceApplyRMSProp")
-    .Input("var: resource")
-    .Input("ms: resource")
-    .Input("mom: resource")
-    .Input("lr: T")
-    .Input("rho: T")
-    .Input("momentum: T")
-    .Input("epsilon: T")
-    .Input("grad: T")
-    .Attr("T: numbertype")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyRMSPropShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the RMSProp algorithm.
-Note that in dense implementation of this algorithm, ms and mom will
-update even if the grad is zero, but in this sparse implementation, ms
-and mom will not update in iterations during which the grad is zero.
-
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
-
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
-
-var: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-use_locking: If `True`, updating of the var, ms, and mom tensors is protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .SetShapeFn(
+        ApplyCenteredRMSPropShapeFn</*is_sparse=*/true, /*is_resource=*/false>);
 
 REGISTER_OP("ResourceApplyCenteredRMSProp")
     .Input("var: resource")
@@ -1490,84 +1065,8 @@ REGISTER_OP("ResourceApplyCenteredRMSProp")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyCenteredRMSPropShapeFn(c, false /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the centered RMSProp algorithm.
-The centered RMSProp algorithm uses an estimate of the centered second moment
-(i.e., the variance) for normalization, as opposed to regular RMSProp, which
-uses the (uncentered) second moment. This often helps with training, but is
-slightly more expensive in terms of computation and memory.
-
-Note that in dense implementation of this algorithm, mg, ms, and mom will
-update even if the grad is zero, but in this sparse implementation, mg, ms,
-and mom will not update in iterations during which the grad is zero.
-
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-mean_grad = decay * mean_grad + (1-decay) * gradient
-
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
-
-mg <- rho * mg_{t-1} + (1-rho) * grad
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)
-var <- var - mom
-
-var: Should be from a Variable().
-mg: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
-  protected by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
-
-REGISTER_OP("ResourceSparseApplyRMSProp")
-    .Input("var: resource")
-    .Input("ms: resource")
-    .Input("mom: resource")
-    .Input("lr: T")
-    .Input("rho: T")
-    .Input("momentum: T")
-    .Input("epsilon: T")
-    .Input("grad: T")
-    .Input("indices: Tindices")
-    .Attr("T: numbertype")
-    .Attr("Tindices: {int32, int64}")
-    .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyRMSPropShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the RMSProp algorithm.
-Note that in dense implementation of this algorithm, ms and mom will
-update even if the grad is zero, but in this sparse implementation, ms
-and mom will not update in iterations during which the grad is zero.
-
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon)
-
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
-
-var: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var, ms and mom.
-use_locking: If `True`, updating of the var, ms, and mom tensors is protected
-  by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+    .SetShapeFn(
+        ApplyCenteredRMSPropShapeFn</*is_sparse=*/false, /*is_resource=*/true>);
 
 REGISTER_OP("ResourceSparseApplyCenteredRMSProp")
     .Input("var: resource")
@@ -1583,40 +1082,95 @@ REGISTER_OP("ResourceSparseApplyCenteredRMSProp")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Attr("use_locking: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return ApplyCenteredRMSPropShapeFn(c, true /* sparse */);
-    })
-    .Doc(R"doc(
-Update '*var' according to the centered RMSProp algorithm.
-The centered RMSProp algorithm uses an estimate of the centered second moment
-(i.e., the variance) for normalization, as opposed to regular RMSProp, which
-uses the (uncentered) second moment. This often helps with training, but is
-slightly more expensive in terms of computation and memory.
+    .SetShapeFn(
+        ApplyCenteredRMSPropShapeFn</*is_sparse=*/true, /*is_resource=*/true>);
 
-Note that in dense implementation of this algorithm, mg, ms, and mom will
-update even if the grad is zero, but in this sparse implementation, mg, ms,
-and mom will not update in iterations during which the grad is zero.
+template <bool is_resource>
+static Status ApplyAddSignShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // alpha
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // sign_decay
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // beta
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs</*is_sparse=*/false, is_resource>(
+          c, 6 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
 
-mean_square = decay * mean_square + (1-decay) * gradient ** 2
-mean_grad = decay * mean_grad + (1-decay) * gradient
-Delta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)
+REGISTER_OP("ApplyAddSign")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("lr: T")
+    .Input("alpha: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyAddSignShapeFn</*is_resource=*/false>);
 
-ms <- rho * ms_{t-1} + (1-rho) * grad * grad
-mom <- momentum * mom_{t-1} + lr * grad / sqrt(ms + epsilon)
-var <- var - mom
+REGISTER_OP("ResourceApplyAddSign")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("lr: T")
+    .Input("alpha: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyAddSignShapeFn</*is_resource=*/true>);
 
-var: Should be from a Variable().
-mg: Should be from a Variable().
-ms: Should be from a Variable().
-mom: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-epsilon: Ridge term. Must be a scalar.
-rho: Decay rate. Must be a scalar.
-grad: The gradient.
-indices: A vector of indices into the first dimension of var, ms and mom.
-use_locking: If `True`, updating of the var, mg, ms, and mom tensors is
-  protected by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc");
+template <bool is_resource>
+static Status ApplyPowerSignShapeFn(InferenceContext* c) {
+  ShapeHandle unused;
+  ShapeHandle s = ShapeOrHandleShape<is_resource>(c, 0);  // var
+  TF_RETURN_IF_ERROR(
+      c->Merge(s, ShapeOrHandleShape<is_resource>(c, 1), &s));  // m
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));     // lr
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));     // logbase
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));     // sign_delay
+  TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));     // beta
+  TF_RETURN_IF_ERROR(
+      HandleGradAndIndicesInputs</*is_sparse=*/false, is_resource>(
+          c, 6 /* grad_idx */, &s));
+  if (c->num_outputs() > 0) {
+    c->set_output(0, s);
+  }
+  return Status::OK();
+}
+
+REGISTER_OP("ApplyPowerSign")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("lr: T")
+    .Input("logbase: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyPowerSignShapeFn</*is_resource=*/false>);
+
+REGISTER_OP("ResourceApplyPowerSign")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("lr: T")
+    .Input("logbase: T")
+    .Input("sign_decay: T")
+    .Input("beta: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyPowerSignShapeFn</*is_resource=*/true>);
 
 }  // namespace tensorflow

@@ -13,37 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
-
 #include "tensorflow/core/common_runtime/constant_folding.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/tools/graph_transforms/fold_constants_lib.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
 namespace graph_transforms {
 
-// Converts Conv2D ops followed by column-wise Muls into equivalent ops with the
-// Mul baked into the convolution weights, to save computation during inference.
+// Converts Conv2D or MatMul ops followed by column-wise Muls into equivalent
+// ops with the Mul baked into the convolution weights, to save computation
+// during inference.
 Status FoldBatchNorms(const GraphDef& input_graph_def,
                       const TransformFuncContext& context,
                       GraphDef* output_graph_def) {
   GraphDef replaced_graph_def;
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def,  // clang-format off
-      {"Mul",             // mul_node
+      {"Mul",                // mul_node
         {
-          {"Conv2D",      // conv_node
+          {"Conv2D|MatMul|DepthwiseConv2dNative",  // conv_node
             {
-              {"*"},      // input_node
-              {"Const"},  // weights_node
+              {"*"},         // input_node
+              {"Const"},     // weights_node
             }
           },
-          {"Const"},      // mul_values_node
+          {"Const"},         // mul_values_node
         }
       },  // clang-format on
       [](const NodeMatch& match, const std::set<string>& input_nodes,
@@ -56,12 +55,31 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         const NodeDef& weights_node = match.inputs[0].inputs[1].node;
         const NodeDef& mul_values_node = match.inputs[1].node;
 
+        // Check that nodes that we use are not used somewhere else.
+        for (const auto& node : {conv_node, weights_node, mul_values_node}) {
+          if (output_nodes.count(node.name())) {
+            // Return original nodes.
+            new_nodes->insert(new_nodes->end(),
+                              {mul_node, conv_node, input_node, weights_node,
+                               mul_values_node});
+            return Status::OK();
+          }
+        }
+
         Tensor weights = GetNodeTensorAttr(weights_node, "value");
         Tensor mul_values = GetNodeTensorAttr(mul_values_node, "value");
 
         // Make sure all the inputs really are vectors, with as many entries as
         // there are columns in the weights.
-        const int64 weights_cols = weights.shape().dim_size(3);
+        int64 weights_cols;
+        if (conv_node.op() == "Conv2D") {
+          weights_cols = weights.shape().dim_size(3);
+        } else if (conv_node.op() == "DepthwiseConv2dNative") {
+          weights_cols =
+              weights.shape().dim_size(2) * weights.shape().dim_size(3);
+        } else {
+          weights_cols = weights.shape().dim_size(1);
+        }
         if ((mul_values.shape().dims() != 1) ||
             (mul_values.shape().dim_size(0) != weights_cols)) {
           return errors::InvalidArgument(
@@ -70,14 +88,13 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         }
 
         // Multiply the original weights by the scale vector.
-        auto weights_matrix = weights.flat_inner_dims<float>();
+        auto weights_vector = weights.flat<float>();
         Tensor scaled_weights(DT_FLOAT, weights.shape());
-        auto scaled_weights_matrix = scaled_weights.flat_inner_dims<float>();
-        for (int64 row = 0; row < weights_matrix.dimension(0); ++row) {
-          for (int64 col = 0; col < weights_cols; ++col) {
-            scaled_weights_matrix(row, col) =
-                weights_matrix(row, col) * mul_values.flat<float>()(col);
-          }
+        auto scaled_weights_vector = scaled_weights.flat<float>();
+        for (int64 row = 0; row < weights_vector.dimension(0); ++row) {
+          scaled_weights_vector(row) =
+              weights_vector(row) *
+              mul_values.flat<float>()(row % weights_cols);
         }
 
         // Construct the new nodes.
@@ -91,7 +108,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         new_nodes->push_back(input_node);
 
         NodeDef new_conv_node;
-        new_conv_node.CopyFrom(conv_node);
+        new_conv_node = conv_node;
         new_conv_node.set_name(mul_node.name());
         new_nodes->push_back(new_conv_node);
 

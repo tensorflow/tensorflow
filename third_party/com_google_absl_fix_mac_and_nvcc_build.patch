@@ -1,0 +1,310 @@
+diff --git a/absl/container/internal/compressed_tuple.h b/absl/container/internal/compressed_tuple.h
+index 4bfe92f..01db713 100644
+--- a/absl/container/internal/compressed_tuple.h
++++ b/absl/container/internal/compressed_tuple.h
+@@ -32,7 +32,6 @@
+ #ifndef ABSL_CONTAINER_INTERNAL_COMPRESSED_TUPLE_H_
+ #define ABSL_CONTAINER_INTERNAL_COMPRESSED_TUPLE_H_
+ 
+-#include <initializer_list>
+ #include <tuple>
+ #include <type_traits>
+ #include <utility>
+@@ -77,110 +76,61 @@ constexpr bool IsFinal() {
+ #endif
+ }
+ 
+-// We can't use EBCO on other CompressedTuples because that would mean that we
+-// derive from multiple Storage<> instantiations with the same I parameter,
+-// and potentially from multiple identical Storage<> instantiations.  So anytime
+-// we use type inheritance rather than encapsulation, we mark
+-// CompressedTupleImpl, to make this easy to detect.
+-struct uses_inheritance {};
+-
+ template <typename T>
+ constexpr bool ShouldUseBase() {
+-  return std::is_class<T>::value && std::is_empty<T>::value && !IsFinal<T>() &&
+-         !std::is_base_of<uses_inheritance, T>::value;
++  return std::is_class<T>::value && std::is_empty<T>::value && !IsFinal<T>();
+ }
+ 
+ // The storage class provides two specializations:
+ //  - For empty classes, it stores T as a base class.
+ //  - For everything else, it stores T as a member.
+-template <typename T, size_t I,
+-#if defined(_MSC_VER)
+-          bool UseBase =
+-              ShouldUseBase<typename std::enable_if<true, T>::type>()>
+-#else
+-          bool UseBase = ShouldUseBase<T>()>
+-#endif
++template <typename D, size_t I, bool = ShouldUseBase<ElemT<D, I>>()>
+ struct Storage {
++  using T = ElemT<D, I>;
+   T value;
+   constexpr Storage() = default;
+-  template <typename V>
+-  explicit constexpr Storage(absl::in_place_t, V&& v)
+-      : value(absl::forward<V>(v)) {}
++  explicit constexpr Storage(T&& v) : value(absl::forward<T>(v)) {}
+   constexpr const T& get() const& { return value; }
+   T& get() & { return value; }
+   constexpr const T&& get() const&& { return absl::move(*this).value; }
+   T&& get() && { return std::move(*this).value; }
+ };
+ 
+-template <typename T, size_t I>
+-struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC Storage<T, I, true> : T {
++template <typename D, size_t I>
++struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC Storage<D, I, true>
++    : ElemT<D, I> {
++  using T = internal_compressed_tuple::ElemT<D, I>;
+   constexpr Storage() = default;
+-
+-  template <typename V>
+-  explicit constexpr Storage(absl::in_place_t, V&& v)
+-      : T(absl::forward<V>(v)) {}
+-
++  explicit constexpr Storage(T&& v) : T(absl::forward<T>(v)) {}
+   constexpr const T& get() const& { return *this; }
+   T& get() & { return *this; }
+   constexpr const T&& get() const&& { return absl::move(*this); }
+   T&& get() && { return std::move(*this); }
+ };
+ 
+-template <typename D, typename I, bool ShouldAnyUseBase>
++template <typename D, typename I>
+ struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTupleImpl;
+ 
+-template <typename... Ts, size_t... I, bool ShouldAnyUseBase>
+-struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTupleImpl<
+-    CompressedTuple<Ts...>, absl::index_sequence<I...>, ShouldAnyUseBase>
++template <typename... Ts, size_t... I>
++struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC
++    CompressedTupleImpl<CompressedTuple<Ts...>, absl::index_sequence<I...>>
+     // We use the dummy identity function through std::integral_constant to
+     // convince MSVC of accepting and expanding I in that context. Without it
+     // you would get:
+     //   error C3548: 'I': parameter pack cannot be used in this context
+-    : uses_inheritance,
+-      Storage<Ts, std::integral_constant<size_t, I>::value>... {
+-  constexpr CompressedTupleImpl() = default;
+-  template <typename... Vs>
+-  explicit constexpr CompressedTupleImpl(absl::in_place_t, Vs&&... args)
+-      : Storage<Ts, I>(absl::in_place, absl::forward<Vs>(args))... {}
+-  friend CompressedTuple<Ts...>;
+-};
+-
+-template <typename... Ts, size_t... I>
+-struct ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTupleImpl<
+-    CompressedTuple<Ts...>, absl::index_sequence<I...>, false>
+-    // We use the dummy identity function as above...
+-    : Storage<Ts, std::integral_constant<size_t, I>::value, false>... {
++    : Storage<CompressedTuple<Ts...>,
++              std::integral_constant<size_t, I>::value>... {
+   constexpr CompressedTupleImpl() = default;
+-  template <typename... Vs>
+-  explicit constexpr CompressedTupleImpl(absl::in_place_t, Vs&&... args)
+-      : Storage<Ts, I, false>(absl::in_place, absl::forward<Vs>(args))... {}
+-  friend CompressedTuple<Ts...>;
++  explicit constexpr CompressedTupleImpl(Ts&&... args)
++      : Storage<CompressedTuple<Ts...>, I>(absl::forward<Ts>(args))... {}
+ };
+ 
+-std::false_type Or(std::initializer_list<std::false_type>);
+-std::true_type Or(std::initializer_list<bool>);
+-
+-// MSVC requires this to be done separately rather than within the declaration
+-// of CompressedTuple below.
+-template <typename... Ts>
+-constexpr bool ShouldAnyUseBase() {
+-  return decltype(
+-      Or({std::integral_constant<bool, ShouldUseBase<Ts>()>()...})){};
+-}
+-
+-template <typename T, typename V>
+-using TupleMoveConstructible = typename std::conditional<
+-      std::is_reference<T>::value, std::is_convertible<V, T>,
+-      std::is_constructible<T, V&&>>::type;
+-
+ }  // namespace internal_compressed_tuple
+ 
+ // Helper class to perform the Empty Base Class Optimization.
+ // Ts can contain classes and non-classes, empty or not. For the ones that
+ // are empty classes, we perform the CompressedTuple. If all types in Ts are
+-// empty classes, then CompressedTuple<Ts...> is itself an empty class.  (This
+-// does not apply when one or more of those empty classes is itself an empty
+-// CompressedTuple.)
++// empty classes, then CompressedTuple<Ts...> is itself an empty class.
+ //
+ // To access the members, use member .get<N>() function.
+ //
+@@ -196,58 +146,36 @@ using TupleMoveConstructible = typename std::conditional<
+ template <typename... Ts>
+ class ABSL_INTERNAL_COMPRESSED_TUPLE_DECLSPEC CompressedTuple
+     : private internal_compressed_tuple::CompressedTupleImpl<
+-          CompressedTuple<Ts...>, absl::index_sequence_for<Ts...>,
+-          internal_compressed_tuple::ShouldAnyUseBase<Ts...>()> {
++          CompressedTuple<Ts...>, absl::index_sequence_for<Ts...>> {
+  private:
+   template <int I>
+   using ElemT = internal_compressed_tuple::ElemT<CompressedTuple, I>;
+ 
+-  template <int I>
+-  using StorageT = internal_compressed_tuple::Storage<ElemT<I>, I>;
+-
+  public:
+-  // There seems to be a bug in MSVC dealing in which using '=default' here will
+-  // cause the compiler to ignore the body of other constructors. The work-
+-  // around is to explicitly implement the default constructor.
+-#if defined(_MSC_VER)
+-  constexpr CompressedTuple() : CompressedTuple::CompressedTupleImpl() {}
+-#else
+   constexpr CompressedTuple() = default;
+-#endif
+-  explicit constexpr CompressedTuple(const Ts&... base)
+-      : CompressedTuple::CompressedTupleImpl(absl::in_place, base...) {}
+-
+-  template <typename... Vs,
+-            absl::enable_if_t<
+-                absl::conjunction<
+-                    // Ensure we are not hiding default copy/move constructors.
+-                    absl::negation<std::is_same<void(CompressedTuple),
+-                                                void(absl::decay_t<Vs>...)>>,
+-                    internal_compressed_tuple::TupleMoveConstructible<
+-                        Ts, Vs&&>...>::value,
+-                bool> = true>
+-  explicit constexpr CompressedTuple(Vs&&... base)
+-      : CompressedTuple::CompressedTupleImpl(absl::in_place,
+-                                             absl::forward<Vs>(base)...) {}
++  explicit constexpr CompressedTuple(Ts... base)
++      : CompressedTuple::CompressedTupleImpl(absl::forward<Ts>(base)...) {}
+ 
+   template <int I>
+   ElemT<I>& get() & {
+-    return internal_compressed_tuple::Storage<ElemT<I>, I>::get();
++    return internal_compressed_tuple::Storage<CompressedTuple, I>::get();
+   }
+ 
+   template <int I>
+   constexpr const ElemT<I>& get() const& {
+-    return StorageT<I>::get();
++    return internal_compressed_tuple::Storage<CompressedTuple, I>::get();
+   }
+ 
+   template <int I>
+   ElemT<I>&& get() && {
+-    return std::move(*this).StorageT<I>::get();
++    return std::move(*this)
++        .internal_compressed_tuple::template Storage<CompressedTuple, I>::get();
+   }
+ 
+   template <int I>
+   constexpr const ElemT<I>&& get() const&& {
+-    return absl::move(*this).StorageT<I>::get();
++    return absl::move(*this)
++        .internal_compressed_tuple::template Storage<CompressedTuple, I>::get();
+   }
+ };
+ 
+diff --git a/absl/strings/string_view.h b/absl/strings/string_view.h
+index 1861ea6..c7a916b 100644
+--- a/absl/strings/string_view.h
++++ b/absl/strings/string_view.h
+@@ -283,7 +283,14 @@ class string_view {
+   // Returns the ith element of the `string_view` using the array operator.
+   // Note that this operator does not perform any bounds checking.
+   constexpr const_reference operator[](size_type i) const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[i];
++#else
+     return ABSL_ASSERT(i < size()), ptr_[i];
++#endif
+   }
+ 
+   // string_view::at()
+@@ -292,25 +299,46 @@ class string_view {
+   // and an exception of type `std::out_of_range` will be thrown on invalid
+   // access.
+   constexpr const_reference at(size_type i) const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[i];
++#else
+     return ABSL_PREDICT_TRUE(i < size())
+                ? ptr_[i]
+                : ((void)base_internal::ThrowStdOutOfRange(
+                       "absl::string_view::at"),
+                   ptr_[i]);
++#endif
+   }
+ 
+   // string_view::front()
+   //
+   // Returns the first element of a `string_view`.
+   constexpr const_reference front() const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[0];
++#else
+     return ABSL_ASSERT(!empty()), ptr_[0];
++#endif
+   }
+ 
+   // string_view::back()
+   //
+   // Returns the last element of a `string_view`.
+   constexpr const_reference back() const {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return ptr_[size() - 1];
++#else
+     return ABSL_ASSERT(!empty()), ptr_[size() - 1];
++#endif
+   }
+ 
+   // string_view::data()
+@@ -519,7 +547,14 @@ class string_view {
+       (std::numeric_limits<difference_type>::max)();
+ 
+   static constexpr size_type CheckLengthInternal(size_type len) {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__ < 10 || (__CUDACC_VER_MAJOR__ == 10 && __CUDACC_VER_MINOR__ < 2))
++    // An NVCC bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function.  This will be fixed in the
++    // CUDA 10.2 release.
++    return len;
++#else
+     return (void)ABSL_ASSERT(len <= kMaxSize), len;
++#endif
+   }
+ 
+   static constexpr size_type StrlenInternal(const char* str) {
+diff --git a/absl/time/internal/cctz/BUILD.bazel b/absl/time/internal/cctz/BUILD.bazel
+index 7a53c81..159b0f0 100644
+--- a/absl/time/internal/cctz/BUILD.bazel
++++ b/absl/time/internal/cctz/BUILD.bazel
+@@ -74,15 +74,6 @@ cc_library(
+         "include/cctz/time_zone.h",
+         "include/cctz/zone_info_source.h",
+     ],
+-    linkopts = select({
+-        ":osx": [
+-            "-framework Foundation",
+-        ],
+-        ":ios": [
+-            "-framework Foundation",
+-        ],
+-        "//conditions:default": [],
+-    }),
+     visibility = ["//visibility:public"],
+     deps = [
+         ":civil_time",

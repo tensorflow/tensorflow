@@ -1,156 +1,202 @@
 # Description:
 #   Doc generator
 
-licenses(["notice"])  # Apache 2.0
+load("//tensorflow:tensorflow.bzl", "py_test")
 
-exports_files(["LICENSE"])
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "tf_gpu_tests_tags",
+)
 
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+tpu_module = [
+    "tpu.",
+    "distribute.tpu_strategy",
+    "distribute.cluster_resolver.tpu",
+    "distribute.cluster_resolver.tpu_oss",
+]
 
-py_binary(
-    name = "gen_cc_md",
-    srcs = ["gen_cc_md.py"],
-    srcs_version = "PY2AND3",
-    deps = ["//tensorflow:tensorflow_py"],
-)
+# tf.distribute docstring often uses GPU, so they're only covered in
+# tf_doctest_gpu.
+distribute_module = [
+    "distribute.",
+]
 
 py_library(
-    name = "doc_generator_visitor",
-    srcs = [
-        "doc_generator_visitor.py",
-    ],
+    name = "tf_doctest_lib",
+    srcs = ["tf_doctest_lib.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//third_party/py/numpy",
+    ],
 )
 
 py_test(
-    name = "doc_generator_visitor_test",
-    size = "small",
-    srcs = [
-        "doc_generator_visitor_test.py",
+    name = "tf_doctest",
+    srcs = ["tf_doctest.py"],
+    args = ["--module_prefix_skip=" + ",".join(tpu_module + distribute_module)],
+    python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "no_rocm",
+        "no_windows",  # numpy prints differently on windows.
+        "noasan",
+        "nomsan",
+        "notsan",
     ],
-    srcs_version = "PY2AND3",
     deps = [
-        ":doc_generator_visitor",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "parser",
-    srcs = [
-        "parser.py",
-    ],
-    srcs_version = "PY2AND3",
-)
-
-py_test(
-    name = "parser_test",
-    size = "small",
-    srcs = [
-        "parser_test.py",
-    ],
-    srcs_version = "PY2AND3",
-    tags = ["manual"],
-    deps = [
-        ":parser",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-py_binary(
-    name = "generate",
-    srcs = ["generate.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":doc_generator_visitor",
-        ":parser",
-        ":py_guide_parser",
+        ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
-        "//tensorflow/python/debug:debug_py",
-        "//tensorflow/tools/common:public_api",
-        "//tensorflow/tools/common:traverse",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+tpu_py_test(
+    name = "tf_doctest_tpu",
+    srcs = ["tf_doctest.py"],
+    args = ["--module=" + ",".join(tpu_module)],
+    disable_experimental = True,
+    disable_v3 = True,
+    main = "tf_doctest.py",
+    python_version = "PY3",
+    tags = [
+        "no_oss",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":tf_doctest_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
     ],
 )
 
 py_test(
-    name = "generate_test",
-    size = "small",
-    srcs = [
-        "generate_test.py",
+    name = "tf_doctest_gpu",
+    srcs = ["tf_doctest.py"],
+    args = [
+        "--module=distribute.",
+        "--module_prefix_skip=" + ",".join(tpu_module),
+        "--required_gpus=2",
     ],
-    srcs_version = "PY2AND3",
-    tags = ["manual"],
+    main = "tf_doctest.py",
+    python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "no_rocm",
+        "no_windows",  # numpy prints differently on windows.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ] + tf_gpu_tests_tags(),
     deps = [
-        ":generate",
-        "//tensorflow/python:platform_test",
+        ":tf_doctest_lib",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
+    ],
+)
+
+py_test(
+    name = "tf_doctest_test",
+    srcs = ["tf_doctest_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_pip",
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":tf_doctest_lib",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
 py_library(
-    name = "py_guide_parser",
-    srcs = [
-        "py_guide_parser.py",
-    ],
+    name = "doc_controls",
+    srcs = ["doc_controls.py"],
+    compatible_with = get_compatible_with_portable(),
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
 )
 
 py_test(
-    name = "py_guide_parser_test",
-    size = "small",
-    srcs = [
-        "py_guide_parser_test.py",
-    ],
+    name = "generate2_test",
+    size = "medium",
+    srcs = ["generate2_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = [
-        ":py_guide_parser",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-filegroup(
-    name = "doxy_config",
-    srcs = ["tf-doxy_for_md-config"],
-)
-
-sh_binary(
-    name = "gen_docs",
-    srcs = ["gen_docs.sh"],
-    data = [
-        ":doxy_config",
-        ":gen_cc_md",
-        "//tensorflow/python:gen_docs_combined",
-    ],
-)
-
-sh_test(
-    name = "gen_docs_test",
-    size = "small",
-    srcs = [
-        "gen_docs_test.sh",
-    ],
-    data = [
-        ":gen_docs",
-        "//tensorflow/core:all_files",
-        "//tensorflow/python:all_files",
-    ],
     tags = [
         "manual",
-        "notap",
+        # No reason to run sanitizers or fastbuild for this test.
+        "noasan",
+        "nomsan",
+        "notsan",
+        "optonly",
+    ],
+    deps = [
+        ":generate2_lib",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:platform_test",
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
+py_binary(
+    name = "generate2",
+    srcs = ["generate2.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":generate2_lib",
+    ],
+)
+
+py_library(
+    # Opensource only
+    name = "base_dir_oss",
+    srcs = ["base_dir.py"],
+    srcs_version = "PY3",
+    deps = [],
+)
+
+py_library(
+    name = "generate2_lib",
+    srcs = ["generate2.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":base_dir_oss",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
+)
+
+py_binary(
+    name = "build_java_api_docs",
+    srcs = ["build_java_api_docs.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
+    ],
 )

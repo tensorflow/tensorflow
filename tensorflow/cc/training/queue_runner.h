@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
-#define THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#ifndef TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#define TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
 
 #include <memory>
 #include <string>
@@ -23,10 +23,11 @@ limitations under the License.
 
 #include "tensorflow/cc/training/coordinator.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -58,9 +59,16 @@ class QueueRunner : public RunnerInterface {
   /// Starts the queue runner with the given session.
   Status Start(Session* sess);
 
+  /// Starts the queue runner with the given session and sets the run arguments
+  /// for sess->Run. It also collects and stores the cost model.
+  Status StartAndCollectCostGraph(Session* sess,
+                                  const RunOptions& run_options = RunOptions());
+
   /// Starts the queue runner with the given session, and wait for up to the
   /// specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for_ms);
+  Status StartAndCollectCostGraph(Session* session, int wait_for_ms,
+                                  const RunOptions& run_options = RunOptions());
 
   /// Requests to stop and runs the cancel op. It would be called in a separate
   /// thread when coordinator is set. If there is no coordinator it should be
@@ -74,8 +82,11 @@ class QueueRunner : public RunnerInterface {
   /// Returns the latest status.
   Status GetStatus();
 
+  // Returns the stored cost model.
+  Status ExportCostGraph(CostGraphDef* cost_graph) const override;
+
  private:
-  QueueRunner() : coord_(nullptr), stopped_(false) {}
+  QueueRunner() : coord_(nullptr), stopped_(false), cg_mu_(nullptr) {}
 
   // Initializes the instance with the QueueRunnerDef proto.
   Status Init(const QueueRunnerDef& queue_runner_def);
@@ -94,6 +105,10 @@ class QueueRunner : public RunnerInterface {
 
   bool IsRunning() const override { return !stopped_; }
 
+  void SetRunArgumentsAndCostGraph(const RunOptions& run_options);
+
+  Status RealRun(Session* sess, const string& op, bool update_costs);
+
   string queue_name_;
   std::vector<string> enqueue_op_names_;
   string close_op_name_;
@@ -104,8 +119,8 @@ class QueueRunner : public RunnerInterface {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   mutex mu_;
   int runs_ = 0;
-  Status status_ GUARDED_BY(mu_);
-  Status enqueue_status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
+  Status enqueue_status_ TF_GUARDED_BY(mu_);
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
@@ -114,8 +129,12 @@ class QueueRunner : public RunnerInterface {
 
   mutex cb_mu_;
   std::vector<std::function<void(Status)>> callbacks_;
+
+  mutable std::unique_ptr<mutex> cg_mu_;
+  std::unique_ptr<CostGraphDef> cost_graph_ TF_GUARDED_BY(cg_mu_);
+  RunOptions run_options_;
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#endif  // TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_

@@ -1,0 +1,20 @@
+op {
+  name: "DestroyTemporaryVariable"
+  input_arg {
+    name: "ref"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "var_name"
+    type: "string"
+  }
+}

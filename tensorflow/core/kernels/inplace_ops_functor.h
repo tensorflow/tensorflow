@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_INPLACE_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_INPLACE_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_INPLACE_OPS_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_INPLACE_OPS_FUNCTOR_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -26,7 +26,24 @@ template <typename Device>
 Status DoParallelConcat(const Device& device, const Tensor& value, int32 loc,
                         Tensor* output);
 
+// Inplace update/add/sub values in 'y'. It computes
+//   y[i, :] = v if op is I_UPDATE
+//   y[i, :] += v if op is I_ADD
+//   y[i, :] -= v if op is I_SUB
+// Returns an error if the operation fails.
+enum InplaceOpType {
+  I_UPDATE,  // x = y
+  I_ADD,     // x += y
+  I_SUB,     // x -= y
+};
+template <typename Device>
+Status DoInplace(const Device& device, InplaceOpType op, const Tensor& i,
+                 const Tensor& v, Tensor* y);
+// Copies x into y.
+template <typename Device>
+Status DoCopy(const Device& device, const Tensor& x, Tensor* y);
+
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_INPLACE_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_INPLACE_OPS_FUNCTOR_H_

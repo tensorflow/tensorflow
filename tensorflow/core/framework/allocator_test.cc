@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -25,20 +26,23 @@ limitations under the License.
 namespace tensorflow {
 
 static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
-                       int64 max_bytes_in_use, int64 max_alloc_size) {
-  AllocatorStats stats;
-  a->GetStats(&stats);
-  LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
+                       int64 peak_bytes_in_use, int64 largest_alloc_size) {
+  absl::optional<AllocatorStats> stats = a->GetStats();
+  EXPECT_TRUE(stats);
+  if (!stats) {
+    return;
+  }
+  LOG(INFO) << "Alloc stats: \n" << stats->DebugString();
 #if defined(PLATFORM_GOOGLE) && defined(NDEBUG)
   // NOTE: allocator stats expectation depends on the system malloc,
   // and can vary as that changes.
   static const int64 kSlop = 5 * 1024;
-  EXPECT_GT(stats.bytes_in_use, bytes_in_use - kSlop);
-  EXPECT_LT(stats.bytes_in_use, bytes_in_use + kSlop);
-  EXPECT_GT(stats.max_bytes_in_use, max_bytes_in_use - kSlop);
-  EXPECT_LT(stats.max_bytes_in_use, max_bytes_in_use + kSlop);
-  EXPECT_EQ(stats.num_allocs, num_allocs);
-  EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
+  EXPECT_GT(stats->bytes_in_use, bytes_in_use - kSlop);
+  EXPECT_LT(stats->bytes_in_use, bytes_in_use + kSlop);
+  EXPECT_GT(stats->peak_bytes_in_use, peak_bytes_in_use - kSlop);
+  EXPECT_LT(stats->peak_bytes_in_use, peak_bytes_in_use + kSlop);
+  EXPECT_EQ(stats->num_allocs, num_allocs);
+  EXPECT_EQ(stats->largest_alloc_size, largest_alloc_size);
 #endif
 }
 
@@ -46,24 +50,90 @@ TEST(AllocatorAttributesTest, AllCombos) {
   for (bool on_host : {false, true}) {
     for (bool nic_compatible : {false, true}) {
       for (bool gpu_compatible : {false, true}) {
-        for (bool track_sizes : {false, true}) {
-          AllocatorAttributes aa;
-          aa.set_on_host(on_host);
-          aa.set_nic_compatible(nic_compatible);
-          aa.set_gpu_compatible(gpu_compatible);
-          aa.set_track_sizes(track_sizes);
-          EXPECT_EQ(on_host, aa.on_host());
-          EXPECT_EQ(nic_compatible, aa.nic_compatible());
-          EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
-          EXPECT_EQ(track_sizes, aa.track_sizes());
-        }
+        AllocatorAttributes aa;
+        aa.set_on_host(on_host);
+        aa.set_nic_compatible(nic_compatible);
+        aa.set_gpu_compatible(gpu_compatible);
+        EXPECT_EQ(on_host, aa.on_host());
+        EXPECT_EQ(nic_compatible, aa.nic_compatible());
+        EXPECT_EQ(gpu_compatible, aa.gpu_compatible());
       }
     }
   }
 }
 
+TEST(AllocatorAttributesTest, IsEqualOrLessRestrictiveThan) {
+  AllocatorAttributes a, b;
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  b.set_gpu_compatible(true);
+  // The set of flags in b is not a subset of those in a.
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(a.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(b));
+
+  a.set_nic_compatible(true);
+  // Neither a nor b is a subset of the other.
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
+  EXPECT_FALSE(b.IsEqualOrLessRestrictiveThan(a));
+
+  a.set_gpu_compatible(true);
+  // The set of flags in b is a proper subset of those in a.
+  EXPECT_TRUE(b.IsEqualOrLessRestrictiveThan(a));
+  EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
+}
+
+TEST(AllocatorAttributesTest, Merge) {
+  AllocatorAttributes a, b;
+
+  // Merging nic_compatible=True and nic_compatible=False results in
+  // nic_compatible=True.
+  EXPECT_EQ(a.value, 0);
+  EXPECT_EQ(b.value, 0);
+  EXPECT_FALSE(a.nic_compatible());
+  EXPECT_FALSE(b.nic_compatible());
+  b.set_nic_compatible(true);
+  a.Merge(b);
+  EXPECT_TRUE(a.nic_compatible());
+  EXPECT_TRUE(b.nic_compatible());
+
+  // a.Merge(b) does not change b.
+  EXPECT_EQ(a.scope_id, 0);
+  EXPECT_EQ(b.scope_id, 0);
+  a.scope_id = 1;
+  a.Merge(b);
+  EXPECT_EQ(a.scope_id, 1);
+  EXPECT_EQ(b.scope_id, 0);
+
+  // If a.scope_id=1 and b.scope_id=0, then b.Merge(a) results in b.scope_id=1.
+  a.scope_id = 1;
+  b.scope_id = 0;
+  b.Merge(a);
+  EXPECT_EQ(a.scope_id, 1);
+  EXPECT_EQ(b.scope_id, 1);
+
+  // If a.scope_id and b.scope_id are same, then merge leaves them unchanged.
+  a.scope_id = 2;
+  b.scope_id = 2;
+  a.Merge(b);
+  EXPECT_EQ(a.scope_id, 2);
+  EXPECT_EQ(b.scope_id, 2);
+}
+
+TEST(AllocatorAttributesDeathTest, MergeDifferentScopeIds) {
+  AllocatorAttributes a, b;
+  // If a.scope_id and b.scope_id are both positive but different, then
+  // a.Merge(b) should cause a CHECK failure.
+  a.scope_id = 3;
+  b.scope_id = 4;
+  EXPECT_DEATH({ a.Merge(b); }, "");
+}
+
 TEST(CPUAllocatorTest, Simple) {
-  EnableCPUAllocatorStats(true);
+  EnableCPUAllocatorStats();
   Allocator* a = cpu_allocator();
   std::vector<void*> ptrs;
   for (int s = 1; s < 1024; s++) {
@@ -79,18 +149,20 @@ TEST(CPUAllocatorTest, Simple) {
     a->DeallocateRaw(ptrs[i]);
   }
   CheckStats(a, 1023, 0, 552640, 1024);
-  float* t1 = a->Allocate<float>(1024);
-  double* t2 = a->Allocate<double>(1048576);
+  float* t1 = TypedAllocator::Allocate<float>(a, 1024, {});
+  double* t2 = TypedAllocator::Allocate<double>(a, 1048576, {});
   CheckStats(a, 1025, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
 
-  a->Deallocate(t1, 1024);
-  a->Deallocate(t2, 1048576);
+  TypedAllocator::Deallocate(a, t1, 1024);
+  TypedAllocator::Deallocate(a, t2, 1048576);
 
   CheckStats(a, 1025, 0, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
-  EnableCPUAllocatorStats(false);
+  a->ClearStats();
+  CheckStats(a, 0, 0, 0, 0);
+  DisableCPUAllocatorStats();
 }
 
 // Define a struct that we will use to observe behavior in the unit tests
@@ -105,7 +177,8 @@ TEST(CPUAllocatorTest, AllocateOverflowMaxSizeT) {
 
   // The maximum size_t value will definitely overflow.
   size_t count_to_allocate = std::numeric_limits<size_t>::max();
-  TestStruct* const test_pointer = a->Allocate<TestStruct>(count_to_allocate);
+  TestStruct* const test_pointer =
+      TypedAllocator::Allocate<TestStruct>(a, count_to_allocate, {});
 
   CHECK_EQ(test_pointer, reinterpret_cast<TestStruct*>(NULL));
 }
@@ -116,7 +189,8 @@ TEST(CPUAllocatorTest, AllocateOverflowSmallest) {
   // count_to_allocate is the smallest count that will cause overflow.
   const size_t count_to_allocate =
       (std::numeric_limits<size_t>::max() / sizeof(TestStruct)) + 1;
-  TestStruct* const test_pointer = a->Allocate<TestStruct>(count_to_allocate);
+  TestStruct* const test_pointer =
+      TypedAllocator::Allocate<TestStruct>(a, count_to_allocate, {});
 
   CHECK_EQ(test_pointer, reinterpret_cast<TestStruct*>(NULL));
 }
@@ -147,19 +221,21 @@ TEST(CustomAllocatorAttributes, TestSetterAndGetter) {
   EXPECT_FALSE(HasDeviceAllocatorAttribute(AllocatorAttributes()));
 }
 
-static void BM_Allocation(int iters, int arg) {
+static void BM_Allocation(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
   Allocator* a = cpu_allocator();
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
   int size_index = 0;
 
-  if (arg) EnableCPUAllocatorStats(true);
-  while (--iters > 0) {
+  if (arg) EnableCPUAllocatorStats();
+  for (auto s : state) {
     int bytes = sizes[size_index++ % sizes.size()];
     void* p = a->AllocateRaw(1, bytes);
     a->DeallocateRaw(p);
   }
-  if (arg) EnableCPUAllocatorStats(false);
+  if (arg) DisableCPUAllocatorStats();
 }
 BENCHMARK(BM_Allocation)->Arg(0)->Arg(1);
 

@@ -15,19 +15,64 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/codegen.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
+#include "llvm/Support/TargetSelect.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace tfcompile {
 namespace {
+
+using ::xla::cpu_function_runtime::BufferInfo;
+
+void ExpectErrorContains(const Status& status, absl::string_view str) {
+  EXPECT_NE(Status::OK(), status);
+  EXPECT_TRUE(absl::StrContains(status.error_message(), str))
+      << "expected error: " << status.error_message() << " to contain: " << str;
+}
+
+TEST(ValidateCppIdent, Simple) {
+  TF_EXPECT_OK(ValidateCppIdent("a", ""));
+  TF_EXPECT_OK(ValidateCppIdent("abc", ""));
+  TF_EXPECT_OK(ValidateCppIdent("_abc", ""));
+  TF_EXPECT_OK(ValidateCppIdent("_abc123", ""));
+  // Make sure we didn't skip a valid letter or digit
+  string ident;
+  for (char c = 'a'; c <= 'z'; c++) {
+    ident.append(1, c);
+  }
+  for (char c = 'A'; c <= 'Z'; c++) {
+    ident.append(1, c);
+  }
+  for (char c = '0'; c <= '9'; c++) {
+    ident.append(1, c);
+  }
+  ident += "_";
+  TF_EXPECT_OK(ValidateCppIdent(ident, ""));
+
+  ExpectErrorContains(ValidateCppIdent("", ""), "empty identifier");
+  ExpectErrorContains(ValidateCppIdent(" ", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent("0", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent(".", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent(":", ""), "illegal leading char");
+  ExpectErrorContains(ValidateCppIdent("a.", ""), "illegal char");
+  ExpectErrorContains(ValidateCppIdent("a:", ""), "illegal char");
+  ExpectErrorContains(ValidateCppIdent("a:", ""), "illegal char");
+}
 
 class ParseCppClassTest : public ::testing::Test {
  protected:
@@ -43,7 +88,8 @@ class ParseCppClassTest : public ::testing::Test {
   void ExpectFail(const string& cpp_class) {
     string class_name;
     std::vector<string> namespaces;
-    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), Status::OK());
+    EXPECT_NE(ParseCppClass(cpp_class, &class_name, &namespaces), Status::OK())
+        << cpp_class;
   }
 };
 
@@ -57,6 +103,9 @@ TEST_F(ParseCppClassTest, ParseOK) {
   ExpectOK("foo::MyClass", "MyClass", {"foo"});
   ExpectOK("_foo::MyClass", "MyClass", {"_foo"});
   ExpectOK("_foo::_MyClass", "_MyClass", {"_foo"});
+  ExpectOK("::foo::bar::MyClass", "MyClass", {"foo", "bar"});
+  ExpectOK("::_foo::MyClass", "MyClass", {"_foo"});
+  ExpectOK("::_foo::_MyClass", "_MyClass", {"_foo"});
   // Make sure we didn't skip a valid letter or digit
   string ident;
   for (char c = 'a'; c <= 'z'; c++) {
@@ -77,61 +126,144 @@ TEST_F(ParseCppClassTest, ParseOK) {
 TEST_F(ParseCppClassTest, ParseFail) {
   ExpectFail("");
   ExpectFail("::");
-  ExpectFail("::MyClass");  // valid C++, but disallowed for simpler code.
   ExpectFail("0");
   ExpectFail("a.b");
   ExpectFail("a:b");
+  ExpectFail(":foo::bar");
   ExpectFail("good::.bad");
   ExpectFail("good:::bad");
+  ExpectFail("good::bad::");
+  ExpectFail("good::::bad");
+  ExpectFail("::::bad");
   ExpectFail("good:: bad");
   ExpectFail("good::0bad");
 }
 
-TEST(GenerateHeader, Golden) {
-  HeaderOpts opts;
+static void CompareWithGoldenFile(
+    const string& tensorflow_relative_golden_file_name,
+    const string& expected_contents, bool ignore_cr) {
+  // Get rid of all CR characters, we may be running under windows.
+  string sanitized_expected_contents(expected_contents);
+  if (ignore_cr) {
+    sanitized_expected_contents.erase(
+        std::remove(sanitized_expected_contents.begin(),
+                    sanitized_expected_contents.end(), '\r'),
+        sanitized_expected_contents.end());
+  }
+
+  // To update the golden file, flip update_golden to true and run the
+  // following:
+  // bazel test --test_strategy=local \
+  //   "third_party/tensorflow/compiler/aot:codegen_test"
+  const bool update_golden = false;
+  string golden_file_name =
+      GetDataDependencyFilepath(tensorflow_relative_golden_file_name);
+
+  if (update_golden) {
+    TF_EXPECT_OK(
+        WriteStringToFile(Env::Default(), golden_file_name, expected_contents));
+  }
+
+  string golden_file_contents;
+  TF_ASSERT_OK(ReadFileToString(Env::Default(), golden_file_name,
+                                &golden_file_contents));
+  if (ignore_cr) {
+    golden_file_contents.erase(std::remove(golden_file_contents.begin(),
+                                           golden_file_contents.end(), '\r'),
+                               golden_file_contents.end());
+  }
+  EXPECT_EQ(golden_file_contents, expected_contents);
+}
+
+TEST(CodegenTest, Golden) {
+  // Normally CpuCompiler::CpuCompiler does this, but in this test we've
+  // bypassed the Cpu compiler so we have to do this manually.
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
+
+  CodegenOpts opts;
   opts.class_name = "MyClass";
+  opts.target_triple = "x86_64-pc-linux";
   opts.namespaces = {"foo", "bar"};
-  Config config;
-  Feed* feed = config.add_feed();
+  opts.gen_name_to_index = true;
+  opts.gen_program_shape = true;
+  tf2xla::Config config;
+  tf2xla::Feed* feed = config.add_feed();
   feed->mutable_id()->set_node_name("feed0");
   feed->set_name("myfeed");
   feed = config.add_feed();
   feed->mutable_id()->set_node_name("feed1");
-  Fetch* fetch = config.add_fetch();
+  tf2xla::Fetch* fetch = config.add_fetch();
   fetch->mutable_id()->set_node_name("fetch0");
   fetch->set_name("myfetch");
+  tf2xla::Variable* variable = config.add_variable();
+  variable->set_node_name("myvar_readonly");
+  variable->mutable_shape()->add_dim()->set_size(1);
+  variable->set_type(DT_FLOAT);
+  variable->set_readonly(true);
+  tf2xla::Variable* variable2 = config.add_variable();
+  variable2->set_node_name("myvar");
+  variable2->mutable_shape()->add_dim()->set_size(1);
+  variable2->set_type(DT_FLOAT);
+  tf2xla::Variable* variable3 = config.add_variable();
+  variable3->set_node_name("my/var");
+  variable3->set_name("myvar2");
+  variable3->mutable_shape()->add_dim()->set_size(5);
+  variable3->set_type(DT_INT32);
   CompileResult compile_result;
-  compile_result.aot.reset(
-      new xla::cpu::CpuAotCompilationResult({}, {1, -1, 2, -1, 3, 120}, 5));
-  compile_result.program_shape = xla::ShapeUtil::MakeProgramShape(
-      {
-          xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
-          xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
-          xla::ShapeUtil::MakeOpaqueShape(),
-      },
-      xla::ShapeUtil::MakeShape(xla::U32, {5, 6}));
-  compile_result.has_context_arg = true;
+  compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
+      {},
+      {BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/8, /*param_number=*/0),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/2),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/3),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/4),
+       BufferInfo::MakeTempBuffer(1), BufferInfo::MakeTempBuffer(120)},
+      11, {}));
+  compile_result.program_shape =
+      xla::ShapeUtil::MakeProgramShape(
+          {
+              xla::ShapeUtil::MakeShape(xla::F32, {1, 2}),
+              xla::ShapeUtil::MakeShape(xla::S64, {3, 4}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
+              xla::ShapeUtil::MakeShape(xla::S32, {5}),
+          },
+          xla::ShapeUtil::MakeTupleShape({
+              xla::ShapeUtil::MakeShape(xla::U32, {5, 6}),
+              xla::ShapeUtil::MakeShape(xla::F32, {1}),
+              xla::ShapeUtil::MakeShape(xla::S32, {5}),
+          }))
+          .ToProto();
   compile_result.entry_point = "entry_point";
   compile_result.pointer_size = 8;
+
+  MetadataResult metadata_result;
+  TF_ASSERT_OK(GenerateMetadata(opts, compile_result, &metadata_result));
+
+  // The other fields in metadata_result are tested as part of the generated
+  // header test.
+
+  // This specific golden test checks a binary file. It can potentially run into
+  // issues due to ABIs not being stable, but has not so far.
+  // If we see any ABI issues, we should reconsider this specific test case.
+  CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_o.golden",
+                        metadata_result.object_file_data, false);
+
   string header;
-  TF_EXPECT_OK(GenerateHeader(opts, config, compile_result, &header));
+  TF_ASSERT_OK(
+      GenerateHeader(opts, config, compile_result, metadata_result, &header));
 
-  // Compare against the golden file.
-  const string golden_name = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                          "compiler/aot/codegen_test_h.golden");
-  // To update the golden file, flip update_golden to true and run the
-  // following:
-  // bazel test --test_strategy=local \
-  //   third_party/tensorflow/compiler/aot:codegen_test
-  const bool update_golden = false;
-  if (update_golden) {
-    TF_EXPECT_OK(WriteStringToFile(Env::Default(), golden_name, header));
-  }
-  string golden_data;
-  TF_EXPECT_OK(ReadFileToString(Env::Default(), golden_name, &golden_data));
-  EXPECT_EQ(header, golden_data);
+  CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_h.golden", header,
+                        true);
 }
-
 }  // namespace
 }  // namespace tfcompile
 }  // namespace tensorflow

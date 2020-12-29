@@ -16,9 +16,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -43,12 +42,12 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
       ShapeUtil::MakeShape(F32, {}), input, {}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR0<float>(42.0), *result,
-                              error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(LiteralUtil::CreateR0<float>(42.0), result,
+                                    error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
@@ -59,13 +58,13 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
       ShapeUtil::MakeShape(F32, {2, 2}), input, {}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR2<float>({{42.0, 42.0}, {42.0, 42.0}}), *result,
-      error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR2<float>({{42.0, 42.0}, {42.0, 42.0}}), result,
+      error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
@@ -82,17 +81,17 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   builder.AddInstruction(HloInstruction::CreateTuple({element1, element2}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR2<float>({{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}}),
-      result->tuple_literals(0), error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR2<float>({{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}}),
+      LiteralSlice(result, {0}), error_spec_));
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR2<float>({{1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}}),
-      result->tuple_literals(1), error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR2<float>({{1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}}),
+      LiteralSlice(result, {1}), error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
@@ -103,13 +102,13 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
       ShapeUtil::MakeShape(F32, {2, 2}), input, {0, 1}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}), *result,
-      error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}), result,
+      error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
@@ -122,13 +121,13 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
       ShapeUtil::MakeShape(F32, {2, 2}), input, {1, 0}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}), *result,
-      error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR2<float>({{1.0, 3.0}, {2.0, 4.0}}), result,
+      error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
@@ -139,14 +138,14 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
       ShapeUtil::MakeShape(F32, {2, 3, 2}), input, {0, 2}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR3<float>({{{1.0, 2.0}, {1.0, 2.0}, {1.0, 2.0}},
-                                     {{3.0, 4.0}, {3.0, 4.0}, {3.0, 4.0}}}),
-      *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR3<float>({{{1.0, 2.0}, {1.0, 2.0}, {1.0, 2.0}},
+                                    {{3.0, 4.0}, {3.0, 4.0}, {3.0, 4.0}}}),
+      result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
@@ -159,7 +158,7 @@ TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
       ShapeUtil::MakeShape(F32, {2, 2, 3, 3}), input, {1}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -167,8 +166,8 @@ TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
   Array2D<float> pz({{1, 2}, {1, 2}});
   expected.FillWithPZ(pz);
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR4FromArray4D<float>(expected), *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR4FromArray4D<float>(expected), result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
@@ -184,12 +183,12 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
       ShapeUtil::MakeShape(F32, {3, 3, 3, r1_size}), input, {3}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
   Array4D<float> expected(3, 3, 3, 1025);
-  Array2D<float> yx(/*height=*/3, /*width=*/r1_size);
+  Array2D<float> yx(3, r1_size);
   for (int64 y = 0; y < 3; ++y) {
     for (int64 x = 0; x < r1_size; ++x) {
       yx(y, x) = input_data[x];
@@ -197,8 +196,8 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
   }
   expected.FillWithYX(yx);
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR4FromArray4D<float>(expected), *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR4FromArray4D<float>(expected), result, error_spec_));
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
@@ -215,12 +214,12 @@ XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
       ShapeUtil::MakeShape(F32, {32, 64, 7, 7}), input, {1}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
-  LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR4FromArray4D(r4_array),
-                              *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(LiteralUtil::CreateR4FromArray4D(r4_array),
+                                    result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
@@ -231,7 +230,7 @@ TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
       ShapeUtil::MakeShape(F32, {64, 64, 3, 3}), input, {}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   LOG(INFO) << hlo_module->ToString();
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
@@ -239,8 +238,8 @@ TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
   Array4D<float> expected(64, 64, 3, 3);
   expected.Fill(1.0f);
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR4FromArray4D<float>(expected), *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR4FromArray4D<float>(expected), result, error_spec_));
 }
 
 TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
@@ -254,33 +253,47 @@ TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
       ShapeUtil::MakeShape(F32, {3, 3, 2, 2}), input, {2, 3}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = MakeUnique<HloModule>(TestName());
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
   Array4D<float> expected(3, 3, 2, 2);
   expected.FillWithYX(to_broadcast);
 
-  LiteralTestUtil::ExpectNear(
-      *LiteralUtil::CreateR4FromArray4D<float>(expected), *result, error_spec_);
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR4FromArray4D<float>(expected), result, error_spec_));
+}
+
+TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
+  auto builder = HloComputation::Builder(TestName());
+  Array3D<float> input_vals(2, 3, 4);
+  input_vals.FillRandom(1.0);
+
+  Array4D<float> expected(2, 3, 4, 5);
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      for (int k = 0; k < 4; ++k) {
+        for (int m = 0; m < 5; ++m) {
+          expected(i, j, k, m) = input_vals(i, j, k);
+        }
+      }
+    }
+  }
+  auto input = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR3FromArray3D<float>(input_vals)));
+
+  // Broadcast vector in dimensions 2 and 3.
+  builder.AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(F32, {2, 3, 4, 5}), input, {0, 1, 2}));
+
+  // Create HLO module, compile, and execute.
+  auto hlo_module = CreateNewVerifiedModule();
+  hlo_module->AddEntryComputation(builder.Build());
+  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR4FromArray4D<float>(expected), result, error_spec_));
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

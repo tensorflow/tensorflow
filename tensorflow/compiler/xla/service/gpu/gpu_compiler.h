@@ -20,63 +20,133 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/llvm_compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
 namespace xla {
 namespace gpu {
 
 // The GPU compiler generates efficient GPU executables.
-class GpuCompiler : public Compiler {
+class GpuCompiler : public LLVMCompiler {
  public:
-  GpuCompiler();
+  GpuCompiler(se::Platform::Id platform_id, const char* target_triple,
+              const char* data_layout);
   ~GpuCompiler() override {}
 
-  StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+  // Bring in
+  // StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
+  //     std::vector<std::unique_ptr<HloModule>> modules,
+  //     std::vector<std::vector<se::StreamExecutor*>>
+  //        stream_execs)
+  using LLVMCompiler::Compile;
 
-  StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
+  StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+      const CompileOptions& options) override;
+
+  StatusOr<
+      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> hlo_module,
+                                   se::StreamExecutor* executor, bool optimize,
+                                   const CompileOptions& options) override;
+
+  Status OptimizeHloModule(HloModule* hlo_module,
+                           se::StreamExecutor* stream_exec,
+                           se::DeviceMemoryAllocator* device_allocator);
+
+  virtual Status OptimizeHloConvolutionCanonicalization(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  virtual Status OptimizeHloPostLayoutAssignment(
+      HloModule* hlo_module, se::StreamExecutor* stream_exec,
+      se::DeviceMemoryAllocator* device_allocator);
+
+  virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
+    return
+        [](const HloInstruction*, const HloInstruction*,
+           const ShapeIndex&) -> absl::optional<bool> { return absl::nullopt; };
+  }
+
+  virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
+
+  virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
+  CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
+                      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
+                      bool relocatable) = 0;
+
+  Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
+
+  StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+      const CompileOptions& options) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo, AotCompilationOptions const& options) override;
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+                     AotCompilationOptions const& options) override;
 
-  perftools::gputools::Platform::Id PlatformId() const override;
+  StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
+      const HloModule& module, std::unique_ptr<llvm::Module> llvm_module,
+      se::StreamExecutor* stream_exec, const CompileOptions& options);
 
-  int64 ShapeSizeBytes(const Shape& shape) const override;
+  se::Platform::Id PlatformId() const override { return platform_id_; }
+
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
+    // Capture just the pointer size, not the entire GpuCompiler object.
+    return [pointer_size = pointer_size_](const Shape& shape) {
+      return GetSizeOfShape(shape, pointer_size);
+    };
+  }
+
+  static int64 GetSizeOfShape(const Shape& shape, int pointer_size) {
+    if (shape.is_static() || shape.IsTuple()) {
+      return ShapeUtil::ByteSizeOf(shape, pointer_size);
+    }
+    // Each dynamic dimension size is represented as a S32.
+    int64 metadata_size = sizeof(int32) * shape.dimensions_size();
+    return ShapeUtil::ByteSizeOf(shape, pointer_size) + metadata_size;
+  }
 
  private:
-  // The parent directory of libdevice IR libraries.
-  const string libdevice_dir_;
+  virtual StatusOr<std::vector<uint8>> LinkModules(
+      se::StreamExecutor* stream_exec,
+      std::vector<std::vector<uint8>> modules) {
+    return Unimplemented("LinkModules is not implemented.");
+  }
 
-  // The list of PTX strings generated by this GpuCompiler. We let GpuCompiler
-  // to own them because they need to be alive across the life span of the
-  // StreamExecutor (b/24776264).
-  tensorflow::mutex mutex_;
-  std::vector<std::unique_ptr<string>> generated_ptxes_ GUARDED_BY(mutex_);
+  se::Platform::Id platform_id_;
 
-  // The size in bytes of a pointer. Used for computing ShapeSizeBytes.
-  int64 pointer_size_;
+  // The triple that represents our target.
+  const char* target_triple_;
+
+  // The data layout of the emitted module.
+  const char* data_layout_;
+
+  // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
+  const int64 pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);
 };
+
+// Compile `hlo_module` using XLA GPU and return the LLVM module thus generated.
+// The GpuExecutable (and the Thunks that are part of it) are not returned.
+StatusOr<std::unique_ptr<llvm::Module>> CompileModuleToLlvmIr(
+    HloModule* hlo_module, llvm::LLVMContext* llvm_context,
+    const std::string& target_triple, const std::string& data_layout,
+    const std::string& platform_name, GpuDeviceInfo gpu_device_info,
+    absl::optional<CudaComputeCapability> cuda_compute_capability,
+    int pointer_size);
 
 }  // namespace gpu
 }  // namespace xla

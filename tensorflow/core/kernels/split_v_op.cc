@@ -17,26 +17,28 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <numeric>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
-#if GOOGLE_CUDA
+#include "tensorflow/core/util/work_sharder.h"
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
+#include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -54,8 +56,15 @@ class SplitVOpBase : public OpKernel {
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
     const Tensor& split_tensor = context->input(1);
+    const Tensor& split_dim_tensor = context->input(2);
 
-    const int32 split_dim = context->input(2).flat<int32>()(0);
+    OP_REQUIRES(context, split_dim_tensor.NumElements() == 1,
+                errors::InvalidArgument("split_dim_tensor must have "
+                                        "exactly one element."));
+
+    const int32 split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    const int32 split_dim =
+        split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     OP_REQUIRES(
         context,
@@ -79,14 +88,21 @@ class SplitVOpBase : public OpKernel {
 
     OP_REQUIRES(
         context, 0 <= split_dim && split_dim < input.dims(),
-        errors::InvalidArgument("0 <= split_dim < number of input dimensions (",
-                                input.dims(), "), but got ", split_dim));
+        errors::InvalidArgument("-input rank(-", input.dims(),
+                                ") <= split_dim < input rank (", input.dims(),
+                                "), but got ", split_dim_orig));
 
     Tlen input_size_split_dim = input_shape.dim_size(split_dim);
 
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
       context->set_output(0, context->input(0));
+      OP_REQUIRES(
+          context, (*split_sizes_vec)[0] == input_size_split_dim,
+          errors::InvalidArgument("If there is only one output, it must have "
+                                  "the same size as the input. Input size: ",
+                                  input_size_split_dim,
+                                  " output size: ", (*split_sizes_vec)[0]));
       *done = true;
       return;
     }
@@ -118,8 +134,9 @@ class SplitVOpBase : public OpKernel {
                                 "specified.  Got: ",
                                 determined_size));
 
-    if (neg_one_dim >= 0)
+    if (neg_one_dim >= 0) {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
+    }
 
     // Special case 2: split along the 1st dimension. We can share the
     // underlying buffer.
@@ -139,7 +156,6 @@ class SplitVOpBase : public OpKernel {
       *done = true;
       return;
     }
-    return;
   }
 
   template <typename IndexType>
@@ -165,6 +181,77 @@ class SplitVOpBase : public OpKernel {
   }
 };
 
+template <typename T, typename Tlen, typename InputReshapedType, int NDims>
+class SplitVOpCPUImpl {
+ public:
+  template <typename MakeSizesType, typename ReshapeResultType>
+  void operator()(OpKernelContext* context,
+                  const InputReshapedType& input_reshaped,
+                  const std::vector<int64>& split_start_points,
+                  const TensorShape& input_shape, int32 split_dim,
+                  Eigen::DenseIndex prefix_dim_size,
+                  Eigen::DenseIndex split_dim_size,
+                  Eigen::DenseIndex suffix_dim_size,
+                  std::vector<Tlen>& split_sizes_vec,
+                  const MakeSizesType& make_sizes,
+                  const ReshapeResultType& reshape_result) const {
+    Eigen::DSizes<Eigen::DenseIndex, NDims> indices;
+    for (int i = 0; i < NDims; ++i) {
+      indices[i] = 0;
+    }
+    const auto num_threads =
+        context->device()->tensorflow_cpu_worker_threads()->num_threads;
+    // TODO(jewillco): Tune heuristic further.
+    const auto input_element_count = input_shape.num_elements();
+    const int num_split = split_start_points.size();
+    const bool use_parallelism_between_outputs =
+        (num_split >= 4 &&
+         input_element_count >= std::min(num_threads, num_split) * 4096 &&
+         input_element_count < num_split * 180 * 1024);
+
+    auto range_output_func = [&indices, context, &input_shape, split_dim,
+                              &split_sizes_vec, &split_start_points,
+                              use_parallelism_between_outputs, &input_reshaped,
+                              &make_sizes,
+                              &reshape_result](int64 start, int64 limit) {
+      for (int64 i = start; i < limit; ++i) {
+        TensorShape output_shape(input_shape);
+        output_shape.set_dim(split_dim, split_sizes_vec[i]);
+        Tensor* result = nullptr;
+        OP_REQUIRES_OK(context,
+                       context->allocate_output(i, output_shape, &result));
+
+        const auto sizes = make_sizes(split_sizes_vec[i]);
+
+        if (sizes.TotalSize() > 0) {
+          auto result_shaped = reshape_result(result, split_sizes_vec[i]);
+
+          auto current_indices = indices;
+          current_indices[NDims - 2] = split_start_points[i];
+          if (use_parallelism_between_outputs) {
+            // Use sequential implementation for single output.
+            result_shaped = input_reshaped.slice(current_indices, sizes);
+          } else {
+            // This implementation may be parallel internally.
+            functor::Split<CPUDevice, T, NDims>()(
+                context->eigen_device<CPUDevice>(), result_shaped,
+                input_reshaped, current_indices, sizes);
+          }
+        }
+      }
+    };
+    if (use_parallelism_between_outputs) {
+      // Run in parallel, disabling parallelism in functor.
+      Shard(num_split,
+            context->device()->tensorflow_cpu_worker_threads()->workers,
+            num_split, input_element_count / num_split, range_output_func);
+    } else {
+      // Run sequentially, but allow internal parallelism in functor.
+      range_output_func(0, num_split);
+    }
+  }
+};
+
 template <typename T, typename Tlen>
 class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
  public:
@@ -181,12 +268,15 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const int32 num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim = context->input(2).flat<int32>()(0);
+    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32 split_dim =
+        split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     // Android also uses int32 indexing, so check here also.
     OP_REQUIRES(
-        context, FastBoundsCheck(input.NumElements(),
-                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        context,
+        FastBoundsCheck(input.NumElements(),
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("Split requires input size < ",
                                 std::numeric_limits<Eigen::DenseIndex>::max()));
 
@@ -196,43 +286,49 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
 
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
         Base::template SetDims<Eigen::DenseIndex>(input_shape, split_dim);
-    auto input_reshaped =
-        input.shaped<T, 3>({prefix_dim_size, split_dim_size, suffix_dim_size});
-
-    Eigen::DSizes<Eigen::DenseIndex, 3> indices{0, 0, 0};
-
+    std::vector<int64> split_start_points(num_split);
     for (int i = 0; i < num_split; ++i) {
-      TensorShape output_shape(input_shape);
-      output_shape.set_dim(split_dim, split_sizes_vec[i]);
-      Tensor* result = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(i, output_shape, &result));
-
-      Eigen::DSizes<Eigen::DenseIndex, 3> sizes{
-          prefix_dim_size, split_sizes_vec[i], suffix_dim_size};
-
-      if (sizes.TotalSize() > 0) {
-        auto result_shaped = result->shaped<T, 3>(
-            {prefix_dim_size, split_sizes_vec[i], suffix_dim_size});
-
-        functor::Split<CPUDevice, T>()(context->eigen_device<CPUDevice>(),
-                                       result_shaped, input_reshaped, indices,
-                                       sizes);
+      if (i == 0) {
+        split_start_points[i] = 0;
+      } else {
+        split_start_points[i] =
+            split_start_points[i - 1] + split_sizes_vec[i - 1];
       }
-      indices[1] += split_sizes_vec[i];
+    }
+
+    if (prefix_dim_size == 1) {
+      auto input_reshaped =
+          input.shaped<T, 2>({split_dim_size, suffix_dim_size});
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
+        return Eigen::DSizes<Eigen::DenseIndex, 2>{split_size, suffix_dim_size};
+      };
+      auto reshape_result = [&](Tensor* result, Tlen split_size) {
+        return result->shaped<T, 2>({split_size, suffix_dim_size});
+      };
+      SplitVOpCPUImpl<T, Tlen, decltype(input_reshaped), 2>{}(
+          context, input_reshaped, split_start_points, input_shape, split_dim,
+          prefix_dim_size, split_dim_size, suffix_dim_size, split_sizes_vec,
+          make_sizes, reshape_result);
+    } else {
+      auto input_reshaped = input.shaped<T, 3>(
+          {prefix_dim_size, split_dim_size, suffix_dim_size});
+      auto make_sizes = [&](Eigen::DenseIndex split_size) {
+        return Eigen::DSizes<Eigen::DenseIndex, 3>{prefix_dim_size, split_size,
+                                                   suffix_dim_size};
+      };
+      auto reshape_result = [&](Tensor* result, Tlen split_size) {
+        return result->shaped<T, 3>(
+            {prefix_dim_size, split_size, suffix_dim_size});
+      };
+      SplitVOpCPUImpl<T, Tlen, decltype(input_reshaped), 3>{}(
+          context, input_reshaped, split_start_points, input_shape, split_dim,
+          prefix_dim_size, split_dim_size, suffix_dim_size, split_sizes_vec,
+          make_sizes, reshape_result);
     }
   }
 };
 
-#if GOOGLE_CUDA
-
-template <typename T, typename IntType>
-struct SplitVOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, bool fixed, const T* input,
-           int total_cols, int total_rows,
-           const CudaDeviceArrayStruct<IntType>& output_scan,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
-};
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Partial specialization for GPU
 template <typename T, typename Tlen>
@@ -251,11 +347,14 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     const int32 num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim = context->input(2).flat<int32>()(0);
-    OP_REQUIRES(context, FastBoundsCheck(input.NumElements(),
-                                         std::numeric_limits<int32>::max()),
-                errors::InvalidArgument("Split on GPU requires input size "
-                                        "< max int32"));
+    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32 split_dim =
+        split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
+        errors::InvalidArgument("Split on GPU requires input size "
+                                "< max int32"));
 
     int32 prefix_dim_size;
     int32 split_dim_size;
@@ -267,10 +366,10 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     // reshape to 2D
 
     if (num_split > 16) {
-      CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+      GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
       OP_REQUIRES_OK(context, ptrs.Init());
 
-      CudaDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
+      GpuDeviceArrayOnHost<Tlen> offsets(context, num_split + 1);
       OP_REQUIRES_OK(context, offsets.Init());
 
       Tlen offset = 0;
@@ -337,7 +436,7 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     }
   }
 };
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_SPLIT(type, len_type)                          \
   REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
@@ -353,12 +452,11 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
   REGISTER_SPLIT(type, int64);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
-REGISTER_SPLIT_LEN(bfloat16);
 
 #undef REGISTER_SPLIT_LEN
 #undef REGISTER_SPLIT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type, len_type)                            \
   REGISTER_KERNEL_BUILDER(Name("SplitV")                        \
@@ -373,8 +471,9 @@ REGISTER_SPLIT_LEN(bfloat16);
   REGISTER_GPU(type, int32);   \
   REGISTER_GPU(type, int64);
 
+TF_CALL_bfloat16(REGISTER_GPU_LEN);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_LEN);
-REGISTER_GPU_LEN(bfloat16);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU_LEN);
 #undef REGISTER_GPU_LEN
 #undef REGISTER_GPU
 
@@ -396,6 +495,6 @@ REGISTER_GPU_int32(int64);
 
 #undef REGISTER_GPU_int32
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

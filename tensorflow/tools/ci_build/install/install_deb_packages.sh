@@ -13,12 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+#
+# Usage:
+#     ./install_deb_packages [--without_cmake]
+# Pass --without_cmake to prevent cmake from being installed with apt-get
 
 set -e
 ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
   awk -F'.' '{print $1}')
 
+if [[ "$1" != "" ]] && [[ "$1" != "--without_cmake" ]]; then
+  echo "Unknown argument '$1'"
+  exit 1
+fi
+
 # Install dependencies from ubuntu deb repository.
+apt-key adv --keyserver keyserver.ubuntu.com --recv 084ECFC5828AB726
 apt-get update
 
 if [[ "$ubuntu_version" == "14" ]]; then
@@ -28,31 +38,43 @@ if [[ "$ubuntu_version" == "14" ]]; then
   apt-get dist-upgrade -y
 fi
 
+## TODO(yifeif) remove ffmpeg once ffmpeg is removed from contrib
 apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
-    cmake \
     curl \
     ffmpeg \
     git \
     libcurl4-openssl-dev \
     libtool \
+    libssl-dev \
+    mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
     python-dev \
-    python-pip \
+    python-setuptools \
+    python-virtualenv \
     python3-dev \
-    python3-pip \
+    python3-setuptools \
     rsync \
     sudo \
     swig \
     unzip \
-    virtualenv \
+    vim \
     wget \
     zip \
     zlib1g-dev
+
+# populate the database
+updatedb
+
+if [[ "$1" != "--without_cmake" ]]; then
+  apt-get install -y --no-install-recommends \
+    cmake
+fi
+
 
 # Install ca-certificates, and update the certificate store.
 apt-get install -y ca-certificates-java

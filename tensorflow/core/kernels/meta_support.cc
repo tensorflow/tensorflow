@@ -54,7 +54,7 @@ class Scratch : public ResourceBase {
 
   uint8_t* buffer() { return scratch_32_aligned_; }
 
-  string DebugString() { return "MetaGemmScratchResource"; }
+  string DebugString() const override { return "MetaGemmScratchResource"; }
 
  private:
   std::unique_ptr<uint8_t> scratch_;
@@ -82,7 +82,7 @@ gemmlowp::WorkersPool* GetWorkersPool() {
 }
 
 mutex& GetMutex() {
-  static mutex mu;
+  static mutex mu(LINKER_INITIALIZED);
   return mu;
 }
 
@@ -98,8 +98,9 @@ typedef gemmlowp::meta::SimpleContext<gemmlowp::WorkersPool> LocalContext;
 template <typename Context, typename Params>
 void MultiThreadGemm(Context* context, const Params& params) {
   if (params.m <= 4) {
-    gemmlowp::meta::Gemm<gemmlowp::meta::GemmExecutorPackLHSCacheFriendly<>,
-                         Params, 1, 8, 8>(params);
+    gemmlowp::meta::MultiThreadGemm<
+        Context, gemmlowp::meta::GemmExecutorPackLHSCacheFriendly<>, Params, 1,
+        8, 8>(context, params);
   } else {
     if (params.m >= params.n) {
       gemmlowp::meta::MultiThreadGemm<
@@ -332,7 +333,7 @@ void Quantize(OpKernelContext* tf_context, const float* input, int count,
   // The float to int/uint cast in NEON uses round toward 0. To keep the
   // rounding consistent with Eigen, which uses round toward closest, we can
   // add 0.5f and exploit the fact that we only operate on non negative values.
-  // TODO(maciekc): fix the the actual kernel in gemmlowp/meta
+  // TODO(maciekc): fix the actual kernel in gemmlowp/meta
   params.kernel.range_offset =
       static_cast<float>(std::numeric_limits<uint8_t>::lowest()) + 0.5f;
 

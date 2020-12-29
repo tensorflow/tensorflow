@@ -13,37 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_LOGGING_H_
-#define TENSORFLOW_PLATFORM_LOGGING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_LOGGING_H_
+#define TENSORFLOW_CORE_PLATFORM_LOGGING_H_
 
 #include "tensorflow/core/platform/platform.h"  // To pick up PLATFORM_define
+#include "tensorflow/core/platform/types.h"
 
 #if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID) || \
-    defined(GOOGLE_LOGGING)
-#include "tensorflow/core/platform/google/build_config/logging.h"
+    defined(PLATFORM_GOOGLE_IOS) || defined(GOOGLE_LOGGING) ||      \
+    defined(__EMSCRIPTEN__)
+#include "tensorflow/core/platform/google/logging.h"  // IWYU pragma: export
 #else
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/default/logging.h"  // IWYU pragma: export
 #endif
 
 namespace tensorflow {
-namespace port {
-
-// Some platforms require that filenames be of a certain form when
-// used for logging.  This function is invoked to allow platforms to
-// adjust the filename used for logging appropriately, if necessary
-// (most ports can just do nothing).  If any changes are necessary, the
-// implementation should mutate "*filename" appropriately.
-void AdjustFilenameForLogging(string* filename);
-
-}  // namespace port
 
 namespace internal {
 // Emit "message" as a log message to the log for the specified
 // "severity" as if it came from a LOG call at "fname:line"
 void LogString(const char* fname, int line, int severity,
-               const string& message);
+               const std::string& message);
 }  // namespace internal
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_LOGGING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_LOGGING_H_

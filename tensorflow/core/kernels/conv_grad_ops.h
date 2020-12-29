@@ -161,48 +161,55 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
-// Information about a single spatial dimension for a convolution
-// backpropagation.
-struct ConvBackpropSpatialDimension {
-  int64 input_size;
-  int64 filter_size;
-  int64 output_size;
-  int64 stride;
-  int64 expanded_output_size;
+// Forward declaration.
+class OpKernelContext;
 
-  // Number of padding elements to be added before/after this dimension of
-  // the input when computing Conv2DBackpropInput.
-  int64 pad_before, pad_after;
+template <typename Device, typename T>
+struct LaunchConv2DBackpropInputOp {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& out_backprop, const Tensor& filter,
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
+                  Tensor* in_backprop, TensorFormat data_format);
 };
 
-// Computed dimensions for a Conv2D backpropagation.
-struct Conv2DBackpropDimensions {
-  // Information about each spatial dimension.
-  ConvBackpropSpatialDimension rows, cols;
-
-  // Batch size.
-  int64 batch_size;
-
-  // Input and output feature depth.
-  int64 in_depth, out_depth;
+template <typename Device, typename T>
+struct LaunchConv2DBackpropFilterOp {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& out_backprop, const Tensor& input,
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
+                  Tensor* filter_backprop, TensorFormat data_format);
 };
 
-// Common code between implementations of Conv2DBackpropInput and
-// Conv2DBackpropFilter. Verifies that the dimensions all match, and computes
-// sizes/padding for rows and columns.
-Status Conv2DBackpropComputeDimensions(
-    StringPiece label, const TensorShape& input_shape,
-    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
-    const std::vector<int32>& strides, Padding padding,
-    TensorFormat data_format, Conv2DBackpropDimensions* dims);
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <typename T>
+struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  TensorFormat data_format);
+};
 
+template <typename T>
+struct LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& out_backprop, const Tensor& input,
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding,
+                  const std::vector<int64>& explicit_paddings,
+                  Tensor* filter_backprop, TensorFormat data_format);
+};
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_GRAD_OPS_H_

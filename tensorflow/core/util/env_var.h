@@ -13,28 +13,39 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_ENV_VAR_H_
+#ifndef TENSORFLOW_CORE_UTIL_ENV_VAR_H_
+#define TENSORFLOW_CORE_UTIL_ENV_VAR_H_
 
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
-// Return a boolean into "value" from the environmental variable "env_var_name".
-// If it is unset, the default value is used.
-// A string "0" or a case insensitive "false" is interpreted as false.
-// A string "1" or a case insensitive "true" is interpreted as true.
-// Otherwise, an error status is returned.
+// Returns a boolean into "value" from the environmental variable
+// "env_var_name". If it is unset, the default value is used. A string "0" or a
+// case insensitive "false" is interpreted as false. A string "1" or a case
+// insensitive "true" is interpreted as true. Otherwise, an error status is
+// returned.
 Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
                           bool* value);
 
-// Return an int64 into "value" from the environmental variable "env_var_name".
+// Returns an int64 into "value" from the environmental variable "env_var_name".
 // If it is unset, the default value is used.
 // If the string cannot be parsed into int64, an error status is returned.
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
                            int64* value);
+// Returns a float into "value" from the environmental variable "env_var_name".
+// If it is unset, the default value is used.
+// If the string cannot be parsed into float, an error status is returned.
+Status ReadFloatFromEnvVar(StringPiece env_var_name, float default_val,
+                           float* value);
+
+// Returns a string into "value" from the environmental variable "env_var_name".
+// If it is unset, the default value is used.
+Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
+                            string* value);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_ENV_VAR_H_
+#endif  // TENSORFLOW_CORE_UTIL_ENV_VAR_H_

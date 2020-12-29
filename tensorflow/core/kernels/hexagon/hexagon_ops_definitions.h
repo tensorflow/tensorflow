@@ -13,31 +13,46 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
 
-#include "i_graph_transfer_ops_definitions.h"
+#include <unordered_map>
+
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 
-// HexagonOpsDefinitions provides ops definitons supported in hexagon library
+// HexagonOpsDefinitions provides ops definitions supported in hexagon library
 // TODO(satok): add a functionality to call functions in hexagon library
-class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
+class HexagonOpsDefinitions final : public IRemoteFusedGraphOpsDefinitions {
  public:
-  static const IGraphTransferOpsDefinitions& getInstance();
+  static const IRemoteFusedGraphOpsDefinitions& getInstance();
 
   int GetTotalOpsCount() const final;
-  int GetOpIdFor(const string& op_type) const final;
-  GraphTransferInfo::Destination GetTransferDestination() const final;
+  int GetOpIdFor(const string& op_type, const DataTypeVector& dt) const final;
 
  private:
-  HexagonOpsDefinitions() = default;
+  enum class SupportedOpType;
+  using DataTypeToOp = std::tuple<DataTypeVector, SupportedOpType>;
+
+  HexagonOpsDefinitions();
+
+  static void EmplaceOpType(
+      const string& op_type, const DataTypeVector& dt_vec,
+      const SupportedOpType supported_op_type,
+      std::unordered_map<string, std::vector<DataTypeToOp>>* map);
+
+  static std::unordered_map<string, std::vector<DataTypeToOp>>
+  BuildOpNameToSocOpTypeMap();
+
+  const std::unordered_map<string, std::vector<DataTypeToOp>>
+      op_name_to_soc_op_type_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HexagonOpsDefinitions);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_

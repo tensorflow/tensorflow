@@ -82,10 +82,10 @@ class FactOpKernel : public OpKernel {
  protected:
   void Compute(OpKernelContext* context, const char* const facts[],
                uint64 count) {
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({}), &output_tensor));
-    auto output = output_tensor->template scalar<string>();
+    auto output = output_tensor->template scalar<tstring>();
 
     string coded = facts[context->env()->NowMicros() % count];
     E(&coded);
@@ -95,7 +95,8 @@ class FactOpKernel : public OpKernel {
 
 class FactOpKernel1 : public FactOpKernel {
  public:
-  FactOpKernel1(OpKernelConstruction* context) : FactOpKernel(context) {}
+  explicit FactOpKernel1(OpKernelConstruction* context)
+      : FactOpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     FactOpKernel::Compute(context, kFacts1, kNum1);
@@ -104,7 +105,8 @@ class FactOpKernel1 : public FactOpKernel {
 
 class FactOpKernel2 : public FactOpKernel {
  public:
-  FactOpKernel2(OpKernelConstruction* context) : FactOpKernel(context) {}
+  explicit FactOpKernel2(OpKernelConstruction* context)
+      : FactOpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     FactOpKernel::Compute(context, kFacts2, kNum2);
@@ -120,13 +122,9 @@ static string D(const char* s) {
   return ret;
 }
 
-REGISTER_KERNEL_BUILDER(Name("Fact")
-                            .Device(DEVICE_CPU)
-                            .Label(D("Yoxmos").c_str()),
-                        FactOpKernel2);
-REGISTER_KERNEL_BUILDER(Name("Fact")
-                            .Device(DEVICE_CPU)
-                            .Label(D("yoxmos").c_str()),
-                        FactOpKernel2);
+REGISTER_KERNEL_BUILDER(
+    Name("Fact").Device(DEVICE_CPU).Label(D("Yoxmos").c_str()), FactOpKernel2);
+REGISTER_KERNEL_BUILDER(
+    Name("Fact").Device(DEVICE_CPU).Label(D("yoxmos").c_str()), FactOpKernel2);
 
 }  // namespace tensorflow

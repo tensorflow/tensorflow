@@ -20,11 +20,19 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import random_seed
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_candidate_sampling_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export(
+    'random.uniform_candidate_sampler',
+    v1=['random.uniform_candidate_sampler', 'nn.uniform_candidate_sampler'])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_endpoints('nn.uniform_candidate_sampler')
 def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                               range_max, seed=None, name=None):
   """Samples a set of classes using a uniform base distribution.
@@ -53,7 +61,9 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample. The
+      `sampled_candidates` return value will have shape `[num_sampled]`. If
+      `unique=True`, `num_sampled` must be less than or equal to `range_max`.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -61,8 +71,10 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     name: A name for the operation (optional).
 
   Returns:
-    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.
-      The sampled classes.
+    sampled_candidates: A tensor of type `int64` and shape `[num_sampled]`.  The
+      sampled classes, either with possible duplicates (`unique=False`) or all
+      unique (`unique=True`). In either case, `sampled_candidates` is
+      independent of the true classes.
     true_expected_count: A tensor of type `float`.  Same shape as
       `true_classes`. The expected counts under the sampling distribution
       of each of `true_classes`.
@@ -71,11 +83,19 @@ def uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._uniform_candidate_sampler(
+  return gen_candidate_sampling_ops.uniform_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
 
+@tf_export(
+    'random.log_uniform_candidate_sampler',
+    v1=[
+        'random.log_uniform_candidate_sampler',
+        'nn.log_uniform_candidate_sampler'
+    ])
+@dispatch.add_dispatch_support
+@deprecation.deprecated_endpoints('nn.log_uniform_candidate_sampler')
 def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
                                   range_max, seed=None, name=None):
   """Samples a set of classes using a log-uniform (Zipfian) base distribution.
@@ -111,7 +131,7 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -129,11 +149,16 @@ def log_uniform_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._log_uniform_candidate_sampler(
+  return gen_candidate_sampling_ops.log_uniform_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
 
+@tf_export(
+    'random.learned_unigram_candidate_sampler',
+    'nn.learned_unigram_candidate_sampler')
+@dispatch.add_dispatch_support
+@deprecation.deprecated_endpoints(['nn.learned_unigram_candidate_sampler'])
 def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
                                       unique, range_max, seed=None, name=None):
   """Samples a set of classes from a distribution learned during training.
@@ -166,7 +191,7 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -185,11 +210,14 @@ def learned_unigram_candidate_sampler(true_classes, num_true, num_sampled,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._learned_unigram_candidate_sampler(
+  return gen_candidate_sampling_ops.learned_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max, seed=seed1,
       seed2=seed2, name=name)
 
 
+@tf_export('random.fixed_unigram_candidate_sampler',
+           'nn.fixed_unigram_candidate_sampler')
+@dispatch.add_dispatch_support
 def fixed_unigram_candidate_sampler(true_classes,
                                     num_true,
                                     num_sampled,
@@ -230,7 +258,7 @@ def fixed_unigram_candidate_sampler(true_classes,
     true_classes: A `Tensor` of type `int64` and shape `[batch_size,
       num_true]`. The target classes.
     num_true: An `int`.  The number of target classes per training example.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of classes to randomly sample.
     unique: A `bool`. Determines whether all sampled classes in a batch are
       unique.
     range_max: An `int`. The number of possible classes.
@@ -245,7 +273,7 @@ def fixed_unigram_candidate_sampler(true_classes,
       `distortion = 1.0` gives regular unigram sampling (as defined by the vocab
       file), and `distortion = 0.0` gives a uniform distribution.
     num_reserved_ids: Optionally some reserved IDs can be added in the range
-      `[0, num_reserved_ids]` by the users. One use case is that a special
+      `[0, num_reserved_ids)` by the users. One use case is that a special
       unknown word token is used as ID 0. These IDs will have a sampling
       probability of 0.
     num_shards: A sampler can be used to sample from a subset of the original
@@ -274,13 +302,14 @@ def fixed_unigram_candidate_sampler(true_classes,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._fixed_unigram_candidate_sampler(
+  return gen_candidate_sampling_ops.fixed_unigram_candidate_sampler(
       true_classes, num_true, num_sampled, unique, range_max,
       vocab_file=vocab_file, distortion=distortion,
       num_reserved_ids=num_reserved_ids, num_shards=num_shards, shard=shard,
       unigrams=unigrams, seed=seed1, seed2=seed2, name=name)
 
 
+@tf_export('random.all_candidate_sampler', 'nn.all_candidate_sampler')
 def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
                           seed=None, name=None):
   """Generate the set of all classes.
@@ -311,11 +340,13 @@ def all_candidate_sampler(true_classes, num_true, num_sampled, unique,
       of each of `sampled_candidates`. All returned values are 1.0.
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._all_candidate_sampler(
+  return gen_candidate_sampling_ops.all_candidate_sampler(
       true_classes, num_true, num_sampled, unique, seed=seed1, seed2=seed2,
       name=name)
 
 
+@tf_export('nn.compute_accidental_hits')
+@dispatch.add_dispatch_support
 def compute_accidental_hits(true_classes, sampled_candidates, num_true,
                             seed=None, name=None):
   """Compute the position ids in `sampled_candidates` matching `true_classes`.
@@ -359,6 +390,6 @@ def compute_accidental_hits(true_classes, sampled_candidates, num_true,
 
   """
   seed1, seed2 = random_seed.get_seed(seed)
-  return gen_candidate_sampling_ops._compute_accidental_hits(
+  return gen_candidate_sampling_ops.compute_accidental_hits(
       true_classes, sampled_candidates, num_true, seed=seed1, seed2=seed2,
       name=name)

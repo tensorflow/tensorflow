@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
-#define TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_
 
 #include <numeric>
 
@@ -94,134 +94,43 @@ void FillFn(Tensor* tensor, std::function<T(int)> fn) {
 }
 
 // Expects "x" and "y" are tensors of the same type, same shape, and
-// identical values.
-template <typename T>
-void ExpectTensorEqual(const Tensor& x, const Tensor& y);
+// identical values (within 4 ULPs for floating point types).
+void ExpectEqual(const Tensor& x, const Tensor& y);
 
-// Expects "x" and "y" are tensors of the same type, same shape, and
-// approximate equal values, each within "abs_err".
-template <typename T>
-void ExpectTensorNear(const Tensor& x, const Tensor& y, const T& abs_err);
-
-// Expects "x" and "y" are tensors of the same type (float or double),
+// Expects "x" and "y" are tensors of the same (floating point) type,
 // same shape and element-wise difference between x and y is no more
-// than atol + rtol * abs(x).
-void ExpectClose(const Tensor& x, const Tensor& y, double atol = 1e-6,
-                 double rtol = 1e-6);
+// than atol + rtol * abs(x). If atol or rtol is negative, the data type's
+// epsilon * kSlackFactor is used.
+void ExpectClose(const Tensor& x, const Tensor& y, double atol = -1.0,
+                 double rtol = -1.0);
 
-// Implementation details.
-
-namespace internal {
-
-template <typename T>
-struct is_floating_point_type {
-  static const bool value = std::is_same<T, Eigen::half>::value ||
-                            std::is_same<T, float>::value ||
-                            std::is_same<T, double>::value ||
-                            std::is_same<T, std::complex<float> >::value ||
-                            std::is_same<T, std::complex<double> >::value;
-};
-
-template <typename T>
-inline void ExpectEqual(const T& a, const T& b) {
-  EXPECT_EQ(a, b);
-}
-
-template <>
-inline void ExpectEqual<float>(const float& a, const float& b) {
-  EXPECT_FLOAT_EQ(a, b);
-}
-
-template <>
-inline void ExpectEqual<double>(const double& a, const double& b) {
-  EXPECT_DOUBLE_EQ(a, b);
-}
-
-template <>
-inline void ExpectEqual<complex64>(const complex64& a, const complex64& b) {
-  EXPECT_FLOAT_EQ(a.real(), b.real()) << a << " vs. " << b;
-  EXPECT_FLOAT_EQ(a.imag(), b.imag()) << a << " vs. " << b;
-}
-
-template <>
-inline void ExpectEqual<complex128>(const complex128& a, const complex128& b) {
-  EXPECT_DOUBLE_EQ(a.real(), b.real()) << a << " vs. " << b;
-  EXPECT_DOUBLE_EQ(a.imag(), b.imag()) << a << " vs. " << b;
-}
-
-inline void AssertSameTypeDims(const Tensor& x, const Tensor& y) {
-  ASSERT_EQ(x.dtype(), y.dtype());
-  ASSERT_TRUE(x.IsSameSize(y))
-      << "x.shape [" << x.shape().DebugString() << "] vs "
-      << "y.shape [ " << y.shape().DebugString() << "]";
-}
-
-template <typename T, bool is_fp = is_floating_point_type<T>::value>
-struct Expector;
-
-template <typename T>
-struct Expector<T, false> {
-  static void Equal(const T& a, const T& b) { ExpectEqual(a, b); }
-
-  static void Equal(const Tensor& x, const Tensor& y) {
-    ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
-    AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      ExpectEqual(a(i), b(i));
-    }
-  }
-};
-
-// Partial specialization for float and double.
-template <typename T>
-struct Expector<T, true> {
-  static void Equal(const T& a, const T& b) { ExpectEqual(a, b); }
-
-  static void Equal(const Tensor& x, const Tensor& y) {
-    ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
-    AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      ExpectEqual(a(i), b(i));
-    }
-  }
-
-  static void Near(const T& a, const T& b, const double abs_err, int index) {
-    if (a != b) {  // Takes care of inf.
-      EXPECT_LE(double(Eigen::numext::abs(a - b)), abs_err)
-          << "a = " << a << " b = " << b << " index = " << index;
-    }
-  }
-
-  static void Near(const Tensor& x, const Tensor& y, const double abs_err) {
-    ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
-    AssertSameTypeDims(x, y);
-    auto a = x.flat<T>();
-    auto b = y.flat<T>();
-    for (int i = 0; i < a.size(); ++i) {
-      Near(a(i), b(i), abs_err, i);
-    }
-  }
-};
-
-}  // namespace internal
-
+// Expects "x" and "y" are tensors of the same type T, same shape, and
+// equal values. Consider using ExpectEqual above instead.
 template <typename T>
 void ExpectTensorEqual(const Tensor& x, const Tensor& y) {
-  internal::Expector<T>::Equal(x, y);
+  EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);
+  ExpectEqual(x, y);
 }
 
+// Expects "x" and "y" are tensors of the same type T, same shape, and
+// approximate equal values. Consider using ExpectClose above instead.
 template <typename T>
-void ExpectTensorNear(const Tensor& x, const Tensor& y, const double abs_err) {
-  static_assert(internal::is_floating_point_type<T>::value,
-                "T is not a floating point types.");
-  internal::Expector<T>::Near(x, y, abs_err);
+void ExpectTensorNear(const Tensor& x, const Tensor& y, double atol) {
+  EXPECT_EQ(x.dtype(), DataTypeToEnum<T>::value);
+  ExpectClose(x, y, atol, /*rtol=*/0.0);
 }
+
+// For tensor_testutil_test only.
+namespace internal_test {
+::testing::AssertionResult IsClose(Eigen::half x, Eigen::half y,
+                                   double atol = -1.0, double rtol = -1.0);
+::testing::AssertionResult IsClose(float x, float y, double atol = -1.0,
+                                   double rtol = -1.0);
+::testing::AssertionResult IsClose(double x, double y, double atol = -1.0,
+                                   double rtol = -1.0);
+}  // namespace internal_test
 
 }  // namespace test
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TENSOR_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_TESTUTIL_H_

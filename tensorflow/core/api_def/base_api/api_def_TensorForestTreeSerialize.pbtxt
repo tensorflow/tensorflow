@@ -1,0 +1,17 @@
+op {
+  graph_op_name: "TensorForestTreeSerialize"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_handle"
+    description: <<END
+Handle to the tree resource to be serialized.
+END
+  }
+  out_arg {
+    name: "tree_config"
+    description: <<END
+Serialied proto string of the tree resource.
+END
+  }
+  summary: "Serializes the tree handle to a proto"
+}

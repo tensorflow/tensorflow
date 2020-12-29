@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/cross_op.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/cross_op.h"
 
 namespace tensorflow {
 
@@ -31,4 +31,4 @@ TF_CALL_REAL_NUMBER_TYPES(INSTANTIATE_GPU_KERNEL);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

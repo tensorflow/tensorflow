@@ -15,17 +15,19 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/plugin_registry.h"
 
+#include "absl/base/const_init.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/stream_executor/lib/error.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 const PluginId kNullPlugin = nullptr;
 
 // Returns the string representation of the specified PluginKind.
-string PluginKindString(PluginKind plugin_kind) {
+std::string PluginKindString(PluginKind plugin_kind) {
   switch (plugin_kind) {
     case PluginKind::kBlas:
       return "BLAS";
@@ -44,9 +46,9 @@ string PluginKindString(PluginKind plugin_kind) {
 PluginRegistry::DefaultFactories::DefaultFactories() :
     blas(kNullPlugin), dnn(kNullPlugin), fft(kNullPlugin), rng(kNullPlugin) { }
 
-static mutex& GetPluginRegistryMutex() {
-  static mutex* mu = new mutex;
-  return *mu;
+static absl::Mutex& GetPluginRegistryMutex() {
+  static absl::Mutex mu(absl::kConstInit);
+  return mu;
 }
 
 /* static */ PluginRegistry* PluginRegistry::instance_ = nullptr;
@@ -54,7 +56,7 @@ static mutex& GetPluginRegistryMutex() {
 PluginRegistry::PluginRegistry() {}
 
 /* static */ PluginRegistry* PluginRegistry::Instance() {
-  mutex_lock lock{GetPluginRegistryMutex()};
+  absl::MutexLock lock{&GetPluginRegistryMutex()};
   if (instance_ == nullptr) {
     instance_ = new PluginRegistry();
   }
@@ -68,16 +70,16 @@ void PluginRegistry::MapPlatformKindToId(PlatformKind platform_kind,
 
 template <typename FACTORY_TYPE>
 port::Status PluginRegistry::RegisterFactoryInternal(
-    PluginId plugin_id, const string& plugin_name, FACTORY_TYPE factory,
+    PluginId plugin_id, const std::string& plugin_name, FACTORY_TYPE factory,
     std::map<PluginId, FACTORY_TYPE>* factories) {
-  mutex_lock lock{GetPluginRegistryMutex()};
+  absl::MutexLock lock{&GetPluginRegistryMutex()};
 
   if (factories->find(plugin_id) != factories->end()) {
-    return port::Status{
+    return port::Status(
         port::error::ALREADY_EXISTS,
-        port::Printf("Attempting to register factory for plugin %s when "
-                     "one has already been registered",
-                     plugin_name.c_str())};
+        absl::StrFormat("Attempting to register factory for plugin %s when "
+                        "one has already been registered",
+                        plugin_name));
   }
 
   (*factories)[plugin_id] = factory;
@@ -93,9 +95,9 @@ port::StatusOr<FACTORY_TYPE> PluginRegistry::GetFactoryInternal(
   if (iter == factories.end()) {
     iter = generic_factories.find(plugin_id);
     if (iter == generic_factories.end()) {
-      return port::Status{
+      return port::Status(
           port::error::NOT_FOUND,
-          port::Printf("Plugin ID %p not registered.", plugin_id)};
+          absl::StrFormat("Plugin ID %p not registered.", plugin_id));
     }
   }
 
@@ -108,7 +110,7 @@ bool PluginRegistry::SetDefaultFactory(Platform::Id platform_id,
   if (!HasFactory(platform_id, plugin_kind, plugin_id)) {
     port::StatusOr<Platform*> status =
         MultiPlatformManager::PlatformWithId(platform_id);
-    string platform_name = "<unregistered platform>";
+    std::string platform_name = "<unregistered platform>";
     if (status.ok()) {
       platform_name = status.ValueOrDie()->Name();
     }
@@ -186,13 +188,13 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
   template port::Status                                                       \
   PluginRegistry::RegisterFactoryInternal<PluginRegistry::FACTORY_TYPE>(      \
-      PluginId plugin_id, const string& plugin_name,                          \
+      PluginId plugin_id, const std::string& plugin_name,                     \
       PluginRegistry::FACTORY_TYPE factory,                                   \
       std::map<PluginId, PluginRegistry::FACTORY_TYPE>* factories);           \
                                                                               \
   template <>                                                                 \
   port::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
-      Platform::Id platform_id, PluginId plugin_id, const string& name,       \
+      Platform::Id platform_id, PluginId plugin_id, const std::string& name,  \
       PluginRegistry::FACTORY_TYPE factory) {                                 \
     return RegisterFactoryInternal(plugin_id, name, factory,                  \
                                    &factories_[platform_id].FACTORY_VAR);     \
@@ -200,7 +202,8 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
                                                                               \
   template <>                                                                 \
   port::Status PluginRegistry::RegisterFactoryForAllPlatforms<                \
-      PluginRegistry::FACTORY_TYPE>(PluginId plugin_id, const string& name,   \
+      PluginRegistry::FACTORY_TYPE>(PluginId plugin_id,                       \
+                                    const std::string& name,                  \
                                     PluginRegistry::FACTORY_TYPE factory) {   \
     return RegisterFactoryInternal(plugin_id, name, factory,                  \
                                    &generic_factories_.FACTORY_VAR);          \
@@ -213,10 +216,11 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
       plugin_id = default_factories_[platform_id].FACTORY_VAR;                \
                                                                               \
       if (plugin_id == kNullPlugin) {                                         \
-        return port::Status{port::error::FAILED_PRECONDITION,                 \
-                            "No suitable " PLUGIN_STRING                      \
-                            " plugin registered. Have you linked in a "       \
-                            PLUGIN_STRING "-providing plugin?"};              \
+        return port::Status(                                                  \
+            port::error::FAILED_PRECONDITION,                                 \
+            "No suitable " PLUGIN_STRING                                      \
+            " plugin registered. Have you linked in a " PLUGIN_STRING         \
+            "-providing plugin?");                                            \
       } else {                                                                \
         VLOG(2) << "Selecting default " PLUGIN_STRING " plugin, "             \
                 << plugin_names_[plugin_id];                                  \
@@ -232,9 +236,9 @@ bool PluginRegistry::HasFactory(Platform::Id platform_id,
       PlatformKind platform_kind, PluginId plugin_id) {                       \
     auto iter = platform_id_by_kind_.find(platform_kind);                     \
     if (iter == platform_id_by_kind_.end()) {                                 \
-      return port::Status{port::error::FAILED_PRECONDITION,                   \
-                          port::Printf("Platform kind %d not registered.",    \
-                                       static_cast<int>(platform_kind))};     \
+      return port::Status(port::error::FAILED_PRECONDITION,                   \
+                          absl::StrFormat("Platform kind %d not registered.", \
+                                          static_cast<int>(platform_kind)));  \
     }                                                                         \
     return GetFactory<PluginRegistry::FACTORY_TYPE>(iter->second, plugin_id); \
   }
@@ -244,5 +248,4 @@ EMIT_PLUGIN_SPECIALIZATIONS(DnnFactory, dnn, "DNN");
 EMIT_PLUGIN_SPECIALIZATIONS(FftFactory, fft, "FFT");
 EMIT_PLUGIN_SPECIALIZATIONS(RngFactory, rng, "RNG");
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

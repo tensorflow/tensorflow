@@ -70,6 +70,42 @@ class BytesToReadableStrTest(test_util.TensorFlowTestCase):
             1024**3, include_b=True))
 
 
+class TimeToReadableStrTest(test_util.TensorFlowTestCase):
+
+  def testNoneTimeWorks(self):
+    self.assertEqual("0", cli_shared.time_to_readable_str(None))
+
+  def testMicrosecondsTime(self):
+    self.assertEqual("40us", cli_shared.time_to_readable_str(40))
+
+  def testMillisecondTime(self):
+    self.assertEqual("40ms", cli_shared.time_to_readable_str(40e3))
+
+  def testSecondTime(self):
+    self.assertEqual("40s", cli_shared.time_to_readable_str(40e6))
+
+  def testForceTimeUnit(self):
+    self.assertEqual("40s",
+                     cli_shared.time_to_readable_str(
+                         40e6, force_time_unit=cli_shared.TIME_UNIT_S))
+    self.assertEqual("40000ms",
+                     cli_shared.time_to_readable_str(
+                         40e6, force_time_unit=cli_shared.TIME_UNIT_MS))
+    self.assertEqual("40000000us",
+                     cli_shared.time_to_readable_str(
+                         40e6, force_time_unit=cli_shared.TIME_UNIT_US))
+    self.assertEqual("4e-05s",
+                     cli_shared.time_to_readable_str(
+                         40, force_time_unit=cli_shared.TIME_UNIT_S))
+    self.assertEqual("0",
+                     cli_shared.time_to_readable_str(
+                         0, force_time_unit=cli_shared.TIME_UNIT_S))
+
+    with self.assertRaisesRegex(ValueError, r"Invalid time unit: ks"):
+      cli_shared.time_to_readable_str(100, force_time_unit="ks")
+
+
+@test_util.run_v1_only("tfdbg CLI is for tf.Session only")
 class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -113,10 +149,6 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.assertEqual([(2, 12, "bold")], run_start_intro.font_attr_segs[15])
     self.assertEqual("run -f <filter_name>:", run_start_intro.lines[17][2:])
     self.assertEqual([(2, 22, "bold")], run_start_intro.font_attr_segs[17])
-    annot = run_start_intro.font_attr_segs[21][0]
-    self.assertEqual(2, annot[0])
-    self.assertEqual(16, annot[1])
-    self.assertEqual("invoke_stepper", annot[2][0].content)
 
     # Verify short description.
     description = cli_shared.get_run_short_description(12, self.const_a, None)
@@ -127,9 +159,18 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
                   run_start_intro.annotations)
     menu = run_start_intro.annotations[debugger_cli_common.MAIN_MENU_KEY]
     self.assertEqual("run", menu.caption_to_item("run").content)
-    self.assertEqual("invoke_stepper",
-                     menu.caption_to_item("invoke_stepper").content)
     self.assertEqual("exit", menu.caption_to_item("exit").content)
+
+  def testSparseTensorAsFeedShouldHandleNoNameAttribute(self):
+    sparse_feed_val = ([[0, 0], [1, 1]], [10.0, 20.0])
+    run_start_intro = cli_shared.get_run_start_intro(
+        1, self.sparse_d, {self.sparse_d: sparse_feed_val}, {})
+    self.assertEqual(str(self.sparse_d), run_start_intro.lines[7].strip())
+
+    short_description = cli_shared.get_run_short_description(
+        1, self.sparse_d, {self.sparse_d: sparse_feed_val})
+    self.assertEqual(
+        "run #1: 1 fetch; 1 feed (%s)" % self.sparse_d, short_description)
 
   def testSparseTensorAsFetchShouldHandleNoNameAttribute(self):
     run_start_intro = cli_shared.get_run_start_intro(1, self.sparse_d, None, {})
@@ -278,6 +319,7 @@ class GetRunStartIntroAndDescriptionTest(test_util.TensorFlowTestCase):
     self.assertEqual("run #1: 1 fetch (a:0); 1 feed (foo)", short_description)
 
 
+@test_util.run_v1_only("tfdbg CLI is for tf.Session only")
 class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -325,6 +367,11 @@ class GetErrorIntroTest(test_util.TensorFlowTestCase):
 
     self.assertEqual("Details:", error_intro.lines[14])
     self.assertStartsWith(error_intro.lines[15], "foo description")
+
+  def testGetErrorIntroForNoOpName(self):
+    tf_error = errors.OpError(None, None, "Fake OpError", -1)
+    error_intro = cli_shared.get_error_intro(tf_error)
+    self.assertIn("Cannot determine the name of the op", error_intro.lines[3])
 
 
 if __name__ == "__main__":

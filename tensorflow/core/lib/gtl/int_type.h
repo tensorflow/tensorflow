@@ -197,6 +197,11 @@ class IntType {
     }
   };
 
+  template <typename H>
+  friend H AbslHashValue(H h, const IntType& i) {
+    return H::combine(std::move(h), i.value());
+  }
+
  public:
   // Default c'tor initializing value_ to 0.
   constexpr IntType() : value_(0) {}
@@ -255,13 +260,13 @@ class IntType {
     value_ op arg_value;                             \
     return *this;                                    \
   }
-  INT_TYPE_ASSIGNMENT_OP(+= );
-  INT_TYPE_ASSIGNMENT_OP(-= );
-  INT_TYPE_ASSIGNMENT_OP(*= );
-  INT_TYPE_ASSIGNMENT_OP(/= );
-  INT_TYPE_ASSIGNMENT_OP(<<= );  // NOLINT
-  INT_TYPE_ASSIGNMENT_OP(>>= );  // NOLINT
-  INT_TYPE_ASSIGNMENT_OP(%= );
+  INT_TYPE_ASSIGNMENT_OP(+=);
+  INT_TYPE_ASSIGNMENT_OP(-=);
+  INT_TYPE_ASSIGNMENT_OP(*=);
+  INT_TYPE_ASSIGNMENT_OP(/=);
+  INT_TYPE_ASSIGNMENT_OP(<<=);  // NOLINT
+  INT_TYPE_ASSIGNMENT_OP(>>=);  // NOLINT
+  INT_TYPE_ASSIGNMENT_OP(%=);
 #undef INT_TYPE_ASSIGNMENT_OP
 
   ThisType& operator=(ValueType arg_value) {
@@ -314,10 +319,10 @@ std::ostream& operator<<(std::ostream& os,  // NOLINT
 INT_TYPE_ARITHMETIC_OP(+);
 INT_TYPE_ARITHMETIC_OP(-);
 INT_TYPE_ARITHMETIC_OP(*);
-INT_TYPE_ARITHMETIC_OP(/ );
-INT_TYPE_ARITHMETIC_OP(<< );  // NOLINT
-INT_TYPE_ARITHMETIC_OP(>> );  // NOLINT
-INT_TYPE_ARITHMETIC_OP(% );
+INT_TYPE_ARITHMETIC_OP(/);
+INT_TYPE_ARITHMETIC_OP(<<);  // NOLINT
+INT_TYPE_ARITHMETIC_OP(>>);  // NOLINT
+INT_TYPE_ARITHMETIC_OP(%);
 #undef INT_TYPE_ARITHMETIC_OP
 
 // -- NON-MEMBER COMPARISON OPERATORS ------------------------------------------
@@ -345,12 +350,12 @@ INT_TYPE_ARITHMETIC_OP(% );
       IntType<IntTypeName, ValueType> id) {                      \
     return val op id.value();                                    \
   }
-INT_TYPE_COMPARISON_OP(== );  // NOLINT
-INT_TYPE_COMPARISON_OP(!= );  // NOLINT
-INT_TYPE_COMPARISON_OP(< );   // NOLINT
-INT_TYPE_COMPARISON_OP(<= );  // NOLINT
-INT_TYPE_COMPARISON_OP(> );   // NOLINT
-INT_TYPE_COMPARISON_OP(>= );  // NOLINT
+INT_TYPE_COMPARISON_OP(==);  // NOLINT
+INT_TYPE_COMPARISON_OP(!=);  // NOLINT
+INT_TYPE_COMPARISON_OP(<);   // NOLINT
+INT_TYPE_COMPARISON_OP(<=);  // NOLINT
+INT_TYPE_COMPARISON_OP(>);   // NOLINT
+INT_TYPE_COMPARISON_OP(>=);  // NOLINT
 #undef INT_TYPE_COMPARISON_OP
 
 }  // namespace gtl

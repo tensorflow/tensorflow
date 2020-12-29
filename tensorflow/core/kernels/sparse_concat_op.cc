@@ -124,9 +124,12 @@ class SparseConcatOp : public OpKernel {
     std::vector<sparse::SparseTensor> sp_inputs;
     for (int i = 0; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64>());
-      sp_inputs.emplace_back(tensor::DeepCopy(inds[i]),
-                             tensor::DeepCopy(vals[i]), current_shape,
-                             std_order);
+      sparse::SparseTensor tensor;
+      OP_REQUIRES_OK(context,
+                     sparse::SparseTensor::Create(
+                         tensor::DeepCopy(inds[i]), tensor::DeepCopy(vals[i]),
+                         current_shape, std_order, &tensor));
+      sp_inputs.push_back(std::move(tensor));
       sp_inputs[i].Reorder<T>(concat_order);
     }
 
@@ -137,12 +140,13 @@ class SparseConcatOp : public OpKernel {
     context->set_output(1, concat.values());
 
     Tensor* output_shape_out = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(
-                                2, TensorShape({concat.shape().dims()}),
-                                &output_shape_out));
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(2, TensorShape({concat.dims()}),
+                                            &output_shape_out));
     auto output_shape = output_shape_out->vec<int64>();
-    for (int j = 0; j < concat.shape().dims(); ++j) {
-      output_shape(j) = concat.shape().dim_size(j);
+    auto concat_shape = concat.shape();
+    for (int j = 0; j < concat.dims(); ++j) {
+      output_shape(j) = concat_shape[j];
     }
   }
 

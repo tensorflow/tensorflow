@@ -14,19 +14,31 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/cc/framework/gradients.h"
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/graph/equal_graph_def.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Assign;
+using ops::Const;
+using ops::Identity;
+using ops::MatMul;
+using ops::OnesLike;
+using ops::Placeholder;
+using ops::Square;
+using ops::Stack;
+using ops::StopGradient;
+using ops::Unstack;
+using ops::Variable;
 
 // TODO(andydavis) Add more unit tests once more gradient functions are ported.
 class GradientsTest : public ::testing::Test {
@@ -40,16 +52,16 @@ class GradientsTest : public ::testing::Test {
     TF_ASSERT_OK(scope_test_.ToGraphDef(&gdef_test));
     GraphDef gdef_exp;
     TF_ASSERT_OK(scope_expected_.ToGraphDef(&gdef_exp));
-    TF_EXPECT_GRAPH_EQ(gdef_test, gdef_exp);
+    TF_EXPECT_GRAPH_EQ(gdef_exp, gdef_test);
   }
 
   Scope scope_expected_;
   Scope scope_test_;
 };
 
-// EX.
+// Example:
 //      ^             ^
-//    dy|           dx|        // MatMul Gradient Graph
+//    dy|           dx|        (MatMul Gradient Graph)
 //      |             |
 //   MatMul_1      MatMul_2
 //   ^   ^          ^    ^
@@ -60,7 +72,7 @@ class GradientsTest : public ::testing::Test {
 //   |     Const_3       |
 //   |                   |
 //   |        ^          |
-//   |       z|          |     // MatMul Forward Graph
+//   |       z|          |     (MatMul Forward Graph)
 //   |        |          |
 //   |      MatMul_0     |
 //   |     /        \    |
@@ -93,6 +105,32 @@ TEST_F(GradientsTest, OneMatMul) {
       std::vector<Output> grad_outputs;
       TF_ASSERT_OK(
           AddSymbolicGradients(scope, {z}, {x, y}, {dz}, &grad_outputs));
+    }
+  }
+  CompareTestAndExpectedGraphs();
+}
+
+TEST_F(GradientsTest, OneMatMul_InferGradInputs) {
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
+    // Construct forward graph.
+    auto x = Const(scope, {{1.0, 2.0}, {3.0, 4.0}});
+    auto y = Const(scope, {{1.0, 0.0}, {0.0, 1.0}});
+    auto z = MatMul(scope, x, y);
+    TF_ASSERT_OK(scope.status());
+    CHECK_NOTNULL(z.node());
+
+    if (expected) {
+      // Construct backward graph.
+      // The gradients function adds a OnesLike to create a dz of ones with the
+      // shape of z.
+      auto dz = OnesLike(scope, z);
+      auto dx = MatMul(scope, dz, y, MatMul::TransposeB(true));
+      auto dy = MatMul(scope, x, dz, MatMul::TransposeA(true));
+    } else {
+      // Call AddSymbolicGradients.
+      std::vector<Output> grad_outputs;
+      TF_ASSERT_OK(AddSymbolicGradients(scope, {z}, {x, y}, &grad_outputs));
     }
   }
   CompareTestAndExpectedGraphs();
@@ -233,8 +271,44 @@ TEST_F(GradientsTest, StackUnstack_StopBackprop) {
   CompareTestAndExpectedGraphs();
 }
 
+TEST_F(GradientsTest, StackUnstack_SubsetOfUnstackOutputs) {
+  // Constructs an unstack with three outputs, and takes the gradient with
+  // respect to only two of the outputs. Tests that the output gradients are
+  // computed.
+  for (const bool expected : {false, true}) {
+    const Scope& scope = expected ? scope_expected_ : scope_test_;
+    // Construct forward graph.
+    auto c = Const(scope, 1, {3, 4, 2});
+    auto unpack = Unstack(scope, c, 3);
+    auto x = Identity(scope, unpack.output[0]);
+    auto y = Identity(scope, unpack.output[1]);
+    auto z = Identity(scope, unpack.output[2]);
+    TF_ASSERT_OK(scope.status());
+
+    // Construct grad inputs.
+    auto dy = Const(scope, 4, {4, 2});
+    auto dz = Const(scope, 5, {4, 2});
+
+    if (expected) {
+      // Construct backward graph.
+      auto g1 = Identity(scope, dy);
+      auto g2 = Identity(scope, dz);
+    } else {
+      // Call AddSymbolicGradients.
+      std::vector<Output> grad_outputs;
+      TF_ASSERT_OK(AddSymbolicGradients(scope, {y, z},
+                                        {unpack.output[1], unpack.output[2]},
+                                        {dy, dz}, &grad_outputs));
+      ASSERT_EQ(grad_outputs.size(), 2);
+      EXPECT_TRUE(grad_outputs[0].node() != nullptr);
+      EXPECT_TRUE(grad_outputs[1].node() != nullptr);
+    }
+  }
+  CompareTestAndExpectedGraphs();
+}
+
 TEST_F(GradientsTest, DependentGradOutputs) {
-  // Tests that dependant gradients (in this case the gradients w.r.t to the
+  // Tests that dependent gradients (in this case the gradients w.r.t to the
   // output and one input of MatMul) are computed properly.
 
   // Create two chained MatMul ops.
@@ -299,6 +373,170 @@ TEST_F(GradientsTest, MultipleNodeOutputGrads) {
   test::ExpectTensorEqual<int>(
       outputs[2],
       test::AsTensor<int>({60, 61, 62, 63, 66, 66, 66, 67}, {4, 2}));
+}
+
+TEST_F(GradientsTest, UnreachableEdgeGradOneOutput) {
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
+
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
+  auto m = MatMul(scope_test_, x, y);
+
+  auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
+  auto diff_m = Const(scope_test_, {{0.5}, {0.5}});
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(
+      AddSymbolicGradients(scope_test_, {m}, {y}, {diff_m}, &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
+                   {grad_outputs[0]}, &outputs);
+  // dz/dy = xT * diff_m
+  test::ExpectTensorNear<double>(
+      outputs[0], test::AsTensor<double>({2.5, 3.5, 4.5}, {3, 1}), 1e-5);
+}
+
+TEST_F(GradientsTest, UnreachableEdgeGradTwoOutputs) {
+  auto x = Variable(scope_test_, {2, 3}, DT_DOUBLE);
+  auto x_const = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto x_assign = Assign(scope_test_, x, x_const);
+
+  auto y = Variable(scope_test_, {3, 1}, DT_DOUBLE);
+  auto y_const = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto y_assign = Assign(scope_test_, y, y_const);
+
+  auto m1 = MatMul(scope_test_, x, y);
+
+  auto z = Variable(scope_test_, {1, 3}, DT_DOUBLE);
+  auto z_const = Const(scope_test_, {{9.0, 10.0, 11.0}});
+  auto z_assign = Assign(scope_test_, z, z_const);
+
+  auto m2 = MatMul(scope_test_, y, z);
+
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+  auto dm2 =
+      Const(scope_test_, {{0.5, 0.5, 0.5}, {0.6, 0.7, 0.8}, {0.6, 0.7, 0.9}});
+
+  std::vector<Output> grad_outputs;
+  TF_ASSERT_OK(AddSymbolicGradients(scope_test_, {m1, m2}, {y}, {dm1, dm2},
+                                    &grad_outputs));
+
+  std::vector<Tensor> outputs;
+  test::GetTensors(scope_test_, {x_assign, y_assign, z_assign},
+                   {grad_outputs[0]}, &outputs);
+
+  // The gradients from m1 and m2 will be summed to compute the gradient
+  // w.r.t y:
+  // dz/dy = xT * dm1 + dm2 * zT
+  test::ExpectTensorNear<double>(
+      outputs[0], test::AsTensor<double>({17.5, 24.7, 26.8}, {3, 1}), 1e-5);
+}
+
+TEST_F(GradientsTest, UnreachableInput) {
+  auto x = Const(scope_test_, {{1.0, 2.0, 3.0}, {4.0, 5.0, 6.0}});
+  auto y = Const(scope_test_, {{1.0}, {2.0}, {3.0}});
+  auto z = Const(scope_test_.WithOpName("z"), {{9.0, 10.0, 11.0}});
+
+  auto m1 = MatMul(scope_test_, x, y);
+  auto m2 = MatMul(scope_test_, y, z);
+  auto dm1 = Const(scope_test_, {{0.5}, {0.5}});
+
+  // From m1, z is unreachable, so an error status should be returned.
+  //   m2  m1
+  //   |   |
+  //   *   *
+  //  / \ / \
+  // z   y   x
+  std::vector<Output> grad_outputs;
+  Status status =
+      AddSymbolicGradients(scope_test_, {m1}, {z}, {dm1}, &grad_outputs);
+  EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
+  EXPECT_EQ(status.error_message(),
+            "Cannot compute the partial derivative"
+            " for node 'z' as it's unreachable from the output node(s).");
+}
+
+TEST_F(GradientsTest, DependentOutputs) {
+  auto x = Placeholder(scope_test_, DT_FLOAT);
+  auto y0 = Square(scope_test_, x);
+  auto y1 = Square(scope_test_, y0);
+  auto y2 = Square(scope_test_, y1);
+  // Requesting the gradients for y0 and y2 should return the sum of their
+  // individual gradients.
+  std::vector<Output> grad_outputs;
+  TF_EXPECT_OK(AddSymbolicGradients(scope_test_, {y0, y2}, {x}, &grad_outputs));
+  ClientSession session(scope_test_);
+  std::vector<Tensor> grad_result;
+  TF_EXPECT_OK(session.Run({{x, {3.0f}}}, grad_outputs, &grad_result));
+  EXPECT_EQ(grad_result.size(), 1);
+  EXPECT_EQ(grad_result[0].NumElements(), 1);
+  EXPECT_EQ(grad_result[0].flat<float>()(0), 17502.0f);
+}
+
+TEST_F(GradientsTest, MultiOutputNodeDependentOutputs) {
+  auto x = Placeholder(scope_test_, DT_FLOAT);
+  auto y0 = Square(scope_test_, x);
+  // y1, y2, and y3 all use y0. This means the backwards pass will need to wait
+  // for the gradient for all three.
+  auto y1 = Square(scope_test_, y0);
+  auto y2 = Square(scope_test_, y0);
+  auto y3 = Square(scope_test_, y2);
+  std::vector<Output> grad_outputs;
+  // By requesting y0, y1, and y3 we test that the computation correctly waits
+  // for all the points in backprop where gradients need to be summed from
+  // multiple branches.
+  TF_EXPECT_OK(
+      AddSymbolicGradients(scope_test_, {y0, y1, y3}, {x}, &grad_outputs));
+  ClientSession session(scope_test_);
+  std::vector<Tensor> grad_result;
+  TF_EXPECT_OK(session.Run({{x, {3.0f}}}, grad_outputs, &grad_result));
+  EXPECT_EQ(grad_result.size(), 1);
+  EXPECT_EQ(grad_result[0].NumElements(), 1);
+  EXPECT_EQ(grad_result[0].flat<float>()(0), 17610.0f);
+}
+
+TEST_F(GradientsTest, AddSymbolicGradientsTest) {
+  Scope scope = Scope::NewRootScope();
+  for (int cnt = 0; cnt < 100; ++cnt) {
+    int N = 5 + rand() % 10;
+    // Construct forward graph.
+    OutputList inputs;
+    for (int i = 0; i < N; ++i) {
+      auto a = Const(scope, i, {1});
+      inputs.push_back(a);
+    }
+
+    auto pack = Stack(scope, inputs);
+    TF_ASSERT_OK(scope.status());
+
+    // Construct grad inputs.
+    OutputList output_grads;
+    Tensor ts(DT_INT32, {N, 1});
+    auto v = ts.matrix<int32>();
+    for (int i = 0; i < N; ++i) {
+      v(i, 0) = i;
+    }
+    auto dy = Const(scope, ts);
+    output_grads.push_back(dy);
+    // Call AddSymbolicGradients.
+    std::vector<Output> grad_outputs;
+    TF_ASSERT_OK(AddSymbolicGradients(scope, {pack.output}, inputs,
+                                      output_grads, &grad_outputs));
+    ClientSession session((scope));
+    std::vector<Tensor> in_grad;
+    TF_ASSERT_OK(session.Run(grad_outputs, &in_grad));
+    for (int i = 0; i < N; ++i) {
+      test::ExpectTensorEqual<int>(in_grad[i], test::AsTensor<int>({i}, {1}));
+    }
+  }
 }
 
 // StopGradientSingleOutputMultiEdgeTest tests combinations of valid and

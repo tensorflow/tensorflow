@@ -17,93 +17,55 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 namespace gpu {
 
-void BufferAllocations::Builder::RegisterBuffer(BufferAllocation::Index index,
-                                                se::DeviceMemoryBase address) {
-  InsertOrDie(&registered_buffers_, index, address);
-}
-
-StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
-    const BufferAssignment& buffer_assignment, int device_ordinal,
-    DeviceMemoryAllocator* memory_allocator) {
-  const int64 num_buffers = buffer_assignment.Allocations().size();
-  auto buffer_allocations = WrapUnique(
-      new BufferAllocations(num_buffers, device_ordinal, memory_allocator));
-
-  for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
-    // If buffer #i's address is already registered (e.g. external arguments or
-    // result buffers), use that registered buffer.
-    if (registered_buffers_.count(i)) {
-      buffer_allocations->SetBuffer(i, FindOrDie(registered_buffers_, i));
-      continue;
-    }
-
-    // Allocate each allocation that might escape, or is the temp buffer.
-    bool seen_temp_buffer = false;
-    const BufferAllocation& allocation = buffer_assignment.GetAllocation(i);
-    if (allocation.maybe_live_out() || allocation.IsPreallocatedTempBuffer()) {
-      const int64 buffer_size = allocation.size();
-      se::DeviceMemoryBase buffer_address;
-      if (buffer_size > 0) {
-        TF_ASSIGN_OR_RETURN(buffer_address, memory_allocator->Allocate(
-                                                device_ordinal, buffer_size));
-        if (buffer_address == nullptr) {
-          return ResourceExhausted(
-              "Out of memory when allocating %s for buffer %lld.",
-              tensorflow::strings::HumanReadableNumBytes(buffer_size).c_str(),
-              i);
-        }
-      }
-      buffer_allocations->SetBuffer(i, buffer_address);
-      if (allocation.IsPreallocatedTempBuffer()) {
-        if (seen_temp_buffer) {
-          LOG(FATAL) << "Multiple temporary buffers detected.  BufferAssigner "
-                     << "must guarantee at most one temporary buffer.";
-        }
-        seen_temp_buffer = true;
-        buffer_allocations->temp_buffer_base_ = buffer_address;
-      }
-    }
-  }
-
-  return std::move(buffer_allocations);
-}
-
-tensorflow::Status BufferAllocations::TearDown(
+Status BufferAllocations::TearDown(
     const std::set<se::DeviceMemoryBase>& live_addresses,
-    const BufferAssignment& buffer_assignment) {
-  // Deallocate temporary buffers.
-  for (auto i = 0; i < buffer_assignment.Allocations().size(); ++i) {
-    const BufferAllocation& allocation = buffer_assignment.GetAllocation(i);
+    absl::Span<const BufferAllocation> allocations) {
+  // Deallocate temporary buffers, taking care to try to deallocate all of them
+  // even if one of the deallocations fails.
+  Status status;
+  const int64 num_buffers = allocations.size();
+  for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
+    const BufferAllocation& allocation = allocations[i];
     se::DeviceMemoryBase buffer_address = GetDeviceAddress(allocation.index());
     // Deallocate buffers marked "maybe_live_out" but aren't actually live out,
     // and temp buffers.
     if ((allocation.maybe_live_out() &&
          !live_addresses.count(buffer_address)) ||
         allocation.IsPreallocatedTempBuffer()) {
-      TF_RETURN_IF_ERROR(
-          memory_allocator_->Deallocate(device_ordinal_, &buffer_address));
+      auto dealloc_result =
+          memory_allocator_->Deallocate(device_ordinal_, buffer_address);
+      if (!dealloc_result.ok() && status.ok()) {
+        status = dealloc_result;
+      }
     }
   }
-  return tensorflow::Status::OK();
+  return status;
 }
 
 se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     BufferAllocation::Index buffer_index) const {
+  CHECK_GE(buffer_index, 0);
+  CHECK_LT(buffer_index, buffers_.size());
+  return buffers_[buffer_index];
+}
+
+se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
+    BufferAllocation::Index buffer_index) {
   CHECK_GE(buffer_index, 0);
   CHECK_LT(buffer_index, buffers_.size());
   return buffers_[buffer_index];
@@ -116,14 +78,12 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   CHECK_LE(buffer_slice.offset() + buffer_slice.size(), base.size());
   return se::DeviceMemoryBase(
       static_cast<char*>(base.opaque()) + buffer_slice.offset(),
-      buffer_slice.size(), /*is_sub_buffer=*/true);
+      buffer_slice.size());
 }
 
-void BufferAllocations::SetBuffer(BufferAllocation::Index buffer_index,
-                                  se::DeviceMemoryBase buffer) {
-  CHECK_GE(buffer_index, 0);
-  CHECK_LT(buffer_index, buffers_.size());
-  buffers_[buffer_index] = buffer;
+bool ShouldEmitLiteralInLlvmIr(const Literal& literal) {
+  // LLVM can sometimes do interesting optimizations using scalar constants.
+  return ShapeUtil::IsScalar(literal.shape());
 }
 
 }  // namespace gpu

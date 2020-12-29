@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_CANCELLATION_H_
-#define TENSORFLOW_FRAMEWORK_CANCELLATION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_
 
 #include <atomic>
 #include <functional>
@@ -36,18 +36,28 @@ namespace tensorflow {
 // CancellationManager::get_cancellation_token.
 typedef int64 CancellationToken;
 
-// A callback that is invoked when a step is cancelled.
+// A callback that is invoked when a step is canceled.
 //
 // NOTE(mrry): See caveats about CancelCallback implementations in the
 // comment for CancellationManager::RegisterCallback.
 typedef std::function<void()> CancelCallback;
 
+// This class should never simultaneously be used as the cancellation manager
+// for two separate sets of executions (i.e two separate steps, or two separate
+// function executions).
 class CancellationManager {
  public:
   // A value that won't be returned by get_cancellation_token().
   static const CancellationToken kInvalidToken;
 
   CancellationManager();
+
+  // Constructs a new CancellationManager that is a "child" of `*parent`.
+  //
+  // If `*parent` is cancelled, `*this` will be cancelled. `*parent` must
+  // outlive the created CancellationManager.
+  explicit CancellationManager(CancellationManager* parent);
+
   ~CancellationManager();
 
   // Run all callbacks associated with this manager.
@@ -58,7 +68,9 @@ class CancellationManager {
 
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
-  CancellationToken get_cancellation_token();
+  CancellationToken get_cancellation_token() {
+    return next_cancellation_token_.fetch_add(1);
+  }
 
   // Attempts to register the given callback to be invoked when this
   // manager is cancelled. Returns true if the callback was
@@ -79,7 +91,7 @@ class CancellationManager {
   //     CancellationToken token = cm->get_cancellation_token();
   //     {
   //       mutex_lock(mu_);
-  //       already_cancelled = cm->RegisterCallback(
+  //       already_cancelled = !cm->RegisterCallback(
   //           [this, token]() { Cancel(token); });
   //       if (!already_cancelled) {
   //         // Issue asynchronous operation. Associate the pending operation
@@ -122,16 +134,54 @@ class CancellationManager {
   // cancellation manager.
   bool DeregisterCallback(CancellationToken token);
 
+  // Deregister the callback that, when registered, was associated
+  // with the given cancellation token. Returns true iff the callback
+  // was deregistered and will not be invoked; otherwise returns false
+  // immediately, with no guarantee that the callback has completed.
+  //
+  // This method is guaranteed to return true if StartCancel has not been
+  // called.
+  bool TryDeregisterCallback(CancellationToken token);
+
+  // Returns true iff cancellation is in progress.
+  bool IsCancelling();
+
  private:
+  struct State {
+    Notification cancelled_notification;
+    gtl::FlatMap<CancellationToken, CancelCallback> callbacks;
+
+    // If this CancellationManager has any children, this member points to the
+    // head of a doubly-linked list of its children.
+    CancellationManager* first_child = nullptr;  // Not owned.
+  };
+
+  bool RegisterChild(CancellationManager* child);
+  void DeregisterChild(CancellationManager* child);
+
   bool is_cancelling_;
   std::atomic_bool is_cancelled_;
+  std::atomic<CancellationToken> next_cancellation_token_;
+
+  CancellationManager* const parent_ = nullptr;  // Not owned.
+
+  // If this CancellationManager is associated with a parent, this member will
+  // be set to `true` after this is removed from the parent's list of children.
+  bool is_removed_from_parent_ TF_GUARDED_BY(parent_->mu_) = false;
+
+  // If this CancellationManager is associated with a parent, these members form
+  // a doubly-linked list of that parent's children.
+  //
+  // These fields are valid only when `this->is_removed_from_parent_` is false.
+  CancellationManager* prev_sibling_ TF_GUARDED_BY(parent_->mu_) =
+      nullptr;  // Not owned.
+  CancellationManager* next_sibling_ TF_GUARDED_BY(parent_->mu_) =
+      nullptr;  // Not owned.
 
   mutex mu_;
-  Notification cancelled_notification_;
-  CancellationToken next_cancellation_token_ GUARDED_BY(mu_);
-  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
+  std::unique_ptr<State> state_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_CANCELLATION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_CANCELLATION_H_

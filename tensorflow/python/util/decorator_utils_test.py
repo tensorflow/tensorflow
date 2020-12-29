@@ -55,8 +55,9 @@ class AddNoticeToDocstringTest(test.TestCase):
         expected)
 
   def test_regular(self):
-    expected = ("Brief (suffix)\n\nGo away\nInstructions\n\nDocstring\n\n"
-                "Args:\n  arg1: desc")
+    expected = (
+        "Brief (suffix)\n\nWarning: Go away\nInstructions\n\nDocstring\n\n"
+        "Args:\n  arg1: desc")
     # No indent for main docstring
     self._check("Brief\n\nDocstring\n\nArgs:\n  arg1: desc", expected)
     # 2 space indent for main docstring, blank lines not indented
@@ -71,7 +72,7 @@ class AddNoticeToDocstringTest(test.TestCase):
                 expected)
 
   def test_brief_only(self):
-    expected = "Brief (suffix)\n\nGo away\nInstructions"
+    expected = "Brief (suffix)\n\nWarning: Go away\nInstructions"
     self._check("Brief", expected)
     self._check("Brief\n", expected)
     self._check("Brief\n  ", expected)
@@ -79,12 +80,12 @@ class AddNoticeToDocstringTest(test.TestCase):
     self._check("\n  Brief\n  ", expected)
 
   def test_no_docstring(self):
-    expected = "Nothing here\n\nGo away\nInstructions"
+    expected = "Nothing here\n\nWarning: Go away\nInstructions"
     self._check(None, expected)
     self._check("", expected)
 
   def test_no_empty_line(self):
-    expected = "Brief (suffix)\n\nGo away\nInstructions\n\nDocstring"
+    expected = "Brief (suffix)\n\nWarning: Go away\nInstructions\n\nDocstring"
     # No second line indent
     self._check("Brief\nDocstring", expected)
     # 2 space second line indent

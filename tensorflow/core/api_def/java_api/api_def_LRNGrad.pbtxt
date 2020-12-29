@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "LRNGrad"
+  endpoint {
+    name: "nn.LocalResponseNormalizationGrad"
+  }
+}

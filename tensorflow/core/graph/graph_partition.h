@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_PARTITION_H_
-#define TENSORFLOW_GRAPH_GRAPH_PARTITION_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_PARTITION_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_PARTITION_H_
 
 #include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/graph/graph.h"
@@ -41,9 +42,13 @@ struct PartitionOptions {
   // A function that returns the incarnation of a device given the
   // device's fullname. If not found, GetIncarnationFunc should return
   // kIllegalIncarnation.
-  static const uint64 kIllegalIncarnation = 0;
+  static constexpr uint64 kIllegalIncarnation = 0;
   typedef std::function<uint64(const string&)> GetIncarnationFunc;
   GetIncarnationFunc get_incarnation = nullptr;
+
+  // If specified, flib_def defines a function library that should be
+  // partitioned and replicated into each resulting partition graphs.
+  const FunctionLibraryDefinition* flib_def = nullptr;
 
   // True if all the control flow "code" has already been added. The
   // control flow code needs to be added when we still have the entire
@@ -90,4 +95,4 @@ Status AddControlEdges(const PartitionOptions& opts,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_PARTITION_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_PARTITION_H_

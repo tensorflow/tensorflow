@@ -33,19 +33,49 @@ from tensorflow.python.lib.io.file_io import rename as Rename
 from tensorflow.python.lib.io.file_io import stat as Stat
 from tensorflow.python.lib.io.file_io import walk as Walk
 # pylint: enable=unused-import
-from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('io.gfile.GFile', v1=['gfile.GFile', 'gfile.Open', 'io.gfile.GFile'])
 class GFile(_FileIO):
-  """File I/O wrappers without thread locking."""
+  """File I/O wrappers without thread locking.
+
+  The main roles of the `tf.io.gfile` module are:
+
+  1. To provide an API that is close to Python's file I/O objects, and
+  2. To provide an implementation based on TensorFlow's C++ FileSystem API.
+
+  The C++ FileSystem API supports multiple file system implementations,
+  including local files, Google Cloud Storage (using a `gs://` prefix, and
+  HDFS (using an `hdfs://` prefix). TensorFlow exports these as `tf.io.gfile`,
+  so that you can use these implementations for saving and loading checkpoints,
+  writing to TensorBoard logs, and accessing training data (among other uses).
+  However, if all your files are local, you can use the regular Python file
+  API without any problem.
+
+  *Note*: though similar to Python's I/O implementation, there are semantic
+  differences to make `tf.io.gfile` more efficient for backing filesystems. For
+  example, a write mode file will not be opened until the first write call, to
+  minimize RPC invocations in network filesystems.
+  """
 
   def __init__(self, name, mode='r'):
     super(GFile, self).__init__(name=name, mode=mode)
 
 
+@tf_export(v1=['gfile.FastGFile'])
 class FastGFile(_FileIO):
-  """File I/O wrappers without thread locking."""
+  """File I/O wrappers without thread locking.
 
+  Note, that this  is somewhat like builtin Python  file I/O, but
+  there are  semantic differences to  make it more  efficient for
+  some backing filesystems.  For example, a write  mode file will
+  not  be opened  until the  first  write call  (to minimize  RPC
+  invocations in network filesystems).
+  """
+
+  @deprecated(None, 'Use tf.gfile.GFile.')
   def __init__(self, name, mode='r'):
     super(FastGFile, self).__init__(name=name, mode=mode)
 
@@ -53,24 +83,3 @@ class FastGFile(_FileIO):
 # Does not alias to Open so that we use our version of GFile to strip
 # 'b' mode.
 Open = GFile
-
-# TODO(drpng): Find the right place to document these.
-_allowed_symbols = [
-    'Copy',
-    'DeleteRecursively',
-    'Exists',
-    'FastGFile',
-    'GFile',
-    'Glob',
-    'IsDirectory',
-    'ListDirectory',
-    'Open',
-    'MakeDirs',
-    'MkDir',
-    'Remove',
-    'Rename',
-    'Stat',
-    'Walk',
-]
-
-remove_undocumented(__name__, _allowed_symbols)

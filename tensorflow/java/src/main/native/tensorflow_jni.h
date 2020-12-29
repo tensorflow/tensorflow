@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_TENSORFLOW_JNI_H_
-#define TENSORFLOW_JAVA_TENSORFLOW_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSORFLOW_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSORFLOW_JNI_H_
 
 #include <jni.h>
 
@@ -27,10 +27,44 @@ extern "C" {
  *  Method:    version
  *  Signature: ()Ljava/lang/String;
  */
-JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv*,
+JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv *,
                                                                  jclass);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    registeredOpList
+ * Signature: ()[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_tensorflow_TensorFlow_registeredOpList(JNIEnv *, jclass);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    libraryLoad
+ * Signature: (Ljava/lang/String;)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_TensorFlow_libraryLoad(JNIEnv *,
+                                                                   jclass,
+                                                                   jstring);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    libraryDelete
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_TensorFlow_libraryDelete(JNIEnv *,
+                                                                    jclass,
+                                                                    jlong);
+
+/*
+ * Class:     org_tensorflow_TensorFlow
+ * Method:    libraryOpList
+ * Signature: (J)[B
+ */
+JNIEXPORT jbyteArray JNICALL
+Java_org_tensorflow_TensorFlow_libraryOpList(JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_TENSORFLOW_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_TENSORFLOW_JNI_H_

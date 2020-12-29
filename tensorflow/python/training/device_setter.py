@@ -23,6 +23,18 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util.tf_export import tf_export
+
+# This is a tuple of PS ops used by tf.estimator.Estimator which should work in
+# almost all of cases.
+STANDARD_PS_OPS = ("Variable", "VariableV2", "AutoReloadVariable",
+                   "MutableHashTable", "MutableHashTableV2",
+                   "MutableHashTableOfTensors", "MutableHashTableOfTensorsV2",
+                   "MutableDenseHashTable", "MutableDenseHashTableV2",
+                   "VarHandleOp", "BoostedTreesEnsembleResourceHandleOp",
+                   "BoostedTreesQuantileStreamResourceHandleOp",
+                   "ResourceConditionalAccumulator",
+                   "DecisionTreeResource")
 
 
 class _RoundRobinStrategy(object):
@@ -94,36 +106,41 @@ class _ReplicaDeviceChooser(object):
     Returns:
       The device to use for the `Operation`.
     """
+    # If we don't return early here, either merge_devices is True, or op.device
+    # is empty (in which case merging is a no-op). So we can always merge below.
     if not self._merge_devices and op.device:
       return op.device
+
     current_device = pydev.DeviceSpec.from_string(op.device or "")
-    spec = pydev.DeviceSpec()
-    if self._ps_tasks and self._ps_device:
-      node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
-      if node_def.op in self._ps_ops:
-        device_string = "%s/task:%d" % (
-            self._ps_device, self._ps_strategy(op))
-        if self._merge_devices:
-          spec = pydev.DeviceSpec.from_string(device_string)
-          spec.merge_from(current_device)
-          return spec.to_string()
-        else:
-          return device_string
-    if self._worker_device:
-      if not self._merge_devices:
-        return self._worker_device
-      spec = pydev.DeviceSpec.from_string(self._worker_device)
 
-    if not self._merge_devices:
-      return ""
+    # The ps_device will be used for specified ops (ps_ops) whenever it is
+    # present and ps_tasks is non-zero. However, its task number will only be
+    # set (using ps_strategy) if there is a job field in ps_device that won't be
+    # changed by the job field (if present) in current_device.
+    node_def = op if isinstance(op, node_def_pb2.NodeDef) else op.node_def
+    if self._ps_tasks and self._ps_device and node_def.op in self._ps_ops:
+      ps_device = pydev.DeviceSpec.from_string(self._ps_device)
 
-    spec.merge_from(current_device)
-    return spec.to_string()
+      current_job, ps_job = current_device.job, ps_device.job
+      if ps_job and (not current_job or current_job == ps_job):
+        ps_device = ps_device.replace(task=self._ps_strategy(op))
+
+      ps_device = ps_device.make_merged_spec(current_device)
+      return ps_device.to_string()
+
+    worker_device = pydev.DeviceSpec.from_string(self._worker_device or "")
+    worker_device = worker_device.make_merged_spec(current_device)
+    return worker_device.to_string()
 
 
-def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
-                          worker_device="/job:worker", merge_devices=True,
-                          cluster=None, ps_ops=None, ps_strategy=None):
+@tf_export(v1=["train.replica_device_setter"])
+def replica_device_setter(ps_tasks=0,
+                          ps_device="/job:ps",
+                          worker_device="/job:worker",
+                          merge_devices=True,
+                          cluster=None,
+                          ps_ops=None,
+                          ps_strategy=None):
   """Return a `device function` to use when building a Graph for replicas.
 
   Device Functions are used in `with tf.device(device_function):` statement to
@@ -148,7 +165,8 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   cluster_spec = {
       "ps": ["ps0:2222", "ps1:2222"],
       "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]}
-  with tf.device(tf.train.replica_device_setter(cluster=cluster_spec)):
+  with
+  tf.device(tf.compat.v1.train.replica_device_setter(cluster=cluster_spec)):
     # Build your graph
     v1 = tf.Variable(...)  # assigned to /job:ps/task:0
     v2 = tf.Variable(...)  # assigned to /job:ps/task:1
@@ -168,7 +186,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
       than overriding them.
     cluster: `ClusterDef` proto or `ClusterSpec`.
     ps_ops: List of strings representing `Operation` types that need to be
-      placed on `ps` devices.  If `None`, defaults to `["Variable"]`.
+      placed on `ps` devices.  If `None`, defaults to `STANDARD_PS_OPS`.
     ps_strategy: A callable invoked for every ps `Operation` (i.e. matched by
       `ps_ops`), that takes the `Operation` and returns the ps task index to
       use.  If `None`, defaults to a round-robin strategy across all `ps`
@@ -186,7 +204,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
       cluster_spec = cluster.as_dict()
     else:
       cluster_spec = server_lib.ClusterSpec(cluster).as_dict()
-    # Get ps_job_name from ps_device by striping "/job:".
+    # Get ps_job_name from ps_device by stripping "/job:".
     ps_job_name = pydev.DeviceSpec.from_string(ps_device).job
     if ps_job_name not in cluster_spec or cluster_spec[ps_job_name] is None:
       return None
@@ -198,7 +216,7 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
   if ps_ops is None:
     # TODO(sherrym): Variables in the LOCAL_VARIABLES collection should not be
     # placed in the parameter server.
-    ps_ops = ["Variable", "VariableV2"]
+    ps_ops = list(STANDARD_PS_OPS)
 
   if not merge_devices:
     logging.warning(
@@ -208,6 +226,6 @@ def replica_device_setter(ps_tasks=0, ps_device="/job:ps",
     ps_strategy = _RoundRobinStrategy(ps_tasks)
   if not six.callable(ps_strategy):
     raise TypeError("ps_strategy must be callable")
-  chooser = _ReplicaDeviceChooser(
-      ps_tasks, ps_device, worker_device, merge_devices, ps_ops, ps_strategy)
+  chooser = _ReplicaDeviceChooser(ps_tasks, ps_device, worker_device,
+                                  merge_devices, ps_ops, ps_strategy)
   return chooser.device_function

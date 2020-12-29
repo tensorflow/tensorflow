@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "DeleteIterator"
+  visibility: HIDDEN
+  in_arg {
+    name: "handle"
+    description: "A handle to the iterator to delete."
+  }
+  in_arg {
+    name: "deleter"
+    description: "A variant deleter."
+  }
+  summary: "A container for an iterator resource."
+}

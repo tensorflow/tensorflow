@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -44,9 +46,14 @@ namespace gpu {
 // "depends" on A.
 class ThunkSchedule {
  public:
-  ThunkSchedule(std::unique_ptr<ThunkSequence> thunks,
-                std::unique_ptr<StreamAssignment> stream_assignment,
-                const std::vector<const HloInstruction*>& hlo_total_order);
+  // `thunk_to_hlo` is an one-to-one map. Every thunk in this container maps to
+  // an HLO, but not every HLO ever exists produces a Thunk.
+  //
+  // thunk_to_hlo.keys() == set(thunks).
+  ThunkSchedule(
+      std::unique_ptr<ThunkSequence> thunks,
+      std::unique_ptr<StreamAssignment> stream_assignment,
+      absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo);
 
   // Returns the total order of executing all the thunks.
   const std::vector<Thunk*>& TotalOrder() const { return thunk_total_order_; }
@@ -54,12 +61,14 @@ class ThunkSchedule {
   // Thunks that `thunk` depends on.
   const std::list<const Thunk*>& DependsOn(const Thunk* thunk) const;
   // Whether `thunk` is depended by another thunk.
-  bool Depended(const Thunk* thunk) const { return depended_by_.count(thunk); }
+  bool Depended(const Thunk* thunk) const {
+    return depended_by_.contains(thunk);
+  }
 
   // Delegates to StreamAssignment.
   int StreamCount() const { return stream_assignment_->StreamCount(); }
-  int StreamNumberForHlo(const HloInstruction& hlo) const {
-    return stream_assignment_->StreamNumberForHlo(hlo);
+  int StreamNumberForThunk(const Thunk* thunk) const {
+    return stream_assignment_->StreamNumberForHlo(*thunk_to_hlo_.at(thunk));
   }
 
   string ToString() const;
@@ -71,20 +80,22 @@ class ThunkSchedule {
   // `thunk`.
   //
   // Precondition: `operand` is a non-trivial (i.e. excluding
-  // thunk.hlo_instruction() itself) transitive operand of
-  // thunk.hlo_instruction().
+  // thunk.hlo_instruction_ itself) transitive operand of
+  // thunk.hlo_instruction_.
   void AddDependenciesOnTransitiveOperands(
       const Thunk& thunk, const HloInstruction& operand,
-      const std::unordered_map<const HloInstruction*, Thunk*>& hlo_to_thunk);
+      const absl::flat_hash_map<const HloInstruction*, Thunk*>& hlo_to_thunk);
 
   std::unique_ptr<ThunkSequence> thunks_;
   std::vector<Thunk*> thunk_total_order_;
 
-  std::unordered_map<const Thunk*, std::list<const Thunk*>> depends_on_;
-  std::set<const Thunk*> depended_by_;
+  absl::flat_hash_map<const Thunk*, std::list<const Thunk*>> depends_on_;
+  absl::flat_hash_set<const Thunk*> depended_by_;
   std::list<const Thunk*> empty_thunk_list_;
 
   std::unique_ptr<StreamAssignment> stream_assignment_;
+
+  absl::flat_hash_map<const Thunk*, const HloInstruction*> thunk_to_hlo_;
 };
 
 }  // namespace gpu

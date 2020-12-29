@@ -33,7 +33,8 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 class SoftsignOp : public UnaryElementWiseOp<T, SoftsignOp<Device, T>> {
  public:
-  using UnaryElementWiseOp<T, SoftsignOp<Device, T>>::UnaryElementWiseOp;
+  explicit SoftsignOp(OpKernelConstruction* context)
+      : UnaryElementWiseOp<T, SoftsignOp<Device, T>>(context) {}
 
   void Operate(OpKernelContext* context, const Tensor& input, Tensor* output) {
     functor::Softsign<Device, T> functor;
@@ -46,7 +47,8 @@ template <typename Device, typename T>
 class SoftsignGradOp
     : public BinaryElementWiseOp<T, SoftsignGradOp<Device, T>> {
  public:
-  using BinaryElementWiseOp<T, SoftsignGradOp<Device, T>>::BinaryElementWiseOp;
+  explicit SoftsignGradOp(OpKernelConstruction* context)
+      : BinaryElementWiseOp<T, SoftsignGradOp<Device, T>>(context) {}
 
   void OperateNoTemplate(OpKernelContext* context, const Tensor& g,
                          const Tensor& a, Tensor* output);
@@ -83,10 +85,10 @@ void SoftsignGradOp<Device, T>::OperateNoTemplate(OpKernelContext* context,
       Name("SoftsignGrad").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       SoftsignGradOp<CPUDevice, type>);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
+TF_CALL_FLOAT_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                          \
@@ -118,6 +120,6 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

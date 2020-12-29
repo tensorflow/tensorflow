@@ -1,0 +1,59 @@
+path: "tensorflow.sparse.SparseTensor"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.sparse_tensor.SparseTensor\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "dense_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "graph"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "indices"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "op"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "values"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'indices\', \'values\', \'dense_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "eval"
+    argspec: "args=[\'self\', \'feed_dict\', \'session\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "from_value"
+    argspec: "args=[\'cls\', \'sparse_tensor_value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_shape"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "with_values"
+    argspec: "args=[\'self\', \'new_values\'], varargs=None, keywords=None, defaults=None"
+  }
+}

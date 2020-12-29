@@ -16,11 +16,14 @@ limitations under the License.
 /**
  * Defines classes to build, save, load and execute TensorFlow models.
  *
- * <p><b>WARNING</b>: The API is currently experimental and is not covered by TensorFlow <a
- * href="https://www.tensorflow.org/programmers_guide/version_semantics">API stability
- * quarantees</a>. See <a
- * href="https://www.tensorflow.org/code/tensorflow/java/README.md">README.md</a>
- * for installation instructions.
+  *<aside class="warning">
+ * <b>Warning:</b> This API is deprecated and will be removed in a future
+ *       version of TensorFlow after <a href="https://tensorflow.org/java">the replacement</a>
+ *       is stable.
+ *</aside>
+ *
+ * <p>To get started, see the <a href="https://tensorflow.org/install/lang_java_legacy">
+ * installation instructions.</a></p>
  *
  * <p>The <a
  * href="https://www.tensorflow.org/code/tensorflow/java/src/main/java/org/tensorflow/examples/LabelImage.java">LabelImage</a>
@@ -35,5 +38,8 @@ limitations under the License.
  *   <li>Graph execution: Using a Session to execute the graphs and find the best label for an
  *       image.
  * </ul>
+ *
+ * <p>Additional examples can be found in the <a
+ * href="https://github.com/tensorflow/java">tensorflow/java</a> GitHub repository.
  */
 package org.tensorflow;

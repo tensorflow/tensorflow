@@ -1,6 +1,7 @@
-licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
+load(":build_defs.bzl", "cuda_header_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
-load("@local_config_cuda//cuda:platform.bzl", "readlink_command")
+licenses(["restricted"])  # MPL2, portions GPL v3, LGPL v3, BSD-like
 
 package(default_visibility = ["//visibility:public"])
 
@@ -30,31 +31,29 @@ config_setting(
 config_setting(
     name = "darwin",
     values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
 )
 
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
 )
 
-cc_library(
+cuda_header_library(
     name = "cuda_headers",
-    hdrs = glob([
-        "**/*.h",
-    ]),
-    includes = [
-        ".",
-        "include",
+    hdrs = [
+        "cuda/cuda_config.h",
+        ":cuda-include"
     ],
-    visibility = ["//visibility:public"],
+    include_prefix = "third_party/gpus",
+    includes = [
+        ".",  # required to include cuda/cuda/cuda_config.h as cuda/config.h
+        "cuda/include",
+    ],
 )
 
 cc_library(
     name = "cudart_static",
-    srcs = ["lib/%{cudart_static_lib}"],
-    includes = ["include/"],
+    srcs = ["cuda/lib/%{cudart_static_lib}"],
     linkopts = select({
         ":freebsd": [],
         "//conditions:default": ["-ldl"],
@@ -62,94 +61,180 @@ cc_library(
         "-lpthread",
         %{cudart_static_linkopt}
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda_driver",
-    srcs = ["lib/%{cuda_driver_lib}"],
-    includes = ["include/"],
-    visibility = ["//visibility:public"],
+    srcs = ["cuda/lib/%{cuda_driver_lib}"],
 )
 
 cc_library(
     name = "cudart",
-    srcs = ["lib/%{cudart_lib}"],
-    data = ["lib/%{cudart_lib}"],
-    includes = ["include/"],
+    srcs = ["cuda/lib/%{cudart_lib}"],
+    data = ["cuda/lib/%{cudart_lib}"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
+)
+
+cuda_header_library(
+    name = "cublas_headers",
+    hdrs = [":cublas-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    strip_include_prefix = "cublas/include",
+    deps = [":cuda_headers"],
+    includes = ["cublas/include"],
+)
+
+cuda_header_library(
+    name = "cusolver_headers",
+    hdrs = [":cusolver-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    strip_include_prefix = "cusolver/include",
+    deps = [":cuda_headers"],
+    includes = ["cusolver/include"],
+)
+
+cuda_header_library(
+    name = "cufft_headers",
+    hdrs = [":cufft-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    strip_include_prefix = "cufft/include",
+    deps = [":cuda_headers"],
+    includes = ["cufft/include"],
+)
+
+cuda_header_library(
+    name = "cusparse_headers",
+    hdrs = [":cusparse-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    strip_include_prefix = "cusparse/include",
+    deps = [":cuda_headers"],
+    includes = ["cusparse/include"],
+)
+
+cuda_header_library(
+    name = "curand_headers",
+    hdrs = [":curand-include"],
+    include_prefix = "third_party/gpus/cuda/include",
+    strip_include_prefix = "curand/include",
+    deps = [":cuda_headers"],
+    includes = ["curand/include"],
 )
 
 cc_library(
     name = "cublas",
-    srcs = ["lib/%{cublas_lib}"],
-    data = ["lib/%{cublas_lib}"],
-    includes = ["include/"],
+    srcs = ["cuda/lib/%{cublas_lib}"],
+    data = ["cuda/lib/%{cublas_lib}"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cublasLt",
+    srcs = ["cuda/lib/%{cublasLt_lib}"],
+    data = ["cuda/lib/%{cublasLt_lib}"],
+    linkstatic = 1,
+)
+
+cc_library(
+    name = "cusolver",
+    srcs = ["cuda/lib/%{cusolver_lib}"],
+    data = ["cuda/lib/%{cusolver_lib}"],
+    linkopts = ["-lgomp"],
+    linkstatic = 1,
 )
 
 cc_library(
     name = "cudnn",
-    srcs = ["lib/%{cudnn_lib}"],
-    data = ["lib/%{cudnn_lib}"],
-    includes = ["include/"],
+    srcs = ["cuda/lib/%{cudnn_lib}"],
+    data = ["cuda/lib/%{cudnn_lib}"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "cudnn_header",
+    hdrs = [":cudnn-include"],
+    include_prefix = "third_party/gpus/cudnn",
+    strip_include_prefix = "cudnn/include",
+    deps = [":cuda_headers"],
 )
 
 cc_library(
     name = "cufft",
-    srcs = ["lib/%{cufft_lib}"],
-    data = ["lib/%{cufft_lib}"],
-    includes = ["include/"],
+    srcs = ["cuda/lib/%{cufft_lib}"],
+    data = ["cuda/lib/%{cufft_lib}"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "curand",
-    srcs = ["lib/%{curand_lib}"],
-    data = ["lib/%{curand_lib}"],
-    includes = ["include/"],
+    srcs = ["cuda/lib/%{curand_lib}"],
+    data = ["cuda/lib/%{curand_lib}"],
     linkstatic = 1,
-    visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "cuda",
     deps = [
+        ":cublas",
+        ":cublasLt",
         ":cuda_headers",
         ":cudart",
-        ":cublas",
         ":cudnn",
         ":cufft",
         ":curand",
     ],
-    visibility = ["//visibility:public"],
 )
 
-cc_library(
+alias(
+    name = "cub_headers",
+    actual = "%{cub_actual}"
+)
+
+cuda_header_library(
     name = "cupti_headers",
-    hdrs = glob([
-        "**/*.h",
-    ]),
-    includes = [
-        ".",
-        "extras/CUPTI/include/",
-    ],
-    visibility = ["//visibility:public"],
+    hdrs = [":cuda-extras"],
+    include_prefix="third_party/gpus",
+    includes = ["cuda/extras/CUPTI/include/"],
+    deps = [":cuda_headers"],
 )
 
 cc_library(
     name = "cupti_dsos",
-    data = ["lib/%{cupti_lib}"],
-    visibility = ["//visibility:public"],
+    data = ["cuda/lib/%{cupti_lib}"],
+)
+
+cc_library(
+    name = "cusparse",
+    srcs = ["cuda/lib/%{cusparse_lib}"],
+    data = ["cuda/lib/%{cusparse_lib}"],
+    linkopts = ["-lgomp"],
+    linkstatic = 1,
 )
 
 cc_library(
     name = "libdevice_root",
-    data = glob(["nvvm/libdevice/*.bc"]),
-    visibility = ["//visibility:public"],
+    data = [":cuda-nvvm"],
 )
+
+filegroup(
+    name = "cuda_root",
+    srcs = [
+        "cuda/bin/fatbinary",
+        "cuda/bin/bin2c",
+    ],
+)
+
+bzl_library(
+    name = "build_defs_bzl",
+    srcs = ["build_defs.bzl"],
+    deps = [
+        "@bazel_skylib//lib:selects",
+    ],
+)
+
+py_library(
+    name = "cuda_config_py",
+    srcs = ["cuda/cuda_config.py"]
+)
+
+%{copy_rules}
+

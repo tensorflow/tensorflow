@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +20,10 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 import tempfile
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -29,6 +31,7 @@ from tensorflow.python.util import compat
 
 class IoOpsTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testReadFile(self):
     cases = ['', 'Some contents', 'Неки садржаји на српском']
     for contents in cases:
@@ -36,10 +39,10 @@ class IoOpsTest(test.TestCase):
       with tempfile.NamedTemporaryFile(
           prefix='ReadFileTest', dir=self.get_temp_dir(), delete=False) as temp:
         temp.write(contents)
-      with self.test_session():
+      with self.cached_session():
         read = io_ops.read_file(temp.name)
         self.assertEqual([], read.get_shape())
-        self.assertEqual(read.eval(), contents)
+        self.assertEqual(self.evaluate(read), contents)
       os.remove(temp.name)
 
   def testWriteFile(self):
@@ -50,19 +53,34 @@ class IoOpsTest(test.TestCase):
           prefix='WriteFileTest', dir=self.get_temp_dir(),
           delete=False) as temp:
         pass
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         w = io_ops.write_file(temp.name, contents)
-        sess.run(w)
+        self.evaluate(w)
         with open(temp.name, 'rb') as f:
           file_contents = f.read()
         self.assertEqual(file_contents, contents)
       os.remove(temp.name)
+
+  def testWriteFileCreateDir(self):
+    cases = ['', 'Some contents']
+    for contents in cases:
+      contents = compat.as_bytes(contents)
+      subdir = os.path.join(self.get_temp_dir(), 'subdir1')
+      filepath = os.path.join(subdir, 'subdir2', 'filename')
+      with self.cached_session() as sess:
+        w = io_ops.write_file(filepath, contents)
+        self.evaluate(w)
+        with open(filepath, 'rb') as f:
+          file_contents = f.read()
+        self.assertEqual(file_contents, contents)
+      shutil.rmtree(subdir)
 
   def _subset(self, files, indices):
     return set(
         compat.as_bytes(files[i].name) for i in range(len(files))
         if i in indices)
 
+  @test_util.run_deprecated_v1
   def testMatchingFiles(self):
     cases = [
         'ABcDEF.GH', 'ABzDEF.GH', 'ABasdfjklDEF.GH', 'AB3DEF.GH', 'AB4DEF.GH',
@@ -73,7 +91,7 @@ class IoOpsTest(test.TestCase):
             prefix=c, dir=self.get_temp_dir(), delete=True) for c in cases
     ]
 
-    with self.test_session():
+    with self.cached_session():
       # Test exact match without wildcards.
       for f in files:
         self.assertEqual(

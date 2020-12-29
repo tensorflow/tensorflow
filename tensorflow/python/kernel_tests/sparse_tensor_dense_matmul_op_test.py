@@ -29,6 +29,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -45,7 +47,12 @@ def _maybe_complex(x):
 
 class SparseTensorDenseMatMulTest(test.TestCase):
 
-  def _testMatmul(self, x, y, adjoint_a=False, adjoint_b=False):
+  def _testMatmul(self,
+                  x,
+                  y,
+                  adjoint_a=False,
+                  adjoint_b=False,
+                  indices_dtype=np.int64):
     x_mat = np.matrix(x)
     if adjoint_a:
       x_mat = x_mat.H
@@ -55,11 +62,11 @@ class SparseTensorDenseMatMulTest(test.TestCase):
 
     np_ans = x_mat * y_mat
 
-    x_indices = np.vstack(np.where(x)).astype(np.int64).T
+    x_indices = np.vstack(np.where(x)).astype(indices_dtype).T
     x_values = x[np.where(x)]
     x_shape = x.shape
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
@@ -74,7 +81,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
       self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
 
-      for out in (tf_value_ans.eval(), tf_tensor_ans.eval()):
+      for out in (self.evaluate(tf_value_ans), self.evaluate(tf_tensor_ans)):
         if x.dtype == np.float32:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
@@ -82,13 +89,13 @@ class SparseTensorDenseMatMulTest(test.TestCase):
         else:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
 
-  def _testBasic(self, np_dtype):
-    x = _maybe_complex(np.random.rand(10, 10).astype(np_dtype))
+  def _testBasic(self, value_dtype, indices_dtype=np.int64):
+    x = _maybe_complex(np.random.rand(10, 10).astype(value_dtype))
     x[np.abs(x) < 0.5] = 0  # Make it sparse
 
-    y = _maybe_complex(np.random.randn(10, 20).astype(np_dtype))
+    y = _maybe_complex(np.random.randn(10, 20).astype(value_dtype))
 
-    self._testMatmul(x, y)
+    self._testMatmul(x, y, indices_dtype=indices_dtype)
 
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
@@ -97,6 +104,8 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     self._testBasic(np.float64)
     self._testBasic(np.complex64)
     self._testBasic(np.complex128)
+    self._testBasic(np.int32, indices_dtype=np.int32)
+    self._testBasic(np.float32, indices_dtype=np.int32)
 
   def testShapeInference(self):
     x = np.random.rand(10, 10)
@@ -105,23 +114,91 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     x_indices = np.vstack(np.where(x)).astype(np.int64).T
     x_values = x[np.where(x)]
     x_shape = x.shape
-    x_st = sparse_tensor.SparseTensor(x_indices, x_values, x_shape)
-    result = sparse_ops.sparse_tensor_dense_matmul(x_st, y)
-    self.assertEqual(result.get_shape(), (10, 20))
 
-    x_shape_unknown = array_ops.placeholder(dtype=dtypes.int64, shape=None)
-    x_st_shape_unknown = sparse_tensor.SparseTensor(x_indices, x_values,
-                                                    x_shape_unknown)
-    result_left_shape_unknown = sparse_ops.sparse_tensor_dense_matmul(
-        x_st_shape_unknown, y)
-    self.assertEqual(result_left_shape_unknown.get_shape().as_list(),
-                     [None, 20])
+    with ops.Graph().as_default():
+      x_st = sparse_tensor.SparseTensor(x_indices, x_values, x_shape)
+      result = sparse_ops.sparse_tensor_dense_matmul(x_st, y)
+      self.assertEqual(result.get_shape(), (10, 20))
 
-    x_shape_inconsistent = [10, 15]
-    x_st_shape_inconsistent = sparse_tensor.SparseTensor(x_indices, x_values,
-                                                         x_shape_inconsistent)
-    with self.assertRaisesRegexp(ValueError, "Dimensions must be equal"):
-      sparse_ops.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
+      x_shape_unknown = array_ops.placeholder(dtype=dtypes.int64, shape=None)
+      x_st_shape_unknown = sparse_tensor.SparseTensor(x_indices, x_values,
+                                                      x_shape_unknown)
+      result_left_shape_unknown = sparse_ops.sparse_tensor_dense_matmul(
+          x_st_shape_unknown, y)
+      self.assertEqual(result_left_shape_unknown.get_shape().as_list(),
+                       [None, 20])
+
+      x_shape_inconsistent = [10, 15]
+      x_st_shape_inconsistent = sparse_tensor.SparseTensor(
+          x_indices, x_values, x_shape_inconsistent)
+      with self.assertRaisesRegex(ValueError, "Dimensions must be equal"):
+        sparse_ops.sparse_tensor_dense_matmul(x_st_shape_inconsistent, y)
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=False)
+  def testInvalidIndicesForSparseTensorDenseMatmul(self):
+    # TODO(b/169813429): Make GPU kernel return nice errors too.
+    indices = np.matrix([[1, 10]]).astype(np.int64)
+    values = np.array([10]).astype(np.float32)
+    shape = [3, 2]
+    sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+    # Test multiplying by both a small and large dense matrix, to hit
+    # both cases in the kernel.
+    dense_t = np.matrix([[1] * 5, [2] * 5], dtype=np.float32)
+    with self.assertRaisesOpError("k .10. from index.0,1. out of bounds .>=2."):
+      self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
+    dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
+    with self.assertRaisesOpError("k .10. from index.0,1. out of bounds .>=2."):
+      self.evaluate(sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
+
+    # Repeat with adjoint_a, to get a different error.
+    dense_t = np.matrix([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
+    with self.assertRaisesOpError("m .10. from index.0,1. out of bounds .>=2."):
+      self.evaluate(
+          sparse_ops.sparse_tensor_dense_matmul(
+              sparse_t, dense_t, adjoint_a=True))
+    dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
+    with self.assertRaisesOpError("m .10. from index.0,1. out of bounds .>=2."):
+      self.evaluate(
+          sparse_ops.sparse_tensor_dense_matmul(
+              sparse_t, dense_t, adjoint_a=True))
+
+  @test_util.run_gpu_only
+  def testInvalidIndicesForSparseTensorDenseMatmulOnGPU(self):
+    indices = np.array([[1, 10]]).astype(np.int64)
+    values = np.array([10]).astype(np.float32)
+    shape = [3, 2]
+    sparse_t = sparse_tensor.SparseTensor(indices, values, shape)
+
+    # Test multiplying by both a small and large dense matrix, to hit
+    # both cases in the kernel.
+    dense_t = np.matrix([[1] * 5, [2] * 5], dtype=np.float32)
+    expected_t = np.array([[0] * 5, [np.nan] * 5, [0] * 5], dtype=np.float32)
+    self.assertAllClose(
+        expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
+    dense_t = np.matrix([[1] * 500, [2] * 500], dtype=np.float32)
+    expected_t = np.array([[0] * 500, [np.nan] * 500, [0] * 500],
+                          dtype=np.float32)
+    self.assertAllClose(
+        expected_t, sparse_ops.sparse_tensor_dense_matmul(sparse_t, dense_t))
+
+    # Repeat with adjoint_a, now the error is that the sparse index
+    # is OOO w.r.t. the output.  The GPU kernel can't do much here,
+    # so it just doesn't accumulate.
+
+    dense_t = np.matrix([[1] * 5, [2] * 5, [3] * 5], dtype=np.float32)
+    expected_t = np.array([[0] * 5, [0] * 5], dtype=np.float32)
+    self.assertAllClose(
+        expected_t,
+        sparse_ops.sparse_tensor_dense_matmul(
+            sparse_t, dense_t, adjoint_a=True))
+
+    dense_t = np.matrix([[1] * 500, [2] * 500, [3] * 500], dtype=np.float32)
+    expected_t = np.array([[0] * 500, [0] * 500], dtype=np.float32)
+    self.assertAllClose(
+        expected_t,
+        sparse_ops.sparse_tensor_dense_matmul(
+            sparse_t, dense_t, adjoint_a=True))
 
   # Tests setting one dimension to be a high value.
   def _testLarge(self, np_dtype):
@@ -137,9 +214,12 @@ class SparseTensorDenseMatMulTest(test.TestCase):
 
       y = _maybe_complex(np.random.randn(k, n).astype(np_dtype))
 
-      self._testMatmul(x, y)
+      self._testMatmul(x, y, adjoint_a=False, adjoint_b=False)
+      self._testMatmul(x.transpose(), y, adjoint_a=True, adjoint_b=False)
+      self._testMatmul(x, y.transpose(), adjoint_a=False, adjoint_b=True)
+      self._testMatmul(
+          x.transpose(), y.transpose(), adjoint_a=True, adjoint_b=True)
 
-  def testLarge(self):
     np.random.seed(127)  # Repeatable results
     self._testLarge(np.float32)
     self._testLarge(np.float64)
@@ -183,7 +263,9 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x, y, adjoint_a,
         lambda t, _: t < iterations,
         body, (t0, v0),
         parallel_iterations=1,
-        back_prop=False)
+        back_prop=False,
+        shape_invariants=(tensor_shape.TensorShape(()),
+                          tensor_shape.TensorShape(None)))
     return [final]
 
   return _timeit
@@ -208,7 +290,9 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(x_ind, x_val, x_shape,
         lambda t, _: t < iterations,
         body, (t0, v0),
         parallel_iterations=1,
-        back_prop=False)
+        back_prop=False,
+        shape_invariants=(tensor_shape.TensorShape(()),
+                          tensor_shape.TensorShape(None)))
     return [final]
 
   return _timeit
@@ -253,7 +337,7 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
   if skip_dense:
     delta_dense = float("nan")
   else:
-    with session.Session("", config=config, graph=ops.Graph()) as sess:
+    with session.Session(config=config, graph=ops.Graph()) as sess:
       if not use_gpu:
         with ops.device("/cpu:0"):
           x_t = constant_op.constant(x)
@@ -261,12 +345,12 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
           ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
               x_t, y_t, adjoint_a, adjoint_b)
       else:
-        x_t = constant_op.constant(x)
-        y_t = constant_op.constant(y)
-        ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x_t, y_t,
-                                                                      adjoint_a,
-                                                                      adjoint_b)
-      delta_dense = _timer(sess, ops_fn, 1000)
+        with ops.device("/device:GPU:0"):
+          x_t = constant_op.constant(x)
+          y_t = constant_op.constant(y)
+          ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(
+              x_t, y_t, adjoint_a, adjoint_b)
+      delta_dense = _timer(sess, ops_fn, 200)
 
   # Using sparse_tensor_dense_matmul.
   with session.Session("", config=config, graph=ops.Graph()) as sess:
@@ -279,13 +363,14 @@ def sparse_tensor_dense_vs_dense_matmul_benchmark(thresh,
         ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
             x_ind, x_val, x_shape, y_t, adjoint_a, adjoint_b)
     else:
-      x_ind = constant_op.constant(np.vstack(np.where(x)).astype(np.int64).T)
-      x_val = constant_op.constant(x[np.where(x)])
-      x_shape = constant_op.constant(np.array(x.shape).astype(np.int64))
-      y_t = constant_op.constant(y)
-      ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
-          x_ind, x_val, x_shape, y_t, adjoint_a, adjoint_b)
-    delta_sparse = _timer(sess, ops_fn, 1000)
+      with ops.device("/device:GPU:0"):
+        x_ind = constant_op.constant(np.vstack(np.where(x)).astype(np.int64).T)
+        x_val = constant_op.constant(x[np.where(x)])
+        x_shape = constant_op.constant(np.array(x.shape).astype(np.int64))
+        y_t = constant_op.constant(y)
+        ops_fn = _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(
+            x_ind, x_val, x_shape, y_t, adjoint_a, adjoint_b)
+    delta_sparse = _timer(sess, ops_fn, 200)
 
   print("%g \t %d \t %s \t %d \t %d \t %g \t %g \t %g" %
         (1 - thresh, n, use_gpu, m, k, delta_dense, delta_sparse,
@@ -302,7 +387,7 @@ def main(_):
         "\t dt(sparse)/dt(dense)")
 
   for thresh in (0.99, 0.8, 0.5, 0.2):
-    for n in (1, 10, 25):
+    for n in (50, 100):
       for use_gpu in (True, False):
         for m in (100, 1000):
           for k in (100, 1000):

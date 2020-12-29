@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_BIAS_OP_H_
-#define TENSORFLOW_KERNELS_BIAS_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_BIAS_OP_H_
+#define TENSORFLOW_CORE_KERNELS_BIAS_OP_H_
 // Functor definition for BiasOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -31,20 +31,19 @@ struct Bias {
                   typename TTypes<T>::ConstVec bias,
                   typename TTypes<T, Dims>::Tensor output) {
     if (input.size() >= INT_MAX) {
-      const int64_t bias_size = bias.dimension(0);
-      const int64_t rest_size = input.size() / bias_size;
-      Eigen::DSizes<int64_t, 1> one_d(input.size());
-      Eigen::DSizes<int64_t, 1> bcast(rest_size);
+      const Eigen::Index bias_size = bias.dimension(0);
+      const Eigen::Index rest_size = input.size() / bias_size;
+      Eigen::DSizes<Eigen::Index, 1> one_d(input.size());
+      Eigen::DSizes<Eigen::Index, 1> bcast(rest_size);
       output.reshape(one_d).device(d) =
-          input.reshape(one_d) + bias.broadcast(bcast).reshape(one_d);
+          input.reshape(one_d) + bias.broadcast(bcast);
     } else {
       const int bias_size = bias.dimension(0);
       const int rest_size = input.size() / bias_size;
       Eigen::DSizes<int, 1> one_d(input.size());
       Eigen::DSizes<int, 1> bcast(rest_size);
       To32Bit(output).reshape(one_d).device(d) =
-          To32Bit(input).reshape(one_d) +
-          To32Bit(bias).broadcast(bcast).reshape(one_d);
+          To32Bit(input).reshape(one_d) + To32Bit(bias).broadcast(bcast);
     }
   }
 };
@@ -52,4 +51,4 @@ struct Bias {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_BIAS_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BIAS_OP_H_

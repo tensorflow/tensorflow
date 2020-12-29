@@ -19,9 +19,11 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/Triple.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -29,52 +31,60 @@ limitations under the License.
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 
+namespace {
+
 using xla::string;
 
-xla::Computation Doubler(xla::Client* client) {
-  xla::ComputationBuilder builder(client, "doubler");
+xla::XlaComputation Doubler() {
+  xla::XlaBuilder builder("doubler");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
-  auto x = builder.Parameter(0, r0f32, "x");
-  builder.Mul(x, builder.ConstantR0<float>(2.0));
+  auto x = xla::Parameter(&builder, 0, r0f32, "x");
+  xla::Mul(x, xla::ConstantR0<float>(&builder, 2.0));
   return std::move(builder.Build().ValueOrDie());
 }
+
+}  // namespace
 
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  auto client = xla::ClientLibrary::LocalClientOrDie();
+  auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().ValueOrDie();
 
-  xla::ComputationBuilder builder(client, "aot_test_helper");
+  xla::XlaBuilder builder("aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
-  auto opaque_param = builder.Parameter(0, opaque_shape, "x");
+  auto opaque_param = Parameter(&builder, 0, opaque_shape, "x");
   auto r0f32 = xla::ShapeUtil::MakeShape(xla::F32, {});
-  auto sum = builder.CustomCall("SumStructElements", {opaque_param}, r0f32);
-  builder.Call(Doubler(client), {sum});
+  auto sum = CustomCall(&builder, "SumStructElements", {opaque_param}, r0f32);
+  Call(&builder, Doubler(), {sum});
 
   if (argc != 2) {
     LOG(FATAL) << "local_client_aot_test_helper TARGET_CPU";
   }
 
-  string triple_string;
-  string target_cpu = argv[1];
+  std::string triple_string;
+  std::string target_cpu = argv[1];
   if (target_cpu == "k8") {
     triple_string = "x86_64-none-linux-gnu";
   } else if (target_cpu == "darwin") {
     triple_string = "x86_64-apple-macosx";
   } else if (target_cpu == "arm") {
     triple_string = "aarch64-none-linux-gnu";
+  } else if (target_cpu == "x64_windows") {
+    triple_string = "x86_64-pc-windows-msvc19";
   } else if (target_cpu == "ppc") {
-    triple_string = "powerpc64le-unknown-linux-gnu";
+    triple_string = "ppc64le-ibm-linux-gnu";
+  } else if (target_cpu == "s390x") {
+    triple_string = "systemz-none-linux-gnu";
   } else if (target_cpu == "local") {
-    triple_string = xla::llvm_ir::AsString(llvm::sys::getDefaultTargetTriple());
+    triple_string = llvm::sys::getDefaultTargetTriple();
   } else {
     LOG(FATAL) << "unsupported TARGET_CPU: " << target_cpu;
   }
 
-  llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
+  llvm::Triple triple(triple_string);
 
-  xla::Computation computation = builder.Build().ConsumeValueOrDie();
-  xla::LocalClient::AheadOfTimeComputationInstance instance{
+  xla::XlaComputation computation = builder.Build().ConsumeValueOrDie();
+  xla::CompileOnlyClient::AotXlaComputationInstance instance{
       &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
 
   xla::cpu::CpuAotCompilationOptions options(
@@ -88,11 +98,11 @@ int main(int argc, char** argv) {
       std::move(results.front()));
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
-  CHECK_EQ(result->result_buffer_index(), 0);
-  CHECK_EQ(result->buffer_sizes().size(), 3);
-  CHECK_EQ(result->buffer_sizes()[0], sizeof(float));  // result buffer
-  CHECK_EQ(result->buffer_sizes()[1], -1);             // param buffer
-  CHECK_EQ(result->buffer_sizes()[2], 20);             // temp buffer
+  CHECK_EQ(result->result_buffer_index(), 1);
+  CHECK_EQ(result->buffer_infos().size(), 3);
+  CHECK(result->buffer_infos()[0].is_entry_parameter());      // param buffer
+  CHECK_EQ(result->buffer_infos()[1].size(), sizeof(float));  // result buffer
+  CHECK(result->buffer_infos()[2].is_constant());             // const buffer
   if (triple.isOSBinFormatELF()) {
     // Check the ELF magic.
     CHECK_EQ(result->object_file_data()[0], 0x7F);

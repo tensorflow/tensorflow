@@ -23,18 +23,48 @@ namespace xla {
 
 // HLO pass that folds transpose operators into Dot operators, where the Dot
 // operator is implemented by a GEMM kernel that can transpose its inputs.
-class TransposeFolding : public HloPassInterface {
+class TransposeFolding : public HloModulePass {
  public:
-  // IsTransposableGemmFn should return true iff the instruction argument is
-  // implemented as a GEMM kernel that supports transposing its arguments.
-  typedef std::function<bool(const HloInstruction&)> IsTransposableGemmFn;
-  explicit TransposeFolding(IsTransposableGemmFn is_transposable_gemm);
-  tensorflow::StringPiece name() const override { return "transpose-folding"; }
+  using OperandIndices = std::vector<int64>;
+
+  // Returns the set of foldable operands for a given HLO and some candidate
+  // operands.
+  using FoldableOperands = std::function<OperandIndices(const HloInstruction&,
+                                                        const OperandIndices&)>;
+  using TransposableGemmOperandsFn = FoldableOperands;
+  using TransposableConvOperandsFn = FoldableOperands;
+
+  // Helper function to explicitly not fold transposes.
+  static OperandIndices NeverFoldTranspose(const HloInstruction&,
+                                           const OperandIndices&) {
+    return {};
+  }
+
+  // Helper function to always fold transposes.
+  static OperandIndices AlwaysFoldTranspose(const HloInstruction&,
+                                            const OperandIndices& ids) {
+    return ids;
+  }
+
+  // transposable_gemm_operands returns the set of operands it wants to fold if
+  // the instruction argument is implemented as a GEMM kernel that supports
+  // transposing its arguments.
+  //
+  // transposable_conv_operands returns the set of operands it wants to fold if
+  // the instruction argument is implemented as a convolution that supports
+  // transposing its arguments.
+  explicit TransposeFolding(
+      TransposableGemmOperandsFn transposable_gemm_operands =
+          AlwaysFoldTranspose,
+      TransposableConvOperandsFn transposable_conv_operands =
+          AlwaysFoldTranspose);
+  absl::string_view name() const override { return "transpose-folding"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  IsTransposableGemmFn is_transposable_gemm_;
+  TransposableGemmOperandsFn transposable_gemm_operands_;
+  TransposableConvOperandsFn transposable_conv_operands_;
 };
 
 }  // namespace xla

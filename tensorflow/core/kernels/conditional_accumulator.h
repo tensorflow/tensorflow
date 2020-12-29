@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_H_
-#define TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_H_
+#define TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_H_
 
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/typed_conditional_accumulator_base.h"
@@ -51,9 +51,11 @@ class ConditionalAccumulator
   //   dtype: The datatype of the gradients to be accumulated.
   //   shape: The shape of the accumulated gradients.
   //   name:  A name to use for the ConditionalAccumulator.
+  //   reduction_type: The reduction type, i.e., MEAN or SUM
   ConditionalAccumulator(const DataType& dtype, const PartialTensorShape& shape,
-                         const string& name)
-      : TypedConditionalAccumulatorBase<const Tensor>(dtype, shape, name) {}
+                         const string& name, const string& reduction_type)
+      : TypedConditionalAccumulatorBase<const Tensor>(dtype, shape, name,
+                                                      reduction_type) {}
   ~ConditionalAccumulator() override{};
 
  protected:
@@ -65,7 +67,7 @@ class ConditionalAccumulator
   functor::SetZeroFunctor<Device, T> set_zero_functor_;
 
   Status ValidateShape(const Tensor* tensor)
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Must be compatible with accumulated gradient if available
     if (counter_ > 0) {
       if (!accum_grad_->shape().IsSameSize(tensor->shape())) {
@@ -85,8 +87,10 @@ class ConditionalAccumulator
 
   void AllocateAndAssignToAccumGradFunction(OpKernelContext* ctx,
                                             const Tensor* grad) override {
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     ctx->allocate_persistent(dtype_, grad->shape(), &accum_grad_persistent_,
-                             &accum_grad_);
+                             &accum_grad_)
+        .IgnoreError();
     accum_grad_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad->flat<T>();
   }
@@ -98,7 +102,7 @@ class ConditionalAccumulator
   }
 
   void DivideAccumGradByCounter(OpKernelContext* ctx) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     Tensor c(DataTypeToEnum<T>::value, {});
     c.scalar<T>()() = TypeConverter<T, int>::ConvertUToT(this->counter_);
     this->accum_grad_->template flat<T>().device(
@@ -113,7 +117,7 @@ class ConditionalAccumulator
 
   bool GetAndValidateTensorInputForApplyGrad(OpKernelContext* ctx,
                                              const Tensor** tensor) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // Get input gradient tensor
     const Tensor* grad_tensor;
     OP_REQUIRES_OK_BOOLEAN(ctx, ctx->input("gradient", &grad_tensor));
@@ -131,4 +135,4 @@ class ConditionalAccumulator
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_H_

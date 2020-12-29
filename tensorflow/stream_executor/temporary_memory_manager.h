@@ -24,15 +24,14 @@ limitations under the License.
 #include <map>
 #include <memory>
 
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 // Record used inside the TemporaryMemoryManager as metadata for a given device
@@ -109,18 +108,19 @@ class TemporaryMemoryManager {
       uint64 element_count, uint64 element_size);
 
   // Mutex to guard temporary record state.
-  mutable mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Mapping from device memory to the current (live) temporary memory record.
   //
   // If a device memory is not in this mapping, it is not a temporary currently
   // allocated and owned by this temporary memory manager.
-  std::map<DeviceMemoryBase, TemporaryMemoryRecord> records_ GUARDED_BY(mutex_);
+  std::map<DeviceMemoryBase, TemporaryMemoryRecord> records_
+      TF_GUARDED_BY(mutex_);
 
   // Allocation generation -- we bump this counter to distinguish temporary
   // memory handles that have been deallocated and later reallocated at the same
   // device memory address.
-  uint64 generation_ GUARDED_BY(mutex_);
+  uint64 generation_ TF_GUARDED_BY(mutex_);
 
   // The stream (parent object) for this temporary memory manager -- allocations
   // are performed through this stream handle.
@@ -147,7 +147,6 @@ TemporaryMemoryManager::AllocateArray(uint64 element_count) {
 }
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TEMPORARY_MEMORY_MANAGER_H_

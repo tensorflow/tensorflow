@@ -1,0 +1,70 @@
+op {
+  graph_op_name: "SparseSplit"
+  in_arg {
+    name: "split_dim"
+    description: <<END
+0-D.  The dimension along which to split.  Must be in the range
+`[0, rank(shape))`.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+2-D tensor represents the indices of the sparse tensor.
+END
+  }
+  in_arg {
+    name: "values"
+    description: <<END
+1-D tensor represents the values of the sparse tensor.
+END
+  }
+  in_arg {
+    name: "shape"
+    description: <<END
+1-D. tensor represents the shape of the sparse tensor.
+output indices: A list of 1-D tensors represents the indices of the output
+sparse tensors.
+END
+  }
+  out_arg {
+    name: "output_values"
+    description: <<END
+A list of 1-D tensors represents the values of the output sparse
+tensors.
+END
+  }
+  out_arg {
+    name: "output_shape"
+    description: <<END
+A list of 1-D tensors represents the shape of the output sparse
+tensors.
+END
+  }
+  attr {
+    name: "num_split"
+    description: <<END
+The number of ways to split.
+END
+  }
+  summary: "Split a `SparseTensor` into `num_split` tensors along one dimension."
+  description: <<END
+If the `shape[split_dim]` is not an integer multiple of `num_split`. Slices
+`[0 : shape[split_dim] % num_split]` gets one extra dimension.
+For example, if `split_dim = 1` and `num_split = 2` and the input is
+
+    input_tensor = shape = [2, 7]
+    [    a   d e  ]
+    [b c          ]
+
+Graphically the output tensors are:
+
+    output_tensor[0] = shape = [2, 4]
+    [    a  ]
+    [b c    ]
+
+    output_tensor[1] = shape = [2, 3]
+    [ d e  ]
+    [      ]
+END
+}

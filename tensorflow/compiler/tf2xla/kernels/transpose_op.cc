@@ -18,25 +18,28 @@ limitations under the License.
 // handles all transposes, while Eigen needs a restricted DoTranspose
 // helper.
 
-#include "tensorflow/core/kernels/transpose_op.h"
+#include "tensorflow/compiler/tf2xla/lib/scatter.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 namespace {
 
 class TransposeOp : public XlaOpKernel {
  public:
-  explicit TransposeOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit TransposeOp(OpKernelConstruction* ctx, bool conjugate = false)
+      : XlaOpKernel(ctx), conjugate_(conjugate) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    const TensorShape perm_tensor_shape = ctx->InputShape(1);
+    const TensorShape input_shape = ctx->InputShape("x");
+    const TensorShape perm_tensor_shape = ctx->InputShape("perm");
 
     // Preliminary validation of sizes.
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(perm_tensor_shape),
@@ -50,18 +53,15 @@ class TransposeOp : public XlaOpKernel {
                                         ". But input(1) is a vector of size ",
                                         perm_tensor_shape.num_elements()));
 
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {dims}, &literal));
-
-    std::vector<int32> perm(dims);
-    std::copy(literal.s32s().begin(), literal.s32s().end(), perm.begin());
+    std::vector<int64> perm;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("perm", &perm));
 
     std::vector<int64> transposed_order;
     // Check whether permutation is a permutation of integers of [0 .. dims).
-    gtl::InlinedVector<bool, 8> bits(dims);
+    absl::InlinedVector<bool, 8> bits(dims);
     bool is_identity = true;
     for (int i = 0; i < dims; ++i) {
-      const int32 d = perm[i];
+      const int64 d = perm[i];
       OP_REQUIRES(
           ctx, 0 <= d && d < dims,
           errors::InvalidArgument(d, " is out of range [0 .. ", dims, ")"));
@@ -72,30 +72,50 @@ class TransposeOp : public XlaOpKernel {
       }
     }
     for (int i = 0; i < dims; ++i) {
-      OP_REQUIRES(ctx, bits[i], errors::InvalidArgument(
-                                    i, " is missing from 'perm' argument."));
+      OP_REQUIRES(
+          ctx, bits[i],
+          errors::InvalidArgument(i, " is missing from 'perm' argument."));
     }
 
+    xla::XlaOp transposed;
     // 0-D, 1-D, and identity transposes do nothing.
     if (dims <= 1 || is_identity) {
-      ctx->SetOutput(0, ctx->Input(0));
-      return;
+      transposed = ctx->Input("x");
+    } else {
+      transposed = xla::Transpose(ctx->Input("x"), transposed_order);
     }
 
-    ctx->SetOutput(0,
-                   ctx->builder()->Transpose(ctx->Input(0), transposed_order));
+    // Conjugate the transposed result if this is ConjugateTransposeOp.
+    if (conjugate_) {
+      ctx->SetOutput(0, xla::Conj(transposed));
+    } else {
+      ctx->SetOutput(0, transposed);
+    }
   }
+
+ private:
+  const bool conjugate_;
 };
 
-REGISTER_XLA_OP("Transpose", TransposeOp);
+class ConjugateTransposeOp : public TransposeOp {
+ public:
+  explicit ConjugateTransposeOp(OpKernelConstruction* ctx)
+      : TransposeOp(ctx, /*conjugate=*/true) {}
+};
+
+REGISTER_XLA_OP(Name("Transpose").CompileTimeConstantInput("perm"),
+                TransposeOp);
+
+REGISTER_XLA_OP(Name("ConjugateTranspose").CompileTimeConstantInput("perm"),
+                ConjugateTransposeOp);
 
 // InvertPermutation frequently forms part of the gradient of Transpose.
 //
-// inv = InvertPermutationOp(T<int32> p) takes a permutation of
+// inv = InvertPermutationOp(p) takes a permutation of
 // integers 0, 1, ..., n - 1 and returns the inverted
 // permutation of p. I.e., inv[p[i]] == i, for i in [0 .. n).
 //
-// REQUIRES: input is a vector of int32.
+// REQUIRES: input is a vector of int32 or int64.
 // REQUIRES: input is a permutation of 0, 1, ..., n-1.
 
 class InvertPermutationOp : public XlaOpKernel {
@@ -103,32 +123,77 @@ class InvertPermutationOp : public XlaOpKernel {
   explicit InvertPermutationOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(ctx, FastBoundsCheck(ctx->InputShape(0).num_elements(),
-                                     std::numeric_limits<int32>::max()),
-                errors::InvalidArgument("permutation of nonnegative int32s "
-                                        "must have <= int32 max elements"));
-
-    std::vector<int64> perm;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &perm));
-
-    int size = perm.size();
-
-    std::vector<int32> output(size);
-    std::fill_n(output.data(), size, -1);
-    for (int i = 0; i < size; ++i) {
-      const int64 d = perm[i];
-      OP_REQUIRES(ctx, FastBoundsCheck(d, size),
-                  errors::InvalidArgument(d, " is not between 0 and ", size));
-      OP_REQUIRES(ctx, output[d] == -1,
-                  errors::InvalidArgument(d, " is duplicated in the input."));
-      output[d] = i;
+    DataType dtype = ctx->expected_output_dtype(0);
+    Status status;
+    switch (dtype) {
+      case DT_INT32:
+        InvertPermutation<int32>(ctx);
+        break;
+      case DT_INT64:
+        InvertPermutation<int64>(ctx);
+        break;
+      default:
+        // This should never happen since we restrict this kernel to only match
+        // inputs with supported Tensor datatype.
+        OP_REQUIRES_OK(ctx, errors::InvalidArgument(
+                                "InvertPermutation expects x as either ",
+                                "int32 or int64, not ", DataTypeString(dtype)));
     }
+  }
 
-    ctx->SetOutput(0, ctx->builder()->ConstantR1<int32>(output));
+  template <typename T>
+  void InvertPermutation(XlaOpKernelContext* ctx) {
+    OP_REQUIRES(ctx,
+                FastBoundsCheck(ctx->InputShape(0).num_elements(),
+                                std::numeric_limits<T>::max()),
+                errors::InvalidArgument(
+                    "permutation of nonnegative integers must have <= ",
+                    std::numeric_limits<T>::max(), " elements"));
+
+    auto e = ctx->InputExpression(0);
+    auto tensor_or_status = e.ResolveConstant(ctx->compiler()->client());
+    OP_REQUIRES_OK(ctx, tensor_or_status.status());
+    // If the input is a constant, we also want the output to be a constant.
+    // Some models rely on the result of InvertPermutation being a constant.
+    // TODO(b/32495713): Remove this when we can check whether Scatter is
+    // constant. Right now, we always assume it is non-constant because we don't
+    // check the embedded computation.
+    if (tensor_or_status.ValueOrDie().has_value()) {
+      std::vector<int64> perm;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(0, &perm));
+
+      int size = perm.size();
+
+      std::vector<T> output(size);
+      std::fill_n(output.data(), size, -1);
+      for (int i = 0; i < size; ++i) {
+        const int64 d = perm[i];
+        OP_REQUIRES(ctx, FastBoundsCheck(d, size),
+                    errors::InvalidArgument(d, " is not between 0 and ", size));
+        OP_REQUIRES(ctx, output[d] == -1,
+                    errors::InvalidArgument(d, " is duplicated in the input."));
+        output[d] = i;
+      }
+
+      ctx->SetOutput(0, xla::ConstantR1<T>(ctx->builder(), output));
+    } else {
+      auto indices = ctx->Input(0);
+      T size = ctx->InputShape(0).num_elements();
+      auto iota =
+          xla::Iota(ctx->builder(),
+                    xla::primitive_util::NativeToPrimitiveType<T>(), size);
+      auto result = XlaScatter(iota, iota, indices,
+                               /*indices_are_vectors=*/false, /*combiner=*/{},
+                               ctx->builder());
+      OP_REQUIRES_OK(ctx, result.status());
+      ctx->SetOutput(0, result.ValueOrDie());
+    }
   }
 };
 
-REGISTER_XLA_OP("InvertPermutation", InvertPermutationOp);
+REGISTER_XLA_OP(
+    Name("InvertPermutation").TypeConstraint("T", {DT_INT32, DT_INT64}),
+    InvertPermutationOp);
 
 }  // namespace
 }  // namespace tensorflow

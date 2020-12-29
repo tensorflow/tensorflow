@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_SESSION_JNI_H_
-#define TENSORFLOW_JAVA_SESSION_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_SESSION_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_SESSION_JNI_H_
 
 #include <jni.h>
 
@@ -29,6 +29,15 @@ extern "C" {
  */
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate(JNIEnv *, jclass,
                                                              jlong);
+
+/*
+ * Class:     org_tensorflow_Session
+ * Method:    allocate2
+ * Signature: (JLjava/lang/String;[B)J
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(JNIEnv *, jclass,
+                                                              jlong, jstring,
+                                                              jbyteArray);
 
 /*
  * Class:     org_tensorflow_Session
@@ -50,4 +59,4 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_SESSION_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_SESSION_JNI_H_

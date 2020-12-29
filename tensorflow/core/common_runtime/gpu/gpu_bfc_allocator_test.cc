@@ -13,14 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device/device_id_utils.h"
+#include "tensorflow/core/common_runtime/device/device_mem_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -29,25 +34,38 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
-
-namespace gpu = ::perftools::gputools;
+#include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
 
 namespace tensorflow {
 namespace {
 
 static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
-                       int64 max_bytes_in_use, int64 max_alloc_size) {
-  AllocatorStats stats;
-  a->GetStats(&stats);
-  LOG(INFO) << "Alloc stats: " << std::endl << stats.DebugString();
-  EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
-  EXPECT_EQ(stats.max_bytes_in_use, max_bytes_in_use);
-  EXPECT_EQ(stats.num_allocs, num_allocs);
-  EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
+                       int64 peak_bytes_in_use, int64 largest_alloc_size) {
+  absl::optional<AllocatorStats> stats = a->GetStats();
+  EXPECT_TRUE(stats);
+  if (!stats) {
+    return;
+  }
+  LOG(INFO) << "Alloc stats: " << std::endl << stats->DebugString();
+  EXPECT_EQ(stats->bytes_in_use, bytes_in_use);
+  EXPECT_EQ(stats->peak_bytes_in_use, peak_bytes_in_use);
+  EXPECT_EQ(stats->num_allocs, num_allocs);
+  EXPECT_EQ(stats->largest_alloc_size, largest_alloc_size);
+}
+
+se::StreamExecutor* ExecutorForPlatformGpuId(
+    PlatformDeviceId platform_device_id) {
+  return DeviceIdUtil::ExecutorForPlatformDeviceId(GPUMachineManager(),
+                                                   platform_device_id)
+      .ValueOrDie();
 }
 
 TEST(GPUBFCAllocatorTest, NoDups) {
-  GPUBFCAllocator a(0, 1 << 30);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
   // Allocate a lot of raw pointers
@@ -76,7 +94,11 @@ TEST(GPUBFCAllocatorTest, NoDups) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
-  GPUBFCAllocator a(0, 1 << 30);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   // Allocate 256 raw pointers of sizes between 100 bytes and about
   // a meg
   random::PhiloxRandom philox(123, 17);
@@ -100,6 +122,11 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
       existing_ptrs.push_back(initial_ptrs[i]);
     }
   }
+
+  // Ensure out of memory errors work and do not prevent future allocations from
+  // working.
+  void* out_of_memory_ptr = a.AllocateRaw(1, (1 << 30) + 1);
+  CHECK_EQ(out_of_memory_ptr, nullptr);
 
   // Allocate a lot of raw pointers
   for (int s = 1; s < 256; s++) {
@@ -129,64 +156,85 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 }
 
 TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
-  GPUBFCAllocator a(0, 1 << 30);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
-  float* first_ptr = a.Allocate<float>(1024);
+  float* first_ptr = TypedAllocator::Allocate<float>(&a, 1024, {});
   a.DeallocateRaw(first_ptr);
   CheckStats(&a, 1, 0, 4096, 4096);
   for (int i = 0; i < 1024; ++i) {
     // Allocate several buffers of different sizes, and then clean them
     // all up.  We should be able to repeat this endlessly without
     // causing fragmentation and growth.
-    float* t1 = a.Allocate<float>(1024);
+    float* t1 = TypedAllocator::Allocate<float>(&a, 1024, {});
 
-    int64* t2 = a.Allocate<int64>(1048576);
-    double* t3 = a.Allocate<double>(2048);
-    float* t4 = a.Allocate<float>(10485760);
+    int64* t2 = TypedAllocator::Allocate<int64>(&a, 1048576, {});
+    double* t3 = TypedAllocator::Allocate<double>(&a, 2048, {});
+    float* t4 = TypedAllocator::Allocate<float>(&a, 10485760, {});
 
     a.DeallocateRaw(t1);
     a.DeallocateRaw(t2);
     a.DeallocateRaw(t3);
     a.DeallocateRaw(t4);
   }
-  CheckStats(&a, 4097, 0, 1024 * sizeof(float) + 1048576 * sizeof(int64) +
-                              2048 * sizeof(double) + 10485760 * sizeof(float),
+  CheckStats(&a, 4097, 0,
+             1024 * sizeof(float) + 1048576 * sizeof(int64) +
+                 2048 * sizeof(double) + 10485760 * sizeof(float),
              10485760 * sizeof(float));
 
   // At the end, we should have coalesced all memory into one region
   // starting at the beginning, so validate that allocating a pointer
   // starts from this region.
-  float* first_ptr_after = a.Allocate<float>(1024);
+  float* first_ptr_after = TypedAllocator::Allocate<float>(&a, 1024, {});
   EXPECT_EQ(first_ptr, first_ptr_after);
   a.DeallocateRaw(first_ptr_after);
 }
 
 TEST(GPUBFCAllocatorTest, AllocateZeroBufSize) {
-  GPUBFCAllocator a(0, 1 << 30);
-  float* ptr = a.Allocate<float>(0);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
+  float* ptr = TypedAllocator::Allocate<float>(&a, 0, {});
   EXPECT_EQ(nullptr, ptr);
 }
 
 TEST(GPUBFCAllocatorTest, TracksSizes) {
-  GPUBFCAllocator a(0, 1 << 30);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
-  GPUBFCAllocator a(0, 1 << 30);
-  float* t1 = a.Allocate<float>(1);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
+  float* t1 = TypedAllocator::Allocate<float>(&a, 1, {});
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
   a.DeallocateRaw(t1);
 }
 
 TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
   // Configure a 1MiB byte limit
-  GPUBFCAllocator a(0, 1 << 20);
+  GPUBFCAllocator a(sub_allocator, 1 << 20, "GPU_0_bfc");
 
-  float* first_ptr = a.Allocate<float>(1 << 6);
-  float* second_ptr = a.Allocate<float>(1 << 20);
+  float* first_ptr = TypedAllocator::Allocate<float>(&a, 1 << 6, {});
+  float* second_ptr = TypedAllocator::Allocate<float>(&a, 1 << 20, {});
 
   EXPECT_NE(nullptr, first_ptr);
   EXPECT_EQ(nullptr, second_ptr);
@@ -198,7 +246,11 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   options.set_allow_growth(true);
 
   // Max of 2GiB, but starts out small.
-  GPUBFCAllocator a(0, 1LL << 31, options);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1LL << 31, "GPU_0_bfc");
 
   // Allocate 10 raw pointers of sizes between 100 bytes and about
   // 64 megs.
@@ -253,14 +305,22 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
     a.DeallocateRaw(existing_ptrs[i]);
   }
 
-  AllocatorStats stats;
-  a.GetStats(&stats);
-  LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
+  absl::optional<AllocatorStats> stats = a.GetStats();
+  if (stats) {
+    LOG(INFO) << "Alloc stats: \n" << stats->DebugString();
+  }
 }
 
 TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
-  GPUBFCAllocator a(0, 1UL << 60);
-  GPUBFCAllocator b(0, 1UL << 60);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1UL << 60, "GPU_0_bfc");
+  sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator b(sub_allocator, 1UL << 60, "GPU_0_bfc");
   void* amem = a.AllocateRaw(1, 1);
   void* bmem = b.AllocateRaw(1, 1 << 30);
   a.DeallocateRaw(amem);
@@ -268,7 +328,11 @@ TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
 }
 
 static void BM_Allocation(int iters) {
-  GPUBFCAllocator a(0, 1uLL << 33);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1uLL << 33, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<size_t> sizes = {256,        4096,      16384,    524288,
                                512,        1048576,   10485760, 104857600,
@@ -284,7 +348,11 @@ static void BM_Allocation(int iters) {
 BENCHMARK(BM_Allocation);
 
 static void BM_AllocationThreaded(int iters, int num_threads) {
-  GPUBFCAllocator a(0, 1uLL << 33);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1uLL << 33, "GPU_0_bfc");
   thread::ThreadPool pool(Env::Default(), "test", num_threads);
   std::atomic_int_fast32_t count(iters);
   mutex done_lock;
@@ -320,12 +388,17 @@ BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
 // A more complex benchmark that defers deallocation of an object for
 // "delay" allocations.
 static void BM_AllocationDelayed(int iters, int delay) {
-  GPUBFCAllocator a(0, 1 << 30);
+  PlatformGpuId platform_gpu_id(0);
+  DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+      ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+      false /*use_unified_memory*/, {}, {});
+  GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
   int size_index = 0;
 
   std::vector<void*> ptrs;
+  ptrs.reserve(delay);
   for (int i = 0; i < delay; i++) {
     ptrs.push_back(nullptr);
   }
@@ -349,6 +422,241 @@ static void BM_AllocationDelayed(int iters, int delay) {
 BENCHMARK(BM_AllocationDelayed)->Arg(1)->Arg(10)->Arg(100)->Arg(1000);
 
 }  // namespace
+
+class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
+ protected:
+  void SetUp() override { CHECK_EQ(unsetenv("TF_FORCE_GPU_ALLOW_GROWTH"), 0); }
+
+  // The following test methods are called from tests. The reason for this is
+  // that this class is a friend class to BFCAllocator, but tests are not, so
+  // only methods inside this class can access private members of BFCAllocator.
+
+  void TestBinDebugInfo() {
+    PlatformGpuId platform_gpu_id(0);
+    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator a(sub_allocator, 1 << 30, "GPU_0_bfc");
+
+    std::vector<void*> initial_ptrs;
+    std::vector<size_t> initial_ptrs_allocated_sizes;
+    const int kNumTestSizes = 5;
+    const int kNumChunksPerSize = 2;
+    for (int i = 0; i < kNumTestSizes; i++) {
+      for (int j = 0; j < kNumChunksPerSize; j++) {
+        size_t size = 256 << i;
+        void* raw = a.AllocateRaw(1, size);
+        ASSERT_NE(raw, nullptr);
+        initial_ptrs.push_back(raw);
+        initial_ptrs_allocated_sizes.push_back(a.AllocatedSize(raw));
+      }
+    }
+
+    std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins> bin_infos;
+    {
+      mutex_lock l(a.lock_);
+      bin_infos = a.get_bin_debug_info();
+    }
+
+    {
+      MemoryDump md = a.RecordMemoryMap();
+      EXPECT_EQ(md.chunk_size(), 1 + (kNumTestSizes * kNumChunksPerSize));
+      for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+        const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+        const BinSummary& bin_summary = md.bin_summary(i);
+        if (i < kNumTestSizes) {
+          const size_t requested_size = 2 * (256 << i);
+          EXPECT_EQ(requested_size,
+                    a.RequestedSize(initial_ptrs[2 * i]) +
+                        a.RequestedSize(initial_ptrs[2 * i + 1]));
+          size_t allocated_size = initial_ptrs_allocated_sizes[2 * i] +
+                                  initial_ptrs_allocated_sizes[2 * i + 1];
+          EXPECT_EQ(bin_info.total_bytes_in_use, allocated_size);
+          EXPECT_EQ(bin_summary.total_bytes_in_use(), allocated_size);
+          EXPECT_EQ(bin_info.total_bytes_in_bin, allocated_size);
+          EXPECT_EQ(bin_summary.total_bytes_in_bin(), allocated_size);
+          EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+          EXPECT_EQ(bin_info.total_chunks_in_use, kNumChunksPerSize);
+          EXPECT_EQ(bin_summary.total_chunks_in_use(), kNumChunksPerSize);
+          EXPECT_EQ(bin_info.total_chunks_in_bin, kNumChunksPerSize);
+          EXPECT_EQ(bin_summary.total_chunks_in_bin(), kNumChunksPerSize);
+        } else {
+          EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+          EXPECT_EQ(bin_summary.total_bytes_in_use(), 0);
+          EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+          EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+          EXPECT_EQ(bin_summary.total_chunks_in_use(), 0);
+          if (i == BFCAllocator::kNumBins - 1) {
+            EXPECT_GT(bin_info.total_bytes_in_bin, 0);
+            EXPECT_GT(bin_summary.total_bytes_in_bin(), 0);
+            EXPECT_EQ(bin_info.total_chunks_in_bin, 1);
+            EXPECT_EQ(bin_summary.total_chunks_in_bin(), 1);
+          } else {
+            EXPECT_EQ(bin_info.total_bytes_in_bin, 0);
+            EXPECT_EQ(bin_summary.total_bytes_in_bin(), 0);
+            EXPECT_EQ(bin_info.total_chunks_in_bin, 0);
+            EXPECT_EQ(bin_summary.total_chunks_in_bin(), 0);
+          }
+        }
+      }
+    }
+
+    for (size_t i = 1; i < initial_ptrs.size(); i += 2) {
+      a.DeallocateRaw(initial_ptrs[i]);
+      initial_ptrs[i] = nullptr;
+    }
+    {
+      mutex_lock l(a.lock_);
+      bin_infos = a.get_bin_debug_info();
+    }
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+      if (i < 5) {
+        // We cannot assert the exact number of bytes or chunks in the bin,
+        // because it depends on what chunks were coalesced.
+        size_t requested_size = 256 << i;
+        EXPECT_EQ(requested_size, a.RequestedSize(initial_ptrs[2 * i]));
+        EXPECT_EQ(bin_info.total_bytes_in_use,
+                  initial_ptrs_allocated_sizes[2 * i]);
+        EXPECT_GE(bin_info.total_bytes_in_bin,
+                  initial_ptrs_allocated_sizes[2 * i]);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 1);
+        EXPECT_GE(bin_info.total_chunks_in_bin, 1);
+      } else {
+        EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+      }
+    }
+  }
+
+  void TestLog2FloorNonZeroSlow() {
+    PlatformGpuId platform_gpu_id(0);
+    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator a(sub_allocator, 1 /* total_memory */, "GPU_0_bfc");
+    EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
+    EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
+    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(2));
+    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(3));
+    EXPECT_EQ(9, a.Log2FloorNonZeroSlow(1023));
+    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1024));
+    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1025));
+  }
+
+  void TestForceAllowGrowth() {
+    PlatformGpuId platform_gpu_id(0);
+    GPUOptions options;
+    // Unset flag value uses provided option.
+    unsetenv("TF_FORCE_GPU_ALLOW_GROWTH");
+    options.set_allow_growth(true);
+    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator unset_flag_allocator(sub_allocator, 1LL << 31, options,
+                                         "GPU_0_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{1048576}),
+              unset_flag_allocator.curr_region_allocation_bytes_);
+
+    // Unparseable flag value uses provided option.
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "unparseable", 1);
+    options.set_allow_growth(true);
+    sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator unparsable_flag_allocator(sub_allocator, 1LL << 31, options,
+                                              "GPU_1_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{1048576}),
+              unparsable_flag_allocator.curr_region_allocation_bytes_);
+
+    // Max of 2GiB total memory. Env variable set forces allow_growth, which
+    // does an initial allocation of 1MiB.
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "true", 1);
+    options.set_allow_growth(false);
+    sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator force_allow_growth_allocator(sub_allocator, 1LL << 31,
+                                                 options, "GPU_2_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(size_t{1048576}),
+              force_allow_growth_allocator.curr_region_allocation_bytes_);
+
+    // If env variable forces allow_growth disabled, all available memory is
+    // allocated.
+    setenv("TF_FORCE_GPU_ALLOW_GROWTH", "false", 1);
+    options.set_allow_growth(true);
+    sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        false /*use_unified_memory*/, {}, {});
+    GPUBFCAllocator force_no_allow_growth_allocator(sub_allocator, 1LL << 31,
+                                                    options, "GPU_3_bfc");
+    EXPECT_EQ(GPUBFCAllocator::RoundedBytes(1LL << 31),
+              force_no_allow_growth_allocator.curr_region_allocation_bytes_);
+  }
+
+  void TestRegionDeallocation() {
+    GPUOptions options;
+    options.set_allow_growth(true);
+
+    // Max of 2GiB, but starts out small.
+    PlatformGpuId platform_gpu_id(0);
+    DeviceMemAllocator* sub_allocator = new DeviceMemAllocator(
+        ExecutorForPlatformGpuId(platform_gpu_id), platform_gpu_id,
+        /*use_unified_memory=*/false, {}, {});
+    GPUBFCAllocator a(sub_allocator, 1LL << 31, options, "GPU_0_bfc");
+
+    // Allocate 128 raw pointers of 4 megs.
+    const size_t size = 1LL << 22;
+    std::vector<void*> initial_ptrs;
+    for (size_t s = 0; s < 128; s++) {
+      void* raw = a.AllocateRaw(1, size);
+      initial_ptrs.push_back(raw);
+    }
+
+    {
+      mutex_lock l(a.lock_);
+      // Make sure there are more than 1 regions in preparation for the test.
+      EXPECT_LT(1, a.region_manager_.regions().size());
+    }
+
+    // Deallocate all the memories except the last one.
+    for (size_t i = 0; i < initial_ptrs.size() - 1; i++) {
+      a.DeallocateRaw(initial_ptrs[i]);
+    }
+
+    // Deallocate free regions and there shall be only one region left.
+    EXPECT_EQ(true, a.DeallocateFreeRegions(/*rounded_bytes=*/0));
+    {
+      mutex_lock l(a.lock_);
+      EXPECT_EQ(1, a.region_manager_.regions().size());
+    }
+
+    // There should be only one chunk left in bins.
+    size_t num_chunks_in_bins = 0;
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      BFCAllocator::Bin* bin = a.BinFromIndex(i);
+      num_chunks_in_bins += bin->free_chunks.size();
+    }
+    EXPECT_EQ(1, num_chunks_in_bins);
+  }
+};
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, BinDebugInfo) { TestBinDebugInfo(); }
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, Log2FloorNonZeroSlow) {
+  TestLog2FloorNonZeroSlow();
+}
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, ForceAllowGrowth) {
+  TestForceAllowGrowth();
+}
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, TestRegionDeallocation) {
+  TestRegionDeallocation();
+}
+
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -20,22 +20,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/builds_common.sh"
 configure_android_workspace
 
-# The Bazel Android demo and Makefile builds are intentionally built for x86_64
-# and armeabi-v7a respectively to maximize build coverage while minimizing
-# compilation time. For full build coverage and exposed binaries, see
-# android_full.sh
+# The Bazel builds are intentionally built for x86 and arm64 to maximize build
+# coverage while minimizing compilation time. For full build coverage and
+# exposed binaries, see android_full.sh
 
-echo "========== TensorFlow Demo Build Test =========="
+echo "========== TensorFlow Basic Build Test =========="
+TARGETS=
+# Building the Eager Runtime ensures compatibility with Android for the
+# benefits of clients like TensorFlow Lite. For now it is enough to build only
+# :execute, which what TF Lite needs. Note that this does *not* build the
+# full set of mobile ops/kernels, as that can be prohibitively expensive.
+TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
 # Enable sandboxing so that zip archives don't get incorrectly packaged
 # in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
-bazel --bazelrc=/dev/null build -c opt --fat_apk_cpu=x86_64 \
+bazel --bazelrc=/dev/null build \
+    --compilation_mode=opt --cxxopt=-std=c++14 \
+    --config=android_arm64 --fat_apk_cpu=x86,arm64-v8a \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
-    //tensorflow/examples/android:tensorflow_demo
+    --define=grpc_no_ares=true \
+    ${TARGETS}
 
-echo "========== Makefile Build Test =========="
-# Test Makefile build just to make sure it still works.
-if [ -z "$NDK_ROOT" ]; then
-   export NDK_ROOT=${ANDROID_NDK_HOME}
-fi
-tensorflow/contrib/makefile/build_all_android.sh
+# TODO(b/122377443): Restore Makefile builds after resolving r18b build issues.

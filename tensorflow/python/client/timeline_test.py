@@ -24,8 +24,10 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -55,12 +57,13 @@ class TimelineTest(test.TestCase):
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
 
+  @test_util.deprecated_graph_mode_only
   def testTimelineCpu(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       const1 = constant_op.constant(1.0, name='const1')
       const2 = constant_op.constant(2.0, name='const2')
       result = math_ops.add(const1, const2) + const1 * const2
@@ -68,7 +71,7 @@ class TimelineTest(test.TestCase):
     self.assertTrue(run_metadata.HasField('step_stats'))
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:0' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
@@ -83,6 +86,7 @@ class TimelineTest(test.TestCase):
         show_memory=False, show_dataflow=False)
     self._validateTrace(ctf)
 
+  @test_util.deprecated_graph_mode_only
   def testTimelineGpu(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -91,7 +95,7 @@ class TimelineTest(test.TestCase):
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
-    with self.test_session(force_gpu=True) as sess:
+    with self.session(force_gpu=True) as sess:
       const1 = constant_op.constant(1.0, name='const1')
       const2 = constant_op.constant(2.0, name='const2')
       result = math_ops.add(const1, const2) + const1 * const2
@@ -99,8 +103,11 @@ class TimelineTest(test.TestCase):
     self.assertTrue(run_metadata.HasField('step_stats'))
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
-    self.assertTrue('/job:localhost/replica:0/task:0/gpu:0' in devices)
-    self.assertTrue('/gpu:0/stream:all' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:GPU:0' in devices)
+    if not test.is_built_with_rocm():
+      # skip this check for the ROCm platform
+      # stream level tracing is not yet supported on the ROCm platform
+      self.assertTrue('/device:GPU:0/stream:all' in devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
@@ -140,11 +147,12 @@ class TimelineTest(test.TestCase):
 
     with session.Session(config=config) as sess:
       with ops.device('/cpu:0'):
-        const1 = constant_op.constant(1.0, name='const1')
+        num1 = variables.Variable(1.0, name='num1')
       with ops.device('/cpu:1'):
-        const2 = constant_op.constant(2.0, name='const2')
+        num2 = variables.Variable(2.0, name='num2')
       with ops.device('/cpu:2'):
-        result = const1 + const2 + const1 * const2
+        result = num1 + num2 + num1 * num2
+      self.evaluate(variables.global_variables_initializer())
       sess.run(result, options=run_options, run_metadata=run_metadata)
 
     self.assertTrue(run_metadata.HasField('step_stats'))
@@ -153,13 +161,13 @@ class TimelineTest(test.TestCase):
     ctf = step_analysis.chrome_trace.format_to_string()
     self._validateTrace(ctf)
     maximums = step_analysis.allocator_maximums
-    self.assertTrue('cpu' in maximums)
-    cpu_max = maximums['cpu']
-    # At least const1 + const2, both float32s (4 bytes each)
-    self.assertGreater(cpu_max.num_bytes, 8)
+    cpuname = 'mklcpu' if test_util.IsMklEnabled() else 'cpu'
+    self.assertTrue(cpuname in maximums)
+    cpu_max = maximums[
+        'cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
+    # At least num1 + num2, both float32s (4 bytes each)
+    self.assertGreaterEqual(cpu_max.num_bytes, 8)
     self.assertGreater(cpu_max.timestamp, 0)
-    self.assertTrue('const1' in cpu_max.tensors)
-    self.assertTrue('const2' in cpu_max.tensors)
 
   def testManyCPUs(self):
     run_options = config_pb2.RunOptions(
@@ -168,18 +176,19 @@ class TimelineTest(test.TestCase):
     config = config_pb2.ConfigProto(device_count={'CPU': 3})
     with session.Session(config=config) as sess:
       with ops.device('/cpu:0'):
-        const1 = constant_op.constant(1.0, name='const1')
+        num1 = variables.Variable(1.0, name='num1')
       with ops.device('/cpu:1'):
-        const2 = constant_op.constant(2.0, name='const2')
+        num2 = variables.Variable(2.0, name='num2')
       with ops.device('/cpu:2'):
-        result = const1 + const2 + const1 * const2
+        result = num1 + num2 + num1 * num2
+      self.evaluate(variables.global_variables_initializer())
       sess.run(result, options=run_options, run_metadata=run_metadata)
     self.assertTrue(run_metadata.HasField('step_stats'))
     step_stats = run_metadata.step_stats
     devices = [d.device for d in step_stats.dev_stats]
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:0' in devices)
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:1' in devices)
-    self.assertTrue('/job:localhost/replica:0/task:0/cpu:2' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:1' in devices)
+    self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:2' in devices)
     tl = timeline.Timeline(step_stats)
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)

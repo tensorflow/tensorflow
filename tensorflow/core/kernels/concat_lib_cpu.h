@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_
+#define TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_
+
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/concat_lib.h"
 #include <vector>
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -42,14 +45,15 @@ void ConcatCPUImpl(
     row_size += sizes.back();
   }
 
+  // cost_per_unit is estimated bytes to copy per output array element (for
+  // strings this includes an estimate of the number of bytes of the actual
+  // string data, as well).
+  const int64 estimated_total_cost = output->size() * cost_per_unit;
+
   auto worker_threads = d->tensorflow_cpu_worker_threads();
   int num_threads = std::min(4, worker_threads->num_threads);
-  // strings define a different amount of work (generally much more) compared
-  // with standard POD, so we parallelize differently.
-  if (!std::is_same<T, string>::value) {
-    num_threads =
-        static_cast<int>(std::min<int64>(num_threads, output->size() / 4096));
-  }
+  num_threads = static_cast<int>(
+      std::min<int64>(num_threads, estimated_total_cost / 16384));
   // Single threaded mode.
   // TODO(dga):  Deduplicate this code w.r.t. sharded code below.
   if (num_threads == 0) {
@@ -73,7 +77,7 @@ void ConcatCPUImpl(
 
   // Sharded mode.
   auto work = [&row_size, &sizes, &inputs, &output, &copier, &num_inputs](
-      int64 start, int64 end) {
+                  int64 start, int64 end) {
     int64 skipped_rows = start / row_size;
     T* out = output->data() + skipped_rows * row_size;
     T* out_start = output->data() + start;
@@ -127,3 +131,5 @@ void ConcatCPUImpl(
 }
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_CONCAT_LIB_CPU_H_

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cpu_info.h"
+
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
@@ -67,7 +69,8 @@ int GetXCR0EAX() {
 #endif
 
 // Structure for basic CPUID info
-struct CPUIDInfo {
+class CPUIDInfo {
+ public:
   CPUIDInfo()
       : have_adx_(0),
         have_aes_(0),
@@ -109,16 +112,25 @@ struct CPUIDInfo {
 
   static void Initialize() {
     // Initialize cpuid struct
-    CHECK(cpuid == NULL) << __func__ << " ran more than once";
+    CHECK(cpuid == nullptr) << __func__ << " ran more than once";
     cpuid = new CPUIDInfo;
 
     uint32 eax, ebx, ecx, edx;
+
+    // Get vendor string (issue CPUID with eax = 0)
+    GETCPUID(eax, ebx, ecx, edx, 0, 0);
+    cpuid->vendor_str_.append(reinterpret_cast<char *>(&ebx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char *>(&edx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char *>(&ecx), 4);
 
     // To get general information and extended features we send eax = 1 and
     // ecx = 0 to cpuid.  The response is returned in eax, ebx, ecx and edx.
     // (See Intel 64 and IA-32 Architectures Software Developer's Manual
     // Volume 2A: Instruction Set Reference, A-M CPUID).
     GETCPUID(eax, ebx, ecx, edx, 1, 0);
+
+    cpuid->model_num_ = static_cast<int>((eax >> 4) & 0xf);
+    cpuid->family_ = static_cast<int>((eax >> 8) & 0xf);
 
     cpuid->have_aes_ = (ecx >> 25) & 0x1;
     cpuid->have_cmov_ = (edx >> 15) & 0x1;
@@ -240,8 +252,11 @@ struct CPUIDInfo {
     return false;
   }
 
+  string vendor_str() const { return vendor_str_; }
+  int family() const { return family_; }
+  int model_num() { return model_num_; }
+
  private:
-  int highest_eax_;
   int have_adx_ : 1;
   int have_aes_ : 1;
   int have_avx_ : 1;
@@ -279,14 +294,17 @@ struct CPUIDInfo {
   int have_sse4_2_ : 1;
   int have_ssse3_ : 1;
   int have_hypervisor_ : 1;
+  string vendor_str_;
+  int family_;
+  int model_num_;
 };
 
-std::once_flag cpuid_once_flag;
+absl::once_flag cpuid_once_flag;
 
 void InitCPUIDInfo() {
   // This ensures that CPUIDInfo::Initialize() is called exactly
   // once regardless of how many threads concurrently call us
-  std::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
+  absl::call_once(cpuid_once_flag, CPUIDInfo::Initialize);
 }
 
 #endif  // PLATFORM_IS_X86
@@ -299,6 +317,56 @@ bool TestCPUFeature(CPUFeature feature) {
 #else
   return false;
 #endif
+}
+
+std::string CPUVendorIDString() {
+#ifdef PLATFORM_IS_X86
+  InitCPUIDInfo();
+  return cpuid->vendor_str();
+#else
+  return "";
+#endif
+}
+
+int CPUFamily() {
+#ifdef PLATFORM_IS_X86
+  InitCPUIDInfo();
+  return cpuid->family();
+#else
+  return 0;
+#endif
+}
+
+int CPUModelNum() {
+#ifdef PLATFORM_IS_X86
+  InitCPUIDInfo();
+  return cpuid->model_num();
+#else
+  return 0;
+#endif
+}
+
+int CPUIDNumSMT() {
+#ifdef PLATFORM_IS_X86
+  // https://software.intel.com/en-us/articles/intel-64-architecture-processor-topology-enumeration
+  // https://software.intel.com/en-us/articles/intel-sdm (Vol 3A)
+  // Section: Detecting Hardware Multi-threads Support and Topology
+  // Uses CPUID Leaf 11 to enumerate system topology on Intel x86 architectures
+  // Other cases not supported
+  uint32 eax, ebx, ecx, edx;
+  // Check if system supports Leaf 11
+  GETCPUID(eax, ebx, ecx, edx, 0, 0);
+  if (eax >= 11) {
+    // 1) Leaf 11 available? CPUID.(EAX=11, ECX=0):EBX != 0
+    // 2) SMT_Mask_Width = CPUID.(EAX=11, ECX=0):EAX[4:0] if CPUID.(EAX=11,
+    // ECX=0):ECX[15:8] is 1
+    GETCPUID(eax, ebx, ecx, edx, 11, 0);
+    if (ebx != 0 && ((ecx & 0xff00) >> 8) == 1) {
+      return 1 << (eax & 0x1f);  // 2 ^ SMT_Mask_Width
+    }
+  }
+#endif  // PLATFORM_IS_X86
+  return 0;
 }
 
 }  // namespace port

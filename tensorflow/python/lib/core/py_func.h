@@ -16,40 +16,34 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PY_FUNC_H_
 
-// Must be included first
-#include "tensorflow/python/lib/core/numpy.h"
-
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/status.h"
+#include <Python.h>
 
 namespace tensorflow {
 
-// Called by py code on initialization.
+// Called by python code on initialization.
 //
 // "trampoline" must represent a python function which has the
 // following signature:
-//   (string, list(ndarray)) -> ndarray | list(ndarray) | python scalar
+//   (string, list(ndarray)) | (string, list(EagerTensor)) ->
+//     ndarray | list(ndarray) | python scalar |
+//     EagerTensor | list(EagerTensor) | None
 //
 // The trampoline takes two arguments, the first is a string token
 // used by the python frontend's dispatching logic; the second is a
-// list of numpy ndarrays.
+// list of numpy ndarrays or EagerTensor objects. It can return a
+// single numpy ndarray, a list of numpy ndarrays, a python scalar, an
+// EagerTensor, a list of EagerTensors, or None.
 //
-// The trampoline can return a single numpy ndarray, a list of numpy
-// ndarrays, or a simply python scalar. The C++ runtime converts them,
-// if supported, back to Tensor objects.
+// PyFunc requires inputs and outputs to be ndarrays. EagerPyFunc requires
+// inputs to be a list of EagerTensors and outputs to be an EagerTensor, a list
+// of EagerTensors, or None.
 //
-// This is called by script_ops.py during its module initialization.
+// The C++ runtime converts outputs back to Tensor objects.
+//
+// This function is called by script_ops.py during its module initialization.
 //
 // TODO(zhifengc): Support distributed runtime.
 void InitializePyTrampoline(PyObject* trampoline);
-
-// Creates a numpy array in 'ret' and copies the content of tensor 't'
-// into 'ret'.
-Status ConvertTensorToNdarray(const Tensor& t, PyObject** ret);
-
-// Given an numpy ndarray object 'obj', creates a corresponding tf
-// Tensor in '*ret'.
-Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret);
 
 }  // end namespace tensorflow
 

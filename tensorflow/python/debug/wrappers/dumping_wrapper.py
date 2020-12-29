@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import threading
 import time
-import uuid
 
 # Google-internal import(s).
 from tensorflow.core.util import event_pb2
@@ -31,7 +31,13 @@ from tensorflow.python.platform import gfile
 class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
   """Debug Session wrapper that dumps debug data to filesystem."""
 
-  def __init__(self, sess, session_root, watch_fn=None, log_usage=True):
+  def __init__(self,
+               sess,
+               session_root,
+               watch_fn=None,
+               thread_name_filter=None,
+               pass_through_operrors=None,
+               log_usage=True):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -39,15 +45,20 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       session_root: (`str`) Path to the session root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
-        @{tf.Session.run}
+        `tf.Session.run`
         calls.
         As the `run()` calls occur, subdirectories will be added to
         `session_root`. The subdirectories' names has the following pattern:
-          run_<epoch_time_stamp>_<uuid>
+          run_<epoch_time_stamp>_<zero_based_run_counter>
         E.g., run_1480734393835964_ad4c953a85444900ae79fc1b652fb324
       watch_fn: (`Callable`) A Callable that can be used to define per-run
         debug ops and watched tensors. See the doc of
         `NonInteractiveDebugWrapperSession.__init__()` for details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
+      pass_through_operrors: If true, all captured OpErrors will be
+        propagated. By default this captures all OpErrors.
       log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
@@ -59,8 +70,10 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       pass  # No logging for open-source.
 
     framework.NonInteractiveDebugWrapperSession.__init__(
-        self, sess, watch_fn=watch_fn)
+        self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter,
+        pass_through_operrors=pass_through_operrors)
 
+    session_root = os.path.expanduser(session_root)
     if gfile.Exists(session_root):
       if not gfile.IsDirectory(session_root):
         raise ValueError(
@@ -69,13 +82,18 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
         raise ValueError(
             "session_root path points to a non-empty directory: %s" %
             session_root)
+    else:
+      gfile.MakeDirs(session_root)
     self._session_root = session_root
 
-  def _prepare_run_debug_urls(self, fetches, feed_dict):
-    """Implementation of abstrat method in superclass.
+    self._run_counter = 0
+    self._run_counter_lock = threading.Lock()
 
-    See doc of `NonInteractiveDebugWrapperSession.__prepare_run_debug_urls()`
-    for details. This implentation creates a run-specific subdirectory under
+  def prepare_run_debug_urls(self, fetches, feed_dict):
+    """Implementation of abstract method in superclass.
+
+    See doc of `NonInteractiveDebugWrapperSession.prepare_run_debug_urls()`
+    for details. This implementation creates a run-specific subdirectory under
     self._session_root and stores information regarding run `fetches` and
     `feed_dict.keys()` in the subdirectory.
 
@@ -89,8 +107,11 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
     """
 
     # Add a UUID to accommodate the possibility of concurrent run() calls.
-    run_dir = os.path.join(self._session_root, "run_%d_%s" %
-                           (int(time.time() * 1e6), uuid.uuid4().hex))
+    self._run_counter_lock.acquire()
+    run_dir = os.path.join(self._session_root, "run_%d_%d" %
+                           (int(time.time() * 1e6), self._run_counter))
+    self._run_counter += 1
+    self._run_counter_lock.release()
     gfile.MkDir(run_dir)
 
     fetches_event = event_pb2.Event()

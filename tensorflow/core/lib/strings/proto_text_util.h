@@ -13,15 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
 
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace strings {
@@ -101,8 +102,8 @@ class ProtoTextOutput {
 
  private:
   void AppendFieldAndValue(const char field_name[], StringPiece value_text) {
-    StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
-              field_name, kColonSeparator, value_text);
+    absl::StrAppend(output_, level_empty_ ? "" : field_separator_, indent_,
+                    field_name, kColonSeparator, value_text);
     level_empty_ = false;
   }
 
@@ -117,30 +118,6 @@ class ProtoTextOutput {
 
   TF_DISALLOW_COPY_AND_ASSIGN(ProtoTextOutput);
 };
-
-inline bool ProtoParseNumeric(StringPiece s, int32* value) {
-  return ::tensorflow::strings::safe_strto32(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
-  return ::tensorflow::strings::safe_strtou32(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, int64* value) {
-  return ::tensorflow::strings::safe_strto64(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
-  return ::tensorflow::strings::safe_strtou64(s, value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, float* value) {
-  return ::tensorflow::strings::safe_strtof(s.ToString().c_str(), value);
-}
-
-inline bool ProtoParseNumeric(StringPiece s, double* value) {
-  return ::tensorflow::strings::safe_strtod(s.ToString().c_str(), value);
-}
 
 inline void ProtoSpaceAndComments(Scanner* scanner) {
   for (;;) {
@@ -174,7 +151,7 @@ bool ProtoParseNumericFromScanner(Scanner* scanner, T* value) {
   }
 
   ProtoSpaceAndComments(scanner);
-  return ProtoParseNumeric(numeric_str, value);
+  return SafeStringToNumeric<T>(numeric_str, value);
 }
 
 // Parse the next boolean value from <scanner>, returning false if parsing
@@ -188,4 +165,4 @@ bool ProtoParseStringLiteralFromScanner(Scanner* scanner, string* value);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_PROTO_TEXT_UTIL_H_

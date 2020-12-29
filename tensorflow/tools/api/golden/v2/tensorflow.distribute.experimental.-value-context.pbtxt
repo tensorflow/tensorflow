@@ -1,0 +1,17 @@
+path: "tensorflow.distribute.experimental.ValueContext"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.ValueContext\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "num_replicas_in_sync"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "replica_id_in_sync_group"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'replica_id_in_sync_group\', \'num_replicas_in_sync\'], varargs=None, keywords=None, defaults=[\'0\', \'1\'], "
+  }
+}

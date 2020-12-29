@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_TABLE_OPTIONS_H_
-#define TENSORFLOW_LIB_IO_TABLE_OPTIONS_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_TABLE_OPTIONS_H_
+#define TENSORFLOW_CORE_LIB_IO_TABLE_OPTIONS_H_
 
 #include <stddef.h>
 
 namespace tensorflow {
 namespace table {
+
+class Cache;
 
 // DB contents are stored in a set of blocks, each of which holds a
 // sequence of key,value pairs.  Each block may be compressed before
@@ -60,9 +62,15 @@ struct Options {
   // incompressible, the kSnappyCompression implementation will
   // efficiently detect that and will switch to uncompressed mode.
   CompressionType compression = kSnappyCompression;
+
+  // Control over blocks (user data is stored in a set of blocks, and
+  // a block is the unit of reading from disk).
+
+  // If non-null, use the specified cache for blocks.
+  Cache* block_cache = nullptr;
 };
 
 }  // namespace table
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_TABLE_OPTIONS_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_TABLE_OPTIONS_H_

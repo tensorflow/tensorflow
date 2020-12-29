@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -47,8 +48,11 @@ class BiasOp : public XlaOpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bias_shape),
                 errors::InvalidArgument("Biases must be 1D: ",
                                         bias_shape.DebugString()));
-    int feature_dim = (data_format_ == FORMAT_NHWC) ? input_shape.dims() - 1
-                                                    : input_shape.dims() - 3;
+
+    // feature_dim is the channel (C) dimension of the data.
+    int feature_dim = (data_format_ == FORMAT_NHWC)
+                          ? input_shape.dims() - 1
+                          : /*data_format == FORMAT_NCHW*/ 1;
     OP_REQUIRES(
         ctx, feature_dim >= 0,
         errors::InvalidArgument("Input tensor does not have enough dimensions "
@@ -60,8 +64,7 @@ class BiasOp : public XlaOpKernel {
             "of the input tensor: ",
             bias_shape.DebugString(), " vs. ", input_shape.DebugString()));
 
-    xla::ComputationDataHandle result =
-        ctx->builder()->Add(ctx->Input(0), ctx->Input(1), {feature_dim});
+    xla::XlaOp result = xla::Add(ctx->Input(0), ctx->Input(1), {feature_dim});
     ctx->SetOutput(0, result);
   }
 
@@ -69,8 +72,8 @@ class BiasOp : public XlaOpKernel {
   TensorFormat data_format_;
 };
 
-REGISTER_XLA_OP("BiasAdd", BiasOp);
-REGISTER_XLA_OP("BiasAddV1", BiasOp);
+REGISTER_XLA_OP(Name("BiasAdd"), BiasOp);
+REGISTER_XLA_OP(Name("BiasAddV1"), BiasOp);
 
 class BiasAddGradOp : public XlaOpKernel {
  public:
@@ -91,9 +94,10 @@ class BiasAddGradOp : public XlaOpKernel {
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         out_backprop_shape.DebugString()));
 
+    // feature_dim is the channel (C) dimension of the data.
     int feature_dim = (data_format_ == FORMAT_NHWC)
                           ? out_backprop_shape.dims() - 1
-                          : out_backprop_shape.dims() - 3;
+                          : /*data_format == FORMAT_NCHW*/ 1;
     OP_REQUIRES(
         ctx, feature_dim >= 0,
         errors::InvalidArgument("Input tensor does not have enough dimensions "
@@ -103,17 +107,22 @@ class BiasAddGradOp : public XlaOpKernel {
     std::iota(reduce_dims.begin(), reduce_dims.begin() + feature_dim, 0);
     std::iota(reduce_dims.begin() + feature_dim, reduce_dims.end(),
               feature_dim + 1);
-    xla::ComputationDataHandle result = ctx->builder()->Reduce(
-        ctx->Input(0), XlaHelpers::Zero(ctx->builder(), input_type(0)),
-        *ctx->GetOrCreateAdd(input_type(0)), reduce_dims);
-    ctx->SetOutput(0, result);
+    xla::XlaBuilder* const b = ctx->builder();
+    const DataType accumulation_type =
+        XlaHelpers::SumAccumulationType(input_type(0));
+    auto converted =
+        XlaHelpers::ConvertElementType(ctx->Input(0), accumulation_type);
+    auto reduce =
+        xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
+                    *ctx->GetOrCreateAdd(accumulation_type), reduce_dims);
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(reduce, input_type(0)));
   }
 
  private:
   TensorFormat data_format_;
 };
 
-REGISTER_XLA_OP("BiasAddGrad", BiasAddGradOp);
+REGISTER_XLA_OP(Name("BiasAddGrad"), BiasAddGradOp);
 
 }  // namespace
 }  // namespace tensorflow

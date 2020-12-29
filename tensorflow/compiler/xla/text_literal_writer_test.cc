@@ -18,27 +18,30 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
 
 TEST(TextLiteralWriterTest, WritesFloatLiteral) {
   auto literal = LiteralUtil::CreateR2<float>({
-      {3.14, 2.17}, {1.23, 4.56},
+      {3.14, 2.17},
+      {1.23, 4.56},
   });
-  string path =
-      tensorflow::io::JoinPath(tensorflow::testing::TmpDir(), "/whatever");
-  ASSERT_IS_OK(TextLiteralWriter::WriteToPath(*literal, path));
+  string path;
+  ASSERT_TRUE(tensorflow::Env::Default()->LocalTempFilename(&path));
+  ASSERT_IS_OK(TextLiteralWriter::WriteToPath(literal, path));
   string contents;
-  TF_CHECK_OK(tensorflow::ReadFileToString(tensorflow::Env::Default(), path,
-                                           &contents));
+  TF_ASSERT_OK(tensorflow::ReadFileToString(tensorflow::Env::Default(), path,
+                                            &contents));
   const string expected = R"(f32[2,2]
 (0, 0): 3.14
 (0, 1): 2.17

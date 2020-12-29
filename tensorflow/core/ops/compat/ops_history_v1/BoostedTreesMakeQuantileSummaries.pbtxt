@@ -1,0 +1,26 @@
+op {
+  name: "BoostedTreesMakeQuantileSummaries"
+  input_arg {
+    name: "float_values"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  input_arg {
+    name: "example_weights"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "epsilon"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "summaries"
+    type: DT_FLOAT
+    number_attr: "num_features"
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+  }
+}

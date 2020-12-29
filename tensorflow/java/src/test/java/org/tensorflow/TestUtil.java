@@ -16,44 +16,95 @@ limitations under the License.
 package org.tensorflow;
 
 import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /** Static utility functions. */
 public class TestUtil {
-  public static Output constant(Graph g, String name, Object value) {
-    try (Tensor t = Tensor.create(value)) {
-      return g.opBuilder("Const", name)
-          .setAttr("dtype", t.dataType())
-          .setAttr("value", t)
-          .build()
-          .output(0);
+
+  public static final class AutoCloseableList<E extends AutoCloseable> extends ArrayList<E>
+      implements AutoCloseable {
+    public AutoCloseableList(Collection<? extends E> c) {
+      super(c);
+    }
+
+    @Override
+    public void close() {
+      Exception toThrow = null;
+      for (AutoCloseable c : this) {
+        try {
+          c.close();
+        } catch (Exception e) {
+          toThrow = e;
+        }
+      }
+      if (toThrow != null) {
+        throw new RuntimeException(toThrow);
+      }
     }
   }
 
-  public static Output placeholder(Graph g, String name, DataType dtype) {
-    return g.opBuilder("Placeholder", name).setAttr("dtype", dtype).build().output(0);
+  public static GraphOperation constantOp(Graph g, String name, Object value) {
+    try (Tensor<?> t = Tensor.create(value)) {
+      return g.opBuilder("Const", name).setAttr("dtype", t.dataType()).setAttr("value", t).build();
+    }
   }
 
-  public static Output addN(Graph g, Output... inputs) {
-    return g.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
+  public static <T> Output<T> constant(ExecutionEnvironment env, String name, Object value) {
+    try (Tensor<?> t = Tensor.create(value)) {
+      return env.opBuilder("Const", name)
+          .setAttr("dtype", t.dataType())
+          .setAttr("value", t)
+          .build()
+          .<T>output(0);
+    }
   }
 
-  public static Output matmul(
-      Graph g, String name, Output a, Output b, boolean transposeA, boolean transposeB) {
+  public static <T> Output<T> placeholder(Graph g, String name, Class<T> type) {
+    return g.opBuilder("Placeholder", name)
+        .setAttr("dtype", DataType.fromClass(type))
+        .build()
+        .<T>output(0);
+  }
+
+  public static <T> Output<T> addN(ExecutionEnvironment env, Output<?>... inputs) {
+    return env.opBuilder("AddN", "AddN").addInputList(inputs).build().output(0);
+  }
+
+  public static <T> Output<T> matmul(
+      Graph g, String name, Output<T> a, Output<T> b, boolean transposeA, boolean transposeB) {
     return g.opBuilder("MatMul", name)
         .addInput(a)
         .addInput(b)
         .setAttr("transpose_a", transposeA)
         .setAttr("transpose_b", transposeB)
         .build()
-        .output(0);
+        .<T>output(0);
+  }
+
+  public static Operation split(Graph g, String name, int[] values, int numSplit) {
+    return g.opBuilder("Split", name)
+        .addInput(constant(g, "split_dim", 0))
+        .addInput(constant(g, "values", values))
+        .setAttr("num_split", numSplit)
+        .build();
+  }
+  
+  public static <T> Output<T> square(Graph g, String name, Output<T> value) {
+    return g.opBuilder("Square", name)
+        .addInput(value)
+        .build()
+        .<T>output(0);
   }
 
   public static void transpose_A_times_X(Graph g, int[][] a) {
-    matmul(g, "Y", constant(g, "A", a), placeholder(g, "X", DataType.INT32), true, false);
+    Output<Integer> aa = constant(g, "A", a);
+    matmul(g, "Y", aa, placeholder(g, "X", Integer.class), true, false);
   }
 
   /**
    * Counts the total number of elements in an ND array.
+   *
    * @param array the array to count the elements of
    * @return the number of elements
    */
@@ -61,10 +112,9 @@ public class TestUtil {
     int count = 0;
     for (int i = 0; i < Array.getLength(array); i++) {
       Object e = Array.get(array, i);
-      if(!e.getClass().isArray()) {
+      if (!e.getClass().isArray()) {
         count += 1;
-      }
-      else {
+      } else {
         count += flattenedNumElements(e);
       }
     }
@@ -73,6 +123,7 @@ public class TestUtil {
 
   /**
    * Flattens an ND-array into a 1D-array with the same elements.
+   *
    * @param array the array to flatten
    * @param elementType the element class (e.g. {@code Integer.TYPE} for an {@code int[]})
    * @return a flattened array
@@ -86,10 +137,9 @@ public class TestUtil {
   private static int flatten(Object array, Object out, int next) {
     for (int i = 0; i < Array.getLength(array); i++) {
       Object e = Array.get(array, i);
-      if(!e.getClass().isArray()) {
+      if (!e.getClass().isArray()) {
         Array.set(out, next++, e);
-      }
-      else {
+      } else {
         next = flatten(e, out, next);
       }
     }
@@ -99,11 +149,12 @@ public class TestUtil {
   /**
    * Converts a {@code boolean[]} to a {@code byte[]}.
    *
-   * <p>Suitable for creating tensors of type {@link DataType#BOOL} using {@link java.nio.ByteBuffer}.
+   * <p>Suitable for creating tensors of type {@link DataType#BOOL} using {@link
+   * java.nio.ByteBuffer}.
    */
   public static byte[] bool2byte(boolean[] array) {
     byte[] out = new byte[array.length];
-    for(int i = 0; i< array.length; i++) {
+    for (int i = 0; i < array.length; i++) {
       out[i] = array[i] ? (byte) 1 : (byte) 0;
     }
     return out;
@@ -112,13 +163,16 @@ public class TestUtil {
   /**
    * Converts a {@code byte[]} to a {@code boolean[]}.
    *
-   * <p>Suitable for reading tensors of type {@link DataType#BOOL} using {@link java.nio.ByteBuffer}.
+   * <p>Suitable for reading tensors of type {@link DataType#BOOL} using {@link
+   * java.nio.ByteBuffer}.
    */
   public static boolean[] byte2bool(byte[] array) {
     boolean[] out = new boolean[array.length];
-    for(int i = 0; i< array.length; i++) {
+    for (int i = 0; i < array.length; i++) {
       out[i] = array[i] != 0;
     }
     return out;
   }
+
+  private TestUtil() {}
 }

@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package op
 
@@ -23,18 +25,20 @@ import (
 
 // Scope encapsulates common operation properties when building a Graph.
 //
-// A Scope object (and its derivates, e.g., obtained from Scope.SubScope)
+// A Scope object (and its derivatives, e.g., obtained from Scope.SubScope)
 // act as a builder for graphs. They allow common properties (such as
 // a name prefix) to be specified for multiple operations being added
 // to the graph.
 //
-// A Scope object and all its derivates (e.g., obtained from Scope.SubScope)
+// A Scope object and all its derivatives (e.g., obtained from Scope.SubScope)
 // are not safe for concurrent use by multiple goroutines.
 type Scope struct {
-	graph     *tf.Graph
-	namemap   map[string]int
-	namespace string
-	err       *scopeErr
+	graph               *tf.Graph
+	namemap             map[string]int
+	namespace           string
+	controlDependencies []*tf.Operation
+	device              string
+	err                 *scopeErr
 }
 
 // scopeErr is used to share errors between all derivatives of a root scope.
@@ -45,6 +49,11 @@ type scopeErr struct {
 // NewScope creates a Scope initialized with an empty Graph.
 func NewScope() *Scope {
 	return &Scope{graph: tf.NewGraph(), namemap: make(map[string]int), err: new(scopeErr)}
+}
+
+// NewScopeWithGraph creates a Scope initialized with the Graph thats passed in
+func NewScopeWithGraph(g *tf.Graph) *Scope {
+	return &Scope{graph: g, namemap: make(map[string]int), err: new(scopeErr)}
 }
 
 // Finalize returns the Graph on which this scope operates on and renders s
@@ -73,6 +82,8 @@ func (s *Scope) AddOperation(args tf.OpSpec) *tf.Operation {
 	if s.namespace != "" {
 		args.Name = s.namespace + "/" + args.Name
 	}
+	args.ControlDependencies = append(args.ControlDependencies, s.controlDependencies...)
+	args.Device = s.device
 	op, err := s.graph.AddOperation(args)
 	if err != nil {
 		s.UpdateErr(args.Type, err)
@@ -89,10 +100,53 @@ func (s *Scope) SubScope(namespace string) *Scope {
 		namespace = s.namespace + "/" + namespace
 	}
 	return &Scope{
-		graph:     s.graph,
-		namemap:   make(map[string]int),
-		namespace: namespace,
-		err:       s.err,
+		graph:               s.graph,
+		namemap:             make(map[string]int),
+		namespace:           namespace,
+		controlDependencies: s.controlDependencies,
+		device:              s.device,
+		err:                 s.err,
+	}
+}
+
+// WithControlDependencies returns a new Scope which will cause all operations
+// added to the graph to execute only after all the provided operations have
+// executed first (in addition to any other control dependencies in s).
+func (s *Scope) WithControlDependencies(ops ...*tf.Operation) *Scope {
+	// Force a copy of the control dependencies into a new underlying array on
+	// every call.  We cannot alias the same underlying array as `ops`, otherwise
+	// the user could modify that array after calling s.WithControlDependencies,
+	// which would be confusing.  We cannot alias the same underlying array as the
+	// original `s.controlDependencies`, since Scopes form a logical tree, and
+	// other calls to s.WithControlDependencies could stomp on each other.
+	deps := make([]*tf.Operation, 0, len(s.controlDependencies)+len(ops))
+	deps = append(deps, s.controlDependencies...)
+	deps = append(deps, ops...)
+	return &Scope{
+		graph:               s.graph,
+		namemap:             s.namemap,
+		namespace:           s.namespace,
+		controlDependencies: deps,
+		device:              s.device,
+		err:                 s.err,
+	}
+}
+
+// WithDevice returns a new Scope which will cause all operations added to the
+// graph to execute on devices that match the provided device specification.
+//
+// For example, WithDevice("/device:GPU:0") will cause operations added to
+// the graph to execute on GPU #0.
+//
+// An empty string removes any device restrictions.
+func (s *Scope) WithDevice(device string) *Scope {
+	return &Scope{
+		graph:               s.graph,
+		namemap:             s.namemap,
+		namespace:           s.namespace,
+		controlDependencies: s.controlDependencies,
+		device:              device,
+		err:                 s.err,
 	}
 }
 

@@ -1,5 +1,5 @@
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
 
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
@@ -16,6 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -24,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// PendingCounts is internal helper class to keep track of pending and
+// PendingCounts is an internal helper class to keep track of pending and
 // dead counts for nodes, for use in the ExecutorState module.  It
 // holds a map from Handles to various counts for that handle.  This
 // information is needed per frame iteration. The amount of memory
@@ -39,12 +41,12 @@ namespace tensorflow {
 //    }
 //
 // When we actually want to start an iteration we first create a
-// nPendingCounts object and then index into it using the precomputed
+// PendingCounts object and then index into it using the precomputed
 // handles:
 
 //    PendingCounts counts(layout);
 //    ...
-//    counts.decrement_panding(h[id], 1);
+//    counts.decrement_pending(h[id], 1);
 class PendingCounts {
  public:
   // The state machine for a node's execution.
@@ -69,7 +71,7 @@ class PendingCounts {
   // to retrieve the count data for this node.
   class Layout {
    public:
-    Handle CreateHandle(int max_pending_count, int max_dead_count);
+    Handle CreateHandle(size_t max_pending_count, size_t max_dead_count);
 
    private:
     friend class PendingCounts;
@@ -79,77 +81,95 @@ class PendingCounts {
   // Create a new PendingCounts object that can hold the state of
   // all the Handles allocated from "final_allocator".
   explicit PendingCounts(Layout layout)
-      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {}
+      : num_bytes_(layout.next_offset_), bytes_(new char[num_bytes_]) {
+    if (num_bytes_ >= sizeof(LargeCounts)) {
+      CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    }
+  }
 
   // Create a new PendingCounts object with the same layout and counts
   // as "other".
   explicit PendingCounts(const PendingCounts& other)
       : num_bytes_(other.num_bytes_), bytes_(new char[num_bytes_]) {
-    CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    if (num_bytes_ >= sizeof(LargeCounts)) {
+      CHECK_EQ(uintptr_t(bytes_) % alignof(LargeCounts), 0);
+    }
     memcpy(bytes_, other.bytes_, other.num_bytes_);
   }
 
   ~PendingCounts() { delete[] bytes_; }
 
-  void set_initial_count(Handle h, int pending_count) {
+  void set_initial_count(Handle h, size_t pending_count) {
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
-      c->pending = pending_count;
-      c->dead_count = 0;
-      c->has_started = 0;
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      c.pending = pending_count;
+      c.dead_count = 0;
+      c.has_started = 0;
+      c_ptr->store(c, std::memory_order_relaxed);
     } else {
-      PackedCounts* c = Packed(h);
       DCHECK_LE(pending_count, kMaxCountForPackedCounts);
-      c->pending = pending_count;
-      c->dead_count = 0;
-      c->has_started = 0;
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      c.pending = pending_count;
+      c.dead_count = 0;
+      c.has_started = 0;
+      c_ptr->store(c, std::memory_order_relaxed);
     }
   }
 
   NodeState node_state(Handle h) {
     if (h.is_large_) {
-      return NodeStateForStruct(Large(h));
+      return NodeStateForStruct(Large(h)->load(std::memory_order_relaxed));
     } else {
-      return NodeStateForStruct(Packed(h));
+      return NodeStateForStruct(Packed(h)->load(std::memory_order_relaxed));
     }
   }
   void mark_started(Handle h) {
     DCHECK_EQ(pending(h), 0);
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
-      DCHECK_EQ(c->has_started, 0);
-      c->has_started = 1;
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      DCHECK_EQ(c.has_started, 0);
+      c.has_started = 1;
+      c_ptr->store(c, std::memory_order_relaxed);
     } else {
-      PackedCounts* c = Packed(h);
-      DCHECK_EQ(c->has_started, 0);
-      c->has_started = 1;
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      DCHECK_EQ(c.has_started, 0);
+      c.has_started = 1;
+      c_ptr->store(c, std::memory_order_relaxed);
     }
   }
   void mark_completed(Handle h) {
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
-      DCHECK_EQ(c->has_started, 1);
-      c->pending = 1;
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      DCHECK_EQ(c.has_started, 1);
+      c.pending = 1;
+      c_ptr->store(c, std::memory_order_relaxed);
     } else {
-      PackedCounts* c = Packed(h);
-      DCHECK_EQ(c->has_started, 1);
-      c->pending = 1;
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      DCHECK_EQ(c.has_started, 1);
+      c.pending = 1;
+      c_ptr->store(c, std::memory_order_relaxed);
     }
   }
   int pending(Handle h) {
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
+      LargeCounts c = Large(h)->load(std::memory_order_relaxed);
       if (PENDING_NOTREADY == NodeStateForStruct(c)) {
-        return c->pending;
+        return c.pending;
       } else {
         // The pending count encodes the state once the node has
         // started, so just return 0.
         return 0;
       }
     } else {
-      PackedCounts* c = Packed(h);
+      PackedCounts c = Packed(h)->load(std::memory_order_relaxed);
       if (PENDING_NOTREADY == NodeStateForStruct(c)) {
-        return c->pending;
+        return c.pending;
       } else {
         // The pending count encodes the state once the node has
         // started, so just return 0.
@@ -160,69 +180,97 @@ class PendingCounts {
   int decrement_pending(Handle h, int v) {
     DCHECK_GE(pending(h), v);
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
-      c->pending -= v;
-      return c->pending;
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      c.pending -= v;
+      c_ptr->store(c, std::memory_order_relaxed);
+      return c.pending;
     } else {
-      PackedCounts* c = Packed(h);
-      c->pending -= v;
-      return c->pending;
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
+      c.pending -= v;
+      c_ptr->store(c, std::memory_order_relaxed);
+      return c.pending;
     }
   }
   // Mark a merge node as live
   // REQUIRES: Node corresponding to "h" is a merge node
   void mark_live(Handle h) {
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
       // Only do anything if the node hasn't already started executing.
       if (PENDING_NOTREADY == NodeStateForStruct(c)) {
-        c->pending &= ~static_cast<int>(0x1);
+        c.pending &= ~static_cast<int>(0x1);
+        c_ptr->store(c, std::memory_order_relaxed);
       }
     } else {
-      PackedCounts* c = Packed(h);
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
       // Only do anything if the node hasn't already started executing.
       if (PENDING_NOTREADY == NodeStateForStruct(c)) {
         static_assert(7 == kMaxCountForPackedCounts,
                       "Live flag incorrect for max packed count");
-        c->pending &= 0x6;
+        c.pending &= 0x6;
+        c_ptr->store(c, std::memory_order_relaxed);
       }
     }
   }
 
   int dead_count(Handle h) {
-    int r = h.is_large_ ? Large(h)->dead_count : Packed(h)->dead_count;
+    int r = h.is_large_ ? Large(h)->load(std::memory_order_relaxed).dead_count
+                        : Packed(h)->load(std::memory_order_relaxed).dead_count;
     return r;
   }
   void increment_dead_count(Handle h) {
     if (h.is_large_) {
-      LargeCounts* c = Large(h);
+      std::atomic<LargeCounts>* c_ptr = Large(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
       if (PENDING_NOTREADY == NodeStateForStruct(c)) {
-        c->dead_count++;
+        c.dead_count++;
+        c_ptr->store(c, std::memory_order_relaxed);
       }
     } else {
-      PackedCounts* c = Packed(h);
+      std::atomic<PackedCounts>* c_ptr = Packed(h);
+      auto c = c_ptr->load(std::memory_order_relaxed);
       if (PENDING_NOTREADY == NodeStateForStruct(c)) {
-        DCHECK_LT(c->dead_count, kMaxCountForPackedCounts);
-        c->dead_count++;
+        DCHECK_LT(c.dead_count, kMaxCountForPackedCounts);
+        c.dead_count++;
+        c_ptr->store(c, std::memory_order_relaxed);
       }
     }
   }
+
+  struct AdjustResult {
+    bool any_dead;
+    bool any_pending;
+
+    AdjustResult(bool any_dead, bool any_pending)
+        : any_dead(any_dead), any_pending(any_pending) {}
+  };
 
   // A streamlined routine that does several pieces of bookkeeping at
   // once.  Equivalent to:
   //    if (increment_dead) increment_dead_count(h);
   //    decrement_pending(h, 1);
-  //    *pending_result = pending(h);
-  //    *dead_result = dead_count(h);
-  void adjust_for_activation(Handle h, bool increment_dead, int* pending_result,
-                             int* dead_result) {
+  //    return {dead_count(h) > 0, pending(h) > 0};
+  AdjustResult adjust_for_activation(Handle h, bool increment_dead) {
     DCHECK_GE(pending(h), 1);
     if (h.is_large_) {
-      adjust_for_activation_shared(Large(h), increment_dead, pending_result,
-                                   dead_result);
+      return adjust_for_activation_shared(Large(h), increment_dead);
     } else {
-      adjust_for_activation_shared(Packed(h), increment_dead, pending_result,
-                                   dead_result);
+      return adjust_for_activation_shared(Packed(h), increment_dead);
+    }
+  }
+
+  // The same as the above, but performs the operation atomically. This
+  // is thread-safe to run concurrently with other threads.
+  AdjustResult adjust_for_activation_atomic(Handle h, bool increment_dead) {
+    DCHECK_GE(pending(h), 1);
+    if (h.is_large_) {
+      return adjust_for_activation_shared_atomic(Large(h), increment_dead);
+    } else {
+      return adjust_for_activation_shared_atomic(Packed(h), increment_dead);
     }
   }
 
@@ -238,17 +286,31 @@ class PendingCounts {
 
  private:
   template <typename T>
-  inline void adjust_for_activation_shared(T* c, bool increment_dead,
-                                           int* pending_result,
-                                           int* dead_result) {
-    if (increment_dead) {
-      if (PENDING_NOTREADY == NodeStateForStruct(c)) {
-        c->dead_count++;
-      }
+  inline AdjustResult adjust_for_activation_shared(std::atomic<T>* c,
+                                                   bool increment_dead) {
+    T val = c->load(std::memory_order_relaxed);
+    if (increment_dead && PENDING_NOTREADY == NodeStateForStruct(val)) {
+      val.dead_count++;
     }
-    c->pending -= 1;
-    *dead_result = c->dead_count;
-    *pending_result = c->pending;
+    val.pending--;
+    c->store(val, std::memory_order_relaxed);
+    return AdjustResult(val.dead_count, val.pending);
+  }
+
+  template <typename T>
+  inline AdjustResult adjust_for_activation_shared_atomic(std::atomic<T>* c,
+                                                          bool increment_dead) {
+    T old_val = c->load(std::memory_order_relaxed);
+    while (true) {
+      T new_val = old_val;
+      if (increment_dead && PENDING_NOTREADY == NodeStateForStruct(new_val)) {
+        new_val.dead_count++;
+      }
+      new_val.pending--;
+      AdjustResult ret(new_val.dead_count, new_val.pending);
+      if (TF_PREDICT_TRUE(c->compare_exchange_weak(old_val, new_val)))
+        return ret;
+    }
   }
 
   // We keep track of the pending count and dead input count for each
@@ -262,7 +324,7 @@ class PendingCounts {
   // Each frame in this subgraph has its own PendingCounts.
 
   // We use 3 bits each for dead_count and pending.
-  static const int kMaxCountForPackedCounts = 7;
+  static constexpr int kMaxCountForPackedCounts = 7;
 
   // Most counts are small, so we pack a pending count and a dead
   // count into 3 bits each, use 1 bit to indicate that the node has
@@ -273,30 +335,35 @@ class PendingCounts {
     uint8 has_started : 1;
   };
 
-  struct LargeCounts {
+  // NOTE: alignas(8) is critical to implement efficient atomic<LargeCounts>
+  // on MSVC.
+  struct alignas(8) LargeCounts {
     uint32 pending;
     uint32 dead_count : 31;
-    uint8 has_started : 1;
+    // NOTE(tlipcon): MSVC won't pack this struct into 8 bytes unless
+    // all of the member types are uint32.
+    uint32 has_started : 1;
   };
 
   template <typename T>
-  NodeState NodeStateForStruct(T* c) const {
-    if (c->has_started) {
-      return (c->pending == 0) ? STARTED : COMPLETED;
+  NodeState NodeStateForStruct(const T& c) const {
+    if (c.has_started) {
+      return (c.pending == 0) ? STARTED : COMPLETED;
     } else {
-      return (c->pending == 0) ? PENDING_READY : PENDING_NOTREADY;
+      return (c.pending == 0) ? PENDING_READY : PENDING_NOTREADY;
     }
   }
-  inline LargeCounts* Large(Handle h) {
+  inline std::atomic<LargeCounts>* Large(Handle h) {
     DCHECK(h.is_large_);
-    DCHECK_LE(h.byte_offset_ + sizeof(LargeCounts), num_bytes_);
-    DCHECK_EQ(h.byte_offset_ % alignof(LargeCounts), 0);
-    return reinterpret_cast<LargeCounts*>(bytes_ + h.byte_offset_);
+    DCHECK_LE(h.byte_offset_ + sizeof(std::atomic<LargeCounts>), num_bytes_);
+    DCHECK_EQ(h.byte_offset_ % alignof(std::atomic<LargeCounts>), 0);
+    return reinterpret_cast<std::atomic<LargeCounts>*>(bytes_ + h.byte_offset_);
   }
-  inline PackedCounts* Packed(Handle h) {
+  inline std::atomic<PackedCounts>* Packed(Handle h) {
     DCHECK(!h.is_large_);
     DCHECK_LE(h.byte_offset_ + sizeof(PackedCounts), num_bytes_);
-    return reinterpret_cast<PackedCounts*>(bytes_ + h.byte_offset_);
+    return reinterpret_cast<std::atomic<PackedCounts>*>(bytes_ +
+                                                        h.byte_offset_);
   }
 
   const int num_bytes_;  // Just for bounds checking in debug mode
@@ -306,13 +373,15 @@ class PendingCounts {
 };
 
 inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
-    int max_pending_count, int max_dead_count) {
+    size_t max_pending_count, size_t max_dead_count) {
   Handle result;
   if ((max_pending_count > kMaxCountForPackedCounts) ||
       (max_dead_count > kMaxCountForPackedCounts)) {
-    int B = sizeof(LargeCounts);
+    constexpr int B = sizeof(std::atomic<LargeCounts>);
     // Round byte offset to proper alignment
-    DCHECK_GE(sizeof(LargeCounts), alignof(LargeCounts));
+    static_assert(
+        sizeof(std::atomic<LargeCounts>) >= alignof(std::atomic<LargeCounts>),
+        "std::atomic<LargeCounts> must be packed");
     int64 offset = ((static_cast<int64>(next_offset_) + B - 1) / B) * B;
     result.byte_offset_ = offset;
     result.is_large_ = true;
@@ -320,12 +389,13 @@ inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
   } else {
     result.byte_offset_ = next_offset_;
     result.is_large_ = false;
-    DCHECK_EQ(sizeof(PackedCounts), 1);
-    next_offset_ += sizeof(PackedCounts);
+    static_assert(sizeof(std::atomic<PackedCounts>) == 1,
+                  "std::atomic<PackedCounts> should be a single byte");
+    next_offset_ += sizeof(std::atomic<PackedCounts>);
   }
   return result;
 }
 
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PENDING_COUNTS_H_

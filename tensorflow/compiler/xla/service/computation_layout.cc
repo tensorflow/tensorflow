@@ -17,18 +17,24 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/lib/hash/hash.h"
 
 namespace xla {
 
-ComputationLayout::ComputationLayout(const ProgramShape& program_shape)
+ComputationLayout::ComputationLayout(const ProgramShape& program_shape,
+                                     bool ignore_layouts)
     : result_layout_(program_shape.result()) {
   for (auto& shape : program_shape.parameters()) {
     parameter_layouts_.emplace_back(shape);
   }
-  SetToDefaultLayout();
+  if (ignore_layouts) {
+    SetToDefaultLayout();
+  } else {
+    SetToDefaultLayoutIfEmpty();
+  }
 }
 
 void ComputationLayout::SetToDefaultLayout() {
@@ -38,9 +44,20 @@ void ComputationLayout::SetToDefaultLayout() {
   result_layout_.SetToDefaultLayout();
 }
 
+void ComputationLayout::SetToDefaultLayoutIfEmpty() {
+  for (auto& parameter_layout : parameter_layouts_) {
+    if (!parameter_layout.LayoutIsSet()) {
+      parameter_layout.SetToDefaultLayout();
+    }
+  }
+  if (!result_layout_.LayoutIsSet()) {
+    result_layout_.SetToDefaultLayout();
+  }
+}
+
 bool ComputationLayout::LayoutIsSet() const {
-  return std::all_of(parameter_layouts_.begin(), parameter_layouts_.end(),
-                     [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
          result_layout_.LayoutIsSet();
 }
 
@@ -49,9 +66,37 @@ string ComputationLayout::ToString() const {
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }
-  return tensorflow::strings::StrCat("(",
-                                     tensorflow::str_util::Join(params, ", "),
-                                     ") => ", result_layout_.ToString());
+  return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
+                      result_layout_.ToString());
+}
+
+ProgramShape ComputationLayout::ComputeProgramShape() const {
+  ProgramShape program_shape;
+  for (int64 i = 0; i < parameter_layouts_.size(); ++i) {
+    *program_shape.add_parameters() = parameter_layouts_[i].shape();
+    *program_shape.add_parameter_names() = absl::StrCat("p", i);
+  }
+  *program_shape.mutable_result() = result_layout_.shape();
+  return program_shape;
+}
+
+bool ComputationLayout::operator==(const ComputationLayout& other) const {
+  return result_layout() == other.result_layout() &&
+         parameter_layouts() == other.parameter_layouts();
+}
+
+bool ComputationLayout::operator!=(const ComputationLayout& other) const {
+  return result_layout() != other.result_layout() ||
+         parameter_layouts() != other.parameter_layouts();
+}
+
+uint64 ComputationLayout::Hash() const {
+  uint64 hash_value = ShapeUtil::Hash(result_layout_.shape());
+  for (const auto& parameter_layout : parameter_layouts_) {
+    hash_value = tensorflow::Hash64Combine(
+        hash_value, ShapeUtil::Hash(parameter_layout.shape()));
+  }
+  return hash_value;
 }
 
 }  // namespace xla

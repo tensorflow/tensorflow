@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
-#define TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_
+#define TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_
 // Functor definition for SoftplusOp and SoftplusGradOp, must be compilable by
 // nvcc.
 
+// clang-format off
+#include "tensorflow/core/platform/bfloat16.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+// clang-format on
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -50,7 +53,7 @@ struct Softplus {
     activations.device(d) = too_large.select(
         features,                       // softplus(x) ~= x for x large
         too_small.select(features_exp,  // softplus(x) ~= exp(x) for x small
-                         (features_exp + features.constant(T(1))).log()));
+                         features_exp.log1p()));
   }
 };
 
@@ -73,4 +76,4 @@ struct SoftplusGrad {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SOFTPLUS_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SOFTPLUS_OP_H_

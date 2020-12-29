@@ -16,11 +16,19 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER8(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
-          int32, int64, uint8, int8, int16);
-#if GOOGLE_CUDA
+REGISTER5(BinaryOp, CPU, "Less", functor::less, float, Eigen::half, double,
+          bfloat16, int32);
+REGISTER4(BinaryOp, CPU, "Less", functor::less, int64, uint8, int8, int16);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if !defined(MLIR_GENERATED_GPU_KERNELS_ENABLED) || \
+    !defined(MLIR_GENERATED_EXPERIMENTAL_GPU_KERNELS_ENABLED)
 REGISTER7(BinaryOp, GPU, "Less", functor::less, float, Eigen::half, double,
           int64, uint8, int8, int16);
+#else
+// TODO(b/172804967): We do not generate unsigned kernels for GPU via mlir.
+REGISTER(BinaryOp, GPU, "Less", functor::less, uint8);
+#endif
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
@@ -33,5 +41,4 @@ REGISTER_KERNEL_BUILDER(Name("Less")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::less<int32>>);
 #endif
-
 }  // namespace tensorflow

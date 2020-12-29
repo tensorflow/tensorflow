@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "QuantizeAndDequantizeV4"
+  summary: "Returns the gradient of `QuantizeAndDequantizeV4`."
+  description: <<END
+This is almost identical to QuantizeAndDequantizeV2, except that it returns a
+gradient of 1 for inputs that are within the quantization range, or 0 otherwise.
+END
+}

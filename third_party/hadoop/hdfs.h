@@ -16,8 +16,8 @@
  * limitations under the License.
  */
 
-#ifndef LIBHDFS_HDFS_H
-#define LIBHDFS_HDFS_H
+#ifndef TENSORFLOW_THIRD_PARTY_HADOOP_HDFS_H_
+#define TENSORFLOW_THIRD_PARTY_HADOOP_HDFS_H_
 
 #include <errno.h>  /* for EINTERNAL, etc. */
 #include <fcntl.h>  /* for O_RDONLY, O_WRONLY */
@@ -167,11 +167,11 @@ LIBHDFS_EXTERNAL
 void hdfsFileFreeReadStatistics(struct hdfsReadStatistics *stats);
 
 /**
- * hdfsConnectAsUser - Connect to a hdfs file system as a specific user
+ * hdfsConnectAsUser - Connect to an hdfs file system as a specific user
  * Connect to the hdfs.
  * @param nn   The NameNode.  See hdfsBuilderSetNameNode for details.
  * @param port The port on which the server is listening.
- * @param user the user name (this is hadoop domain user). Or NULL is equivelant
+ * @param user the user name (this is hadoop domain user). Or NULL is equivalent
  * to hhdfsConnect(host, port)
  * @return Returns a handle to the filesystem or NULL on error.
  * @deprecated Use hdfsBuilderConnect instead.
@@ -180,7 +180,7 @@ LIBHDFS_EXTERNAL
 hdfsFS hdfsConnectAsUser(const char *nn, tPort port, const char *user);
 
 /**
- * hdfsConnect - Connect to a hdfs file system.
+ * hdfsConnect - Connect to an hdfs file system.
  * Connect to the hdfs.
  * @param nn   The NameNode.  See hdfsBuilderSetNameNode for details.
  * @param port The port on which the server is listening.
@@ -377,7 +377,7 @@ LIBHDFS_EXTERNAL
 int hdfsDisconnect(hdfsFS fs);
 
 /**
- * hdfsOpenFile - Open a hdfs file in given mode.
+ * hdfsOpenFile - Open an hdfs file in given mode.
  * @param fs The configured filesystem handle.
  * @param path The full path to the file.
  * @param flags - an | of bits/fcntl.h file flags - supported flags are
@@ -397,7 +397,7 @@ hdfsFile hdfsOpenFile(hdfsFS fs, const char *path, int flags, int bufferSize,
                       short replication, tSize blocksize);
 
 /**
- * hdfsTruncateFile - Truncate a hdfs file to given lenght.
+ * hdfsTruncateFile - Truncate an hdfs file to given length.
  * @param fs The configured filesystem handle.
  * @param path The full path to the file.
  * @param newlength The size the file is to be truncated to
@@ -904,7 +904,7 @@ void hadoopRzBufferFree(hdfsFile file, struct hadoopRzBuffer *buffer);
 #endif
 
 #undef LIBHDFS_EXTERNAL
-#endif /*LIBHDFS_HDFS_H*/
+#endif  // TENSORFLOW_THIRD_PARTY_HADOOP_HDFS_H_
 
 /**
  * vim: ts=4: sw=4: et

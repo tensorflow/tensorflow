@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
 
 // Functor definitions for ScatterND ops, must be compilable by nvcc.
 
@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -44,56 +44,57 @@ class OpKernelContext;
 // Specialization of UpdateExecutor to CPU
 namespace update_executor {
 
-template <typename Input, typename Update, typename Output,
+template <typename T, typename Input, typename Update, typename Output,
           scatter_nd_op::UpdateOp OP>
 class UpdateExecutor {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input value, Update update,
-                                          Output output);
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input value,
+                                          Update update, Output output);
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::ASSIGN> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output,
+                     scatter_nd_op::UpdateOp::ASSIGN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output = update;
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */,
+                                          Update update, Output output) {
+    output.device(device) = update;
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::ADD> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::ADD> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output += update;
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */,
+                                          Update update, Output output) {
+    output.device(device) += update;
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::SUB> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input /* input */, Update update,
-                                          Output output) {
-    output -= update;
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */,
+                                          Update update, Output output) {
+    output.device(device) -= update;
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::MUL> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::MIN> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input input, Update update,
-                                          Output output) {
-    output = input * update;
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */,
+                                          Update update, Output output) {
+    output.device(device) = output.cwiseMin(update);
   }
 };
 
-template <typename Input, typename Update, typename Output>
-class UpdateExecutor<Input, Update, Output, scatter_nd_op::UpdateOp::DIV> {
+template <typename T, typename Input, typename Update, typename Output>
+class UpdateExecutor<T, Input, Update, Output, scatter_nd_op::UpdateOp::MAX> {
  public:
-  EIGEN_STRONG_INLINE static void Execute(Input input, Update update,
-                                          Output output) {
-    output = input / update;
+  EIGEN_STRONG_INLINE static void Execute(const T& device, Input /* input */,
+                                          Update update, Output output) {
+    output.device(device) = output.cwiseMax(update);
   }
 };
 
@@ -140,11 +141,12 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
         break;
       } else {
         auto input_chip = Toutput.template chip<0>(i);
-        auto output_chip = input_chip.device(d);
+        auto output_chip = input_chip;
         auto update_chip = Tupdates.template chip<0>(loc);
         update_executor::UpdateExecutor<
-            decltype(input_chip), decltype(update_chip), decltype(output_chip),
-            OP>::Execute(input_chip, update_chip, output_chip);
+            CPUDevice, decltype(input_chip), decltype(update_chip),
+            decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
+                                                output_chip);
       }
     }
 
@@ -173,21 +175,24 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 #define REGISTER_SCATTER_ND_MATH(type)                           \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::ADD); \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
-// TODO(simister): Re-enable after identifying a way to reduce the binary size
-// due to too many template instantiations.
-//  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MUL);
-//  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::DIV);
+
+#define REGISTER_SCATTER_ND_MIN_MAX(type)                        \
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MAX); \
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MIN);
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
-TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH)
+REGISTER_SCATTER_ND_INDEX(tstring, scatter_nd_op::UpdateOp::ADD);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX);
+TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 
 #undef REGISTER_SCATTER_ND_MATH
+#undef REGISTER_SCATTER_ND_MIN_MAX
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_INDEX
 #undef REGISTER_SCATTER_ND_FULL
-
 }  // namespace functor
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SCATTER_ND_OP_CPU_IMPL_H_

@@ -20,14 +20,18 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import os
+import sys
+
+import six
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import saver_pb2
+from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -38,9 +42,20 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.util import function_utils
+from tensorflow.python.util.tf_export import tf_export
+
+# The list of exceptions that we should recover from. Exceptions not in this
+# list may terminate the job.
+_PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
+
+# Value that indicates no value was provided.
+USE_DEFAULT = object()
 
 
-# TODO(touts): Share that with the Supervisor.
+@tf_export(v1=['train.Scaffold'])
 class Scaffold(object):
   """Structure to create or gather pieces commonly needed to train a model.
 
@@ -62,8 +77,9 @@ class Scaffold(object):
   The following pieces are directly accessible as attributes of the `Scaffold`
   object:
 
-  * `saver`: A `tf.Saver` object taking care of saving the variables.  Picked
-    from and stored into the `SAVERS` collection in the graph by default.
+  * `saver`: A `tf.compat.v1.train.Saver` object taking care of saving the
+  variables.
+    Picked from and stored into the `SAVERS` collection in the graph by default.
   * `init_op`: An op to run to initialize the variables.  Picked from and
     stored into the `INIT_OP` collection in the graph by default.
   * `ready_op`: An op to verify that the variables are initialized.  Picked
@@ -77,14 +93,12 @@ class Scaffold(object):
     from and stored into the `LOCAL_INIT_OP` collection in the graph by default.
   * `summary_op`: An op to run and merge the summaries in the graph.  Picked
     from and stored into the `SUMMARY_OP` collection in the graph by default.
-  * `global_step`: A tensor containing the global step counter.  Picked
-    from and stored into the `GLOBAL_STEP` collection in the graph by default.
 
   You can also pass the following additional pieces to the constructor:
 
-  * `init_feed_dict`: A sessionn feed dictionary that should be used when
+  * `init_feed_dict`: A session feed dictionary that should be used when
      running the init op.
-  * `init_fn`: A callable to run run after the init op to perform additional
+  * `init_fn`: A callable to run after the init op to perform additional
     initializations.  The callable will be called as
     `init_fn(scaffold, session)`.
 
@@ -98,7 +112,9 @@ class Scaffold(object):
                ready_for_local_init_op=None,
                local_init_op=None,
                summary_op=None,
-               saver=None):
+               saver=None,
+               copy_from_scaffold=None,
+               local_init_feed_dict=None):
     """Create a scaffold.
 
     Args:
@@ -112,77 +128,122 @@ class Scaffold(object):
         a non-empty 1D string tensor listing the names of the non-initialized
         variables.
       ready_for_local_init_op: Optional op to verify that the global variables
-        are initialized and `local_init_op` can be run. Must return an empty
-        1D string tensor when the global variables are initialized, or a
-        non-empty 1D string tensor listing the names of the non-initialized
-        global variables.
+        are initialized and `local_init_op` can be run. Must return an empty 1D
+        string tensor when the global variables are initialized, or a non-empty
+        1D string tensor listing the names of the non-initialized global
+        variables.
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
-      saver: Optional `tf.Saver` object to use to save and restore variables.
+      saver: Optional `tf.compat.v1.train.Saver` object to use to save and
+        restore variables.  May also be a `tf.train.Checkpoint` object, in which
+        case object-based checkpoints are saved. This will also load some
+        object-based checkpoints saved from elsewhere, but that loading may be
+        fragile since it uses fixed keys rather than performing a full
+        graph-based match. For example if a variable has two paths from the
+        `Checkpoint` object because two `Model` objects share the `Layer` object
+        that owns it, removing one `Model` may change the keys and break
+        checkpoint loading through this API, whereas a graph-based match would
+        match the variable through the other `Model`.
+      copy_from_scaffold: Optional scaffold object to copy fields from. Its
+        fields will be overwritten by the provided fields in this function.
+      local_init_feed_dict: Optional session feed dictionary to use when running
+        the local_init_op.
     """
+    if copy_from_scaffold is not None:
+      if not isinstance(copy_from_scaffold, Scaffold):
+        raise TypeError('copy_from_scaffold is not a Scaffold instance.')
+      # We need _coalesce since Tensor is not converted to bool automatically,
+      # so the common idiom of (a or b) does not work.
+      coalesce = lambda a, b: a if a is not None else b
+      init_op = coalesce(init_op, copy_from_scaffold.init_op)
+      init_feed_dict = coalesce(init_feed_dict,
+                                copy_from_scaffold.init_feed_dict)
+      # Use the original init_fn provided by the user to init the new Scaffold.
+      init_fn = coalesce(init_fn, copy_from_scaffold._user_init_fn)  # pylint: disable=protected-access
+      ready_op = coalesce(ready_op, copy_from_scaffold.ready_op)
+      ready_for_local_init_op = coalesce(
+          ready_for_local_init_op, copy_from_scaffold.ready_for_local_init_op)
+      local_init_op = coalesce(local_init_op, copy_from_scaffold.local_init_op)
+      local_init_feed_dict = coalesce(local_init_feed_dict,
+                                      copy_from_scaffold.local_init_feed_dict)
+      summary_op = coalesce(summary_op, copy_from_scaffold.summary_op)
+      saver = coalesce(saver, copy_from_scaffold.saver)
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
+    self._user_init_fn = init_fn
     if init_fn:
       self._init_fn = lambda sess: init_fn(self, sess)
     else:
       self._init_fn = None
 
     self._init_op = init_op
+    self._init_feed_dict = init_feed_dict
     self._ready_op = ready_op
     self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
+    self._local_init_feed_dict = local_init_feed_dict
     self._summary_op = summary_op
     self._saver = saver
-    self._init_feed_dict = init_feed_dict
 
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
     if self._init_op is None:
+
       def default_init_op():
         return control_flow_ops.group(
             variables.global_variables_initializer(),
             resources.initialize_resources(resources.shared_resources()))
-      self._init_op = Scaffold.get_or_default(
-          'init_op',
-          ops.GraphKeys.INIT_OP,
-          default_init_op)
+
+      self._init_op = Scaffold.get_or_default('init_op', ops.GraphKeys.INIT_OP,
+                                              default_init_op)
     if self._ready_op is None:
+
       def default_ready_op():
         return array_ops.concat([
             variables.report_uninitialized_variables(),
             resources.report_uninitialized_resources()
         ], 0)
-      self._ready_op = Scaffold.get_or_default(
-          'ready_op', ops.GraphKeys.READY_OP,
-          default_ready_op)
+
+      self._ready_op = Scaffold.get_or_default('ready_op',
+                                               ops.GraphKeys.READY_OP,
+                                               default_ready_op)
     if self._ready_for_local_init_op is None:
+
       def default_ready_for_local_init_op():
-        return variables.report_uninitialized_variables(
-            variables.global_variables())
+        return array_ops.concat([
+            variables.report_uninitialized_variables(
+                variables.global_variables()),
+            resources.report_uninitialized_resources(
+                resources.shared_resources())
+        ], 0)
+
       self._ready_for_local_init_op = Scaffold.get_or_default(
           'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
           default_ready_for_local_init_op)
     if self._local_init_op is None:
       self._local_init_op = Scaffold.get_or_default(
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
-          Scaffold._default_local_init_op)
+          Scaffold.default_local_init_op)
     if self._summary_op is None:
       self._summary_op = Scaffold.get_or_default('summary_op',
                                                  ops.GraphKeys.SUMMARY_OP,
                                                  summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
-      self._saver = Scaffold.get_or_default(
-          'saver',
-          ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True, allow_empty=True,
-                                       write_version=saver_pb2.SaverDef.V2))
+      self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
     # pylint: enable=g-long-lambda
-    self._saver.build()
+    if isinstance(self._saver, trackable_util.Checkpoint):
+      self._saver = training_saver.Saver(
+          var_list=graph_view.ObjectGraphView(
+              self._saver).frozen_saveable_objects(),
+          sharded=True)
+    else:
+      self._saver.build()
 
     ops.get_default_graph().finalize()
+    logging.info('Graph was finalized.')
     return self
 
   @property
@@ -206,6 +267,10 @@ class Scaffold(object):
     return self._local_init_op
 
   @property
+  def local_init_feed_dict(self):
+    return self._local_init_feed_dict
+
+  @property
   def summary_op(self):
     return self._summary_op
 
@@ -223,11 +288,11 @@ class Scaffold(object):
     elements = ops.get_collection(collection_key)
     if elements:
       if len(elements) > 1:
-        raise RuntimeError('More than one item in the collection "%s". '
-                           'Please indicate which one to use by passing it to '
-                           'the tf.Scaffold constructor as:  '
-                           'tf.Scaffold(%s=item to use)', collection_key,
-                           arg_name)
+        raise RuntimeError(
+            'More than one item in the collection "%s". '
+            'Please indicate which one to use by passing it to '
+            'the tf.Scaffold constructor as:  '
+            'tf.Scaffold(%s=item to use)', collection_key, arg_name)
       return elements[0]
     op = default_constructor()
     if op is not None:
@@ -235,28 +300,162 @@ class Scaffold(object):
     return op
 
   @staticmethod
-  def _default_local_init_op():
-    return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.tables_initializer())
+  def default_local_init_op():
+    """Returns an op that groups the default local init ops.
+
+    This op is used during session initialization when a Scaffold is
+    initialized without specifying the local_init_op arg. It includes
+    `tf.compat.v1.local_variables_initializer`,
+    `tf.compat.v1.tables_initializer`, and also
+    initializes local session resources.
+
+    Returns:
+      The default Scaffold local init op.
+    """
+    return control_flow_ops.group(
+        variables.local_variables_initializer(),
+        lookup_ops.tables_initializer(),
+        resources.initialize_resources(resources.local_resources()))
 
 
-def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
-                             is_chief=True,
-                             checkpoint_dir=None,
-                             scaffold=None,
-                             hooks=None,
-                             chief_only_hooks=None,
-                             save_checkpoint_secs=600,
-                             save_summaries_steps=100,
-                             save_summaries_secs=None,
-                             config=None,
-                             stop_grace_period_secs=120):
+def _create_monitored_session_with_worker_context(
+    worker_context,  # pylint: disable=missing-docstring
+    scaffold,
+    checkpoint_dir=None,
+    hooks=None,
+    chief_only_hooks=None,
+    save_checkpoint_secs=None,
+    save_summaries_steps=None,
+    save_summaries_secs=None,
+    config=None,
+    stop_grace_period_secs=120,
+    log_step_count_steps=100,
+    max_wait_secs=7200,
+    save_checkpoint_steps=None,
+    summary_dir=None,
+    save_graph_def=True):
+  all_hooks = []
+  if hooks:
+    all_hooks.extend(hooks)
+  if chief_only_hooks and worker_context.is_chief:
+    all_hooks.extend(chief_only_hooks)
+
+  # We need to call save or summary ops on all workers since these ops may
+  # contain collective ops, only running save ops on some workers would make
+  # collective ops hang. Therefore on those workers that don't need to actually
+  # write checkpoints or summaries, we let them write to a temp directory.
+  # pylint: disable=protected-access
+  if type(
+      worker_context._strategy).__name__ in ('CollectiveAllReduceStrategy',
+                                             'CollectiveAllReduceStrategyV1',
+                                             'MultiWorkerMirroredStrategy'):
+    if worker_context.task_type:
+      tmpdir = 'tmp_%s_%d' % (worker_context.task_type, worker_context.task_id)
+    else:
+      tmpdir = 'tmp'
+
+    if save_checkpoint_secs:
+      logging.warning('Collective ops may deadlock with '
+                      '`save_checkpoints_secs` please use '
+                      '`save_checkpoint_steps` instead. Clearing '
+                      '`save_checkpoint_secs` and setting '
+                      '`save_checkpoint_steps` to 1000 now.')
+      save_checkpoint_secs = None
+      save_checkpoint_steps = 1000
+    if save_summaries_secs:
+      logging.warning('Collective ops may run out of sync with'
+                      '`save_summaries_secs`, please use '
+                      '`save_summaries_steps` instead.')
+  else:
+    tmpdir = None
+
+  summary_dir = summary_dir or checkpoint_dir
+  if summary_dir and log_step_count_steps and log_step_count_steps > 0:
+    if worker_context.should_save_summary:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=summary_dir, every_n_steps=log_step_count_steps))
+    elif tmpdir:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=os.path.join(summary_dir, tmpdir),
+              every_n_steps=log_step_count_steps))
+
+  if (((save_summaries_steps and save_summaries_steps > 0) or
+       (save_summaries_secs and save_summaries_secs > 0)) and summary_dir):
+    if worker_context.should_save_summary:
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=summary_dir))
+    elif tmpdir:
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=os.path.join(summary_dir, tmpdir)))
+
+    if (((save_checkpoint_secs and save_checkpoint_secs > 0) or
+         (save_checkpoint_steps and save_checkpoint_steps > 0)) and
+        checkpoint_dir):
+      if worker_context.should_checkpoint:
+        all_hooks.append(
+            basic_session_run_hooks.CheckpointSaverHook(
+                checkpoint_dir,
+                save_steps=save_checkpoint_steps,
+                save_secs=save_checkpoint_secs,
+                scaffold=scaffold,
+                save_graph_def=save_graph_def))
+      elif tmpdir:
+        all_hooks.append(
+            basic_session_run_hooks.CheckpointSaverHook(
+                os.path.join(checkpoint_dir, tmpdir),
+                save_steps=save_checkpoint_steps,
+                save_secs=save_checkpoint_secs,
+                scaffold=scaffold,
+                save_graph_def=save_graph_def))
+
+  logging.info('all_hooks %r', all_hooks)
+  session_creator = worker_context.session_creator(
+      scaffold,
+      config=config,
+      checkpoint_dir=checkpoint_dir,
+      max_wait_secs=max_wait_secs)
+  return MonitoredSession(
+      session_creator=session_creator,
+      hooks=all_hooks,
+      stop_grace_period_secs=stop_grace_period_secs)
+
+
+@tf_export(v1=['train.MonitoredTrainingSession'])
+def MonitoredTrainingSession(
+    master='',  # pylint: disable=invalid-name
+    is_chief=True,
+    checkpoint_dir=None,
+    scaffold=None,
+    hooks=None,
+    chief_only_hooks=None,
+    save_checkpoint_secs=USE_DEFAULT,
+    save_summaries_steps=USE_DEFAULT,
+    save_summaries_secs=USE_DEFAULT,
+    config=None,
+    stop_grace_period_secs=120,
+    log_step_count_steps=100,
+    max_wait_secs=7200,
+    save_checkpoint_steps=USE_DEFAULT,
+    summary_dir=None,
+    save_graph_def=True):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
   creates hooks related to checkpoint and summary saving. For workers, this
   utility sets proper session creator which waits for the chief to
-  inialize/restore.
+  initialize/restore. Please check `tf.compat.v1.train.MonitoredSession` for
+  more
+  information.
 
 
   Args:
@@ -266,36 +465,98 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       initialize or recover the TensorFlow session.
     checkpoint_dir: A string.  Optional path to a directory where to restore
       variables.
-    scaffold: A `Scaffold` used for gathering or building supportive ops. If
-      not specified, a default one is created. It's used to finalize the graph.
+    scaffold: A `Scaffold` used for gathering or building supportive ops. If not
+      specified, a default one is created. It's used to finalize the graph.
     hooks: Optional list of `SessionRunHook` objects.
     chief_only_hooks: list of `SessionRunHook` objects. Activate these hooks if
       `is_chief==True`, ignore otherwise.
     save_checkpoint_secs: The frequency, in seconds, that a checkpoint is saved
-      using a default checkpoint saver. If `save_checkpoint_secs` is set to
-      `None`, then the default checkpoint saver isn't used.
+      using a default checkpoint saver. If both `save_checkpoint_steps` and
+      `save_checkpoint_secs` are set to `None`, then the default checkpoint
+      saver isn't used. If both are provided, then only `save_checkpoint_secs`
+      is used. Default 600.
     save_summaries_steps: The frequency, in number of global steps, that the
       summaries are written to disk using a default summary saver. If both
       `save_summaries_steps` and `save_summaries_secs` are set to `None`, then
-      the default summary saver isn't used.
+      the default summary saver isn't used. Default 100.
     save_summaries_secs: The frequency, in secs, that the summaries are written
       to disk using a default summary saver.  If both `save_summaries_steps` and
       `save_summaries_secs` are set to `None`, then the default summary saver
-      isn't used.
-    config: an instance of `tf.ConfigProto` proto used to configure the session.
-      It's the `config` argument of constructor of `tf.Session`.
+      isn't used. Default not enabled.
+    config: an instance of `tf.compat.v1.ConfigProto` proto used to configure
+      the session. It's the `config` argument of constructor of
+      `tf.compat.v1.Session`.
     stop_grace_period_secs: Number of seconds given to threads to stop after
       `close()` has been called.
+    log_step_count_steps: The frequency, in number of global steps, that the
+      global step/sec is logged.
+    max_wait_secs: Maximum time workers should wait for the session to become
+      available. This should be kept relatively short to help detect incorrect
+      code, but sometimes may need to be increased if the chief takes a while to
+      start up.
+    save_checkpoint_steps: The frequency, in number of global steps, that a
+      checkpoint is saved using a default checkpoint saver. If both
+      `save_checkpoint_steps` and `save_checkpoint_secs` are set to `None`, then
+      the default checkpoint saver isn't used. If both are provided, then only
+      `save_checkpoint_secs` is used. Default not enabled.
+    summary_dir: A string.  Optional path to a directory where to save
+      summaries. If None, checkpoint_dir is used instead.
+    save_graph_def: Whether to save the GraphDef and MetaGraphDef to
+      `checkpoint_dir`. The GraphDef is saved after the session is created as
+      `graph.pbtxt`. MetaGraphDefs are saved out for every checkpoint as
+      `model.ckpt-*.meta`.
 
   Returns:
     A `MonitoredSession` object.
   """
+  if save_summaries_steps == USE_DEFAULT and save_summaries_secs == USE_DEFAULT:
+    save_summaries_steps = 100
+    save_summaries_secs = None
+  elif save_summaries_secs == USE_DEFAULT:
+    save_summaries_secs = None
+  elif save_summaries_steps == USE_DEFAULT:
+    save_summaries_steps = None
+
+  if (save_checkpoint_steps == USE_DEFAULT and
+      save_checkpoint_secs == USE_DEFAULT):
+    save_checkpoint_steps = None
+    save_checkpoint_secs = 600
+  elif save_checkpoint_secs == USE_DEFAULT:
+    save_checkpoint_secs = None
+  elif save_checkpoint_steps == USE_DEFAULT:
+    save_checkpoint_steps = None
+
   scaffold = scaffold or Scaffold()
+  worker_context = distribute_coordinator_context.get_current_worker_context()
+
+  if worker_context:
+    return _create_monitored_session_with_worker_context(
+        worker_context,
+        scaffold,
+        checkpoint_dir=checkpoint_dir,
+        hooks=hooks,
+        chief_only_hooks=chief_only_hooks,
+        save_checkpoint_secs=save_checkpoint_secs,
+        save_summaries_steps=save_summaries_steps,
+        save_summaries_secs=save_summaries_secs,
+        config=config,
+        stop_grace_period_secs=stop_grace_period_secs,
+        log_step_count_steps=log_step_count_steps,
+        max_wait_secs=max_wait_secs,
+        save_checkpoint_steps=save_checkpoint_steps,
+        summary_dir=summary_dir,
+        save_graph_def=save_graph_def)
+
   if not is_chief:
     session_creator = WorkerSessionCreator(
-        scaffold=scaffold, master=master, config=config)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks or [],
-                            stop_grace_period_secs=stop_grace_period_secs)
+        scaffold=scaffold,
+        master=master,
+        config=config,
+        max_wait_secs=max_wait_secs)
+    return MonitoredSession(
+        session_creator=session_creator,
+        hooks=hooks or [],
+        stop_grace_period_secs=stop_grace_period_secs)
 
   all_hooks = []
   if chief_only_hooks:
@@ -306,27 +567,45 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       master=master,
       config=config)
 
-  if checkpoint_dir:
-    all_hooks.append(
-        basic_session_run_hooks.StepCounterHook(output_dir=checkpoint_dir))
+  summary_dir = summary_dir or checkpoint_dir
+  if summary_dir:
+    if log_step_count_steps and log_step_count_steps > 0:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=summary_dir, every_n_steps=log_step_count_steps))
 
-    if (save_summaries_steps and save_summaries_steps > 0) or (
-        save_summaries_secs and save_summaries_secs > 0):
-      all_hooks.append(basic_session_run_hooks.SummarySaverHook(
-          scaffold=scaffold,
-          save_steps=save_summaries_steps,
-          save_secs=save_summaries_secs,
-          output_dir=checkpoint_dir))
-    if save_checkpoint_secs and save_checkpoint_secs > 0:
-      all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          checkpoint_dir, save_secs=save_checkpoint_secs, scaffold=scaffold))
+    if (save_summaries_steps and
+        save_summaries_steps > 0) or (save_summaries_secs and
+                                      save_summaries_secs > 0):
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=summary_dir))
+
+  if checkpoint_dir:
+    if (save_checkpoint_secs and
+        save_checkpoint_secs > 0) or (save_checkpoint_steps and
+                                      save_checkpoint_steps > 0):
+      all_hooks.append(
+          basic_session_run_hooks.CheckpointSaverHook(
+              checkpoint_dir,
+              save_steps=save_checkpoint_steps,
+              save_secs=save_checkpoint_secs,
+              scaffold=scaffold,
+              save_graph_def=save_graph_def))
 
   if hooks:
     all_hooks.extend(hooks)
-  return MonitoredSession(session_creator=session_creator, hooks=all_hooks,
-                          stop_grace_period_secs=stop_grace_period_secs)
+  return MonitoredSession(
+      session_creator=session_creator,
+      hooks=all_hooks,
+      stop_grace_period_secs=stop_grace_period_secs)
 
 
+@tf_export(v1=['train.SessionCreator'])
+@six.add_metaclass(abc.ABCMeta)
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -336,8 +615,9 @@ class SessionCreator(object):
         'create_session is not implemented for {}.'.format(self))
 
 
+@tf_export(v1=['train.ChiefSessionCreator'])
 class ChiefSessionCreator(SessionCreator):
-  """Creates a tf.Session  for a chief."""
+  """Creates a tf.compat.v1.Session for a chief."""
 
   def __init__(self,
                scaffold=None,
@@ -364,11 +644,13 @@ class ChiefSessionCreator(SessionCreator):
     self._config = config
 
   def _get_session_manager(self):
+    """Gets or creates a SessionManager."""
     if self._session_manager:
       return self._session_manager
 
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
+        local_init_feed_dict=self._scaffold.local_init_feed_dict,
         ready_op=self._scaffold.ready_op,
         ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
@@ -387,10 +669,15 @@ class ChiefSessionCreator(SessionCreator):
         init_fn=self._scaffold.init_fn)
 
 
+@tf_export(v1=['train.WorkerSessionCreator'])
 class WorkerSessionCreator(SessionCreator):
-  """Creates a tf.Session for a worker."""
+  """Creates a tf.compat.v1.Session for a worker."""
 
-  def __init__(self, scaffold=None, master='', config=None):
+  def __init__(self,
+               scaffold=None,
+               master='',
+               config=None,
+               max_wait_secs=30 * 60):
     """Initializes a worker session creator.
 
     Args:
@@ -398,18 +685,22 @@ class WorkerSessionCreator(SessionCreator):
         not specified a default one is created. It's used to finalize the graph.
       master: `String` representation of the TensorFlow master to use.
       config: `ConfigProto` proto used to configure the session.
+      max_wait_secs: Maximum time to wait for the session to become available.
     """
     self._scaffold = scaffold or Scaffold()
     self._session_manager = None
     self._master = master
     self._config = config
+    self._max_wait_secs = max_wait_secs
 
   def _get_session_manager(self):
+    """Gets or creates a SessionManager."""
     if self._session_manager:
       return self._session_manager
 
     self._session_manager = sm.SessionManager(
         local_init_op=self._scaffold.local_init_op,
+        local_init_feed_dict=self._scaffold.local_init_feed_dict,
         ready_op=self._scaffold.ready_op,
         ready_for_local_init_op=self._scaffold.ready_for_local_init_op,
         graph=ops.get_default_graph())
@@ -418,13 +709,16 @@ class WorkerSessionCreator(SessionCreator):
   def create_session(self):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
-        self._master, config=self._config)
+        self._master, config=self._config, max_wait_secs=self._max_wait_secs)
 
 
 class _MonitoredSession(object):
   """See `MonitoredSession` or `SingularMonitoredSession`."""
 
-  def __init__(self, session_creator, hooks, should_recover,
+  def __init__(self,
+               session_creator,
+               hooks,
+               should_recover,
                stop_grace_period_secs=120):
     """Sets up a Monitored or Hooked Session.
 
@@ -433,7 +727,7 @@ class _MonitoredSession(object):
         `ChiefSessionCreator` or a `WorkerSessionCreator`.
       hooks: An iterable of `SessionRunHook' objects.
       should_recover: A bool. Indicates whether to recover from `AbortedError`
-        or not.
+        and `UnavailableError` or not.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `close()` has been called.
     """
@@ -441,6 +735,11 @@ class _MonitoredSession(object):
     self._hooks = hooks or []
     for h in self._hooks:
       h.begin()
+
+    worker_context = distribute_coordinator_context.get_current_worker_context()
+    if not session_creator and worker_context:
+      session_creator = worker_context.session_creator()
+
     # Create the session.
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
@@ -472,15 +771,107 @@ class _MonitoredSession(object):
     Returns:
       Same as `tf.Session.run()`.
     """
-    return self._sess.run(fetches,
-                          feed_dict=feed_dict,
-                          options=options,
-                          run_metadata=run_metadata)
+    return self._sess.run(
+        fetches,
+        feed_dict=feed_dict,
+        options=options,
+        run_metadata=run_metadata)
+
+  def run_step_fn(self, step_fn):
+    """Run ops using a step function.
+
+    Args:
+      step_fn: A function or a method with a single argument of type
+        `StepContext`.  The function may use methods of the argument to perform
+        computations with access to a raw session.  The returned value of the
+        `step_fn` will be returned from `run_step_fn`, unless a stop is
+        requested.  In that case, the next `should_stop` call will return True.
+        Example usage:
+            ```python
+            with tf.Graph().as_default():
+              c = tf.compat.v1.placeholder(dtypes.float32)
+              v = tf.add(c, 4.0)
+              w = tf.add(c, 0.5)
+              def step_fn(step_context):
+                a = step_context.session.run(fetches=v, feed_dict={c: 0.5})
+                if a <= 4.5:
+                  step_context.request_stop()
+                  return step_context.run_with_hooks(fetches=w,
+                                                     feed_dict={c: 0.1})
+
+              with tf.MonitoredSession() as session:
+                while not session.should_stop():
+                  a = session.run_step_fn(step_fn)
+            ```
+            Hooks interact with the `run_with_hooks()` call inside the
+                 `step_fn` as they do with a `MonitoredSession.run` call.
+
+    Returns:
+      Returns the returned value of `step_fn`.
+
+    Raises:
+      StopIteration: if `step_fn` has called `request_stop()`.  It may be
+        caught by `with tf.MonitoredSession()` to close the session.
+      ValueError: if `step_fn` doesn't have a single argument called
+        `step_context`. It may also optionally have `self` for cases when it
+        belongs to an object.
+    """
+    step_fn_arguments = function_utils.fn_args(step_fn)
+    if step_fn_arguments != ('step_context',) and step_fn_arguments != (
+        'self',
+        'step_context',
+    ):
+      raise ValueError(
+          '`step_fn` may either have one `step_context` argument, or'
+          ' `self` and `step_context` arguments if it\'s an instance'
+          ' method. Got {} instead.'.format(step_fn_arguments))
+
+    # `self._sess` is either `_RecoverableSession` or a `_CoordinatedSession`.
+    # Setting `run_with_hooks` to `None` will cause `run_with_hooks` to be
+    # `_CoordinatedSession.run` downstream in either case. This allows
+    # `_PREEMPTION_ERRORS` to propage from within `step_fn` to
+    # `_RecoverableSession.run_step_fn`.
+    return self._sess.run_step_fn(step_fn, self._tf_sess(), run_with_hooks=None)
+
+  class StepContext(object):
+    """Control flow instrument for the `step_fn` from `run_step_fn()`.
+
+       Users of `step_fn` may perform `run()` calls without running hooks
+       by accessing the `session`.  A `run()` call with hooks may be performed
+       using `run_with_hooks()`.  Computation flow can be interrupted using
+       `request_stop()`.
+    """
+
+    def __init__(self, session, run_with_hooks_fn):
+      """Initializes the `step_context` argument for a `step_fn` invocation.
+
+      Args:
+        session: An instance of `tf.compat.v1.Session`.
+        run_with_hooks_fn: A function for running fetches and hooks.
+      """
+      self._session = session
+      self._run_with_hooks_fn = run_with_hooks_fn
+
+    @property
+    def session(self):
+      return self._session
+
+    def run_with_hooks(self, *args, **kwargs):
+      """Same as `MonitoredSession.run`. Accepts the same arguments."""
+      return self._run_with_hooks_fn(*args, **kwargs)
+
+    def request_stop(self):
+      """Exit the training loop by causing `should_stop()` to return `True`.
+
+         Causes `step_fn` to exit by raising an exception.
+
+      Raises:
+        StopIteration
+      """
+      raise StopIteration('step_fn has requested the iterations to stop.')
 
   def should_stop(self):
-    if self._sess:
-      return self._sess.should_stop()
-    return True
+    return self._sess is None or self._sess.should_stop()
 
   def close(self):
     self._close_internal()
@@ -495,8 +886,8 @@ class _MonitoredSession(object):
     # __exit__ should return True to suppress an exception.
     return exception_type is None
 
-  class _CoordinatedSessionCreator(object):
-    """Factory for the _RecoverableSession."""
+  class _CoordinatedSessionCreator(SessionCreator):
+    """Factory for _CoordinatedSession."""
 
     def __init__(self, session_creator, hooks, stop_grace_period_secs):
       self._session_creator = session_creator
@@ -511,7 +902,8 @@ class _MonitoredSession(object):
       self.tf_sess = self._session_creator.create_session()
       # We don't want coordinator to suppress any exception.
       self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
-      queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      if ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+        queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
       # Inform the hooks that a new session has been created.
       for hook in self._hooks:
         hook.after_create_session(self.tf_sess, self.coord)
@@ -526,6 +918,8 @@ class _MonitoredSession(object):
           h.end(self._coordinated_creator.tf_sess)
     finally:
       try:
+        if self._sess is None:
+          raise RuntimeError('Session is already closed.')
         self._sess.close()
       finally:
         self._sess = None
@@ -535,7 +929,9 @@ class _MonitoredSession(object):
           ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
-    """Return True if the supervised session is closed.  For tests only.
+    """Return True if the monitored session is closed.
+
+    For tests only.
 
     Returns:
       A boolean.
@@ -543,9 +939,18 @@ class _MonitoredSession(object):
     return self._coordinated_creator.tf_sess is None
 
   def _tf_sess(self):
+    """Return underlying tf.compat.v1.Session object.
+
+    Warning: accessing the returned object in user code is likely to cause races
+    or "flaky tests".
+
+    Returns:
+      A tf.compat.v1.Session object.
+    """
     return self._coordinated_creator.tf_sess
 
 
+@tf_export(v1=['train.MonitoredSession'])
 class MonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, recovery and hooks.
 
@@ -553,7 +958,7 @@ class MonitoredSession(_MonitoredSession):
 
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with MonitoredSession(session_creator=ChiefSessionCreator(...),
                         hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
@@ -569,6 +974,7 @@ class MonitoredSession(_MonitoredSession):
   * initializes the model via initialization ops provided by `Scaffold`
   * restores variables if a checkpoint exists
   * launches queue runners
+  * calls `hook.after_create_session()`
 
   Run: When `run()` is called, the monitored session does following things:
 
@@ -576,8 +982,8 @@ class MonitoredSession(_MonitoredSession):
   * calls TensorFlow `session.run()` with merged fetches and feed_dict
   * calls `hook.after_run()`
   * returns result of `session.run()` asked by user
-  * if `AbortedError` occurs, it recovers or reinitializes the session before
-    executing the run() call again
+  * if `AbortedError` or `UnavailableError` occurs, it recovers or
+    reinitializes the session before executing the run() call again
 
 
   Exit: At the `close()`, the monitored session does following things in order:
@@ -587,7 +993,7 @@ class MonitoredSession(_MonitoredSession):
   * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the monitored_session is used as a context
 
-  How to set `tf.Session` arguments:
+  How to set `tf.compat.v1.Session` arguments:
 
   * In most cases you can set session arguments as follows:
 
@@ -605,6 +1011,13 @@ class MonitoredSession(_MonitoredSession):
 
   See `MonitoredTrainingSession` for an example usage based on chief or worker.
 
+  Note: This is not a `tf.compat.v1.Session`. For example, it cannot do
+  following:
+
+  * it cannot be set as default session.
+  * it cannot be sent to saver.save.
+  * it cannot be sent to tf.train.start_queue_runners.
+
   Args:
     session_creator: A factory object to create session. Typically a
       `ChiefSessionCreator` which is the default one.
@@ -614,34 +1027,41 @@ class MonitoredSession(_MonitoredSession):
     A MonitoredSession object.
   """
 
-  def __init__(self, session_creator=None, hooks=None,
+  def __init__(self,
+               session_creator=None,
+               hooks=None,
                stop_grace_period_secs=120):
     super(MonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=True,
+        session_creator,
+        hooks,
+        should_recover=True,
         stop_grace_period_secs=stop_grace_period_secs)
 
 
+@tf_export(v1=['train.SingularMonitoredSession'])
 class SingularMonitoredSession(_MonitoredSession):
   """Session-like object that handles initialization, restoring, and hooks.
 
   Please note that this utility is not recommended for distributed settings.
-  For distributed settings, please use `tf.train.MonitoredSession`. The
+  For distributed settings, please use `tf.compat.v1.train.MonitoredSession`.
+  The
   differences between `MonitoredSession` and `SingularMonitoredSession` are:
-  * `MonitoredSession` handles `AbortedError` for distributed settings,
-    but `SingularMonitoredSession` does not.
+
+  * `MonitoredSession` handles `AbortedError` and `UnavailableError` for
+    distributed settings, but `SingularMonitoredSession` does not.
   * `MonitoredSession` can be created in `chief` or `worker` modes.
     `SingularMonitoredSession` is always created as `chief`.
-  * You can access the raw `tf.Session` object used by
+  * You can access the raw `tf.compat.v1.Session` object used by
     `SingularMonitoredSession`, whereas in MonitoredSession the raw session is
     private. This can be used:
-    - To `run` without hooks.
-    - To save and restore.
+      - To `run` without hooks.
+      - To save and restore.
   * All other functionality is identical.
 
   Example usage:
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
       sess.run(train_op)
@@ -668,7 +1088,7 @@ class SingularMonitoredSession(_MonitoredSession):
 
   * calls `hook.end()`
   * closes the queue runners and the session
-  * surpresses `OutOfRange` error which indicates that all inputs have been
+  * suppresses `OutOfRange` error which indicates that all inputs have been
     processed if the `SingularMonitoredSession` is used as a context.
   """
 
@@ -678,7 +1098,8 @@ class SingularMonitoredSession(_MonitoredSession):
                master='',
                config=None,
                checkpoint_dir=None,
-               stop_grace_period_secs=120):
+               stop_grace_period_secs=120,
+               checkpoint_filename_with_path=None):
     """Creates a SingularMonitoredSession.
 
     Args:
@@ -691,14 +1112,19 @@ class SingularMonitoredSession(_MonitoredSession):
         variables.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `close()` has been called.
+      checkpoint_filename_with_path: A string. Optional path to a checkpoint
+        file from which to restore variables.
     """
     session_creator = ChiefSessionCreator(
         scaffold=scaffold,
         master=master,
         config=config,
-        checkpoint_dir=checkpoint_dir)
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path)
     super(SingularMonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=False,
+        session_creator,
+        hooks,
+        should_recover=False,
         stop_grace_period_secs=stop_grace_period_secs)
 
   def raw_session(self):
@@ -707,7 +1133,7 @@ class SingularMonitoredSession(_MonitoredSession):
 
 
 class _WrappedSession(object):
-  """Wrapper around a `tf.Session`.
+  """Wrapper around a `tf.compat.v1.Session`.
 
   This wrapper is used as a base class for various session wrappers
   that provide additional functionality such as monitoring, coordination,
@@ -722,7 +1148,8 @@ class _WrappedSession(object):
     """Creates a `_WrappedSession`.
 
     Args:
-      sess: A `tf.Session` or `_WrappedSession` object.  The wrapped session.
+      sess: A `tf.compat.v1.Session` or `_WrappedSession` object.  The wrapped
+        session.
     """
     self._sess = sess
     self._wrapped_is_stoppable = isinstance(self._sess, _WrappedSession)
@@ -761,21 +1188,34 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
+      except _PREEMPTION_ERRORS as e:
+        logging.error(
+            'An error occurred when attempting to close the '
+            'session. This may be due to a preemption in a '
+            'connected worker or parameter server. Error: %s', e)
       finally:
         self._sess = None
 
   def run(self, *args, **kwargs):
     return self._sess.run(*args, **kwargs)
 
+  def run_step_fn(self, step_fn, raw_session, run_with_hooks):
+    # `_RecoverableSession` sets `run_with_hooks` to `_CoordinatedSession.run`.
+    # It is `None` when called from `_CoordinatedSession`. In that case
+    # `self.run` is `_CoordinatedSession.run`.
+    run_with_hooks = run_with_hooks or self.run
+    return step_fn(_MonitoredSession.StepContext(raw_session, run_with_hooks))
+
 
 class _RecoverableSession(_WrappedSession):
-  """A wrapped session that recreates a session on `tf.errors.AbortedError`.
+  """A wrapped session that recreates a session upon certain kinds of errors.
 
   The constructor is passed a SessionCreator object, not a session.
 
   Calls to `run()` are delegated to the wrapped session.  If a call raises the
-  exception `tf.errors.AbortedError`, the wrapped session is closed, and a new
-  one is created by calling the factory again.
+  exception `tf.errors.AbortedError` or `tf.errors.UnavailableError`, the
+  wrapped session is closed, and a new one is created by calling the factory
+  again.
   """
 
   def __init__(self, sess_creator):
@@ -794,25 +1234,84 @@ class _RecoverableSession(_WrappedSession):
     while True:
       try:
         return self._sess_creator.create_session()
-      except errors.AbortedError:
-        logging.info('An AbortedError was raised during initialization. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. A new session will be created.')
+      except _PREEMPTION_ERRORS as e:
+        logging.info(
+            'An error was raised while a session was being created. '
+            'This may be due to a preemption of a connected worker '
+            'or parameter server. A new session will be created. '
+            'This error may also occur due to a gRPC failure caused '
+            'by high memory or network bandwidth usage in the '
+            'parameter servers. If this error occurs repeatedly, try '
+            'increasing the number of parameter servers assigned to '
+            'the job. Error: %s', e)
+
+  def _check_stop(self):
+    try:
+      if self._sess:
+        return self._sess._check_stop()  # pylint: disable=protected-access
+      else:
+        return True
+    except _PREEMPTION_ERRORS as e:
+      logging.info(
+          'An error was raised while considering whether the '
+          'session is complete. This may be due to a preemption in '
+          'a connected worker or parameter server. The current '
+          'session will be closed and a new session will be '
+          'created. This error may also occur due to a gRPC failure '
+          'caused by high memory or network bandwidth usage in the '
+          'parameter servers. If this error occurs repeatedly, try '
+          'increasing the number of parameter servers assigned to '
+          'the job. Error: %s', e)
+      self.close()
+      self._sess = self._create_session()
+      # Since we have just recreated the session, the overall computation should
+      # not stop:
+      return False
+    except Exception:  # pylint: disable=broad-except
+      # `should_stop` should return True instead of raising an exception.
+      return True
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     while True:
       try:
         if not self._sess:
           self._sess = self._create_session()
-        return self._sess.run(fetches,
-                              feed_dict=feed_dict,
-                              options=options,
-                              run_metadata=run_metadata)
-      except errors.AbortedError:
-        logging.info('An AbortedError was raised. Closing the current session. '
-                     'It\'s most likely due to a preemption in a connected '
-                     'worker/ps. '
-                     'A new session will be created on the next session.run().')
+        return self._sess.run(
+            fetches,
+            feed_dict=feed_dict,
+            options=options,
+            run_metadata=run_metadata)
+      except _PREEMPTION_ERRORS as e:
+        logging.info(
+            'An error was raised. This may be due to a preemption in '
+            'a connected worker or parameter server. The current '
+            'session will be closed and a new session will be '
+            'created. This error may also occur due to a gRPC failure '
+            'caused by high memory or network bandwidth usage in the '
+            'parameter servers. If this error occurs repeatedly, try '
+            'increasing the number of parameter servers assigned to '
+            'the job. Error: %s', e)
+        self.close()
+        self._sess = None
+
+  def run_step_fn(self, step_fn, raw_session, run_with_hooks):
+    while True:
+      try:
+        if not self._sess:
+          self._sess = self._create_session()
+
+        run_with_hooks = self._sess.run
+        return self._sess.run_step_fn(step_fn, raw_session, run_with_hooks)
+      except _PREEMPTION_ERRORS as e:
+        logging.info(
+            'An error was raised. This may be due to a preemption in '
+            'a connected worker or parameter server. The current '
+            'session will be closed and a new session will be '
+            'created. This error may also occur due to a gRPC failure '
+            'caused by high memory or network bandwidth usage in the '
+            'parameter servers. If this error occurs repeatedly, try '
+            'increasing the number of parameter servers assigned to '
+            'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -824,7 +1323,7 @@ class _CoordinatedSession(_WrappedSession):
   raises an exception, the exception is reported to the coordinator.
 
   In addition, after each call to `run()` this session ask the coordinator if
-  the session should stop.  In that case it will will join all the threads
+  the session should stop.  In that case it will join all the threads
   registered with the coordinator before returning.
 
   If the coordinator was requested to stop with an exception, that exception
@@ -835,7 +1334,7 @@ class _CoordinatedSession(_WrappedSession):
     """Create a new `_CoordinatedSession`.
 
     Args:
-      sess: A `tf.Session` object.  The wrapped session.
+      sess: A `tf.compat.v1.Session` object.  The wrapped session.
       coord: A `tf.train.Coordinator` object.
       stop_grace_period_secs: Number of seconds given to threads to stop after
         `close()` has been called.
@@ -845,7 +1344,10 @@ class _CoordinatedSession(_WrappedSession):
     self._stop_grace_period_secs = stop_grace_period_secs
 
   def _check_stop(self):
-    # Check with the coordinator if we should stop.
+    # If the coordinator was asked to stop due to an exception, then it needs
+    # to be propagated to this stack.
+    self._coord.raise_requested_exception()
+    # At this point, no exceptions are recorded in the coordinator.
     return self._coord.should_stop()
 
   def close(self):
@@ -861,6 +1363,25 @@ class _CoordinatedSession(_WrappedSession):
         # We intentionally suppress exceptions from the close() here since
         # useful exceptions are already reported by join().
         pass
+
+  def run(self, *args, **kwargs):
+    try:
+      return self._sess.run(*args, **kwargs)
+    except _PREEMPTION_ERRORS:
+      raise
+    except Exception:  # pylint: disable=broad-except
+      # A non-preemption error could have been caused by a preemption error
+      # in the coordinator. If this is the case, raise that exception instead,
+      # since it's the root cause. Otherwise, stick to the `original_exc_info`.
+      original_exc_info = sys.exc_info()
+      try:
+        self._coord.raise_requested_exception()
+      except _PREEMPTION_ERRORS:
+        raise
+      except Exception:  # pylint: disable=broad-except
+        raise six.reraise(*original_exc_info)
+      else:
+        raise six.reraise(*original_exc_info)
 
 
 class _HookedSession(_WrappedSession):
@@ -884,7 +1405,7 @@ class _HookedSession(_WrappedSession):
     """Initializes a _HookedSession object.
 
     Args:
-      sess: A `tf.Session` or a `_WrappedSession` object.
+      sess: A `tf.compat.v1.Session` or a `_WrappedSession` object.
       hooks: An iterable of `SessionRunHook' objects.
     """
 
@@ -913,11 +1434,12 @@ class _HookedSession(_WrappedSession):
 
     # Do session run.
     run_metadata = run_metadata or config_pb2.RunMetadata()
-    outputs = _WrappedSession.run(self,
-                                  fetches=actual_fetches,
-                                  feed_dict=feed_dict,
-                                  options=options,
-                                  run_metadata=run_metadata)
+    outputs = _WrappedSession.run(
+        self,
+        fetches=actual_fetches,
+        feed_dict=feed_dict,
+        options=options,
+        run_metadata=run_metadata)
 
     for hook in self._hooks:
       hook.after_run(
@@ -940,9 +1462,8 @@ class _HookedSession(_WrappedSession):
         if request.fetches is not None:
           fetch_dict[hook] = request.fetches
         if request.feed_dict:
-          self._raise_if_feeds_intersects(
-              hook_feeds, request.feed_dict,
-              'Same tensor is fed by two hooks.')
+          self._raise_if_feeds_intersects(hook_feeds, request.feed_dict,
+                                          'Same tensor is fed by two hooks.')
           hook_feeds.update(request.feed_dict)
         if request.options:
           self._merge_run_options(options, request.options)
@@ -985,6 +1506,11 @@ class _HookedSession(_WrappedSession):
     options.output_partition_graphs = max(
         options.output_partition_graphs,
         incoming_options.output_partition_graphs)
-
     options.debug_options.debug_tensor_watch_opts.extend(
         incoming_options.debug_options.debug_tensor_watch_opts)
+    options.debug_options.reset_disk_byte_usage = (
+        options.debug_options.reset_disk_byte_usage or
+        incoming_options.debug_options.reset_disk_byte_usage)
+    options.report_tensor_allocations_upon_oom = (
+        options.report_tensor_allocations_upon_oom or
+        incoming_options.report_tensor_allocations_upon_oom)

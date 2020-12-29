@@ -1,0 +1,27 @@
+op {
+  graph_op_name: "EncodeJpegVariableQuality"
+  in_arg {
+    name: "images"
+    description: <<END
+Images to adjust.  At least 3-D.
+END
+  }
+  in_arg {
+    name: "quality"
+    description: <<END
+An int quality to encode to.
+END
+  }
+   out_arg {
+    name: "contents"
+    description: <<END
+0-D. JPEG-encoded image.
+END
+  }
+  summary: "JPEG encode input image with provided compression quality."
+  description: <<END
+`image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
+`quality` is an int32 jpeg compression quality value between 0 and 100.
+
+END
+}

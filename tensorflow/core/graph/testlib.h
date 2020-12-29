@@ -15,8 +15,8 @@ limitations under the License.
 
 // DEPRECATED: Use the C++ API defined in tensorflow/cc instead.
 
-#ifndef TENSORFLOW_GRAPH_TESTLIB_H_
-#define TENSORFLOW_GRAPH_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_GRAPH_TESTLIB_H_
+#define TENSORFLOW_CORE_GRAPH_TESTLIB_H_
 
 #include <string>
 #include <vector>
@@ -32,7 +32,7 @@ namespace test {
 namespace graph {
 
 // Converts "g" into its corresponding GraphDef "def".
-// DEPRECATED: call g->ToGraphDef(def) instead.
+ABSL_DEPRECATED("Call g->ToGraphDef(def) instead.")
 void ToGraphDef(Graph* g, GraphDef* def);
 
 // A few helpers to construct a graph.
@@ -67,6 +67,10 @@ Node* Send(Graph* g, Node* input, const string& tensor, const string& sender,
 Node* Recv(Graph* g, const string& tensor, const string& type,
            const string& sender, const uint64 sender_incarnation,
            const string& receiver);
+
+// Adds a cumsum "node" in "g" doing cumsum(data, axes).
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive = false,
+             bool reverse = false);
 
 // Adds a reduction "node" in "g" doing sum(data, axes).  "reduce" is
 // a reduction, e.g., Sum, Max, Min, Mean, etc.
@@ -117,13 +121,18 @@ Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
 // Output dtype determined by lam.
 Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
 
+// Rolls tensor by an offset of <shift> along the corresponding
+// <axis> dimensions.
+Node* Roll(Graph* g, Node* input, Node* shift, Node* axis);
+
 // Generates random parameters from the truncated standard normal distribution
-// of the nput shape
+// of the input shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
 
 // Adds an error node in "g". The node's computation always
 // generates an error with the given error message "errmsg".
-Node* Error(Graph* g, Node* input, const string& errmsg);
+Node* Error(Graph* g, Node* input, const string& errmsg,
+            bool log_error = false);
 
 // Adds a node that generates a invalid ref output.
 Node* InvalidRefType(Graph* g, DataType out_type, DataType invalid_type);
@@ -171,14 +180,8 @@ Node* Select(Graph* g, Node* c, Node* inx, Node* iny);
 // Casts "in" into data type "dst".
 Node* Cast(Graph* g, Node* in, DataType dst);
 
-// Perform gather op on params "in0" with indices "in1".
-Node* Gather(Graph* g, Node* in0, Node* in1);
-
-// Computes broadcasted shape from the given input shapes.
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
-
-// Computes the args needed broadcast gradient function.
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
+// Perform gather op on params "in0" with indices "in1" and axis "axis".
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis);
 
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);
@@ -205,8 +208,23 @@ Node* BiasAdd(Graph* g, Node* value, Node* bias);
 // Add a Conv2D node in "g".
 Node* Conv2D(Graph* g, Node* in0, Node* in1);
 
+// Add a Diag node in "g".
+Node* Diag(Graph* g, Node* in, DataType type);
+
+// Add a DiagPart node in "g".
+Node* DiagPart(Graph* g, Node* in, DataType type);
+
+// Add a CheckNumerics node in "g".
+Node* CheckNumerics(Graph* g, Node* in, const string& message);
+
+// Add an _Arg node in "g".
+Node* Arg(Graph* g, int64 index, DataType type);
+
+// Add a _Retval node in "g".
+Node* Retval(Graph* g, int64 index, Node* in);
+
 }  // end namespace graph
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_GRAPH_TESTLIB_H_

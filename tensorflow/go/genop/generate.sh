@@ -19,28 +19,54 @@ set -e
 go get github.com/golang/protobuf/proto
 go get github.com/golang/protobuf/protoc-gen-go
 
+if [ -z "${GOPATH}" ]
+then
+  GOPATH=$(go env GOPATH)
+fi
+
+# convert GOPATH's Windows style to UNIX style
+if [[ $1 == "win" ]]; then
+  # eg: convert "D:\go-14;D:\go-13" to "D\go-14;D\go-13"
+  GOPATH=${GOPATH//:\\/\\}
+  # eg: convert "D\go-14;D\go-13" to "\D\go-14:\D\go-13"
+  GOPATH=\\${GOPATH//;/:\\}
+  # eg: convert "\D\go-14:\D\go-13" to "/D/go-14:/D/go-13"
+  GOPATH=${GOPATH//\\/\/}
+fi
+
 cd $(dirname $0)
-TF_DIR=${GOPATH}/src/github.com/tensorflow/tensorflow
-PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
+for g in $(echo "${GOPATH//:/ }"); do
+    TF_DIR="${g}/src/github.com/tensorflow/tensorflow"
+    PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
+    if [ -x "${PROTOC}" ]; then
+        break
+    fi
+done
 
 if [ ! -x "${PROTOC}" ]
 then
+  set +e
   PATH_PROTOC=$(which protoc)
   if [ ! -x "${PATH_PROTOC}" ]
   then
     echo "Protocol buffer compiler protoc not found in PATH or in ${PROTOC}"
     echo "Perhaps build it using:"
-    echo "bazel build --config opt @protobuf//:protoc"
+    echo "bazel build --config opt @com_google_protobuf//:protoc"
     exit 1
   fi
   PROTOC=$PATH_PROTOC
+  set -e
 fi
 
 # Ensure that protoc-gen-go is available in $PATH
 # Since ${PROTOC} will require it.
 export PATH=$PATH:${GOPATH}/bin
-mkdir -p ./internal/proto
-${PROTOC} \
-  -I ${TF_DIR} \
-  --go_out=./internal/proto \
-  ${TF_DIR}/tensorflow/core/framework/*.proto
+mkdir -p ../vendor
+for FILE in ${TF_DIR}/tensorflow/core/framework/*.proto \
+    ${TF_DIR}/tensorflow/core/protobuf/*.proto \
+    ${TF_DIR}/tensorflow/stream_executor/*.proto; do
+  ${PROTOC} \
+    -I ${TF_DIR} \
+    --go_out=../vendor \
+    $FILE
+done

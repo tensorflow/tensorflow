@@ -1,0 +1,37 @@
+op {
+  name: "TensorSummary"
+  input_arg {
+    name: "tensor"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "description"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "labels"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "display_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+}

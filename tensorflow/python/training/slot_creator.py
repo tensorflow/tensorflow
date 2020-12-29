@@ -15,9 +15,9 @@
 
 """Standard functions for creating slots.
 
-A slot is a `Variable` created with the same shape as a primary variable or
-`Tensor`. A slot is always scoped in the namespace of the primary object and
-typically has the same device and type.
+A slot is a `Variable` created with the same first m-dimension as a primary
+variable or `Tensor`. A slot is always scoped in the namespace of the primary
+object and typically has the same device and type.
 
 Slots are typically used as accumulators to track values associated with
 the primary object:
@@ -39,29 +39,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 
 
-def _is_resource(v):
-  """Returns true if v is something you get from a resource variable."""
-  return isinstance(v, resource_variable_ops.ResourceVariable)
-
-
-def _create_slot_var(primary, val, scope):
+def _create_slot_var(primary, val, scope, validate_shape, shape, dtype):
   """Helper function for creating a slot variable."""
 
   # TODO(lukaszkaiser): Consider allowing partitioners to be set in the current
   # scope.
   current_partitioner = variable_scope.get_variable_scope().partitioner
   variable_scope.get_variable_scope().set_partitioner(None)
+  # When init from val instead of callable initializer, the shape is expected to
+  # be None, not <unknown> or any fully defined shape.
+  shape = shape if callable(val) else None
+  if resource_variable_ops.is_resource_variable(primary):
+    use_resource = True
+  elif isinstance(primary, variables.RefVariable):
+    use_resource = False
+  else:
+    use_resource = None
   slot = variable_scope.get_variable(
-      scope, initializer=val, trainable=False,
-      use_resource=_is_resource(primary),
-      validate_shape=val.get_shape().is_fully_defined())
+      scope,
+      initializer=val,
+      trainable=False,
+      use_resource=use_resource,
+      shape=shape,
+      dtype=dtype,
+      validate_shape=validate_shape)
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
 
   # pylint: disable=protected-access
@@ -75,11 +84,19 @@ def _create_slot_var(primary, val, scope):
     # remove "'linear//weight' + '/'" and ':0'.
     real_slot_name = slot.name[len(primary.op.name + "/"):-2]
     slice_info = primary._save_slice_info
-    slot._set_save_slice_info(variables.Variable.SaveSliceInfo(
-        slice_info.full_name + "/" + real_slot_name,
-        slice_info.full_shape[:],
-        slice_info.var_offset[:],
-        slice_info.var_shape[:]))
+    # support slot's shape not same as primary's shape
+    # example: primary's shape = [10, 20, 30], slot's shape =
+    # None, [], [10], [10, 20] or [10, 20, 30] is allowed
+    # slot's shape = None or [10, 20, 30], set slot's slice_info same as primary
+    # slot's shape = [], don't set slot's slice_info
+    # slot's shape = [10] or [10, 20], set slot's slice_info according to ndims
+    n = slot.shape.ndims
+    if n is None or n > 0:
+      slot._set_save_slice_info(
+          variables.Variable.SaveSliceInfo(
+              slice_info.full_name + "/" + real_slot_name,
+              slice_info.full_shape[:n], slice_info.var_offset[:n],
+              slice_info.var_shape[:n]))
   # pylint: enable=protected-access
   return slot
 
@@ -100,16 +117,61 @@ def create_slot(primary, val, name, colocate_with_primary=True):
     A `Variable` object.
   """
   # Scope the slot name in the namespace of the primary variable.
-  # Set "primary.op.name + '/' + name" as default name, so the scope name of 
+  # Set primary's name + '/' + name as default name, so the scope name of
   # optimizer can be shared when reuse is True. Meanwhile when reuse is False
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
-  with variable_scope.variable_scope(None, primary.op.name + "/" + name):
+  validate_shape = val.get_shape().is_fully_defined()
+  if isinstance(primary, variables.Variable):
+    prefix = primary._shared_name  # pylint: disable=protected-access
+  else:
+    prefix = primary.op.name
+  with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
-      with ops.colocate_with(primary):
-        return _create_slot_var(primary, val, "")
+      distribution_strategy = distribution_strategy_context.get_strategy()
+      with distribution_strategy.extended.colocate_vars_with(primary):
+        return _create_slot_var(primary, val, "", validate_shape, None, None)
     else:
-      return _create_slot_var(primary, val, "")
+      return _create_slot_var(primary, val, "", validate_shape, None, None)
+
+
+def create_slot_with_initializer(primary, initializer, shape, dtype, name,
+                                 colocate_with_primary=True):
+  """Creates a slot initialized using an `Initializer`.
+
+  The type of the slot is determined by the given value.
+
+  Args:
+    primary: The primary `Variable` or `Tensor`.
+    initializer: An `Initializer`.  The initial value of the slot.
+    shape: Shape of the initial value of the slot.
+    dtype: Type of the value of the slot.
+    name: Name to use for the slot variable.
+    colocate_with_primary: Boolean.  If True the slot is located
+      on the same device as `primary`.
+
+  Returns:
+    A `Variable` object.
+  """
+  # Scope the slot name in the namespace of the primary variable.
+  # Set "primary.op.name + '/' + name" as default name, so the scope name of
+  # optimizer can be shared when reuse is True. Meanwhile when reuse is False
+  # and the same name has been previously used, the scope name will add '_N'
+  # as suffix for unique identifications.
+  validate_shape = shape.is_fully_defined()
+  if isinstance(primary, variables.Variable):
+    prefix = primary._shared_name  # pylint: disable=protected-access
+  else:
+    prefix = primary.op.name
+  with variable_scope.variable_scope(None, prefix + "/" + name):
+    if colocate_with_primary:
+      distribution_strategy = distribution_strategy_context.get_strategy()
+      with distribution_strategy.extended.colocate_vars_with(primary):
+        return _create_slot_var(primary, initializer, "", validate_shape, shape,
+                                dtype)
+    else:
+      return _create_slot_var(primary, initializer, "", validate_shape, shape,
+                              dtype)
 
 
 def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
@@ -128,8 +190,16 @@ def create_zeros_slot(primary, name, dtype=None, colocate_with_primary=True):
   if dtype is None:
     dtype = primary.dtype
   slot_shape = primary.get_shape()
-  slot_shape = (slot_shape if slot_shape.is_fully_defined()
-                else array_ops.shape(primary.initialized_value()))
-  val = array_ops.zeros(slot_shape, dtype=dtype)
-  return create_slot(primary, val, name,
-                     colocate_with_primary=colocate_with_primary)
+  if slot_shape.is_fully_defined():
+    initializer = init_ops.zeros_initializer()
+    return create_slot_with_initializer(
+        primary, initializer, slot_shape, dtype, name,
+        colocate_with_primary=colocate_with_primary)
+  else:
+    if isinstance(primary, variables.Variable):
+      slot_shape = array_ops.shape(primary.initialized_value())
+    else:
+      slot_shape = array_ops.shape(primary)
+    val = array_ops.zeros(slot_shape, dtype=dtype)
+    return create_slot(primary, val, name,
+                       colocate_with_primary=colocate_with_primary)

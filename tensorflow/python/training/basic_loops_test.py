@@ -39,7 +39,6 @@ class BasicTrainLoopTest(test.TestCase):
 
   def testBasicTrainLoop(self):
     logdir = _test_dir("basic_train_loop")
-    sv = supervisor.Supervisor(logdir=logdir)
     # Counts the number of calls.
     num_calls = [0]
 
@@ -51,13 +50,13 @@ class BasicTrainLoopTest(test.TestCase):
         sv.request_stop()
 
     with ops.Graph().as_default():
+      sv = supervisor.Supervisor(logdir=logdir)
       basic_loops.basic_train_loop(
           sv, train_fn, args=(sv, "y"), kwargs={"a": "A"})
       self.assertEqual(3, num_calls[0])
 
   def testBasicTrainLoopExceptionAborts(self):
     logdir = _test_dir("basic_train_loop_exception_aborts")
-    sv = supervisor.Supervisor(logdir=logdir)
 
     def train_fn(unused_sess):
       train_fn.counter += 1
@@ -68,12 +67,12 @@ class BasicTrainLoopTest(test.TestCase):
     train_fn.counter = 0
 
     with ops.Graph().as_default():
-      with self.assertRaisesRegexp(RuntimeError, "Failed"):
+      sv = supervisor.Supervisor(logdir=logdir)
+      with self.assertRaisesRegex(RuntimeError, "Failed"):
         basic_loops.basic_train_loop(sv, train_fn)
 
   def testBasicTrainLoopRetryOnAborted(self):
     logdir = _test_dir("basic_train_loop_exception_aborts")
-    sv = supervisor.Supervisor(logdir=logdir)
 
     class AbortAndRetry(object):
 
@@ -91,10 +90,11 @@ class BasicTrainLoopTest(test.TestCase):
           raise RuntimeError("Failed Again")
 
     with ops.Graph().as_default():
+      sv = supervisor.Supervisor(logdir=logdir)
       aar = AbortAndRetry()
-      with self.assertRaisesRegexp(RuntimeError, "Failed Again"):
+      with self.assertRaisesRegex(RuntimeError, "Failed Again"):
         basic_loops.basic_train_loop(sv, aar.train_fn)
-      self.assertEquals(0, aar.retries_left)
+      self.assertEqual(0, aar.retries_left)
 
 
 if __name__ == "__main__":

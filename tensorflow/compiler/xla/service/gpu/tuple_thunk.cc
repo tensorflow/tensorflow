@@ -15,34 +15,31 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
 
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/util.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace gpu {
 
-tensorflow::Status TupleThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
-  std::vector<void*> tuple_element_buffer_addresses;
-  for (BufferAllocation::Slice tuple_element_buffer : tuple_element_buffers_) {
-    tuple_element_buffer_addresses.push_back(
-        buffer_allocations.GetDeviceAddress(tuple_element_buffer).opaque());
-  }
-  se::DeviceMemory<void*> dest_buffer_address(
-      buffer_allocations.GetDeviceAddress(dest_buffer_));
+Status TupleThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
 
-  auto host_size = tuple_element_buffer_addresses.size() * sizeof(void*);
-  if (!stream
-           ->ThenMemcpy(&dest_buffer_address,
-                        tuple_element_buffer_addresses.data(), host_size)
-           .ok()) {
-    return InternalError(
-        "Unable to launch MemcpyH2D from %p to %p with size %lu",
-        tuple_element_buffer_addresses.data(), dest_buffer_address.opaque(),
-        sizeof(void*) * tuple_element_buffer_addresses.size());
+  auto n = tuple_element_buffers_.size();
+  auto tuple_data = absl::make_unique<void*[]>(n);
+  for (int i = 0; i < n; ++i) {
+    tuple_data[i] =
+        buffer_allocations.GetDeviceAddress(tuple_element_buffers_[i]).opaque();
   }
-  return tensorflow::Status::OK();
+
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
+  SafeH2DMemcpy(se::DeviceMemory<void*>(
+                    buffer_allocations.GetDeviceAddress(dest_buffer_)),
+                std::move(tuple_data), n, &stream,
+                params.deferred_host_callbacks);
+  return Status::OK();
 }
 
 }  // namespace gpu

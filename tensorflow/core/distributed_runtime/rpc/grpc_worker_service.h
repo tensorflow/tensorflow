@@ -13,38 +13,75 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 
+#include <memory>
+#include <unordered_map>
+#include "grpcpp/server_builder.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace grpc {
 class ByteBuffer;
-class ServerBuilder;
 }  // namespace grpc
 
 namespace tensorflow {
 
 class AsyncServiceInterface;
+class ConfigProto;
 struct WorkerEnv;
+class WorkerSession;
+class GrpcResponseCache;
 
 class GrpcWorker : public Worker {
  public:
-  GrpcWorker(WorkerEnv* env);
+  GrpcWorker(WorkerEnv* env, const ConfigProto& config);
 
   // Specialized version of RecvTensor for gRPC, which avoids a copy.
-  void RecvTensorAsync(CallOptions* opts, const RecvTensorRequest* request,
-                       ::grpc::ByteBuffer* response, StatusCallback done);
+  virtual void GrpcRecvTensorAsync(CallOptions* opts,
+                                   const RecvTensorRequest* request,
+                                   ::grpc::ByteBuffer* response,
+                                   StatusCallback done);
+
+  void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
+                    StatusCallback done) override;
+
+  void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                    RecvBufResponse* response, StatusCallback done) override;
+
+  void CleanupGraphAsync(const CleanupGraphRequest* request,
+                         CleanupGraphResponse* response,
+                         StatusCallback done) override;
 
   WorkerEnv* env();
+
+  void EnableResponseCache();
+
+  void RemoveCacheEntryForId(int64 request_id);
+
+ private:
+  std::unique_ptr<GrpcResponseCache> response_cache_;
+  const int32 recv_buf_max_chunk_;
 };
 
-GrpcWorker* NewGrpcWorker(WorkerEnv* worker_env);
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env,
+                                          const ConfigProto& config);
+
+struct GrpcWorkerServiceOptions {
+  // Map from GrpcWorkerMethod id to queue depth.  If set this overrides the
+  // default queue depth for a method.
+  std::unordered_map<int, int> queue_depth;
+  int num_serving_threads = 8;
+};
 
 // Returns an implementation of WorkerService rpc service.
-AsyncServiceInterface* NewGrpcWorkerService(GrpcWorker* worker,
-                                            ::grpc::ServerBuilder* builder);
+std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder,
+    GrpcWorkerServiceOptions opts = GrpcWorkerServiceOptions());
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_

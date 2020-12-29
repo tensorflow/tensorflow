@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
-#include <cctype>
 #include <unordered_map>
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -38,7 +39,8 @@ void MetricTableReport::SetEntryName(string entry_name) {
 
 void MetricTableReport::SetShowAllEntries() {
   max_entries_to_show_ = std::numeric_limits<int64>::max();
-  max_metric_proportion_to_show = 1.1;  // more than 100%
+  max_entries_per_category_to_show_ = std::numeric_limits<int64>::max();
+  max_metric_proportion_to_show_ = 1.1;  // more than 100%
 }
 
 void MetricTableReport::SetShowCategoryTable() { show_category_table_ = true; }
@@ -53,7 +55,7 @@ string MetricTableReport::MakeReport(double expected_metric_sum) {
   const auto metric_greater = [](const Entry& a, const Entry& b) {
     return a.metric > b.metric;
   };
-  std::sort(entries_.begin(), entries_.end(), metric_greater);
+  absl::c_sort(entries_, metric_greater);
 
   // Create the report
   AppendLine();
@@ -78,12 +80,14 @@ void MetricTableReport::WriteReportToInfoLog(double expected_metric_sum) {
 
   int64 pos = 0;
   const string report = MakeReport(expected_metric_sum);
-  while (pos < report.size()) {
+  const int report_size = report.size();
+  while (pos < report_size) {
     int64 end_of_line = report.find('\n', pos);
-    if (end_of_line == string::npos) {
+    const int64 _npos = string::npos;
+    if (end_of_line == _npos) {
       end_of_line = report.size();
     }
-    tensorflow::StringPiece line(report.data() + pos, end_of_line - pos);
+    absl::string_view line(report.data() + pos, end_of_line - pos);
 
     // TODO(b/34779244): Figure out how to do this without the verbose log-line
     // prefix. The usual way didn't compile on open source.
@@ -115,7 +119,7 @@ std::vector<MetricTableReport::Category> MetricTableReport::MakeCategories(
   auto metric_sum_greater = [](const Category& a, const Category& b) {
     return a.metric_sum > b.metric_sum;
   };
-  std::sort(categories.begin(), categories.end(), metric_sum_greater);
+  absl::c_sort(categories, metric_sum_greater);
 
   return categories;
 }
@@ -133,15 +137,14 @@ void MetricTableReport::AppendHeader() {
 void MetricTableReport::AppendCategoryTable() {
   const std::vector<Category> categories = MakeCategories(&entries_);
 
-  AppendLine("********** categories table **********");
-  AppendLine("The left hand side numbers are ", metric_name_, ".");
+  AppendLine("********** categories table for ", metric_name_, " **********");
   AppendLine();
 
   double metric_sum = UnaccountedMetric();
   int64 categories_shown = 0;
   for (const auto& category : categories) {
     if (categories_shown >= max_entries_to_show_ ||
-        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show) {
+        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show_) {
       break;
     }
     ++categories_shown;
@@ -149,22 +152,22 @@ void MetricTableReport::AppendCategoryTable() {
 
     // Show the category.
     string text = category.category_text;
-    if (text == "") {
+    if (text.empty()) {
       text = "[no category]";
     }
-    tensorflow::strings::StrAppend(&text, " (", category.entries.size(), " ",
-                                   entry_name_, ")");
+    absl::StrAppend(&text, " (", category.entries.size(), " ", entry_name_,
+                    ")");
     AppendTableRow(text, category.metric_sum, metric_sum);
 
-    // Show the top few entries in the category.
-    const int64 kMaxToShow = 5;
+    // Show the top entries in the category.
     const char* const kIndentPrefix = "                              * ";
-    int64 entries_to_show =
-        std::min<int64>(kMaxToShow, category.entries.size());
-    if (category.entries.size() == kMaxToShow + 1) {
+    int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
+                                            category.entries.size());
+    const int64 category_entries_size = category.entries.size();
+    if (category_entries_size == entries_to_show + 1) {
       // May as well show the last entry on the line that would otherwise say
       // that there is a single entry not shown.
-      entries_to_show = category.entries.size();
+      ++entries_to_show;
     }
     for (int64 i = 0; i < entries_to_show; ++i) {
       AppendLine(kIndentPrefix, MetricPercent(category.entries[i]->metric), " ",
@@ -178,38 +181,38 @@ void MetricTableReport::AppendCategoryTable() {
   }
   const int64 remaining_categories = categories.size() - categories_shown;
   if (remaining_categories > 0) {
-    AppendTableRow(tensorflow::strings::StrCat("... (", remaining_categories,
-                                               " more categories)"),
-                   expected_metric_sum_ - metric_sum, expected_metric_sum_);
+    AppendTableRow(
+        absl::StrCat("... (", remaining_categories, " more categories)"),
+        expected_metric_sum_ - metric_sum, expected_metric_sum_);
   }
 }
 
 void MetricTableReport::AppendEntryTable() {
-  AppendLine("********** ", entry_name_, " table **********");
-  AppendLine("The left hand side numbers are ", metric_name_, ".");
+  AppendLine("********** ", entry_name_, " table for ", metric_name_,
+             " **********");
   AppendLine();
 
   double metric_sum = UnaccountedMetric();
   int64 entries_shown = 0;
   for (const auto& entry : entries_) {
     if (entries_shown >= max_entries_to_show_ ||
-        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show) {
+        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show_) {
       break;
     }
     ++entries_shown;
     metric_sum += entry.metric;
 
     string text = entry.text;
-    if (text == "") {
+    if (text.empty()) {
       text = "[no entry text]";
     }
     AppendTableRow(text, entry.metric, metric_sum);
   }
   const int64 remaining_entries = entries_.size() - entries_shown;
   if (remaining_entries > 0) {
-    AppendTableRow(tensorflow::strings::StrCat("... (", remaining_entries,
-                                               " more ", entry_name_, ")"),
-                   expected_metric_sum_ - metric_sum, expected_metric_sum_);
+    AppendTableRow(
+        absl::StrCat("... (", remaining_entries, " more ", entry_name_, ")"),
+        expected_metric_sum_ - metric_sum, expected_metric_sum_);
   }
 }
 
@@ -220,7 +223,15 @@ void MetricTableReport::AppendTableRow(const string& text, const double metric,
   const int64 max_metric_string_size =
       MetricString(expected_metric_sum_).size();
   string metric_string = MetricString(metric);
-  string padding(max_metric_string_size - metric_string.size() + 1, ' ');
+
+  // Don't try to make a gigantic string and crash if expected_metric_sum_ is
+  // wrong somehow.
+  int64 padding_len = 1;
+  const int64 metric_string_size = metric_string.size();
+  if (max_metric_string_size >= metric_string_size) {
+    padding_len += max_metric_string_size - metric_string.size();
+  }
+  string padding(padding_len, ' ');
   AppendLine(padding, metric_string, " (", MetricPercent(metric), " Σ",
              MetricPercent(running_metric_sum), ")   ", text);
 }
@@ -235,19 +246,19 @@ double MetricTableReport::UnaccountedMetric() {
 
 string MetricTableReport::MetricString(double metric) {
   // Round to integer and stringify.
-  string s1 = tensorflow::strings::StrCat(std::llround(metric));
+  string s1 = absl::StrCat(std::llround(metric));
 
   // Code below commafies the string, e.g. "1234" becomes "1,234".
-  tensorflow::StringPiece sp1(s1);
+  absl::string_view sp1(s1);
   string output;
   // Copy leading non-digit characters unconditionally.
   // This picks up the leading sign.
-  while (!sp1.empty() && !isdigit(sp1[0])) {
+  while (!sp1.empty() && !absl::ascii_isdigit(sp1[0])) {
     output.push_back(sp1[0]);
     sp1.remove_prefix(1);
   }
   // Copy rest of input characters.
-  for (int64 i = 0; i < sp1.size(); ++i) {
+  for (int64 i = 0, end = sp1.size(); i < end; ++i) {
     if (i > 0 && (sp1.size() - i) % 3 == 0) {
       output.push_back(',');
     }
@@ -257,8 +268,7 @@ string MetricTableReport::MetricString(double metric) {
 }
 
 string MetricTableReport::MetricPercent(double metric) {
-  return tensorflow::strings::Printf("%5.2f%%",
-                                     metric / expected_metric_sum_ * 100.0);
+  return absl::StrFormat("%5.2f%%", metric / expected_metric_sum_ * 100.0);
 }
 
 }  // namespace xla

@@ -8,43 +8,51 @@
 # Note that proto3 well-known types (e.g. Any) are not handled in a special way
 # by the generated code.
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files([
-    "LICENSE",
-    "placeholder.txt",
-])
-
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_ios",
+    "tf_cc_test",
     "tf_generate_proto_text_sources",
 )
 
 # For platform specific build config
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library",
 )
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["placeholder.txt"])
 
 cc_binary(
     name = "gen_proto_text_functions",
     srcs = ["gen_proto_text_functions.cc"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
+        "@com_google_protobuf//:protobuf",
+        "//tensorflow/core/platform:protobuf_compiler",
         "//tensorflow/core:lib_proto_parsing",
-    ],
+    ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
 cc_library(
     name = "gen_proto_text_functions_lib",
     srcs = ["gen_proto_text_functions_lib.cc"],
     hdrs = ["gen_proto_text_functions_lib.h"],
+    copts = if_ios(["-DGOOGLE_LOGGING"]),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//tensorflow:ios": [
             "-lm",
             "-lpthread",
         ],
@@ -56,21 +64,27 @@ cc_library(
     }),
     deps = [
         "//tensorflow/core:lib_proto_parsing",
-    ],
+    ] + if_ios(["//tensorflow/core/platform:logging"]),
 )
 
-tf_proto_library_cc(
+tf_proto_library(
     name = "test_proto",
     srcs = ["test.proto"],
+    cc_api_version = 2,
 )
 
 tf_generate_proto_text_sources(
-    name = "test_proto_text_srcs",
+    name = "test_proto_text",
     srcs = ["test.proto"],
     srcs_relative_dir = "tensorflow/tools/proto_text/",
+    deps = [
+        ":test_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
 )
 
-cc_test(
+tf_cc_test(
     name = "gen_proto_text_functions_lib_test",
     size = "small",
     srcs = [
@@ -85,19 +99,4 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

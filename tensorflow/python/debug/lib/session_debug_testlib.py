@@ -21,7 +21,6 @@ import collections
 import functools
 import glob
 import os
-import shutil
 import tempfile
 import threading
 
@@ -29,26 +28,63 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
+def no_rewrite_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
+
+
+class _RNNCellForTest(rnn_cell_impl.RNNCell):
+  """RNN cell for testing."""
+
+  def __init__(self, input_output_size, state_size):
+    self._input_output_size = input_output_size
+    self._state_size = state_size
+    self._w = variables.VariableV1(1.0, dtype=dtypes.float32, name="w")
+
+  @property
+  def output_size(self):
+    return self._input_output_size
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  def __call__(self, input_, state, scope=None):
+    return (math_ops.multiply(self._w, input_), state)
+
+
+@test_util.run_v1_only("b/120545219")
 class SessionDebugTestBase(test_util.TensorFlowTestCase):
   """Base class for unit tests of tfdbg running with tf.Session."""
 
@@ -57,11 +93,12 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     if test.is_gpu_available():
       cls._expected_partition_graph_count = 2
       cls._expected_num_devices = 2
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
   @classmethod
   def tearDownClass(cls):
@@ -75,7 +112,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
     # Tear down temporary dump directory.
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
   def _debug_urls(self, run_number=None):
     raise NotImplementedError(
@@ -85,8 +122,57 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     raise NotImplementedError(
         "_debug_dump_dir() method is not implemented in the base test class.")
 
+  def _debug_run_and_get_dump(self,
+                              sess,
+                              fetches,
+                              feed_dict=None,
+                              debug_ops="DebugIdentity",
+                              tolerate_debug_op_creation_failures=False,
+                              global_step=-1,
+                              validate=True,
+                              expected_partition_graph_count=None):
+    """Run fetches with debugging and obtain DebugDumpDir.
+
+    Args:
+      sess: the tf.compat.v1.Session to be used.
+      fetches: fetches of the Session.run().
+      feed_dict: feed dict for the Session.run().
+      debug_ops: name(s) of the debug ops to be used.
+      tolerate_debug_op_creation_failures: whether to tolerate debug op
+        creation failures.
+      global_step: Optional global step.
+      validate: whether to validate dumped tensors against graph.
+      expected_partition_graph_count: optional count of partition graphs to
+        assert on.
+
+    Returns:
+      1. Return values of the Session.run().
+      2. The DebugDumpDir object from the debugged run().
+    """
+
+    run_options = config_pb2.RunOptions(output_partition_graphs=True)
+    debug_utils.watch_graph(
+        run_options,
+        sess.graph,
+        debug_ops=debug_ops,
+        debug_urls=self._debug_urls(),
+        tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures,
+        global_step=global_step)
+    run_metadata = config_pb2.RunMetadata()
+    run_output = sess.run(fetches,
+                          feed_dict=feed_dict,
+                          options=run_options,
+                          run_metadata=run_metadata)
+
+    if expected_partition_graph_count is not None:
+      self.assertEqual(expected_partition_graph_count,
+                       len(run_metadata.partition_graphs))
+    return run_output, debug_data.DebugDumpDir(
+        self._dump_root, partition_graphs=run_metadata.partition_graphs,
+        validate=validate)
+
   def _generate_dump_from_simple_addition_graph(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
 
@@ -97,9 +183,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w_name = "w"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v_init = constant_op.constant(v_init_val, shape=[2, 1])
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       w = math_ops.matmul(u, v, name=w_name)
 
@@ -134,6 +220,52 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     return simple_add_results(u_init_val, v_init_val, u, v, w, u_name, v_name,
                               w_name, dump)
 
+  def testCopyNodesHaveCorrectDebugOpsAndURLsAttributeValues(self):
+    with session.Session() as sess:
+      u = variables.VariableV1(2.1, name="u")
+      v = variables.VariableV1(20.0, name="v")
+      w = math_ops.multiply(u, v, name="w")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_urls = self._debug_urls()
+      debug_utils.add_debug_tensor_watch(
+          run_options,
+          "u",
+          0, ["DebugNumericSummary(gated_grpc=True)", "DebugIdentity"],
+          debug_urls=debug_urls)
+      debug_utils.add_debug_tensor_watch(
+          run_options, "v", 0, ["DebugNumericSummary"], debug_urls=debug_urls)
+
+      run_metadata = config_pb2.RunMetadata()
+      r = sess.run(w, options=run_options, run_metadata=run_metadata)
+      self.assertAllClose(42.0, r)
+
+      u_copy_node_def = None
+      v_copy_node_def = None
+      for partition_graph in run_metadata.partition_graphs:
+        for node_def in partition_graph.node:
+          if debug_graphs.is_copy_node(node_def.name):
+            if node_def.name == "__copy_u_0":
+              u_copy_node_def = node_def
+            elif node_def.name == "__copy_v_0":
+              v_copy_node_def = node_def
+
+      self.assertIsNotNone(u_copy_node_def)
+      debug_ops_spec = u_copy_node_def.attr["debug_ops_spec"].list.s
+      self.assertEqual(2, len(debug_ops_spec))
+      self.assertEqual("DebugNumericSummary;%s;1" % debug_urls[0],
+                       debug_ops_spec[0].decode("utf-8"))
+      self.assertEqual("DebugIdentity;%s;0" % debug_urls[0],
+                       debug_ops_spec[1].decode("utf-8"))
+
+      self.assertIsNotNone(v_copy_node_def)
+      debug_ops_spec = v_copy_node_def.attr["debug_ops_spec"].list.s
+      self.assertEqual(1, len(debug_ops_spec))
+      self.assertEqual("DebugNumericSummary;%s;0" % debug_urls[0],
+                       debug_ops_spec[0].decode("utf-8"))
+
   def testConcurrentDumpingToPathsWithOverlappingParentDirsWorks(self):
     results = self._generate_dump_from_simple_addition_graph()
     self.assertTrue(results.dump.loaded_partition_graphs())
@@ -141,8 +273,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     # Since global_step is not explicitly specified, it should take its default
     # value: -1.
     self.assertEqual(-1, results.dump.core_metadata.global_step)
-    self.assertGreaterEqual(results.dump.core_metadata.session_run_count, 0)
-    self.assertGreaterEqual(results.dump.core_metadata.executor_step_count, 0)
+    self.assertGreaterEqual(results.dump.core_metadata.session_run_index, 0)
+    self.assertGreaterEqual(results.dump.core_metadata.executor_step_index, 0)
     self.assertEqual([], results.dump.core_metadata.input_names)
     self.assertEqual([results.w.name], results.dump.core_metadata.output_names)
     self.assertEqual([], results.dump.core_metadata.target_nodes)
@@ -180,11 +312,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertIn(results.w.op.type, results.dump.node_op_type(results.w_name))
 
     with self.assertRaisesRegexp(
-        ValueError, "Node 'foo_bar' does not exist in partition graphs."):
+        ValueError, r"None of the .* device\(s\) has a node named "):
       results.dump.node_op_type("foo_bar")
 
   def testDumpStringTensorsWorks(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       str1_init_val = np.array(b"abc")
       str2_init_val = np.array(b"def")
 
@@ -193,8 +325,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       str1_name = "str1"
       str2_name = "str2"
-      str1 = variables.Variable(str1_init, name=str1_name)
-      str2 = variables.Variable(str2_init, name=str2_name)
+      str1 = variables.VariableV1(str1_init, name=str1_name)
+      str2 = variables.VariableV1(str2_init, name=str2_name)
       # Concatenate str1 and str2
       str_concat = math_ops.add(str1, str2, name="str_concat")
 
@@ -256,18 +388,18 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       s_name = "%s/s" % op_namespace
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       s_init = constant_op.constant(s_init_val)
-      s = variables.Variable(s_init, name=s_name)
+      s = variables.VariableV1(s_init, name=s_name)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_urls = self._debug_urls()
 
       # Add debug tensor watch for u.
       debug_utils.add_debug_tensor_watch(
-          run_options, "%s" % u_name, 0, debug_urls=debug_urls)
+          run_options, u_name, 0, debug_urls=debug_urls)
       debug_utils.add_debug_tensor_watch(
-          run_options, "%s" % s_name, 0, debug_urls=debug_urls)
+          run_options, s_name, 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
 
@@ -288,16 +420,18 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       u_vals = dump.get_tensors(u_name, 0, "DebugIdentity")
       s_vals = dump.get_tensors(s_name, 0, "DebugIdentity")
       self.assertEqual(1, len(u_vals))
-      self.assertIsNone(u_vals[0])
+      self.assertIsInstance(u_vals[0], debug_data.InconvertibleTensorProto)
+      self.assertFalse(u_vals[0].initialized)
       self.assertEqual(1, len(s_vals))
-      self.assertIsNone(s_vals[0])
+      self.assertIsInstance(s_vals[0], debug_data.InconvertibleTensorProto)
+      self.assertFalse(s_vals[0].initialized)
 
       # Call run() again, to check that u is initialized properly.
       self.assertAllClose(u_init_val, sess.run(u))
       self.assertEqual(s_init_val, sess.run(s))
 
   def testDebugWhileLoopGeneratesMultipleDumps(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       num_iter = 10
 
       # "u" is the Variable being updated in the loop.
@@ -306,7 +440,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       u_init_val = np.array(11.0)
       u_init = constant_op.constant(u_init_val)
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
 
       # "v" is the increment.
       v_name = "testDumpToFileWhileLoop/v"
@@ -314,7 +448,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       v_init_val = np.array(2.0)
       v_init = constant_op.constant(v_init_val)
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       u.initializer.run()
       v.initializer.run()
@@ -331,7 +465,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
         new_i = control_flow_ops.with_dependencies([op], new_i)
         return [new_i]
 
-      loop = control_flow_ops.while_loop(cond, body, [i], parallel_iterations=1)
+      loop = control_flow_ops.while_loop(
+          cond, body, [i], parallel_iterations=10)
 
       # Create RunOptions for debug-watching tensors
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -357,16 +492,17 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                        len(run_metadata.partition_graphs))
 
       self.assertEqual(num_iter, r)
-
       u_val_final = sess.run(u)
       self.assertAllClose(u_init_val + num_iter * v_init_val, u_val_final)
 
       # Verify dump files
       self.assertTrue(os.path.isdir(self._dump_root))
 
-      self.assertTrue(os.path.isdir(os.path.join(self._dump_root, u_namespace)))
-      self.assertTrue(
-          os.path.isdir(os.path.join(self._dump_root, v_namespace, "v")))
+      u_glob_out = glob.glob(os.path.join(self._dump_root, "*", u_namespace))
+      v_glob_out = glob.glob(os.path.join(
+          self._dump_root, "*", v_namespace, "v"))
+      self.assertTrue(os.path.isdir(u_glob_out[0]))
+      self.assertTrue(os.path.isdir(v_glob_out[0]))
 
       dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
@@ -418,16 +554,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       i = constant_op.constant(10, name="i")
       loop = control_flow_ops.while_loop(loop_cond, loop_body, [i])
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(run_options,
-                              sess.graph,
-                              debug_urls=self._debug_urls())
-      run_metadata = config_pb2.RunMetadata()
-      self.assertEqual(
-          16, sess.run(loop, options=run_options, run_metadata=run_metadata))
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      loop_result, dump = self._debug_run_and_get_dump(sess, loop)
+      self.assertEqual(16, loop_result)
 
       self.assertEqual(
           [[10]], dump.get_tensors("while/Enter", 0, "DebugIdentity"))
@@ -435,25 +563,59 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           [[12], [14], [16]],
           dump.get_tensors("while/NextIteration", 0, "DebugIdentity"))
 
+  def testDebugTrainingDynamicRNNWorks(self):
+    with session.Session() as sess:
+      input_size = 3
+      state_size = 2
+      time_steps = 4
+      batch_size = 2
+
+      input_values = np.random.randn(time_steps, batch_size, input_size)
+      sequence_length = np.random.randint(0, time_steps, size=batch_size)
+      concat_inputs = array_ops.placeholder(
+          dtypes.float32, shape=(time_steps, batch_size, input_size))
+
+      outputs_dynamic, _ = rnn.dynamic_rnn(
+          _RNNCellForTest(input_size, state_size),
+          inputs=concat_inputs,
+          sequence_length=sequence_length,
+          time_major=True,
+          dtype=dtypes.float32)
+      toy_loss = math_ops.reduce_sum(outputs_dynamic * outputs_dynamic)
+      train_op = gradient_descent.GradientDescentOptimizer(
+          learning_rate=0.1).minimize(toy_loss, name="train_op")
+
+      sess.run(variables.global_variables_initializer())
+
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph_with_denylists(
+          run_options,
+          sess.graph,
+          node_name_regex_denylist="(.*rnn/while/.*|.*TensorArray.*)",
+          debug_urls=self._debug_urls())
+      # b/36870549: Nodes with these name patterns need to be excluded from
+      # tfdbg in order to prevent MSAN warnings of uninitialized Tensors
+      # under both file:// and grpc:// debug URL schemes.
+
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(train_op, feed_dict={concat_inputs: input_values},
+               options=run_options, run_metadata=run_metadata)
+
+      debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+
   def testDebugCondWatchingWholeGraphWorks(self):
     with session.Session() as sess:
-      x = variables.Variable(10.0, name="x")
-      y = variables.Variable(20.0, name="y")
+      x = variables.VariableV1(10.0, name="x")
+      y = variables.VariableV1(20.0, name="y")
       cond = control_flow_ops.cond(
           x > y, lambda: math_ops.add(x, 1), lambda: math_ops.add(y, 1))
 
       sess.run(variables.global_variables_initializer())
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(run_options,
-                              sess.graph,
-                              debug_urls=self._debug_urls())
-      run_metadata = config_pb2.RunMetadata()
-      self.assertEqual(
-          21, sess.run(cond, options=run_options, run_metadata=run_metadata))
+      cond_result, dump = self._debug_run_and_get_dump(sess, cond)
+      self.assertEqual(21, cond_result)
 
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
       self.assertAllClose(
           [21.0], dump.get_tensors("cond/Merge", 0, "DebugIdentity"))
 
@@ -467,9 +629,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       z_name = "testFindNodesWithBadTensorValues/z"
 
       u_init = constant_op.constant([2.0, 4.0])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v_init = constant_op.constant([2.0, 1.0])
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       # Expected output: [0.0, 3.0]
       w = math_ops.subtract(u, v, name=w_name)
@@ -485,21 +647,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       u.initializer.run()
       v.initializer.run()
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugIdentity"],
-          debug_urls=self._debug_urls())
-
-      run_metadata = config_pb2.RunMetadata()
-      sess.run(z, options=run_options, run_metadata=run_metadata)
-
-      self.assertEqual(self._expected_partition_graph_count,
-                       len(run_metadata.partition_graphs))
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      _, dump = self._debug_run_and_get_dump(
+          sess, z,
+          expected_partition_graph_count=self._expected_partition_graph_count)
 
       def has_bad_value(_, tensor):
         return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
@@ -509,45 +659,80 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Verify that the nodes with bad values are caught through running find
       # on the debug dump.
-      self.assertEqual(3, len(bad_data))
-      self.assertEqual(x_name, bad_data[0].node_name)
-      self.assertEqual(y_name, bad_data[1].node_name)
-      self.assertEqual(z_name, bad_data[2].node_name)
+      self.assertLessEqual(3, len(bad_data))
+      node_names = [datum.node_name for datum in bad_data]
+      self.assertIn(x_name, node_names)
+      self.assertIn(y_name, node_names)
+      self.assertIn(z_name, node_names)
 
       # Test first_n kwarg of find(): Find the first offending tensor.
       first_bad_datum = dump.find(has_bad_value, first_n=1)
-
       self.assertEqual(1, len(first_bad_datum))
-      self.assertEqual(x_name, first_bad_datum[0].node_name)
+
+  def testFindInfOrNanWithOpNameExclusion(self):
+    with session.Session() as sess:
+      u_name = "testFindInfOrNanWithOpNameExclusion/u"
+      v_name = "testFindInfOrNanWithOpNameExclusion/v"
+      w_name = "testFindInfOrNanWithOpNameExclusion/w"
+      x_name = "testFindInfOrNanWithOpNameExclusion/x"
+      y_name = "testFindInfOrNanWithOpNameExclusion/y"
+      z_name = "testFindInfOrNanWithOpNameExclusion/z"
+
+      u_init = constant_op.constant([2.0, 4.0])
+      u = variables.VariableV1(u_init, name=u_name)
+      v_init = constant_op.constant([2.0, 1.0])
+      v = variables.VariableV1(v_init, name=v_name)
+
+      # Expected output: [0.0, 3.0]
+      w = math_ops.subtract(u, v, name=w_name)
+
+      # Expected output: [inf, 1.3333]
+      x = math_ops.div(u, w, name=x_name)
+
+      # Expected output: [nan, 4.0]
+      y = math_ops.multiply(w, x, name=y_name)
+
+      z = math_ops.multiply(y, y, name=z_name)
+
+      u.initializer.run()
+      v.initializer.run()
+
+      _, dump = self._debug_run_and_get_dump(
+          sess, z,
+          expected_partition_graph_count=self._expected_partition_graph_count)
+
+      # Find all "offending tensors".
+      bad_data = dump.find(debug_data.has_inf_or_nan,
+                           exclude_node_names=".*/x$")
+
+      # Verify that the nodes with bad values are caught through running find
+      # on the debug dump.
+      self.assertLessEqual(2, len(bad_data))
+      # Assert that the node `x` should have been excluded.
+      node_names = [datum.node_name for datum in bad_data]
+      self.assertIn(y_name, node_names)
+      self.assertIn(z_name, node_names)
+
+      first_bad_datum = dump.find(
+          debug_data.has_inf_or_nan, first_n=1, exclude_node_names=".*/x$")
+      self.assertEqual(1, len(first_bad_datum))
 
   def _session_run_for_graph_structure_lookup(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpGraphStructureLookup/u"
       v_name = "testDumpGraphStructureLookup/v"
       w_name = "testDumpGraphStructureLookup/w"
 
       u_init = constant_op.constant([2.0, 4.0])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v = math_ops.add(u, u, name=v_name)
       w = math_ops.add(v, v, name=w_name)
 
       u.initializer.run()
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugIdentity"],
-          debug_urls=self._debug_urls())
-
-      run_metadata = config_pb2.RunMetadata()
-      sess.run(w, options=run_options, run_metadata=run_metadata)
-
-    self.assertEqual(self._expected_partition_graph_count,
-                     len(run_metadata.partition_graphs))
-
-    dump = debug_data.DebugDumpDir(
-        self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      _, dump = self._debug_run_and_get_dump(
+          sess, w,
+          expected_partition_graph_count=self._expected_partition_graph_count)
 
     return u_name, v_name, w_name, dump
 
@@ -575,7 +760,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     u_read_name = u_name + "/read"
 
     # Test node name list lookup of the DebugDumpDir object.
-    node_names = dump.nodes()
+    if test_util.gpu_device_name():
+      node_names = dump.nodes(
+          device_name="/job:localhost/replica:0/task:0/device:GPU:0")
+    else:
+      node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
     self.assertTrue(u_read_name in node_names)
 
@@ -585,7 +774,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(u_attr["shape"].shape.dim))
     self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
 
-    with self.assertRaisesRegexp(ValueError, "No node named \"foo\" exists"):
+    with self.assertRaisesRegexp(
+        ValueError, r"None of the .* device\(s\) has a node named "):
       dump.node_attributes("foo")
 
   def testGraphStructureLookupGivesDebugWatchKeys(self):
@@ -608,7 +798,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(0, u_data[0].output_slot)
     self.assertEqual("DebugIdentity", u_data[0].debug_op)
     self.assertGreaterEqual(u_data[0].timestamp, 0)
-
     self.assertEqual([], dump.watch_key_to_data("foo"))
 
   def testGraphStructureLookupGivesNodeInputsAndRecipients(self):
@@ -639,12 +828,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual([], dump.node_recipients(w_name, is_control=True))
 
     # Test errors raised on invalid node names.
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(
+        ValueError, r"None of the .* device\(s\) has a node named "):
       dump.node_inputs(u_name + "foo")
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(
+        ValueError, r"None of the .* device\(s\) has a node named "):
       dump.node_recipients(u_name + "foo")
 
     # Test transitive_inputs().
@@ -655,8 +843,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         set([u_name, u_read_name, v_name]), set(dump.transitive_inputs(w_name)))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(
+        ValueError, r"None of the .* device\(s\) has a node named "):
       dump.transitive_inputs(u_name + "foo")
 
   def testGraphStructureLookupWithoutPartitionGraphsDoesNotErrorOut(self):
@@ -668,14 +856,44 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
     self.assertTrue(dump.loaded_partition_graphs())
 
+  def testGraphPathFindingOnControlEdgesWorks(self):
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      v1 = variables.VariableV1(1.0, name="v1")
+      v2 = variables.VariableV1(2.0, name="v2")
+      v3 = variables.VariableV1(3.0, name="v3")
+      a = math_ops.add(v1, v2, name="a")
+      with ops.control_dependencies([a]):
+        c = math_ops.subtract(v3, v3, name="c")
+
+      sess.run(variables.global_variables_initializer())
+      _, dump = self._debug_run_and_get_dump(sess, c)
+
+      self.assertEqual(["v1", "v1/read", "a", "c"],
+                       dump.find_some_path("v1", "c"))
+      self.assertIsNone(dump.find_some_path("v1", "c", include_control=False))
+
+  def testGraphPathFindingReverseRefEdgeWorks(self):
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      v = variables.VariableV1(10.0, name="v")
+      delta = variables.VariableV1(1.0, name="delta")
+      inc_v = state_ops.assign_add(v, delta, name="inc_v")
+
+      sess.run(variables.global_variables_initializer())
+      _, dump = self._debug_run_and_get_dump(sess, inc_v)
+
+      self.assertEqual(
+          ["delta", "delta/read", "inc_v", "v"],
+          dump.find_some_path("delta", "v", include_reversed_ref=True))
+      self.assertIsNone(dump.find_some_path("delta", "v"))
+
   def testCausalityCheckOnDumpsDetectsWrongTemporalOrder(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpCausalityCheck/u"
       v_name = "testDumpCausalityCheck/v"
       w_name = "testDumpCausalityCheck/w"
 
       u_init = constant_op.constant([2.0, 4.0])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v = math_ops.add(u, u, name=v_name)
       w = math_ops.add(v, v, name=w_name)
 
@@ -706,24 +924,27 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Get the dump file names and compute their timestamps.
       self.assertEqual(
-          1, len(dump.get_tensor_file_paths(u_name, 0, "DebugIdentity")))
-      u_file_path = dump.get_tensor_file_paths(u_name, 0, "DebugIdentity")[0]
-
-      self.assertEqual(
           1, len(dump.get_tensor_file_paths(v_name, 0, "DebugIdentity")))
       v_file_path = dump.get_tensor_file_paths(v_name, 0, "DebugIdentity")[0]
 
-      u_timestamp = int(u_file_path[u_file_path.rindex("_") + 1:])
+      self.assertEqual(
+          1, len(dump.get_tensor_file_paths(w_name, 0, "DebugIdentity")))
+      w_file_path = dump.get_tensor_file_paths(w_name, 0, "DebugIdentity")[0]
+
       v_timestamp = int(v_file_path[v_file_path.rindex("_") + 1:])
+      w_timestamp = int(w_file_path[w_file_path.rindex("_") + 1:])
 
-      # Swap the time stamps
-      new_u_file_path = u_file_path[:u_file_path.rindex(
-          "_")] + "_%d" % v_timestamp
-      new_v_file_path = v_file_path[:v_file_path.rindex(
-          "_")] + "_%d" % u_timestamp
+      # Swap and slightly shift the time stamps of the last two dumped tensors,
+      # to simulate "causality violation", which can happen if the dump
+      # directory contains incomplete data and/or mixes data from different
+      # Session.run() calls.
+      v_file_path_1 = v_file_path[:v_file_path.rindex(
+          "_")] + "_%d" % w_timestamp
+      w_file_path_1 = w_file_path[:w_file_path.rindex("_")] + "_%d" % (
+          v_timestamp - 1)
 
-      os.rename(u_file_path, new_u_file_path)
-      os.rename(v_file_path, new_v_file_path)
+      os.rename(v_file_path, v_file_path_1)
+      os.rename(w_file_path, w_file_path_1)
 
       # Load the dump directory again. Now a ValueError is expected to be
       # raised due to the timestamp swap.
@@ -738,6 +959,18 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           partition_graphs=run_metadata.partition_graphs,
           validate=False)
 
+      # Next, set the two times stamps to be the same, which should be fine.
+      v_file_path_2 = v_file_path[:v_file_path.rindex(
+          "_")] + "_%d" % w_timestamp
+      w_file_path_2 = w_file_path[:w_file_path.rindex(
+          "_")] + "_%d" % w_timestamp
+
+      os.rename(v_file_path_1, v_file_path_2)
+      os.rename(w_file_path_1, w_file_path_2)
+
+      debug_data.DebugDumpDir(
+          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+
   def testWatchingOnlyOneOfTwoOutputSlotsDoesNotLeadToCausalityFailure(self):
     with session.Session() as sess:
       x_name = "oneOfTwoSlots/x"
@@ -746,7 +979,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w_name = "oneOfTwoSlots/w"
       y_name = "oneOfTwoSlots/y"
 
-      x = variables.Variable([1, 3, 3, 7], dtype=dtypes.int32, name=x_name)
+      x = variables.VariableV1([1, 3, 3, 7], dtype=dtypes.int32, name=x_name)
       sess.run(x.initializer)
 
       unique_x, indices, _ = array_ops.unique_with_counts(x, name=u_name)
@@ -779,7 +1012,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testOutputSlotWithoutOutgoingEdgeCanBeWatched(self):
     """Test watching output slots not attached to any outgoing edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       u = constant_op.constant(u_init_val, shape=[2, 2], name="u")
 
@@ -790,18 +1023,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with ops.control_dependencies([u]):
         z = control_flow_ops.no_op(name="z")
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugIdentity"],
-          debug_urls=self._debug_urls())
-
-      run_metadata = config_pb2.RunMetadata()
-      sess.run(z, options=run_options, run_metadata=run_metadata)
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      _, dump = self._debug_run_and_get_dump(sess, z)
 
       # Assert that the DebugIdentity watch on u works properly.
       self.assertEqual(1, len(dump.dumped_tensor_data))
@@ -814,11 +1036,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testWatchingVariableUpdateOpsSeesUpdatedValues(self):
     """Watch output slots on Variable-updating ops, with no emitted edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init = constant_op.constant(10.0)
-      u = variables.Variable(u_init, name="gdo/u")
+      u = variables.VariableV1(u_init, name="gdo/u")
       v_init = constant_op.constant(20.0)
-      v = variables.Variable(v_init, name="gdo/v")
+      v = variables.VariableV1(v_init, name="gdo/v")
 
       w = math_ops.multiply(u, v, name="gdo/w")
       # gdo stands for GradientDescentOptimizer.
@@ -830,18 +1052,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       u.initializer.run()
       v.initializer.run()
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugIdentity"],
-          debug_urls=self._debug_urls())
-
-      run_metadata = config_pb2.RunMetadata()
-      sess.run(train_op, options=run_options, run_metadata=run_metadata)
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      _, dump = self._debug_run_and_get_dump(sess, train_op)
 
       update_u_data = dump.watch_key_to_data(
           "gdo/train/update_gdo/u/ApplyGradientDescent:0:DebugIdentity")
@@ -873,7 +1084,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
     with session.Session() as sess:
       x_init = constant_op.constant([2, 2, 3, 5, 5])
-      x = variables.Variable(x_init, name="unconnected/x")
+      x = variables.VariableV1(x_init, name="unconnected/x")
 
       # The UniqueOp (tf.unique) has two output slots. Use only slot 0 in the
       # graph. Let the debugger watch the unused slot 1.
@@ -896,19 +1107,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(["unconnected/y"], unique_x_slot_0_recipients)
       self.assertEqual([], unique_x_slot_1_recipients)
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugIdentity"],
-          debug_urls=self._debug_urls())
-
-      run_metadata = config_pb2.RunMetadata()
-      result = sess.run(y, options=run_options, run_metadata=run_metadata)
-      self.assertAllClose([2, 4, 7], result)
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      y_result, dump = self._debug_run_and_get_dump(sess, y)
+      self.assertAllClose([2, 4, 7], y_result)
 
       # Assert that the connected slot (slot 0) is dumped properly.
       unique_x_slot_0_dumps = dump.watch_key_to_data(
@@ -937,51 +1137,43 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       x = array_ops.transpose(ph, name="mismatch/x")
       y = array_ops.squeeze(ph, name="mismatch/y")
 
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options, sess.graph, debug_urls=self._debug_urls(), global_step=1)
-
-      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
-      dump1 = debug_data.DebugDumpDir(self._dump_root)
+      _, dump1 = self._debug_run_and_get_dump(
+          sess, x, feed_dict={ph: np.array([[7.0, 8.0]])}, global_step=1)
       self.assertEqual(1, dump1.core_metadata.global_step)
-      self.assertGreaterEqual(dump1.core_metadata.session_run_count, 0)
-      self.assertEqual(0, dump1.core_metadata.executor_step_count)
+      self.assertGreaterEqual(dump1.core_metadata.session_run_index, 0)
+      self.assertEqual(0, dump1.core_metadata.executor_step_index)
       self.assertEqual([ph.name], dump1.core_metadata.input_names)
       self.assertEqual([x.name], dump1.core_metadata.output_names)
       self.assertEqual([], dump1.core_metadata.target_nodes)
-      shutil.rmtree(self._dump_root)
-
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options, sess.graph, debug_urls=self._debug_urls(), global_step=2)
+      file_io.delete_recursively(self._dump_root)
 
       # Calling run() with the same feed, same output and same debug watch
-      # options should increment both session_run_count and
-      # executor_step_count.
-      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
-      dump2 = debug_data.DebugDumpDir(self._dump_root)
+      # options should increment both session_run_index and
+      # executor_step_index.
+      _, dump2 = self._debug_run_and_get_dump(
+          sess, x, feed_dict={ph: np.array([[7.0, 8.0]])}, global_step=2)
       self.assertEqual(2, dump2.core_metadata.global_step)
-      self.assertEqual(dump1.core_metadata.session_run_count + 1,
-                       dump2.core_metadata.session_run_count)
-      self.assertEqual(dump1.core_metadata.executor_step_count + 1,
-                       dump2.core_metadata.executor_step_count)
+      self.assertEqual(dump1.core_metadata.session_run_index + 1,
+                       dump2.core_metadata.session_run_index)
+      self.assertEqual(dump1.core_metadata.executor_step_index + 1,
+                       dump2.core_metadata.executor_step_index)
       self.assertEqual([ph.name], dump2.core_metadata.input_names)
       self.assertEqual([x.name], dump2.core_metadata.output_names)
       self.assertEqual([], dump2.core_metadata.target_nodes)
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(
           run_options, sess.graph, debug_urls=self._debug_urls(), global_step=3)
 
       # Calling run() with a different output should increment
-      # session_run_count, but not executor_step_count.
-      sess.run(y, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
-      dump3 = debug_data.DebugDumpDir(self._dump_root)
+      # session_run_index, but not executor_step_index.
+      _, dump3 = self._debug_run_and_get_dump(
+          sess, y, feed_dict={ph: np.array([[7.0, 8.0]])}, global_step=3)
       self.assertEqual(3, dump3.core_metadata.global_step)
-      self.assertEqual(dump2.core_metadata.session_run_count + 1,
-                       dump3.core_metadata.session_run_count)
-      self.assertEqual(0, dump3.core_metadata.executor_step_count)
+      self.assertEqual(dump2.core_metadata.session_run_index + 1,
+                       dump3.core_metadata.session_run_index)
+      self.assertEqual(0, dump3.core_metadata.executor_step_index)
       self.assertEqual([ph.name], dump3.core_metadata.input_names)
       self.assertEqual([y.name], dump3.core_metadata.output_names)
       self.assertEqual([], dump3.core_metadata.target_nodes)
@@ -1011,8 +1203,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       dump = debug_data.DebugDumpDir(self._dump_root)
 
-      self.assertGreaterEqual(dump.core_metadata.session_run_count, 0)
-      self.assertGreaterEqual(dump.core_metadata.executor_step_count, 0)
+      self.assertGreaterEqual(dump.core_metadata.session_run_index, 0)
+      self.assertGreaterEqual(dump.core_metadata.executor_step_index, 0)
       self.assertEqual([ph.name], dump.core_metadata.input_names)
       self.assertEqual([y.name], dump.core_metadata.output_names)
       self.assertEqual([], dump.core_metadata.target_nodes)
@@ -1031,56 +1223,37 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertAllClose(np.array([[-3.0, 0.0]]), x_dumps[0].get_tensor())
 
   def testDebugNumericSummaryOnInitializedTensorGivesCorrectResult(self):
-    with session.Session() as sess:
-      a = variables.Variable(
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      a = variables.VariableV1(
           [
               np.nan, np.nan, 0.0, 0.0, 0.0, -1.0, -3.0, 3.0, 7.0, -np.inf,
               -np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.nan, np.nan
           ],
           dtype=np.float32,
           name="numeric_summary/a")
-      b = variables.Variable(
+      b = variables.VariableV1(
           [0.0] * 18, dtype=np.float32, name="numeric_summary/b")
       c = math_ops.add(a, b, name="numeric_summary/c")
 
       sess.run(variables.global_variables_initializer())
 
-      run_metadata = config_pb2.RunMetadata()
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugNumericSummary"],
-          debug_urls=self._debug_urls())
-
-      sess.run(c, options=run_options, run_metadata=run_metadata)
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      _, dump = self._debug_run_and_get_dump(
+          sess, c, debug_ops=["DebugNumericSummary"])
       self.assertTrue(dump.loaded_partition_graphs())
 
       self.assertAllClose([[
-          1.0, 18.0, 2.0, 2.0, 3.0, 2.0, 5.0, 4.0, -3.0, 7.0, 0.85714286,
-          8.97959184
+          1.0, 18.0, 4.0, 2.0, 2.0, 3.0, 2.0, 5.0, -3.0, 7.0, 0.85714286,
+          8.97959184, 1.0, 1.0, 18.0
       ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
 
   def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
     with session.Session() as sess:
-      a = variables.Variable(
+      a = variables.VariableV1(
           [42], dtype=np.float32, name="numeric_summary_uninit/a")
 
-      run_metadata = config_pb2.RunMetadata()
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options,
-          sess.graph,
-          debug_ops=["DebugNumericSummary"],
-          debug_urls=self._debug_urls())
+      _, dump = self._debug_run_and_get_dump(
+          sess, a.initializer, debug_ops=["DebugNumericSummary"])
 
-      sess.run(a.initializer, options=run_options, run_metadata=run_metadata)
-
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
       self.assertTrue(dump.loaded_partition_graphs())
 
       # DebugNumericSummary output should reflect the uninitialized state of
@@ -1089,6 +1262,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                                          "DebugNumericSummary")[0]
       self.assertAllClose([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                           numeric_summary[0:8])
+      # Check dtype (index 12), ndims (index 13) and dimension sizes (index
+      # 14+).
+      self.assertAllClose([1.0, 1.0, 1.0], numeric_summary[12:])
       self.assertTrue(np.isinf(numeric_summary[8]))
       self.assertGreater(numeric_summary[8], 0.0)
       self.assertTrue(np.isinf(numeric_summary[9]))
@@ -1096,25 +1272,162 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertTrue(np.isnan(numeric_summary[10]))
       self.assertTrue(np.isnan(numeric_summary[11]))
 
-  def testDebugQueueOpsDoesNotoErrorOut(self):
+  def testDebugNumericSummaryFailureIsToleratedWhenOrdered(self):
     with session.Session() as sess:
-      q = data_flow_ops.FIFOQueue(3, "float", name="fifo_queue")
-      q_init = q.enqueue_many(([101.0, 202.0, 303.0],), name="enqueue_many")
+      a = variables.VariableV1("1", name="a")
+      b = variables.VariableV1("3", name="b")
+      c = variables.VariableV1("2", name="c")
+
+      d = math_ops.add(a, b, name="d")
+      e = math_ops.add(d, c, name="e")
+      n = parsing_ops.string_to_number(e, name="n")
+      m = math_ops.add(n, n, name="m")
+
+      sess.run(variables.global_variables_initializer())
+
+      # Using DebugNumericSummary on sess.run(m) with the default
+      # tolerate_debug_op_creation_failures=False should error out due to the
+      # presence of string-dtype Tensors in the graph.
+      run_metadata = config_pb2.RunMetadata()
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary"],
+          debug_urls=self._debug_urls())
+      with self.assertRaises(errors.FailedPreconditionError):
+        sess.run(m, options=run_options, run_metadata=run_metadata)
+
+      # Using tolerate_debug_op_creation_failures=True should get rid of the
+      # error.
+      m_result, dump = self._debug_run_and_get_dump(
+          sess, m, debug_ops=["DebugNumericSummary"],
+          tolerate_debug_op_creation_failures=True)
+      self.assertEqual(264, m_result)
+
+      # The integer-dtype Tensors in the graph should have been dumped
+      # properly.
+      self.assertIn("n:0:DebugNumericSummary", dump.debug_watch_keys("n"))
+      self.assertIn("m:0:DebugNumericSummary", dump.debug_watch_keys("m"))
+
+  def testDebugNumericSummaryInvalidAttributesStringAreCaught(self):
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      a = variables.VariableV1(10.0, name="a")
+      b = variables.VariableV1(0.0, name="b")
+      c = variables.VariableV1(0.0, name="c")
+
+      x = math_ops.divide(a, b, name="x")
+      y = math_ops.multiply(x, c, name="y")
+
+      sess.run(variables.global_variables_initializer())
 
       run_metadata = config_pb2.RunMetadata()
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(
           run_options,
           sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0)"],
           debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"1 attribute key\(s\) were not valid for debug node "
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
 
-      sess.run(q_init, options=run_options, run_metadata=run_metadata)
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0; bar=false)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"2 attribute key\(s\) were not valid for debug node "
+          r"__dbg_.:0_0_DebugNumericSummary:"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
 
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      debug_utils.watch_graph(
+          run_options,
+          sess.graph,
+          debug_ops=["DebugNumericSummary(foo=1.0; mute_if_healthy=true)"],
+          debug_urls=self._debug_urls())
+      with self.assertRaisesRegexp(
+          errors.FailedPreconditionError,
+          r"1 attribute key\(s\) were not valid for debug node "
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
+        sess.run(y, options=run_options, run_metadata=run_metadata)
+
+  def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):
+    with session.Session(config=no_rewrite_session_config()) as sess:
+      a = variables.VariableV1(10.0, name="a")
+      b = variables.VariableV1(0.0, name="b")
+      c = variables.VariableV1(0.0, name="c")
+
+      x = math_ops.divide(a, b, name="x")
+      y = math_ops.multiply(x, c, name="y")
+
+      sess.run(variables.global_variables_initializer())
+
+      # Here, validate=False is necessary to avoid causality check error.
+      # TODO(cais): Maybe let DebugDumpDir constructor automatically ignore
+      #   debug ops with mute_if_healthy=false attribute during validation.
+      _, dump = self._debug_run_and_get_dump(
+          sess, y, debug_ops=["DebugNumericSummary(mute_if_healthy=true)"],
+          validate=False)
+
+      self.assertLessEqual(2, dump.size)
+      self.assertAllClose([[
+          1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
+          np.nan, 1.0, 0.0
+      ]], dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
+          np.nan, 1.0, 0.0
+      ]], dump.get_tensors("y", 0, "DebugNumericSummary"))
+
+      # Another run with the default mute_if_healthy (false) value should
+      # dump all the tensors.
+      file_io.delete_recursively(self._dump_root)
+      _, dump = self._debug_run_and_get_dump(
+          sess, y, debug_ops=["DebugNumericSummary()"])
+      self.assertLessEqual(8, dump.size)
+
+  def testDebugNumericSummaryMuteOnHealthyAndCustomBoundsWork(self):
+    with session.Session() as sess:
+      a = variables.VariableV1([10.0, 10.0], name="a")
+      b = variables.VariableV1([10.0, 2.0], name="b")
+
+      x = math_ops.add(a, b, name="x")  # [20.0, 12.0]
+      y = math_ops.divide(x, b, name="y")  # [2.0, 6.0]
+
+      sess.run(variables.global_variables_initializer())
+
+      # Here, validate=False is necessary to avoid causality check error.
+      # TODO(cais): Maybe let DebugDumpDir constructor automatically ignore
+      #   debug ops with mute_if_healthy=false attribute during validation.
+      _, dump = self._debug_run_and_get_dump(
+          sess, y, debug_ops=[
+              "DebugNumericSummary(mute_if_healthy=true; upper_bound=11.0)"],
+          validate=False)
+
+      self.assertEqual(1, dump.size)
+      self.assertAllClose([[
+          1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0, 1.0,
+          1.0, 2.0]], dump.get_tensors("x", 0, "DebugNumericSummary"))
+
+  def testDebugQueueOpsDoesNotoErrorOut(self):
+    with session.Session() as sess:
+      q = data_flow_ops.FIFOQueue(3, "float", name="fifo_queue")
+      q_init = q.enqueue_many(([101.0, 202.0, 303.0],), name="enqueue_many")
+
+      _, dump = self._debug_run_and_get_dump(sess, q_init)
       self.assertTrue(dump.loaded_partition_graphs())
 
-      self.assertIsNone(dump.get_tensors("fifo_queue", 0, "DebugIdentity")[0])
+      fifo_queue_tensor = dump.get_tensors("fifo_queue", 0, "DebugIdentity")[0]
+      self.assertIsInstance(fifo_queue_tensor,
+                            debug_data.InconvertibleTensorProto)
+      self.assertTrue(fifo_queue_tensor.initialized)
       self.assertAllClose(
           [101.0, 202.0, 303.0],
           dump.get_tensors("enqueue_many/component_0", 0, "DebugIdentity")[0])
@@ -1122,22 +1435,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testLookUpNodePythonTracebackWorks(self):
     with session.Session() as sess:
       u_init = constant_op.constant(10.0)
-      u = variables.Variable(u_init, name="traceback/u")
+      u = variables.VariableV1(u_init, name="traceback/u")
       v_init = constant_op.constant(20.0)
-      v = variables.Variable(v_init, name="traceback/v")
+      v = variables.VariableV1(v_init, name="traceback/v")
 
       w = math_ops.multiply(u, v, name="traceback/w")
 
       sess.run(variables.global_variables_initializer())
-
-      run_metadata = config_pb2.RunMetadata()
-      run_options = config_pb2.RunOptions(output_partition_graphs=True)
-      debug_utils.watch_graph(
-          run_options, sess.graph, debug_urls=self._debug_urls())
-
-      sess.run(w, options=run_options, run_metadata=run_metadata)
-      dump = debug_data.DebugDumpDir(
-          self._dump_root, partition_graphs=run_metadata.partition_graphs)
+      _, dump = self._debug_run_and_get_dump(sess, w)
 
       # Prior to setting the Python graph, attempts to do traceback lookup
       # should lead to exceptions.
@@ -1155,14 +1460,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Lookup should work with node name input.
       traceback = dump.node_traceback("traceback/w")
-      self.assertIsInstance(traceback, list)
+      self.assertIsInstance(traceback, tuple)
       self.assertGreater(len(traceback), 0)
       for trace in traceback:
         self.assertIsInstance(trace, tuple)
 
       # Lookup should also work with tensor name input.
       traceback = dump.node_traceback("traceback/w:0")
-      self.assertIsInstance(traceback, list)
+      self.assertIsInstance(traceback, tuple)
       self.assertGreater(len(traceback), 0)
       for trace in traceback:
         self.assertIsInstance(trace, tuple)
@@ -1181,7 +1486,7 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
       self.skipTest("No testing concurrent runs on a single GPU.")
 
     with session.Session() as sess:
-      v = variables.Variable(30.0, name="v")
+      v = variables.VariableV1(30.0, name="v")
       constants = []
       for i in xrange(self._num_concurrent_runs):
         constants.append(constant_op.constant(1.0, name="c%d" % i))
@@ -1212,7 +1517,7 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(30.0 + 1.0 * self._num_concurrent_runs * 100,
                           sess.run(v))
 
-      all_session_run_counts = []
+      all_session_run_indices = []
       for index in xrange(self._num_concurrent_runs):
         dump = debug_data.DebugDumpDir(self._dump_roots[index])
         self.assertTrue(dump.loaded_partition_graphs())
@@ -1225,8 +1530,8 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
             os.path.join(self._dump_roots[index], "_tfdbg_core*"))
 
         timestamps = []
-        session_run_counts = []
-        executor_step_counts = []
+        session_run_indices = []
+        executor_step_indices = []
         for core_metadata_file in core_metadata_files:
           with open(core_metadata_file, "rb") as f:
             event = event_pb2.Event()
@@ -1234,29 +1539,30 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
             core_metadata = (
                 debug_data.extract_core_metadata_from_event_proto(event))
             timestamps.append(event.wall_time)
-            session_run_counts.append(core_metadata.session_run_count)
-            executor_step_counts.append(core_metadata.executor_step_count)
+            session_run_indices.append(core_metadata.session_run_index)
+            executor_step_indices.append(core_metadata.executor_step_index)
 
-        all_session_run_counts.extend(session_run_counts)
+        all_session_run_indices.extend(session_run_indices)
 
-        # Assert that executor_step_count increases by one at a time.
-        executor_step_counts = zip(timestamps, executor_step_counts)
-        executor_step_counts = sorted(executor_step_counts, key=lambda x: x[0])
-        for i in xrange(len(executor_step_counts) - 1):
-          self.assertEquals(executor_step_counts[i][1] + 1,
-                            executor_step_counts[i + 1][1])
+        # Assert that executor_step_index increases by one at a time.
+        executor_step_indices = zip(timestamps, executor_step_indices)
+        executor_step_indices = sorted(
+            executor_step_indices, key=lambda x: x[0])
+        for i in xrange(len(executor_step_indices) - 1):
+          self.assertEquals(executor_step_indices[i][1] + 1,
+                            executor_step_indices[i + 1][1])
 
-        # Assert that session_run_count increase monotonically.
-        session_run_counts = zip(timestamps, session_run_counts)
-        session_run_counts = sorted(session_run_counts, key=lambda x: x[0])
-        for i in xrange(len(session_run_counts) - 1):
-          self.assertGreater(session_run_counts[i + 1][1],
-                             session_run_counts[i][1])
+        # Assert that session_run_index increase monotonically.
+        session_run_indices = zip(timestamps, session_run_indices)
+        session_run_indices = sorted(session_run_indices, key=lambda x: x[0])
+        for i in xrange(len(session_run_indices) - 1):
+          self.assertGreater(session_run_indices[i + 1][1],
+                             session_run_indices[i][1])
 
-      # Assert that the session_run_counts from the concurrent run() calls are
+      # Assert that the session_run_indices from the concurrent run() calls are
       # all unique.
-      self.assertEqual(len(all_session_run_counts),
-                       len(set(all_session_run_counts)))
+      self.assertEqual(len(all_session_run_indices),
+                       len(set(all_session_run_indices)))
 
 
 if __name__ == "__main__":

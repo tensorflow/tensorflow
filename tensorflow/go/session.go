@@ -1,16 +1,18 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 package tensorflow
 
@@ -20,7 +22,9 @@ import "C"
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
+	"sort"
 	"sync"
 	"unsafe"
 )
@@ -47,9 +51,12 @@ type Session struct {
 // options may be nil to use the default options.
 func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 	status := newStatus()
-	cOpt := options.c()
+	cOpt, doneOpt, err := options.c()
+	defer doneOpt()
+	if err != nil {
+		return nil, err
+	}
 	cSess := C.TF_NewSession(graph.c, cOpt, status.c)
-	C.TF_DeleteSessionOptions(cOpt)
 	if err := status.Err(); err != nil {
 		return nil, err
 	}
@@ -57,6 +64,64 @@ func NewSession(graph *Graph, options *SessionOptions) (*Session, error) {
 	s := &Session{c: cSess}
 	runtime.SetFinalizer(s, func(s *Session) { s.Close() })
 	return s, nil
+}
+
+// Device structure contains information about a device associated with a session, as returned by ListDevices()
+type Device struct {
+	Name, Type       string
+	MemoryLimitBytes int64
+}
+
+// String describes d and implements fmt.Stringer.
+func (d Device) String() string {
+	memStr := "no memory limit"
+	if d.MemoryLimitBytes >= 0 {
+		memStr = fmt.Sprintf("memory limit %d bytes", d.MemoryLimitBytes)
+	}
+	return fmt.Sprintf("(Device: name \"%s\", type %s, %s)", d.Name, d.Type, memStr)
+}
+
+func deviceSliceFromDeviceList(list *C.TF_DeviceList) ([]Device, error) {
+	var devices []Device
+	status := newStatus()
+
+	for i := 0; i < int(C.TF_DeviceListCount(list)); i++ {
+		name := C.TF_DeviceListName(list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("DeviceListName(index=%d) failed: %v", i, err)
+		}
+
+		deviceType := C.TF_DeviceListType(list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("DeviceListType(index=%d) failed: %v", i, err)
+		}
+
+		memoryLimitBytes := C.TF_DeviceListMemoryBytes(list, C.int(i), status.c)
+		if err := status.Err(); err != nil {
+			return nil, fmt.Errorf("DeviceListMemoryBytes(index=%d) failed: %v", i, err)
+		}
+
+		device := Device{
+			Name:             C.GoString(name),
+			Type:             C.GoString(deviceType),
+			MemoryLimitBytes: int64(memoryLimitBytes),
+		}
+
+		devices = append(devices, device)
+	}
+
+	return devices, nil
+}
+
+// ListDevices returns the list of devices associated with a Session.
+func (s *Session) ListDevices() ([]Device, error) {
+	status := newStatus()
+	devicesList := C.TF_SessionListDevices(s.c, status.c)
+	if err := status.Err(); err != nil {
+		return nil, fmt.Errorf("SessionListDevices() failed: %v", err)
+	}
+	defer C.TF_DeleteDeviceList(devicesList)
+	return deviceSliceFromDeviceList(devicesList)
 }
 
 // Run the graph with the associated session starting with the supplied feeds
@@ -83,6 +148,10 @@ func (s *Session) Run(feeds map[Output]*Tensor, fetches []Output, targets []*Ope
 		ptrOutput(c.fetches), ptrTensor(c.fetchTensors), C.int(len(fetches)),
 		ptrOperation(c.targets), C.int(len(targets)),
 		nil, status.c)
+
+	// Make sure GC won't harvest input tensors until SessionRun() is finished
+	runtime.KeepAlive(feeds)
+
 	if err := status.Err(); err != nil {
 		return nil, err
 	}
@@ -193,7 +262,7 @@ func (s *Session) NewPartialRun(feeds, fetches []Output, targets []*Operation) (
 		return nil, err
 	}
 	runtime.SetFinalizer(pr, func(pr *PartialRun) {
-		deletePRunHandle(pr.handle)
+		C.TF_DeletePRunHandle(pr.handle)
 	})
 	return pr, nil
 }
@@ -243,19 +312,42 @@ type SessionOptions struct {
 	// If the session disconnects from the remote process during its
 	// lifetime, session calls may fail immediately.
 	Target string
+
+	// Config is a binary-serialized representation of the
+	// tensorflow.ConfigProto protocol message
+	// (https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto).
+	Config []byte
 }
 
 // c converts the SessionOptions to the C API's TF_SessionOptions. Callers must
-// deallocate by calling C.TF_DeleteSessionOptions().
-func (o *SessionOptions) c() *C.TF_SessionOptions {
+// deallocate by calling the returned done() closure.
+func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) {
 	opt := C.TF_NewSessionOptions()
 	if o == nil {
-		return opt
+		return opt, func() { C.TF_DeleteSessionOptions(opt) }, nil
 	}
 	t := C.CString(o.Target)
 	C.TF_SetTarget(opt, t)
 	C.free(unsafe.Pointer(t))
-	return opt
+
+	var cConfig unsafe.Pointer
+	if sz := len(o.Config); sz > 0 {
+		status := newStatus()
+		// Copying into C-memory is the simplest thing to do in terms
+		// of memory safety and cgo rules ("C code may not keep a copy
+		// of a Go pointer after the call returns" from
+		// https://golang.org/cmd/cgo/#hdr-Passing_pointers).
+		cConfig = C.CBytes(o.Config)
+		C.TF_SetConfig(opt, cConfig, C.size_t(sz), status.c)
+		if err := status.Err(); err != nil {
+			C.TF_DeleteSessionOptions(opt)
+			return nil, func() {}, fmt.Errorf("invalid SessionOptions.Config: %v", err)
+		}
+	}
+	return opt, func() {
+		C.TF_DeleteSessionOptions(opt)
+		C.free(cConfig)
+	}, nil
 }
 
 // cRunArgs translates the arguments to Session.Run and PartialRun.Run into
@@ -268,16 +360,56 @@ type cRunArgs struct {
 	targets      []*C.TF_Operation
 }
 
+type feedsort struct {
+	feeds       []C.TF_Output
+	feedTensors []*C.TF_Tensor
+}
+
+func (f *feedsort) Less(i, j int) bool {
+	// Ideally we would sort on the output names. But that's not easy for us to
+	// do efficiently as loads of Go name strings would be created from the C
+	// strings and destroyed. But we can sort on the addresses of the operation
+	// names. This won't sort alphabetically, but for a given set of feeds it
+	// should give consistent results from one run to the next.
+	ni := uintptr(unsafe.Pointer(C.TF_OperationName(f.feeds[i].oper)))
+	nj := uintptr(unsafe.Pointer(C.TF_OperationName(f.feeds[j].oper)))
+	if ni == nj {
+		// if the names are the same the index may differ
+		return f.feeds[i].index < f.feeds[j].index
+	}
+	return ni < nj
+}
+
+func (f *feedsort) Swap(i, j int) {
+	f.feeds[i], f.feeds[j] = f.feeds[j], f.feeds[i]
+	f.feedTensors[i], f.feedTensors[j] = f.feedTensors[j], f.feedTensors[i]
+}
+
+func (f *feedsort) Len() int {
+	return len(f.feeds)
+}
+
 func newCRunArgs(feeds map[Output]*Tensor, fetches []Output, targets []*Operation) *cRunArgs {
 	c := &cRunArgs{
 		fetches:      make([]C.TF_Output, len(fetches)),
 		fetchTensors: make([]*C.TF_Tensor, len(fetches)),
 		targets:      make([]*C.TF_Operation, len(targets)),
 	}
+	// Go map iteration order is random. So our list of input names will be
+	// random for each Run. This interacts badly with the TF core code which
+	// builds a executor cache key from these names in the order we provide
+	// them. We'll eventually enumerate every possible order and store it in the
+	// executor cache. With n inputs that's n! entries. That gets very big very
+	// quickly.
 	for o, t := range feeds {
 		c.feeds = append(c.feeds, o.c())
 		c.feedTensors = append(c.feedTensors, t.c)
 	}
+	if len(c.feeds) > 1 {
+		fs := feedsort{feeds: c.feeds, feedTensors: c.feedTensors}
+		sort.Sort(&fs)
+	}
+
 	for i, o := range fetches {
 		c.fetches[i] = o.c()
 	}

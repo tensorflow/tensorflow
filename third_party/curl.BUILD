@@ -5,6 +5,32 @@ licenses(["notice"])  # MIT/X derivative license
 
 exports_files(["COPYING"])
 
+CURL_WIN_COPTS = [
+    "/Iexternal/curl/lib",
+    "/DBUILDING_LIBCURL",
+    "/DHAVE_CONFIG_H",
+    "/DCURL_DISABLE_FTP",
+    "/DCURL_DISABLE_NTLM",
+    "/DCURL_DISABLE_PROXY",
+    "/DHAVE_LIBZ",
+    "/DHAVE_ZLIB_H",
+    # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
+    # detection of what OS releases we can build on with VC 2012. This
+    # may not be needed (or may have to change) if the WINVER setting
+    # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
+    "/D_USING_V110_SDK71_",
+]
+
+CURL_WIN_SRCS = [
+    "lib/asyn-thread.c",
+    "lib/inet_ntop.c",
+    "lib/system_win32.c",
+    "lib/x509asn1.c",
+    "lib/vtls/schannel.c",
+    "lib/vtls/schannel_verify.c",
+    "lib/idn_win32.c",
+]
+
 cc_library(
     name = "curl",
     srcs = [
@@ -26,6 +52,8 @@ cc_library(
         "lib/curl_addrinfo.c",
         "lib/curl_addrinfo.h",
         "lib/curl_base64.h",
+        "lib/curl_ctype.c",
+        "lib/curl_ctype.h",
         "lib/curl_des.h",
         "lib/curl_endian.h",
         "lib/curl_fnmatch.c",
@@ -52,6 +80,7 @@ cc_library(
         "lib/curl_sec.h",
         "lib/curl_setup.h",
         "lib/curl_setup_once.h",
+        "lib/curl_sha256.h",
         "lib/curl_sspi.c",
         "lib/curl_sspi.h",
         "lib/curl_threads.c",
@@ -111,6 +140,8 @@ cc_library(
         "lib/md5.c",
         "lib/memdebug.c",
         "lib/memdebug.h",
+        "lib/mime.c",
+        "lib/mime.h",
         "lib/mprintf.c",
         "lib/multi.c",
         "lib/multihandle.h",
@@ -125,13 +156,15 @@ cc_library(
         "lib/parsedate.c",
         "lib/parsedate.h",
         "lib/pingpong.h",
-        "lib/pipeline.c",
-        "lib/pipeline.h",
+        "lib/pingpong.c",
         "lib/pop3.h",
         "lib/progress.c",
         "lib/progress.h",
-        "lib/rawstr.c",
-        "lib/rawstr.h",
+        "lib/quic.h",
+        "lib/rand.c",
+        "lib/rand.h",
+        "lib/rename.h",
+        "lib/rename.c",
         "lib/rtsp.c",
         "lib/rtsp.h",
         "lib/security.c",
@@ -139,8 +172,11 @@ cc_library(
         "lib/select.h",
         "lib/sendf.c",
         "lib/sendf.h",
+        "lib/setopt.c",
+        "lib/setopt.h",
         "lib/setup-os400.h",
         "lib/setup-vms.h",
+        "lib/sha256.c",
         "lib/share.c",
         "lib/share.h",
         "lib/sigpipe.h",
@@ -149,17 +185,18 @@ cc_library(
         "lib/smb.h",
         "lib/smtp.h",
         "lib/sockaddr.h",
+        "lib/socketpair.h",
+        "lib/socketpair.c",
         "lib/socks.c",
         "lib/socks.h",
         "lib/speedcheck.c",
         "lib/speedcheck.h",
         "lib/splay.c",
         "lib/splay.h",
-        "lib/ssh.h",
+        "lib/strcase.c",
+        "lib/strcase.h",
         "lib/strdup.c",
         "lib/strdup.h",
-        "lib/strequal.c",
-        "lib/strequal.h",
         "lib/strerror.c",
         "lib/strerror.h",
         "lib/strtok.c",
@@ -185,68 +222,64 @@ cc_library(
         "lib/vauth/vauth.c",
         "lib/vauth/vauth.h",
         "lib/version.c",
-        "lib/vtls/axtls.h",
-        "lib/vtls/cyassl.h",
-        "lib/vtls/darwinssl.h",
+        "lib/vssh/ssh.h",
+        "lib/vtls/bearssl.h",
         "lib/vtls/gskit.h",
         "lib/vtls/gtls.h",
         "lib/vtls/mbedtls.h",
         "lib/vtls/nssg.h",
         "lib/vtls/openssl.h",
-        "lib/vtls/polarssl.h",
-        "lib/vtls/polarssl_threadlock.h",
         "lib/vtls/schannel.h",
         "lib/vtls/vtls.c",
         "lib/vtls/vtls.h",
+        "lib/vtls/wolfssl.h",
         "lib/warnless.c",
         "lib/warnless.h",
         "lib/wildcard.c",
         "lib/wildcard.h",
         "lib/x509asn1.h",
+        "lib/psl.h",
+        "lib/psl.c",
+        "lib/vtls/sectransp.h",
+        "lib/vtls/mesalink.h",
+        "lib/vtls/mesalink.c",
+        "lib/curl_get_line.h",
+        "lib/curl_get_line.c",
+        "lib/urlapi-int.h",
+        "lib/urlapi.c",
+        "lib/altsvc.h",
+        "lib/altsvc.c",
+        "lib/doh.h",
+        "lib/doh.c",
     ] + select({
-        "@//tensorflow:darwin": [
-            "lib/vtls/darwinssl.c",
+        "@org_tensorflow//tensorflow:macos": [
+            "lib/vtls/sectransp.c",
         ],
-        "@//tensorflow:ios": [
-            "lib/vtls/darwinssl.c",
+        "@org_tensorflow//tensorflow:ios": [
+            "lib/vtls/sectransp.c",
         ],
-        "@//tensorflow:windows": [
-            "lib/asyn-thread.c",
-            "lib/inet_ntop.c",
-            "lib/system_win32.c",
-        ],
+        "@org_tensorflow//tensorflow:windows": CURL_WIN_SRCS,
         "//conditions:default": [
             "lib/vtls/openssl.c",
         ],
     }),
     hdrs = [
         "include/curl/curl.h",
-        "include/curl/curlbuild.h",
-        "include/curl/curlrules.h",
         "include/curl/curlver.h",
         "include/curl/easy.h",
         "include/curl/mprintf.h",
         "include/curl/multi.h",
         "include/curl/stdcheaders.h",
+        "include/curl/system.h",
         "include/curl/typecheck-gcc.h",
+        "include/curl/urlapi.h",
     ],
     copts = select({
-        "@//tensorflow:windows": [
-            "/I%prefix%/curl/lib",
-            "/DHAVE_CONFIG_H",
-            "/DCURL_DISABLE_FTP",
-            "/DCURL_DISABLE_NTLM",
-            "/DHAVE_LIBZ",
-            "/DHAVE_ZLIB_H",
-            # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
-            # detection of what OS releases we can build on with VC 2012. This
-            # may not be needed (or may have to change) if the WINVER setting
-            # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
-            "/D_USING_V110_SDK71_",
-        ],
+        "@org_tensorflow//tensorflow:windows": CURL_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
+            "-DBUILDING_LIBCURL",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
             "-DCURL_DISABLE_NTLM",  # turning it off in configure is not enough
@@ -255,10 +288,10 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "-fno-constant-cfstrings",
         ],
-        "@//tensorflow:windows": [
+        "@org_tensorflow//tensorflow:windows": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -266,20 +299,24 @@ cc_library(
             "-DCURL_MAX_WRITE_SIZE=65536",
         ],
     }),
+    defines = ["CURL_STATICLIB"],
     includes = ["include"],
     linkopts = select({
-        "@//tensorflow:android": [
+        "@org_tensorflow//tensorflow:android": [
             "-pie",
         ],
-        "@//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@//tensorflow:ios": [],
-        "@//tensorflow:windows": [
-            "ws2_32.lib",
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [
+            "-DEFAULTLIB:ws2_32.lib",
+            "-DEFAULTLIB:advapi32.lib",
+            "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:Normaliz.lib",
         ],
         "//conditions:default": [
             "-lrt",
@@ -287,15 +324,21 @@ cc_library(
     }),
     visibility = ["//visibility:public"],
     deps = [
-        "@zlib_archive//:zlib",
+        "@zlib",
     ] + select({
-        "@//tensorflow:ios": [],
-        "@//tensorflow:windows": [],
+        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow:windows": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
     }),
 )
+
+CURL_BIN_WIN_COPTS = [
+    "/Iexternal/curl/lib",
+    "/DHAVE_CONFIG_H",
+    "/DCURL_DISABLE_LIBCURL_OPTION",
+]
 
 cc_binary(
     name = "curl_bin",
@@ -386,13 +429,9 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        "@//tensorflow:windows": [
-            "/I%prefix%/curl/lib",
-            "/DHAVE_CONFIG_H",
-            "/DCURL_DISABLE_LIBCURL_OPTION",
-        ],
+        "@org_tensorflow//tensorflow:windows": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
-            "-I%prefix%/curl/lib",
+            "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",
@@ -421,19 +460,29 @@ genrule(
         "#  include \"lib/config-win32.h\"",
         "#  define BUILDING_LIBCURL 1",
         "#  define CURL_DISABLE_CRYPTO_AUTH 1",
+        "#  define CURL_DISABLE_DICT 1",
+        "#  define CURL_DISABLE_FILE 1",
+        "#  define CURL_DISABLE_GOPHER 1",
         "#  define CURL_DISABLE_IMAP 1",
         "#  define CURL_DISABLE_LDAP 1",
         "#  define CURL_DISABLE_LDAPS 1",
         "#  define CURL_DISABLE_POP3 1",
         "#  define CURL_PULL_WS2TCPIP_H 1",
-        "#  define HTTP_ONLY 1",
+        "#  define CURL_DISABLE_SMTP 1",
+        "#  define CURL_DISABLE_TELNET 1",
+        "#  define CURL_DISABLE_TFTP 1",
+        "#  define CURL_PULL_WS2TCPIP_H 1",
+        "#  define USE_WINDOWS_SSPI 1",
+        "#  define USE_WIN32_IDN 1",
+        "#  define USE_SCHANNEL 1",
+        "#  define WANT_IDN_PROTOTYPES 1",
         "#elif defined(__APPLE__)",
         "#  define HAVE_FSETXATTR_6 1",
         "#  define HAVE_SETMODE 1",
         "#  define HAVE_SYS_FILIO_H 1",
         "#  define HAVE_SYS_SOCKIO_H 1",
         "#  define OS \"x86_64-apple-darwin15.5.0\"",
-        "#  define USE_DARWINSSL 1",
+        "#  define USE_SECTRANSP 1",
         "#else",
         "#  define CURL_CA_BUNDLE \"/etc/ssl/certs/ca-certificates.crt\"",
         "#  define GETSERVBYPORT_R_ARGS 6",
@@ -460,7 +509,6 @@ genrule(
         "#  define HAVE_RAND_EGD 1",
         "#  define HAVE_RAND_STATUS 1",
         "#  define HAVE_SSL_GET_SHUTDOWN 1",
-        "#  define HAVE_STROPTS_H 1",
         "#  define HAVE_TERMIOS_H 1",
         "#  define OS \"x86_64-pc-linux-gnu\"",
         "#  define RANDOM_FILE \"/dev/urandom\"",
@@ -640,6 +688,7 @@ genrule(
         "#  define SIZEOF_INT 4",
         "#  define SIZEOF_LONG 8",
         "#  define SIZEOF_OFF_T 8",
+        "#  define SIZEOF_CURL_OFF_T 8",
         "#  define SIZEOF_SHORT 2",
         "#  define SIZEOF_SIZE_T 8",
         "#  define SIZEOF_TIME_T 8",

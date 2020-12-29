@@ -16,8 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -56,7 +56,7 @@ class TextLineReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     Status status = input_buffer_->ReadLine(value);
     ++line_number_;

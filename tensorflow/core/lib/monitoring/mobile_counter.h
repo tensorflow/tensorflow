@@ -15,9 +15,18 @@ limitations under the License.
 
 // Null implementation of the Counter metric for mobile platforms.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
 
+#if !defined(IS_MOBILE_PLATFORM) || !defined(TENSORFLOW_INCLUDED_FROM_COUNTER_H)
+// If this header file were included directly, and something else included its
+// non-mobile counterpart, there could be an unchecked ODR violation on the
+// classes below.
+#error do not include mobile_counter.h directly; use counter.h instead
+#endif  // !defined(IS_MOBILE_PLATFORM) ||
+        // !defined(TENSORFLOW_INCLUDED_FROM_COUNTER_H)
+
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -53,6 +62,8 @@ class Counter {
     return &default_counter_cell_;
   }
 
+  Status GetStatus() { return Status::OK(); }
+
  private:
   Counter() {}
 
@@ -64,4 +75,4 @@ class Counter {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_MOBILE_COUNTER_H_

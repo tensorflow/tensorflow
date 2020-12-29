@@ -18,10 +18,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -74,21 +75,21 @@ class SubgraphTest : public ::testing::Test {
     }
     std::sort(actual_nodes.begin(), actual_nodes.end());
 
-    LOG(INFO) << "Nodes present: " << str_util::Join(actual_nodes, " ");
+    LOG(INFO) << "Nodes present: " << absl::StrJoin(actual_nodes, " ");
 
     std::vector<string> expected_nodes = str_util::Split(nodes, ',');
     std::sort(expected_nodes.begin(), expected_nodes.end());
     for (const string& s : expected_nodes) {
       Node* n = FindNode(s);
       EXPECT_TRUE(n != nullptr) << s;
-      if (n->def().op() == "_Send" || n->def().op() == "_Recv") {
+      if (n->type_string() == "_Send" || n->type_string() == "_Recv") {
         EXPECT_EQ(device_info_.name(), n->assigned_device_name()) << s;
       }
     }
 
     EXPECT_TRUE(actual_nodes.size() == expected_nodes.size())
-        << "\nActual:   " << str_util::Join(actual_nodes, ",")
-        << "\nExpected: " << str_util::Join(expected_nodes, ",");
+        << "\nActual:   " << absl::StrJoin(actual_nodes, ",")
+        << "\nExpected: " << absl::StrJoin(expected_nodes, ",");
   }
 
   bool HasEdge(const string& src, int src_out, const string& dst, int dst_in) {
@@ -104,7 +105,8 @@ class SubgraphTest : public ::testing::Test {
   }
 
   string Subgraph(const string& fed_str, const string& fetch_str,
-                  const string& targets_str) {
+                  const string& targets_str,
+                  bool use_function_convention = false) {
     Graph* subgraph = new Graph(OpRegistry::Global());
     CopyGraph(*g_, subgraph);
     std::vector<string> fed =
@@ -114,12 +116,17 @@ class SubgraphTest : public ::testing::Test {
     std::vector<string> targets =
         str_util::Split(targets_str, ',', str_util::SkipEmpty());
 
-    Status s = subgraph::RewriteGraphForExecution(subgraph, fed, fetch, targets,
-                                                  device_info_);
+    subgraph::RewriteGraphMetadata metadata;
+    Status s = subgraph::RewriteGraphForExecution(
+        subgraph, fed, fetch, targets, device_info_, use_function_convention,
+        &metadata);
     if (!s.ok()) {
       delete subgraph;
       return s.ToString();
     }
+
+    EXPECT_EQ(fed.size(), metadata.feed_types.size());
+    EXPECT_EQ(fetch.size(), metadata.fetch_types.size());
 
     // Replace the graph with the subgraph for the rest of the display program
     g_.reset(subgraph);
@@ -178,6 +185,20 @@ TEST_F(SubgraphTest, FedOutputs1) {
   ExpectNodes("W1,W2,_recv_input_1,t1,t2");
 }
 
+TEST_F(SubgraphTest, FedOutputs1_FunctionConvention) {
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'W2' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }"
+      "node { name: 't2' op: 'TestMul' input: [ 'W2', 't1' ] }"
+      "node { name: 't3_a' op: 'TestRelu' input: 't2' }"
+      "node { name: 't3_b' op: 'TestRelu' input: 't2' }");
+  EXPECT_EQ("OK",
+            Subgraph("input:1", "", "t2", true /* use_function_convention */));
+  ExpectNodes("W1,W2,_arg_input_1_0,t1,t2");
+}
+
 TEST_F(SubgraphTest, FedRefNode) {
   ExpectOK(
       "node { name: 'W1' op: 'TestParams' }"
@@ -189,7 +210,19 @@ TEST_F(SubgraphTest, FedRefNode) {
   EXPECT_FALSE(IsRefType(CHECK_NOTNULL(n)->output_type(0)));
 }
 
-TEST_F(SubgraphTest, FedOutputs2) {
+TEST_F(SubgraphTest, FedRefNode_FunctionConvention) {
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'W2' op: 'TestParams' }"
+      "node { name: 't1' op: 'TestMul' input: [ 'W2', 'W1' ] }");
+  EXPECT_EQ("OK",
+            Subgraph("W1:0", "", "t1", true /* use_function_convention */));
+  ExpectNodes("_arg_W1_0_0,W2,t1");
+  Node* n = FindNode("_arg_W1_0_0");
+  EXPECT_FALSE(IsRefType(CHECK_NOTNULL(n)->output_type(0)));
+}
+
+TEST_F(SubgraphTest, FedOutputs2_FunctionConvention) {
   ExpectOK(
       "node { name: 'W1' op: 'TestParams' }"
       "node { name: 'W2' op: 'TestParams' }"
@@ -200,8 +233,9 @@ TEST_F(SubgraphTest, FedOutputs2) {
       "node { name: 't3_b' op: 'TestRelu' input: 't2' }");
   // We feed input:1, but nothing connects to it, so the _recv(input:1)
   // node also disappears.
-  EXPECT_EQ("OK", Subgraph("input:1,t1,W2", "", "t2"));
-  ExpectNodes("_recv_t1_0,_recv_W2_0,t2");
+  EXPECT_EQ("OK", Subgraph("input:1,t1,W2", "", "t2",
+                           true /* use_function_convention */));
+  ExpectNodes("_arg_t1_0_1,_arg_W2_0_2,t2");
 }
 
 TEST_F(SubgraphTest, FetchOutputs1) {
@@ -218,6 +252,22 @@ TEST_F(SubgraphTest, FetchOutputs1) {
       "W1,W2,input,t1,t2,_send_W2_0,_send_input_1,_send_t1_0,_send_t2_0");
 }
 
+TEST_F(SubgraphTest, FetchOutputs1_FunctionConvention) {
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'W2' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }"
+      "node { name: 't2' op: 'TestMul' input: [ 'W2', 't1' ] }"
+      "node { name: 't3_a' op: 'TestRelu' input: 't2' }"
+      "node { name: 't3_b' op: 'TestRelu' input: 't2' }");
+  EXPECT_EQ("OK", Subgraph("", "W2,input:1,t1,t2", "t2",
+                           true /* use_function_convention */));
+  ExpectNodes(
+      "W1,W2,input,t1,t2,_retval_W2_0_0,_retval_input_1_1,_retval_t1_0_2,_"
+      "retval_t2_0_3");
+}
+
 TEST_F(SubgraphTest, FetchOutputs2) {
   ExpectOK(
       "node { name: 'W1' op: 'TestParams' }"
@@ -229,6 +279,20 @@ TEST_F(SubgraphTest, FetchOutputs2) {
       "node { name: 't3_b' op: 'TestRelu' input: 't2' }");
   EXPECT_EQ("OK", Subgraph("", "t3_a", "t2"));
   ExpectNodes("W1,W2,input,t1,t2,t3_a,_send_t3_a_0");
+}
+
+TEST_F(SubgraphTest, FetchOutputs2_FunctionConvention) {
+  ExpectOK(
+      "node { name: 'W1' op: 'TestParams' }"
+      "node { name: 'W2' op: 'TestParams' }"
+      "node { name: 'input' op: 'TestInput' }"
+      "node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }"
+      "node { name: 't2' op: 'TestMul' input: [ 'W2', 't1' ] }"
+      "node { name: 't3_a' op: 'TestRelu' input: 't2' }"
+      "node { name: 't3_b' op: 'TestRelu' input: 't2' }");
+  EXPECT_EQ("OK",
+            Subgraph("", "t3_a", "t2", true /* use_function_convention */));
+  ExpectNodes("W1,W2,input,t1,t2,t3_a,_retval_t3_a_0_0");
 }
 
 TEST_F(SubgraphTest, ChainOfFools) {
@@ -248,8 +312,8 @@ TEST_F(SubgraphTest, ChainOfFools) {
   EXPECT_TRUE(HasEdge("e", 0, "_send_e_0", 0));
 }
 
-static bool HasSubstr(const string& base, const string& substr) {
-  bool ok = StringPiece(base).contains(substr);
+static bool HasSubstr(StringPiece base, StringPiece substr) {
+  bool ok = absl::StrContains(base, substr);
   EXPECT_TRUE(ok) << base << ", expected substring " << substr;
   return ok;
 }
@@ -275,53 +339,17 @@ TEST_F(SubgraphTest, Errors) {
   EXPECT_TRUE(HasSubstr(Subgraph("", "", ""), "at least one target"));
 }
 
-TEST_F(SubgraphTest, FedOutputsPreservesOutputShapes) {
-  ExpectOK(
-      R"proto(
-        node { name: 'W1' op: 'TestParams' }
-        node { name: 'W2' op: 'TestParams' }
-        node {
-          name: 'input'
-          op: 'TestInput'
-          attr {
-            key: '_output_shapes'
-            value {
-              list {
-                shape { unknown_rank: true }
-                shape { dim { size: 23 } }
-              }
-            }
-          }
-        }
-        node { name: 't1' op: 'TestMul' input: [ 'W1', 'input:1' ] }
-        node { name: 't2' op: 'TestMul' input: [ 'W2', 't1' ] }
-        node { name: 't3_a' op: 'TestRelu' input: 't2' }
-        node { name: 't3_b' op: 'TestRelu' input: 't2' }
-      )proto");
-  EXPECT_EQ("OK", Subgraph("input:1", "", "t2"));
-  ExpectNodes("W1,W2,_recv_input_1,t1,t2");
-
-  for (Node* node : graph()->nodes()) {
-    if (node->name() == "_recv_input_1") {
-      std::vector<PartialTensorShape> shapes;
-      TF_ASSERT_OK(GetNodeAttr(node->def(), "_output_shapes", &shapes));
-      ASSERT_EQ(1, shapes.size());
-      EXPECT_TRUE(PartialTensorShape({23}).IsIdenticalTo(shapes[0]));
-      break;
-    }
-  }
-}
-
 REGISTER_OP("In").Output("o: float");
 REGISTER_OP("Op").Input("i: float").Output("o: float");
 
-static void BM_Subgraph(int iters, int num_nodes) {
+void BM_SubgraphHelper(::testing::benchmark::State& state,
+                       bool use_function_convention) {
+  const int num_nodes = state.range(0);
   DeviceAttributes device_info;
   device_info.set_name("/job:a/replica:0/task:0/cpu:0");
   device_info.set_device_type(DeviceType(DEVICE_CPU).type());
   device_info.set_incarnation(0);
 
-  testing::StopTiming();
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -334,7 +362,7 @@ static void BM_Subgraph(int iters, int num_nodes) {
         last_node = ops::SourceOp("In", b.opts().WithName(name));
       }
     }
-    TF_CHECK_OK(b.ToGraph(&g));
+    TF_CHECK_OK(GraphDefBuilderToGraph(b, &g));
   }
 
   std::vector<string> fed;
@@ -343,16 +371,30 @@ static void BM_Subgraph(int iters, int num_nodes) {
   }
   std::vector<string> fetch;
   std::vector<string> targets = {strings::StrCat("N", num_nodes - 1)};
-  testing::StartTiming();
-  while (--iters > 0) {
+
+  for (auto s : state) {
     Graph* subgraph = new Graph(OpRegistry::Global());
     CopyGraph(g, subgraph);
-    TF_CHECK_OK(subgraph::RewriteGraphForExecution(subgraph, fed, fetch,
-                                                   targets, device_info));
+    subgraph::RewriteGraphMetadata metadata;
+    TF_CHECK_OK(subgraph::RewriteGraphForExecution(
+        subgraph, fed, fetch, targets, device_info, use_function_convention,
+        &metadata));
     delete subgraph;
   }
 }
+
+void BM_Subgraph(::testing::benchmark::State& state) {
+  BM_SubgraphHelper(state, false /* use_function_convention */);
+}
+void BM_SubgraphFunctionConvention(::testing::benchmark::State& state) {
+  BM_SubgraphHelper(state, true /* use_function_convention */);
+}
 BENCHMARK(BM_Subgraph)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000);
+BENCHMARK(BM_SubgraphFunctionConvention)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(100000);
 
 }  // namespace
 }  // namespace tensorflow

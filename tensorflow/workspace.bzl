@@ -1,1941 +1,1190 @@
 # TensorFlow external dependencies that can be loaded in WORKSPACE files.
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
-load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/gpus:rocm_configure.bzl", "rocm_configure")
+load("//third_party/tensorrt:tensorrt_configure.bzl", "tensorrt_configure")
+load("//third_party/nccl:nccl_configure.bzl", "nccl_configure")
+load("//third_party/git:git_configure.bzl", "git_configure")
+load("//third_party/py:python_configure.bzl", "python_configure")
+load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
+load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
+load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
+load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
+load("//third_party/toolchains/embedded/arm-linux:arm_linux_toolchain_configure.bzl", "arm_linux_toolchain_configure")
+load("//third_party:repo.bzl", "tf_http_archive")
+load("//third_party/clang_toolchain:cc_configure_clang.bzl", "cc_download_clang_toolchain")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+load("@bazel_tools//tools/build_defs/repo:java.bzl", "java_import_external")
+load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
+load(
+    "//tensorflow/tools/def_file_filter:def_file_filter_configure.bzl",
+    "def_file_filter_configure",
+)
+load("//third_party/FP16:workspace.bzl", FP16 = "repo")
+load("//third_party/aws:workspace.bzl", aws = "repo")
+load("//third_party/clog:workspace.bzl", clog = "repo")
+load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
+load("//third_party/dlpack:workspace.bzl", dlpack = "repo")
+load("//third_party/flatbuffers:workspace.bzl", flatbuffers = "repo")
+load("//third_party/hexagon:workspace.bzl", hexagon_nn = "repo")
+load("//third_party/highwayhash:workspace.bzl", highwayhash = "repo")
+load("//third_party/hwloc:workspace.bzl", hwloc = "repo")
+load("//third_party/icu:workspace.bzl", icu = "repo")
+load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
+load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
+load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
+load("//third_party/pasta:workspace.bzl", pasta = "repo")
+load("//third_party/psimd:workspace.bzl", psimd = "repo")
+load("//third_party/ruy:workspace.bzl", ruy = "repo")
+load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
+load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
+load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
 
+def initialize_third_party():
+    """ Load third party repositories.  See above load() statements. """
+    FP16()
+    aws()
+    clog()
+    cpuinfo()
+    dlpack()
+    flatbuffers()
+    hexagon_nn()
+    highwayhash()
+    hwloc()
+    icu()
+    kissfft()
+    jpeg()
+    nasm()
+    opencl_headers()
+    pasta()
+    psimd()
+    sobol_data()
+    vulkan_headers()
+    ruy()
 
-# Parse the bazel version string from `native.bazel_version`.
-def _parse_bazel_version(bazel_version):
-  # Remove commit from version.
-  version = bazel_version.split(" ", 1)[0]
-
-  # Split into (release, date) parts and only return the release
-  # as a tuple of integers.
-  parts = version.split('-', 1)
-
-  # Turn "release" into a tuple of strings
-  version_tuple = ()
-  for number in parts[0].split('.'):
-    version_tuple += (str(number),)
-  return version_tuple
-
-# Check that a specific bazel version is being used.
-def check_version(bazel_version):
-  if "bazel_version" not in dir(native):
-    fail("\nCurrent Bazel version is lower than 0.2.1, expected at least %s\n" % bazel_version)
-  elif not native.bazel_version:
-    print("\nCurrent Bazel is not a release version, cannot check for compatibility.")
-    print("Make sure that you are running at least Bazel %s.\n" % bazel_version)
-  else:
-    current_bazel_version = _parse_bazel_version(native.bazel_version)
-    minimum_bazel_version = _parse_bazel_version(bazel_version)
-    if minimum_bazel_version > current_bazel_version:
-      fail("\nCurrent Bazel version is {}, expected at least {}\n".format(
-          native.bazel_version, bazel_version))
-  pass
-
-def _repos_are_siblings():
-  return Label("@foo//bar").workspace_root.startswith("../")
-
-# Temporary workaround to support including TensorFlow as a submodule until this
-# use-case is supported in the next Bazel release.
-def _temp_workaround_http_archive_impl(repo_ctx):
-   repo_ctx.template("BUILD", repo_ctx.attr.build_file,
-                     {
-                         "%prefix%" : ".." if _repos_are_siblings() else "external",
-                         "%ws%": repo_ctx.attr.repository
-                     }, False)
-   repo_ctx.download_and_extract(repo_ctx.attr.urls, "", repo_ctx.attr.sha256,
-                                 "", repo_ctx.attr.strip_prefix)
-
-temp_workaround_http_archive = repository_rule(
-   implementation=_temp_workaround_http_archive_impl,
-   attrs = {
-      "build_file": attr.label(),
-      "repository": attr.string(),
-      "urls": attr.string_list(default = []),
-      "sha256": attr.string(default = ""),
-      "strip_prefix": attr.string(default = ""),
-   })
+# Sanitize a dependency so that it works correctly from code that includes
+# TensorFlow as a submodule.
+def clean_dep(dep):
+    return str(Label(dep))
 
 # If TensorFlow is linked as a submodule.
 # path_prefix and tf_repo_name are no longer used.
 def tf_workspace(path_prefix = "", tf_repo_name = ""):
-  cuda_configure(name = "local_config_cuda")
-  sycl_configure(name = "local_config_sycl")
-  if path_prefix:
-    print("path_prefix was specified to tf_workspace but is no longer used and will be removed in the future.")
-  if tf_repo_name:
-    print("tf_repo_name was specified to tf_workspace but is no longer used and will be removed in the future.")
-
-  native.new_http_archive(
-      name = "eigen_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/bitbucket.org/eigen/eigen/get/290bfb42684a.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/290bfb42684a.tar.gz",
-      ],
-      sha256 = "269c8bf20e8ac1aa8f5caf1ab2ca7be4909ec6ae085177a647aae138cd069b12",
-      strip_prefix = "eigen-eigen-290bfb42684a",
-      build_file = str(Label("//third_party:eigen.BUILD")),
-  )
-
-  native.new_http_archive(
-      name = "libxsmm_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/hfp/libxsmm/archive/1.7.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.7.tar.gz",
-      ],
-      sha256 = "2eea65624a697e74b939511cd2a686b4c957e90c99be168fe134d96771e811ad",
-      strip_prefix = "libxsmm-1.7",
-      build_file = str(Label("//third_party:libxsmm.BUILD")),
-  )
-
-  native.bind(
-      name = "xsmm_avx",
-      actual = "@libxsmm_archive//third_party:xsmm_avx",
-  )
-
-  native.http_archive(
-      name = "com_googlesource_code_re2",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/re2/archive/b94b7cd42e9f02673cd748c1ac1d16db4052514c.tar.gz",
-          "https://github.com/google/re2/archive/b94b7cd42e9f02673cd748c1ac1d16db4052514c.tar.gz",
-      ],
-      sha256 = "bd63550101e056427c9e7ff12a408c1c8b74e9803f393ca916b2926fc2c4906f",
-      strip_prefix = "re2-b94b7cd42e9f02673cd748c1ac1d16db4052514c",
-  )
-
-  native.http_archive(
-      name = "gemmlowp",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/gemmlowp/archive/a6f29d8ac48d63293f845f2253eccbf86bc28321.tar.gz",
-          "https://github.com/google/gemmlowp/archive/a6f29d8ac48d63293f845f2253eccbf86bc28321.tar.gz",
-      ],
-      sha256 = "75d40ea8e68b0d1644f052fffe8f14a410b2a73d40ccb859a95c0578d194ec26",
-      strip_prefix = "gemmlowp-a6f29d8ac48d63293f845f2253eccbf86bc28321",
-  )
-
-  native.new_http_archive(
-      name = "farmhash_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
-          "https://github.com/google/farmhash/archive/92e897b282426729f4724d91a637596c7e2fe28f.zip",
-      ],
-      sha256 = "4c626d1f306bda2c6804ab955892f803f5245f4dcaecb4979dc08b091256da54",
-      strip_prefix = "farmhash-92e897b282426729f4724d91a637596c7e2fe28f",
-      build_file = str(Label("//third_party:farmhash.BUILD")),
-  )
-
-  native.bind(
-      name = "farmhash",
-      actual = "@farmhash//:farmhash",
-  )
-
-  native.new_http_archive(
-      name = "highwayhash",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
-          "https://github.com/google/highwayhash/archive/dfcb97ca4fe9277bf9dc1802dd979b071896453b.tar.gz",
-      ],
-      sha256 = "0f30a15b1566d93f146c8d149878a06e91d9bb7ec2cfd76906df62a82be4aac9",
-      strip_prefix = "highwayhash-dfcb97ca4fe9277bf9dc1802dd979b071896453b",
-      build_file = str(Label("//third_party:highwayhash.BUILD")),
-  )
-
-  native.new_http_archive(
-      name = "nasm",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/www.nasm.us/pub/nasm/releasebuilds/2.12.02/nasm-2.12.02.tar.bz2",
-          "http://pkgs.fedoraproject.org/repo/pkgs/nasm/nasm-2.12.02.tar.bz2/d15843c3fb7db39af80571ee27ec6fad/nasm-2.12.02.tar.bz2",
-      ],
-      sha256 = "00b0891c678c065446ca59bcee64719d0096d54d6886e6e472aeee2e170ae324",
-      strip_prefix = "nasm-2.12.02",
-      build_file = str(Label("//third_party:nasm.BUILD")),
-  )
-
-  temp_workaround_http_archive(
-      name = "jpeg",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
-          "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/1.5.1.tar.gz",
-      ],
-      sha256 = "c15a9607892113946379ccea3ca8b85018301b200754f209453ab21674268e77",
-      strip_prefix = "libjpeg-turbo-1.5.1",
-      build_file = str(Label("//third_party/jpeg:jpeg.BUILD")),
-      repository = tf_repo_name,
-  )
-
-  native.new_http_archive(
-      name = "png_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/glennrp/libpng/archive/v1.2.53.zip",
-          "https://github.com/glennrp/libpng/archive/v1.2.53.zip",
-      ],
-      sha256 = "c35bcc6387495ee6e757507a68ba036d38ad05b415c2553b3debe2a57647a692",
-      strip_prefix = "libpng-1.2.53",
-      build_file = str(Label("//third_party:png.BUILD")),
-  )
-
-  native.new_http_archive(
-      name = "gif_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
-          "http://ufpr.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
-          "http://pilotfiber.dl.sourceforge.net/project/giflib/giflib-5.1.4.tar.gz",
-      ],
-      sha256 = "34a7377ba834397db019e8eb122e551a49c98f49df75ec3fcc92b9a794a4f6d1",
-      strip_prefix = "giflib-5.1.4",
-      build_file = str(Label("//third_party:gif.BUILD")),
-  )
-
-  native.new_http_archive(
-      name = "six_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
-          "http://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
-      ],
-      sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
-      strip_prefix = "six-1.10.0",
-      build_file = str(Label("//third_party:six.BUILD")),
-  )
-
-  native.new_http_archive(
-      name = "org_pocoo_werkzeug",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
-          "https://pypi.python.org/packages/b7/7f/44d3cfe5a12ba002b253f6985a4477edfa66da53787a2a838a40f6415263/Werkzeug-0.11.10.tar.gz",
-      ],
-      strip_prefix = "Werkzeug-0.11.10",
-      sha256 = "cc64dafbacc716cdd42503cf6c44cb5a35576443d82f29f6829e5c49264aeeee",
-      build_file = str(Label("//third_party:werkzeug.BUILD")),
-  )
-
-  native.bind(
-      name = "six",
-      actual = "@six_archive//:six",
-  )
-
-  native.http_archive(
-      name = "protobuf",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/protobuf/archive/ef927cc428db7bf41d3a593a16a8f1a0fe6306c5.tar.gz",
-          "https://github.com/google/protobuf/archive/ef927cc428db7bf41d3a593a16a8f1a0fe6306c5.tar.gz",
-      ],
-      sha256 = "8813a4ab27f7c61565d0db17d69236b4ec0b1404371efc728f15079b85e457ca",
-      strip_prefix = "protobuf-ef927cc428db7bf41d3a593a16a8f1a0fe6306c5",
-  )
-
-  native.new_http_archive(
-      name = "gmock_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/pkgs.fedoraproject.org/repo/pkgs/gmock/gmock-1.7.0.zip/073b984d8798ea1594f5e44d85b20d66/gmock-1.7.0.zip",
-          "http://pkgs.fedoraproject.org/repo/pkgs/gmock/gmock-1.7.0.zip/073b984d8798ea1594f5e44d85b20d66/gmock-1.7.0.zip",
-      ],
-      sha256 = "26fcbb5925b74ad5fc8c26b0495dfc96353f4d553492eb97e85a8a6d2f43095b",
-      strip_prefix = "gmock-1.7.0",
-      build_file = str(Label("//third_party:gmock.BUILD")),
-  )
-
-  native.bind(
-      name = "gtest",
-      actual = "@gmock_archive//:gtest",
-  )
-
-  native.bind(
-      name = "gtest_main",
-      actual = "@gmock_archive//:gtest_main",
-  )
-
-  native.bind(
-      name = "python_headers",
-      actual = str(Label("//util/python:python_headers")),
-  )
-
-  native.new_http_archive(
-      name = "pcre",
-      sha256 = "ccdf7e788769838f8285b3ee672ed573358202305ee361cfec7a4a4fb005bbc7",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/ftp.exim.org/pub/pcre/pcre-8.39.tar.gz",
-          "http://ftp.exim.org/pub/pcre/pcre-8.39.tar.gz",
-      ],
-      strip_prefix = "pcre-8.39",
-      build_file = str(Label("//third_party:pcre.BUILD")),
-  )
-
-  native.new_http_archive(
-      name = "swig",
-      sha256 = "58a475dbbd4a4d7075e5fe86d4e54c9edde39847cdb96a3053d87cb64a23a453",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
-          "http://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
-          "http://pilotfiber.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
-      ],
-      strip_prefix = "swig-3.0.8",
-      build_file = str(Label("//third_party:swig.BUILD")),
-  )
-
-  temp_workaround_http_archive(
-      name = "curl",
-      sha256 = "ff3e80c1ca6a068428726cd7dd19037a47cc538ce58ef61c59587191039b2ca6",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/curl.haxx.se/download/curl-7.49.1.tar.gz",
-          "https://curl.haxx.se/download/curl-7.49.1.tar.gz",
-      ],
-      strip_prefix = "curl-7.49.1",
-      build_file = str(Label("//third_party:curl.BUILD")),
-  )
-
-  # grpc expects //external:protobuf_clib and //external:protobuf_compiler
-  # to point to the protobuf's compiler library.
-  native.bind(
-      name = "protobuf_clib",
-      actual = "@protobuf//:protoc_lib",
-  )
-
-  native.bind(
-      name = "protobuf_compiler",
-      actual = "@protobuf//:protoc_lib",
-  )
-
-  native.new_http_archive(
-      name = "grpc",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
-          "https://github.com/grpc/grpc/archive/d7ff4ff40071d2b486a052183e3e9f9382afb745.tar.gz",
-      ],
-      sha256 = "a15f352436ab92c521b1ac11e729e155ace38d0856380cf25048c5d1d9ba8e31",
-      strip_prefix = "grpc-d7ff4ff40071d2b486a052183e3e9f9382afb745",
-      build_file = str(Label("//third_party:grpc.BUILD")),
-  )
-
-  # protobuf expects //external:grpc_cpp_plugin to point to grpc's
-  # C++ plugin code generator.
-  native.bind(
-      name = "grpc_cpp_plugin",
-      actual = "@grpc//:grpc_cpp_plugin",
-  )
-
-  native.bind(
-      name = "grpc_lib",
-      actual = "@grpc//:grpc++_unsecure",
-  )
-
-  native.new_http_archive(
-      name = "linenoise",
-      sha256 = "7f51f45887a3d31b4ce4fa5965210a5e64637ceac12720cfce7954d6a2e812f7",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/antirez/linenoise/archive/c894b9e59f02203dbe4e2be657572cf88c4230c3.tar.gz",
-          "https://github.com/antirez/linenoise/archive/c894b9e59f02203dbe4e2be657572cf88c4230c3.tar.gz",
-      ],
-      strip_prefix = "linenoise-c894b9e59f02203dbe4e2be657572cf88c4230c3",
-      build_file = str(Label("//third_party:linenoise.BUILD")),
-  )
-
-  # TODO(phawkins): currently, this rule uses an unofficial LLVM mirror.
-  # Switch to an official source of snapshots if/when possible.
-  temp_workaround_http_archive(
-      name = "llvm",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/2276fd31f36aa58f39397c435a8be6632d8c8505.tar.gz",
-      ],
-      sha256 = "0e08c91752732227280466d12f330a5854569deddf28ff4a6c3898334dbb0d16",
-      strip_prefix = "llvm-2276fd31f36aa58f39397c435a8be6632d8c8505",
-      build_file = str(Label("//third_party/llvm:llvm.BUILD")),
-      repository = tf_repo_name,
-  )
-
-  native.new_http_archive(
-      name = "jsoncpp_git",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
-          "https://github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
-      ],
-      sha256 = "07d34db40593d257324ec5fb9debc4dc33f29f8fb44e33a2eeb35503e61d0fe2",
-      strip_prefix = "jsoncpp-11086dd6a7eba04289944367ca82cea71299ed70",
-      build_file = str(Label("//third_party:jsoncpp.BUILD")),
-  )
-
-  native.bind(
-      name = "jsoncpp",
-      actual = "@jsoncpp_git//:jsoncpp",
-  )
-
-  native.http_archive(
-      name = "boringssl",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/google/boringssl/archive/bbcaa15b0647816b9a1a9b9e0d209cd6712f0105.tar.gz",
-          "https://github.com/google/boringssl/archive/bbcaa15b0647816b9a1a9b9e0d209cd6712f0105.tar.gz",  # 2016-07-11
-      ],
-      sha256 = "025264d6e9a7ad371f2f66d17a28b6627de0c9592dc2eb54afd062f68f1f9aa3",
-      strip_prefix = "boringssl-bbcaa15b0647816b9a1a9b9e0d209cd6712f0105",
-  )
-
-  native.new_http_archive(
-      name = "nanopb_git",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-          "https://github.com/nanopb/nanopb/archive/1251fa1065afc0d62f635e0f63fec8276e14e13c.tar.gz",
-      ],
-      sha256 = "ab1455c8edff855f4f55b68480991559e51c11e7dab060bbab7cffb12dd3af33",
-      strip_prefix = "nanopb-1251fa1065afc0d62f635e0f63fec8276e14e13c",
-      build_file = str(Label("//third_party:nanopb.BUILD")),
-  )
-
-  native.bind(
-      name = "nanopb",
-      actual = "@nanopb_git//:nanopb",
-  )
-
-  native.new_http_archive(
-      name = "zlib_archive",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/zlib.net/zlib-1.2.8.tar.gz",
-          "http://zlib.net/fossils/zlib-1.2.8.tar.gz",
-      ],
-      sha256 = "36658cb768a54c1d4dec43c3116c27ed893e88b02ecfcb44f2166f9c0b7f2a0d",
-      strip_prefix = "zlib-1.2.8",
-      build_file = str(Label("//third_party:zlib.BUILD")),
-  )
-
-  native.bind(
-      name = "zlib",
-      actual = "@zlib_archive//:zlib",
-  )
-
-  native.new_http_archive(
-      name = "nccl_archive",
-      url = "https://github.com/nvidia/nccl/archive/024d1e267845f2ed06f3e2e42476d50f04a00ee6.tar.gz",
-      sha256 = "6787f0eed88d52ee8e32956fa4947d92c139da469f1d8e311c307f27d641118e",
-      strip_prefix = "nccl-024d1e267845f2ed06f3e2e42476d50f04a00ee6",
-      build_file = str(Label("//third_party:nccl.BUILD")),
-  )
-
-  # Make junit-4.12 available as //external:junit
-  native.http_jar(
-      name = "junit_jar",
-      url = "https://github.com/junit-team/junit4/releases/download/r4.12/junit-4.12.jar",
-      sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
-  )
-
-  native.bind(
-      name = "junit",
-      actual = "@junit_jar//jar",
-  )
-
-  temp_workaround_http_archive(
-      name = "jemalloc",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
-          "https://github.com/jemalloc/jemalloc/archive/4.4.0.tar.gz",
-      ],
-      sha256 = "3c8f25c02e806c3ce0ab5fb7da1817f89fc9732709024e2a81b6b82f7cc792a8",
-      strip_prefix = "jemalloc-4.4.0",
-      build_file = str(Label("//third_party:jemalloc.BUILD")),
-      repository = tf_repo_name,
-  )
-
-  ##############################################################################
-  # TensorBoard Build Tools
-
-  filegroup_external(
-      name = "org_nodejs",
-      # MIT with portions licensed:
-      # - MIT
-      # - Old MIT
-      # - 2-Clause-BSD
-      # - 3-Clause-BSD
-      # - ISC
-      # - Unicode
-      # - zlib
-      # - Artistic 2.0
-      licenses = ["notice"],
-      sha256_urls_extract_macos = {
-          "47109a00cac344d80296c195451bb5eee7c21727fcef1594384ddfe1f852957a": [
-              "http://bazel-mirror.storage.googleapis.com/nodejs.org/dist/v4.3.2/node-v4.3.2-darwin-x64.tar.xz",
-              "http://nodejs.org/dist/v4.3.2/node-v4.3.2-darwin-x64.tar.xz",
-          ],
-      },
-      sha256_urls_windows = {
-          "606c44c42d17866c017c50c0afadad411d9492ac4281d2431b937f881911614e": [
-              "http://bazel-mirror.storage.googleapis.com/nodejs.org/dist/v4.3.2/win-x64/node.exe",
-              "http://nodejs.org/dist/v4.3.2/win-x64/node.exe",
-          ],
-          "451a40570099a95488d6438f175813629e0430f87f23c8659bc18dc42494820a": [
-              "http://bazel-mirror.storage.googleapis.com/nodejs.org/dist/v4.3.2/win-x64/node.lib",
-              "http://nodejs.org/dist/v4.3.2/win-x64/node.lib",
-          ],
-      },
-      sha256_urls_extract = {
-          "4350d0431b49697517c6cca5d66adf5f74eb9101c52f52ae959fa94225822d44": [
-              "http://bazel-mirror.storage.googleapis.com/nodejs.org/dist/v4.3.2/node-v4.3.2-linux-x64.tar.xz",
-              "http://nodejs.org/dist/v4.3.2/node-v4.3.2-linux-x64.tar.xz",
-          ],
-      },
-      strip_prefix = {
-          "node-v4.3.2-darwin-x64.tar.xz": "node-v4.3.2-darwin-x64",
-          "node-v4.3.2-linux-x64.tar.xz": "node-v4.3.2-linux-x64",
-      },
-      executable = [
-          "node",
-          "node.exe",
-      ],
-      # POSTED: Email jart@google.com before changing this whitelist.
-      visibility = ["@com_microsoft_typescript//:__pkg__"],
-  )
-
-  filegroup_external(
-      name = "com_microsoft_typescript",
-      licenses = ["notice"],  # Apache 2.0
-      sha256_urls = {
-          "92ae664a574c87a60ed0dc3aa08a28e366477ae40bc7ab23b512710d5c5b51cc": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/tsc.js",
-          ],
-          "f4de46e04293569a666f2045f850d90e16dc8ba059af02b5a062942245007a71": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.0.6/lib/lib.es6.d.ts",
-          ],
-      },
-      extra_build_file_content = "\n".join([
-          "sh_binary(",
-          "    name = \"tsc\",",
-          "    srcs = [\"tsc.sh\"],",
-          "    data = [",
-          "        \"tsc.js\",",
-          "        \"@org_nodejs\",",
-          "    ],",
-          ")",
-          "",
-          "genrule(",
-          "    name = \"tsc_sh\",",
-          "    outs = [\"tsc.sh\"],",
-          "    cmd = \"cat >$@ <<'EOF'\\n\" +",
-          "          \"#!/bin/bash\\n\" +",
-          "          \"NODE=external/org_nodejs/bin/node\\n\" +",
-          "          \"if [[ -e external/org_nodejs/node.exe ]]; then\\n\" +",
-          "          \"  NODE=external/org_nodejs/node.exe\\n\" +",
-          "          \"fi\\n\" +",
-          "          \"exec $${NODE} external/com_microsoft_typescript/tsc.js \\\"$$@\\\"\\n\" +",
-          "          \"EOF\",",
-          "    executable = True,",
-          ")",
-      ]),
-  )
-
-  ##############################################################################
-  # TensorBoard JavaScript Production Dependencies
-
-  filegroup_external(
-      name = "com_lodash",
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "7c7b391810bc08cf815683431857c51b5ee190062ae4f557e1e4689d6dd910ea": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/lodash/lodash/3.8.0/lodash.js",
-              "https://raw.githubusercontent.com/lodash/lodash/3.8.0/lodash.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "com_numericjs",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "dfaca3b8485bee735788cc6eebca82ea25719adc1fb8911c7799c6bd5a95df3b": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/sloisel/numeric/v1.2.6/src/numeric.js",
-              "https://raw.githubusercontent.com/sloisel/numeric/v1.2.6/src/numeric.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "com_palantir_plottable",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "77510d7538dbd3b59f1c8a06f68131b38562e3be546364747618d5112723e818": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.css",
-              "https://raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.css",
-          ],
-          "cd46dc709b01cd361e8399f797760871a6a207bc832e08fcff385ced02ef2b43": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.d.ts",
-              "https://raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.d.ts",
-          ],
-          "32647b0fb4175fa875a71e6d56c761b88d975186ed6a8820e2c7854165a8988d": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.js",
-              "https://raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "io_github_cpettitt_dagre",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "7323829ddd77924a69e2b1235ded3eac30acd990da0f037e0fbd3c8e9035b50d": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
-              "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "io_github_cpettitt_graphlib",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "772045d412b1513b549be991c2e1846c38019429d43974efcae943fbe83489bf": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
-              "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "io_github_waylonflinn_weblas",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "f138fce57f673ca8a633f4aee5ae5b6fcb6ad0de59069a42a74e996fd04d8fcc": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/dist/weblas.js",
-              "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/dist/weblas.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "org_d3js",
-      # no @license header
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256_urls = {
-          "bc1e38838f5c5c8e040132d41efee6bfddbef728210bd566479dc1694af1d3f5": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/d3/d3/v3.5.15/d3.js",
-              "https://raw.githubusercontent.com/d3/d3/v3.5.15/d3.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "org_definitelytyped",
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "b7da645f6e5555feb7aeede73775da0023ce2257df9c8e76c9159266035a9c0d": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/chai/chai.d.ts",
-              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/chai/chai.d.ts",
-          ],
-          "177293828c7a206bf2a7f725753d51396d38668311aa37c96445f91bbf8128a7": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/6e2f2280ef16ef277049d0ce8583af167d586c59/d3/d3.d.ts",
-              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/6e2f2280ef16ef277049d0ce8583af167d586c59/d3/d3.d.ts",
-          ],
-          "e4cd3d5de0eb3bc7b1063b50d336764a0ac82a658b39b5cf90511f489ffdee60": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/efd40e67ff323f7147651bdbef03c03ead7b1675/lodash/lodash.d.ts",
-              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/efd40e67ff323f7147651bdbef03c03ead7b1675/lodash/lodash.d.ts",
-          ],
-          "695a03dd2ccb238161d97160b239ab841562710e5c4e42886aefd4ace2ce152e": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
-              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "org_threejs",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "7aff264bd84c90bed3c72a4dc31db8c19151853c6df6980f52b01d3e9872c82d": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/build/three.js",
-              "https://raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/build/three.js",
-          ],
-          "0e98ded15bb7fe398a655667e76b39909d36c0973a8950d01c62f65f93161c27": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/examples/js/controls/OrbitControls.js",
-              "https://raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/examples/js/controls/OrbitControls.js",
-          ],
-      },
-  )
-
-  ##############################################################################
-  # TensorBoard JavaScript Testing Dependencies
-
-  filegroup_external(
-      name = "com_chaijs",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "b926b325ad9843bf0b7a6d580ef78bb560e47c484b98680098d4fd9b31b77cd9": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/chaijs/chai/2.3.0/chai.js",
-              "https://raw.githubusercontent.com/chaijs/chai/2.3.0/chai.js",
-          ],
-      },
-  )
-
-  filegroup_external(
-      name = "org_mochajs",
-      # no @license header
-      licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "e36d865a17ffdf5868e55e736526ae30f3d4bc667c85a2a28cd5c850a82361e2": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/mochajs/mocha/2.3.4/mocha.js",
-              "https://raw.githubusercontent.com/mochajs/mocha/2.3.4/mocha.js",
-          ],
-      },
-  )
-
-  ##############################################################################
-  # TensorBoard Polymer Dependencies
-
-  webfiles_external(
-      name = "org_polymer_font_roboto",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "fae51429b56a4a4c15f1f0c23b733c7095940cc9c04c275fa7adb3bf055b23b3",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/font-roboto/archive/v1.0.1.tar.gz",
-          "https://github.com/PolymerElements/font-roboto/archive/v1.0.1.tar.gz",
-      ],
-      strip_prefix = "font-roboto-1.0.1",
-      path = "/font-roboto",
-      srcs = ["roboto.html"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_a11y_announcer",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "6bce143db7a374a68535ec8b861a5f30e81f2f1e4ee36a55bda2a891f6fd2818",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-a11y-announcer/archive/v1.0.5.tar.gz",
-          "https://github.com/PolymerElements/iron-a11y-announcer/archive/v1.0.5.tar.gz",
-      ],
-      strip_prefix = "iron-a11y-announcer-1.0.5",
-      path = "/iron-a11y-announcer",
-      srcs = ["iron-a11y-announcer.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_a11y_keys_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "6823efc47a83208fd51d39c5a1d3eb0c0bebc705df1ce01310509da22a13ebd2",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-a11y-keys-behavior/archive/v1.1.8.tar.gz",
-          "https://github.com/PolymerElements/iron-a11y-keys-behavior/archive/v1.1.8.tar.gz",
-      ],
-      strip_prefix = "iron-a11y-keys-behavior-1.1.8",
-      path = "/iron-a11y-keys-behavior",
-      srcs = ["iron-a11y-keys-behavior.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_ajax",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "9162d8af4611e911ac3ebbfc08bb7038ac04f6e79a9287b1476fe36ad6770bc5",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-ajax/archive/v1.2.0.tar.gz",
-          "https://github.com/PolymerElements/iron-ajax/archive/v1.2.0.tar.gz",
-      ],
-      strip_prefix = "iron-ajax-1.2.0",
-      path = "/iron-ajax",
-      srcs = [
-          "iron-ajax.html",
-          "iron-request.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_promise_polyfill",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_autogrow_textarea",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "50bbb901d2c8f87462e3552e3d671a552faa12c37c485e548d7a234ebffbc427",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-autogrow-textarea/archive/v1.0.12.tar.gz",
-          "https://github.com/PolymerElements/iron-autogrow-textarea/archive/v1.0.12.tar.gz",
-      ],
-      strip_prefix = "iron-autogrow-textarea-1.0.12",
-      path = "/iron-autogrow-textarea",
-      srcs = ["iron-autogrow-textarea.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_form_element_behavior",
-          "@org_polymer_iron_validatable_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_behaviors",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "a1e8d4b7a13f3d36beba9c2a6b186ed33a53e6af2e79f98c1fcc7e85e7b53f89",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-behaviors/archive/v1.0.17.tar.gz",
-          "https://github.com/PolymerElements/iron-behaviors/archive/v1.0.17.tar.gz",
-      ],
-      strip_prefix = "iron-behaviors-1.0.17",
-      path = "/iron-behaviors",
-      srcs = [
-          "iron-button-state.html",
-          "iron-control-state.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_checked_element_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "539a0e1c4df0bc702d3bd342388e4e56c77ec4c2066cce69e41426a69f92e8bd",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-checked-element-behavior/archive/v1.0.4.tar.gz",
-          "https://github.com/PolymerElements/iron-checked-element-behavior/archive/v1.0.4.tar.gz",
-      ],
-      strip_prefix = "iron-checked-element-behavior-1.0.4",
-      path = "/iron-checked-element-behavior",
-      srcs = ["iron-checked-element-behavior.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_form_element_behavior",
-          "@org_polymer_iron_validatable_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_collapse",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "275808994a609a2f9923e2dd2db1957945ab141ba840eadc33f19e1f406d600e",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-collapse/archive/v1.0.8.tar.gz",
-          "https://github.com/PolymerElements/iron-collapse/archive/v1.0.8.tar.gz",
-      ],
-      strip_prefix = "iron-collapse-1.0.8",
-      path = "/iron-collapse",
-      srcs = ["iron-collapse.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_resizable_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_demo_helpers",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "aa7458492a6ac3d1f6344640a4c2ab07bce64e7ad0422b83b5d665707598cce6",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-demo-helpers/archive/v1.1.0.tar.gz",
-          "https://github.com/PolymerElements/iron-demo-helpers/archive/v1.1.0.tar.gz",
-      ],
-      strip_prefix = "iron-demo-helpers-1.1.0",
-      path = "/iron-demo-helpers",
-      srcs = [
-          "demo-pages-shared-styles.html",
-          "demo-snippet.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_icons",
-          "@org_polymer_marked_element",
-          "@org_polymer_paper_icon_button",
-          "@org_polymer_paper_styles",
-          "@org_polymer_prism_element",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_dropdown",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "f7e4a31d096d10d8af1920397695cb17f3eb1cbe5e5ff91a861dabfcc085f376",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-dropdown/archive/v1.4.0.tar.gz",
-          "https://github.com/PolymerElements/iron-dropdown/archive/v1.4.0.tar.gz",
-      ],
-      strip_prefix = "iron-dropdown-1.4.0",
-      path = "/iron-dropdown",
-      srcs = [
-          "iron-dropdown.html",
-          "iron-dropdown-scroll-manager.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_overlay_behavior",
-          "@org_polymer_iron_resizable_behavior",
-          "@org_polymer_neon_animation",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_fit_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "10132a2ea309a37c4c07b8fead71f64abc588ee6107931e34680f5f36dd8291e",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-fit-behavior/archive/v1.2.5.tar.gz",
-          "https://github.com/PolymerElements/iron-fit-behavior/archive/v1.2.5.tar.gz",
-      ],
-      strip_prefix = "iron-fit-behavior-1.2.5",
-      path = "/iron-fit-behavior",
-      srcs = ["iron-fit-behavior.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_flex_layout",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "79287f6ca1c2d4e003f68b88fe19d03a1b6a0011e2b4cae579fe4d1474163a2e",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-flex-layout/archive/v1.3.0.tar.gz",
-          "https://github.com/PolymerElements/iron-flex-layout/archive/v1.3.0.tar.gz",
-      ],
-      strip_prefix = "iron-flex-layout-1.3.0",
-      path = "/iron-flex-layout",
-      srcs = [
-          "classes/iron-flex-layout.html",
-          "classes/iron-shadow-flex-layout.html",
-          "iron-flex-layout.html",
-          "iron-flex-layout-classes.html",
-      ],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_form_element_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "1dd9371c638e5bc2ecba8a64074aa680dfb8712198e9612f9ed24d387efc8f26",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-form-element-behavior/archive/v1.0.6.tar.gz",
-          "https://github.com/PolymerElements/iron-form-element-behavior/archive/v1.0.6.tar.gz",
-      ],
-      strip_prefix = "iron-form-element-behavior-1.0.6",
-      path = "/iron-form-element-behavior",
-      srcs = ["iron-form-element-behavior.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_icon",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "9ed58a69159a02c07a6050d242e6d4e585a29f3245b8c8c390cfd52ddb786dc4",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-icon/archive/v1.0.11.tar.gz",
-          "https://github.com/PolymerElements/iron-icon/archive/v1.0.11.tar.gz",
-      ],
-      strip_prefix = "iron-icon-1.0.11",
-      path = "/iron-icon",
-      srcs = ["iron-icon.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_meta",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_icons",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "3b18542c147c7923dc3a36b1a51984a73255d610f297d43c9aaccc52859bd0d0",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-icons/archive/v1.1.3.tar.gz",
-          "https://github.com/PolymerElements/iron-icons/archive/v1.1.3.tar.gz",
-      ],
-      strip_prefix = "iron-icons-1.1.3",
-      path = "/iron-icons",
-      srcs = [
-          "av-icons.html",
-          "communication-icons.html",
-          "device-icons.html",
-          "editor-icons.html",
-          "hardware-icons.html",
-          "image-icons.html",
-          "iron-icons.html",
-          "maps-icons.html",
-          "notification-icons.html",
-          "places-icons.html",
-          "social-icons.html",
-      ],
-      deps = [
-          "@org_polymer_iron_icon",
-          "@org_polymer_iron_iconset_svg",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_iconset_svg",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "7e3925b7e63a7d22524c4b43ce16ab80d06a576649644783643c11a003284368",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-iconset-svg/archive/v1.1.0.tar.gz",
-          "https://github.com/PolymerElements/iron-iconset-svg/archive/v1.1.0.tar.gz",
-      ],
-      strip_prefix = "iron-iconset-svg-1.1.0",
-      path = "/iron-iconset-svg",
-      srcs = ["iron-iconset-svg.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_meta",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_input",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "c505101ead08ab25526b1f49baecc8c28b4221b92a65e7334c783bdc81553c36",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-input/archive/1.0.10.tar.gz",
-          "https://github.com/PolymerElements/iron-input/archive/1.0.10.tar.gz",
-      ],
-      strip_prefix = "iron-input-1.0.10",
-      path = "/iron-input",
-      srcs = ["iron-input.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_announcer",
-          "@org_polymer_iron_validatable_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_list",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "72a6530b9f0ad5557f5d287845792a0ada74d8b159198e27f940e226313dc116",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-list/archive/v1.3.9.tar.gz",
-          "https://github.com/PolymerElements/iron-list/archive/v1.3.9.tar.gz",
-      ],
-      strip_prefix = "iron-list-1.3.9",
-      path = "/iron-list",
-      srcs = ["iron-list.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_resizable_behavior",
-          "@org_polymer_iron_scroll_target_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_menu_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "ad27889343bc9a709258b073f69abc028bb1ffd3fdb975cd2d3939f7f5d7bb6c",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-menu-behavior/archive/v1.1.10.tar.gz",
-          "https://github.com/PolymerElements/iron-menu-behavior/archive/v1.1.10.tar.gz",
-      ],
-      strip_prefix = "iron-menu-behavior-1.1.10",
-      path = "/iron-menu-behavior",
-      srcs = [
-          "iron-menu-behavior.html",
-          "iron-menubar-behavior.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_selector",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_meta",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "fb05e6031bae6b4effe5f15d44b3f548d5807f9e3b3aa2442ba17cf4b8b84361",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-meta/archive/v1.1.1.tar.gz",
-          "https://github.com/PolymerElements/iron-meta/archive/v1.1.1.tar.gz",
-      ],
-      strip_prefix = "iron-meta-1.1.1",
-      path = "/iron-meta",
-      srcs = ["iron-meta.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_overlay_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "3df5b54ff2e0510c87a2aff8c9d730d3fe83d3d11277cc1a49fa29b549acb46c",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-overlay-behavior/archive/v1.10.1.tar.gz",
-          "https://github.com/PolymerElements/iron-overlay-behavior/archive/v1.10.1.tar.gz",
-      ],
-      strip_prefix = "iron-overlay-behavior-1.10.1",
-      path = "/iron-overlay-behavior",
-      srcs = [
-          "iron-focusables-helper.html",
-          "iron-overlay-backdrop.html",
-          "iron-overlay-behavior.html",
-          "iron-overlay-manager.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_fit_behavior",
-          "@org_polymer_iron_resizable_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_range_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "b2f2b6d52284542330bd30b586e217926eb0adec5e13934a3cef557717c22dc2",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-range-behavior/archive/v1.0.4.tar.gz",
-          "https://github.com/PolymerElements/iron-range-behavior/archive/v1.0.4.tar.gz",
-      ],
-      strip_prefix = "iron-range-behavior-1.0.4",
-      path = "/iron-range-behavior",
-      srcs = ["iron-range-behavior.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_resizable_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "a87a78ee9223c2f6afae7fc94a3ff91cbce6f7e2a7ed3f2979af7945c9281616",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-resizable-behavior/archive/v1.0.3.tar.gz",
-          "https://github.com/PolymerElements/iron-resizable-behavior/archive/v1.0.3.tar.gz",
-      ],
-      strip_prefix = "iron-resizable-behavior-1.0.3",
-      path = "/iron-resizable-behavior",
-      srcs = ["iron-resizable-behavior.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_scroll_target_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "d0de0c804b1ec91d814754144afd9da1cdb082690de88bd5e47fd5f41990746f",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-scroll-target-behavior/archive/v1.0.3.tar.gz",
-          "https://github.com/PolymerElements/iron-scroll-target-behavior/archive/v1.0.3.tar.gz",
-      ],
-      strip_prefix = "iron-scroll-target-behavior-1.0.3",
-      path = "/iron-scroll-target-behavior",
-      srcs = ["iron-scroll-target-behavior.html"],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_selector",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "ba28a47443bad3b744611c9d7a79fb21dbdf2e35edc5ef8f812e2dcd72b16747",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-selector/archive/v1.5.2.tar.gz",
-          "https://github.com/PolymerElements/iron-selector/archive/v1.5.2.tar.gz",
-      ],
-      strip_prefix = "iron-selector-1.5.2",
-      path = "/iron-selector",
-      srcs = [
-          "iron-multi-selectable.html",
-          "iron-selectable.html",
-          "iron-selection.html",
-          "iron-selector.html",
-      ],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_iron_validatable_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "aef4901e68043824f36104799269573dd345ffaac494186e466fdc79c06fdb63",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/iron-validatable-behavior/archive/v1.1.1.tar.gz",
-          "https://github.com/PolymerElements/iron-validatable-behavior/archive/v1.1.1.tar.gz",
-      ],
-      strip_prefix = "iron-validatable-behavior-1.1.1",
-      path = "/iron-validatable-behavior",
-      srcs = ["iron-validatable-behavior.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_meta",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_marked",
-      licenses = ["notice"],  # MIT
-      sha256 = "93d30bd593736ca440938d77808b7ef5972da0f3fcfe4ae63ae7b4ce117da2cb",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/chjj/marked/archive/v0.3.2.zip",
-          "https://github.com/chjj/marked/archive/v0.3.2.zip",
-      ],
-      strip_prefix = "marked-0.3.2",
-      path = "/marked",
-      srcs = ["lib/marked.js"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_marked_element",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "7547616df95f8b903757e6afbabfcdba5322c2bcec3f17c726b8bba5adf4bc5f",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/marked-element/archive/v1.1.3.tar.gz",
-          "https://github.com/PolymerElements/marked-element/archive/v1.1.3.tar.gz",
-      ],
-      strip_prefix = "marked-element-1.1.3",
-      path = "/marked-element",
-      srcs = [
-          "marked-element.html",
-          "marked-import.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_marked",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_neon_animation",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "8800c314a76b2da190a2b203259c1091f6d38e0057ed37c2a3d0b734980fa9a5",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/neon-animation/archive/v1.2.2.tar.gz",
-          "https://github.com/PolymerElements/neon-animation/archive/v1.2.2.tar.gz",
-      ],
-      strip_prefix = "neon-animation-1.2.2",
-      path = "/neon-animation",
-      srcs = [
-          "animations/cascaded-animation.html",
-          "animations/fade-in-animation.html",
-          "animations/fade-out-animation.html",
-          "animations/hero-animation.html",
-          "animations/opaque-animation.html",
-          "animations/reverse-ripple-animation.html",
-          "animations/ripple-animation.html",
-          "animations/scale-down-animation.html",
-          "animations/scale-up-animation.html",
-          "animations/slide-down-animation.html",
-          "animations/slide-from-bottom-animation.html",
-          "animations/slide-from-left-animation.html",
-          "animations/slide-from-right-animation.html",
-          "animations/slide-from-top-animation.html",
-          "animations/slide-left-animation.html",
-          "animations/slide-right-animation.html",
-          "animations/slide-up-animation.html",
-          "animations/transform-animation.html",
-          "neon-animatable.html",
-          "neon-animatable-behavior.html",
-          "neon-animated-pages.html",
-          "neon-animation.html",
-          "neon-animation-behavior.html",
-          "neon-animation-runner-behavior.html",
-          "neon-animations.html",
-          "neon-shared-element-animatable-behavior.html",
-          "neon-shared-element-animation-behavior.html",
-          "web-animations.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_meta",
-          "@org_polymer_iron_resizable_behavior",
-          "@org_polymer_iron_selector",
-          "@org_polymer_web_animations_js",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_behaviors",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "7cfcb9082ef9909da262df6b5c120bc62dbeaff278cb563e8fc60465ddd387e5",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-behaviors/archive/v1.0.12.tar.gz",
-          "https://github.com/PolymerElements/paper-behaviors/archive/v1.0.12.tar.gz",
-      ],
-      strip_prefix = "paper-behaviors-1.0.12",
-      path = "/paper-behaviors",
-      srcs = [
-          "paper-button-behavior.html",
-          "paper-checked-element-behavior.html",
-          "paper-inky-focus-behavior.html",
-          "paper-ripple-behavior.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_checked_element_behavior",
-          "@org_polymer_paper_ripple",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_button",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "896c0a7e34bfcce63fc23c63e105ed9c4d62fa3a6385b7161e1e5cd4058820a6",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-button/archive/v1.0.11.tar.gz",
-          "https://github.com/PolymerElements/paper-button/archive/v1.0.11.tar.gz",
-      ],
-      strip_prefix = "paper-button-1.0.11",
-      path = "/paper-button",
-      srcs = ["paper-button.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_material",
-          "@org_polymer_paper_ripple",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_checkbox",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "6828a6954a048b1230fbd2606faffbae950ba1d042175b96ec50ae355786a166",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-checkbox/archive/v1.4.0.tar.gz",
-          "https://github.com/PolymerElements/paper-checkbox/archive/v1.4.0.tar.gz",
-      ],
-      strip_prefix = "paper-checkbox-1.4.0",
-      path = "/paper-checkbox",
-      srcs = ["paper-checkbox.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_dialog",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "c6a9709e7f528d03dcd574503c18b72d4751ca30017346d16e6a791d37ed9259",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-dialog/archive/v1.0.4.tar.gz",
-          "https://github.com/PolymerElements/paper-dialog/archive/v1.0.4.tar.gz",
-      ],
-      strip_prefix = "paper-dialog-1.0.4",
-      path = "/paper-dialog",
-      srcs = ["paper-dialog.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_neon_animation",
-          "@org_polymer_paper_dialog_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_dialog_behavior",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "a7e0e27ce63554bc14f384cf94bcfa24da8dc5f5120dfd565f45e166261aee40",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-dialog-behavior/archive/v1.2.5.tar.gz",
-          "https://github.com/PolymerElements/paper-dialog-behavior/archive/v1.2.5.tar.gz",
-      ],
-      strip_prefix = "paper-dialog-behavior-1.2.5",
-      path = "/paper-dialog-behavior",
-      srcs = [
-          "paper-dialog-behavior.html",
-          "paper-dialog-common.css",
-          "paper-dialog-shared-styles.html",
-      ],
-      suppress = ["cssSyntax"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_overlay_behavior",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_dialog_scrollable",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "a2e69283e7674f782c44d811387a0f8da2d01fac0172743d1add65e253e6b5ff",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-dialog-scrollable/archive/1.1.5.tar.gz",
-          "https://github.com/PolymerElements/paper-dialog-scrollable/archive/1.1.5.tar.gz",
-      ],
-      strip_prefix = "paper-dialog-scrollable-1.1.5",
-      path = "/paper-dialog-scrollable",
-      srcs = ["paper-dialog-scrollable.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_paper_dialog_behavior",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_dropdown_menu",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "9d88f654ec03ee9be211df9e69bede9e8a22b51bf1dbcc63b79762e4256d81ad",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-dropdown-menu/archive/v1.4.0.tar.gz",
-          "https://github.com/PolymerElements/paper-dropdown-menu/archive/v1.4.0.tar.gz",
-      ],
-      strip_prefix = "paper-dropdown-menu-1.4.0",
-      path = "/paper-dropdown-menu",
-      srcs = [
-          "paper-dropdown-menu.html",
-          "paper-dropdown-menu-icons.html",
-          "paper-dropdown-menu-light.html",
-          "paper-dropdown-menu-shared-styles.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_form_element_behavior",
-          "@org_polymer_iron_icon",
-          "@org_polymer_iron_iconset_svg",
-          "@org_polymer_iron_validatable_behavior",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_input",
-          "@org_polymer_paper_menu_button",
-          "@org_polymer_paper_ripple",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_header_panel",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "0db4bd8a4bf6f20dcd0dffb4f907b31c93a8647c9c021344239cf30b40b87075",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-header-panel/archive/v1.1.4.tar.gz",
-          "https://github.com/PolymerElements/paper-header-panel/archive/v1.1.4.tar.gz",
-      ],
-      strip_prefix = "paper-header-panel-1.1.4",
-      path = "/paper-header-panel",
-      srcs = ["paper-header-panel.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_icon_button",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "9cba5bcfd6aeb4c41581c1392c678cf2278d360e9d122f4d9db54a9ebb404496",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-icon-button/archive/v1.1.3.tar.gz",
-          "https://github.com/PolymerElements/paper-icon-button/archive/v1.1.3.tar.gz",
-      ],
-      strip_prefix = "paper-icon-button-1.1.3",
-      path = "/paper-icon-button",
-      srcs = [
-          "paper-icon-button.html",
-          "paper-icon-button-light.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_icon",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_input",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "17c3dea9bb1c2026cc61324696c6c774214a0dc37686b91ca214a6af550994db",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-input/archive/v1.1.18.tar.gz",
-          "https://github.com/PolymerElements/paper-input/archive/v1.1.18.tar.gz",
-      ],
-      strip_prefix = "paper-input-1.1.18",
-      path = "/paper-input",
-      srcs = [
-          "paper-input.html",
-          "paper-input-addon-behavior.html",
-          "paper-input-behavior.html",
-          "paper-input-char-counter.html",
-          "paper-input-container.html",
-          "paper-input-error.html",
-          "paper-textarea.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_autogrow_textarea",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_form_element_behavior",
-          "@org_polymer_iron_input",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_item",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "12ee0dcb61b0d5721c5988571f6974d7b2211e97724f4195893fbcc9058cdac8",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-item/archive/v1.1.4.tar.gz",
-          "https://github.com/PolymerElements/paper-item/archive/v1.1.4.tar.gz",
-      ],
-      strip_prefix = "paper-item-1.1.4",
-      path = "/paper-item",
-      srcs = [
-          "paper-icon-item.html",
-          "paper-item.html",
-          "paper-item-behavior.html",
-          "paper-item-body.html",
-          "paper-item-shared-styles.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_listbox",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "3cb35f4fe9a3f15185a9e91711dba8f27e9291c8cd371ebf1be21b8f1d5f65fb",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-listbox/archive/v1.1.2.tar.gz",
-          "https://github.com/PolymerElements/paper-listbox/archive/v1.1.2.tar.gz",
-      ],
-      strip_prefix = "paper-listbox-1.1.2",
-      path = "/paper-listbox",
-      srcs = ["paper-listbox.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_menu_behavior",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_material",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "09f6c8bd6ddbea2be541dc86306efe41cdfb31bec0b69d35a5dc29772bbc8506",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-material/archive/v1.0.6.tar.gz",
-          "https://github.com/PolymerElements/paper-material/archive/v1.0.6.tar.gz",
-      ],
-      strip_prefix = "paper-material-1.0.6",
-      path = "/paper-material",
-      srcs = [
-          "paper-material.html",
-          "paper-material-shared-styles.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_menu",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "a3cee220926e315f7412236b3628288774694447c0da4428345f36d0f127ba3b",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-menu/archive/v1.2.2.tar.gz",
-          "https://github.com/PolymerElements/paper-menu/archive/v1.2.2.tar.gz",
-      ],
-      strip_prefix = "paper-menu-1.2.2",
-      path = "/paper-menu",
-      srcs = [
-          "paper-menu.html",
-          "paper-menu-shared-styles.html",
-          "paper-submenu.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_collapse",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_menu_behavior",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_menu_button",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "be3290c288a2bd4f9887213db22c75add99cc29ff4d088100c0bc4eb0e57997b",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-menu-button/archive/v1.5.1.tar.gz",
-          "https://github.com/PolymerElements/paper-menu-button/archive/v1.5.1.tar.gz",
-      ],
-      strip_prefix = "paper-menu-button-1.5.1",
-      path = "/paper-menu-button",
-      srcs = [
-          "paper-menu-button.html",
-          "paper-menu-button-animations.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_dropdown",
-          "@org_polymer_neon_animation",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_progress",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "2b6776b2f023c1f344feea17ba29b58d879e46f8ed43b7256495054b5183fff6",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-progress/archive/v1.0.9.tar.gz",
-          "https://github.com/PolymerElements/paper-progress/archive/v1.0.9.tar.gz",
-      ],
-      strip_prefix = "paper-progress-1.0.9",
-      path = "/paper-progress",
-      srcs = ["paper-progress.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_range_behavior",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_radio_button",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "6e911d0c308aa388136b3af79d1bdcbe5a1f4159cbc79d71efb4ff3b6c0b4e91",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-radio-button/archive/v1.1.2.tar.gz",
-          "https://github.com/PolymerElements/paper-radio-button/archive/v1.1.2.tar.gz",
-      ],
-      strip_prefix = "paper-radio-button-1.1.2",
-      path = "/paper-radio-button",
-      srcs = ["paper-radio-button.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_radio_group",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "7885ad1f81e9dcc03dcea4139b54a201ff55c18543770cd44f94530046c9e163",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-radio-group/archive/v1.0.9.tar.gz",
-          "https://github.com/PolymerElements/paper-radio-group/archive/v1.0.9.tar.gz",
-      ],
-      strip_prefix = "paper-radio-group-1.0.9",
-      path = "/paper-radio-group",
-      srcs = ["paper-radio-group.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_selector",
-          "@org_polymer_paper_radio_button",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_ripple",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "ba76bfb1c737260a8a103d3ca97faa1f7c3288c7db9b2519f401b7a782147c09",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-ripple/archive/v1.0.5.tar.gz",
-          "https://github.com/PolymerElements/paper-ripple/archive/v1.0.5.tar.gz",
-      ],
-      strip_prefix = "paper-ripple-1.0.5",
-      path = "/paper-ripple",
-      srcs = ["paper-ripple.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_slider",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "08e7c541dbf5d2e959208810bfc03188e82ced87e4d30d325172967f67962c3c",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-slider/archive/v1.0.10.tar.gz",
-          "https://github.com/PolymerElements/paper-slider/archive/v1.0.10.tar.gz",
-      ],
-      strip_prefix = "paper-slider-1.0.10",
-      path = "/paper-slider",
-      srcs = ["paper-slider.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_keys_behavior",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_form_element_behavior",
-          "@org_polymer_iron_range_behavior",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_input",
-          "@org_polymer_paper_progress",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_spinner",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "6a752907fab7899cbeed15b478e7b9299047c15fbf9d1561d6eb4d204bdbd178",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-spinner/archive/v1.1.1.tar.gz",
-          "https://github.com/PolymerElements/paper-spinner/archive/v1.1.1.tar.gz",
-      ],
-      strip_prefix = "paper-spinner-1.1.1",
-      path = "/paper-spinner",
-      srcs = [
-          "paper-spinner.html",
-          "paper-spinner-behavior.html",
-          "paper-spinner-lite.html",
-          "paper-spinner-styles.html"
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_styles",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "6d26b0a4c286402098853dc7388f6b22f30dfb7a74e47b34992ac03380144bb2",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-styles/archive/v1.1.4.tar.gz",
-          "https://github.com/PolymerElements/paper-styles/archive/v1.1.4.tar.gz",
-      ],
-      strip_prefix = "paper-styles-1.1.4",
-      path = "/paper-styles",
-      srcs = [
-          "classes/global.html",
-          "classes/shadow.html",
-          "classes/shadow-layout.html",
-          "classes/typography.html",
-          "color.html",
-          "default-theme.html",
-          "demo.css",
-          "demo-pages.html",
-          "paper-styles.html",
-          "paper-styles-classes.html",
-          "shadow.html",
-          "typography.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_font_roboto",
-          "@org_polymer_iron_flex_layout",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_tabs",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "c23b6a5221db35e5b1ed3eb8e8696b952572563e285adaec96aba1e3134db825",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-tabs/archive/v1.7.0.tar.gz",
-          "https://github.com/PolymerElements/paper-tabs/archive/v1.7.0.tar.gz",
-      ],
-      strip_prefix = "paper-tabs-1.7.0",
-      path = "/paper-tabs",
-      srcs = [
-          "paper-tab.html",
-          "paper-tabs.html",
-          "paper-tabs-icons.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_behaviors",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_iron_icon",
-          "@org_polymer_iron_iconset_svg",
-          "@org_polymer_iron_menu_behavior",
-          "@org_polymer_iron_resizable_behavior",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_icon_button",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_toast",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "55f623712ed1f2bae6d6fadc522a2458e083ccd44cc0a907672547e7b10758a9",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-toast/archive/v1.3.0.tar.gz",
-          "https://github.com/PolymerElements/paper-toast/archive/v1.3.0.tar.gz",
-      ],
-      strip_prefix = "paper-toast-1.3.0",
-      path = "/paper-toast",
-      srcs = ["paper-toast.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_a11y_announcer",
-          "@org_polymer_iron_overlay_behavior",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_toggle_button",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "4aa7cf0396fa2994a8bc2ac6e8428f48b07b945bb7c41bd52041ef5827b45de3",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-toggle-button/archive/v1.2.0.tar.gz",
-          "https://github.com/PolymerElements/paper-toggle-button/archive/v1.2.0.tar.gz",
-      ],
-      strip_prefix = "paper-toggle-button-1.2.0",
-      path = "/paper-toggle-button",
-      srcs = ["paper-toggle-button.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_paper_behaviors",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_toolbar",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "dbddffc0654d9fb5fb48843087eebe16bf7a134902495a664c96c11bf8a2c63d",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-toolbar/archive/v1.1.4.tar.gz",
-          "https://github.com/PolymerElements/paper-toolbar/archive/v1.1.4.tar.gz",
-      ],
-      strip_prefix = "paper-toolbar-1.1.4",
-      path = "/paper-toolbar",
-      srcs = ["paper-toolbar.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_iron_flex_layout",
-          "@org_polymer_paper_styles",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_paper_tooltip",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "4c6667acf01f73da14c3cbc0aa574bf14280304567987ee0314534328377d2ad",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/paper-tooltip/archive/v1.1.2.tar.gz",
-          "https://github.com/PolymerElements/paper-tooltip/archive/v1.1.2.tar.gz",
-      ],
-      strip_prefix = "paper-tooltip-1.1.2",
-      path = "/paper-tooltip",
-      srcs = ["paper-tooltip.html"],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_neon_animation",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "07a9e62ffb52193da3af09adda2fbac5cc690439978520e2d03e783863f65f91",
-      strip_prefix = "polymer-1.7.0",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/polymer/polymer/archive/v1.7.0.tar.gz",
-          "https://github.com/polymer/polymer/archive/v1.7.0.tar.gz",
-      ],
-      path = "/polymer",
-      srcs = [
-          "polymer.html",
-          "polymer-micro.html",
-          "polymer-mini.html",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_prism",
-      licenses = ["notice"],  # MIT
-      sha256 = "e06eb54f2a80e6b3cd0bd4d59f900423bcaee53fc03998a056df63740c684683",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PrismJS/prism/archive/abee2b7587f1925e57777044270e2a1860810994.tar.gz",
-          "https://github.com/PrismJS/prism/archive/abee2b7587f1925e57777044270e2a1860810994.tar.gz",
-      ],
-      strip_prefix = "prism-abee2b7587f1925e57777044270e2a1860810994",
-      path = "/prism",
-      srcs = [
-          "prism.js",
-          "themes/prism.css",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_prism_element",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "ad70bf9cd5bbdf525d465e1b0658867ab4022193eb9c74087a839044b46312b4",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerElements/prism-element/archive/1.0.4.tar.gz",
-          "https://github.com/PolymerElements/prism-element/archive/1.0.4.tar.gz",
-      ],
-      strip_prefix = "prism-element-1.0.4",
-      path = "/prism-element",
-      srcs = [
-          "prism-highlighter.html",
-          "prism-import.html",
-      ],
-      deps = [
-          "@org_polymer",
-          "@org_polymer_prism",
-      ],
-  )
-
-  webfiles_external(
-      name = "org_polymer_promise_polyfill",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "4495450e5d884c3e16b537b43afead7f84d17c7dc061bcfcbf440eac083e4ef5",
-      strip_prefix = "promise-polyfill-1.0.0",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/PolymerLabs/promise-polyfill/archive/v1.0.0.tar.gz",
-          "https://github.com/PolymerLabs/promise-polyfill/archive/v1.0.0.tar.gz",
-      ],
-      path = "/promise-polyfill",
-      srcs = [
-          "Promise.js",
-          "Promise-Statics.js",
-          "promise-polyfill.html",
-          "promise-polyfill-lite.html"
-      ],
-      deps = ["@org_polymer"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_web_animations_js",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "f8bd760cbdeba131f6790bd5abe170bcbf7b1755ff58ed16d0b82fa8a7f34a7f",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
-          "https://github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
-      ],
-      strip_prefix = "web-animations-js-2.2.1",
-      path = "/web-animations-js",
-      srcs = ["web-animations-next-lite.min.js"],
-  )
-
-  webfiles_external(
-      name = "org_polymer_webcomponentsjs",
-      licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "138c43306ee0a6d699ddca9b3c6b0f4982974ea8b7bdad291ea7276c72301df9",
-      urls = [
-          "http://bazel-mirror.storage.googleapis.com/github.com/webcomponents/webcomponentsjs/archive/v0.7.22.tar.gz",
-          "https://github.com/webcomponents/webcomponentsjs/archive/v0.7.22.tar.gz",
-      ],
-      strip_prefix = "webcomponentsjs-0.7.22",
-      path = "/webcomponentsjs",
-      srcs = [
-          "CustomElements.js",
-          "CustomElements.min.js",
-          "HTMLImports.js",
-          "HTMLImports.min.js",
-          "MutationObserver.js",
-          "MutationObserver.min.js",
-          "ShadowDOM.js",
-          "ShadowDOM.min.js",
-          "webcomponents.js",
-          "webcomponents.min.js",
-          "webcomponents-lite.js",
-          "webcomponents-lite.min.js",
-      ],
-  )
+    tf_repositories(path_prefix, tf_repo_name)
+    tf_bind()
+
+# Toolchains & platforms required by Tensorflow to build.
+def tf_toolchains():
+    native.register_execution_platforms("@local_execution_config_platform//:platform")
+    native.register_toolchains("@local_execution_config_python//:py_toolchain")
+
+# Define all external repositories required by TensorFlow
+def tf_repositories(path_prefix = "", tf_repo_name = ""):
+    """All external dependencies for TF builds."""
+
+    # Initialize toolchains and platforms.
+    tf_toolchains()
+
+    # Loads all external repos to configure RBE builds.
+    initialize_rbe_configs()
+
+    # Note that we check the minimum bazel version in WORKSPACE.
+    clang6_configure(name = "local_config_clang6")
+    cc_download_clang_toolchain(name = "local_config_download_clang")
+    cuda_configure(name = "local_config_cuda")
+    tensorrt_configure(name = "local_config_tensorrt")
+    nccl_configure(name = "local_config_nccl")
+    git_configure(name = "local_config_git")
+    syslibs_configure(name = "local_config_syslibs")
+    python_configure(name = "local_config_python")
+    rocm_configure(name = "local_config_rocm")
+    remote_execution_configure(name = "local_config_remote_execution")
+
+    initialize_third_party()
+
+    # For windows bazel build
+    # TODO: Remove def file filter when TensorFlow can export symbols properly on Windows.
+    def_file_filter_configure(name = "local_config_def_file_filter")
+
+    # Point //external/local_config_arm_compiler to //external/arm_compiler
+    arm_compiler_configure(
+        name = "local_config_arm_compiler",
+        build_file = clean_dep("//third_party/toolchains/cpus/arm:BUILD"),
+        remote_config_repo_arm = "../arm_compiler",
+        remote_config_repo_aarch64 = "../aarch64_compiler",
+    )
+
+    # TFLite crossbuild toolchain for embeddeds Linux
+    arm_linux_toolchain_configure(
+        name = "local_config_embedded_arm",
+        build_file = clean_dep("//third_party/toolchains/embedded/arm-linux:BUILD"),
+        aarch64_repo = "../aarch64_linux_toolchain",
+        armhf_repo = "../armhf_linux_toolchain",
+    )
+
+    if path_prefix:
+        print("path_prefix was specified to tf_workspace but is no longer used " +
+              "and will be removed in the future.")
+
+    # To update any of the dependencies bellow:
+    # a) update URL and strip_prefix to the new git commit hash
+    # b) get the sha256 hash of the commit by running:
+    #    curl -L <url> | sha256sum
+    # and update the sha256 with the result.
+    tf_http_archive(
+        name = "XNNPACK",
+        sha256 = "59ccf0c1c64899b511f8872a278e54c293970f57933b056492a364aa5ac709ec",
+        strip_prefix = "XNNPACK-094e692629d57ddb932fcc993193626f60daa61b",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/094e692629d57ddb932fcc993193626f60daa61b.zip",
+            "https://github.com/google/XNNPACK/archive/094e692629d57ddb932fcc993193626f60daa61b.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "FXdiv",
+        sha256 = "3d7b0e9c4c658a84376a1086126be02f9b7f753caa95e009d9ac38d11da444db",
+        strip_prefix = "FXdiv-63058eff77e11aa15bf531df5dd34395ec3017c8",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip",
+            "https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "pthreadpool",
+        sha256 = "e576de3e2504018462a3ee2282c99c2d0d708f01d17cd2f71f9f1fe6d3ba8b9b",
+        strip_prefix = "pthreadpool-77f9d3bcfabd1bdb910dd33b549d5290b968ef05",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/77f9d3bcfabd1bdb910dd33b549d5290b968ef05.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/77f9d3bcfabd1bdb910dd33b549d5290b968ef05.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "mkl_dnn",
+        build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
+        sha256 = "a0211aeb5e7dad50b97fa5dffc1a2fe2fe732572d4164e1ee8750a2ede43fbec",
+        strip_prefix = "oneDNN-0.21.3",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v0.21.3.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "mkl_dnn_v1",
+        build_file = clean_dep("//third_party/mkl_dnn:mkldnn_v1.BUILD"),
+        sha256 = "5369f7b2f0b52b40890da50c0632c3a5d1082d98325d0f2bff125d19d0dcaa1d",
+        strip_prefix = "oneDNN-1.6.4",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v1.6.4.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v1.6.4.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_google_absl",
+        build_file = clean_dep("//third_party:com_google_absl.BUILD"),
+        # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
+        # and when TensorFlow is build against CUDA 10.2
+        patch_file = clean_dep("//third_party:com_google_absl_fix_mac_and_nvcc_build.patch"),
+        sha256 = "f368a8476f4e2e0eccf8a7318b98dafbe30b2600f4e3cf52636e5eb145aba06a",  # SHARED_ABSL_SHA
+        strip_prefix = "abseil-cpp-df3ea785d8c30a9503321a3d35ee7d35808f190d",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/df3ea785d8c30a9503321a3d35ee7d35808f190d.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/df3ea785d8c30a9503321a3d35ee7d35808f190d.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "eigen_archive",
+        build_file = clean_dep("//third_party:eigen.BUILD"),
+        patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
+        sha256 = "df23a89e4cdfa7de2d81ee28190bd194413e47ff177c94076f845b32d7280344",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-5dc2fbabeee17fe023c38756ebde0c1d56472913",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/5dc2fbabeee17fe023c38756ebde0c1d56472913/eigen-5dc2fbabeee17fe023c38756ebde0c1d56472913.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/5dc2fbabeee17fe023c38756ebde0c1d56472913/eigen-5dc2fbabeee17fe023c38756ebde0c1d56472913.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "arm_compiler",
+        build_file = clean_dep("//:arm_compiler.BUILD"),
+        sha256 = "b9e7d50ffd9996ed18900d041d362c99473b382c0ae049b2fce3290632d2656f",
+        strip_prefix = "rpi-newer-crosstools-eb68350c5c8ec1663b7fe52c742ac4271e3217c5/x64-gcc-6.5.0/arm-rpi-linux-gnueabihf/",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz",
+            "https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        # This is the latest `aarch64-none-linux-gnu` compiler provided by ARM
+        # See https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads
+        # The archive contains GCC version 9.2.1
+        name = "aarch64_compiler",
+        build_file = "//:arm_compiler.BUILD",
+        sha256 = "8dfe681531f0bd04fb9c53cf3c0a3368c616aa85d48938eebe2b516376e06a66",
+        strip_prefix = "gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz",
+            "https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "aarch64_linux_toolchain",
+        build_file = clean_dep("//third_party/toolchains/embedded/arm-linux:aarch64-linux-toolchain.BUILD"),
+        sha256 = "8ce3e7688a47d8cd2d8e8323f147104ae1c8139520eca50ccf8a7fa933002731",
+        strip_prefix = "gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz",
+            "https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "armhf_linux_toolchain",
+        build_file = clean_dep("//third_party/toolchains/embedded/arm-linux:armhf-linux-toolchain.BUILD"),
+        sha256 = "d4f6480ecaa99e977e3833cc8a8e1263f9eecd1ce2d022bb548a24c4f32670f5",
+        strip_prefix = "gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz",
+            "https://developer.arm.com/-/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "libxsmm_archive",
+        build_file = clean_dep("//third_party:libxsmm.BUILD"),
+        sha256 = "9c0af4509ea341d1ee2c6c19fc6f19289318c3bd4b17844efeb9e7f9691abf76",
+        strip_prefix = "libxsmm-1.14",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/hfp/libxsmm/archive/1.14.tar.gz",
+            "https://github.com/hfp/libxsmm/archive/1.14.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_googlesource_code_re2",
+        sha256 = "d070e2ffc5476c496a6a872a6f246bfddce8e7797d6ba605a7c8d72866743bf9",
+        strip_prefix = "re2-506cfa4bffd060c06ec338ce50ea3468daa6c814",
+        system_build_file = clean_dep("//third_party/systemlibs:re2.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz",
+            "https://github.com/google/re2/archive/506cfa4bffd060c06ec338ce50ea3468daa6c814.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_github_google_crc32c",
+        sha256 = "6b3b1d861bb8307658b2407bc7a4c59e566855ef5368a60b35c893551e4788e9",
+        build_file = "@com_github_googlecloudplatform_google_cloud_cpp//bazel:crc32c.BUILD",
+        strip_prefix = "crc32c-1.0.6",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/crc32c/archive/1.0.6.tar.gz",
+            "https://github.com/google/crc32c/archive/1.0.6.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_github_googlecloudplatform_google_cloud_cpp",
+        sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
+        strip_prefix = "google-cloud-cpp-1.17.1",
+        repo_mapping = {
+            "@com_github_curl_curl": "@curl",
+            "@com_github_nlohmann_json": "@nlohmann_json_lib",
+        },
+        system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
+        },
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_github_googlecloudplatform_tensorflow_gcp_tools",
+        sha256 = "5e9ebe17eaa2895eb7f77fefbf52deeda7c4b63f5a616916b823eb74f3a0c542",
+        strip_prefix = "tensorflow-gcp-tools-2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/GoogleCloudPlatform/tensorflow-gcp-tools/archive/2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5.tar.gz",
+            "https://github.com/GoogleCloudPlatform/tensorflow-gcp-tools/archive/2643d8caeba6ca2a6a0b46bb123953cb95b7e7d5.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_google_googleapis",
+        build_file = clean_dep("//third_party/googleapis:googleapis.BUILD"),
+        sha256 = "7ebab01b06c555f4b6514453dc3e1667f810ef91d1d4d2d3aa29bb9fcb40a900",
+        strip_prefix = "googleapis-541b1ded4abadcc38e8178680b0677f65594ea6f",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip",
+            "https://github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "gemmlowp",
+        sha256 = "43146e6f56cb5218a8caaab6b5d1601a083f1f31c06ff474a4378a7d35be9cfb",  # SHARED_GEMMLOWP_SHA
+        strip_prefix = "gemmlowp-fda83bdc38b118cc6b56753bd540caa49e570745",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/gemmlowp/archive/fda83bdc38b118cc6b56753bd540caa49e570745.zip",
+            "https://github.com/google/gemmlowp/archive/fda83bdc38b118cc6b56753bd540caa49e570745.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "farmhash_archive",
+        build_file = clean_dep("//third_party:farmhash.BUILD"),
+        sha256 = "6560547c63e4af82b0f202cb710ceabb3f21347a4b996db565a411da5b17aba0",  # SHARED_FARMHASH_SHA
+        strip_prefix = "farmhash-816a4ae622e964763ca0862d9dbd19324a1eaf45",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
+            "https://github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "png",
+        build_file = clean_dep("//third_party:png.BUILD"),
+        patch_file = clean_dep("//third_party:png_fix_rpi.patch"),
+        sha256 = "ca74a0dace179a8422187671aee97dd3892b53e168627145271cad5b5ac81307",
+        strip_prefix = "libpng-1.6.37",
+        system_build_file = clean_dep("//third_party/systemlibs:png.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/glennrp/libpng/archive/v1.6.37.tar.gz",
+            "https://github.com/glennrp/libpng/archive/v1.6.37.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "org_sqlite",
+        build_file = clean_dep("//third_party:sqlite.BUILD"),
+        sha256 = "8ff0b79fd9118af7a760f1f6a98cac3e69daed325c8f9f0a581ecb62f797fd64",
+        strip_prefix = "sqlite-amalgamation-3340000",
+        system_build_file = clean_dep("//third_party/systemlibs:sqlite.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/www.sqlite.org/2020/sqlite-amalgamation-3340000.zip",
+            "https://www.sqlite.org/2020/sqlite-amalgamation-3340000.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "gif",
+        build_file = clean_dep("//third_party:gif.BUILD"),
+        patch_file = clean_dep("//third_party:gif_fix_strtok_r.patch"),
+        sha256 = "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd",
+        strip_prefix = "giflib-5.2.1",
+        system_build_file = clean_dep("//third_party/systemlibs:gif.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pilotfiber.dl.sourceforge.net/project/giflib/giflib-5.2.1.tar.gz",
+            "https://pilotfiber.dl.sourceforge.net/project/giflib/giflib-5.2.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "six_archive",
+        build_file = clean_dep("//third_party:six.BUILD"),
+        sha256 = "30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259",
+        strip_prefix = "six-1.15.0",
+        system_build_file = clean_dep("//third_party/systemlibs:six.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/source/s/six/six-1.15.0.tar.gz",
+            "https://pypi.python.org/packages/source/s/six/six-1.15.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "astor_archive",
+        build_file = clean_dep("//third_party:astor.BUILD"),
+        sha256 = "95c30d87a6c2cf89aa628b87398466840f0ad8652f88eb173125a6df8533fb8d",
+        strip_prefix = "astor-0.7.1",
+        system_build_file = clean_dep("//third_party/systemlibs:astor.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/99/80/f9482277c919d28bebd85813c0a70117214149a96b08981b72b63240b84c/astor-0.7.1.tar.gz",
+            "https://pypi.python.org/packages/99/80/f9482277c919d28bebd85813c0a70117214149a96b08981b72b63240b84c/astor-0.7.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "astunparse_archive",
+        build_file = clean_dep("//third_party:astunparse.BUILD"),
+        sha256 = "5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872",
+        strip_prefix = "astunparse-1.6.3/lib",
+        system_build_file = clean_dep("//third_party/systemlibs:astunparse.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/files.pythonhosted.org/packages/f3/af/4182184d3c338792894f34a62672919db7ca008c89abee9b564dd34d8029/astunparse-1.6.3.tar.gz",
+            "https://files.pythonhosted.org/packages/f3/af/4182184d3c338792894f34a62672919db7ca008c89abee9b564dd34d8029/astunparse-1.6.3.tar.gz",
+        ],
+    )
+
+    filegroup_external(
+        name = "astunparse_license",
+        licenses = ["notice"],  # PSFL
+        sha256_urls = {
+            "92fc0e4f4fa9460558eedf3412b988d433a2dcbb3a9c45402a145a4fab8a6ac6": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
+                "https://raw.githubusercontent.com/simonpercivall/astunparse/v1.6.2/LICENSE",
+            ],
+        },
+    )
+
+    tf_http_archive(
+        name = "functools32_archive",
+        build_file = clean_dep("//third_party:functools32.BUILD"),
+        sha256 = "f6253dfbe0538ad2e387bd8fdfd9293c925d63553f5813c4e587745416501e6d",
+        strip_prefix = "functools32-3.2.3-2",
+        system_build_file = clean_dep("//third_party/systemlibs:functools32.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/c5/60/6ac26ad05857c601308d8fb9e87fa36d0ebf889423f47c3502ef034365db/functools32-3.2.3-2.tar.gz",
+            "https://pypi.python.org/packages/c5/60/6ac26ad05857c601308d8fb9e87fa36d0ebf889423f47c3502ef034365db/functools32-3.2.3-2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "gast_archive",
+        build_file = clean_dep("//third_party:gast.BUILD"),
+        sha256 = "b881ef288a49aa81440d2c5eb8aeefd4c2bb8993d5f50edae7413a85bfdb3b57",
+        strip_prefix = "gast-0.3.3",
+        system_build_file = clean_dep("//third_party/systemlibs:gast.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
+            "https://files.pythonhosted.org/packages/12/59/eaa15ab9710a20e22225efd042cd2d6a0b559a0656d5baba9641a2a4a921/gast-0.3.3.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "termcolor_archive",
+        build_file = clean_dep("//third_party:termcolor.BUILD"),
+        sha256 = "1d6d69ce66211143803fbc56652b41d73b4a400a2891d7bf7a1cdf4c02de613b",
+        strip_prefix = "termcolor-1.1.0",
+        system_build_file = clean_dep("//third_party/systemlibs:termcolor.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+            "https://pypi.python.org/packages/8a/48/a76be51647d0eb9f10e2a4511bf3ffb8cc1e6b14e9e4fab46173aa79f981/termcolor-1.1.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "typing_extensions_archive",
+        build_file = clean_dep("//third_party:typing_extensions.BUILD"),
+        sha256 = "79ee589a3caca649a9bfd2a8de4709837400dfa00b6cc81962a1e6a1815969ae",
+        strip_prefix = "typing_extensions-3.7.4.2/src_py3",
+        system_build_file = clean_dep("//third_party/systemlibs:typing_extensions.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+            "https://files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+        ],
+    )
+
+    filegroup_external(
+        name = "typing_extensions_license",
+        licenses = ["notice"],  # PSFL
+        sha256_urls = {
+            "ff17ce94e102024deb68773eb1cc74ca76da4e658f373531f0ac22d68a6bb1ad": [
+                "http://mirror.tensorflow.org/raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE",
+                "https://raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE",
+            ],
+        },
+    )
+
+    tf_http_archive(
+        name = "opt_einsum_archive",
+        build_file = clean_dep("//third_party:opt_einsum.BUILD"),
+        sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
+        strip_prefix = "opt_einsum-2.3.2",
+        system_build_file = clean_dep("//third_party/systemlibs:opt_einsum.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+            "https://pypi.python.org/packages/f6/d6/44792ec668bcda7d91913c75237314e688f70415ab2acd7172c845f0b24f/opt_einsum-2.3.2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "absl_py",
+        sha256 = "603febc9b95a8f2979a7bdb77d2f5e4d9b30d4e0d59579f88eba67d4e4cc5462",
+        strip_prefix = "abseil-py-pypi-v0.9.0",
+        system_build_file = clean_dep("//third_party/systemlibs:absl_py.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:absl_py.absl.BUILD": "absl/BUILD",
+            "//third_party/systemlibs:absl_py.absl.flags.BUILD": "absl/flags/BUILD",
+            "//third_party/systemlibs:absl_py.absl.testing.BUILD": "absl/testing/BUILD",
+            "//third_party/systemlibs:absl_py.absl.logging.BUILD": "absl/logging/BUILD",
+        },
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-py/archive/pypi-v0.9.0.tar.gz",
+            "https://github.com/abseil/abseil-py/archive/pypi-v0.9.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "enum34_archive",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz",
+            "https://pypi.python.org/packages/bf/3e/31d502c25302814a7c2f1d3959d2a3b3f78e509002ba91aea64993936876/enum34-1.1.6.tar.gz",
+        ],
+        sha256 = "8ad8c4783bf61ded74527bffb48ed9b54166685e4230386a9ed9b1279e2df5b1",
+        build_file = clean_dep("//third_party:enum34.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:enum34.BUILD"),
+        strip_prefix = "enum34-1.1.6/enum",
+    )
+
+    tf_http_archive(
+        name = "org_python_pypi_backports_weakref",
+        build_file = clean_dep("//third_party:backports_weakref.BUILD"),
+        sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
+        strip_prefix = "backports.weakref-1.0rc1/src",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+            "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "dill_archive",
+        build_file = clean_dep("//third_party:dill.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:dill.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/e2/96/518a8ea959a734b70d2e95fef98bcbfdc7adad1c1e5f5dd9148c835205a5/dill-0.3.2.zip",
+            "https://files.pythonhosted.org/packages/e2/96/518a8ea959a734b70d2e95fef98bcbfdc7adad1c1e5f5dd9148c835205a5/dill-0.3.2.zip",
+        ],
+        sha256 = "6e12da0d8e49c220e8d6e97ee8882002e624f1160289ce85ec2cc0a5246b3a2e",
+        strip_prefix = "dill-0.3.2",
+    )
+
+    tf_http_archive(
+        name = "tblib_archive",
+        build_file = clean_dep("//third_party:tblib.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:tblib.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/d3/41/901ef2e81d7b1e834b9870d416cb09479e175a2be1c4aa1a9dcd0a555293/tblib-1.7.0.tar.gz",
+            "https://files.pythonhosted.org/packages/d3/41/901ef2e81d7b1e834b9870d416cb09479e175a2be1c4aa1a9dcd0a555293/tblib-1.7.0.tar.gz",
+        ],
+        sha256 = "059bd77306ea7b419d4f76016aef6d7027cc8a0785579b5aad198803435f882c",
+        strip_prefix = "tblib-1.7.0",
+    )
+
+    filegroup_external(
+        name = "org_python_license",
+        licenses = ["notice"],  # Python 2.0
+        sha256_urls = {
+            "e76cacdf0bdd265ff074ccca03671c33126f597f39d0ed97bc3e5673d9170cf6": [
+                "https://storage.googleapis.com/mirror.tensorflow.org/docs.python.org/2.7/_sources/license.rst.txt",
+                "https://docs.python.org/2.7/_sources/license.rst.txt",
+            ],
+        },
+    )
+
+    tf_http_archive(
+        name = "com_google_protobuf",
+        patch_file = clean_dep("//third_party/protobuf:protobuf.patch"),
+        sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
+        strip_prefix = "protobuf-3.9.2",
+        system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
+        system_link_files = {
+            "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
+        },
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
+            "https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "nsync",
+        sha256 = "caf32e6b3d478b78cff6c2ba009c3400f8251f646804bcb65465666a9cea93c4",
+        strip_prefix = "nsync-1.22.0",
+        system_build_file = clean_dep("//third_party/systemlibs:nsync.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/nsync/archive/1.22.0.tar.gz",
+            "https://github.com/google/nsync/archive/1.22.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_google_googletest",
+        sha256 = "ff7a82736e158c077e76188232eac77913a15dac0b22508c390ab3f88e6d6d86",
+        strip_prefix = "googletest-b6cd405286ed8635ece71c72f118e659f4ade3fb",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
+            "https://github.com/google/googletest/archive/b6cd405286ed8635ece71c72f118e659f4ade3fb.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "com_github_gflags_gflags",
+        sha256 = "ae27cdbcd6a2f935baa78e4f21f675649271634c092b1be01469440495609d0e",
+        strip_prefix = "gflags-2.2.1",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/gflags/gflags/archive/v2.2.1.tar.gz",
+            "https://github.com/gflags/gflags/archive/v2.2.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "pcre",
+        build_file = clean_dep("//third_party:pcre.BUILD"),
+        sha256 = "aecafd4af3bd0f3935721af77b889d9024b2e01d96b58471bd91a3063fb47728",
+        strip_prefix = "pcre-8.44",
+        system_build_file = clean_dep("//third_party/systemlibs:pcre.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
+            "https://ftp.exim.org/pub/pcre/pcre-8.44.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "curl",
+        build_file = clean_dep("//third_party:curl.BUILD"),
+        sha256 = "01ae0c123dee45b01bbaef94c0bc00ed2aec89cb2ee0fd598e0d302a6b5e0a98",
+        strip_prefix = "curl-7.69.1",
+        system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.69.1.tar.gz",
+            "https://curl.haxx.se/download/curl-7.69.1.tar.gz",
+        ],
+    )
+
+    # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
+    tf_http_archive(
+        name = "com_github_grpc_grpc",
+        sha256 = "b956598d8cbe168b5ee717b5dafa56563eb5201a947856a6688bbeac9cac4e1f",
+        strip_prefix = "grpc-b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd",
+        system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
+        patch_file = clean_dep("//third_party/grpc:generate_cc_env_fix.patch"),
+        system_link_files = {
+            "//third_party/systemlibs:BUILD": "bazel/BUILD",
+            "//third_party/systemlibs:grpc.BUILD": "src/compiler/BUILD",
+            "//third_party/systemlibs:grpc.bazel.grpc_deps.bzl": "bazel/grpc_deps.bzl",
+            "//third_party/systemlibs:grpc.bazel.grpc_extra_deps.bzl": "bazel/grpc_extra_deps.bzl",
+            "//third_party/systemlibs:grpc.bazel.cc_grpc_library.bzl": "bazel/cc_grpc_library.bzl",
+            "//third_party/systemlibs:grpc.bazel.generate_cc.bzl": "bazel/generate_cc.bzl",
+            "//third_party/systemlibs:grpc.bazel.protobuf.bzl": "bazel/protobuf.bzl",
+        },
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz",
+            "https://github.com/grpc/grpc/archive/b54a5b338637f92bfcf4b0bc05e0f57a5fd8fadd.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "linenoise",
+        build_file = clean_dep("//third_party:linenoise.BUILD"),
+        sha256 = "7f51f45887a3d31b4ce4fa5965210a5e64637ceac12720cfce7954d6a2e812f7",
+        strip_prefix = "linenoise-c894b9e59f02203dbe4e2be657572cf88c4230c3",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/antirez/linenoise/archive/c894b9e59f02203dbe4e2be657572cf88c4230c3.tar.gz",
+            "https://github.com/antirez/linenoise/archive/c894b9e59f02203dbe4e2be657572cf88c4230c3.tar.gz",
+        ],
+    )
+
+    # Check out LLVM and MLIR from llvm-project.
+    LLVM_COMMIT = "c3acda0798f9b10ac3187ad941bbd8af82fb84a1"
+    LLVM_SHA256 = "bd707c585368c86a4d9de1f262d39adb230f7dac889aa786b2721bf67b447a8c"
+    LLVM_URLS = [
+        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
+        "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
+    ]
+    tf_http_archive(
+        name = "llvm-project",
+        sha256 = LLVM_SHA256,
+        strip_prefix = "llvm-project-" + LLVM_COMMIT,
+        urls = LLVM_URLS,
+        additional_build_files = {
+            clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"): "llvm/BUILD",
+            "//third_party/mlir:BUILD": "mlir/BUILD",
+            "//third_party/mlir:test.BUILD": "mlir/test/BUILD",
+        },
+    )
+
+    # Intel openMP that is part of LLVM sources.
+    tf_http_archive(
+        name = "llvm_openmp",
+        build_file = clean_dep("//third_party/llvm_openmp:BUILD"),
+        sha256 = "d19f728c8e04fb1e94566c8d76aef50ec926cd2f95ef3bf1e0a5de4909b28b44",
+        strip_prefix = "openmp-10.0.1.src",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz",
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-10.0.1/openmp-10.0.1.src.tar.xz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "lmdb",
+        build_file = clean_dep("//third_party:lmdb.BUILD"),
+        sha256 = "f3927859882eb608868c8c31586bb7eb84562a40a6bf5cc3e13b6b564641ea28",
+        strip_prefix = "lmdb-LMDB_0.9.22/libraries/liblmdb",
+        system_build_file = clean_dep("//third_party/systemlibs:lmdb.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz",
+            "https://github.com/LMDB/lmdb/archive/LMDB_0.9.22.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "jsoncpp_git",
+        build_file = clean_dep("//third_party:jsoncpp.BUILD"),
+        sha256 = "77a402fb577b2e0e5d0bdc1cf9c65278915cdb25171e3452c68b6da8a561f8f0",
+        strip_prefix = "jsoncpp-1.9.2",
+        system_build_file = clean_dep("//third_party/systemlibs:jsoncpp.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/open-source-parsers/jsoncpp/archive/1.9.2.tar.gz",
+            "https://github.com/open-source-parsers/jsoncpp/archive/1.9.2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "boringssl",
+        sha256 = "a9c3b03657d507975a32732f04563132b4553c20747cec6dc04de475c8bdf29f",
+        strip_prefix = "boringssl-80ca9f9f6ece29ab132cce4cf807a9465a18cfac",
+        system_build_file = clean_dep("//third_party/systemlibs:boringssl.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/boringssl/archive/80ca9f9f6ece29ab132cce4cf807a9465a18cfac.tar.gz",
+            "https://github.com/google/boringssl/archive/80ca9f9f6ece29ab132cce4cf807a9465a18cfac.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "zlib",
+        build_file = clean_dep("//third_party:zlib.BUILD"),
+        sha256 = "c3e5e9fdd5004dcb542feda5ee4f0ff0744628baf8ed2dd5d66f8ca1197cb1a1",
+        strip_prefix = "zlib-1.2.11",
+        system_build_file = clean_dep("//third_party/systemlibs:zlib.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/zlib.net/zlib-1.2.11.tar.gz",
+            "https://zlib.net/zlib-1.2.11.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "fft2d",
+        build_file = clean_dep("//third_party/fft2d:fft2d.BUILD"),
+        sha256 = "5f4dabc2ae21e1f537425d58a49cdca1c49ea11db0d6271e2a4b27e9697548eb",
+        strip_prefix = "OouraFFT-1.0",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/petewarden/OouraFFT/archive/v1.0.tar.gz",
+            "https://github.com/petewarden/OouraFFT/archive/v1.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "snappy",
+        build_file = clean_dep("//third_party:snappy.BUILD"),
+        sha256 = "16b677f07832a612b0836178db7f374e414f94657c138e6993cbfc5dcc58651f",
+        strip_prefix = "snappy-1.1.8",
+        system_build_file = clean_dep("//third_party/systemlibs:snappy.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/snappy/archive/1.1.8.tar.gz",
+            "https://github.com/google/snappy/archive/1.1.8.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "nccl_archive",
+        build_file = clean_dep("//third_party:nccl/archive.BUILD"),
+        patch_file = clean_dep("//third_party/nccl:archive.patch"),
+        sha256 = "b8eaed1fb2d0cc2f951625dc4e17185bab9ff3ab188ba4d34a6e3a01ce9f0d57",
+        strip_prefix = "nccl-195232556936b39b01cc908296e1650b80d4a3e9",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
+            "https://github.com/nvidia/nccl/archive/195232556936b39b01cc908296e1650b80d4a3e9.tar.gz",
+        ],
+    )
+
+    java_import_external(
+        name = "junit",
+        jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+            "https://repo1.maven.org/maven2/junit/junit/4.12/junit-4.12.jar",
+            "https://maven.ibiblio.org/maven2/junit/junit/4.12/junit-4.12.jar",
+        ],
+        licenses = ["reciprocal"],  # Common Public License Version 1.0
+        testonly_ = True,
+        deps = ["@org_hamcrest_core"],
+    )
+
+    java_import_external(
+        name = "org_hamcrest_core",
+        jar_sha256 = "66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+            "https://repo1.maven.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+            "https://maven.ibiblio.org/maven2/org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar",
+        ],
+        licenses = ["notice"],  # New BSD License
+        testonly_ = True,
+    )
+
+    java_import_external(
+        name = "com_google_testing_compile",
+        jar_sha256 = "edc180fdcd9f740240da1a7a45673f46f59c5578d8cd3fbc912161f74b5aebb8",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+            "https://repo1.maven.org/maven2/com/google/testing/compile/compile-testing/0.11/compile-testing-0.11.jar",
+        ],
+        licenses = ["notice"],  # New BSD License
+        testonly_ = True,
+        deps = ["@com_google_guava", "@com_google_truth"],
+    )
+
+    java_import_external(
+        name = "com_google_truth",
+        jar_sha256 = "032eddc69652b0a1f8d458f999b4a9534965c646b8b5de0eba48ee69407051df",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+            "https://repo1.maven.org/maven2/com/google/truth/truth/0.32/truth-0.32.jar",
+        ],
+        licenses = ["notice"],  # Apache 2.0
+        testonly_ = True,
+        deps = ["@com_google_guava"],
+    )
+
+    java_import_external(
+        name = "org_checkerframework_qual",
+        jar_sha256 = "d261fde25d590f6b69db7721d469ac1b0a19a17ccaaaa751c31f0d8b8260b894",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
+            "https://repo1.maven.org/maven2/org/checkerframework/checker-qual/2.10.0/checker-qual-2.10.0.jar",
+        ],
+        licenses = ["notice"],  # Apache 2.0
+    )
+
+    java_import_external(
+        name = "com_squareup_javapoet",
+        jar_sha256 = "5bb5abdfe4366c15c0da3332c57d484e238bd48260d6f9d6acf2b08fdde1efea",
+        jar_urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+            "https://repo1.maven.org/maven2/com/squareup/javapoet/1.9.0/javapoet-1.9.0.jar",
+        ],
+        licenses = ["notice"],  # Apache 2.0
+    )
+
+    tf_http_archive(
+        name = "com_google_pprof",
+        build_file = clean_dep("//third_party:pprof.BUILD"),
+        sha256 = "e0928ca4aa10ea1e0551e2d7ce4d1d7ea2d84b2abbdef082b0da84268791d0c4",
+        strip_prefix = "pprof-c0fb62ec88c411cc91194465e54db2632845b650",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/pprof/archive/c0fb62ec88c411cc91194465e54db2632845b650.tar.gz",
+            "https://github.com/google/pprof/archive/c0fb62ec88c411cc91194465e54db2632845b650.tar.gz",
+        ],
+    )
+
+    # The CUDA 11 toolkit ships with CUB.  We should be able to delete this rule
+    # once TF drops support for CUDA 10.
+    tf_http_archive(
+        name = "cub_archive",
+        build_file = clean_dep("//third_party:cub.BUILD"),
+        sha256 = "162514b3cc264ac89d91898b58450190b8192e2af1142cf8ccac2d59aa160dda",
+        strip_prefix = "cub-1.9.9",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.9.9.zip",
+            "https://github.com/NVlabs/cub/archive/1.9.9.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "cython",
+        build_file = clean_dep("//third_party:cython.BUILD"),
+        delete = ["BUILD.bazel"],
+        sha256 = "e2e38e1f0572ca54d6085df3dec8b607d20e81515fb80215aed19c81e8fe2079",
+        strip_prefix = "cython-0.29.21",
+        system_build_file = clean_dep("//third_party/systemlibs:cython.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/cython/cython/archive/0.29.21.tar.gz",
+            "https://github.com/cython/cython/archive/0.29.21.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "arm_neon_2_x86_sse",
+        build_file = clean_dep("//third_party:arm_neon_2_x86_sse.BUILD"),
+        sha256 = "213733991310b904b11b053ac224fee2d4e0179e46b52fe7f8735b8831e04dcc",
+        strip_prefix = "ARM_NEON_2_x86_SSE-1200fe90bb174a6224a525ee60148671a786a71f",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/ARM_NEON_2_x86_SSE/archive/1200fe90bb174a6224a525ee60148671a786a71f.tar.gz",
+            "https://github.com/intel/ARM_NEON_2_x86_SSE/archive/1200fe90bb174a6224a525ee60148671a786a71f.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "double_conversion",
+        build_file = clean_dep("//third_party:double_conversion.BUILD"),
+        sha256 = "2f7fbffac0d98d201ad0586f686034371a6d152ca67508ab611adc2386ad30de",
+        strip_prefix = "double-conversion-3992066a95b823efc8ccc1baf82a1cfc73f6e9b8",
+        system_build_file = clean_dep("//third_party/systemlibs:double_conversion.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/double-conversion/archive/3992066a95b823efc8ccc1baf82a1cfc73f6e9b8.zip",
+            "https://github.com/google/double-conversion/archive/3992066a95b823efc8ccc1baf82a1cfc73f6e9b8.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_mobilenet_float",
+        build_file = clean_dep("//third_party:tflite_mobilenet_float.BUILD"),
+        sha256 = "2fadeabb9968ec6833bee903900dda6e61b3947200535874ce2fe42a8493abc0",
+        urls = [
+            "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz",
+            "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224.tgz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_mobilenet_quant",
+        build_file = clean_dep("//third_party:tflite_mobilenet_quant.BUILD"),
+        sha256 = "d32432d28673a936b2d6281ab0600c71cf7226dfe4cdcef3012555f691744166",
+        urls = [
+            "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz",
+            "https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_mobilenet_ssd",
+        build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+        sha256 = "767057f2837a46d97882734b03428e8dd640b93236052b312b2f0e45613c1cf0",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_ssd_tflite_v1.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_mobilenet_ssd_quant",
+        build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+        sha256 = "a809cd290b4d6a2e8a9d5dad076e0bd695b8091974e0eed1052b480b2f21b6dc",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_0.75_quant_2018_06_29.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_mobilenet_ssd_quant_protobuf",
+        build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+        sha256 = "09280972c5777f1aa775ef67cb4ac5d5ed21970acd8535aeca62450ef14f0d79",
+        strip_prefix = "ssd_mobilenet_v1_quantized_300x300_coco14_sync_2018_07_18",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_quantized_300x300_coco14_sync_2018_07_18.tar.gz",
+            "https://storage.googleapis.com/download.tensorflow.org/models/object_detection/ssd_mobilenet_v1_quantized_300x300_coco14_sync_2018_07_18.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_conv_actions_frozen",
+        build_file = str(Label("//third_party:tflite_mobilenet.BUILD")),
+        sha256 = "d947b38cba389b5e2d0bfc3ea6cc49c784e187b41a071387b3742d1acac7691e",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/models/tflite/conv_actions_tflite.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tflite_ovic_testdata",
+        build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
+        sha256 = "033c941b7829b05ca55a124a26a6a0581b1ececc154a2153cafcfdb54f80dca2",
+        strip_prefix = "ovic",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2019_04_30.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "rules_cc",
+        sha256 = "cf3b76a90c86c0554c5b10f4b160f05af71d252026b71362c4674e2fb9936cf9",
+        strip_prefix = "rules_cc-01d4a48911d5e7591ecb1c06d3b8af47fe872371",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
+            "https://github.com/bazelbuild/rules_cc/archive/01d4a48911d5e7591ecb1c06d3b8af47fe872371.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "rules_python",
+        sha256 = "aa96a691d3a8177f3215b14b0edc9641787abaaa30363a080165d06ab65e1161",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz",
+            "https://github.com/bazelbuild/rules_python/releases/download/0.0.1/rules_python-0.0.1.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "build_bazel_rules_android",
+        sha256 = "cd06d15dd8bb59926e4d65f9003bfc20f9da4b2519985c27e190cddc8b7a7806",
+        strip_prefix = "rules_android-0.1.1",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_android/archive/v0.1.1.zip",
+            "https://github.com/bazelbuild/rules_android/archive/v0.1.1.zip",
+        ],
+    )
+
+    # Apple and Swift rules.
+    # https://github.com/bazelbuild/rules_apple/releases
+    tf_http_archive(
+        name = "build_bazel_rules_apple",
+        sha256 = "ee9e6073aeb5a65c100cb9c44b0017c937706a4ae03176e14a7e78620a198079",
+        strip_prefix = "rules_apple-5131f3d46794bf227d296c82f30c2499c9de3c5b",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_apple/archive/5131f3d46794bf227d296c82f30c2499c9de3c5b.tar.gz",
+            "https://github.com/bazelbuild/rules_apple/archive/5131f3d46794bf227d296c82f30c2499c9de3c5b.tar.gz",
+        ],
+    )
+
+    # https://github.com/bazelbuild/rules_swift/releases
+    tf_http_archive(
+        name = "build_bazel_rules_swift",
+        sha256 = "d0833bc6dad817a367936a5f902a0c11318160b5e80a20ece35fb85a5675c886",
+        strip_prefix = "rules_swift-3eeeb53cebda55b349d64c9fc144e18c5f7c0eb8",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/rules_swift/archive/3eeeb53cebda55b349d64c9fc144e18c5f7c0eb8.tar.gz",
+            "https://github.com/bazelbuild/rules_swift/archive/3eeeb53cebda55b349d64c9fc144e18c5f7c0eb8.tar.gz",
+        ],
+    )
+
+    # https://github.com/bazelbuild/apple_support/releases
+    tf_http_archive(
+        name = "build_bazel_apple_support",
+        sha256 = "ad8ae80e93612b8151019367a3d1604d7a51c14480dae1254e10252007e8260c",
+        strip_prefix = "apple_support-501b4afb27745c4813a88ffa28acd901408014e4",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz",
+            "https://github.com/bazelbuild/apple_support/archive/501b4afb27745c4813a88ffa28acd901408014e4.tar.gz",
+        ],
+    )
+
+    # https://github.com/bazelbuild/bazel-skylib/releases
+    tf_http_archive(
+        name = "bazel_skylib",
+        sha256 = "1dde365491125a3db70731e25658dfdd3bc5dbdfd11b840b3e987ecf043c7ca0",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/bazelbuild/bazel-skylib/releases/download/0.9.0/bazel_skylib-0.9.0.tar.gz",
+            "https://github.com/bazelbuild/bazel-skylib/releases/download/0.9.0/bazel_skylib-0.9.0.tar.gz",
+        ],
+    )
+
+    # https://github.com/apple/swift-protobuf/releases
+    tf_http_archive(
+        name = "com_github_apple_swift_swift_protobuf",
+        strip_prefix = "swift-protobuf-1.6.0/",
+        sha256 = "4ccf6e5ea558e8287bf6331f9f6e52b3c321fca5f1d181d03680f415c32a6bba",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/apple/swift-protobuf/archive/1.6.0.zip",
+            "https://github.com/apple/swift-protobuf/archive/1.6.0.zip",
+        ],
+    )
+
+    # https://github.com/google/xctestrunner/releases
+    http_file(
+        name = "xctestrunner",
+        executable = 1,
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/xctestrunner/releases/download/0.2.9/ios_test_runner.par",
+            "https://github.com/google/xctestrunner/releases/download/0.2.9/ios_test_runner.par",
+        ],
+    )
+
+    tf_http_archive(
+        name = "nlohmann_json_lib",
+        build_file = clean_dep("//third_party:nlohmann_json.BUILD"),
+        sha256 = "c377963a95989270c943d522bfefe7b889ef5ed0e1e15d535fd6f6f16ed70732",
+        strip_prefix = "json-3.4.0",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/nlohmann/json/archive/v3.4.0.tar.gz",
+            "https://github.com/nlohmann/json/archive/v3.4.0.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        name = "pybind11",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/pybind/pybind11/archive/v2.6.0.tar.gz",
+            "https://github.com/pybind/pybind11/archive/v2.6.0.tar.gz",
+        ],
+        sha256 = "90b705137b69ee3b5fc655eaca66d0dc9862ea1759226f7ccd3098425ae69571",
+        strip_prefix = "pybind11-2.6.0",
+        build_file = clean_dep("//third_party:pybind11.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:pybind11.BUILD"),
+    )
+
+    tf_http_archive(
+        name = "wrapt",
+        build_file = clean_dep("//third_party:wrapt.BUILD"),
+        sha256 = "8a6fb40e8f8b6a66b4ba81a4044c68e6a7b1782f21cfabc06fb765332b4c3e51",
+        strip_prefix = "wrapt-1.11.1/src/wrapt",
+        system_build_file = clean_dep("//third_party/systemlibs:wrapt.BUILD"),
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+            "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+        ],
+    )
+    tf_http_archive(
+        name = "coremltools",
+        sha256 = "0d594a714e8a5fd5bd740ad112ef59155c0482e25fdc8f8efa5758f90abdcf1e",
+        strip_prefix = "coremltools-3.3",
+        build_file = clean_dep("//third_party:coremltools.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/github.com/apple/coremltools/archive/3.3.zip",
+            "https://github.com/apple/coremltools/archive/3.3.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "tf_toolchains",
+        sha256 = "eb175afa73e5a33d2b5d2aabcfde6c8c3395fd7001eb5ba765a5cd98cce714ba",
+        strip_prefix = "toolchains-0.0.2",
+        build_file = clean_dep("//third_party:tf_toolchains.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
+            "https://github.com/tensorflow/toolchains/archive/v0.0.2.tar.gz",
+        ],
+    )
+
+def tf_bind():
+    """Bind targets for some external repositories"""
+    ##############################################################################
+    # BIND DEFINITIONS
+    #
+    # Please do not add bind() definitions unless we have no other choice.
+    # If that ends up being the case, please leave a comment explaining
+    # why we can't depend on the canonical build target.
+
+    # Needed by Protobuf
+    native.bind(
+        name = "grpc_cpp_plugin",
+        actual = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
+    )
+    native.bind(
+        name = "grpc_python_plugin",
+        actual = "@com_github_grpc_grpc//src/compiler:grpc_python_plugin",
+    )
+
+    native.bind(
+        name = "grpc_lib",
+        actual = "@com_github_grpc_grpc//:grpc++",
+    )
+
+    native.bind(
+        name = "grpc_lib_unsecure",
+        actual = "@com_github_grpc_grpc//:grpc++_unsecure",
+    )
+
+    # Needed by Protobuf
+    native.bind(
+        name = "python_headers",
+        actual = clean_dep("//third_party/python_runtime:headers"),
+    )
+
+    # Needed by Protobuf
+    native.bind(
+        name = "six",
+        actual = "@six_archive//:six",
+    )

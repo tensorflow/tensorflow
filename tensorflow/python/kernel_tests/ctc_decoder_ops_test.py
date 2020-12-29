@@ -23,7 +23,9 @@ import itertools
 import numpy as np
 from six.moves import zip_longest
 
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
 from tensorflow.python.platform import test
@@ -56,7 +58,7 @@ class CTCGreedyDecoderTest(test.TestCase):
     # from a len time python list of [batch_size x depth] tensors
     inputs_t = array_ops.stack(inputs_t)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       decoded_list, log_probability = decoder(
           inputs_t, sequence_length=seq_lens, **decoder_args)
       decoded_unwrapped = list(
@@ -93,6 +95,7 @@ class CTCGreedyDecoderTest(test.TestCase):
         with self.assertRaisesOpError(expected_err_re):
           sess.run(decoded_unwrapped + [log_probability])
 
+  @test_util.run_deprecated_v1
   def testCTCGreedyDecoder(self):
     """Test two batch entries - best path decoder."""
     max_time_steps = 6
@@ -169,6 +172,7 @@ class CTCGreedyDecoderTest(test.TestCase):
     self._testCTCDecoder(ctc_ops.ctc_greedy_decoder, inputs, seq_lens,
                          log_prob_truth, decode_truth)
 
+  @test_util.run_deprecated_v1
   def testCTCDecoderBeamSearch(self):
     """Test one batch, two beams - hibernating beam search."""
     # max_time_steps == 8
@@ -187,11 +191,11 @@ class CTCGreedyDecoderTest(test.TestCase):
         ],
         dtype=np.float32)
     # Add arbitrary offset - this is fine
-    input_log_prob_matrix_0 = np.log(input_prob_matrix_0) + 2.0
+    input_prob_matrix_0 = input_prob_matrix_0 + 2.0
 
     # len max_time_steps array of batch_size x depth matrices
     inputs = ([
-        input_log_prob_matrix_0[t, :][np.newaxis, :] for t in range(seq_len_0)
+        input_prob_matrix_0[t, :][np.newaxis, :] for t in range(seq_len_0)
     ]  # Pad to max_time_steps = 8
               + 2 * [np.zeros(
                   (1, depth), dtype=np.float32)])
@@ -199,11 +203,11 @@ class CTCGreedyDecoderTest(test.TestCase):
     # batch_size length vector of sequence_lengths
     seq_lens = np.array([seq_len_0], dtype=np.int32)
 
-    # batch_size length vector of negative log probabilities
+    # batch_size length vector of log probabilities
     log_prob_truth = np.array(
         [
-            0.584855,  # output beam 0
-            0.389139  # output beam 1
+            -5.811451,  # output beam 0
+            -6.63339  # output beam 1
         ],
         np.float32)[np.newaxis, :]
 
@@ -214,13 +218,14 @@ class CTCGreedyDecoderTest(test.TestCase):
             [[0, 0], [0, 1]], dtype=np.int64), np.array(
                 [1, 0], dtype=np.int64), np.array(
                     [1, 2], dtype=np.int64)),
-        # beam 1, batch 0, three outputs decoded
+        # beam 1, batch 0, one output decoded
         (np.array(
-            [[0, 0], [0, 1], [0, 2]], dtype=np.int64), np.array(
-                [0, 1, 0], dtype=np.int64), np.array(
-                    [1, 3], dtype=np.int64)),
+            [[0, 0]], dtype=np.int64), np.array(
+                [1], dtype=np.int64), np.array(
+                    [1, 1], dtype=np.int64)),
     ]
 
+    # Test correct decoding.
     self._testCTCDecoder(
         ctc_ops.ctc_beam_search_decoder,
         inputs,
@@ -229,6 +234,19 @@ class CTCGreedyDecoderTest(test.TestCase):
         decode_truth,
         beam_width=2,
         top_paths=2)
+
+    # Requesting more paths than the beam width allows.
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                (".*requested more paths than the beam "
+                                 "width.*")):
+      self._testCTCDecoder(
+          ctc_ops.ctc_beam_search_decoder,
+          inputs,
+          seq_lens,
+          log_prob_truth,
+          decode_truth,
+          beam_width=2,
+          top_paths=3)
 
 
 if __name__ == "__main__":

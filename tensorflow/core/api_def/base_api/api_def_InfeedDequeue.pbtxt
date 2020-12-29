@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "InfeedDequeue"
+  visibility: HIDDEN
+  out_arg {
+    name: "output"
+    description: <<END
+A tensor that will be provided using the infeed mechanism.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of elements in the tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The shape of the tensor.
+END
+  }
+  summary: "A placeholder op for a value that will be fed into the computation."
+}

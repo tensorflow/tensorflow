@@ -16,8 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -50,7 +50,7 @@ class TFRecordReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     *key = strings::StrCat(current_work(), ":", offset_);
     Status status = reader_->ReadRecord(&offset_, value);

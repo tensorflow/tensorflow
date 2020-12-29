@@ -32,10 +32,20 @@ namespace xla {
 // mutable layouts.
 class ComputationLayout {
  public:
+  // Creates a new ComputationLayout with the given result layout.
+  explicit ComputationLayout(ShapeLayout result_layout)
+      : result_layout_(std::move(result_layout)) {}
+
   // Constructs a ComputationLayout from a ProgramShape. The layouts of the
   // parameters and results are set to the default layout. Layouts in the
-  // ProgramShape are ignored.
-  explicit ComputationLayout(const ProgramShape& program_shape);
+  // ProgramShape are ignored if ignore_layouts is true.
+  explicit ComputationLayout(const ProgramShape& program_shape,
+                             bool ignore_layouts = true);
+
+  // Adds a new parameter layout to the computation layout.
+  void add_parameter_layout(ShapeLayout shape_layout) {
+    parameter_layouts_.push_back(std::move(shape_layout));
+  }
 
   // Returns the layout of a particular parameter.
   const ShapeLayout& parameter_layout(int64 param_no) const {
@@ -67,11 +77,21 @@ class ComputationLayout {
   // Sets layouts of all parameters and the result to the default layout.
   void SetToDefaultLayout();
 
+  void SetToDefaultLayoutIfEmpty();
+
   // Returns true if all layouts (parameters and result) have been set.
   bool LayoutIsSet() const;
 
   // Returns a string representation of this object.
   string ToString() const;
+
+  // Create a ProgramShape proto based on the parameter and result shapes held
+  // within this object.
+  ProgramShape ComputeProgramShape() const;
+
+  bool operator==(const ComputationLayout& other) const;
+  bool operator!=(const ComputationLayout& other) const;
+  uint64 Hash() const;
 
  private:
   std::vector<ShapeLayout> parameter_layouts_;

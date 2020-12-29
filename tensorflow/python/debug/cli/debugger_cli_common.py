@@ -23,14 +23,17 @@ import re
 import sre_constants
 import traceback
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import numpy as np
+import six
 
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.platform import gfile
 
 HELP_INDENT = "  "
 
 EXPLICIT_USER_EXIT = "explicit_user_exit"
 REGEX_MATCH_LINES_KEY = "regex_match_lines"
+INIT_SCROLL_POS_KEY = "init_scroll_pos"
 
 MAIN_MENU_KEY = "mm:"
 
@@ -89,7 +92,7 @@ class RichLine(object):
         attributes applied to the corresponding substrings.
     """
     ret = RichLine()
-    if isinstance(other, str):
+    if isinstance(other, six.string_types):
       ret.text = self.text + other
       ret.font_attr_segs = self.font_attr_segs[:]
       return ret
@@ -103,22 +106,49 @@ class RichLine(object):
     else:
       raise TypeError("%r cannot be concatenated with a RichLine" % other)
 
+  def __len__(self):
+    return len(self.text)
 
-def rich_text_lines_from_rich_line_list(rich_text_list):
-  """Convert a list of RichLine objects to a RichTextLines object.
+
+def rich_text_lines_from_rich_line_list(rich_text_list, annotations=None):
+  """Convert a list of RichLine objects or strings to a RichTextLines object.
 
   Args:
-    rich_text_list: a list of RichLine objects
+    rich_text_list: a list of RichLine objects or strings
+    annotations: annotations for the resultant RichTextLines object.
 
   Returns:
     A corresponding RichTextLines object.
   """
-  lines = [rl.text for rl in rich_text_list]
+  lines = []
   font_attr_segs = {}
   for i, rl in enumerate(rich_text_list):
-    if rl.font_attr_segs:
-      font_attr_segs[i] = rl.font_attr_segs
-  return RichTextLines(lines, font_attr_segs)
+    if isinstance(rl, RichLine):
+      lines.append(rl.text)
+      if rl.font_attr_segs:
+        font_attr_segs[i] = rl.font_attr_segs
+    else:
+      lines.append(rl)
+  return RichTextLines(lines, font_attr_segs, annotations=annotations)
+
+
+def get_tensorflow_version_lines(include_dependency_versions=False):
+  """Generate RichTextLines with TensorFlow version info.
+
+  Args:
+    include_dependency_versions: Include the version of TensorFlow's key
+      dependencies, such as numpy.
+
+  Returns:
+    A formatted, multi-line `RichTextLines` object.
+  """
+  lines = ["TensorFlow version: %s" % pywrap_tf_session.__version__]
+  lines.append("")
+  if include_dependency_versions:
+    lines.append("Dependency version(s):")
+    lines.append("  numpy: %s" % np.__version__)
+    lines.append("")
+  return RichTextLines(lines)
 
 
 class RichTextLines(object):
@@ -167,7 +197,7 @@ class RichTextLines(object):
     """
     if isinstance(lines, list):
       self._lines = lines
-    elif isinstance(lines, str):
+    elif isinstance(lines, six.string_types):
       self._lines = [lines]
     else:
       raise ValueError("Unexpected type in lines: %s" % type(lines))
@@ -314,6 +344,9 @@ class RichTextLines(object):
     if font_attr_segs:
       self._font_attr_segs[len(self._lines) - 1] = font_attr_segs
 
+  def append_rich_line(self, rich_line):
+    self.append(rich_line.text, rich_line.font_attr_segs)
+
   def prepend(self, line, font_attr_segs=None):
     """Prepend (i.e., add to the front) a single line of text.
 
@@ -378,8 +411,7 @@ def regex_find(orig_screen_output, regex, font_attr):
     raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
   regex_match_lines = []
-  for i in xrange(len(new_screen_output.lines)):
-    line = new_screen_output.lines[i]
+  for i, line in enumerate(new_screen_output.lines):
     find_it = re_prog.finditer(line)
 
     match_segs = []
@@ -432,10 +464,8 @@ def wrap_rich_text_lines(inp, cols):
   out = RichTextLines([])
 
   row_counter = 0  # Counter for new row index
-  for i in xrange(len(inp.lines)):
+  for i, line in enumerate(inp.lines):
     new_line_indices.append(out.num_lines())
-
-    line = inp.lines[i]
 
     if i in inp.annotations:
       out.annotations[row_counter] = inp.annotations[i]
@@ -525,6 +555,8 @@ class CommandHandlerRegistry(object):
 
   HELP_COMMAND = "help"
   HELP_COMMAND_ALIASES = ["h"]
+  VERSION_COMMAND = "version"
+  VERSION_COMMAND_ALIASES = ["ver"]
 
   def __init__(self):
     # A dictionary from command prefix to handler.
@@ -548,6 +580,13 @@ class CommandHandlerRegistry(object):
         self._help_handler,
         "Print this help message.",
         prefix_aliases=self.HELP_COMMAND_ALIASES)
+
+    # Register a default handler for the command "version".
+    self.register_command_handler(
+        self.VERSION_COMMAND,
+        self._version_handler,
+        "Print the versions of TensorFlow and its key dependencies.",
+        prefix_aliases=self.VERSION_COMMAND_ALIASES)
 
   def register_command_handler(self,
                                prefix,
@@ -595,7 +634,7 @@ class CommandHandlerRegistry(object):
       raise ValueError("handler is not callable")
 
     # Make sure that help info is a string.
-    if not isinstance(help_info, str):
+    if not isinstance(help_info, six.string_types):
       raise ValueError("help_info is not a str")
 
     # Process prefix aliases.
@@ -637,7 +676,7 @@ class CommandHandlerRegistry(object):
         3) the handler is found for the prefix, but it fails to return a
           RichTextLines or raise any exception.
       CommandLineExit:
-        If the command handler raises this type of exception, tihs method will
+        If the command handler raises this type of exception, this method will
         simply pass it along.
     """
     if not prefix:
@@ -750,6 +789,11 @@ class CommandHandlerRegistry(object):
     else:
       return RichTextLines(["ERROR: help takes only 0 or 1 input argument."])
 
+  def _version_handler(self, args, screen_info=None):
+    del args  # Unused currently.
+    del screen_info  # Unused currently.
+    return get_tensorflow_version_lines(include_dependency_versions=True)
+
   def _resolve_prefix(self, token):
     """Resolve command prefix from the prefix itself or its alias.
 
@@ -827,7 +871,7 @@ class TabCompletionRegistry(object):
 
     Args:
       context_words: A list of context words belonging to the context being
-        registerd. It is a list of str, instead of a single string, to support
+        registered. It is a list of str, instead of a single string, to support
         synonym words triggering the same tab-completion context, e.g.,
         both "drink" and the short-hand "dr" can trigger the same context.
       comp_items: A list of completion items, as a list of str.
@@ -1020,7 +1064,7 @@ class CommandHistory(object):
       # Ignore repeating commands in a row.
       return
 
-    if not isinstance(command, str):
+    if not isinstance(command, six.string_types):
       raise TypeError("Attempt to enter non-str entry to command history")
 
     self._commands.append(command)

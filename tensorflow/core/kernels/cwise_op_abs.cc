@@ -16,36 +16,27 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER5(UnaryOp, CPU, "Abs", functor::abs, float, Eigen::half, double, int32,
-          int64);
-#if !defined(IS_MOBILE_PLATFORM)
+REGISTER8(UnaryOp, CPU, "Abs", functor::abs, Eigen::half, bfloat16, float,
+          double, int8, int16, int32, int64);
 REGISTER2(UnaryOp, CPU, "ComplexAbs", functor::abs, complex64, complex128);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#ifndef MLIR_GENERATED_GPU_KERNELS_ENABLED
+REGISTER4(UnaryOp, GPU, "Abs", functor::abs, Eigen::half, float, double, int64);
 #endif
-
-#if TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(TYPE)                                    \
-  REGISTER_KERNEL_BUILDER(                                            \
-                          Name("Abs")                                 \
-                          .Device(DEVICE_SYCL)                        \
-                          .TypeConstraint<TYPE>("T"),                 \
-                          UnaryOp<SYCLDevice, functor::abs<TYPE>>);
-REGISTER_SYCL_KERNEL(float);
-#undef REGISTER_SYCL_KERNEL
-#endif // TENSORFLOW_USE_SYCL
-
-#if GOOGLE_CUDA
-REGISTER4(UnaryOp, GPU, "Abs", functor::abs, float, Eigen::half, double, int64);
 REGISTER2(UnaryOp, GPU, "ComplexAbs", functor::abs, complex64, complex128);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
+#ifndef MLIR_GENERATED_GPU_KERNELS_ENABLED
 REGISTER_KERNEL_BUILDER(Name("Abs")
                             .Device(DEVICE_GPU)
                             .HostMemory("x")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::abs<int32>>);
+#endif
 #endif
 
 }  // namespace tensorflow

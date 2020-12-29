@@ -31,7 +31,7 @@
 #include "src/FixedPoint/FixedPointTypes.h"
 
 // Use optimized implementations whenever available
-#ifdef EIGEN_VECTORIZE_AVX512
+#if defined (EIGEN_VECTORIZE_AVX512DQ) || defined (EIGEN_VECTORIZE_AVX512BW)
 #include "src/FixedPoint/PacketMathAVX512.h"
 #include "src/FixedPoint/TypeCastingAVX512.h"
 
@@ -41,6 +41,9 @@
 #include "src/FixedPoint/PacketMathAVX2.h"
 #include "src/FixedPoint/MatMatProductAVX2.h"
 #include "src/FixedPoint/TypeCastingAVX2.h"
+
+#elif defined EIGEN_VECTORIZE_AVX
+#include "src/FixedPoint/PacketMathAVX.h"
 
 #elif defined EIGEN_VECTORIZE_NEON
 #define EIGEN_USE_OPTIMIZED_INT8_UINT8_MAT_MAT_PRODUCT

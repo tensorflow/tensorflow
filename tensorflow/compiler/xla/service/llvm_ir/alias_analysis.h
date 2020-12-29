@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_ALIAS_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_ALIAS_ANALYSIS_H_
 
-#include "external/llvm/include/llvm/IR/Module.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
+#include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace llvm_ir {
@@ -38,7 +37,8 @@ class AliasAnalysis {
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
-                                       llvm_ir::IrArray* array);
+                                       llvm_ir::IrArray* array,
+                                       const ShapeIndex& index = {});
 
  private:
   // Returns a unique alias domain for this emitter.
@@ -76,14 +76,13 @@ class AliasAnalysis {
   // A map from a buffer slice to metadata corresponding to its alias.scope
   // metadata.  The index kParameterAliasSet is used to hold aliasing
   // information for parameters.
-  tensorflow::gtl::FlatMap<BufferAllocation::Slice, llvm::MDNode*,
-                           BufferAllocation::Slice::Hasher>
+  absl::flat_hash_map<BufferAllocation::Slice, llvm::MDNode*>
       alias_scope_metadata_;
 
-  // A map from a buffer slice to metadata corresponding to its noalias
-  // metadata.
-  tensorflow::gtl::FlatMap<BufferAllocation::Slice, llvm::MDNode*,
-                           BufferAllocation::Slice::Hasher>
+  // A map from a buffer slice and producer to metadata corresponding to its
+  // noalias metadata.
+  absl::flat_hash_map<std::pair<BufferAllocation::Slice, const HloInstruction*>,
+                      llvm::MDNode*>
       noalias_metadata_;
 };
 

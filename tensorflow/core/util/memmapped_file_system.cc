@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/memmapped_file_system.pb.h"
 
@@ -55,15 +56,21 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
   ~RandomAccessFileFromMemmapped() override = default;
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented(
+        "RandomAccessFileFromMemmapped does not support Name()");
+  }
+
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
     if (offset >= length_) {
-      result->set(scratch, 0);
+      *result = StringPiece(scratch, 0);
       return Status(error::OUT_OF_RANGE, "Read after file end");
     }
     const uint64 region_left =
         std::min(length_ - offset, static_cast<uint64>(to_read));
-    result->set(reinterpret_cast<const uint8*>(data_) + offset, region_left);
+    *result =
+        StringPiece(reinterpret_cast<const char*>(data_) + offset, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : Status(error::OUT_OF_RANGE, "Read less bytes than requested");
@@ -79,7 +86,8 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() {}
 
-Status MemmappedFileSystem::FileExists(const string& fname) {
+Status MemmappedFileSystem::FileExists(const string& fname,
+                                       TransactionToken* token) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -91,7 +99,8 @@ Status MemmappedFileSystem::FileExists(const string& fname) {
 }
 
 Status MemmappedFileSystem::NewRandomAccessFile(
-    const string& filename, std::unique_ptr<RandomAccessFile>* result) {
+    const string& filename, TransactionToken* token,
+    std::unique_ptr<RandomAccessFile>* result) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -106,7 +115,8 @@ Status MemmappedFileSystem::NewRandomAccessFile(
 }
 
 Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& filename, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const string& filename, TransactionToken* token,
+    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -120,7 +130,8 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
+Status MemmappedFileSystem::GetFileSize(const string& filename,
+                                        TransactionToken* token, uint64* size) {
   if (!mapped_memory_) {
     return errors::FailedPrecondition("MemmappedEnv is not initialized");
   }
@@ -132,9 +143,10 @@ Status MemmappedFileSystem::GetFileSize(const string& filename, uint64* size) {
   return Status::OK();
 }
 
-Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
+Status MemmappedFileSystem::Stat(const string& fname, TransactionToken* token,
+                                 FileStatistics* stat) {
   uint64 size;
-  auto status = GetFileSize(fname, &size);
+  auto status = GetFileSize(fname, token, &size);
   if (status.ok()) {
     stat->length = size;
   }
@@ -142,34 +154,48 @@ Status MemmappedFileSystem::Stat(const string& fname, FileStatistics* stat) {
 }
 
 Status MemmappedFileSystem::NewWritableFile(const string& filename,
+                                            TransactionToken* token,
                                             std::unique_ptr<WritableFile>* wf) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
 Status MemmappedFileSystem::NewAppendableFile(
-    const string& filename, std::unique_ptr<WritableFile>* result) {
+    const string& filename, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("memmapped format doesn't support writing");
 }
 
 Status MemmappedFileSystem::GetChildren(const string& filename,
+                                        TransactionToken* token,
                                         std::vector<string>* strings) {
   return errors::Unimplemented("memmapped format doesn't support GetChildren");
 }
 
-Status MemmappedFileSystem::DeleteFile(const string& filename) {
+Status MemmappedFileSystem::GetMatchingPaths(const string& pattern,
+                                             TransactionToken* token,
+                                             std::vector<string>* results) {
+  return errors::Unimplemented(
+      "memmapped format doesn't support GetMatchingPaths");
+}
+
+Status MemmappedFileSystem::DeleteFile(const string& filename,
+                                       TransactionToken* token) {
   return errors::Unimplemented("memmapped format doesn't support DeleteFile");
 }
 
-Status MemmappedFileSystem::CreateDir(const string& dirname) {
+Status MemmappedFileSystem::CreateDir(const string& dirname,
+                                      TransactionToken* token) {
   return errors::Unimplemented("memmapped format doesn't support CreateDir");
 }
 
-Status MemmappedFileSystem::DeleteDir(const string& dirname) {
+Status MemmappedFileSystem::DeleteDir(const string& dirname,
+                                      TransactionToken* token) {
   return errors::Unimplemented("memmapped format doesn't support DeleteDir");
 }
 
 Status MemmappedFileSystem::RenameFile(const string& filename_from,
-                                       const string& filename_to) {
+                                       const string& filename_to,
+                                       TransactionToken* token) {
   return errors::Unimplemented("memmapped format doesn't support RenameFile");
 }
 
@@ -177,13 +203,8 @@ const void* MemmappedFileSystem::GetMemoryWithOffset(uint64 offset) const {
   return reinterpret_cast<const uint8*>(mapped_memory_->data()) + offset;
 }
 
-#if defined(COMPILER_MSVC)
-constexpr char* MemmappedFileSystem::kMemmappedPackagePrefix;
-constexpr char* MemmappedFileSystem::kMemmappedPackageDefaultGraphDef;
-#else
-constexpr char MemmappedFileSystem::kMemmappedPackagePrefix[];
-constexpr char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
-#endif
+constexpr const char MemmappedFileSystem::kMemmappedPackagePrefix[];
+constexpr const char MemmappedFileSystem::kMemmappedPackageDefaultGraphDef[];
 
 Status MemmappedFileSystem::InitializeFromFile(Env* env,
                                                const string& filename) {
@@ -222,8 +243,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
     if (!directory_
              .insert(std::make_pair(
                  element_iter->name(),
-                 FileRegion(element_iter->offset(),
-                            prev_element_offset - element_iter->offset())))
+                 FileRegion(element_iter->offset(), element_iter->length())))
              .second) {
       return errors::DataLoss("Corrupted memmapped model file: ", filename,
                               " Duplicate name of internal component ",
@@ -235,7 +255,7 @@ Status MemmappedFileSystem::InitializeFromFile(Env* env,
 }
 
 bool MemmappedFileSystem::IsMemmappedPackageFilename(const string& filename) {
-  return StringPiece(filename).starts_with(kMemmappedPackagePrefix);
+  return absl::StartsWith(filename, kMemmappedPackagePrefix);
 }
 
 namespace {

@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -27,131 +29,160 @@ namespace {
 
 class SumOp : public XlaReductionOp {
  public:
-  explicit SumOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->Add(scalar_lhs, scalar_rhs);
+  explicit SumOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx,
+                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::Zero(builder, xla_reduction_type_);
+  }
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Add(scalar_lhs, scalar_rhs);
   }
 };
 
-REGISTER_XLA_OP("Sum", SumOp);
+REGISTER_XLA_OP(Name("Sum").CompileTimeConstantInput("reduction_indices"),
+                SumOp);
 
 class ProdOp : public XlaReductionOp {
  public:
-  explicit ProdOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
+  explicit ProdOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx,
+                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
 
-  xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder) override {
-    return XlaHelpers::One(builder, input_type(0));
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::One(builder, xla_reduction_type_);
   }
 
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->Mul(scalar_lhs, scalar_rhs);
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Mul(scalar_lhs, scalar_rhs);
   }
 };
 
-REGISTER_XLA_OP("Prod", ProdOp);
+REGISTER_XLA_OP(Name("Prod").CompileTimeConstantInput("reduction_indices"),
+                ProdOp);
 
 class MinOp : public XlaReductionOp {
  public:
-  explicit MinOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
+  explicit MinOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx, ctx->input_type(0)) {}
 
-  xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder) override {
-    xla::PrimitiveType type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-    return builder->ConstantLiteral(xla::LiteralUtil::MaxValue(type));
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::MaxValue(builder, xla_reduction_type_);
   }
 
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->Min(scalar_lhs, scalar_rhs);
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Min(scalar_lhs, scalar_rhs);
   }
 };
 
-REGISTER_XLA_OP("Min", MinOp);
+REGISTER_XLA_OP(Name("Min").CompileTimeConstantInput("reduction_indices"),
+                MinOp);
 
 class MaxOp : public XlaReductionOp {
  public:
-  explicit MaxOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
-
-  xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder) override {
-    xla::PrimitiveType type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-    return builder->ConstantLiteral(xla::LiteralUtil::MinValue(type));
+  explicit MaxOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx, ctx->input_type(0)) {
+    OP_REQUIRES_OK(ctx, PrimitiveTypeCheck(xla_reduction_type_));
   }
 
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->Max(scalar_lhs, scalar_rhs);
+  static Status PrimitiveTypeCheck(xla::PrimitiveType xla_reduction_type) {
+    if (xla_reduction_type == xla::C64 || xla_reduction_type == xla::C128 ||
+        xla_reduction_type == xla::TUPLE ||
+        xla_reduction_type == xla::OPAQUE_TYPE) {
+      return errors::InvalidArgument(
+          "Unsupported PrimitiveType in MaxOp: '",
+          xla::PrimitiveType_Name(xla_reduction_type), "'");
+    } else {
+      return Status::OK();
+    }
+  }
+
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::MinValue(builder, xla_reduction_type_);
+  }
+
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Max(scalar_lhs, scalar_rhs);
   }
 };
 
-REGISTER_XLA_OP("Max", MaxOp);
+REGISTER_XLA_OP(Name("Max").CompileTimeConstantInput("reduction_indices"),
+                MaxOp);
 
 class MeanOp : public XlaReductionOp {
  public:
-  explicit MeanOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
+  explicit MeanOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx,
+                       XlaHelpers::SumAccumulationType(ctx->input_type(0))) {}
 
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->Add(scalar_lhs, scalar_rhs);
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::Zero(builder, xla_reduction_type_);
+  }
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Add(scalar_lhs, scalar_rhs);
   }
 
-  bool BuildFinalizer(xla::ComputationBuilder* builder,
-                      const xla::ComputationDataHandle& scalar_argument,
-                      int64 num_elements_reduced) override {
-    auto divisor = XlaHelpers::IntegerLiteral(builder, input_type(0),
-                                              num_elements_reduced);
-    builder->Div(scalar_argument, divisor);
-    return true;
+  xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* /*builder*/, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64>& dimensions_to_reduce) override {
+    if (dimensions_to_reduce.empty()) {
+      return reduce_output;
+    }
+    auto divisor = xla::GetDimensionSize(input, dimensions_to_reduce[0]);
+    for (int i = 1; i < dimensions_to_reduce.size(); i++) {
+      auto size = xla::GetDimensionSize(input, dimensions_to_reduce[i]);
+      divisor = xla::Mul(divisor, size);
+    }
+    divisor = xla::ConvertElementType(divisor, xla_reduction_type_);
+    return XlaHelpers::ConvertElementType(reduce_output / divisor,
+                                          input_type(0));
   }
 };
 
-REGISTER_XLA_OP("Mean", MeanOp);
+REGISTER_XLA_OP(Name("Mean").CompileTimeConstantInput("reduction_indices"),
+                MeanOp);
 
 class AllOp : public XlaReductionOp {
  public:
-  explicit AllOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
+  explicit AllOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx, ctx->input_type(0)) {}
 
-  xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder) override {
-    return builder->ConstantR0<bool>(true);
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::ConstantR0<bool>(builder, true);
   }
 
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->LogicalAnd(scalar_lhs, scalar_rhs);
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::And(scalar_lhs, scalar_rhs);
   }
 };
 
-REGISTER_XLA_OP("All", AllOp);
+REGISTER_XLA_OP(Name("All").CompileTimeConstantInput("reduction_indices"),
+                AllOp);
 
 class AnyOp : public XlaReductionOp {
  public:
-  explicit AnyOp(OpKernelConstruction* ctx) : XlaReductionOp(ctx) {}
+  explicit AnyOp(OpKernelConstruction* ctx)
+      : XlaReductionOp(ctx, ctx->input_type(0)) {}
 
-  xla::ComputationDataHandle InitialValue(
-      xla::ComputationBuilder* builder) override {
-    return builder->ConstantR0<bool>(false);
+  xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
+    return xla::ConstantR0<bool>(builder, false);
   }
 
-  void BuildReducer(xla::ComputationBuilder* builder,
-                    const xla::ComputationDataHandle& scalar_lhs,
-                    const xla::ComputationDataHandle& scalar_rhs) override {
-    builder->LogicalOr(scalar_lhs, scalar_rhs);
+  void BuildReducer(xla::XlaBuilder* builder, const xla::XlaOp& scalar_lhs,
+                    const xla::XlaOp& scalar_rhs) override {
+    xla::Or(scalar_lhs, scalar_rhs);
   }
 };
 
-REGISTER_XLA_OP("Any", AnyOp);
+REGISTER_XLA_OP(Name("Any").CompileTimeConstantInput("reduction_indices"),
+                AnyOp);
 
 }  // namespace
 }  // namespace tensorflow

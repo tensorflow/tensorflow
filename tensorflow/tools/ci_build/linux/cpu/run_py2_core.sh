@@ -25,13 +25,14 @@ echo "Bazel will use ${N_JOBS} concurrent job(s)."
 echo ""
 
 # Run configure.
-export TF_NEED_GCP=0
-export TF_NEED_HDFS=0
 export TF_NEED_CUDA=0
+export TF_NEED_ROCM=0
+export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=`which python2`
-yes "" | ./configure
+yes "" | $PYTHON_BIN_PATH configure.py
 
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --test_tag_filters=-gpu,-benchmark-test --test_lang_filters=py -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only -- \
+bazel test --test_tag_filters=-no_oss,-no_oss_py2,-oss_serial,-gpu,-tpu,-benchmark-test --test_lang_filters=py -k \
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only --config=opt \
+    --test_output=errors --test_size_filters=small,medium -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...

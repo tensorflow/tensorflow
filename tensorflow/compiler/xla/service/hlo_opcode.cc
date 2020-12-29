@@ -14,152 +14,58 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 
 string HloOpcodeString(HloOpcode opcode) {
   switch (opcode) {
-    case HloOpcode::kAbs:
-      return "abs";
-    case HloOpcode::kAdd:
-      return "add";
-    case HloOpcode::kBitcast:
-      return "bitcast";
-    case HloOpcode::kBroadcast:
-      return "broadcast";
-    case HloOpcode::kCall:
-      return "call";
-    case HloOpcode::kClamp:
-      return "clamp";
-    case HloOpcode::kConcatenate:
-      return "concatenate";
-    case HloOpcode::kConstant:
-      return "constant";
-    case HloOpcode::kConvert:
-      return "convert";
-    case HloOpcode::kConvolution:
-      return "convolution";
-    case HloOpcode::kCrossReplicaSum:
-      return "cross-replica-sum";
-    case HloOpcode::kCustomCall:
-      return "custom-call";
-    case HloOpcode::kCopy:
-      return "copy";
-    case HloOpcode::kDivide:
-      return "divide";
-    case HloOpcode::kDot:
-      return "dot";
-    case HloOpcode::kDynamicSlice:
-      return "dynamic-slice";
-    case HloOpcode::kDynamicUpdateSlice:
-      return "dynamic-update-slice";
-    case HloOpcode::kEq:
-      return "equal-to";
-    case HloOpcode::kExp:
-      return "exponential";
-    case HloOpcode::kFloor:
-      return "floor";
-    case HloOpcode::kCeil:
-      return "ceil";
-    case HloOpcode::kFusion:
-      return "fusion";
-    case HloOpcode::kGe:
-      return "greater-than-or-equal-to";
-    case HloOpcode::kGetTupleElement:
-      return "get-tuple-element";
-    case HloOpcode::kGt:
-      return "greater-than";
-    case HloOpcode::kIndex:
-      return "index";
-    case HloOpcode::kInfeed:
-      return "infeed";
-    case HloOpcode::kLe:
-      return "less-than-or-equal-to";
-    case HloOpcode::kLog:
-      return "log";
-    case HloOpcode::kLogicalAnd:
-      return "logical-and";
-    case HloOpcode::kLogicalOr:
-      return "logical-or";
-    case HloOpcode::kLogicalNot:
-      return "logical-not";
-    case HloOpcode::kLt:
-      return "less-than";
-    case HloOpcode::kMap:
-      return "map";
-    case HloOpcode::kMaximum:
-      return "maximum";
-    case HloOpcode::kMinimum:
-      return "minimum";
-    case HloOpcode::kMultiply:
-      return "multiply";
-    case HloOpcode::kNe:
-      return "not-equal-to";
-    case HloOpcode::kNegate:
-      return "negate";
-    case HloOpcode::kOutfeed:
-      return "outfeed";
-    case HloOpcode::kPad:
-      return "pad";
-    case HloOpcode::kParameter:
-      return "parameter";
-    case HloOpcode::kPower:
-      return "power";
-    case HloOpcode::kRecv:
-      return "recv";
-    case HloOpcode::kReduce:
-      return "reduce";
-    case HloOpcode::kReduceWindow:
-      return "reduce-window";
-    case HloOpcode::kRemainder:
-      return "remainder";
-    case HloOpcode::kReshape:
-      return "reshape";
-    case HloOpcode::kReverse:
-      return "reverse";
-    case HloOpcode::kRng:
-      return "rng";
-    case HloOpcode::kSelectAndScatter:
-      return "select-and-scatter";
-    case HloOpcode::kSelect:
-      return "select";
-    case HloOpcode::kSend:
-      return "send";
-    case HloOpcode::kSign:
-      return "sign";
-    case HloOpcode::kSlice:
-      return "slice";
-    case HloOpcode::kSort:
-      return "sort";
-    case HloOpcode::kSubtract:
-      return "subtract";
-    case HloOpcode::kTanh:
-      return "tanh";
-    case HloOpcode::kTrace:
-      return "trace";
-    case HloOpcode::kTranspose:
-      return "transpose";
-    case HloOpcode::kTuple:
-      return "tuple";
-    case HloOpcode::kUpdate:
-      return "update";
-    case HloOpcode::kWhile:
-      return "while";
+#define CASE_OPCODE_STRING(enum_name, opcode_name, ...) \
+  case HloOpcode::enum_name:                            \
+    return opcode_name;
+    HLO_OPCODE_LIST(CASE_OPCODE_STRING)
+#undef CASE_OPCODE_STRING
   }
 }
 
+StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
+  static auto* opcode_map = new absl::flat_hash_map<string, HloOpcode>({
+#define STRING_TO_OPCODE_ENTRY(enum_name, opcode_name, ...) \
+  {opcode_name, HloOpcode::enum_name},
+      HLO_OPCODE_LIST(STRING_TO_OPCODE_ENTRY)
+#undef STRING_TO_OPCODE_ENTRY
+  });
+  auto it = opcode_map->find(opcode_name);
+  if (it == opcode_map->end()) {
+    return InvalidArgument("Unknown opcode: %s", opcode_name);
+  }
+  return it->second;
+}
+
 bool HloOpcodeIsComparison(HloOpcode opcode) {
+  return opcode == HloOpcode::kCompare;
+}
+
+bool HloOpcodeIsVariadic(HloOpcode opcode) {
   switch (opcode) {
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kEq:
-    case HloOpcode::kNe:
-      return true;
-    default:
-      return false;
+#define CASE_IS_VARIADIC(enum_name, opcode_name, arity, ...) \
+  case HloOpcode::enum_name:                                 \
+    return arity == kHloOpcodeIsVariadic;
+    HLO_OPCODE_LIST(CASE_IS_VARIADIC)
+#undef CASE_IS_VARIADIC
+  }
+}
+
+absl::optional<int> HloOpcodeArity(HloOpcode opcode) {
+  switch (opcode) {
+#define CASE_ARITY(enum_name, opcode_name, arity, ...)   \
+  case HloOpcode::enum_name:                             \
+    return arity == kHloOpcodeIsVariadic ? absl::nullopt \
+                                         : absl::make_optional(arity);
+    HLO_OPCODE_LIST(CASE_ARITY)
+#undef CASE_ARITY
   }
 }
 

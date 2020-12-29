@@ -19,13 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import sys
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -53,9 +53,10 @@ class CastOpTest(test.TestCase):
       return None
 
   def _cast(self, x, dtype, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with test_util.device(use_gpu):
       val = constant_op.constant(x, self._toDataType(np.array([x]).dtype))
-      return math_ops.cast(val, self._toDataType(dtype), name="cast").eval()
+      cast = math_ops.cast(val, self._toDataType(dtype), name="cast")
+      return self.evaluate(cast)
 
   def _test(self, x, dtype, use_gpu=False):
     """Tests cast(x) to dtype behaves the same as numpy.astype."""
@@ -104,12 +105,12 @@ class CastOpTest(test.TestCase):
 
   def testBfloat16(self):
     a = np.random.uniform(-100, 100, 100).astype(np.float32)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
-    with self.test_session(use_gpu=True):
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
+    with self.cached_session(use_gpu=True):
       b = math_ops.cast(math_ops.cast(a, dtypes.bfloat16), dtypes.float32)
-      self.assertAllClose(a, b.eval(), rtol=1 / 128.)
+      self.assertAllClose(a, self.evaluate(b), rtol=1 / 128.)
 
   def testRandom(self):
     self._testAll(np.random.normal(0, 10, 210).reshape([2, 3, 5, 7]))
@@ -138,25 +139,12 @@ class CastOpTest(test.TestCase):
     # NOTE: GPU does not support int32/int64 for casting.
 
   def testInfNan(self):
-    i4 = np.iinfo(np.int32)
-    i8 = np.iinfo(np.int64)
-
     self._compare(np.inf, np.float32, np.inf, False)
     self._compare(np.inf, np.float64, np.inf, False)
-    if sys.byteorder == "big":  
-      self._compare(np.inf, np.int32, i4.max, False)  
-      self._compare(np.inf, np.int64, i8.max, False)  
-    else:  
-      self._compare(np.inf, np.int32, i4.min, False)  
-      self._compare(np.inf, np.int64, i8.min, False)  
     self._compare(-np.inf, np.float32, -np.inf, False)
     self._compare(-np.inf, np.float64, -np.inf, False)
-    self._compare(-np.inf, np.int32, i4.min, False)
-    self._compare(-np.inf, np.int64, i8.min, False)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float32, False)), True)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, False)), True)
-    self._compare(np.nan, np.int32, i4.min, False)
-    self._compare(np.nan, np.int64, i8.min, False)
 
     self._compare(np.inf, np.float32, np.inf, True)
     self._compare(np.inf, np.float64, np.inf, True)
@@ -166,30 +154,34 @@ class CastOpTest(test.TestCase):
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, True)), True)
 
   def _OpError(self, x, dtype, err):
-    with self.test_session():
-      with self.assertRaisesOpError(err):
-        math_ops.cast(x, dtype).eval()
+    with self.assertRaisesOpError(err):
+      self.evaluate(math_ops.cast(x, dtype))
 
   def testNotImplemented(self):
-    self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int64.*string.*")
+    self._OpError(np.arange(0, 10), dtypes.string, "Cast.*int.*string.*")
 
   def testCastToTypeOfVariable(self):
-    with self.test_session() as sess:
+    with self.cached_session():
       x = variables.Variable(5, dtype=dtypes.float32)
       y = variables.Variable(True, dtype=dtypes.bool)
       cast = math_ops.cast(y, x.dtype)
-      variables.global_variables_initializer().run()
-      self.assertEqual(1.0, sess.run(cast))
+      self.evaluate(variables.global_variables_initializer())
+      self.assertEqual(1.0, self.evaluate(cast))
 
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
     for src_t in t:
       for dst_t in t:
-        with self.test_session():
+        with self.cached_session():
           x = constant_op.constant(1.0, src_t)
-          z = array_ops.identity(x)
-          y = math_ops.cast(z, dst_t)
-          err = gradient_checker.compute_gradient_error(x, [], y, [])
+
+          def cast(x, dst_t=dst_t):
+            x = array_ops.identity(x)
+            x = math_ops.cast(x, dst_t)
+            return x
+
+          err = gradient_checker_v2.max_error(
+              *gradient_checker_v2.compute_gradient(cast, [x]))
           self.assertLess(err, 1e-3)
 
 
@@ -201,11 +193,11 @@ class SparseTensorCastTest(test.TestCase):
     shape = constant_op.constant([3], dtypes.int64)
     st = sparse_tensor.SparseTensor(indices, values, shape)
     st_cast = math_ops.cast(st, dtypes.float32)
-    with self.test_session():
-      self.assertAllEqual(st_cast.indices.eval(), [[0], [1], [2]])
-      self.assertAllEqual(st_cast.values.eval(),
-                          np.array([1, 2, 3], np.float32))
-      self.assertAllEqual(st_cast.dense_shape.eval(), [3])
+
+    self.assertAllEqual(st_cast.indices, [[0], [1], [2]])
+    self.assertAllEqual(st_cast.values,
+                        np.array([1, 2, 3], np.float32))
+    self.assertAllEqual(st_cast.dense_shape, [3])
 
 
 class SaturateCastTest(test.TestCase):
@@ -213,17 +205,16 @@ class SaturateCastTest(test.TestCase):
   def testSaturate(self):
     in_types = dtypes.float32,
     out_types = dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.float32
-    with self.test_session() as sess:
-      for in_type in in_types:
-        for out_type in out_types:
-          lo, hi = in_type.min, in_type.max
-          x = constant_op.constant(
-              [lo, lo + 1, lo // 2, hi // 2, hi - 1, hi], dtype=in_type)
-          y = math_ops.saturate_cast(x, dtype=out_type)
-          self.assertEqual(y.dtype, out_type)
-          x, y = sess.run([x, y])
-          correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
-          self.assertAllEqual(correct, y)
+    for in_type in in_types:
+      for out_type in out_types:
+        lo, hi = in_type.min, in_type.max
+        x = constant_op.constant(
+            [lo, lo + 1, lo // 2, hi // 2, hi - 1, hi], dtype=in_type)
+        y = math_ops.saturate_cast(x, dtype=out_type)
+        self.assertEqual(y.dtype, out_type)
+        x, y = self.evaluate([x, y])
+        correct = np.maximum(out_type.min, np.minimum(out_type.max, x))
+        self.assertAllEqual(correct, y)
 
 
 if __name__ == "__main__":

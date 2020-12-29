@@ -20,19 +20,21 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/StringRef.h"
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
-#include "external/llvm/include/llvm/Support/raw_ostream.h"
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/raw_ostream.h"
+#include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace llvm {
@@ -43,14 +45,13 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-// Convert a std::string (used by LLVM's interfaces) to string.
-string AsString(const std::string& str);
-
-// Convert a tensorflow::StringPiece to a llvm::StringRef. Note: both
-// tensorflow::StringPiece and llvm::StringRef are non-owning pointers into a
+// Convert a absl::string_view to a llvm::StringRef. Note: both
+// absl::string_view and llvm::StringRef are non-owning pointers into a
 // string in memory. This method is used to feed strings to LLVM
 // & Clang APIs that expect llvm::StringRef.
-llvm::StringRef AsStringRef(tensorflow::StringPiece str);
+inline llvm::StringRef AsStringRef(absl::string_view str) {
+  return llvm::StringRef(str.data(), str.size());
+}
 
 template <typename T>
 llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
@@ -58,7 +59,7 @@ llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
 }
 
 template <typename T>
-llvm::ArrayRef<T> AsArrayRef(const tensorflow::gtl::ArraySlice<T>& slice) {
+llvm::ArrayRef<T> AsArrayRef(const absl::Span<const T>& slice) {
   return llvm::ArrayRef<T>(slice.data(), slice.size());
 }
 
@@ -69,7 +70,7 @@ string DumpToString(const T& entity) {
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 // Dump the given LLVM module to a string. This requires a function distinct
@@ -77,40 +78,78 @@ string DumpToString(const T& entity) {
 // and Modules are slightly different.
 string DumpModuleToString(const llvm::Module& module);
 
-// Sanitizes the given name to be a valid LLVM IR value name.
-string SanitizeIrName(string name);
+// Constructs a human-friendly name from the given inputs.  The result is
+// suitable for use as an llvm::Value's name.
+//
+// This is equivalent to
+//
+//   - changing the HloInstruction* to its name() (if we called that overload),
+//   - joining all of the nonempty inputs by '.', and then
+//   - removing all '%'s.
+//
+string IrName(absl::string_view a);
+string IrName(absl::string_view a, absl::string_view b);
+string IrName(const HloInstruction* a, absl::string_view b = "");
+
+// Removes special characters from a function name.
+//
+// Note that this can cause different inputs to map to the same output, so after
+// sanitizing a function name, you must run it through a uniquer.
+string SanitizeFunctionName(string function_name);
 
 // Emits a call to the specified intrinsic with the given operands. Overloaded
 // intrinsics (for example, "minnum") must include a type in overloaded_types
 // for each overloaded type. Typically, overloaded intrinsics have only a single
 // overloaded type.
-llvm::Value* EmitCallToIntrinsic(
-    llvm::Intrinsic::ID intrinsic_id,
-    tensorflow::gtl::ArraySlice<llvm::Value*> operands,
-    tensorflow::gtl::ArraySlice<llvm::Type*> overloaded_types,
-    llvm::IRBuilder<>* ir_builder);
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+
+// Emit float max. Emit maxnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
+
+// Emit float min. Emit minnum intrinsic is fast math is disabled, or
+// fcmp+select otherwise
+llvm::Value* EmitFloatMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                          llvm::IRBuilder<>* b, bool enable_fast_min_max);
 
 // Convenience methods for emitting a GEP instruction that indexes into a buffer
 // (1-dimensional array), equivalent to array[index]. The type is automatically
 // determined from the element type of the array.  The int64 index overload
 // wraps the index in a i64 llvm::Value.
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Value* index,
-                                   llvm::IRBuilder<>* ir_builder);
+                                   llvm::IRBuilder<>* b);
 llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
-                                   llvm::IRBuilder<>* ir_builder);
+                                   llvm::IRBuilder<>* b);
 
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
-                                  llvm::IRBuilder<>* ir_builder);
+                                  llvm::Module* module);
+
+// Returns the type size in bits. If "type" is a struct, it must be packed.
+int GetSizeInBits(llvm::Type* type);
 
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
-llvm::Type* ShapeToIrType(const Shape& shape, llvm::IRBuilder<>* ir_builder);
+llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module);
+
+// Returns a value that represents a pointer to a global string constant that
+// encodes the shape as a serialized protobuf.
+StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
+                                                         int32* shape_size,
+                                                         llvm::IRBuilder<>* b);
 
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
-                                           llvm::IRBuilder<>* ir_builder);
+                                           llvm::Module* module);
+
+// Allocates a tile of shared memory.
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point
@@ -120,22 +159,24 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
 // This can be useful to avoid e.g. executing an alloca every time
 // through a loop.
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
-                                            tensorflow::StringPiece name,
-                                            llvm::IRBuilder<>* ir_builder,
+                                            absl::string_view name,
+                                            llvm::IRBuilder<>* b,
                                             int alignment = 0);
 
 // As EmitAllocaAtFunctionEntry, but allocates element_count entries
-// intead of a single element.
-llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
-    llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* ir_builder, int alignment = 0);
+// instead of a single element.
+llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
+                                                     llvm::Value* element_count,
+                                                     absl::string_view name,
+                                                     llvm::IRBuilder<>* b,
+                                                     int alignment = 0);
 
-// Creates a basic block with the same context and funtion as for the
+// Creates a basic block with the same context and function as for the
 // builder. Inserts at the end of the function if insert_before is
 // null.
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,
-                                   tensorflow::StringPiece name,
-                                   llvm::IRBuilder<>* ir_builder);
+                                   absl::string_view name,
+                                   llvm::IRBuilder<>* b);
 
 // Struct with data on a conditional branch in a diamond shape created
 // via EmitIfThenElse.
@@ -166,14 +207,14 @@ struct LlvmIfData {
 // Currently the insertion point of the builder must be a well-formed
 // block with a terminator. If you need to use this for a
 // non-terminated block, just make the function able to do that too.
-LlvmIfData EmitIfThenElse(llvm::Value* condition, tensorflow::StringPiece name,
-                          llvm::IRBuilder<>* ir_builder, bool emit_else = true);
+LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
+                          llvm::IRBuilder<>* b, bool emit_else = true);
 
 // Emits a compare operation between "lhs" and "rhs" with the given predicate,
 // and then converts the result to i8 so that it is addressable.
 llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
                             llvm::Value* lhs, llvm::Value* rhs,
-                            llvm::IRBuilder<>* ir_builder);
+                            llvm::IRBuilder<>* b);
 
 // Emits a call that logs the given value with the given tag as a prefix.
 // The provided tag and value are passed to a runtime logging call that is
@@ -185,14 +226,7 @@ llvm::Value* EmitComparison(llvm::CmpInst::Predicate predicate,
 // Precondition: value must be an int64.
 // Precondition: tag must be a stable pointer for the lifetime of the generated
 // program (the constant pointer is burned in to the program).
-void EmitLogging(const char* tag, llvm::Value* value,
-                 llvm::IRBuilder<>* ir_builder);
-
-// Adds TBAA metadata to a load or store instruction using the given shape as
-// it's type.  The is_pointer_to parameter is used to indicate whether or not
-// this instruction loads or stores a pointer to an array.
-void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
-                           bool is_pointer_to);
+void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b);
 
 // Adds alignment metadata to a load instruction using the given alignment.
 // The alignment refers to the result of the load, not the load itself.
@@ -210,6 +244,8 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
 
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
+
 // Create a bitwise rotation of `rotand` by `rotor`.
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder);
@@ -219,13 +255,57 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout);
 
 // Gets an llvm::FastMathFlags that reflects the settings in the given
 // module config.
-llvm::FastMathFlags GetFastMathFlags(const HloModuleConfig& config);
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config);
 
-// Sets values in the given TargetOptions struct according to the given
-// compilation options.
-void SetTargetOptions(const HloModuleConfig& config,
-                      llvm::TargetOptions* target_options);
+// Computes a conservative union of the metadata in "a" and "b".  For
+// aliasing-related metadata, this means the result can be applied to
+// instructions whose aliasing relationship can be described either by "a" *or*
+// by "b".
+std::map<int, llvm::MDNode*> MergeMetadata(
+    llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
+    const std::map<int, llvm::MDNode*>& b);
 
+// Dumps out `llvm_module` to the path specified in DebugOptions, if dumping is
+// enabled for the given HLO module.
+//
+// A sanitized version of `hlo_module_name` is incorporated into the file name.
+// If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
+// of "-no-opt.ll" is used.
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized);
+
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name, llvm::Module* module);
+
+// Extracts the xla_backend_extra_options from `config` and passes those that
+// don't start with xla_ to LLVM.
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
+
+// Zero-extends two 32-bit values to 64 bits, multiplies them, and returns the
+// result as a pair of (low 32 bits, high 32 bits).
+std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
+                                                    llvm::Value* src0,
+                                                    llvm::Value* src1);
+// Splits the 64-bit integer value into its high and low 32 bits.
+std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
+    llvm::IRBuilder<>* b, llvm::Value* value_64bits);
+
+// Checks whether a global variable is already created to represent the state
+// of a random number generator. If not, creates such a variable. Returns the
+// global variable.
+llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
+                                                  llvm::IRBuilder<>* b);
+
+// Adds a delta value to the global state variable and return the old value of
+// the variable.
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* b);
+
+// Gets the LLVM address space that should be used for global variables (e.g.
+// XLA's rng state).
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
 }  // namespace llvm_ir
 }  // namespace xla
 

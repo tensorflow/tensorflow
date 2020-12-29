@@ -12,29 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""File IO methods that wrap the C++ FileSystem API.
-
-The C++ FileSystem API is SWIG wrapped in file_io.i. These functions call those
-to accomplish basic File IO operations.
-"""
+"""File IO methods that wrap the C++ FileSystem API."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import os
 import uuid
 
-from tensorflow.python import pywrap_tensorflow
+import six
+
 from tensorflow.python.framework import errors
+from tensorflow.python.lib.io import _pywrap_file_io
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
+
+# A good default block size depends on the system in question.
+# A somewhat conservative default chosen here.
+_DEFAULT_BLOCK_SIZE = 16 * 1024 * 1024
 
 
 class FileIO(object):
   """FileIO class that exposes methods to read / write to / from files.
 
   The constructor takes the following arguments:
-  name: name of the file
-  mode: one of 'r', 'w', 'a', 'r+', 'w+', 'a+'. Append 'b' for bytes mode.
+  name: [path-like object](https://docs.python.org/3/glossary.html#term-path-like-object)
+    giving the pathname of the file to be opened.
+  mode: one of `r`, `w`, `a`, `r+`, `w+`, `a+`. Append `b` for bytes mode.
 
   Can be used as an iterator to iterate over lines in the file.
 
@@ -70,18 +76,16 @@ class FileIO(object):
       if not self._read_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for reading")
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._read_buf = pywrap_tensorflow.CreateBufferedInputStream(
-            compat.as_bytes(self.__name), 1024 * 512, status)
+      self._read_buf = _pywrap_file_io.BufferedInputStream(
+          compat.path_to_str(self.__name), 1024 * 512)
 
   def _prewrite_check(self):
     if not self._writable_file:
       if not self._write_check_passed:
         raise errors.PermissionDeniedError(None, None,
                                            "File isn't open for writing")
-      with errors.raise_exception_on_not_ok_status() as status:
-        self._writable_file = pywrap_tensorflow.CreateWritableFile(
-            compat.as_bytes(self.__name), compat.as_bytes(self.__mode), status)
+      self._writable_file = _pywrap_file_io.WritableFile(
+          compat.path_to_bytes(self.__name), compat.as_bytes(self.__mode))
 
   def _prepare_value(self, val):
     if self._binary_mode:
@@ -96,9 +100,7 @@ class FileIO(object):
   def write(self, file_content):
     """Writes file_content to the file. Appends to the end of the file."""
     self._prewrite_check()
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.AppendToFile(
-          compat.as_bytes(file_content), self._writable_file, status)
+    self._writable_file.append(compat.as_bytes(file_content))
 
   def read(self, n=-1):
     """Returns the contents of a file as a string.
@@ -106,32 +108,67 @@ class FileIO(object):
     Starts reading from current position in file.
 
     Args:
-      n: Read 'n' bytes if n != -1. If n = -1, reads to end of file.
+      n: Read `n` bytes if `n != -1`. If `n = -1`, reads to end of file.
 
     Returns:
-      'n' bytes of the file (or whole file) in bytes mode or 'n' bytes of the
+      `n` bytes of the file (or whole file) in bytes mode or `n` bytes of the
       string if in string (regular) mode.
     """
     self._preread_check()
-    with errors.raise_exception_on_not_ok_status() as status:
-      if n == -1:
-        length = self.size() - self.tell()
-      else:
-        length = n
-      return self._prepare_value(
-          pywrap_tensorflow.ReadFromStream(self._read_buf, length, status))
+    if n == -1:
+      length = self.size() - self.tell()
+    else:
+      length = n
+    return self._prepare_value(self._read_buf.read(length))
 
-  def seek(self, position):
-    """Seeks to the position in the file."""
+  @deprecation.deprecated_args(
+      None, "position is deprecated in favor of the offset argument.",
+      "position")
+  def seek(self, offset=None, whence=0, position=None):
+    # TODO(jhseu): Delete later. Used to omit `position` from docs.
+    # pylint: disable=g-doc-args
+    """Seeks to the offset in the file.
+
+    Args:
+      offset: The byte count relative to the whence argument.
+      whence: Valid values for whence are:
+        0: start of the file (default)
+        1: relative to the current position of the file
+        2: relative to the end of file. `offset` is usually negative.
+    """
+    # pylint: enable=g-doc-args
     self._preread_check()
-    with errors.raise_exception_on_not_ok_status() as status:
-      ret_status = self._read_buf.Seek(position)
-      pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
+    # We needed to make offset a keyword argument for backwards-compatibility.
+    # This check exists so that we can convert back to having offset be a
+    # positional argument.
+    # TODO(jhseu): Make `offset` a positional argument after `position` is
+    # deleted.
+    if offset is None and position is None:
+      raise TypeError("seek(): offset argument required")
+    if offset is not None and position is not None:
+      raise TypeError("seek(): offset and position may not be set "
+                      "simultaneously.")
+
+    if position is not None:
+      offset = position
+
+    if whence == 0:
+      pass
+    elif whence == 1:
+      offset += self.tell()
+    elif whence == 2:
+      offset += self.size()
+    else:
+      raise errors.InvalidArgumentError(
+          None, None,
+          "Invalid whence argument: {}. Valid values are 0, 1, or 2.".format(
+              whence))
+    self._read_buf.seek(offset)
 
   def readline(self):
-    r"""Reads the next line from the file. Leaves the '\n' at the end."""
+    r"""Reads the next line, keeping \n. At EOF, returns ''."""
     self._preread_check()
-    return self._prepare_value(self._read_buf.ReadLineAsString())
+    return self._prepare_value(self._read_buf.readline())
 
   def readlines(self):
     """Returns all lines from the file in a list."""
@@ -146,8 +183,13 @@ class FileIO(object):
 
   def tell(self):
     """Returns the current position in the file."""
-    self._preread_check()
-    return self._read_buf.Tell()
+    if self._read_check_passed:
+      self._preread_check()
+      return self._read_buf.tell()
+    else:
+      self._prewrite_check()
+
+      return self._writable_file.tell()
 
   def __enter__(self):
     """Make usable with "with" statement."""
@@ -160,14 +202,14 @@ class FileIO(object):
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     retval = self.readline()
     if not retval:
       raise StopIteration()
     return retval
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
   def flush(self):
     """Flushes the Writable file.
@@ -177,20 +219,21 @@ class FileIO(object):
     data would survive an application crash but not necessarily an OS crash.
     """
     if self._writable_file:
-      with errors.raise_exception_on_not_ok_status() as status:
-        ret_status = self._writable_file.Flush()
-        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
+      self._writable_file.flush()
 
   def close(self):
     """Closes FileIO. Should be called for the WritableFile to be flushed."""
     self._read_buf = None
     if self._writable_file:
-      with errors.raise_exception_on_not_ok_status() as status:
-        ret_status = self._writable_file.Close()
-        pywrap_tensorflow.Set_TF_Status_from_Status(status, ret_status)
-    self._writable_file = None
+      self._writable_file.close()
+      self._writable_file = None
+
+  def seekable(self):
+    """Returns True as FileIO supports random access ops of seek()/tell()"""
+    return True
 
 
+@tf_export(v1=["gfile.Exists"])
 def file_exists(filename):
   """Determines whether a path exists or not.
 
@@ -198,20 +241,37 @@ def file_exists(filename):
     filename: string, a path
 
   Returns:
-    True if the path exists, whether its a file or a directory.
+    True if the path exists, whether it's a file or a directory.
+    False if the path does not exist and there are no filesystem errors.
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.
+  """
+  return file_exists_v2(filename)
+
+
+@tf_export("io.gfile.exists")
+def file_exists_v2(path):
+  """Determines whether a path exists or not.
+
+  Args:
+    path: string, a path
+
+  Returns:
+    True if the path exists, whether it's a file or a directory.
     False if the path does not exist and there are no filesystem errors.
 
   Raises:
     errors.OpError: Propagates any errors reported by the FileSystem API.
   """
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.FileExists(compat.as_bytes(filename), status)
+    _pywrap_file_io.FileExists(compat.path_to_bytes(path))
   except errors.NotFoundError:
     return False
   return True
 
 
+@tf_export(v1=["gfile.Remove"])
 def delete_file(filename):
   """Deletes the file located at 'filename'.
 
@@ -220,10 +280,23 @@ def delete_file(filename):
 
   Raises:
     errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
-    NotFoundError if the file does not exist.
+    `NotFoundError` if the file does not exist.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.DeleteFile(compat.as_bytes(filename), status)
+  delete_file_v2(filename)
+
+
+@tf_export("io.gfile.remove")
+def delete_file_v2(path):
+  """Deletes the path located at 'path'.
+
+  Args:
+    path: string, a path
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.  E.g.,
+    `NotFoundError` if the path does not exist.
+  """
+  _pywrap_file_io.DeleteFile(compat.path_to_bytes(path))
 
 
 def read_file_to_string(filename, binary_mode=False):
@@ -232,14 +305,14 @@ def read_file_to_string(filename, binary_mode=False):
   Args:
     filename: string, path to a file
     binary_mode: whether to open the file in binary mode or not. This changes
-        the type of the object returned.
+      the type of the object returned.
 
   Returns:
     contents of the file as a string or bytes.
 
   Raises:
     errors.OpError: Raises variety of errors that are subtypes e.g.
-    NotFoundError etc.
+    `NotFoundError` etc.
   """
   if binary_mode:
     f = FileIO(filename, mode="rb")
@@ -262,43 +335,125 @@ def write_string_to_file(filename, file_content):
     f.write(file_content)
 
 
+@tf_export(v1=["gfile.Glob"])
 def get_matching_files(filename):
-  """Returns a list of files that match the given pattern.
+  """Returns a list of files that match the given pattern(s).
 
   Args:
-    filename: string, the pattern
+    filename: string or iterable of strings. The glob pattern(s).
 
   Returns:
-    Returns a list of strings containing filenames that match the given pattern.
+    A list of strings containing filenames that match the given pattern(s).
+
+  Raises:
+  *  errors.OpError: If there are filesystem / directory listing errors.
+  *  errors.NotFoundError: If pattern to be matched is an invalid directory.
+  """
+  return get_matching_files_v2(filename)
+
+
+@tf_export("io.gfile.glob")
+def get_matching_files_v2(pattern):
+  r"""Returns a list of files that match the given pattern(s).
+
+  The patterns are defined as strings. Supported patterns are defined
+  here. Note that the pattern can be a Python iteratable of string patterns.
+
+  The format definition of the pattern is:
+
+  **pattern**: `{ term }`
+
+  **term**:
+    * `'*'`: matches any sequence of non-'/' characters
+    * `'?'`: matches a single non-'/' character
+    * `'[' [ '^' ] { match-list } ']'`: matches any single
+      character (not) on the list
+    * `c`: matches character `c`  where `c != '*', '?', '\\', '['`
+    * `'\\' c`: matches character `c`
+
+  **character range**:
+    * `c`: matches character `c` while `c != '\\', '-', ']'`
+    * `'\\' c`: matches character `c`
+    * `lo '-' hi`: matches character `c` for `lo <= c <= hi`
+
+  Examples:
+
+  >>> tf.io.gfile.glob("*.py")
+  ... # For example, ['__init__.py']
+
+  >>> tf.io.gfile.glob("__init__.??")
+  ... # As above
+
+  >>> files = {"*.py"}
+  >>> the_iterator = iter(files)
+  >>> tf.io.gfile.glob(the_iterator)
+  ... # As above
+
+  See the C++ function `GetMatchingPaths` in
+  [`core/platform/file_system.h`]
+  (../../../core/platform/file_system.h)
+  for implementation details.
+
+  Args:
+    pattern: string or iterable of strings. The glob pattern(s).
+
+  Returns:
+    A list of strings containing filenames that match the given pattern(s).
 
   Raises:
     errors.OpError: If there are filesystem / directory listing errors.
+    errors.NotFoundError: If pattern to be matched is an invalid directory.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    # Convert each element to string, since the return values of the
-    # vector of string should be interpreted as strings, not bytes.
-    return [compat.as_str_any(matching_filename)
-            for matching_filename in pywrap_tensorflow.GetMatchingFiles(
-                compat.as_bytes(filename), status)]
+  if isinstance(pattern, six.string_types):
+    return [
+        # Convert the filenames to string from bytes.
+        compat.as_str_any(matching_filename)
+        for matching_filename in _pywrap_file_io.GetMatchingFiles(
+            compat.as_bytes(pattern))
+    ]
+  else:
+    return [
+        # Convert the filenames to string from bytes.
+        compat.as_str_any(matching_filename)  # pylint: disable=g-complex-comprehension
+        for single_filename in pattern
+        for matching_filename in _pywrap_file_io.GetMatchingFiles(
+            compat.as_bytes(single_filename))
+    ]
 
 
+@tf_export(v1=["gfile.MkDir"])
 def create_dir(dirname):
-  """Creates a directory with the name 'dirname'.
+  """Creates a directory with the name `dirname`.
 
   Args:
     dirname: string, name of the directory to be created
 
-  Notes:
-    The parent directories need to exist. Use recursive_create_dir instead if
-    there is the possibility that the parent dirs don't exist.
+  Notes: The parent directories need to exist. Use `tf.io.gfile.makedirs`
+    instead if there is the possibility that the parent dirs don't exist.
 
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.CreateDir(compat.as_bytes(dirname), status)
+  create_dir_v2(dirname)
 
 
+@tf_export("io.gfile.mkdir")
+def create_dir_v2(path):
+  """Creates a directory with the name given by `path`.
+
+  Args:
+    path: string, name of the directory to be created
+
+  Notes: The parent directories need to exist. Use `tf.io.gfile.makedirs`
+    instead if there is the possibility that the parent dirs don't exist.
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  _pywrap_file_io.CreateDir(compat.path_to_bytes(path))
+
+
+@tf_export(v1=["gfile.MakeDirs"])
 def recursive_create_dir(dirname):
   """Creates a directory and all parent/intermediate directories.
 
@@ -310,45 +465,91 @@ def recursive_create_dir(dirname):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(dirname), status)
+  recursive_create_dir_v2(dirname)
 
 
-def copy(oldpath, newpath, overwrite=False):
-  """Copies data from oldpath to newpath.
+@tf_export("io.gfile.makedirs")
+def recursive_create_dir_v2(path):
+  """Creates a directory and all parent/intermediate directories.
+
+  It succeeds if path already exists and is writable.
 
   Args:
-    oldpath: string, name of the file who's contents need to be copied
-    newpath: string, name of the file to which to copy to
-    overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+    path: string, name of the directory to be created
 
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.CopyFile(
-        compat.as_bytes(oldpath), compat.as_bytes(newpath), overwrite, status)
+  _pywrap_file_io.RecursivelyCreateDir(compat.path_to_bytes(path))
 
 
+@tf_export(v1=["gfile.Copy"])
+def copy(oldpath, newpath, overwrite=False):
+  """Copies data from `oldpath` to `newpath`.
+
+  Args:
+    oldpath: string, name of the file who's contents need to be copied
+    newpath: string, name of the file to which to copy to
+    overwrite: boolean, if false it's an error for `newpath` to be occupied by
+      an existing file.
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  copy_v2(oldpath, newpath, overwrite)
+
+
+@tf_export("io.gfile.copy")
+def copy_v2(src, dst, overwrite=False):
+  """Copies data from `src` to `dst`.
+
+  Args:
+    src: string, name of the file whose contents need to be copied
+    dst: string, name of the file to which to copy to
+    overwrite: boolean, if false it's an error for `dst` to be occupied by an
+      existing file.
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  _pywrap_file_io.CopyFile(
+      compat.path_to_bytes(src), compat.path_to_bytes(dst), overwrite)
+
+
+@tf_export(v1=["gfile.Rename"])
 def rename(oldname, newname, overwrite=False):
   """Rename or move a file / directory.
 
   Args:
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+    overwrite: boolean, if false it's an error for `newname` to be occupied by
+      an existing file.
 
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.RenameFile(
-        compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
+  rename_v2(oldname, newname, overwrite)
 
 
-def atomic_write_string_to_file(filename, contents):
+@tf_export("io.gfile.rename")
+def rename_v2(src, dst, overwrite=False):
+  """Rename or move a file / directory.
+
+  Args:
+    src: string, pathname for a file
+    dst: string, pathname to which the file needs to be moved
+    overwrite: boolean, if false it's an error for `dst` to be occupied by an
+      existing file.
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  _pywrap_file_io.RenameFile(
+      compat.path_to_bytes(src), compat.path_to_bytes(dst), overwrite)
+
+
+def atomic_write_string_to_file(filename, contents, overwrite=True):
   """Writes to `filename` atomically.
 
   This means that when `filename` appears in the filesystem, it will contain
@@ -360,12 +561,22 @@ def atomic_write_string_to_file(filename, contents):
   Args:
     filename: string, pathname for a file
     contents: string, contents that need to be written to the file
+    overwrite: boolean, if false it's an error for `filename` to be occupied by
+      an existing file.
   """
-  temp_pathname = filename + ".tmp" + uuid.uuid4().hex
-  write_string_to_file(temp_pathname, contents)
-  rename(temp_pathname, filename, overwrite=True)
+  if not has_atomic_move(filename):
+    write_string_to_file(filename, contents)
+  else:
+    temp_pathname = filename + ".tmp" + uuid.uuid4().hex
+    write_string_to_file(temp_pathname, contents)
+    try:
+      rename(temp_pathname, filename, overwrite)
+    except errors.OpError:
+      delete_file(temp_pathname)
+      raise
 
 
+@tf_export(v1=["gfile.DeleteRecursively"])
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.
 
@@ -375,10 +586,23 @@ def delete_recursively(dirname):
   Raises:
     errors.OpError: If the operation fails.
   """
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.DeleteRecursively(compat.as_bytes(dirname), status)
+  delete_recursively_v2(dirname)
 
 
+@tf_export("io.gfile.rmtree")
+def delete_recursively_v2(path):
+  """Deletes everything under path recursively.
+
+  Args:
+    path: string, a path
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  _pywrap_file_io.DeleteRecursively(compat.path_to_bytes(path))
+
+
+@tf_export(v1=["gfile.IsDirectory"])
 def is_directory(dirname):
   """Returns whether the path is a directory or not.
 
@@ -388,13 +612,50 @@ def is_directory(dirname):
   Returns:
     True, if the path is a directory; False otherwise
   """
+  return is_directory_v2(dirname)
+
+
+@tf_export("io.gfile.isdir")
+def is_directory_v2(path):
+  """Returns whether the path is a directory or not.
+
+  Args:
+    path: string, path to a potential directory
+
+  Returns:
+    True, if the path is a directory; False otherwise
+  """
   try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+    return _pywrap_file_io.IsDirectory(compat.path_to_bytes(path))
+  except errors.OpError:
+    return False
 
 
+def has_atomic_move(path):
+  """Checks whether the file system supports atomic moves.
+
+  Returns whether or not the file system of the given path supports the atomic
+  move operation for a file or folder.  If atomic move is supported, it is
+  recommended to use a temp location for writing and then move to the final
+  location.
+
+  Args:
+    path: string, path to a file
+
+  Returns:
+    True, if the path is on a file system that supports atomic move
+    False, if the file system does not support atomic move. In such cases
+           we need to be careful about using moves. In some cases it is safer
+           not to use temporary locations in this case.
+  """
+  try:
+    return _pywrap_file_io.HasAtomicMove(compat.path_to_bytes(path))
+  except errors.OpError:
+    # defaults to True
+    return True
+
+
+@tf_export(v1=["gfile.ListDirectory"])
 def list_directory(dirname):
   """Returns a list of entries contained within a directory.
 
@@ -410,43 +671,96 @@ def list_directory(dirname):
   Raises:
     errors.NotFoundError if directory doesn't exist
   """
-  if not is_directory(dirname):
-    raise errors.NotFoundError(None, None, "Could not find directory")
-  with errors.raise_exception_on_not_ok_status() as status:
-    # Convert each element to string, since the return values of the
-    # vector of string should be interpreted as strings, not bytes.
-    return [
-        compat.as_str_any(filename)
-        for filename in pywrap_tensorflow.GetChildren(
-            compat.as_bytes(dirname), status)
-    ]
+  return list_directory_v2(dirname)
 
 
+@tf_export("io.gfile.listdir")
+def list_directory_v2(path):
+  """Returns a list of entries contained within a directory.
+
+  The list is in arbitrary order. It does not contain the special entries "."
+  and "..".
+
+  Args:
+    path: string, path to a directory
+
+  Returns:
+    [filename1, filename2, ... filenameN] as strings
+
+  Raises:
+    errors.NotFoundError if directory doesn't exist
+  """
+  if not is_directory(path):
+    raise errors.NotFoundError(
+        node_def=None,
+        op=None,
+        message="Could not find directory {}".format(path))
+
+  # Convert each element to string, since the return values of the
+  # vector of string should be interpreted as strings, not bytes.
+  return [
+      compat.as_str_any(filename)
+      for filename in _pywrap_file_io.GetChildren(compat.path_to_bytes(path))
+  ]
+
+
+@tf_export(v1=["gfile.Walk"])
 def walk(top, in_order=True):
   """Recursive directory tree generator for directories.
 
   Args:
     top: string, a Directory name
-    in_order: bool, Traverse in order if True, post order if False.
-
-  Errors that happen while listing directories are ignored.
+    in_order: bool, Traverse in order if True, post order if False.  Errors that
+      happen while listing directories are ignored.
 
   Yields:
     Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
-    all its subdirectories and leaf files.
-    (dirname, [subdirname, subdirname, ...], [filename, filename, ...])
-    as strings
+    all its subdirectories and leaf files. That is, each yield looks like:
+    `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
+    Each item is a string.
   """
-  top = compat.as_str_any(top)
+  return walk_v2(top, in_order)
+
+
+@tf_export("io.gfile.walk")
+def walk_v2(top, topdown=True, onerror=None):
+  """Recursive directory tree generator for directories.
+
+  Args:
+    top: string, a Directory name
+    topdown: bool, Traverse pre order if True, post order if False.
+    onerror: optional handler for errors. Should be a function, it will be
+      called with the error as argument. Rethrowing the error aborts the walk.
+      Errors that happen while listing directories are ignored.
+
+  Yields:
+    Each yield is a 3-tuple:  the pathname of a directory, followed by lists of
+    all its subdirectories and leaf files. That is, each yield looks like:
+    `(dirname, [subdirname, subdirname, ...], [filename, filename, ...])`.
+    Each item is a string.
+  """
+
+  def _make_full_path(parent, item):
+    # Since `os.path.join` discards paths before one that starts with the path
+    # separator (https://docs.python.org/3/library/os.path.html#os.path.join),
+    # we have to manually handle that case as `/` is a valid character on GCS.
+    if item[0] == os.sep:
+      return "".join([os.path.join(parent, ""), item])
+    return os.path.join(parent, item)
+
+  top = compat.as_str_any(compat.path_to_str(top))
   try:
     listing = list_directory(top)
-  except errors.NotFoundError:
-    return
+  except errors.NotFoundError as err:
+    if onerror:
+      onerror(err)
+    else:
+      return
 
   files = []
   subdirs = []
   for item in listing:
-    full_path = os.path.join(top, item)
+    full_path = _make_full_path(top, item)
     if is_directory(full_path):
       subdirs.append(item)
     else:
@@ -454,17 +768,19 @@ def walk(top, in_order=True):
 
   here = (top, subdirs, files)
 
-  if in_order:
+  if topdown:
     yield here
 
   for subdir in subdirs:
-    for subitem in walk(os.path.join(top, subdir), in_order):
+    for subitem in walk_v2(
+        _make_full_path(top, subdir), topdown, onerror=onerror):
       yield subitem
 
-  if not in_order:
+  if not topdown:
     yield here
 
 
+@tf_export(v1=["gfile.Stat"])
 def stat(filename):
   """Returns file statistics for a given path.
 
@@ -477,7 +793,73 @@ def stat(filename):
   Raises:
     errors.OpError: If the operation fails.
   """
-  file_statistics = pywrap_tensorflow.FileStatistics()
-  with errors.raise_exception_on_not_ok_status() as status:
-    pywrap_tensorflow.Stat(compat.as_bytes(filename), file_statistics, status)
-    return file_statistics
+  return stat_v2(filename)
+
+
+@tf_export("io.gfile.stat")
+def stat_v2(path):
+  """Returns file statistics for a given path.
+
+  Args:
+    path: string, path to a file
+
+  Returns:
+    FileStatistics struct that contains information about the path
+
+  Raises:
+    errors.OpError: If the operation fails.
+  """
+  return _pywrap_file_io.Stat(compat.path_to_str(path))
+
+
+def filecmp(filename_a, filename_b):
+  """Compare two files, returning True if they are the same, False otherwise.
+
+  We check size first and return False quickly if the files are different sizes.
+  If they are the same size, we continue to generating a crc for the whole file.
+
+  You might wonder: why not use Python's `filecmp.cmp()` instead? The answer is
+  that the builtin library is not robust to the many different filesystems
+  TensorFlow runs on, and so we here perform a similar comparison with
+  the more robust FileIO.
+
+  Args:
+    filename_a: string path to the first file.
+    filename_b: string path to the second file.
+
+  Returns:
+    True if the files are the same, False otherwise.
+  """
+  size_a = FileIO(filename_a, "rb").size()
+  size_b = FileIO(filename_b, "rb").size()
+  if size_a != size_b:
+    return False
+
+  # Size is the same. Do a full check.
+  crc_a = file_crc32(filename_a)
+  crc_b = file_crc32(filename_b)
+  return crc_a == crc_b
+
+
+def file_crc32(filename, block_size=_DEFAULT_BLOCK_SIZE):
+  """Get the crc32 of the passed file.
+
+  The crc32 of a file can be used for error checking; two files with the same
+  crc32 are considered equivalent. Note that the entire file must be read
+  to produce the crc32.
+
+  Args:
+    filename: string, path to a file
+    block_size: Integer, process the files by reading blocks of `block_size`
+      bytes. Use -1 to read the file as once.
+
+  Returns:
+    hexadecimal as string, the crc32 of the passed file.
+  """
+  crc = 0
+  with FileIO(filename, mode="rb") as f:
+    chunk = f.read(n=block_size)
+    while chunk:
+      crc = binascii.crc32(chunk, crc)
+      chunk = f.read(n=block_size)
+  return hex(crc & 0xFFFFFFFF)

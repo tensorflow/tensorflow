@@ -18,8 +18,8 @@ limitations under the License.
 // (data array and size fields).
 // Direct manipulation of JPEG strings are supplied: Flip, Rotate, Crop..
 
-#ifndef TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
-#define TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#ifndef TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
+#define TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
 
 #include <functional>
 #include <string>
@@ -61,6 +61,17 @@ struct UncompressFlags {
   //
   // Setting this has a quality/speed trade-off implication.
   J_DCT_METHOD dct_method = JDCT_DEFAULT;
+
+  // Settings of crop window before decompression.
+  bool crop = false;
+  // Vertical coordinate of the top-left corner of the result in the input.
+  int crop_x = 0;
+  // Horizontal coordinate of the top-left corner of the result in the input.
+  int crop_y = 0;
+  // Width of the output image.
+  int crop_width = 0;
+  // Height of the output image.
+  int crop_height = 0;
 };
 
 // Uncompress some raw JPEG data given by the pointer srcdata and the length
@@ -138,14 +149,14 @@ struct CompressFlags {
 // The encoded data is returned as a string.
 // If not empty, XMP metadata can be embedded in the image header
 // On error, returns the empty string (which is never a valid jpeg).
-string Compress(const void* srcdata, int width, int height,
-                const CompressFlags& flags);
+tstring Compress(const void* srcdata, int width, int height,
+                 const CompressFlags& flags);
 
 // On error, returns false and sets output to empty.
 bool Compress(const void* srcdata, int width, int height,
-              const CompressFlags& flags, string* output);
+              const CompressFlags& flags, tstring* output);
 
 }  // namespace jpeg
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#endif  // TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_

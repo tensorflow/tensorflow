@@ -1,0 +1,128 @@
+path: "tensorflow.GPUOptions"
+tf_proto {
+  descriptor {
+    name: "GPUOptions"
+    field {
+      name: "per_process_gpu_memory_fraction"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_DOUBLE
+    }
+    field {
+      name: "allow_growth"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "allocator_type"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "deferred_deletion_bytes"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "visible_device_list"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "polling_active_delay_usecs"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "polling_inactive_delay_msecs"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "force_gpu_compatible"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "experimental"
+      number: 9
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.GPUOptions.Experimental"
+    }
+    nested_type {
+      name: "Experimental"
+      field {
+        name: "virtual_devices"
+        number: 1
+        label: LABEL_REPEATED
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.GPUOptions.Experimental.VirtualDevices"
+      }
+      field {
+        name: "use_unified_memory"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "num_dev_to_dev_copy_streams"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "collective_ring_order"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_STRING
+      }
+      field {
+        name: "timestamped_allocator"
+        number: 5
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
+      field {
+        name: "kernel_tracker_max_interval"
+        number: 7
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "kernel_tracker_max_bytes"
+        number: 8
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "kernel_tracker_max_pending"
+        number: 9
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      nested_type {
+        name: "VirtualDevices"
+        field {
+          name: "memory_limit_mb"
+          number: 1
+          label: LABEL_REPEATED
+          type: TYPE_FLOAT
+        }
+        field {
+          name: "priority"
+          number: 2
+          label: LABEL_REPEATED
+          type: TYPE_INT32
+        }
+      }
+    }
+  }
+}

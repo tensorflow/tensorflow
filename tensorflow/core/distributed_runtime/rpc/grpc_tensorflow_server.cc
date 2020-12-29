@@ -16,9 +16,9 @@ limitations under the License.
 #include <iostream>
 #include <vector>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/security/credentials.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/security/credentials.h"
+#include "grpcpp/server_builder.h"
 
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -66,7 +67,7 @@ Status FillServerDef(const string& cluster_spec, const string& job_name,
       my_num_tasks = host_ports.size();
     }
     LOG(INFO) << "Peer " << job_name << " " << num_tasks << " {"
-              << str_util::Join(host_ports, ", ") << "}";
+              << absl::StrJoin(host_ports, ", ") << "}";
   }
   if (my_num_tasks == 0) {
     return errors::InvalidArgument("Job name \"", options->job_name(),

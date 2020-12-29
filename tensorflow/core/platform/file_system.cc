@@ -13,54 +13,66 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/file_system.h"
+
 #include <sys/stat.h>
+
 #include <algorithm>
 #include <deque>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#include <fnmatch.h>
+#else
+#include "tensorflow/core/platform/regexp.h"
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
-namespace {
-
-constexpr int kNumThreads = 8;
-
-// Run a function in parallel using a ThreadPool, but skip the ThreadPool
-// on the iOS platform due to its problems with more than a few threads.
-void ForEach(int first, int last, std::function<void(int)> f) {
-#if TARGET_OS_IPHONE
-  for (int i = first; i < last; i++) {
-    f(i);
-  }
+bool FileSystem::Match(const string& filename, const string& pattern) {
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+  // We avoid relying on RE2 on mobile platforms, because it incurs a
+  // significant binary size increase.
+  // For POSIX platforms, there is no need to depend on RE2 if `fnmatch` can be
+  // used safely.
+  return fnmatch(pattern.c_str(), filename.c_str(), FNM_PATHNAME) == 0;
 #else
-  int num_threads = std::min(kNumThreads, last - first);
-  thread::ThreadPool threads(Env::Default(), "ForEach", num_threads);
-  for (int i = first; i < last; i++) {
-    threads.Schedule([f, i] { f(i); });
-  }
-#endif
+  string regexp(pattern);
+  regexp = str_util::StringReplace(regexp, "*", "[^/]*", true);
+  regexp = str_util::StringReplace(regexp, "?", ".", true);
+  regexp = str_util::StringReplace(regexp, "(", "\\(", true);
+  regexp = str_util::StringReplace(regexp, ")", "\\)", true);
+  return RE2::FullMatch(filename, regexp);
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
 }
-
-}  // anonymous namespace
-
-FileSystem::~FileSystem() {}
 
 string FileSystem::TranslateName(const string& name) const {
-  return io::CleanPath(name);
+  // If the name is empty, CleanPath returns "." which is incorrect and
+  // we should return the empty path instead.
+  if (name.empty()) return name;
+
+  // Otherwise, properly separate the URI components and clean the path one
+  StringPiece scheme, host, path;
+  this->ParseURI(name, &scheme, &host, &path);
+
+  // If `path` becomes empty, return `/` (`file://` should be `/`), not `.`.
+  if (path.empty()) return "/";
+
+  return this->CleanPath(path);
 }
 
-Status FileSystem::IsDirectory(const string& name) {
+Status FileSystem::IsDirectory(const string& name, TransactionToken* token) {
   // Check if path exists.
+  // TODO(sami):Forward token to other methods once migration is complete.
   TF_RETURN_IF_ERROR(FileExists(name));
   FileStatistics stat;
   TF_RETURN_IF_ERROR(Stat(name, &stat));
@@ -70,76 +82,32 @@ Status FileSystem::IsDirectory(const string& name) {
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
 
-RandomAccessFile::~RandomAccessFile() {}
+Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  *has_atomic_move = true;
+  return Status::OK();
+}
 
-WritableFile::~WritableFile() {}
+void FileSystem::FlushCaches(TransactionToken* token) {}
 
-FileSystemRegistry::~FileSystemRegistry() {}
-
-Status FileSystem::GetMatchingPaths(const string& pattern,
-                                    std::vector<string>* results) {
-  results->clear();
-  // Find the fixed prefix by looking for the first wildcard.
-  const string& fixed_prefix =
-      pattern.substr(0, pattern.find_first_of("*?[\\"));
-  std::vector<string> all_files;
-  string dir = io::Dirname(fixed_prefix).ToString();
-  if (dir.empty()) dir = ".";
-
-  // Setup a BFS to explore everything under dir.
-  std::deque<string> dir_q;
-  dir_q.push_back(dir);
-  Status ret;  // Status to return.
-  // children_dir_status holds is_dir status for children. It can have three
-  // possible values: OK for true; FAILED_PRECONDITION for false; CANCELLED
-  // if we don't calculate IsDirectory (we might do that because there isn't
-  // any point in exploring that child path).
-  std::vector<Status> children_dir_status;
-  while (!dir_q.empty()) {
-    string current_dir = dir_q.front();
-    dir_q.pop_front();
-    std::vector<string> children;
-    Status s = GetChildren(current_dir, &children);
-    ret.Update(s);
-    if (children.empty()) continue;
-    // This IsDirectory call can be expensive for some FS. Parallelizing it.
-    children_dir_status.resize(children.size());
-    ForEach(0, children.size(), [this, &current_dir, &children, &fixed_prefix,
-                                 &children_dir_status](int i) {
-      const string child_path = io::JoinPath(current_dir, children[i]);
-      // In case the child_path doesn't start with the fixed_prefix then
-      // we don't need to explore this path.
-      if (!StringPiece(child_path).starts_with(fixed_prefix)) {
-        children_dir_status[i] =
-            Status(tensorflow::error::CANCELLED, "Operation not needed");
-      } else {
-        children_dir_status[i] = IsDirectory(child_path);
-      }
-    });
-    for (int i = 0; i < children.size(); ++i) {
-      const string child_path = io::JoinPath(current_dir, children[i]);
-      // If the IsDirectory call was cancelled we bail.
-      if (children_dir_status[i].code() == tensorflow::error::CANCELLED) {
-        continue;
-      }
-      // If the child is a directory add it to the queue.
-      if (children_dir_status[i].ok()) {
-        dir_q.push_back(child_path);
-      }
-      all_files.push_back(child_path);
+bool FileSystem::FilesExist(const std::vector<string>& files,
+                            TransactionToken* token,
+                            std::vector<Status>* status) {
+  bool result = true;
+  for (const auto& file : files) {
+    Status s = FileExists(file);
+    result &= s.ok();
+    if (status != nullptr) {
+      status->push_back(s);
+    } else if (!result) {
+      // Return early since there is no need to check other files.
+      return false;
     }
   }
-
-  // Match all obtained files to the input pattern.
-  for (const auto& f : all_files) {
-    if (Env::Default()->MatchPath(f, pattern)) {
-      results->push_back(f);
-    }
-  }
-  return ret;
+  return result;
 }
 
 Status FileSystem::DeleteRecursively(const string& dirname,
+                                     TransactionToken* token,
                                      int64* undeleted_files,
                                      int64* undeleted_dirs) {
   CHECK_NOTNULL(undeleted_files);
@@ -153,6 +121,14 @@ Status FileSystem::DeleteRecursively(const string& dirname,
     (*undeleted_dirs)++;
     return exists_status;
   }
+
+  // If given path to a single file, we should just delete it.
+  if (!IsDirectory(dirname).ok()) {
+    Status delete_root_status = DeleteFile(dirname);
+    if (!delete_root_status.ok()) (*undeleted_files)++;
+    return delete_root_status;
+  }
+
   std::deque<string> dir_q;      // Queue for the BFS
   std::vector<string> dir_list;  // List of all dirs discovered
   dir_q.push_back(dirname);
@@ -173,7 +149,7 @@ Status FileSystem::DeleteRecursively(const string& dirname,
       continue;
     }
     for (const string& child : children) {
-      const string child_path = io::JoinPath(dir, child);
+      const string child_path = this->JoinPath(dir, child);
       // If the child is a directory add it to the queue, otherwise delete it.
       if (IsDirectory(child_path).ok()) {
         dir_q.push_back(child_path);
@@ -203,38 +179,276 @@ Status FileSystem::DeleteRecursively(const string& dirname,
   return ret;
 }
 
-Status FileSystem::RecursivelyCreateDir(const string& dirname) {
+Status FileSystem::RecursivelyCreateDir(const string& dirname,
+                                        TransactionToken* token) {
   StringPiece scheme, host, remaining_dir;
-  io::ParseURI(dirname, &scheme, &host, &remaining_dir);
+  this->ParseURI(dirname, &scheme, &host, &remaining_dir);
   std::vector<StringPiece> sub_dirs;
   while (!remaining_dir.empty()) {
-    Status status = FileExists(io::CreateURI(scheme, host, remaining_dir));
-    if (status.ok()) {
-      break;
+    std::string current_entry = this->CreateURI(scheme, host, remaining_dir);
+    Status exists_status = FileExists(current_entry);
+    if (exists_status.ok()) {
+      // FileExists cannot differentiate between existence of a file or a
+      // directory, hence we need an additional test as we must not assume that
+      // a path to a file is a path to a parent directory.
+      Status directory_status = IsDirectory(current_entry);
+      if (directory_status.ok()) {
+        break;  // We need to start creating directories from here.
+      } else if (directory_status.code() == tensorflow::error::UNIMPLEMENTED) {
+        return directory_status;
+      } else {
+        return errors::FailedPrecondition(remaining_dir, " is not a directory");
+      }
     }
-    if (status.code() != error::Code::NOT_FOUND) {
-      return status;
+    if (exists_status.code() != error::Code::NOT_FOUND) {
+      return exists_status;
     }
     // Basename returns "" for / ending dirs.
-    if (!remaining_dir.ends_with("/")) {
-      sub_dirs.push_back(io::Basename(remaining_dir));
+    if (!str_util::EndsWith(remaining_dir, "/")) {
+      sub_dirs.push_back(this->Basename(remaining_dir));
     }
-    remaining_dir = io::Dirname(remaining_dir);
+    remaining_dir = this->Dirname(remaining_dir);
   }
 
   // sub_dirs contains all the dirs to be created but in reverse order.
   std::reverse(sub_dirs.begin(), sub_dirs.end());
 
   // Now create the directories.
-  string built_path = remaining_dir.ToString();
+  string built_path(remaining_dir);
   for (const StringPiece sub_dir : sub_dirs) {
-    built_path = io::JoinPath(built_path, sub_dir);
-    Status status = CreateDir(io::CreateURI(scheme, host, built_path));
+    built_path = this->JoinPath(built_path, sub_dir);
+    Status status = CreateDir(this->CreateURI(scheme, host, built_path));
     if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
       return status;
     }
   }
   return Status::OK();
+}
+
+Status FileSystem::CopyFile(const string& src, const string& target,
+                            TransactionToken* token) {
+  return FileSystemCopyFile(this, src, this, target);
+}
+
+char FileSystem::Separator() const { return '/'; }
+
+string FileSystem::JoinPathImpl(std::initializer_list<StringPiece> paths) {
+  string result;
+
+  for (StringPiece path : paths) {
+    if (path.empty()) continue;
+
+    if (result.empty()) {
+      result = string(path);
+      continue;
+    }
+
+    if (result[result.size() - 1] == '/') {
+      if (this->IsAbsolutePath(path)) {
+        strings::StrAppend(&result, path.substr(1));
+      } else {
+        strings::StrAppend(&result, path);
+      }
+    } else {
+      if (this->IsAbsolutePath(path)) {
+        strings::StrAppend(&result, path);
+      } else {
+        strings::StrAppend(&result, "/", path);
+      }
+    }
+  }
+
+  return result;
+}
+
+std::pair<StringPiece, StringPiece> FileSystem::SplitPath(
+    StringPiece uri) const {
+  StringPiece scheme, host, path;
+  ParseURI(uri, &scheme, &host, &path);
+
+  size_t pos = path.rfind(this->Separator());
+
+  // Our code assumes it is written for linux too many times. So, for windows
+  // also check for '/'
+#ifdef PLATFORM_WINDOWS
+  size_t pos2 = path.rfind('/');
+  // Pick the max value that is not string::npos.
+  if (pos == string::npos) {
+    pos = pos2;
+  } else {
+    if (pos2 != string::npos) {
+      pos = pos > pos2 ? pos : pos2;
+    }
+  }
+#endif
+
+  // Handle the case with no SEP in 'path'.
+  if (pos == StringPiece::npos)
+    return std::make_pair(StringPiece(uri.begin(), host.end() - uri.begin()),
+                          path);
+
+  // Handle the case with a single leading '/' in 'path'.
+  if (pos == 0)
+    return std::make_pair(
+        StringPiece(uri.begin(), path.begin() + 1 - uri.begin()),
+        StringPiece(path.data() + 1, path.size() - 1));
+
+  return std::make_pair(
+      StringPiece(uri.begin(), path.begin() + pos - uri.begin()),
+      StringPiece(path.data() + pos + 1, path.size() - (pos + 1)));
+}
+
+bool FileSystem::IsAbsolutePath(StringPiece path) const {
+  return !path.empty() && path[0] == '/';
+}
+
+StringPiece FileSystem::Dirname(StringPiece path) const {
+  return this->SplitPath(path).first;
+}
+
+StringPiece FileSystem::Basename(StringPiece path) const {
+  return this->SplitPath(path).second;
+}
+
+StringPiece FileSystem::Extension(StringPiece path) const {
+  StringPiece basename = this->Basename(path);
+
+  size_t pos = basename.rfind('.');
+  if (pos == StringPiece::npos) {
+    return StringPiece(path.data() + path.size(), 0);
+  } else {
+    return StringPiece(path.data() + pos + 1, path.size() - (pos + 1));
+  }
+}
+
+string FileSystem::CleanPath(StringPiece unclean_path) const {
+  string path(unclean_path);
+  const char* src = path.c_str();
+  string::iterator dst = path.begin();
+
+  // Check for absolute path and determine initial backtrack limit.
+  const bool is_absolute_path = *src == '/';
+  if (is_absolute_path) {
+    *dst++ = *src++;
+    while (*src == '/') ++src;
+  }
+  string::const_iterator backtrack_limit = dst;
+
+  // Process all parts
+  while (*src) {
+    bool parsed = false;
+
+    if (src[0] == '.') {
+      //  1dot ".<whateverisnext>", check for END or SEP.
+      if (src[1] == '/' || !src[1]) {
+        if (*++src) {
+          ++src;
+        }
+        parsed = true;
+      } else if (src[1] == '.' && (src[2] == '/' || !src[2])) {
+        // 2dot END or SEP (".." | "../<whateverisnext>").
+        src += 2;
+        if (dst != backtrack_limit) {
+          // We can backtrack the previous part
+          for (--dst; dst != backtrack_limit && dst[-1] != '/'; --dst) {
+            // Empty.
+          }
+        } else if (!is_absolute_path) {
+          // Failed to backtrack and we can't skip it either. Rewind and copy.
+          src -= 2;
+          *dst++ = *src++;
+          *dst++ = *src++;
+          if (*src) {
+            *dst++ = *src;
+          }
+          // We can never backtrack over a copied "../" part so set new limit.
+          backtrack_limit = dst;
+        }
+        if (*src) {
+          ++src;
+        }
+        parsed = true;
+      }
+    }
+
+    // If not parsed, copy entire part until the next SEP or EOS.
+    if (!parsed) {
+      while (*src && *src != '/') {
+        *dst++ = *src++;
+      }
+      if (*src) {
+        *dst++ = *src++;
+      }
+    }
+
+    // Skip consecutive SEP occurrences
+    while (*src == '/') {
+      ++src;
+    }
+  }
+
+  // Calculate and check the length of the cleaned path.
+  string::difference_type path_length = dst - path.begin();
+  if (path_length != 0) {
+    // Remove trailing '/' except if it is root path ("/" ==> path_length := 1)
+    if (path_length > 1 && path[path_length - 1] == '/') {
+      --path_length;
+    }
+    path.resize(path_length);
+  } else {
+    // The cleaned path is empty; assign "." as per the spec.
+    path.assign(1, '.');
+  }
+  return path;
+}
+
+void FileSystem::ParseURI(StringPiece remaining, StringPiece* scheme,
+                          StringPiece* host, StringPiece* path) const {
+  // 0. Parse scheme
+  // Make sure scheme matches [a-zA-Z][0-9a-zA-Z.]*
+  // TODO(keveman): Allow "+" and "-" in the scheme.
+  // Keep URI pattern in tensorboard/backend/server.py updated accordingly
+  if (!strings::Scanner(remaining)
+           .One(strings::Scanner::LETTER)
+           .Many(strings::Scanner::LETTER_DIGIT_DOT)
+           .StopCapture()
+           .OneLiteral("://")
+           .GetResult(&remaining, scheme)) {
+    // If there's no scheme, assume the entire string is a path.
+    *scheme = StringPiece(remaining.begin(), 0);
+    *host = StringPiece(remaining.begin(), 0);
+    *path = remaining;
+    return;
+  }
+
+  // 1. Parse host
+  if (!strings::Scanner(remaining).ScanUntil('/').GetResult(&remaining, host)) {
+    // No path, so the rest of the URI is the host.
+    *host = remaining;
+    *path = StringPiece(remaining.end(), 0);
+    return;
+  }
+
+  // 2. The rest is the path
+  *path = remaining;
+}
+
+string FileSystem::CreateURI(StringPiece scheme, StringPiece host,
+                             StringPiece path) const {
+  if (scheme.empty()) {
+    return string(path);
+  }
+  return strings::StrCat(scheme, "://", host, path);
+}
+
+std::string FileSystem::DecodeTransaction(const TransactionToken* token) {
+  // TODO(sami): Switch using StrCat when void* is supported
+  if (token) {
+    std::stringstream oss;
+    oss << "Token= " << token->token << ", Owner=" << token->owner;
+    return oss.str();
+  }
+  return "No Transaction";
 }
 
 }  // namespace tensorflow

@@ -16,19 +16,26 @@ limitations under the License.
 syntax = "proto3";
 
 package tensorflow;
+
+import "google/protobuf/any.proto";
+import "tensorflow/core/framework/cost_graph.proto";
+import "tensorflow/core/framework/device_attributes.proto";
+import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/step_stats.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
+import "tensorflow/core/protobuf/named_tensor.proto";
+import "tensorflow/core/protobuf/tensorflow_server.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "WorkerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-
-import "google/protobuf/any.proto";
-import "tensorflow/core/framework/cost_graph.proto";
-import "tensorflow/core/framework/step_stats.proto";
-import "tensorflow/core/framework/device_attributes.proto";
-import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/framework/tensor.proto";
-import "tensorflow/core/protobuf/config.proto";
-import "tensorflow/core/protobuf/named_tensor.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -36,12 +43,62 @@ import "tensorflow/core/protobuf/named_tensor.proto";
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-message GetStatusRequest {
-}
+message GetStatusRequest {}
 
 message GetStatusResponse {
   repeated DeviceAttributes device_attributes = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// CreateSession method request/response messages
+//
+// For each session,
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message CreateWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+
+  // Defines the configuration of a TensorFlow worker.
+  ServerDef server_def = 2;
+
+  // If true, any resources such as Variables used in the session will not be
+  // shared with other sessions.
+  bool isolate_session_state = 3;
+
+  // The device attributes of all the devices in the cluster.
+  repeated DeviceAttributes cluster_device_attributes = 4;
+
+  // The master task name from which the request is sent.
+  string master_task = 5;
+
+  // The incarnation ID of the master task local CPU device.
+  // If the target worker already has a WorkerSession created previously with
+  // the same master task name but a different incarnation, it usually indicates
+  // that the previous master failed before deleting the WorkerSession on the
+  // worker. To prevent memory leaks, the worker should garbage collect the old
+  // WorkerSessions.
+  int64 master_incarnation = 6;
+}
+
+message CreateWorkerSessionResponse {}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// DeleteSession method request/response messages
+//
+// Deletes all worker-side state associated with the given session handle.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message DeleteWorkerSessionRequest {
+  // Sessions are identified by a given handle.
+  string session_handle = 1;
+}
+
+message DeleteWorkerSessionResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -61,6 +118,9 @@ message RegisterGraphRequest {
   // Subgraphs are scoped within one session.
   string session_handle = 1;
 
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  bool create_worker_session_called = 6;
+
   // "graph_def" has the subgraph of nodes for this worker, with each node
   // having its device_name filled in.
   GraphDef graph_def = 2;
@@ -72,6 +132,22 @@ message RegisterGraphRequest {
 
   // Configuration options for the session in which this graph was created.
   GraphOptions graph_options = 4;
+
+  // Field(s) used by TensorFlow Debugger (tfdbg).
+  DebugOptions debug_options = 5;
+
+  // If graph_def contains any collective ops this must be a positive
+  // integer used to coordinate execution with other graphs.  All
+  // graphs in a distributed execution with the same
+  // collective_graph_key will coordinate to use the same step_id
+  // concurrently so that BufRendezvous entries will make the correct
+  // values accessible.
+  int64 collective_graph_key = 7;
+
+  // ConfigProto from the session in which this graph was created.
+  // Contains additional parameters beyond graph_options, including
+  // the name of the requested executor.
+  ConfigProto config_proto = 8;
 }
 
 message RegisterGraphResponse {
@@ -95,6 +171,13 @@ message RegisterGraphResponse {
 ////////////////////////////////////////////////////////////////////////////////
 
 message DeregisterGraphRequest {
+  // The session_handle used when registering the graph. If session_handle is
+  // empty, a single global namespace is used.
+  string session_handle = 2;
+
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  bool create_worker_session_called = 3;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   string graph_handle = 1;
@@ -113,7 +196,7 @@ message DeregisterGraphResponse {
 message CleanupAllRequest {
   // A list of container names.
   //
-  // If 'container' is not empty, releases resoures in the given
+  // If 'container' is not empty, releases resources in the given
   // containers in all devices.
   //
   // If 'container' is empty, releases resources in the default
@@ -121,8 +204,7 @@ message CleanupAllRequest {
   repeated string container = 1;
 }
 
-message CleanupAllResponse {
-}
+message CleanupAllResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -140,9 +222,20 @@ message CleanupAllResponse {
 message ExecutorOpts {
   bool record_costs = 1;
   bool record_timeline = 3;
-};
+  bool record_partition_graphs = 4;
+  bool report_tensor_allocations_upon_oom = 5;
+}
 
 message RunGraphRequest {
+  // session_handle is the master-generated unique id for this session.
+  // If session_handle is non-empty, it must be the same as used when
+  // registering the graph. If it is empty, a single global namespace is used to
+  // search for the graph_handle.
+  string session_handle = 8;
+
+  // Set to true if `CreateWorkerSession` was called for `session_handle`.
+  bool create_worker_session_called = 10;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   string graph_handle = 1;
@@ -169,6 +262,25 @@ message RunGraphRequest {
   bool is_partial = 6;
   // True if this is the last partial run request in a sequence of requests.
   bool is_last_partial_run = 7;
+
+  // If true then some errors, e.g., execution errors that have long
+  // error messages, may return an OK RunGraphResponse with the actual
+  // error saved in the status_code/status_error_message fields of the
+  // response body. This is a workaround since the RPC subsystem may
+  // truncate long metadata messages.
+  bool store_errors_in_response_body = 9;
+
+  // Unique identifier for this request. Every RunGraphRequest must have a
+  // unique request_id, and retried RunGraphRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
+  //
+  // Retried RunGraphRequests are problematic because they may issue a
+  // RecvTensor that will have no corresponding sender and will wait forever.
+  // Workers use request_ids to reject retried RunGraph requests instead of
+  // waiting forever.
+  int64 request_id = 11;
+
+  // Next: 12
 }
 
 message RunGraphResponse {
@@ -176,10 +288,19 @@ message RunGraphResponse {
   // `RunGraphRequest.recv_key`.
   repeated NamedTensorProto recv = 1;
 
-  // If the request asked for execution stats or cost graph, these are returned
-  // here.
+  // If the request asked for execution stats, the cost graph, or the partition
+  // graphs, these are returned here.
+  // TODO(suharshs): Package these in a RunMetadata instead.
   StepStats step_stats = 2;
   CostGraphDef cost_graph = 3;
+  repeated GraphDef partition_graph = 4;
+
+  // If store_errors_in_response_body is true in the request, then
+  // optionally the server may return an OK status for the RPC and
+  // fill the true status into the fields below, to allow for messages
+  // that are too long to fit in metadata.
+  error.Code status_code = 5;
+  string status_error_message = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -201,8 +322,7 @@ message CleanupGraphRequest {
   int64 step_id = 1;
 }
 
-message CleanupGraphResponse {
-}
+message CleanupGraphResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -217,7 +337,10 @@ message RecvTensorRequest {
   // into a RunGraph call on the same WorkerService.
   int64 step_id = 1;
 
-  // A key that identifies the tensor to be received.
+  // A key identifying the channel to receive tensors from. A RecvTensor request
+  // retrieves one tensor from the channel, but multiple tensors can be sent and
+  // received over the same channel with multiple RecvTensor requests. See
+  // rendezvous.h for details.
   string rendezvous_key = 2;
 
   // If true, use an out-of-band DMA mechanism to transfer the
@@ -229,6 +352,20 @@ message RecvTensorRequest {
 
   // Optional information on server-side device locality.
   DeviceLocality server_locality = 5;
+
+  // Optional information needed by the RPC subsystem.
+  google.protobuf.Any transport_options = 6;
+
+  // Unique identifier for this request. Every RecvTensorRequest must have a
+  // unique request_id, and retried RecvTensorRequests must have the same
+  // request_id. If request_id is zero, retry detection and response cache
+  // are disabled.
+  //
+  // Retried RecvTensorRequests are problematic because a RecvTensor with no
+  // corresponding sender will wait forever, and the tensor may have been
+  // delivered to a previous retry. Workers use request_ids to reject retried
+  // RecvTensor requests instead of waiting forever.
+  int64 request_id = 7;
 }
 
 message RecvTensorResponse {
@@ -243,9 +380,21 @@ message RecvTensorResponse {
   int64 send_start_micros = 3;
 
   // Optional additional information about how to receive the tensor,
-  // in the event that `RecvTensorRequest.dma_ok` was true.
+  // e.g. in the event that `RecvTensorRequest.dma_ok` was true.
   google.protobuf.Any transport_options = 4;
+
+  // Whether the receiver should send a MarkRecvFinishedRequest to the sender
+  // to ack the message.
+  bool require_ack = 5;
 }
+
+// Message for managing the response cache maintained on the sender side.
+// Currently only used by the gRPC worker service.
+message MarkRecvFinishedRequest {
+  int64 request_id = 1;
+}
+
+message MarkRecvFinishedResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -259,8 +408,11 @@ message RecvTensorResponse {
 // Out-of-band request to begin or end logging, or
 // to retrieve logs for particular steps.
 message LoggingRequest {
-  // If true, RPC logging will be activated.
-  bool rpc_logging = 1;
+  // If true, RPC logging will be enabled.
+  bool enable_rpc_logging = 1;
+
+  // If true, RPC logging will be disabled.
+  bool disable_rpc_logging = 4;
 
   // If true, discard any saved logging data (for all steps).
   bool clear = 2;
@@ -311,5 +463,145 @@ message TracingRequest {
   TraceOpts options = 1;
 }
 
-message TracingResponse {
+message TracingResponse {}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Raw data transfers in support of Collective Ops.
+// These methods are experimental and subject to change.
+//
+// The intention is to allow collectives to take advantage of the most
+// efficient methods available on a platform, e.g. RDMA, and not be
+// constrained to use the RPC system in use by other methods.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+message RecvBufRequest {
+  // Use of the fields below may vary by implementation.  For example
+  // the buf_ptr and num_bytes may be set only for local operations and
+  // not sent on the wire, or only sent on the wire in one direction.
+
+  // Used at server side to find the correct BufRendezvous.
+  int64 step_id = 1;
+
+  // Arbitrary string identifying a BufRendezvous entry.
+  string buf_rendezvous_key = 2;
+
+  // Size of value expected, must agree with BufRendezvous entry.
+  int64 num_bytes = 3;
+
+  // When RDMA is in use, address of destination field on client.
+  fixed64 buf_ptr = 4;
+
+  // Optional information on client-side device locality.
+  DeviceLocality client_locality = 5;
+
+  // Optional information on server-side device locality.
+  DeviceLocality server_locality = 6;
+
+  // Optional, implementation-specific data.
+  google.protobuf.Any transport_options = 7;
+  // For annotating timeline and device incarnation check.
+  string src_device = 8;
+  // Optional, for annotating the timeline.
+  string dst_device = 9;
+
+  // Depending on the RPC system in use, it may be necessary to set this
+  // id to detect resends of RPCs where the server is not aware that
+  // the prior RPC failed.
+  int64 request_id = 10;
+
+  // Incarnation number of the source device, used to detect worker failures.
+  uint64 src_incarnation = 11;
+}
+
+message RecvBufResponse {
+  // Use of the fields below may vary by implementation.  Comments give
+  // intended use.
+
+  fixed64 buf_ptr = 1;  // Address of source field on server.
+  int64 num_bytes = 2;  // Byte length of buf_ptr field, if set.
+  bool is_dead = 3;     // True if value is 'dead' like a tensor.
+  // Optional, implementation-specific data.
+  google.protobuf.Any transport_options = 4;
+  // Optional, for timeline.
+  int64 send_start_micros = 5;
+
+  // Whether the receiver should send a MarkRecvFinishedRequest to the sender
+  // to ack the message.
+  bool require_ack = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// Collective Op dynamic group resolution messages.
+//
+////////////////////////////////////////////////////////////////////////////////
+
+// Supplies one or more device names as members of the group identified by
+// group_key.  Service will respond when all group_size devices become known.
+// All devices in group must have same type.
+message CompleteGroupRequest {
+  int32 group_key = 1;
+  int32 group_size = 2;
+  string device_type = 3;
+  int32 collective_type = 5;
+  DeviceAttributes device_attributes = 6;
+
+  reserved 4;
+}
+
+// Gives the complete membership of the group identified by group_key.
+message CompleteGroupResponse {
+  int32 group_key = 1;
+  int32 group_size = 2;
+  string device_type = 3;
+  int32 num_tasks = 4;  // number of distinct tasks hosting the devices
+  bytes communicator_key = 7;
+  repeated DeviceAttributes device_attributes = 8;
+
+  reserved 5, 6;
+}
+
+// Supplies data about one collective op belonging to the instance identified
+// by instance_key.  Service will respond when all group_size ops have
+// become known.  Most of the data being sent is for correctness checking,
+// to ensure that all ops in the instance share common attributes.
+message CompleteInstanceRequest {
+  string name = 1;
+  int32 type = 2;
+  DataType data_type = 3;
+  TensorShapeProto shape = 4;
+  int32 group_key = 5;
+  int32 group_size = 6;
+  int32 instance_key = 7;
+  string device_type = 8;
+  repeated int32 subdiv_offset = 9;
+  string device = 10;
+  bool is_source = 11;
+}
+
+// Confirms that every op in the instance has consistently declared itself.
+// Also gives the source_rank in case of broadcast.
+message CompleteInstanceResponse {
+  int32 instance_key = 1;
+  int32 source_rank = 2;
+  reserved 3;
+}
+
+// Request for next agreed-upon step_id for the specified graph_keys.
+// This is used to enable multiple graphs containing nodes from
+// a common collective instance to coordinate using the same step_ids.
+message GetStepSequenceRequest {
+  repeated int64 graph_key = 1;
+}
+
+message StepSequence {
+  int64 graph_key = 1;
+  int64 next_step_id = 2;
+}
+
+// Next valid step_ids for one or more graph_keys.
+message GetStepSequenceResponse {
+  repeated StepSequence step_sequence = 1;
 }

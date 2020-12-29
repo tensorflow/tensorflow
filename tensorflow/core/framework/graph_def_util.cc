@@ -20,19 +20,25 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/framework/versions.pb_text.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
 namespace tensorflow {
 
 string SummarizeGraphDef(const GraphDef& graph_def) {
   string ret;
-  strings::StrAppend(&ret, "versions = ",
-                     ProtoShortDebugString(graph_def.versions()), ";\n");
+  strings::StrAppend(
+      &ret, "versions = ", graph_def.versions().ShortDebugString(), ";\n");
   for (const NodeDef& node : graph_def.node()) {
     strings::StrAppend(&ret, SummarizeNodeDef(node), ";\n");
   }
@@ -49,6 +55,12 @@ Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
 Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
                                  const OpRegistryInterface& op_registry,
                                  int node_offset) {
+  return AddDefaultAttrsToGraphDef(graph_def, op_registry, node_offset, false);
+}
+
+Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
+                                 const OpRegistryInterface& op_registry,
+                                 int node_offset, bool skip_unknown_ops) {
   if (node_offset > graph_def->node_size()) {
     return errors::InvalidArgument(
         "Tried to add default attrs to GraphDef "
@@ -59,8 +71,12 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
   for (int i = node_offset; i < graph_def->node_size(); ++i) {
     NodeDef* node_def = graph_def->mutable_node(i);
     const OpDef* op_def;
-    TF_RETURN_IF_ERROR(op_registry.LookUpOpDef(node_def->op(), &op_def));
-    AddDefaultsToNodeDef(*op_def, node_def);
+    Status s = op_registry.LookUpOpDef(node_def->op(), &op_def);
+    if (s.ok()) {
+      AddDefaultsToNodeDef(*op_def, node_def);
+    } else if (!skip_unknown_ops) {
+      return s;
+    }
   }
 
   return Status::OK();
@@ -80,15 +96,15 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
   std::vector<string> to_remove;
   for (const auto& attr : node_def->attr()) {
     // If the attr is not in consumer_op_def and doesn't start with '_'...
-    if (!StringPiece(attr.first).starts_with("_") &&
+    if (!absl::StartsWith(attr.first, "_") &&
         FindAttr(attr.first, *consumer_op_def) == nullptr) {
       const OpDef::AttrDef* producer_attr_def =
           FindAttr(attr.first, *producer_op_def);
       if (producer_attr_def == nullptr) {
         return errors::InvalidArgument(
-            "Attr '", attr.first, "' missing in producer's OpDef: ",
-            SummarizeOpDef(*producer_op_def), " but found in node: ",
-            SummarizeNodeDef(*node_def));
+            "Attr '", attr.first,
+            "' missing in producer's OpDef: ", SummarizeOpDef(*producer_op_def),
+            " but found in node: ", FormatNodeDefForError(*node_def));
       }
       // ...and it has the same value as the default in producer,
       if (producer_attr_def->has_default_value() &&
@@ -146,6 +162,42 @@ Status RemoveNewDefaultAttrsFromGraphDef(
   }
 
   return Status::OK();
+}
+
+void StripDefaultAttributes(const OpRegistryInterface& op_registry,
+                            protobuf::RepeatedPtrField<NodeDef>* nodes) {
+  for (int i = 0; i < nodes->size(); ++i) {
+    NodeDef* node = nodes->Mutable(i);
+
+    const OpDef* op_def;
+    const OpRegistrationData* op_reg_data = nullptr;
+    Status s = op_registry.LookUp(node->op(), &op_reg_data);
+    if (!s.ok()) {
+      VLOG(1) << "Ignoring encountered unknown operation "
+              << SummarizeNodeDef(*node)
+              << " when stripping default attributes. It is likely a function, "
+                 "in which case ignoring it is fine";
+      continue;
+    }
+    op_def = &op_reg_data->op_def;
+
+    for (const OpDef::AttrDef& attr_def : op_def->attr()) {
+      if (attr_def.has_default_value()) {
+        AttrValueMap* attrs = node->mutable_attr();
+        const string& name = attr_def.name();
+        auto iter = attrs->find(name);
+        if (iter != attrs->end()) {
+          const AttrValue& default_value = attr_def.default_value();
+          // The "Fast*" version can return false negatives for very large
+          // AttrValues containing Tensors. There should never be an attribute
+          // whose default value is a tensor larger than 32MB.
+          if (FastAreAttrValuesEqual(iter->second, default_value)) {
+            attrs->erase(name);
+          }
+        }
+      }
+    }
+  }
 }
 
 void OpsUsedByGraph(const GraphDef& graph_def,

@@ -1,0 +1,21 @@
+op {
+  graph_op_name: "StringStrip"
+  in_arg {
+    name: "input"
+    description: <<END
+A string `Tensor` of any shape.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A string `Tensor` of the same shape as the input.
+
+Examples:
+
+>>> tf.strings.strip(["\nTensorFlow", "     The python library    "]).numpy()
+array([b'TensorFlow', b'The python library'], dtype=object)
+END
+  }
+  summary: "Strip leading and trailing whitespaces from the Tensor."
+}

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/fake_input.h"
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -103,8 +104,8 @@ Status FakeInputImpl::AddInputToBuilder() {
       Status status = GetNodeAttr(*node_def_, arg_->type_list_attr(), &dts);
       if (!status.ok()) {
         return errors::InvalidArgument(
-            "Could not infer list of types for input '", arg_->name(), "': ",
-            status.error_message());
+            "Could not infer list of types for input '", arg_->name(),
+            "': ", status.error_message());
       }
       SourceList(dts);
       return Status::OK();
@@ -130,8 +131,8 @@ Status FakeInputImpl::GetN(int* n) const {
     Status status = GetNodeAttr(*node_def_, arg_->number_attr(), n);
     if (!status.ok()) {
       return errors::InvalidArgument("Could not infer length of input '",
-                                     arg_->name(), "': ",
-                                     status.error_message());
+                                     arg_->name(),
+                                     "': ", status.error_message());
     }
   }
   return Status::OK();
@@ -152,8 +153,8 @@ Status FakeInputImpl::GetDataType(DataType* dt) const {
         *dt = attr->default_value().type();
       } else {
         return errors::InvalidArgument("Could not infer type for input '",
-                                       arg_->name(), "': ",
-                                       status.error_message());
+                                       arg_->name(),
+                                       "': ", status.error_message());
       }
     }
   } else {

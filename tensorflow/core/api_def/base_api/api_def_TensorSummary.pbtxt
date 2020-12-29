@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "TensorSummary"
+  in_arg {
+    name: "tensor"
+    description: <<END
+A tensor to serialize.
+END
+  }
+  attr {
+    name: "description"
+    description: <<END
+A json-encoded SummaryDescription proto.
+END
+  }
+  attr {
+    name: "labels"
+    description: <<END
+An unused list of strings.
+END
+  }
+  attr {
+    name: "display_name"
+    description: <<END
+An unused string.
+END
+  }
+  summary: "Outputs a `Summary` protocol buffer with a tensor."
+  description: <<END
+This op is being phased out in favor of TensorSummaryV2, which lets callers pass
+a tag as well as a serialized SummaryMetadata proto string that contains
+plugin-specific data. We will keep this op to maintain backwards compatibility.
+END
+}

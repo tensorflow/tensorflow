@@ -13,230 +13,131 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_TRACING_H_
-#define TENSORFLOW_PLATFORM_TRACING_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TRACING_H_
+#define TENSORFLOW_CORE_PLATFORM_TRACING_H_
 
 // Tracing interface
 
-#include <atomic>
-#include <map>
-#include <memory>
+#include <array>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace tracing {
 
-namespace port {
+// This enumeration contains the identifiers of all TensorFlow CPU profiler
+// events. It must be kept in sync with the code in GetEventCategoryName().
+enum struct EventCategory : unsigned {
+  kScheduleClosure = 0,
+  kRunClosure = 1,
+  kCompute = 2,
+  kNumCategories = 3  // sentinel - keep last
+};
+constexpr unsigned GetNumEventCategories() {
+  return static_cast<unsigned>(EventCategory::kNumCategories);
+}
+const char* GetEventCategoryName(EventCategory);
 
-class Tracing {
+// Interface for CPU profiler events.
+class EventCollector {
  public:
-  // This enumeration contains the identifiers of all TensorFlow
-  // threadscape events and code regions.  Threadscape assigns its
-  // own identifiers at runtime when we register our events and we
-  // cannot know in advance what IDs it will choose.  The "RecordEvent"
-  // method and "ScopedActivity" use these event IDs for consistency
-  // and remap them to threadscape IDs at runtime.  This enum is limited
-  // to 64 values since we use a bitmask to configure which events are
-  // enabled.  It must also be kept in step with the code in
-  // "Tracing::EventCategoryString".
-  enum EventCategory {
-    kScheduleClosure = 0,
-    kRunClosure = 1,
-    kCompute = 2,
-    kEventCategoryMax = 3  // sentinel - keep last
-  };
-  // Note: We currently only support up to 64 categories.
-  static_assert(kEventCategoryMax <= 64, "only support up to 64 events");
+  virtual ~EventCollector() {}
+  virtual void RecordEvent(uint64 arg) const = 0;
+  virtual void StartRegion(uint64 arg) const = 0;
+  virtual void StopRegion() const = 0;
 
-  // Called by main programs to initialize tracing facilities
-  static void Initialize();
-
-  // Return the pathname of the directory where we are writing log files.
-  static const char* LogDir();
-
-  // Returns a non-zero identifier which can be used to correlate
-  // related events.
-  static inline uint64 UniqueId();
-
-  // Returns true if a trace is in progress.  Can be used to reduce tracing
-  // overheads in fast-path code.
-  static inline bool IsActive();
-
-  // Associate name with the current thread.
-  static void RegisterCurrentThread(const char* name);
-
-  // Posts an event with the supplied category and arg.
-  static void RecordEvent(EventCategory category, uint64 arg);
-
-  // Traces a region of code.  Posts a tracing "EnterCodeRegion" event
-  // when created and an "ExitCodeRegion" event when destroyed.
-  class ScopedActivity {
-   public:
-    explicit ScopedActivity(EventCategory category, uint64 arg);
-    ~ScopedActivity();
-
-   private:
-#if defined(PLATFORM_GOOGLE)
-    const bool enabled_;
-    const int32 region_id_;
-#endif
-
-    TF_DISALLOW_COPY_AND_ASSIGN(ScopedActivity);
-  };
-
-  // Trace collection engine can be registered with this module.
-  // If no engine is registered, ScopedAnnotation and TraceMe are no-ops.
-  class Engine;
-  static void RegisterEngine(Engine*);
-
-  // Forward declaration of the GPU utility classes.
-  class ScopedAnnotation;
-  class TraceMe;
+  // Annotates the current thread with a name.
+  static void SetCurrentThreadName(const char* name);
+  // Returns whether event collection is enabled.
+  static bool IsEnabled();
 
  private:
-  friend class TracingTest;
-  friend class ScopedAnnotation;
-  friend class TraceMe;
+  friend void SetEventCollector(EventCategory, const EventCollector*);
+  friend const EventCollector* GetEventCollector(EventCategory);
 
-  static std::atomic<Tracing::Engine*> tracing_engine_;
-  static Tracing::Engine* engine() {
-    return tracing_engine_.load(std::memory_order_acquire);
+  static std::array<const EventCollector*, GetNumEventCategories()> instances_;
+};
+// Set the callback for RecordEvent and ScopedRegion of category.
+// Not thread safe. Only call while EventCollector::IsEnabled returns false.
+void SetEventCollector(EventCategory category, const EventCollector* collector);
+
+// Returns the callback for RecordEvent and ScopedRegion of category if
+// EventCollector::IsEnabled(), otherwise returns null.
+inline const EventCollector* GetEventCollector(EventCategory category) {
+  if (EventCollector::IsEnabled()) {
+    return EventCollector::instances_[static_cast<unsigned>(category)];
   }
+  return nullptr;
+}
 
-  static void RegisterEvent(EventCategory id, const char* name);
-  static const char* EventCategoryString(EventCategory category);
+// Returns a unique id to pass to RecordEvent/ScopedRegion. Never returns zero.
+uint64 GetUniqueArg();
 
-  //
-  // Parses event mask expressions in 'value' of the form:
-  //   expr ::= <term> (,<term>)*
-  //   term ::= <event> | "!" <event>
-  //   event ::= "ALL" | <wait_event> | <other_event>
-  //   wait_event ::= "ENewSession" | "ECloseSession" | ...
-  //   other_event ::= "Send" | "Wait" | ...
-  // ALL denotes all events, <event> turns on tracing for this event, and
-  // !<event> turns off tracing for this event.
-  // If the expression can be parsed correctly it returns true and sets
-  // the event_mask_. Otherwise it returns false and the event_mask_ is left
-  // unchanged.
-  static bool ParseEventMask(const char* flagname, const string& value);
+// Returns an id for name to pass to RecordEvent/ScopedRegion.
+uint64 GetArgForName(StringPiece name);
 
-  // Bit mask of enabled trace categories.
-  static uint64 event_mask_;
-
-  // Records the mappings between Threadscape IDs and the "EventCategory" enum.
-  static int32 category_id_[kEventCategoryMax];
-  static std::map<string, int32>* name_map_;
-};
-
-// Trace collection engine that actually implements collection.
-class Tracing::Engine {
- public:
-  Engine() {}
-  virtual ~Engine();
-
-  // Returns true if Tracing is currently enabled.
-  virtual bool IsEnabled() const = 0;
-
-  // Represents an active annotation.
-  class Annotation {
-   public:
-    Annotation() {}
-    virtual ~Annotation();
-  };
-
-  // Represents an active trace.
-  class Tracer {
-   public:
-    Tracer() {}
-    virtual ~Tracer();
-  };
-
- private:
-  friend class ScopedAnnotation;
-  friend class TraceMe;
-
-  // Register the specified name as an annotation on the current thread.
-  // Caller should delete the result to remove the annotation.
-  // Annotations from the same thread are destroyed in a LIFO manner.
-  // May return nullptr if annotations are not supported.
-  virtual Annotation* PushAnnotation(StringPiece name) = 0;
-
-  // Start tracing under the specified label.  Caller should delete the
-  // result to stop tracing.
-  // May return nullptr if tracing is not supported.
-  virtual Tracer* StartTracing(StringPiece label) = 0;
-};
-
-// This class permits a user to apply annotation on kernels and memcpys
-// when launching them. While an annotation is in scope, all activities
-// within that scope get their names replaced by the annotation. The kernel
-// name replacement is done when constructing the protobuf for sending out to
-// a client (e.g., the stubby requestor) for both API and Activity records.
-//
-// Ownership: The creator of ScopedAnnotation assumes ownership of the object.
-//
-// Usage: {
-//          ScopedAnnotation annotation("first set of kernels");
-//          Kernel1<<<x,y>>>;
-//          LaunchKernel2(); // Which eventually launches a cuda kernel.
-//        }
-// In the above scenario, the GPUProf UI would show 2 kernels with the name
-// "first set of kernels" executing -- they will appear as the same kernel.
-class Tracing::ScopedAnnotation {
- public:
-  explicit ScopedAnnotation(StringPiece name);
-
-  // If tracing is enabled, set up an annotation with a label of
-  // "<name_part1>:<name_part2>".  Can be cheaper than the
-  // single-argument constructor because the concatenation of the
-  // label string is only done if tracing is enabled.
-  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2);
-
- private:
-  std::unique_ptr<Engine::Annotation> annotation_;
-};
-
-// TODO(opensource): clean up the scoped classes for GPU tracing.
-// This class permits user-specified (CPU) tracing activities. A trace
-// activity is started when an object of this class is created and stopped
-// when the object is destroyed.
-class Tracing::TraceMe {
- public:
-  explicit TraceMe(StringPiece name);
-
- private:
-  std::unique_ptr<Engine::Tracer> tracer_;
-};
-
-inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name) {
-  auto e = Tracing::engine();
-  if (e && e->IsEnabled()) {
-    annotation_.reset(e->PushAnnotation(name));
+// Records an atomic event through the currently registered EventCollector.
+inline void RecordEvent(EventCategory category, uint64 arg) {
+  if (auto collector = GetEventCollector(category)) {
+    collector->RecordEvent(arg);
   }
 }
 
-inline Tracing::ScopedAnnotation::ScopedAnnotation(StringPiece name_part1,
-                                                   StringPiece name_part2) {
-  auto e = Tracing::engine();
-  if (e && e->IsEnabled()) {
-    annotation_.reset(
-        e->PushAnnotation(strings::StrCat(name_part1, ":", name_part2)));
+// Records an event for the duration of the instance lifetime through the
+// currently registered EventCollector.
+class ScopedRegion {
+ public:
+  ScopedRegion(ScopedRegion&& other) noexcept  // Move-constructible.
+      : collector_(other.collector_) {
+    other.collector_ = nullptr;
   }
-}
 
-inline Tracing::TraceMe::TraceMe(StringPiece name) {
-  auto e = Tracing::engine();
-  if (e && e->IsEnabled()) {
-    tracer_.reset(e->StartTracing(name));
+  ScopedRegion(EventCategory category, uint64 arg)
+      : collector_(GetEventCollector(category)) {
+    if (collector_) {
+      collector_->StartRegion(arg);
+    }
   }
-}
 
-}  // namespace port
+  // Same as ScopedRegion(category, GetUniqueArg()), but faster if
+  // EventCollector::IsEnabled() returns false.
+  explicit ScopedRegion(EventCategory category)
+      : collector_(GetEventCollector(category)) {
+    if (collector_) {
+      collector_->StartRegion(GetUniqueArg());
+    }
+  }
+
+  // Same as ScopedRegion(category, GetArgForName(name)), but faster if
+  // EventCollector::IsEnabled() returns false.
+  ScopedRegion(EventCategory category, StringPiece name)
+      : collector_(GetEventCollector(category)) {
+    if (collector_) {
+      collector_->StartRegion(GetArgForName(name));
+    }
+  }
+
+  ~ScopedRegion() {
+    if (collector_) {
+      collector_->StopRegion();
+    }
+  }
+
+  bool IsEnabled() const { return collector_ != nullptr; }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRegion);
+
+  const EventCollector* collector_;
+};
+
+// Return the pathname of the directory where we are writing log files.
+const char* GetLogDir();
+
+}  // namespace tracing
 }  // namespace tensorflow
 
 #if defined(PLATFORM_GOOGLE)
@@ -245,4 +146,4 @@ inline Tracing::TraceMe::TraceMe(StringPiece name) {
 #include "tensorflow/core/platform/default/tracing_impl.h"
 #endif
 
-#endif  // TENSORFLOW_PLATFORM_TRACING_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TRACING_H_

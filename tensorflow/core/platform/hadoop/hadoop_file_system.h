@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+#define TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+
+#include <map>
 
 #include "tensorflow/core/platform/env.h"
+#include "third_party/hadoop/hdfs.h"
 
 extern "C" {
 struct hdfs_internal;
@@ -32,42 +35,55 @@ class HadoopFileSystem : public FileSystem {
   HadoopFileSystem();
   ~HadoopFileSystem();
 
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewWritableFile(const string& fname,
+  Status NewRandomAccessFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
+
+  Status NewWritableFile(const string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status DeleteFile(const string& fname) override;
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                          std::vector<string>* results) override;
 
-  Status CreateDir(const string& name) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status DeleteDir(const string& name) override;
+  Status CreateDir(const string& dir, TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, uint64* size) override;
+  Status DeleteDir(const string& dir, TransactionToken* token) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* size) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
+
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
   string TranslateName(const string& name) const override;
 
  private:
+  mutex mu_;
+  std::map<std::string, hdfsFS> connectionCache_ TF_GUARDED_BY(mu_);
   Status Connect(StringPiece fname, hdfsFS* fs);
-  LibHDFS* hdfs_;
 };
+
+Status SplitArchiveNameAndPath(StringPiece& path, string& nn);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_HADOOP_HADOOP_FILE_SYSTEM_H_

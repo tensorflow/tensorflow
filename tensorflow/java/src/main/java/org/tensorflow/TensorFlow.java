@@ -20,23 +20,61 @@ public final class TensorFlow {
   /** Returns the version of the underlying TensorFlow runtime. */
   public static native String version();
 
+  /**
+   * All the TensorFlow operations available in this address space.
+   *
+   * @return A serialized representation of an <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto">OpList</a>
+   *     protocol buffer, which lists all the available TensorFlow operations.
+   */
+  public static native byte[] registeredOpList();
+
+  /**
+   * Load the dynamic library in filename and register the operations and kernels present in that
+   * library.
+   *
+   * @param filename Path of the dynamic library containing operations and kernels to load.
+   * @return Serialized bytes of the <a
+   *     href="https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto">OpList</a>
+   *     protocol buffer message defining the operations defined in the library.
+   * @throws UnsatisfiedLinkError if filename cannot be loaded.
+   */
+  public static byte[] loadLibrary(String filename) {
+    long h = 0;
+    try {
+      h = libraryLoad(filename);
+    } catch (RuntimeException e) {
+      throw new UnsatisfiedLinkError(e.getMessage());
+    }
+    try {
+      return libraryOpList(h);
+    } finally {
+      libraryDelete(h);
+    }
+  }
+
+  private static native long libraryLoad(String filename);
+
+  private static native void libraryDelete(long handle);
+
+  private static native byte[] libraryOpList(long handle);
+
   private TensorFlow() {}
 
   /** Load the TensorFlow runtime C library. */
   static void init() {
     try {
-      System.loadLibrary("tensorflow_jni");
-    } catch (UnsatisfiedLinkError e) {
-      // The native code might have been statically linked (through a custom launcher) or be part of
-      // an application-level library. For example, tensorflow/examples/android and
-      // tensorflow/contrib/android include the required native code in differently named libraries.
-      // To allow for such cases, the UnsatisfiedLinkError does not bubble up here.
-      try {
-        version();
-      } catch (UnsatisfiedLinkError e2) {
-        System.err.println(
-            "TensorFlow Java API methods will throw an UnsatisfiedLinkError unless native code shared libraries are loaded");
-      }
+      NativeLibrary.load();
+    } catch (Exception e) {
+      /*
+       * This code is called during static initialization of this and of other classes.
+       * If this fails then a NoClassDefFoundError is thrown however this does not
+       * include a cause. Printing the exception manually here ensures that the
+       * necessary information to fix the problem is available.
+       */
+      System.err.println("Failed to load TensorFlow native library");
+      e.printStackTrace();
+      throw e;
     }
   }
 

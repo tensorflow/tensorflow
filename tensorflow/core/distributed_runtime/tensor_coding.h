@@ -76,7 +76,8 @@ class TensorResponse {
 
   // Initialize tensor metadata from response and allocate
   // uninitialized backing storage for actual contents.
-  void InitPartial(const RecvTensorResponse& response);
+  void InitPartial(const RecvTensorResponse& response,
+                   const AllocationAttributes& allocation_attr);
 
   // Return a reference to the parsed tensor.  The tensor will remain
   // live only until *this is destroyed or modified.
@@ -86,6 +87,9 @@ class TensorResponse {
   // The result will remain live only until *this is destroyed or
   // modified.
   const RecvTensorResponse& metadata() const { return meta_; }
+
+  // Return pointer to the device hosting the tensor.
+  DeviceBase* device() const { return device_; }
 
  private:
   bool ParseTensorSubmessage(protobuf::io::CodedInputStream* input,

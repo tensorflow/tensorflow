@@ -13,11 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_EVENTS_WRITER_H_
-#define TENSORFLOW_UTIL_EVENTS_WRITER_H_
+#ifndef TENSORFLOW_CORE_UTIL_EVENTS_WRITER_H_
+#define TENSORFLOW_CORE_UTIL_EVENTS_WRITER_H_
 
 #include <memory>
 #include <string>
+
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
@@ -35,15 +37,15 @@ class EventsWriter {
 #endif
 
   // Events files typically have a name of the form
-  //   '/some/file/path/my.file.out.events.[timestamp].[hostname]'
+  //   '/some/file/path/my.file.out.events.[timestamp].[hostname][suffix]'
   // To create and EventWriter, the user should provide file_prefix =
   //   '/some/file/path/my.file'
-  // The EventsWriter will append '.out.events.[timestamp].[hostname]'
+  // The EventsWriter will append '.out.events.[timestamp].[hostname][suffix]'
   // to the ultimate filename once Init() is called.
   // Note that it is not recommended to simultaneously have two
   // EventWriters writing to the same file_prefix.
-  explicit EventsWriter(const string& file_prefix);
-  ~EventsWriter() { Close(); }  // Autoclose in destructor.
+  explicit EventsWriter(const std::string& file_prefix);
+  ~EventsWriter();
 
   // Sets the event file filename and opens file for writing.  If not called by
   // user, will be invoked automatically by a call to FileName() or Write*().
@@ -51,11 +53,12 @@ class EventsWriter {
   // and is open this is a no-op.  If on the other hand the file was opened,
   // but has since disappeared (e.g. deleted by another process), this will open
   // a new file with a new timestamp in its filename.
-  bool Init();
+  Status Init();
+  Status InitWithSuffix(const std::string& suffix);
 
   // Returns the filename for the current events file:
-  // filename_ = [file_prefix_].out.events.[timestamp].[hostname]
-  string FileName();
+  // filename_ = [file_prefix_].out.events.[timestamp].[hostname][suffix]
+  std::string FileName();
 
   // Append "event" to the file.  The "tensorflow::" part is for swig happiness.
   void WriteEvent(const tensorflow::Event& event);
@@ -73,15 +76,17 @@ class EventsWriter {
   // be written too.
   //   Close() calls Flush() and then closes the current events file.
   // Returns true only if both the flush and the closure were successful.
-  bool Flush();
-  bool Close();
+  Status Flush();
+  Status Close();
 
  private:
-  bool FileHasDisappeared();  // True if event_file_path_ does not exist.
+  Status FileStillExists();  // OK if event_file_path_ exists.
+  Status InitIfNeeded();
 
   Env* env_;
-  const string file_prefix_;
-  string filename_;
+  const std::string file_prefix_;
+  std::string file_suffix_;
+  std::string filename_;
   std::unique_ptr<WritableFile> recordio_file_;
   std::unique_ptr<io::RecordWriter> recordio_writer_;
   int num_outstanding_events_;
@@ -90,4 +95,4 @@ class EventsWriter {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_EVENTS_WRITER_H_
+#endif  // TENSORFLOW_CORE_UTIL_EVENTS_WRITER_H_

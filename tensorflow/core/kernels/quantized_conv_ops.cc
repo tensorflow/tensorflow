@@ -22,11 +22,11 @@ limitations under the License.
 
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
 #include "public/gemmlowp.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/meta_support.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/kernels/reference_gemm.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -88,9 +88,9 @@ class ReferenceConvFunctor {
     int filter_top_offset;
     if (padding == VALID) {
       filter_left_offset =
-          ((output_width - 1) * stride + filter_width - input_width) / 2;
+          ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
       filter_top_offset =
-          ((output_height - 1) * stride + filter_height - input_height) / 2;
+          ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
     } else {
       filter_left_offset =
           ((output_width - 1) * stride + filter_width - input_width) / 2;
@@ -211,7 +211,7 @@ class Im2ColConvFunctor {
         ++warning_count;
         LOG(WARNING)
             << "For kernel '" << context->op_kernel().name() << "' from input '"
-            << context->op_kernel().def().input(0)
+            << context->op_kernel().requested_input(0)
             << "': Zero is not representable in the quantized range used by the"
             << " input. This means QuantizedConv2d has to fall back to a slow"
             << " implementation, since the border of zero values can't be"
@@ -233,9 +233,9 @@ class Im2ColConvFunctor {
     int filter_top_offset;
     if (padding == VALID) {
       filter_left_offset =
-          ((output_width - 1) * stride + filter_width - input_width) / 2;
+          ((output_width - 1) * stride + filter_width - input_width + 1) / 2;
       filter_top_offset =
-          ((output_height - 1) * stride + filter_height - input_height) / 2;
+          ((output_height - 1) * stride + filter_height - input_height + 1) / 2;
     } else {
       filter_left_offset =
           ((output_width - 1) * stride + filter_width - input_width) / 2;
@@ -268,13 +268,19 @@ class Im2ColConvFunctor {
     Im2ColBufferResource<T1, chunk_value_count>* im2col_buffer_resource;
     std::function<Status(Im2ColBufferResource<T1, chunk_value_count>**)>
         creator = [](Im2ColBufferResource<T1, chunk_value_count>** resource) {
+#ifdef _MSC_VER
+          // MSVC complains about the capture of chunk_value_count which oddly
+          // works fine in conv_ops_using_gemm.cc for example.
+          // Define chunk_value_count inside the lambda for now.
+          const int64 chunk_value_count =
+              (kMaxChunkSize + (sizeof(T1) - 1)) / sizeof(T1);
+#endif
           *resource = new Im2ColBufferResource<T1, chunk_value_count>();
           return Status::OK();
         };
-    OP_REQUIRES_OK(
-        context,
-        context->resource_manager()->LookupOrCreate(
-            "Conv2d", "im2col_buffer", &im2col_buffer_resource, creator));
+    OP_REQUIRES_OK(context, context->resource_manager()->LookupOrCreate(
+                                "Conv2d", "im2col_buffer",
+                                &im2col_buffer_resource, creator));
     // This means that multiple ops can't be run simultaneously on different
     // threads, because we have a single shared resource. The platforms this is
     // aimed at have intra-op parallelism as their focus though, so it shouldn't
@@ -381,7 +387,7 @@ class Im2ColConvFunctor {
       if (meta::IsSupportedAndEnabled() && std::is_same<T1, quint8>() &&
           std::is_same<T2, quint8>() && std::is_same<T3, qint32>() &&
           (output_offset == 0) && (output_mult == 1) && (output_shift == 0) &&
-          (transpose_c == false)) {
+          (transpose_c == false) && (k <= 2048)) {
         meta::QuantizedGemm(context, transpose_a, transpose_b, im2col_buffer,
                             filter_data, chunk_output_data, m, n, k,
                             -input_offset, -filter_offset, lda, ldb, ldc);
@@ -457,6 +463,19 @@ class QuantizedConv2DOp : public OpKernel {
         context, (strides_[0] == 1 && strides_[3] == 1),
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
+    std::vector<int32> dilations;
+    OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations));
+    OP_REQUIRES(context, dilations.size() == 4,
+                errors::InvalidArgument("Dilations field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, dilations[1] == 1 && dilations[2] == 1,
+                errors::InvalidArgument(
+                    "Current implementation only supports dilated rate as 1 "
+                    "in the row and column dimensions."));
+    OP_REQUIRES(context, (dilations[0] == 1 && dilations[3] == 1),
+                errors::InvalidArgument(
+                    "Current implementation does not yet support "
+                    "dilations in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
   }
 

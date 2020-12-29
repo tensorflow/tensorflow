@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_ELEMENTAL_IR_EMITTER_H_
 
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Module.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/cpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -29,12 +30,33 @@ namespace cpu {
 class CpuElementalIrEmitter : public ElementalIrEmitter {
  public:
   CpuElementalIrEmitter(const HloModuleConfig& module_config,
-                        llvm::IRBuilder<>* ir_builder, llvm::Module* module)
-      : ElementalIrEmitter(module_config, module, ir_builder) {}
+                        IrEmitter* ir_emitter, llvm::Module* module)
+      : ElementalIrEmitter(module, ir_emitter->b()),
+        hlo_module_config_(module_config),
+        ir_emitter_(ir_emitter) {}
 
  protected:
-  StatusOr<llvm::Value*> EmitFloatUnaryOp(
-      const HloInstruction* op, llvm::Value* operand_value) const override;
+  StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
+                                   llvm::Value* rhs) override;
+  StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
+                                  llvm::Value* value) override;
+  StatusOr<llvm::Value*> EmitConvolution(
+      const HloInstruction* hlo,
+      const HloToElementGeneratorMap& operand_to_generator,
+      const llvm_ir::IrArray::Index& index) override;
+
+  StatusOr<std::vector<llvm::Value*>> EmitThreadLocalCall(
+      const HloComputation& callee, absl::Span<llvm::Value* const> parameters,
+      absl::string_view name) override {
+    return ir_emitter_->EmitThreadLocalCall(callee, parameters, name);
+  }
+
+  bool fast_min_max() override {
+    return hlo_module_config_.debug_options().xla_cpu_enable_fast_min_max();
+  }
+
+  const HloModuleConfig& hlo_module_config_;
+  IrEmitter* ir_emitter_;
 };
 
 }  // namespace cpu

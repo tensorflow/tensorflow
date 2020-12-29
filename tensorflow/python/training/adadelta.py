@@ -22,13 +22,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export(v1=["train.AdadeltaOptimizer"])
 class AdadeltaOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adadelta algorithm.
 
-  See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-  ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
+  References:
+    ADADELTA - An Adaptive Learning Rate Method:
+      [Zeiler, 2012](http://arxiv.org/abs/1212.5701)
+      ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
   """
 
   def __init__(self, learning_rate=0.001, rho=0.95, epsilon=1e-8,
@@ -37,12 +41,20 @@ class AdadeltaOptimizer(optimizer.Optimizer):
 
     Args:
       learning_rate: A `Tensor` or a floating point value. The learning rate.
+        To match the exact form in the original paper use 1.0.
       rho: A `Tensor` or a floating point value. The decay rate.
       epsilon: A `Tensor` or a floating point value.  A constant epsilon used
                to better conditioning the grad update.
       use_locking: If `True` use locks for update operations.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
+
+    @compatibility(eager)
+    When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
+    each be a callable that takes no arguments and returns the actual value to
+    use. This can be useful for changing these values across different
+    invocations of optimizer functions.
+    @end_compatibility
     """
     super(AdadeltaOptimizer, self).__init__(use_locking, name)
     self._lr = learning_rate
@@ -60,9 +72,13 @@ class AdadeltaOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "accum_update", self._name)
 
   def _prepare(self):
-    self._lr_t = ops.convert_to_tensor(self._lr, name="lr")
-    self._rho_t = ops.convert_to_tensor(self._rho, name="rho")
-    self._epsilon_t = ops.convert_to_tensor(self._epsilon, name="epsilon")
+    lr = self._call_if_callable(self._lr)
+    rho = self._call_if_callable(self._rho)
+    epsilon = self._call_if_callable(self._epsilon)
+
+    self._lr_t = ops.convert_to_tensor(lr, name="lr")
+    self._rho_t = ops.convert_to_tensor(rho, name="rho")
+    self._epsilon_t = ops.convert_to_tensor(epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
     accum = self.get_slot(var, "accum")

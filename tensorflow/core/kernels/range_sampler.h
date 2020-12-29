@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_RANGE_SAMPLER_H_
-#define TENSORFLOW_KERNELS_RANGE_SAMPLER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_RANGE_SAMPLER_H_
+#define TENSORFLOW_CORE_KERNELS_RANGE_SAMPLER_H_
 
 #include <vector>
 
@@ -200,7 +200,7 @@ class UnigramSampler : public RangeSampler {
   void Update(gtl::ArraySlice<int64> values) override;
 
  private:
-  ThreadUnsafeUnigramSampler unsafe_sampler_ GUARDED_BY(mu_);
+  ThreadUnsafeUnigramSampler unsafe_sampler_ TF_GUARDED_BY(mu_);
   mutable mutex mu_;
 };
 
@@ -249,4 +249,4 @@ class FixedUnigramSampler : public RangeSampler {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_RANGE_SAMPLER_H_
+#endif  // TENSORFLOW_CORE_KERNELS_RANGE_SAMPLER_H_

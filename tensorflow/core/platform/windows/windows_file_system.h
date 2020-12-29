@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 #define TENSORFLOW_CORE_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/platform.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
@@ -31,50 +32,61 @@ class WindowsFileSystem : public FileSystem {
 
   ~WindowsFileSystem() {}
 
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewWritableFile(const string& fname,
+  Status NewRandomAccessFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
+
+  Status NewWritableFile(const string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status GetMatchingPaths(const string& pattern,
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
                           std::vector<string>* result) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  bool Match(const string& filename, const string& pattern) override;
 
-  Status DeleteFile(const string& fname) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
-  Status CreateDir(const string& name) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status DeleteDir(const string& name) override;
+  Status CreateDir(const string& name, TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, uint64* size) override;
+  Status DeleteDir(const string& name, TransactionToken* token) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* size) override;
 
-  string TranslateName(const string& name) const override {
-    return name;
-  }
+  Status IsDirectory(const string& fname, TransactionToken* token) override;
+
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
+
+  string TranslateName(const string& name) const override { return name; }
+
+  char Separator() const override { return '\\'; };
 };
 
 class LocalWinFileSystem : public WindowsFileSystem {
-public:
-    string TranslateName(const string& name) const override {
-      StringPiece scheme, host, path;
-      io::ParseURI(name, &scheme, &host, &path);
-      return path.ToString();
-    }
+ public:
+  string TranslateName(const string& name) const override {
+    StringPiece scheme, host, path;
+    io::ParseURI(name, &scheme, &host, &path);
+    return string(path);
+  }
 };
 
 }  // namespace tensorflow

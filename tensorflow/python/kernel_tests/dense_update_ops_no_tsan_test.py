@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -33,17 +34,20 @@ class AssignOpTest(test.TestCase):
   #   contain benign and deliberate data races when multiple threads update
   #   the same parameters without a lock.
   def testParallelUpdateWithoutLocking(self):
-    with self.test_session() as sess:
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], 1.0)
       p = variables.Variable(array_ops.zeros([1024, 1024]))
       adds = [
           state_ops.assign_add(
               p, ones_t, use_locking=False) for _ in range(20)
       ]
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       def run_add(add_op):
-        sess.run(add_op)
+        self.evaluate(add_op)
 
       threads = [
           self.checkedThread(
@@ -54,23 +58,26 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertTrue((vals >= ones).all())
       self.assertTrue((vals <= ones * 20).all())
 
   def testParallelAssignWithoutLocking(self):
-    with self.test_session() as sess:
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
       ones_t = array_ops.fill([1024, 1024], float(1))
       p = variables.Variable(array_ops.zeros([1024, 1024]))
       assigns = [
           state_ops.assign(p, math_ops.multiply(ones_t, float(i)), False)
           for i in range(1, 21)
       ]
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       def run_assign(assign_op):
-        sess.run(assign_op)
+        self.evaluate(assign_op)
 
       threads = [
           self.checkedThread(
@@ -81,11 +88,79 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is taken from one of the assignments.
       self.assertTrue((vals > 0).all())
       self.assertTrue((vals <= 20).all())
+
+  # NOTE(skyewm): We exclude these tests from the TSAN TAP target, because they
+  # contain non-benign but known data races between the variable assignment and
+  # returning the output tensors. This issue will be resolved with the new
+  # resource variables.
+  def testParallelUpdateWithLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      zeros_t = array_ops.fill([1024, 1024], 0.0)
+      ones_t = array_ops.fill([1024, 1024], 1.0)
+      p = variables.Variable(zeros_t)
+      adds = [
+          state_ops.assign_add(
+              p, ones_t, use_locking=True) for _ in range(20)
+      ]
+      self.evaluate(p.initializer)
+
+      def run_add(add_op):
+        self.evaluate(add_op)
+
+      threads = [
+          self.checkedThread(
+              target=run_add, args=(add_op,)) for add_op in adds
+      ]
+      for t in threads:
+        t.start()
+      for t in threads:
+        t.join()
+
+      vals = self.evaluate(p)
+      ones = np.ones((1024, 1024)).astype(np.float32)
+      self.assertAllEqual(vals, ones * 20)
+
+  def testParallelAssignWithLocking(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+    with self.cached_session() as sess:
+      zeros_t = array_ops.fill([1024, 1024], 0.0)
+      ones_t = array_ops.fill([1024, 1024], 1.0)
+      p = variables.Variable(zeros_t)
+      assigns = [
+          state_ops.assign(
+              p, math_ops.multiply(ones_t, float(i)), use_locking=True)
+          for i in range(1, 21)
+      ]
+      self.evaluate(p.initializer)
+
+      def run_assign(assign_op):
+        self.evaluate(assign_op)
+
+      threads = [
+          self.checkedThread(
+              target=run_assign, args=(assign_op,)) for assign_op in assigns
+      ]
+      for t in threads:
+        t.start()
+      for t in threads:
+        t.join()
+
+      vals = self.evaluate(p)
+
+      # Assert every element is the same, and taken from one of the assignments.
+      self.assertTrue(vals[0, 0] > 0)
+      self.assertTrue(vals[0, 0] <= 20)
+      self.assertAllEqual(vals, np.ones([1024, 1024]) * vals[0, 0])
 
 
 if __name__ == "__main__":

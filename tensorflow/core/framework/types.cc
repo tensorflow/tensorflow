@@ -35,15 +35,19 @@ std::ostream& operator<<(std::ostream& os, const DeviceType& d) {
   return os;
 }
 
+const char* const DEVICE_DEFAULT = "DEFAULT";
 const char* const DEVICE_CPU = "CPU";
 const char* const DEVICE_GPU = "GPU";
-const char* const DEVICE_SYCL = "SYCL";
+const char* const DEVICE_TPU_SYSTEM = "TPU_SYSTEM";
 
-string DataTypeString(DataType dtype) {
-  if (IsRefType(dtype)) {
-    DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
-    return strings::StrCat(DataTypeString(non_ref), "_ref");
-  }
+const std::string DeviceName<Eigen::ThreadPoolDevice>::value = DEVICE_CPU;
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+const std::string DeviceName<Eigen::GpuDevice>::value = DEVICE_GPU;
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+namespace {
+string DataTypeStringInternal(DataType dtype) {
   switch (dtype) {
     case DT_INVALID:
       return "INVALID";
@@ -53,6 +57,8 @@ string DataTypeString(DataType dtype) {
       return "double";
     case DT_INT32:
       return "int32";
+    case DT_UINT32:
+      return "uint32";
     case DT_UINT8:
       return "uint8";
     case DT_UINT16:
@@ -69,6 +75,8 @@ string DataTypeString(DataType dtype) {
       return "complex128";
     case DT_INT64:
       return "int64";
+    case DT_UINT64:
+      return "uint64";
     case DT_BOOL:
       return "bool";
     case DT_QINT8:
@@ -87,14 +95,25 @@ string DataTypeString(DataType dtype) {
       return "half";
     case DT_RESOURCE:
       return "resource";
+    case DT_VARIANT:
+      return "variant";
     default:
       LOG(ERROR) << "Unrecognized DataType enum value " << dtype;
       return strings::StrCat("unknown dtype enum (", dtype, ")");
   }
 }
+}  // end namespace
+
+string DataTypeString(DataType dtype) {
+  if (IsRefType(dtype)) {
+    DataType non_ref = static_cast<DataType>(dtype - kDataTypeRefOffset);
+    return strings::StrCat(DataTypeStringInternal(non_ref), "_ref");
+  }
+  return DataTypeStringInternal(dtype);
+}
 
 bool DataTypeFromString(StringPiece sp, DataType* dt) {
-  if (sp.ends_with("_ref")) {
+  if (str_util::EndsWith(sp, "_ref")) {
     sp.remove_suffix(4);
     DataType non_ref;
     if (DataTypeFromString(sp, &non_ref) && !IsRefType(non_ref)) {
@@ -113,6 +132,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
     return true;
   } else if (sp == "int32") {
     *dt = DT_INT32;
+    return true;
+  } else if (sp == "uint32") {
+    *dt = DT_UINT32;
     return true;
   } else if (sp == "uint8") {
     *dt = DT_UINT8;
@@ -137,6 +159,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
     return true;
   } else if (sp == "int64") {
     *dt = DT_INT64;
+    return true;
+  } else if (sp == "uint64") {
+    *dt = DT_UINT64;
     return true;
   } else if (sp == "bool") {
     *dt = DT_BOOL;
@@ -165,11 +190,16 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   } else if (sp == "resource") {
     *dt = DT_RESOURCE;
     return true;
+  } else if (sp == "variant") {
+    *dt = DT_VARIANT;
+    return true;
   }
   return false;
 }
 
-string DeviceTypeString(DeviceType device_type) { return device_type.type(); }
+string DeviceTypeString(const DeviceType& device_type) {
+  return device_type.type();
+}
 
 string DataTypeSliceString(const DataTypeSlice types) {
   string out;
@@ -180,124 +210,12 @@ string DataTypeSliceString(const DataTypeSlice types) {
   return out;
 }
 
-DataTypeVector AllTypes() {
-  return {DT_FLOAT,   DT_DOUBLE, DT_INT32,  DT_UINT8,     DT_INT16,
-          DT_UINT16,  DT_INT8,   DT_STRING, DT_COMPLEX64, DT_COMPLEX128,
-          DT_INT64,   DT_BOOL,   DT_QINT8,  DT_QUINT8,    DT_QINT16,
-          DT_QUINT16, DT_QINT32, DT_HALF,   DT_RESOURCE};
-}
-
-#if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION)
-
-DataTypeVector RealNumberTypes() {
-  return {DT_FLOAT, DT_DOUBLE, DT_INT32,  DT_INT64, DT_UINT8,
-          DT_INT16, DT_INT8,   DT_UINT16, DT_HALF};
-}
-
-DataTypeVector QuantizedTypes() {
-  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT,  DT_DOUBLE,  DT_INT32,  DT_INT64, DT_UINT8,
-          DT_UINT16, DT_UINT16,  DT_INT8,   DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF};
-}
-
-DataTypeVector NumberTypes() {
-  return {DT_FLOAT,  DT_DOUBLE, DT_INT64,  DT_INT32,     DT_UINT8,
-          DT_UINT16, DT_INT16,  DT_INT8,   DT_COMPLEX64, DT_COMPLEX128,
-          DT_QINT8,  DT_QUINT8, DT_QINT32, DT_HALF};
-}
-
-#elif defined(__ANDROID_TYPES_FULL__)
-
-DataTypeVector RealNumberTypes() {
-  return {DT_FLOAT, DT_INT32, DT_INT64, DT_HALF};
-}
-
-DataTypeVector NumberTypes() {
-  return {DT_FLOAT,  DT_INT32,  DT_INT64, DT_QINT8,
-          DT_QUINT8, DT_QINT32, DT_HALF};
-}
-
-DataTypeVector QuantizedTypes() {
-  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT,  DT_INT32,   DT_INT64,  DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32, DT_HALF};
-}
-
-#else  // defined(IS_MOBILE_PLATFORM) && !defined(__ANDROID_TYPES_FULL__)
-
-DataTypeVector RealNumberTypes() { return {DT_FLOAT, DT_INT32}; }
-
-DataTypeVector NumberTypes() {
-  return {DT_FLOAT, DT_INT32, DT_QINT8, DT_QUINT8, DT_QINT32};
-}
-
-DataTypeVector QuantizedTypes() {
-  return {DT_QINT8, DT_QUINT8, DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-DataTypeVector RealAndQuantizedTypes() {
-  return {DT_FLOAT,  DT_INT32,   DT_QINT8, DT_QUINT8,
-          DT_QINT16, DT_QUINT16, DT_QINT32};
-}
-
-#endif  // defined(IS_MOBILE_PLATFORM)
-
-// TODO(jeff): Maybe unify this with Tensor::CanUseDMA, or the underlying
-// is_simple<T> in tensor.cc (and possible choose a more general name?)
-bool DataTypeCanUseMemcpy(DataType dt) {
+bool DataTypeAlwaysOnHost(DataType dt) {
+  // Includes DT_STRING and DT_RESOURCE.
   switch (dt) {
-    case DT_FLOAT:
-    case DT_DOUBLE:
-    case DT_INT32:
-    case DT_UINT8:
-    case DT_UINT16:
-    case DT_INT16:
-    case DT_INT8:
-    case DT_COMPLEX64:
-    case DT_COMPLEX128:
-    case DT_INT64:
-    case DT_BOOL:
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_QINT32:
-    case DT_BFLOAT16:
-    case DT_HALF:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsQuantized(DataType dt) {
-  switch (dt) {
-    case DT_QINT8:
-    case DT_QUINT8:
-    case DT_QINT16:
-    case DT_QUINT16:
-    case DT_QINT32:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool DataTypeIsInteger(DataType dt) {
-  switch (dt) {
-    case DT_INT8:
-    case DT_UINT8:
-    case DT_INT16:
-    case DT_UINT16:
-    case DT_INT32:
-    case DT_INT64:
+    case DT_STRING:
+    case DT_STRING_REF:
+    case DT_RESOURCE:
       return true;
     default:
       return false;
@@ -311,10 +229,45 @@ int DataTypeSize(DataType dt) {
   switch (dt) {
     TF_CALL_POD_TYPES(CASE);
     TF_CALL_QUANTIZED_TYPES(CASE);
+    // TF_CALL_QUANTIZED_TYPES() macro does no cover quint16 and qint16, since
+    // they are not supported widely, but are explicitly listed here for
+    // bitcast.
+    TF_CALL_qint16(CASE);
+    TF_CALL_quint16(CASE);
+
     default:
       return 0;
   }
 #undef CASE
 }
+
+// Define DataTypeToEnum<T>::value.
+#define DEFINE_DATATYPETOENUM_VALUE(TYPE) \
+  constexpr DataType DataTypeToEnum<TYPE>::value;
+
+DEFINE_DATATYPETOENUM_VALUE(float);
+DEFINE_DATATYPETOENUM_VALUE(double);
+DEFINE_DATATYPETOENUM_VALUE(int32);
+DEFINE_DATATYPETOENUM_VALUE(uint32);
+DEFINE_DATATYPETOENUM_VALUE(uint16);
+DEFINE_DATATYPETOENUM_VALUE(uint8);
+DEFINE_DATATYPETOENUM_VALUE(int16);
+DEFINE_DATATYPETOENUM_VALUE(int8);
+DEFINE_DATATYPETOENUM_VALUE(tstring);
+DEFINE_DATATYPETOENUM_VALUE(complex64);
+DEFINE_DATATYPETOENUM_VALUE(complex128);
+DEFINE_DATATYPETOENUM_VALUE(int64);
+DEFINE_DATATYPETOENUM_VALUE(uint64);
+DEFINE_DATATYPETOENUM_VALUE(bool);
+DEFINE_DATATYPETOENUM_VALUE(qint8);
+DEFINE_DATATYPETOENUM_VALUE(quint8);
+DEFINE_DATATYPETOENUM_VALUE(qint16);
+DEFINE_DATATYPETOENUM_VALUE(quint16);
+DEFINE_DATATYPETOENUM_VALUE(qint32);
+DEFINE_DATATYPETOENUM_VALUE(bfloat16);
+DEFINE_DATATYPETOENUM_VALUE(Eigen::half);
+DEFINE_DATATYPETOENUM_VALUE(ResourceHandle);
+DEFINE_DATATYPETOENUM_VALUE(Variant);
+#undef DEFINE_DATATYPETOENUM_VALUE
 
 }  // namespace tensorflow

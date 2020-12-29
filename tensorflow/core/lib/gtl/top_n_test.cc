@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -28,10 +27,10 @@ limitations under the License.
 
 namespace {
 
+using tensorflow::string;
 using tensorflow::gtl::TopN;
 using tensorflow::random::PhiloxRandom;
 using tensorflow::random::SimplePhilox;
-using tensorflow::string;
 
 // Move the contents from an owned raw pointer, returning by value.
 // Objects are easier to manage by value.
@@ -172,19 +171,22 @@ TEST(TopNTest, Ptr) {
   LOG(INFO) << "Testing 2-argument push()";
   TopN<string *> topn(3);
   for (int i = 0; i < 8; ++i) {
-    string *dropped = NULL;
+    string *dropped = nullptr;
     topn.push(new string(std::to_string(i)), &dropped);
     delete dropped;
   }
 
   for (int i = 8; i > 0; --i) {
-    string *dropped = NULL;
+    string *dropped = nullptr;
     topn.push(new string(std::to_string(i)), &dropped);
     delete dropped;
   }
 
   std::vector<string *> extract = ConsumeRawPtr(topn.Extract());
-  tensorflow::gtl::STLDeleteElements(&extract);
+  for (auto &temp : extract) {
+    delete temp;
+  }
+  extract.clear();
 }
 
 struct PointeeGreater {
@@ -254,7 +256,7 @@ TEST(TopNTest, Iteration) {
   for (int i = 0; i < 8; ++i) top.push(i);
   std::vector<int> actual(top.unsorted_begin(), top.unsorted_end());
   // Check that we have 4,5,6,7 as the top 4 (in some order, so we sort)
-  sort(actual.begin(), actual.end());
+  std::sort(actual.begin(), actual.end());
   EXPECT_EQ(actual.size(), 4);
   EXPECT_EQ(actual[0], 4);
   EXPECT_EQ(actual[1], 5);

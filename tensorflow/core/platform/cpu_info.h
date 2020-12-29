@@ -13,24 +13,60 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_CPU_INFO_H_
-#define TENSORFLOW_PLATFORM_CPU_INFO_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CPU_INFO_H_
+#define TENSORFLOW_CORE_PLATFORM_CPU_INFO_H_
 
-#if defined(PLATFORM_WINDOWS)
-#include "tensorflow/core/platform/windows/cpu_info.h"
+#include <string>
+
+// TODO(ahentz): This is not strictly required here but, for historical
+// reasons, many people depend on cpu_info.h in order to use kLittleEndian.
+#include "tensorflow/core/platform/byte_order.h"
+
+#if defined(_MSC_VER)
+// included so __cpuidex function is available for GETCPUID on Windows
+#include <intrin.h>
 #endif
 
 namespace tensorflow {
 namespace port {
 
-// TODO(jeff,sanjay): Make portable
-constexpr bool kLittleEndian = __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__;
-
 // Returns an estimate of the number of schedulable CPUs for this
 // process.  Usually, it's constant throughout the lifetime of a
 // process, but it might change if the underlying cluster management
-// software can change it dynamically.
+// software can change it dynamically.  If the underlying call fails, a default
+// value (e.g. `4`) may be returned.
 int NumSchedulableCPUs();
+
+// Returns an estimate for the maximum parallelism for this process.
+// Applications should avoid running more than this number of threads with
+// intensive workloads concurrently to avoid performance degradation and
+// contention.
+// This value is either the number of schedulable CPUs, or a value specific to
+// the underlying cluster management. Applications should assume this value can
+// change throughout the lifetime of the process. This function must not be
+// called during initialization, i.e., before main() has started.
+int MaxParallelism();
+
+// Returns an estimate for the maximum parallelism for this process on the
+// provided numa node, or any numa node if `numa_node` is kNUMANoAffinity.
+// See MaxParallelism() for more information.
+int MaxParallelism(int numa_node);
+
+// Returns the total number of CPUs on the system.  This number should
+// not change even if the underlying cluster management software may
+// change the number of schedulable CPUs.  Unlike `NumSchedulableCPUs`, if the
+// underlying call fails, an invalid value of -1 will be returned;
+// the user must check for validity.
+static constexpr int kUnknownCPU = -1;
+int NumTotalCPUs();
+
+// Returns the id of the current CPU.  Returns -1 if the current CPU cannot be
+// identified.  If successful, the return value will be in [0, NumTotalCPUs()).
+int GetCurrentCPU();
+
+// Returns an estimate of the number of hyperthreads per physical core
+// on the CPU
+int NumHyperthreadsPerCore();
 
 // Mostly ISA related features that we care about
 enum CPUFeature {
@@ -92,7 +128,22 @@ enum CPUFeature {
 // Checks CPU registers to return hardware capabilities.
 bool TestCPUFeature(CPUFeature feature);
 
+// Returns CPU Vendor string (i.e. 'GenuineIntel', 'AuthenticAMD', etc.)
+std::string CPUVendorIDString();
+
+// Returns CPU family.
+int CPUFamily();
+
+// Returns CPU model number.
+int CPUModelNum();
+
+// Returns nominal core processor cycles per second of each processor.
+double NominalCPUFrequency();
+
+// Returns num of hyperthreads per physical core
+int CPUIDNumSMT();
+
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_CPU_INFO_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CPU_INFO_H_

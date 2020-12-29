@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_TYPES_H_
-#define TENSORFLOW_GRAPH_TYPES_H_
+#ifndef TENSORFLOW_CORE_GRAPH_TYPES_H_
+#define TENSORFLOW_CORE_GRAPH_TYPES_H_
 
 #include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/types.h"
@@ -32,4 +32,4 @@ TF_LIB_GTL_DEFINE_INT_TYPE(Bytes, int64);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_TYPES_H_
+#endif  // TENSORFLOW_CORE_GRAPH_TYPES_H_

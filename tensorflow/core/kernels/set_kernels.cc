@@ -15,7 +15,7 @@ limitations under the License.
 
 // Ops for operating with sets. They are not checked in
 // to TensorFlow because we would first like to demonstrate successful
-// end-to-end use of these ops in eval and polush the api a bit like taking two
+// end-to-end use of these ops in eval and polish the api a bit like taking two
 // SparseTensor rather than on edense and one sparse.
 
 #define EIGEN_USE_THREADS
@@ -39,6 +39,9 @@ limitations under the License.
 
 namespace tensorflow {
 
+using ShapeArray = sparse::SparseTensor::ShapeArray;
+using VarDimArray = sparse::SparseTensor::VarDimArray;
+
 // Validate rank >= 2.
 void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
   const auto rank = shape.dims();
@@ -47,25 +50,22 @@ void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
 }
 
 // Return group shape, which is the 1st n-1 dimensions of shape.
-const TensorShape GroupShape(OpKernelContext* ctx,
-                             const TensorShape& input_shape) {
-  CheckRankAtLeast2(ctx, input_shape);
-  TensorShape shape(input_shape);
-  shape.RemoveDim(shape.dims() - 1);
-  return TensorShape(shape);
-}
-
-// Validate sparse indices are valid. This is O(n), so use sparingly.
-void CheckSparseTensorIndices(OpKernelContext* ctx,
-                              const sparse::SparseTensor& st) {
-  OP_REQUIRES_OK(ctx, st.IndicesValid());
+Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
+  if (input_shape.size() < 2) {
+    // TODO(irving): Why can't 2 be 1 here?
+    return errors::InvalidArgument("Shape [", absl::StrJoin(input_shape, ","),
+                                   "] has rank ", input_shape.size(), " < 2");
+  }
+  // grouped_shape is input_shape[:-1]
+  *grouped_shape = ShapeArray(input_shape.begin(), input_shape.end() - 1);
+  return Status::OK();
 }
 
 // Build `SparseTensor` from indices, values, and shape in inputs
 // [base_index, base_index + 3), and validate its rank and indices.
-sparse::SparseTensor SparseTensorFromContext(OpKernelContext* ctx,
-                                             const int32 base_index,
-                                             bool validate_indices) {
+Status SparseTensorFromContext(OpKernelContext* ctx, const int32 base_index,
+                               bool validate_indices,
+                               sparse::SparseTensor* tensor) {
   // Assume row-major order.
   const TensorShape shape =
       TensorShape(ctx->input(base_index + 2).vec<int64>());
@@ -73,12 +73,8 @@ sparse::SparseTensor SparseTensorFromContext(OpKernelContext* ctx,
   std::vector<int64> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
 
-  const sparse::SparseTensor st(ctx->input(base_index),
-                                ctx->input(base_index + 1), shape, order);
-  if (validate_indices) {
-    CheckSparseTensorIndices(ctx, st);
-  }
-  return st;
+  return sparse::SparseTensor::Create(
+      ctx->input(base_index), ctx->input(base_index + 1), shape, order, tensor);
 }
 
 // TODO(ptucker): CheckGroup is just a sanity check on the result of
@@ -87,7 +83,7 @@ sparse::SparseTensor SparseTensorFromContext(OpKernelContext* ctx,
 // was created, and is used to sanity check the indices in `group'.
 template <typename T>
 void CheckGroup(OpKernelContext* ctx, const sparse::Group& group,
-                const TensorShape& sparse_tensor_shape) {
+                const VarDimArray& sparse_tensor_shape) {
   const auto& indices = group.indices();
   const auto& values = group.values<T>();
 
@@ -101,14 +97,15 @@ void CheckGroup(OpKernelContext* ctx, const sparse::Group& group,
 
   // Sanity check: valid indices.
   const auto group_rank = indices.dimension(1);
-  const auto expected_rank = sparse_tensor_shape.dims();
+  const auto expected_rank = sparse_tensor_shape.size();
   OP_REQUIRES(ctx, expected_rank == group_rank,
               errors::Internal("Rank expected ", expected_rank, ", got ",
                                group_rank, "."));
   for (int32 j = 0; j < expected_rank; ++j) {
-    const auto dim_size = sparse_tensor_shape.dim_size(j);
-    OP_REQUIRES(ctx, dim_size > 0, errors::Internal("Invalid dim_size[", j,
-                                                    "] = ", dim_size, "."));
+    const auto dim_size = sparse_tensor_shape[j];
+    OP_REQUIRES(
+        ctx, dim_size > 0,
+        errors::Internal("Invalid dim_size[", j, "] = ", dim_size, "."));
     for (int64 i = 0; i < num_values; ++i) {
       const auto index = indices(i, j);
       OP_REQUIRES(ctx, dim_size > index,
@@ -119,12 +116,12 @@ void CheckGroup(OpKernelContext* ctx, const sparse::Group& group,
 }
 
 // This lets us calculate the row-major index into flattened output.
-const gtl::InlinedVector<int64, 8> Strides(const TensorShape& shape) {
-  gtl::InlinedVector<int64, 8> result(shape.dims());
+const ShapeArray Strides(const VarDimArray& shape) {
+  ShapeArray result(shape.size());
   int64 product = 1;
-  for (auto i = shape.dims() - 1; i >= 0; --i) {
+  for (int i = shape.size() - 1; i >= 0; --i) {
     result[i] = product;
-    product *= shape.dim_size(i);
+    product *= shape[i];
   }
   return result;
 }
@@ -204,7 +201,7 @@ bool ValidateIndicesFromContext(OpKernelConstruction* ctx) {
 // values.
 template <typename T>
 void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
-                            const gtl::InlinedVector<int64, 8>& input_strides,
+                            const VarDimArray& input_strides,
                             const std::vector<int64>& group_indices,
                             std::set<T>* result) {
   OP_REQUIRES(ctx, group_indices.size() == input_strides.size() - 1,
@@ -214,7 +211,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
   result->clear();
   auto input_flat = input_tensor.flat<T>();
   const auto start = std::inner_product(
-      group_indices.begin(), group_indices.end(), input_strides.begin(), 0L);
+      group_indices.begin(), group_indices.end(), input_strides.begin(), 0LL);
   const TensorShape& input_shape = input_tensor.shape();
   const auto end = start + input_shape.dim_size(input_shape.dims() - 1);
   for (int64 i = start; i < end; ++i) {
@@ -227,7 +224,7 @@ void PopulateFromDenseGroup(OpKernelContext* ctx, const Tensor& input_tensor,
 // indices in `group'.
 template <typename T>
 void PopulateFromSparseGroup(OpKernelContext* ctx, const sparse::Group& group,
-                             const TensorShape& sparse_tensor_shape,
+                             const VarDimArray& sparse_tensor_shape,
                              std::set<T>* result) {
   CheckGroup<T>(ctx, group, sparse_tensor_shape);
   result->clear();
@@ -251,30 +248,35 @@ class SetSizeOp : public OpKernel {
 
 template <typename T>
 void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
-  const sparse::SparseTensor set_st =
-      SparseTensorFromContext(ctx, 0, validate_indices_);
+  sparse::SparseTensor set_st;
+  OP_REQUIRES_OK(ctx,
+                 SparseTensorFromContext(ctx, 0, validate_indices_, &set_st));
+  OP_REQUIRES_OK(ctx, set_st.IndicesValid());
 
-  // Output shape is same as input except for last dimension, which reduces to
-  // the set size of values along that dimension.
-  const TensorShape output_shape = GroupShape(ctx, set_st.shape());
+  // Output shape is same as input except for last dimension, which reduces
+  // to the set size of values along that dimension.
+  ShapeArray output_shape;
+  OP_REQUIRES_OK(ctx, GroupShape(set_st.shape(), &output_shape));
   const auto output_strides = Strides(output_shape);
 
+  TensorShape output_shape_ts;
+  OP_REQUIRES_OK(ctx,
+                 TensorShapeUtils::MakeShape(output_shape, &output_shape_ts));
   Tensor* out_t;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out_t));
+  OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape_ts, &out_t));
   auto out = out_t->flat<int32>();
   out.device(ctx->eigen_cpu_device()) = out.constant(static_cast<int32>(0.0));
 
   // Group by all but last dimension, create a set of group values, and add set
   // size to output.
-  sparse::SparseTensor::VarDimArray group_ix(set_st.order(), 0,
-                                             set_st.order().size() - 1);
+  VarDimArray group_ix = set_st.order().subspan(0, set_st.order().size() - 1);
   std::set<T> group_set;
   for (const auto& group : set_st.group(group_ix)) {
     PopulateFromSparseGroup<T>(ctx, group, set_st.shape(), &group_set);
 
     const auto group_key = group.group();
     const auto output_index = std::inner_product(
-        group_key.begin(), group_key.end(), output_strides.begin(), 0L);
+        group_key.begin(), group_key.end(), output_strides.begin(), 0LL);
     out(output_index) = group_set.size();
   }
 }
@@ -289,7 +291,7 @@ _SET_SIZE_REGISTER_KERNEL_BUILDER(int32);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(int64);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(uint8);
 _SET_SIZE_REGISTER_KERNEL_BUILDER(uint16);
-_SET_SIZE_REGISTER_KERNEL_BUILDER(string);
+_SET_SIZE_REGISTER_KERNEL_BUILDER(tstring);
 #undef _SET_SIZE_REGISTER_KERNEL_BUILDER
 
 enum InputTypes {
@@ -375,38 +377,47 @@ void SetOperationOp<T>::ApplySetOperation(const std::set<T>& set1,
 }
 
 // Validate shapes have the same dimensions.
-void CheckShapesMatch(OpKernelContext* ctx, const TensorShape& shape1,
-                      const TensorShape& shape2) {
-  OP_REQUIRES(
-      ctx, shape1 == shape2,
-      errors::InvalidArgument("Mismatched shapes ", shape1.DebugString(),
-                              " vs ", shape2.DebugString(), "."));
+Status CheckShapesMatch(VarDimArray shape1, VarDimArray shape2) {
+  if (shape1 != shape2) {
+    return errors::InvalidArgument("Mismatched shapes [",
+                                   absl::StrJoin(shape1, ","), "] vs [",
+                                   absl::StrJoin(shape2, ","), "]");
+  }
+  return Status::OK();
 }
 
 // Validate ranks are the same, and all but last dimension are the same.
 // Return GroupShape.
-const TensorShape GroupShapeFromInputs(OpKernelContext* ctx,
-                                       const TensorShape& shape1,
-                                       const TensorShape& shape2) {
-  const TensorShape group_shape = GroupShape(ctx, shape1);
-  CheckShapesMatch(ctx, group_shape, GroupShape(ctx, shape2));
-  return group_shape;
+Status GroupShapeFromInputs(VarDimArray shape1, VarDimArray shape2,
+                            ShapeArray* group_shape) {
+  ShapeArray group_shape_1;
+  TF_RETURN_IF_ERROR(GroupShape(shape1, &group_shape_1));
+  ShapeArray group_shape_2;
+  TF_RETURN_IF_ERROR(GroupShape(shape2, &group_shape_2));
+  TF_RETURN_IF_ERROR(CheckShapesMatch(group_shape_1, group_shape_2));
+  *group_shape = group_shape_1;
+  return Status::OK();
 }
 
 // Split `flat_group_index` into separate dimensions based on `group_shape`.
-void PopulateGroupIndices(const int64 flat_group_index,
-                          const TensorShape& group_shape,
+void PopulateGroupIndices(const int64 flat_group_index, VarDimArray group_shape,
                           std::vector<int64>* group_indices) {
   group_indices->clear();
   int64 running_flat_group_index = flat_group_index;
-  for (auto group_dim_index = group_shape.dims() - 1; group_dim_index >= 0;
+  for (int group_dim_index = group_shape.size() - 1; group_dim_index >= 0;
        --group_dim_index) {
-    const auto group_dim = group_shape.dim_size(group_dim_index);
+    const auto group_dim = group_shape[group_dim_index];
     group_indices->insert(group_indices->begin(),
                           running_flat_group_index % group_dim);
     running_flat_group_index /= group_dim;
   }
 }
+
+ShapeArray TensorShapeToArray(const TensorShape& t) {
+  ShapeArray vec(t.dims());
+  for (int i = 0; i < t.dims(); ++i) vec[i] = t.dim_size(i);
+  return vec;
+};
 
 // `ctx` contains set1 and set2 dense tensors.
 // Iterate over groups in set1 and set2, applying `ApplySetOperation` to each,
@@ -419,11 +430,13 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   // The following should stay in sync with `_dense_to_dense_shape` shape
   // assertions in python/ops/set_ops.py, and `SetShapeFn` for
   // `DenseToDenseSetOperation` in ops/set_ops.cc.
-  const TensorShape group_shape =
-      GroupShapeFromInputs(ctx, set1_t.shape(), set2_t.shape());
+  ShapeArray group_shape;
+  const auto shape1 = TensorShapeToArray(set1_t.shape());
+  const auto shape2 = TensorShapeToArray(set2_t.shape());
+  OP_REQUIRES_OK(ctx, GroupShapeFromInputs(shape1, shape2, &group_shape));
 
-  const auto set1_strides = Strides(set1_t.shape());
-  const auto set2_strides = Strides(set2_t.shape());
+  const auto set1_strides = Strides(shape1);
+  const auto set2_strides = Strides(shape2);
 
   std::map<std::vector<int64>, std::set<T>> group_sets;
   int64 num_result_values = 0;
@@ -432,8 +445,11 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
   std::vector<int64> group_indices;
-  for (int64 flat_group_index = 0;
-       flat_group_index < group_shape.num_elements(); ++flat_group_index) {
+  int64 num_elements;
+  OP_REQUIRES_OK(ctx,
+                 TensorShapeUtils::NumElements(group_shape, &num_elements));
+  for (int64 flat_group_index = 0; flat_group_index < num_elements;
+       ++flat_group_index) {
     PopulateGroupIndices(flat_group_index, group_shape, &group_indices);
     PopulateFromDenseGroup<T>(ctx, set1_t, set1_strides, group_indices,
                               &set1_group_set);
@@ -452,7 +468,8 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
     }
   }
 
-  TensorShape output_shape(group_shape);
+  TensorShape output_shape;
+  OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
   output_shape.AddDim(max_set_size);
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
@@ -464,15 +481,18 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
 template <typename T>
 void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
   const Tensor& set1_t = ctx->input(0);
-  const sparse::SparseTensor set2_st =
-      SparseTensorFromContext(ctx, 1, validate_indices_);
+  sparse::SparseTensor set2_st;
+  OP_REQUIRES_OK(ctx,
+                 SparseTensorFromContext(ctx, 1, validate_indices_, &set2_st));
+  OP_REQUIRES_OK(ctx, set2_st.IndicesValid());
   // The following should stay in sync with `_dense_to_sparse_shape` shape
   // assertions in python/ops/set_ops.py, and `SetShapeFn` for
   // `DenseToSparseSetOperation` in ops/set_ops.cc.
-  const TensorShape group_shape =
-      GroupShapeFromInputs(ctx, set1_t.shape(), set2_st.shape());
+  ShapeArray group_shape;
+  OP_REQUIRES_OK(ctx, GroupShapeFromInputs(TensorShapeToArray(set1_t.shape()),
+                                           set2_st.shape(), &group_shape));
 
-  const auto set1_strides = Strides(set1_t.shape());
+  const ShapeArray set1_strides = Strides(TensorShapeToArray(set1_t.shape()));
 
   std::map<std::vector<int64>, std::set<T>> group_sets;
   int64 num_result_values = 0;
@@ -480,12 +500,15 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  auto set2_grouper = set2_st.group(sparse::SparseTensor::VarDimArray(
-      set2_st.order(), 0, set2_st.order().size() - 1));
+  auto set2_grouper =
+      set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
   std::vector<int64> group_indices;
-  for (int64 flat_group_index = 0;
-       flat_group_index < group_shape.num_elements(); ++flat_group_index) {
+  int64 num_elements;
+  OP_REQUIRES_OK(ctx,
+                 TensorShapeUtils::NumElements(group_shape, &num_elements));
+  for (int64 flat_group_index = 0; flat_group_index < num_elements;
+       ++flat_group_index) {
     PopulateGroupIndices(flat_group_index, group_shape, &group_indices);
 
     // Get values from set1.
@@ -527,7 +550,8 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
     }
   }
 
-  TensorShape output_shape(group_shape);
+  TensorShape output_shape;
+  OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
   output_shape.AddDim(max_set_size);
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
@@ -572,18 +596,24 @@ const std::vector<int64> GROUP_ITER_END;
 // with the same first n-1 dimensions in set1 and set2.
 template <typename T>
 void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
-  const sparse::SparseTensor set1_st =
-      SparseTensorFromContext(ctx, 0, validate_indices_);
-  const sparse::SparseTensor set2_st =
-      SparseTensorFromContext(ctx, 3, validate_indices_);
+  sparse::SparseTensor set1_st;
+  OP_REQUIRES_OK(ctx,
+                 SparseTensorFromContext(ctx, 0, validate_indices_, &set1_st));
+  OP_REQUIRES_OK(ctx, set1_st.IndicesValid());
+
+  sparse::SparseTensor set2_st;
+  OP_REQUIRES_OK(ctx,
+                 SparseTensorFromContext(ctx, 3, validate_indices_, &set2_st));
+
   // The following should stay in sync with `_sparse_to_sparse_shape` shape
   // assertions in python/ops/set_ops.py, and `SetShapeFn` for
   // `SparseToSparseSetOperation` in ops/set_ops.cc.
-  const TensorShape group_shape =
-      GroupShapeFromInputs(ctx, set1_st.shape(), set2_st.shape());
+  ShapeArray group_shape;
+  OP_REQUIRES_OK(ctx, GroupShapeFromInputs(set1_st.shape(), set2_st.shape(),
+                                           &group_shape));
 
-  const auto set1_strides = Strides(set1_st.shape());
-  const auto set2_strides = Strides(set2_st.shape());
+  const ShapeArray set1_strides = Strides(set1_st.shape());
+  const ShapeArray set2_strides = Strides(set2_st.shape());
 
   std::map<std::vector<int64>, std::set<T>> group_sets;
   int64 num_result_values = 0;
@@ -591,11 +621,11 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  auto set1_grouper = set1_st.group(sparse::SparseTensor::VarDimArray(
-      set1_st.order(), 0, set1_st.order().size() - 1));
+  auto set1_grouper =
+      set1_st.group(set1_st.order().subspan(0, set1_st.order().size() - 1));
   auto set1_group_it = set1_grouper.begin();
-  auto set2_grouper = set2_st.group(sparse::SparseTensor::VarDimArray(
-      set2_st.order(), 0, set2_st.order().size() - 1));
+  auto set2_grouper =
+      set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
 
   // Group by rows, and iterate over rows of both sets in parallel, creating a
@@ -643,13 +673,14 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
     }
   }
 
-  TensorShape output_shape(group_shape);
+  TensorShape output_shape;
+  OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
   output_shape.AddDim(max_set_size);
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 
 // Given set1 of shape [b, n1] and data_2 of shape [b, n2], populate result
-// sparse tendor with [b, n3] values, where each row `i` contains the result of
+// sparse tensor with [b, n3] values, where each row `i` contains the result of
 // the set operation on elements from set1[i] and set2[i]. `n3` is the number
 // of elements in that result row.
 template <typename T>
@@ -685,7 +716,7 @@ _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
-_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(string);
+_DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _DENSE_TO_DENSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
 template <typename T>
@@ -706,7 +737,7 @@ _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
-_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(string);
+_DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _DENSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
 template <typename T>
@@ -727,7 +758,7 @@ _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int32);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(int64);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint8);
 _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(uint16);
-_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(string);
+_SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER(tstring);
 #undef _SPARSE_TO_SPARSE_SET_OPERATION_REGISTER_KERNEL_BUILDER
 
 }  // namespace tensorflow

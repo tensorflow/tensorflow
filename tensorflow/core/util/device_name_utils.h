@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
-#define TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
+#ifndef TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
+#define TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
 
 #include <string>
 
@@ -46,8 +46,8 @@ namespace tensorflow {
 class DeviceNameUtils {
  public:
   // Returns a fully qualified device name given the parameters.
-  static string FullName(const string& job, int replica, int task,
-                         const string& type, int id);
+  static std::string FullName(const std::string& job, int replica, int task,
+                              const std::string& type, int id);
 
   struct ParsedName {
     void Clear() {
@@ -74,19 +74,45 @@ class DeviceNameUtils {
              (has_id ? (other.has_id && id == other.id) : !other.has_id);
     }
 
+    bool operator!=(const ParsedName& other) const {
+      return !operator==(other);
+    }
+
     bool has_job = false;
-    string job;
+    std::string job;
     bool has_replica = false;
     int replica = 0;
     bool has_task = false;
     int task = 0;
     bool has_type = false;
-    string type;
+    std::string type;
     bool has_id = false;
     int id = 0;
   };
+
+  // Parses the device name, first as a full name, then, if it fails, as a
+  // global one. Returns `false` if both attempts fail.
+  static bool ParseFullOrLocalName(StringPiece fullname, ParsedName* parsed);
+
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
+  // Legacy names like "/cpu:0" that don't contain "device",
+  // are parsed to mean their current counterparts "/device:CPU:0". More
+  // specifically, the lower case "cpu" and "gpu" is capitalized and "device"
+  // is added. "/tpu:0" is not treated the same way - it has use the current
+  // full syntax.
+  // Also, note that lower case "cpu" and "gpu" device types in current syntax
+  // are not capitalized. For example, "/device:CPU:0" is different from
+  // "/device:cpu:0"
   static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
+
+  // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
+  // basename to fill in fields that are missing. Accepts both legacy, newer
+  // and local versions of the device spec. Returns the newer version of the
+  // device spec. If we were unable to interpret / parse "fullname" returns
+  // an error and *canonical_name is set to "".
+  static Status CanonicalizeDeviceName(StringPiece fullname,
+                                       StringPiece basename,
+                                       std::string* canonical_name);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
   static bool HasSomeDetails(const ParsedName& name) {
@@ -101,17 +127,19 @@ class DeviceNameUtils {
   static bool IsSpecification(const ParsedName& less_specific,
                               const ParsedName& more_specific);
 
+  // Makes minimal changes to more_specific so that it becomes a
+  // specification of less_specific.
+  static void EnsureSpecification(ParsedName* more_specific,
+                                  const ParsedName& less_specific);
+
   // Like IsSpecification, but the second argument "name" must have a
   // non-wildcard value for all of its components.
   static bool IsCompleteSpecification(const ParsedName& pattern,
                                       const ParsedName& name);
 
-  // True iff there exists any possible complete device name that is
-  // a specification of both "a" and "b".
-  static inline bool AreCompatibleDevNames(const ParsedName& a,
-                                           const ParsedName& b) {
-    return IsSpecification(a, b) || IsSpecification(b, a);
-  }
+  // True iff there exists any possible device name that is a specification of
+  // both "a" and "b".
+  static bool AreCompatibleDevNames(const ParsedName& a, const ParsedName& b);
 
   // Merges the device specifications in "*target" and "other", and
   // stores the result in "*target". Returns OK if "*target" and
@@ -121,18 +149,30 @@ class DeviceNameUtils {
   }
   static Status MergeDevNames(ParsedName* target, const ParsedName& other,
                               bool allow_soft_placement);
+  // Same as MergeDevNames with allow_soft_placement=true, but instead of
+  // clearing conflicting fields, overrides them with `other`'s values.
+  static Status MergeOverrideDevNames(ParsedName* target,
+                                      const ParsedName& other);
 
   // Returns true iff devices identified by 'src' and 'dst' are in the
   // same address space.
   static bool IsSameAddressSpace(StringPiece src, StringPiece dst);
   static bool IsSameAddressSpace(const ParsedName& src, const ParsedName& dst);
 
+  // Returns true iff devices identified by 'a' and 'b' are in different
+  // address space.
+  static bool IsDifferentAddressSpace(const ParsedName& a, const ParsedName& b);
+
+  // Returns the an address space specification containing only the
+  // job/replica/task of the given name.
+  static const ParsedName AddressSpace(const ParsedName& name);
+
   // Returns the local device given its "type" and "id".
-  static string LocalName(StringPiece type, int id);
+  static std::string LocalName(StringPiece type, int id);
 
   // Returns a short local device name (cpu:0, gpu:1, etc) based on
   // the given fullname.
-  static string LocalName(StringPiece fullname);
+  static std::string LocalName(StringPiece fullname);
 
   // If "name" is a valid local device name (cpu:0, gpu:1, etc.),
   // fills in parsed.type and parsed.id accordingly. Returns true iff
@@ -146,11 +186,35 @@ class DeviceNameUtils {
   // component into *device.  This function will still return true if
   // the task component is empty, but it requires the relative device
   // component to be fully specified.
-  static bool SplitDeviceName(StringPiece name, string* task, string* device);
+  static bool SplitDeviceName(StringPiece name, std::string* task,
+                              std::string* device);
 
-  static string ParsedNameToString(const ParsedName& pn);
+  // Get the task name from ParsedName. Return false if the task component is
+  // not fully specified.
+  static bool GetTaskName(const ParsedName& pn, std::string* task);
+
+  static std::string ParsedNameToString(const ParsedName& pn);
+
+  // Returns canonical and legacy full names for the given parsed
+  // device name 'pn'. The returned string names are often useful to
+  // look up devices from a mapping.
+  static std::vector<string> GetNamesForDeviceMappings(const ParsedName& pn);
+
+  // Returns canonical and legacy local names for the given parsed device name
+  // 'pn'. The returned string names are often useful to look up devices from a
+  // mapping.
+  static std::vector<string> GetLocalNamesForDeviceMappings(
+      const ParsedName& pn);
+
+  // Returns name of the CPU:0 device on the same host as the device
+  // `device_name`.
+  static Status DeviceNameToCpuDeviceName(const std::string& device_name,
+                                          std::string* host_device_name);
 };
+
+std::ostream& operator<<(std::ostream& os,
+                         const DeviceNameUtils::ParsedName& x);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
+#endif  // TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_

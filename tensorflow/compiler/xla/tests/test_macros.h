@@ -28,21 +28,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_
 
-#include <string>
-
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/test.h"
-
-// Use this macro instead of directly using TEST_P for parameterized tests,
-// otherwise DISABLED_ON_* macros nested in TEST_P will not get expanded since
-// TEST_P stringifies its argument. That makes the test disabled for all targets
-// when any one of the DISABLED_ON_* macro is used, and the test will just pass.
-// TODO(b/29122096): Remove this once TEST_P fixes this problem.
-#define XLA_TEST_P(test_case_name, test_name) TEST_P(test_case_name, test_name)
-
 #define DISABLED_ON_CPU(X) X
-#define DISABLED_ON_CPU_PARALLEL(X) X
 #define DISABLED_ON_GPU(X) X
+#define DISABLED_ON_GPU_ROCM(X) X
+#define DISABLED_ON_INTERPRETER(X) X
+#define DISABLED_ON_INTERPRETER_TSAN(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -57,20 +47,48 @@ limitations under the License.
 # define DISABLED_ON_CPU(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_CPU
 
-#ifdef XLA_TEST_BACKEND_CPU_PARALLEL
-# undef DISABLED_ON_CPU
-# define DISABLED_ON_CPU(X) XLA_TEST_PASTE(DISABLED_, X)
-# undef DISABLED_ON_CPU_PARALLEL
-# define DISABLED_ON_CPU_PARALLEL(X) XLA_TEST_PASTE(DISABLED_, X)
-#endif  // XLA_TEST_BACKEND_CPU_PARALLEL
-
 #ifdef XLA_TEST_BACKEND_GPU
 # undef DISABLED_ON_GPU
 # define DISABLED_ON_GPU(X) XLA_TEST_PASTE(DISABLED_, X)
+
+#if TENSORFLOW_USE_ROCM
+# undef DISABLED_ON_GPU_ROCM
+# define DISABLED_ON_GPU_ROCM(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // TENSORFLOW_USE_ROCM
+
 #endif  // XLA_TEST_BACKEND_GPU
+
+#ifdef XLA_TEST_BACKEND_INTERPRETER
+# undef DISABLED_ON_INTERPRETER
+# define DISABLED_ON_INTERPRETER(X) XLA_TEST_PASTE(DISABLED_, X)
+
+#ifdef THREAD_SANITIZER
+# undef DISABLED_ON_INTERPRETER_TSAN
+# define DISABLED_ON_INTERPRETER_TSAN(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // THREAD_SANITIZER
+
+#endif  // XLA_TEST_BACKEND_INTERPRETER
 
 // clang-format on
 
+namespace xla {
+
+inline const char** DisabledManifestPath() {
+  static const char* disabled_manifest_path = nullptr;
+  return &disabled_manifest_path;
+}
+
+inline const char** TestPlatform() {
+  static const char* test_platform = nullptr;
+  return &test_platform;
+}
+
+}  // namespace xla
+
 #define XLA_TEST_F(test_fixture, test_name) TEST_F(test_fixture, test_name)
+
+#define XLA_TEST_P(test_case_name, test_name) TEST_P(test_case_name, test_name)
+
+#define XLA_TYPED_TEST(CaseName, TestName) TYPED_TEST(CaseName, TestName)
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_

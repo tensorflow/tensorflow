@@ -1,0 +1,46 @@
+op {
+  graph_op_name: "ExtractVolumePatches"
+  in_arg {
+    name: "input"
+    description: <<END
+5-D Tensor with shape `[batch, in_planes, in_rows, in_cols, depth]`.
+END
+  }
+  out_arg {
+    name: "patches"
+    description: <<END
+5-D Tensor with shape `[batch, out_planes, out_rows, out_cols,
+ksize_planes * ksize_rows * ksize_cols * depth]` containing patches
+with size `ksize_planes x ksize_rows x ksize_cols x depth` vectorized
+in the "depth" dimension. Note `out_planes`, `out_rows` and `out_cols`
+are the dimensions of the output patches.
+END
+  }
+  attr {
+    name: "ksizes"
+    description: <<END
+The size of the sliding window for each dimension of `input`.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D of length 5. How far the centers of two consecutive patches are in
+`input`. Must be: `[1, stride_planes, stride_rows, stride_cols, 1]`.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+
+The size-related attributes are specified as follows:
+
+```python
+ksizes = [1, ksize_planes, ksize_rows, ksize_cols, 1]
+strides = [1, stride_planes, strides_rows, strides_cols, 1]
+```
+END
+  }
+  summary: "Extract `patches` from `input` and put them in the `\"depth\"` output dimension. 3D extension of `extract_image_patches`."
+}

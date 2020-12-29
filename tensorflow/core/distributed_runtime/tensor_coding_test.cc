@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -49,7 +50,7 @@ class StringSource : public TensorResponse::Source {
  public:
   explicit StringSource(const string* s, int block_size)
       : s_(s), stream_(nullptr), block_size_(block_size) {}
-  virtual ~StringSource() { DeleteStream(); }
+  ~StringSource() override { DeleteStream(); }
 
   protobuf::io::ZeroCopyInputStream* contents() override {
     DeleteStream();
@@ -119,12 +120,12 @@ class TensorResponseTest : public ::testing::Test {
     }
   }
   void DoTestForStrings(DataType dt) {
-    gtl::InlinedVector<string, 4> v;
+    gtl::InlinedVector<tstring, 4> v;
     LOG(ERROR) << "DT: string";
     for (int elems = 0; elems <= 10000; elems++) {
       if (elems < 100 || (elems % 1000 == 0)) {
         Tensor a(dt, TensorShape({1, static_cast<int64>(v.size())}));
-        test::FillValues<string>(&a, v);
+        test::FillValues<tstring>(&a, v);
         Validate(a, (elems == 0), true);
       }
       v.push_back(strings::StrCat("This is string ", elems));
@@ -172,37 +173,36 @@ string MakeFloatTensorTestCase(int num_elems) {
   return encoded;
 }
 
-static void BM_TensorResponse(int iters, int arg) {
-  testing::StopTiming();
+static void BM_TensorResponse(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
   string encoded = MakeFloatTensorTestCase(arg);
   DummyDevice cpu_device(Env::Default());
-  testing::StartTiming();
-  while (--iters > 0) {
+  size_t bytes = 0;
+  for (auto i : state) {
     TensorResponse response;
     response.InitAlloc(&cpu_device, AllocatorAttributes());
     StringSource source(&encoded, -1);
     Status s = response.ParseFrom(&source);
-    if (iters == 1) {
-      testing::SetLabel(
-          strings::StrCat("Bytes: ", response.tensor().TotalBytes()));
-    }
+    bytes = response.tensor().TotalBytes();
   }
+  state.SetLabel(strings::StrCat("Bytes: ", bytes));
 }
 BENCHMARK(BM_TensorResponse)->Arg(0)->Arg(1000)->Arg(100000);
 
-static void BM_TensorViaTensorProto(int iters, int arg) {
-  testing::StopTiming();
-  string encoded = MakeFloatTensorTestCase(arg);
-  testing::StartTiming();
-  while (--iters > 0) {
+static void BM_TensorViaTensorProto(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
+  std::string encoded = MakeFloatTensorTestCase(arg);
+  size_t bytes = 0;
+  for (auto s : state) {
     RecvTensorResponse r;
     r.ParseFromString(encoded);
     Tensor t;
     CHECK(t.FromProto(r.tensor()));
-    if (iters == 1) {
-      testing::SetLabel(strings::StrCat("Bytes: ", t.TotalBytes()));
-    }
+    bytes = t.TotalBytes();
   }
+  state.SetLabel(strings::StrCat("Bytes: ", bytes));
 }
 BENCHMARK(BM_TensorViaTensorProto)->Arg(0)->Arg(1000)->Arg(100000);
 

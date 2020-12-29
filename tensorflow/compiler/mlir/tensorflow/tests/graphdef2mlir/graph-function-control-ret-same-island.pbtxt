@@ -1,0 +1,100 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+
+# Verify for functions with control return values, the island with a consumed
+# data output and a consumed control has both its outputs added to the GraphOps
+# FetchOp.
+
+# Match the island containing the "tf.Neg", capture the output
+# CHECK:          %[[ISLAND:[a-z_0-9]*]], %[[ISLAND_control:[a-z_0-9]*]] = tf_executor.island wraps "tf.Neg"
+
+# Check that the tf.Neg data output and control are passed to the fetch
+# CHECK:          tf_executor.fetch %[[ISLAND]], %[[ISLAND_control]] : tensor<*xf32>, !tf_executor.control
+
+node {
+  name: "const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.0
+      }
+    }
+  }
+}
+node {
+  name: "test_fn_call"
+  op: "StatefulPartitionedCall"
+  input: "const"
+  attr {
+    key: "Tin"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "Tout"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    key: "f"
+    value {
+      func {
+        name: "test_fn"
+      }
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "test_fn"
+      input_arg {
+        name: "a"
+        type: DT_FLOAT
+      }
+      output_arg {
+        name: "c"
+        type: DT_FLOAT
+      }
+      control_output: "must_execute"
+    }
+    node_def {
+      name: "b"
+      op: "Neg"
+      input: "a"
+      attr {
+        key: "T"
+        value {
+          type: DT_FLOAT
+        }
+      }
+    }
+    ret {
+      key: "c"
+      value: "b:y:0"
+    }
+    control_ret {
+      key: "must_execute"
+      value: "b"
+    }
+  }
+}
+versions {
+  producer: 121
+}

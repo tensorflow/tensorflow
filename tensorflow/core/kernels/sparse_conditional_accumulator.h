@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
-#define TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
 
 #include "tensorflow/core/kernels/typed_conditional_accumulator_base.h"
 
@@ -50,10 +50,10 @@ class SparseConditionalAccumulator
  public:
   SparseConditionalAccumulator(const DataType& dtype,
                                const PartialTensorShape& shape,
-                               const string& name)
+                               const string& name, const string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
-            dtype, shape, name) {
+            dtype, shape, name, reduction_type) {
     accum_idx_vec_ = nullptr;
     count_element_ = nullptr;
     accum_val_ = nullptr;
@@ -83,7 +83,7 @@ class SparseConditionalAccumulator
 
   Status ValidateShape(
       std::tuple<const Tensor*, const Tensor*, const Tensor*>* tensor,
-      bool has_known_shape) EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      bool has_known_shape) TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     const Tensor* tensor_idx = std::get<0>(*tensor);
     const Tensor* tensor_val = std::get<1>(*tensor);
     const Tensor* tensor_shape = std::get<2>(*tensor);
@@ -172,8 +172,10 @@ class SparseConditionalAccumulator
     }
 
     // Assign values to accum_val_tensor
+    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     ctx->allocate_persistent(dtype_, grad_val->shape(), accum_val_persistent_,
-                             &accum_val_);
+                             &accum_val_)
+        .IgnoreError();
     accum_val_->flat<T>().device(ctx->template eigen_device<Device>()) =
         grad_val->flat<T>();
 
@@ -317,7 +319,7 @@ class SparseConditionalAccumulator
   }
 
   void DivideAccumGradByCounter(OpKernelContext* ctx) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     const int64 nnz = count_element_->size();
     auto accum_flat = accum_val_->flat_outer_dims<T>();
     std::vector<T> count_typet;
@@ -354,7 +356,7 @@ class SparseConditionalAccumulator
   bool GetAndValidateTensorInputForApplyGrad(
       OpKernelContext* ctx,
       std::tuple<const Tensor*, const Tensor*, const Tensor*>** tensor) override
-      EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(this->mu_) {
     // TODO(xinghao, jmchen): The roundabout way of getting attr from
     // OpKernelContext (instead of OpKernelConstruction) is a hack, and should
     // be fixed if it affects efficiency.
@@ -457,4 +459,4 @@ class SparseConditionalAccumulator
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_

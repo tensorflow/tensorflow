@@ -18,13 +18,14 @@ limitations under the License.
 // is a header file because we split the various reduction ops into their
 // own compilation units to get more parallelism in compilation.
 
-#ifndef TENSORFLOW_KERNELS_REDUCTION_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_REDUCTION_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_H_
 
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -40,9 +41,6 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device>
 struct Constants {
@@ -68,11 +66,9 @@ struct ConstantsBase {
   const Eigen::IndexList<Eigen::type2index<1>> kOne;
   const Eigen::IndexList<Eigen::type2index<0>, Eigen::type2index<2>> kZeroTwo;
 };
-template<> struct Constants<CPUDevice> : ConstantsBase{};
-#ifdef TENSORFLOW_USE_SYCL
-template<> struct Constants<SYCLDevice> : ConstantsBase{};
-#endif // TENSORFLOW_USE_SYCL
-#endif // EIGEN_HAS_INDEX_LIST
+template <>
+struct Constants<CPUDevice> : ConstantsBase {};
+#endif  // EIGEN_HAS_INDEX_LIST
 
 class ReductionHelper {
  public:
@@ -131,12 +127,13 @@ class ReductionHelper {
 
 // For operations where the output is a reduction function along some
 // dimensions of the input.
-template <typename Device, class T, typename Reducer>
+template <typename Device, class T, typename Tperm, typename Reducer>
 class ReductionOp : public OpKernel {
  public:
   explicit ReductionOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     const DataType dt = DataTypeToEnum<T>::v();
-    OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, DT_INT32}, {dt}));
+    const DataType pt = DataTypeToEnum<Tperm>::v();
+    OP_REQUIRES_OK(ctx, ctx->MatchSignature({dt, pt}, {dt}));
 
     OP_REQUIRES_OK(ctx, ctx->GetAttr("keep_dims", &keep_dims_));
   }
@@ -151,19 +148,16 @@ class ReductionOp : public OpKernel {
     OP_REQUIRES_OK(ctx, helper.Simplify(data, axes, keep_dims_));
     CHECK_GE(helper.ndims(), 0);
 
-    // The real output shape will be assigned below.
-    TensorShape empty_shape;
-    Tensor* out = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, empty_shape, &out));
-
-    if (helper.ndims() == 0 ||
-        (helper.ndims() == 1 && !helper.reduce_first_axis())) {
-      // Special case. Reduces nothing.  It is unclear why this is
-      // necessary, but tests fail without it.  Look into why this
-      // case occurs.
-      if (!out->CopyFrom(data, helper.out_shape())) {
+    bool is_scalar_identity = functor::ReducerTraits<Reducer>::IsScalarIdentity;
+    bool is_trivial = helper.ndims() == 0 ||
+                      (helper.ndims() == 1 && !helper.reduce_first_axis());
+    if (is_scalar_identity && is_trivial) {
+      Tensor out;
+      // Special case. Reduces nothing and does not alter the input values.
+      if (!out.CopyFrom(data, helper.out_shape())) {
         ctx->SetStatus(errors::Internal("Error during reduction copy."));
       }
+      ctx->set_output(0, out);
       return;
     }
 
@@ -171,71 +165,84 @@ class ReductionOp : public OpKernel {
     // output(0) because it is returned as output(0) in the end.
     const AllocatorAttributes alloc_attr = ctx->output_alloc_attr(0);
 
-    // A temporary tensor whose size matches the size of the reduced
-    // output.
     Tensor tmp_out;
-    OP_REQUIRES_OK(ctx, ctx->allocate_temp(out->dtype(), helper.out_reshape(),
-                                           &tmp_out, alloc_attr));
-
     typedef functor::ReduceFunctor<Device, Reducer> Functor;
     Constants<Device> constants;
     const Device& d = ctx->eigen_device<Device>();
     Reducer reducer;
 
-    if (tmp_out.NumElements() == 0) {
-      // Nothing to do, fall through to final reshaping.
-    } else if (data.NumElements() == 0) {
-      // Degenerate reduction where the input is empty but the output is
-      // nonempty (thus tmp_out.NumElements() > 0), and we must fill the output
-      // with identity elements.  Example: tf.reduce_sum(tf.zeros((0, 3)), [0]).
-      // Eigen sometimes crashes in this case, so we do it manually.
-      Functor::FillIdentity(d, tmp_out.flat<T>(), reducer);
-    } else if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
-      // Reduce to a scalar.
-      Functor::Reduce(d, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
+    if (data.NumElements() > 0 && is_trivial && !is_scalar_identity) {
+      OP_REQUIRES_OK(ctx, ctx->allocate_temp(ctx->expected_output_dtype(0),
+                                             TensorShape({data.NumElements()}),
+                                             &tmp_out, alloc_attr));
+      Functor::Reduce(ctx, tmp_out.flat<T>(),
+                      data.shaped<T, 2>({1, data.NumElements()}),
                       constants.kZero, reducer);
-    } else if ((helper.ndims() == 2) && helper.reduce_first_axis()) {
-      // Can be viewed as a reduction of a matrix along 1st dimension.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
-                      constants.kZero, reducer);
-    } else if ((helper.ndims() == 2) && !helper.reduce_first_axis()) {
-      // Can be viewed as a reduction of a matrix along 2nd dimension.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
-                      constants.kOne, reducer);
-    } else if ((helper.ndims() == 3) && helper.reduce_first_axis()) {
-      // Can be viewed as a reduction of a 3D tensor along 1st and 3rd
-      // dimensions.
-      Functor::Reduce(d, helper.out<T, 1>(&tmp_out), helper.in<T, 3>(data),
-                      constants.kZeroTwo, reducer);
-    } else if ((helper.ndims() == 3) && !helper.reduce_first_axis()) {
-      // Can be viewed as a reduction of a 3D tensor along 2nd dimension.
-      Functor::Reduce(d, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
-                      constants.kOne, reducer);
     } else {
-      // If we don't hit one of the cases above, transpose the data so that
-      // all reduced dimensions are last and reuse the 2-D -> 1-D case.
-      Tensor data_reshaped;
-      CHECK(data_reshaped.CopyFrom(data, helper.data_reshape()));
-      Tensor shuffled;
-      OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                             helper.shuffled_shape(), &shuffled,
-                                             alloc_attr));
+      // A temporary tensor whose size matches the size of the reduced
+      // output.
       OP_REQUIRES_OK(
-          ctx, DoTranspose(d, data_reshaped, helper.permutation(), &shuffled));
-      const int64 unreduced = tmp_out.NumElements();
-      const int64 reduced = shuffled.NumElements() / unreduced;
-      const Tensor& const_shuffled = shuffled;
-      Functor::Reduce(d, tmp_out.flat<T>(),
-                      const_shuffled.shaped<T, 2>({unreduced, reduced}),
-                      constants.kOne, reducer);
+          ctx, ctx->allocate_temp(ctx->expected_output_dtype(0),
+                                  helper.out_reshape(), &tmp_out, alloc_attr));
+
+      if (tmp_out.NumElements() == 0) {
+        // Nothing to do, fall through to final reshaping.
+      } else if (data.NumElements() == 0) {
+        // Degenerate reduction where the input is empty but the output is
+        // nonempty (thus tmp_out.NumElements() > 0), and we must fill the
+        // output with identity elements.  Example: tf.reduce_sum(tf.zeros((0,
+        // 3)), [0]). Eigen sometimes crashes in this case, so we do it
+        // manually.
+        Functor::FillIdentity(d, tmp_out.flat<T>(), reducer);
+      } else if ((helper.ndims() == 1) && helper.reduce_first_axis()) {
+        // Reduce to a scalar.
+        Functor::Reduce(ctx, helper.out<T, 0>(&tmp_out), helper.in<T, 1>(data),
+                        constants.kZero, reducer);
+      } else if ((helper.ndims() == 2) && helper.reduce_first_axis()) {
+        // Can be viewed as a reduction of a matrix along 1st dimension.
+        Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
+                        constants.kZero, reducer);
+      } else if ((helper.ndims() == 2) && !helper.reduce_first_axis()) {
+        // Can be viewed as a reduction of a matrix along 2nd dimension.
+        Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 2>(data),
+                        constants.kOne, reducer);
+      } else if ((helper.ndims() == 3) && helper.reduce_first_axis()) {
+        // Can be viewed as a reduction of a 3D tensor along 1st and 3rd
+        // dimensions.
+        Functor::Reduce(ctx, helper.out<T, 1>(&tmp_out), helper.in<T, 3>(data),
+                        constants.kZeroTwo, reducer);
+      } else if ((helper.ndims() == 3) && !helper.reduce_first_axis()) {
+        // Can be viewed as a reduction of a 3D tensor along 2nd dimension.
+        Functor::Reduce(ctx, helper.out<T, 2>(&tmp_out), helper.in<T, 3>(data),
+                        constants.kOne, reducer);
+      } else {
+        // If we don't hit one of the cases above, transpose the data so that
+        // all reduced dimensions are last and reuse the 2-D -> 1-D case.
+        Tensor data_reshaped;
+        OP_REQUIRES(ctx, data_reshaped.CopyFrom(data, helper.data_reshape()),
+                    errors::Internal("Error during reduction copy."));
+        Tensor shuffled;
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
+                                               helper.shuffled_shape(),
+                                               &shuffled, alloc_attr));
+        OP_REQUIRES_OK(ctx, DoTranspose(d, data_reshaped, helper.permutation(),
+                                        &shuffled));
+        const int64 unreduced = tmp_out.NumElements();
+        const int64 reduced = shuffled.NumElements() / unreduced;
+        const Tensor& const_shuffled = shuffled;
+        Functor::Reduce(ctx, tmp_out.flat<T>(),
+                        const_shuffled.shaped<T, 2>({unreduced, reduced}),
+                        constants.kOne, reducer);
+      }
     }
 
     // Set the real output using the contents of the reduction but the
     // real expected output shape.  The number of elements should
     // match between the two shapes.
-    if (!out->CopyFrom(tmp_out, helper.out_shape())) {
-      ctx->SetStatus(errors::Internal("Error during reduction copy."));
-    }
+    Tensor out;
+    OP_REQUIRES(ctx, out.CopyFrom(tmp_out, helper.out_shape()),
+                errors::Internal("Error during reduction copy."));
+    ctx->set_output(0, out);
   }
 
  private:
@@ -248,29 +255,25 @@ namespace functor {
 template <typename Device, typename Reducer>
 struct ReduceFunctorBase {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
-  static void Reduce(const Device& d, OUT_T out, IN_T in,
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
                      const Reducer& reducer) {
-    ReduceEigenImpl(d, out, in, reduction_axes, reducer);
+    const Device& d = ctx->eigen_device<Device>();
+    ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes, Reducer> reducer_impl;
+    reducer_impl(d, out, in, reduction_axes, reducer);
   }
 
   template <typename OUT_T>
-  static void FillIdentity(const Device& d, OUT_T out,
-                           const Reducer& reducer) {
+  static void FillIdentity(const Device& d, OUT_T out, const Reducer& reducer) {
     FillIdentityEigenImpl(d, out, reducer);
   }
 };
 
 template <typename Reducer>
 struct ReduceFunctor<CPUDevice, Reducer>
-        : ReduceFunctorBase<CPUDevice, Reducer>{};
-#if TENSORFLOW_USE_SYCL
-template <typename Reducer>
-struct ReduceFunctor<SYCLDevice, Reducer>
-        : ReduceFunctorBase<SYCLDevice, Reducer>{};
-#endif // TENSORFLOW_USE_SYCL
+    : ReduceFunctorBase<CPUDevice, Reducer> {};
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_REDUCTION_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_REDUCTION_OPS_COMMON_H_

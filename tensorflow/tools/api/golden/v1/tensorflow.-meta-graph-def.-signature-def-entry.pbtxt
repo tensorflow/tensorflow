@@ -1,0 +1,22 @@
+path: "tensorflow.MetaGraphDef.SignatureDefEntry"
+tf_proto {
+  descriptor {
+    name: "SignatureDefEntry"
+    field {
+      name: "key"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "value"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SignatureDef"
+    }
+    options {
+      map_entry: true
+    }
+  }
+}

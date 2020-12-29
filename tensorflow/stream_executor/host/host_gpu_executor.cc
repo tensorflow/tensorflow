@@ -17,18 +17,22 @@ limitations under the License.
 // class declaration].
 #include "tensorflow/stream_executor/host/host_gpu_executor.h"
 
+#include <stdint.h>
 #include <string.h>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/notification.h"
+#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
+#include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace gpu = ::perftools::gputools;
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace host {
 
 HostStream *AsHostStream(Stream *stream) {
@@ -41,28 +45,55 @@ HostExecutor::HostExecutor(const PluginConfig &plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-void *HostExecutor::Allocate(uint64 size) { return new char[size]; }
+port::Status HostExecutor::Init(int device_ordinal,
+                                DeviceOptions device_options) {
+  auto it =
+      device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
+  if (it != device_options.non_portable_tags.end()) {
+    if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
+      return port::InvalidArgumentError(absl::StrCat(
+          "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
+          it->second));
+    }
+  }
+  return port::Status::OK();
+}
 
-void *HostExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                      uint64 offset_bytes, uint64 size_bytes) {
+bool HostExecutor::DeviceMemoryUsage(int64 *free, int64 *total) const {
+  tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
+  *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
+  *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
+  return true;
+}
+
+DeviceMemoryBase HostExecutor::Allocate(uint64 size, int64 memory_space) {
+  CHECK_EQ(memory_space, 0);
+  // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
+  // This should probably be kept in sync with
+  // tensorflow::Allocator::kAllocatorAlignment.
+  return DeviceMemoryBase(
+      tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+}
+
+void *HostExecutor::GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
+                                 uint64 size_bytes) {
   return reinterpret_cast<char *>(parent->opaque()) + offset_bytes;
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase *mem) {
-  if (!mem->is_sub_buffer()) {
-    delete[] static_cast<char *>(mem->opaque());
-  }
+  tensorflow::port::AlignedFree(mem->opaque());
 }
 
-bool HostExecutor::SynchronousMemZero(DeviceMemoryBase *location, uint64 size) {
+port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase *location,
+                                              uint64 size) {
   memset(location->opaque(), 0, size);
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                     uint64 size) {
+port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase *location,
+                                             int value, uint64 size) {
   memset(location->opaque(), value, size);
-  return true;
+  return port::Status::OK();
 }
 
 bool HostExecutor::Memcpy(Stream *stream, void *host_dst,
@@ -95,38 +126,38 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream *stream,
   // the nature of the HostExecutor) memcpy  on the stream (HostStream)
   // associated with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
-      [src_mem, dst_mem, size]() { memcpy(src_mem, dst_mem, size); });
+      [src_mem, dst_mem, size]() { memcpy(dst_mem, src_mem, size); });
   return true;
 }
 
-bool HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
-                           uint64 size) {
+port::Status HostExecutor::MemZero(Stream *stream, DeviceMemoryBase *location,
+                                   uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
-                          uint8 pattern, uint64 size) {
+port::Status HostExecutor::Memset(Stream *stream, DeviceMemoryBase *location,
+                                  uint8 pattern, uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return true;
+  return port::Status::OK();
 }
 
-bool HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
-                            uint32 pattern, uint64 size) {
+port::Status HostExecutor::Memset32(Stream *stream, DeviceMemoryBase *location,
+                                    uint32 pattern, uint64 size) {
   void *gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return true;
+  return port::Status::OK();
 }
 
 port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
@@ -150,8 +181,13 @@ port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
 }
 
 bool HostExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
-  AsHostStream(stream)->EnqueueTask(callback);
+                                std::function<port::Status()> callback) {
+  AsHostStream(stream)->EnqueueTask([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return true;
 }
 
@@ -160,10 +196,66 @@ bool HostExecutor::AllocateStream(Stream *stream) { return true; }
 void HostExecutor::DeallocateStream(Stream *stream) {}
 
 bool HostExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+  auto event = std::make_shared<absl::Notification>();
+  AsHostStream(other)->EnqueueTask([event]() { event->Notify(); });
   AsHostStream(dependent)->EnqueueTask(
-      [other]() { other->BlockHostUntilDone(); });
-  AsHostStream(dependent)->BlockUntilDone();
+      [event]() { event->WaitForNotification(); });
   return true;
+}
+
+class HostEvent : public internal::EventInterface {
+ public:
+  HostEvent() : notification_(std::make_shared<absl::Notification>()) {}
+
+  std::shared_ptr<absl::Notification> &notification() { return notification_; }
+
+ private:
+  // We use a std::shared_ptr here because the client may delete the HostEvent
+  // object while there are still RecordEvent and WaitForEvent callbacks pending
+  // on a stream.
+  std::shared_ptr<absl::Notification> notification_;
+};
+
+std::unique_ptr<internal::EventInterface>
+HostExecutor::CreateEventImplementation() {
+  return std::unique_ptr<internal::EventInterface>(new HostEvent());
+}
+
+static HostEvent *AsHostEvent(Event *event) {
+  DCHECK(event != nullptr);
+  return static_cast<HostEvent *>(event->implementation());
+}
+
+port::Status HostExecutor::AllocateEvent(Event * /*event*/) {
+  return port::Status::OK();
+}
+
+port::Status HostExecutor::DeallocateEvent(Event * /*event*/) {
+  return port::Status::OK();
+}
+
+port::Status HostExecutor::RecordEvent(Stream *stream, Event *event) {
+  std::shared_ptr<absl::Notification> notification =
+      AsHostEvent(event)->notification();
+  AsHostStream(stream)->EnqueueTask([notification]() {
+    CHECK(!notification->HasBeenNotified());
+    notification->Notify();
+  });
+  return port::Status::OK();
+}
+
+port::Status HostExecutor::WaitForEvent(Stream *stream, Event *event) {
+  std::shared_ptr<absl::Notification> notification =
+      AsHostEvent(event)->notification();
+  AsHostStream(stream)->EnqueueTask(
+      [notification]() { notification->WaitForNotification(); });
+  return port::Status::OK();
+}
+
+Event::Status HostExecutor::PollForEventStatus(Event *event) {
+  absl::Notification &notification = *AsHostEvent(event)->notification();
+  return notification.HasBeenNotified() ? Event::Status::kComplete
+                                        : Event::Status::kPending;
 }
 
 bool HostExecutor::StartTimer(Stream *stream, Timer *timer) {
@@ -176,12 +268,13 @@ bool HostExecutor::StopTimer(Stream *stream, Timer *timer) {
   return true;
 }
 
-bool HostExecutor::BlockHostUntilDone(Stream *stream) {
+port::Status HostExecutor::BlockHostUntilDone(Stream *stream) {
   AsHostStream(stream)->BlockUntilDone();
-  return true;
+  return port::Status::OK();
 }
 
-DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
+port::StatusOr<std::unique_ptr<DeviceDescription>>
+HostExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
   builder.set_device_address_bits(64);
@@ -190,10 +283,14 @@ DeviceDescription *HostExecutor::PopulateDeviceDescription() const {
   // doesn't result in thrashing or other badness? 4GiB chosen arbitrarily.
   builder.set_device_memory_size(static_cast<uint64>(4) * 1024 * 1024 * 1024);
 
-  builder.set_clock_rate_ghz(static_cast<float>(CLOCKS_PER_SEC) / 1e9);
+  float cycle_counter_frequency = static_cast<float>(
+      tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
+  builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
-  auto built = builder.Build();
-  return built.release();
+  builder.set_name("Host");
+  builder.set_platform_version("Default Version");
+
+  return builder.Build();
 }
 
 bool HostExecutor::SupportsBlas() const {
@@ -259,6 +356,11 @@ rng::RngSupport *HostExecutor::CreateRng() {
   return status.ValueOrDie()(this);
 }
 
+std::unique_ptr<internal::StreamInterface>
+HostExecutor::GetStreamImplementation() {
+  return std::unique_ptr<internal::StreamInterface>(
+      new HostStream(thread_stack_size_in_bytes_));
+}
+
 }  // namespace host
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

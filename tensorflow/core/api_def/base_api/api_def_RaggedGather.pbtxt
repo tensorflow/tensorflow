@@ -1,0 +1,81 @@
+op {
+  graph_op_name: "RaggedGather"
+  visibility: HIDDEN
+  in_arg {
+    name: "params_nested_splits"
+    description: <<END
+The `nested_row_splits` tensors that define the row-partitioning for the
+`params` RaggedTensor input.
+END
+  }
+  in_arg {
+    name: "params_dense_values"
+    description: <<END
+The `flat_values` for the `params` RaggedTensor. There was a terminology change
+at the python level from dense_values to flat_values, so dense_values is the
+deprecated name.
+END
+  }
+  in_arg {
+    name: "indices"
+    description: <<END
+Indices in the outermost dimension of `params` of the values that should be
+gathered.
+END
+  }
+  out_arg {
+    name: "output_nested_splits"
+    description: <<END
+The `nested_row_splits` tensors that define the row-partitioning for the
+returned RaggedTensor.
+END
+  }
+  out_arg {
+    name: "output_dense_values"
+    description: "The `flat_values` for the returned RaggedTensor."
+  }
+  attr {
+    name: "PARAMS_RAGGED_RANK"
+    description: <<END
+The ragged rank of the `params` RaggedTensor. `params_nested_splits` should
+contain this number of `row_splits` tensors. This value should equal
+`params.ragged_rank`.
+END
+  }
+  attr {
+    name: "OUTPUT_RAGGED_RANK"
+    description: <<END
+The ragged rank of the output RaggedTensor. `output_nested_splits` will contain
+this number of `row_splits` tensors. This value should equal
+`indices.shape.ndims + params.ragged_rank - 1`.
+END
+  }
+  summary: <<END
+Gather ragged slices from `params` axis `0` according to `indices`.
+END
+  description: <<END
+Outputs a `RaggedTensor` output composed from `output_dense_values` and
+`output_nested_splits`, such that:
+
+```python
+output.shape = indices.shape + params.shape[1:]
+output.ragged_rank = indices.shape.ndims + params.ragged_rank
+output[i...j, d0...dn] = params[indices[i...j], d0...dn]
+```
+
+where
+
+* `params =
+   ragged.from_nested_row_splits(params_dense_values, params_nested_splits)`
+   provides the values that should be gathered.
+* `indices` ia a dense tensor with dtype `int32` or `int64`, indicating which
+   values should be gathered.
+* `output =
+   ragged.from_nested_row_splits(output_dense_values, output_nested_splits)`
+   is the output tensor.
+
+(Note: This c++ op is used to implement the higher-level python
+`tf.ragged.gather` op, which also supports ragged indices.)
+
+END
+}

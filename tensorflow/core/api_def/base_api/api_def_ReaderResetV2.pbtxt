@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "ReaderResetV2"
+  endpoint {
+    name: "ReaderReset"
+  }
+  in_arg {
+    name: "reader_handle"
+    description: <<END
+Handle to a Reader.
+END
+  }
+  summary: "Restore a Reader to its initial clean state."
+}

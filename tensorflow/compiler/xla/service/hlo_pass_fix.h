@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_FIX_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PASS_FIX_H_
 
+#include <algorithm>
+
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -34,9 +37,44 @@ class HloPassFix : public Pass {
   StatusOr<bool> Run(HloModule* module) override {
     bool changed = false;
     bool changed_this_iteration = true;
+    int64 iteration_count = 0;
+    const int64 kLimit = 25;
+    VLOG(3) << "Running HloPassFix on " << Pass::name();
     while (changed_this_iteration) {
       TF_ASSIGN_OR_RETURN(changed_this_iteration, Pass::Run(module));
       changed |= changed_this_iteration;
+      VLOG(3) << Pass::name() << " iteration " << iteration_count
+              << " changed_this_iteration: " << changed_this_iteration;
+      ++iteration_count;
+      if (iteration_count == kLimit) {
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes '"
+                << Pass::name() << "' for module '" << module->name()
+                << "'. Exiting fixed point loop.";
+        // Return false in case this is fixed point is nested.
+        return false;
+      }
+    }
+    return changed;
+  }
+
+  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override {
+    bool changed = false;
+    bool changed_this_iteration = true;
+    int64 iteration_count = 0;
+    const int64 kLimit = 25;
+    VLOG(3) << "Running HloPassFix.";
+    while (changed_this_iteration) {
+      TF_ASSIGN_OR_RETURN(changed_this_iteration,
+                          Pass::RunOnModuleGroup(module_group));
+      changed |= changed_this_iteration;
+      VLOG(3) << "changed_this_iteration: " << changed_this_iteration;
+      ++iteration_count;
+      if (iteration_count == kLimit) {
+        VLOG(1) << "Unexpectedly high number of iterations in HLO passes, "
+                   "exiting fixed point loop.";
+        // Return false in case this is fixed point is nested.
+        return false;
+      }
     }
     return changed;
   }

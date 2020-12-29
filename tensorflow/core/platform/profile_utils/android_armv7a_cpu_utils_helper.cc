@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
-#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+#if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
+    (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
 
 #include <asm/unistd.h>
+#include <inttypes.h>
 #include <linux/perf_event.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,8 +29,8 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace profile_utils {
@@ -52,12 +54,11 @@ uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() {
   return static_cast<uint64>(count);
 }
 
-void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
+void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling() {
   if (!is_initialized_) {
     // Initialize here to avoid unnecessary initialization
     InitializeInternal();
   }
-  if (enable) {
     const int64 cpu0_scaling_min = ReadCpuFrequencyFile(0, "scaling_min");
     const int64 cpu0_scaling_max = ReadCpuFrequencyFile(0, "scaling_max");
     if (cpu0_scaling_max != cpu0_scaling_min) {
@@ -67,9 +68,14 @@ void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(const bool enable) {
     }
     ResetClockCycle();
     ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
-  } else {
-    ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
+}
+
+void AndroidArmV7ACpuUtilsHelper::DisableClockCycleProfiling() {
+  if (!is_initialized_) {
+    // Initialize here to avoid unnecessary initialization
+    InitializeInternal();
   }
+  ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
 }
 
 int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() {
@@ -113,39 +119,23 @@ int64 AndroidArmV7ACpuUtilsHelper::ReadCpuFrequencyFile(
   if (fp == nullptr) {
     return INVALID_CPU_FREQUENCY;
   }
-  int64 freq = INVALID_CPU_FREQUENCY;
-  const int retval = fscanf(fp, "%lld", &freq);
+  int64_t freq_in_khz = INVALID_CPU_FREQUENCY;
+  const int retval = fscanf(fp, "%" SCNd64, &freq_in_khz);
   if (retval < 0) {
     LOG(WARNING) << "Failed to \"" << file_path << "\"";
+    if (fclose(fp) != 0) {
+      LOG(WARNING) << "fclose() failed: " << strerror(errno);
+    }
     return INVALID_CPU_FREQUENCY;
   }
-  pclose(fp);
-  return freq;
+  if (fclose(fp) != 0) {
+    LOG(WARNING) << "fclose() failed: " << strerror(errno);
+  }
+  return freq_in_khz * 1000;  // The file contains cpu frequency in khz
 }
 
 }  // namespace profile_utils
 }  // namespace tensorflow
 
-// defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-#else
-
-// Dummy implementations to avoid link error.
-
-namespace tensorflow {
-namespace profile_utils {
-
-void AndroidArmV7ACpuUtilsHelper::ResetClockCycle() {}
-uint64 AndroidArmV7ACpuUtilsHelper::GetCurrentClockCycle() { return 1; }
-void AndroidArmV7ACpuUtilsHelper::EnableClockCycleProfiling(bool) {}
-int AndroidArmV7ACpuUtilsHelper::OpenPerfEvent(perf_event_attr *const,
-                                               const pid_t, const int,
-                                               const int, const unsigned long) {
-  return 0;
-}
-int64 AndroidArmV7ACpuUtilsHelper::CalculateCpuFrequency() { return 0; }
-
-}  // namespace profile_utils
-}  // namespace tensorflow
-
-// defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-#endif
+#endif  // defined(__ANDROID__) && (__ANDROID_API__ >= 21) &&
+        // (defined(__ARM_ARCH_7A__) || defined(__aarch64__))

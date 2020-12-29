@@ -1,15 +1,12 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     default_visibility = [
         "//engedu/ml/tf_from_scratch:__pkg__",
         "//tensorflow:internal",
     ],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 py_library(
     name = "losses",
@@ -34,14 +31,21 @@ py_library(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "loss_reduction",
+    srcs = ["loss_reduction.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "util_test",
+    size = "small",
+    srcs = ["util_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":losses",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
 )

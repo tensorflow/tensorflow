@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
+
+#include "google/protobuf/any.pb.h"
+
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 
 namespace tensorflow {
 
@@ -63,13 +68,14 @@ Status TensorResponse::InitFrom(RecvTensorResponse* response) {
   return s;
 }
 
-void TensorResponse::InitPartial(const RecvTensorResponse& response) {
+void TensorResponse::InitPartial(const RecvTensorResponse& response,
+                                 const AllocationAttributes& allocation_attr) {
   // Everything except content is present in *response.  Content will
   // arrive later; allocate a Tensor with appropriate storage for that
   // content.
   meta_ = response;
   TensorShape shape(meta_.tensor().tensor_shape());
-  Tensor t(allocator_, meta_.tensor().dtype(), shape);
+  Tensor t(allocator_, meta_.tensor().dtype(), shape, allocation_attr);
   tensor_ = std::move(t);
 }
 
@@ -240,7 +246,7 @@ bool TensorResponse::ParseFast(Source* source) {
       case RecvTensorResponse::kIsDeadFieldNumber: {
         uint32 v;
         if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
-        meta_.set_is_dead((v != 0) ? true : false);
+        meta_.set_is_dead(v != 0);
         break;
       }
       case RecvTensorResponse::kSendStartMicrosFieldNumber: {
@@ -253,6 +259,12 @@ bool TensorResponse::ParseFast(Source* source) {
         if ((wt != WIRETYPE_LENGTH_DELIMITED) ||
             !ReadNestedMessage(&input, meta_.mutable_transport_options()))
           return false;
+        break;
+      }
+      case RecvTensorResponse::kRequireAckFieldNumber: {
+        uint32 v;
+        if ((wt != WIRETYPE_VARINT) || !input.ReadVarint32(&v)) return false;
+        meta_.set_require_ack(v != 0);
         break;
       }
       default: {

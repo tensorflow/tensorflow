@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
-#define TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_
 
 #include <unordered_map>
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -42,21 +42,31 @@ namespace tensorflow {
 // TrackingAllocator keeps track of outstanding calls using a
 // reference count, and deletes itself once the last call has been
 // received and the high watermark has been retrieved.
+struct AllocRecord {
+  AllocRecord(int64 a_btyes, int64 a_micros)
+      : alloc_bytes(a_btyes), alloc_micros(a_micros) {}
+  AllocRecord() : AllocRecord(0, 0) {}
+
+  int64 alloc_bytes;
+  int64 alloc_micros;
+};
+
 class TrackingAllocator : public Allocator {
  public:
   explicit TrackingAllocator(Allocator* allocator, bool track_ids);
-  string Name() override { return allocator_->Name(); }
+  std::string Name() override { return allocator_->Name(); }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return AllocateRaw(alignment, num_bytes, AllocationAttributes());
   }
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
   void DeallocateRaw(void* ptr) override;
-  bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  bool TracksAllocationSizes() const override;
+  size_t RequestedSize(const void* ptr) const override;
+  size_t AllocatedSize(const void* ptr) const override;
+  int64 AllocationId(const void* ptr) const override;
+  absl::optional<AllocatorStats> GetStats() override;
+  void ClearStats() override;
 
   // If the underlying allocator tracks allocation sizes, this returns
   // a tuple where the first value is the total number of bytes
@@ -67,38 +77,43 @@ class TrackingAllocator : public Allocator {
   // value is the total number of bytes requested through this wrapper
   // and the second and the third are 0.
   //
-  // After GetSizesAndUnref is called, the only further calls allowed
+  std::tuple<size_t, size_t, size_t> GetSizes();
+  // After GetRecordsAndUnRef is called, the only further calls allowed
   // on this wrapper are calls to DeallocateRaw with pointers that
   // were allocated by this wrapper and have not yet been
   // deallocated. After this call completes and all allocated pointers
   // have been deallocated the wrapper will delete itself.
-  std::tuple<size_t, size_t, size_t> GetSizesAndUnRef();
+  gtl::InlinedVector<AllocRecord, 4> GetRecordsAndUnRef();
+  // Returns a copy of allocation records collected so far.
+  gtl::InlinedVector<AllocRecord, 4> GetCurrentRecords();
 
  protected:
   ~TrackingAllocator() override {}
 
  private:
-  bool UnRef() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool UnRef() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.
-  mutex mu_;
+  mutable mutex mu_;
   // the number of calls to AllocateRaw that have not yet been matched
   // by a corresponding call to DeAllocateRaw, plus 1 if the Executor
   // has not yet read out the high watermark.
-  int ref_ GUARDED_BY(mu_);
+  int ref_ TF_GUARDED_BY(mu_);
   // the current number of outstanding bytes that have been allocated
   // by this wrapper, or 0 if the underlying allocator does not track
   // allocation sizes.
-  size_t allocated_ GUARDED_BY(mu_);
+  size_t allocated_ TF_GUARDED_BY(mu_);
   // the maximum number of outstanding bytes that have been allocated
   // by this wrapper, or 0 if the underlying allocator does not track
   // allocation sizes.
-  size_t high_watermark_ GUARDED_BY(mu_);
+  size_t high_watermark_ TF_GUARDED_BY(mu_);
   // the total number of bytes that have been allocated by this
   // wrapper if the underlying allocator tracks allocation sizes,
   // otherwise the total number of bytes that have been requested by
   // this allocator.
-  size_t total_bytes_ GUARDED_BY(mu_);
+  size_t total_bytes_ TF_GUARDED_BY(mu_);
+
+  gtl::InlinedVector<AllocRecord, 4> allocations_ TF_GUARDED_BY(mu_);
 
   // Track allocations locally if requested in the constructor and the
   // underlying allocator doesn't already do it for us.
@@ -108,10 +123,10 @@ class TrackingAllocator : public Allocator {
     size_t allocated_size;
     int64 allocation_id;
   };
-  std::unordered_map<void*, Chunk> in_use_ GUARDED_BY(mu_);
-  int64 next_allocation_id_ GUARDED_BY(mu_);
+  std::unordered_map<const void*, Chunk> in_use_ TF_GUARDED_BY(mu_);
+  int64 next_allocation_id_ TF_GUARDED_BY(mu_);
 };
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_TRACKING_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TRACKING_ALLOCATOR_H_

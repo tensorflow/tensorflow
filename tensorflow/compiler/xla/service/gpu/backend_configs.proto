@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "tensorflow/compiler/xla/xla_data.proto";
+
+// Backend configs for XLA:GPU.
+//
+// These are metadata that the GPU backend attaches to HloInstructions and later
+// uses during e.g. codegen.
+//
+// Remember that proto3 doesn't give clients a way to tell the difference
+// between a field not being present and a field having the default value.
+// Choose your defaults carefully.
+//
+// No guarantee is made about the stability of these protos.
+//
+// See HloInstruction::backend_config() for more info.
+
+// Backend config for a convolution that runs through cudnn.
+message CudnnConvBackendConfig {
+  // Opaque algorithm number of cudnn algorithm chosen for this conv.
+  int64 algorithm = 1;
+
+  // Whether we may use tensor cores when running this conv.  Even if this is
+  // true, cudnn may choose not to use tensor cores, e.g. because the GPU or
+  // selected algorithm doesn't support it.
+  bool tensor_ops_enabled = 2;
+
+  // The scaling factor multiplied with the convolution result.
+  double conv_result_scale = 4;
+
+  // Below are the fields related to cuDNN's fused convolution. Refer to
+  // GpuConvParams for their meanings.
+
+  // The requested activation (e.g. relu) after the convolution. It is with type
+  // stream_executor::dnn::ActivationMode.
+  int64 activation_mode = 3;
+
+  // The scaling factor multiplied with the side input. If no side input buffer
+  // is provided, this field must be 0.
+  double side_input_scale = 5;
+}
+
+// Backend config for the GEMM operation running through cuBLAS.
+message GemmBackendConfig {
+  // Opaque optional algorithm number. No chosen number indicates that a
+  // different cuBLAS API will be used, which does not allow for choosing an
+  // algorithm.
+  oneof algorithm {
+    int64 selected_algorithm = 1;
+  }
+
+  double alpha_real = 2;
+  double alpha_imag = 9;
+
+  double beta = 3;
+
+  xla.DotDimensionNumbers dot_dimension_numbers = 7;
+
+  int64 batch_size = 8;
+}

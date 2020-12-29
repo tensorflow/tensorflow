@@ -14,12 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/conditional_accumulator_base.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
 ConditionalAccumulatorBase::ConditionalAccumulatorBase(
-    const DataType& dtype, const PartialTensorShape& shape, const string& name)
-    : dtype_(dtype), shape_(shape), name_(name) {
+    const DataType& dtype, const PartialTensorShape& shape, const string& name,
+    const string& reduction_type)
+    : dtype_(dtype),
+      shape_(shape),
+      name_(name),
+      reduction_type_(reduction_type) {
   counter_ = 0;
   current_global_step_ = 0;
 }
@@ -74,7 +79,7 @@ void ConditionalAccumulatorBase::TryTakeGrad(int num_required,
       if (!already_cancelled) {
         takegrad_attempts_.emplace_back(
             num_required, callback, ctx, cm, token,
-            [this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            [this](Attempt* attempt) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
               if (counter_ >= attempt->elements_requested) {
                 bool successful_take_grad = TakeGradLockedHelper(
                     attempt->context, attempt->done_callback);
@@ -190,7 +195,9 @@ bool ConditionalAccumulatorBase::TakeGradLockedHelper(OpKernelContext* ctx,
   current_global_step_++;
 
   // Average the accumulated gradient
-  DivideAccumGradByCounter(ctx);
+  if (reduction_type_ == "MEAN") {
+    DivideAccumGradByCounter(ctx);
+  }
 
   // Set output for accumulated gradient tensor
   bool successful_set_output = SetOutput(ctx);

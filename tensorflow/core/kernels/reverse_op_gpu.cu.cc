@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -28,27 +28,22 @@ typedef Eigen::GpuDevice GPUDevice;
 #define DEFINE_REVERSE(T, DIM) \
   template struct functor::Reverse<GPUDevice, T, DIM>;
 #define DEFINE_REVERSE_ALL_DIMS(T) \
-  DEFINE_REVERSE(T, 0) \
-  DEFINE_REVERSE(T, 1) \
-  DEFINE_REVERSE(T, 2) \
-  DEFINE_REVERSE(T, 3) \
-  DEFINE_REVERSE(T, 4) \
-  DEFINE_REVERSE(T, 5) \
-  DEFINE_REVERSE(T, 6) \
-  DEFINE_REVERSE(T, 7) \
+  DEFINE_REVERSE(T, 0)             \
+  DEFINE_REVERSE(T, 1)             \
+  DEFINE_REVERSE(T, 2)             \
+  DEFINE_REVERSE(T, 3)             \
+  DEFINE_REVERSE(T, 4)             \
+  DEFINE_REVERSE(T, 5)             \
+  DEFINE_REVERSE(T, 6)             \
+  DEFINE_REVERSE(T, 7)             \
   DEFINE_REVERSE(T, 8)
 
 TF_CALL_uint8(DEFINE_REVERSE_ALL_DIMS);
 TF_CALL_int8(DEFINE_REVERSE_ALL_DIMS);
-TF_CALL_bool(DEFINE_REVERSE_ALL_DIMS);
-TF_CALL_half(DEFINE_REVERSE_ALL_DIMS);
-TF_CALL_float(DEFINE_REVERSE_ALL_DIMS);
-TF_CALL_double(DEFINE_REVERSE_ALL_DIMS);
-TF_CALL_complex64(DEFINE_REVERSE_ALL_DIMS);
-TF_CALL_complex128(DEFINE_REVERSE_ALL_DIMS);
+TF_CALL_GPU_ALL_TYPES(DEFINE_REVERSE_ALL_DIMS);
 #undef DEFINE_REVERSE
 #undef DEFINE_REVERSE_ALL_DIMS
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -23,11 +23,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/compile_only_service.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -35,25 +38,42 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
 // Options to configure the local client when it is created.
 class LocalClientOptions {
  public:
+  LocalClientOptions(
+      se::Platform* platform = nullptr, int number_of_replicas = 1,
+      int intra_op_parallelism_threads = -1,
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
+
   // Set the platform backing the service, or nullptr for the default platform.
-  LocalClientOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
+  LocalClientOptions& set_platform(se::Platform* platform);
+  se::Platform* platform() const;
 
   // Set the number of replicas to use when compiling replicated
-  // programs. The default is -1 meaning that the value is read from
-  // the xla_replicas flag.
+  // programs.
   LocalClientOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
+  // Sets the thread pool size for parallel execution of an individual operator.
+  LocalClientOptions& set_intra_op_parallelism_threads(int num_threads);
+  int intra_op_parallelism_threads() const;
+
+  // Sets the allowed_devices set for selectively constructing stream executors
+  // on the platform.
+  LocalClientOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
+  const absl::optional<std::set<int>>& allowed_devices() const;
+
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
-  int number_of_replicas_ = -1;
+  se::Platform* platform_;
+  int number_of_replicas_;
+  int intra_op_parallelism_threads_;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 class ClientLibrary {
@@ -63,8 +83,11 @@ class ClientLibrary {
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
+  //   device_set: Set of device IDs for which the stream executor will be
+  //   created, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
-      perftools::gputools::Platform* platform = nullptr);
+      se::Platform* platform = nullptr,
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 
@@ -74,7 +97,19 @@ class ClientLibrary {
 
   // Returns the service from the service thread. Only used in unit tests to
   // access user computations from client.
-  static LocalService* GetXlaService(perftools::gputools::Platform* platform);
+  static LocalService* GetXlaService(se::Platform* platform);
+
+  // Singleton constructor-or-accessor for compile-only clients. Arguments:
+  //
+  //   platform : The platform the underlying XLA service should target. If
+  //     null then default platform is used.
+  static StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
+      se::Platform* platform = nullptr);
+
+  // Clears the local instance and compile only instance caches. The client
+  // pointers returned by the previous GetOrCreateLocalClient() or
+  // GetOrCreateCompileOnlyClient() invocations are not valid anymore.
+  static void DestroyLocalInstances();
 
  private:
   // Returns the singleton instance of ClientLibrary.
@@ -90,10 +125,19 @@ class ClientLibrary {
     std::unique_ptr<LocalClient> client;
   };
 
+  struct CompileOnlyInstance {
+    // Service that is wrapped by the singleton client object.
+    std::unique_ptr<CompileOnlyService> service;
+    // Singleton client object.
+    std::unique_ptr<CompileOnlyClient> client;
+  };
+
   tensorflow::mutex service_mutex_;  // Guards the singleton creation state.
-  std::unordered_map<perftools::gputools::Platform::Id,
-                     std::unique_ptr<LocalInstance>>
-      instances_ GUARDED_BY(service_mutex_);
+  std::unordered_map<se::Platform::Id, std::unique_ptr<LocalInstance>>
+      local_instances_ TF_GUARDED_BY(service_mutex_);
+
+  std::unordered_map<se::Platform::Id, std::unique_ptr<CompileOnlyInstance>>
+      compile_only_instances_ TF_GUARDED_BY(service_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ClientLibrary);
 };

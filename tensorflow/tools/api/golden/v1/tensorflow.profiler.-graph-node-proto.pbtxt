@@ -1,0 +1,191 @@
+path: "tensorflow.profiler.GraphNodeProto"
+tf_proto {
+  descriptor {
+    name: "GraphNodeProto"
+    field {
+      name: "name"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "tensor_value"
+      number: 15
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.tfprof.TFProfTensorProto"
+    }
+    field {
+      name: "run_count"
+      number: 21
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "exec_micros"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "accelerator_exec_micros"
+      number: 17
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "cpu_exec_micros"
+      number: 18
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "requested_bytes"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "peak_bytes"
+      number: 24
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "residual_bytes"
+      number: 25
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "output_bytes"
+      number: 26
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "parameters"
+      number: 4
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "float_ops"
+      number: 13
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "devices"
+      number: 10
+      label: LABEL_REPEATED
+      type: TYPE_STRING
+    }
+    field {
+      name: "total_definition_count"
+      number: 23
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_run_count"
+      number: 22
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_exec_micros"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_accelerator_exec_micros"
+      number: 19
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_cpu_exec_micros"
+      number: 20
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_requested_bytes"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_peak_bytes"
+      number: 27
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_residual_bytes"
+      number: 28
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_output_bytes"
+      number: 29
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_parameters"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "total_float_ops"
+      number: 14
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "shapes"
+      number: 11
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TensorShapeProto"
+    }
+    field {
+      name: "input_shapes"
+      number: 16
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.tfprof.GraphNodeProto.InputShapesEntry"
+    }
+    field {
+      name: "children"
+      number: 12
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.tfprof.GraphNodeProto"
+    }
+    nested_type {
+      name: "InputShapesEntry"
+      field {
+        name: "key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
+      field {
+        name: "value"
+        number: 2
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.TensorShapeProto"
+      }
+      options {
+        map_entry: true
+      }
+    }
+  }
+}

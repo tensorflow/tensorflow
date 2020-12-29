@@ -36,14 +36,14 @@ ZlibOutputBuffer::ZlibOutputBuffer(
       z_stream_(new z_stream) {}
 
 ZlibOutputBuffer::~ZlibOutputBuffer() {
-  if (z_stream_.get()) {
+  if (z_stream_) {
     LOG(WARNING) << "ZlibOutputBuffer::Close() not called. Possible data loss";
   }
 }
 
 Status ZlibOutputBuffer::Init() {
-  // Output buffer size should be greater than 1 because deflation needs atleast
-  // one byte for book keeping etc.
+  // Output buffer size should be greater than 1 because deflation needs at
+  // least one byte for book keeping etc.
   if (output_buffer_capacity_ <= 1) {
     return errors::InvalidArgument(
         "output_buffer_bytes should be greater than "
@@ -58,7 +58,7 @@ Status ZlibOutputBuffer::Init() {
                    zlib_options_.compression_method, zlib_options_.window_bits,
                    zlib_options_.mem_level, zlib_options_.compression_strategy);
   if (status != Z_OK) {
-    z_stream_.reset(NULL);
+    z_stream_.reset(nullptr);
     return errors::InvalidArgument("deflateInit failed with status", status);
   }
   z_stream_->next_in = z_stream_input_.get();
@@ -98,7 +98,7 @@ void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
   int32 unread_bytes = z_stream_->avail_in;
   int32 free_tail_bytes = input_buffer_capacity_ - (read_bytes + unread_bytes);
 
-  if (bytes_to_write > free_tail_bytes) {
+  if (static_cast<int32>(bytes_to_write) > free_tail_bytes) {
     memmove(z_stream_input_.get(), z_stream_->next_in, z_stream_->avail_in);
     z_stream_->next_in = z_stream_input_.get();
   }
@@ -106,8 +106,7 @@ void ZlibOutputBuffer::AddToInputBuffer(StringPiece data) {
   z_stream_->avail_in += bytes_to_write;
 }
 
-Status ZlibOutputBuffer::DeflateBuffered(bool last) {
-  int flush_mode = last ? Z_FINISH : zlib_options_.flush_mode;
+Status ZlibOutputBuffer::DeflateBuffered(int flush_mode) {
   do {
     // From zlib manual (http://www.zlib.net/manual.html):
     //
@@ -143,7 +142,7 @@ Status ZlibOutputBuffer::FlushOutputBufferToFile() {
   return Status::OK();
 }
 
-Status ZlibOutputBuffer::Append(const StringPiece& data) {
+Status ZlibOutputBuffer::Append(StringPiece data) {
   // If there is sufficient free space in z_stream_input_ to fit data we
   // add it there and return.
   // If there isn't enough space we deflate the existing contents of
@@ -155,15 +154,15 @@ Status ZlibOutputBuffer::Append(const StringPiece& data) {
 
   size_t bytes_to_write = data.size();
 
-  if (bytes_to_write <= AvailableInputSpace()) {
+  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return Status::OK();
   }
 
-  TF_RETURN_IF_ERROR(DeflateBuffered());
+  TF_RETURN_IF_ERROR(DeflateBuffered(zlib_options_.flush_mode));
 
   // At this point input stream should be empty.
-  if (bytes_to_write <= AvailableInputSpace()) {
+  if (static_cast<int32>(bytes_to_write) <= AvailableInputSpace()) {
     AddToInputBuffer(data);
     return Status::OK();
   }
@@ -191,10 +190,23 @@ Status ZlibOutputBuffer::Append(const StringPiece& data) {
   return Status::OK();
 }
 
-Status ZlibOutputBuffer::Flush() {
-  TF_RETURN_IF_ERROR(DeflateBuffered());
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+#if defined(TF_CORD_SUPPORT)
+Status ZlibOutputBuffer::Append(const absl::Cord& cord) {
+  for (absl::string_view fragment : cord.Chunks()) {
+    TF_RETURN_IF_ERROR(Append(fragment));
+  }
   return Status::OK();
+}
+#endif
+
+Status ZlibOutputBuffer::Flush() {
+  TF_RETURN_IF_ERROR(DeflateBuffered(Z_PARTIAL_FLUSH));
+  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+  return file_->Flush();
+}
+
+Status ZlibOutputBuffer::Name(StringPiece* result) const {
+  return file_->Name(result);
 }
 
 Status ZlibOutputBuffer::Sync() {
@@ -203,10 +215,12 @@ Status ZlibOutputBuffer::Sync() {
 }
 
 Status ZlibOutputBuffer::Close() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(true));
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
-  deflateEnd(z_stream_.get());
-  z_stream_.reset(NULL);
+  if (z_stream_) {
+    TF_RETURN_IF_ERROR(DeflateBuffered(Z_FINISH));
+    TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+    deflateEnd(z_stream_.get());
+    z_stream_.reset(nullptr);
+  }
   return Status::OK();
 }
 
@@ -217,11 +231,13 @@ Status ZlibOutputBuffer::Deflate(int flush) {
     return Status::OK();
   }
   string error_string = strings::StrCat("deflate() failed with error ", error);
-  if (z_stream_->msg != NULL) {
+  if (z_stream_->msg != nullptr) {
     strings::StrAppend(&error_string, ": ", z_stream_->msg);
   }
   return errors::DataLoss(error_string);
 }
+
+Status ZlibOutputBuffer::Tell(int64* position) { return file_->Tell(position); }
 
 }  // namespace io
 }  // namespace tensorflow
