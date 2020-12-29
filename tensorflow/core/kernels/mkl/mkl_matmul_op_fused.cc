@@ -131,8 +131,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     // The output shape of MatMul is same both for MKL and TF version.
     // They are all NC format, no matter what's the format of input.
     // And the shape of AddOp is also the same with output's shape.
-    auto dst_pd = matmul_pd->PRIMITIVE_DESC_DST;
-
     MklDnnShape output_mkl_shape;
     output_mkl_shape.SetMklTensor(false);
 

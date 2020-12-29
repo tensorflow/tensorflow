@@ -17,7 +17,6 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
-#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -144,7 +143,7 @@ Status MklEagerOpRewrite::SetupNewOp(
   int num_inputs = orig_op->Inputs().size();
   // Add all inputs to the new op.
   for (int i = 0; i < num_inputs; ++i) {
-    (*new_mkl_op)->AddInput(orig_op->Inputs()[i]);
+    TF_RETURN_IF_ERROR((*new_mkl_op)->AddInput(orig_op->Inputs()[i]));
   }
 
   // Copy all attributes to the new op.
@@ -238,7 +237,8 @@ Status MklEagerOpRewrite::RewriteToMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
   // TODO(intel-tf): mkl_eager_ops_ lookup can be reduced from twice
   // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
-  mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op);
+  TF_RETURN_IF_ERROR(
+      mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op));
   return Status::OK();
 }
 

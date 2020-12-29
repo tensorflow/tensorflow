@@ -1160,6 +1160,10 @@ using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
                                MklFusedMatMulDataTypes);
 
+// This test is flaky for --config=mkl_threadpool (The supposedly cached op
+// sometimes took longer than even 0.9 * original_time.)
+// TODO(intel-tf): Re-enable the test for --config=mkl_threadpool.
+#ifndef ENABLE_MKLDNN_THREADPOOL
 // Test the performance of MklFusedMatMul weight cache.
 // For the first time B matrix will be reordered and cached which will be
 // used for subsequent runs
@@ -1262,6 +1266,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
     test::ExpectTensorNear<float>(expected, output_new, 1e-5);
   }
 }
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
 class BiasCacheTest : public OpsTestBase {
  public:

@@ -1635,7 +1635,6 @@ bool IsConv2DOrMatMul(const NodeDef& node) {
 
 bool IsContractionWithAdd(const RemapperContext& ctx, int node_index) {
   const auto* node_view = ctx.graph_view.GetNode(node_index);
-  const auto* node_def = node_view->node();
 
   // Candidate for Conv2D + Add or Conv2D + BiasAdd + Add fusion.
   //               MatMul + Add or MatMul + BiasAdd + Add fusion.
@@ -1752,6 +1751,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   };
 
 #ifdef INTEL_MKL
+  (void)is_relu_biasadd_conv2d_candidate;  // To fix unused variable error.
   return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
          IsContractionWithAdd(ctx, node_index);
 #else
