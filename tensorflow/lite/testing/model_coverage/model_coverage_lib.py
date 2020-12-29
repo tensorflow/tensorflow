@@ -98,14 +98,36 @@ def get_image(size):
   return img_array
 
 
+def _get_calib_data_func(input_size):
+  """Returns a function to generate a representative data set.
+
+  Args:
+    input_size: 3D shape of the representative data.
+  """
+  def representative_data_gen():
+    num_calibration = 20
+    for _ in range(num_calibration):
+      yield [
+          np.random.rand(
+              1,
+              input_size[0],
+              input_size[1],
+              input_size[2],
+          ).astype(np.float32)
+      ]
+
+  return representative_data_gen
+
+
 def _convert(converter, **kwargs):
   """Converts the model.
 
   Args:
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
-      flags are {"target_ops", "post_training_quantize",
-      "quantize_to_float16", "post_training_quantize_16x8", "model_input_size"}.
+      flags are {"target_ops", "post_training_quantize", "quantize_to_float16",
+      "post_training_quantize_int8", "post_training_quantize_16x8",
+      "model_input_size"}.
 
   Returns:
     The converted TFLite model in serialized format.
@@ -113,36 +135,27 @@ def _convert(converter, **kwargs):
   Raises:
     ValueError: Invalid version number.
   """
+
   if "target_ops" in kwargs:
     converter.target_spec.supported_ops = kwargs["target_ops"]
   if "post_training_quantize" in kwargs:
     converter.optimizations = [_lite.Optimize.DEFAULT]
   if kwargs.get("quantize_to_float16", False):
     converter.target_spec.supported_types = [dtypes.float16]
+  if kwargs.get("post_training_quantize_int8", False):
+    input_size = kwargs.get("model_input_size")
+    converter.optimizations = [_lite.Optimize.DEFAULT]
+    converter.target_spec.supported_ops = [_lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.representative_dataset = _get_calib_data_func(input_size)
+    # Note that the full integer quantization is by the mlir quantizer
+    converter._experimental_new_quantizer = True  # pylint: disable=protected-access
   if kwargs.get("post_training_quantize_16x8", False):
     input_size = kwargs.get("model_input_size")
-
-    def _get_calib_data_func():
-
-      def representative_data_gen():
-        num_calibration = 20
-        for _ in range(num_calibration):
-          yield [
-              np.random.rand(
-                  1,
-                  input_size[0],
-                  input_size[1],
-                  input_size[2],
-              ).astype(np.float32)
-          ]
-
-      return representative_data_gen
-
     converter.optimizations = [_lite.Optimize.DEFAULT]
     converter.target_spec.supported_ops = \
       [_lite.OpsSet.\
         EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8]
-    converter.representative_dataset = _get_calib_data_func()
+    converter.representative_dataset = _get_calib_data_func(input_size)
   return converter.convert()
 
 
@@ -619,6 +632,11 @@ def test_frozen_graph_quant(filename,
   quant_tensors_map = {
       tensor_detail["name"]: tensor_detail for tensor_detail in quant_tensors
   }
+  quantized_tensors = {
+      tensor_detail["name"]: tensor_detail
+      for tensor_detail in quant_tensors
+      if tensor_detail["quantization_parameters"]
+  }
 
   # Check if weights are of different types in the float and quantized models.
   num_tensors_float = len(float_tensors)
@@ -631,11 +649,18 @@ def test_frozen_graph_quant(filename,
   # unless we are quantizing to float16.
   if ("target_ops" in kwargs and
       not kwargs.get("quantize_to_float16", False) and
+      not kwargs.get("post_training_quantize_int8", False) and
       not kwargs.get("post_training_quantize_16x8", False) and
       set(kwargs["target_ops"]) == set([_lite.OpsSet.SELECT_TF_OPS])):
     if has_quant_tensor:
       raise ValueError("--post_training_quantize flag unexpectedly altered the "
                        "full Flex mode graph.")
+  elif kwargs.get("post_training_quantize_int8", False):
+    # Instead of using tensor names, we use the number of tensors which have
+    # quantization parameters to verify the model is quantized.
+    if not quantized_tensors:
+      raise ValueError("--post_training_quantize flag was unable to quantize "
+                       "the graph as expected in TFLite.")
   elif not has_quant_tensor:
     raise ValueError("--post_training_quantize flag was unable to quantize the "
                      "graph as expected in TFLite and mix-and-match mode.")
