@@ -24,6 +24,7 @@ refers to scopes.
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from sys import version_info
 
 import collections
 
@@ -247,7 +248,7 @@ class QnResolver(gast.NodeTransformer):
     # TODO(mdan): This may no longer apply if we overload getitem.
     node = self.generic_visit(node)
     s = node.slice
-    if not isinstance(s, gast.Index):
+    if not isinstance(s, gast.Slice):
       # TODO(mdan): Support range and multi-dimensional indices.
       # Continuing silently because some demos use these.
       return node
