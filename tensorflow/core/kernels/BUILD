@@ -3551,6 +3551,7 @@ tf_cuda_cc_test(
         ":ops_util",
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:client_session",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

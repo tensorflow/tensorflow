@@ -2035,6 +2035,36 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Positive)
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Negative);
 #undef REGISTER_TEST
 
+// Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+  InitGraph(                                                                   \
+      "node { name: 'A' op: '" #INPUT "'}"                                     \
+      "node { name: 'B' op: '" #INPUT "'}"                                     \
+      "node { name: 'C' op: '" #INPUT "'}"                                     \
+      "node { name: 'D' op: '_FusedMatMul'"                                    \
+      " attr { key: 'T'                value { type: " #T "} }"                \
+      " attr { key: 'transpose_a'      value { b: false } }"                   \
+      " attr { key: 'transpose_b'      value { b: false } }"                   \
+      " attr { key: 'num_args'         value { i: 1 } }"                       \
+      " attr { key: 'fused_ops'"                                               \
+      "              value { list: {s: 'BiasAdd', s: 'LeakyRelu'} } }"         \
+      " attr { key: 'epsilon'          value { f: 0.001 }}"                    \
+      " attr { key: 'leakyrelu_alpha'  value { f: 0.3 }}"                      \
+      " input: ['A', 'B', 'C']}"                                               \
+      "node { name: 'Z' op: 'Zeta'"                                            \
+      " attr {key: 'T'                 value { type: " #T " } }"               \
+      " input: ['D', 'C']}");                                                  \
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedMatMul);"    \
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Z(Zeta)"                \
+            "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"       \
+            "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;"             \
+            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                            \
+}
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_LeakyRelu_Positive);
+#undef REGISTER_TEST
+
 // Merge test for PadWithFusedConv2D Op with BiasAdd fusion
 // padding is VALID type
 // A = input(image), B = input(paddings), C = Pad(A, B) = input of conv2D,

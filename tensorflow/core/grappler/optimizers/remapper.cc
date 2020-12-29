@@ -471,8 +471,10 @@ bool FindContractionWithBiasAndActivation(
   // Currently, only matmul + bias + tanh is enable
   if (!IsMatMul(*contraction_node_def) && IsTanh(*node_def)) return false;
 
-  // Currently, only conv + bias + leakyrelu is enabled
-  if (!IsConv2D(*contraction_node_def) && IsLeakyRelu(*node_def)) return false;
+  // Currently, only (conv | matmul) + bias + leakyrelu is enabled
+  if (!(IsConv2D(*contraction_node_def) || IsMatMul(*contraction_node_def)) &&
+      IsLeakyRelu(*node_def))
+    return false;
 
   // Check that data type and data format are supported on assigned device.
   const ContractionWithBiasAddAndActivation pattern{base.contraction,
@@ -1028,7 +1030,8 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
   }
 }
 
-void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul) {
+void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul,
+                          const NodeDef* activation = nullptr) {
   DCHECK(IsMatMul(matmul)) << "Input node must be a MatMul";
 
   auto* attr = fused_matmul->mutable_attr();
@@ -1037,6 +1040,11 @@ void CopyMatMulAttributes(const NodeDef& matmul, NodeDef* fused_matmul) {
   (*attr)["T"] = src_attr.at("T");
   (*attr)["transpose_a"] = src_attr.at("transpose_a");
   (*attr)["transpose_b"] = src_attr.at("transpose_b");
+  // Copy LeakyRelu's attr alpha to _FusedMatMul's attr leakyrelu_alpha
+  if (activation != nullptr && IsLeakyRelu(*activation)) {
+    auto& activation_attr = activation->attr();
+    (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
+  }
 }
 
 void SetFusedOpAttributes(NodeDef* fused,
@@ -1125,7 +1133,7 @@ Status AddFusedContractionNode(
     CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
-    CopyMatMulAttributes(contraction, &fused_op);
+    CopyMatMulAttributes(contraction, &fused_op, &activation);
   }
 
   SetFusedOpAttributes(&fused_op, {"BiasAdd", activation.op()});
