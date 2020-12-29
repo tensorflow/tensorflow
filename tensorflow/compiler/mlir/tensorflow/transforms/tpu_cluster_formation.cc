@@ -60,8 +60,7 @@ constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
 
 // Mapping for `_tpu_replicate` attribute to TPUReplicateMetadata attributes.
-using MetadataMap =
-    llvm::SmallDenseMap<llvm::StringRef, MutableDictionaryAttr, 8>;
+using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttrList, 8>;
 
 // A set of operations in a cluster.
 using ClusterOps = llvm::SmallSetVector<Operation*, 8>;
@@ -88,7 +87,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
     auto metadata_op = dyn_cast<TF::TPUReplicateMetadataOp>(op);
     if (!metadata_op) continue;
 
-    MutableDictionaryAttr attrs = metadata_op.getAttrs();
+    NamedAttrList attrs(metadata_op->getAttrDictionary());
 
     // Missing or bad `_tpu_replicate` attribute.
     auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
@@ -100,7 +99,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
     // Remove `name` attribute.
-    attrs.remove(Identifier::get(kNameAttr, metadata_op.getContext()));
+    attrs.erase(Identifier::get(kNameAttr, metadata_op.getContext()));
 
     auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
                                         std::move(attrs));
@@ -539,7 +538,8 @@ LogicalResult FormClustersInBlock(
       return failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
-    cluster->setAttrs(cluster_metadata->second);
+    cluster->setAttrs(
+        cluster_metadata->second.getDictionary(cluster.getContext()));
     // Exclude `num_replicas` as cluster should be replicated if necessary.
     cluster.removeAttr(kNumReplicasAttr);
   }

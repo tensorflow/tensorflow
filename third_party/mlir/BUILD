@@ -1470,6 +1470,7 @@ gentbl(
     td_file = "lib/Dialect/Shape/IR/ShapeCanonicalization.td",
     td_srcs = [
         ":StdOpsTdFiles",
+        ":TensorOpsTdFiles",
         "include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "include/mlir/Dialect/Shape/IR/ShapeOps.td",
         "include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -1493,6 +1494,7 @@ cc_library(
         ":SideEffectInterfaces",
         ":StandardOps",
         ":Support",
+        ":TensorDialect",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -3840,42 +3842,11 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":Analysis",
-        ":ConversionPasses",
-        ":GPUToGPURuntimeTransforms",
-        ":GPUToNVVMTransforms",
-        ":GPUToROCDLTransforms",
-        ":GPUToSPIRVTransforms",
-        ":GPUTransforms",
         ":IR",
-        ":LLVMDialect",
-        ":LinalgToLLVM",
-        ":LinalgToSPIRV",
-        ":LinalgToStandard",
-        ":NVVMDialect",
         ":Parser",
         ":Pass",
-        ":SCFTransforms",
-        ":ShapeToStandard",
-        ":ShapeTransforms",
-        ":StandardOpsTransforms",
-        ":StandardToLLVM",
-        ":StandardToSPIRVTransforms",
         ":Support",
-        ":Transforms",
-        ":VectorToLLVM",
-        ":VectorToSCF",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir/test:TestAffine",
-        "@llvm-project//mlir/test:TestDialect",
-        "@llvm-project//mlir/test:TestIR",
-        "@llvm-project//mlir/test:TestPass",
-        "@llvm-project//mlir/test:TestReducer",
-        "@llvm-project//mlir/test:TestRewrite",
-        "@llvm-project//mlir/test:TestSPIRV",
-        "@llvm-project//mlir/test:TestShapeDialect",
-        "@llvm-project//mlir/test:TestTransforms",
-        "@llvm-project//mlir/test:TestTypeDialect",
     ],
 )
 
@@ -4028,7 +3999,9 @@ cc_binary(
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
         "@llvm-project//mlir/test:TestReducer",
+        "@llvm-project//mlir/test:TestRewrite",
         "@llvm-project//mlir/test:TestSPIRV",
+        "@llvm-project//mlir/test:TestShapeDialect",
         "@llvm-project//mlir/test:TestTosaDialect",
         "@llvm-project//mlir/test:TestTransforms",
         "@llvm-project//mlir/test:TestTypeDialect",
@@ -4756,7 +4729,6 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/IR/LinalgOps.h",
-        "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
     ],
     includes = ["include"],
@@ -5064,12 +5036,6 @@ cc_library(
         ":TosaPassIncGen",
         ":TransformUtils",
     ],
-)
-
-# To reference all tablegen files here when checking for updates to them.
-filegroup(
-    name = "TdFiles",
-    srcs = glob(["**/*.td"]),
 )
 
 exports_files(

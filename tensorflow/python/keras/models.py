@@ -139,7 +139,7 @@ def _clone_functional_model(model, input_tensors=None, layer_fn=_clone_layer):
 
   Input layers are always cloned.
 
-  Arguments:
+  Args:
       model: Instance of `Model`.
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
@@ -287,7 +287,7 @@ def _clone_sequential_model(model, input_tensors=None, layer_fn=_clone_layer):
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
-  Arguments:
+  Args:
       model: Instance of `Sequential`.
       input_tensors: optional list of input tensors
           to build the model upon. If not provided,
@@ -393,7 +393,7 @@ def clone_model(model, input_tensors=None, clone_function=None):
   except that it creates new layers (and thus new weights) instead
   of sharing the weights of the existing layers.
 
-  Arguments:
+  Args:
       model: Instance of `Model`
           (could be a functional model or a Sequential model).
       input_tensors: optional list of input tensors or InputLayer objects

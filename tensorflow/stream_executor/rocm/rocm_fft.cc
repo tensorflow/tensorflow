@@ -497,7 +497,7 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
 
 void ROCMFft::UpdatePlanWithScratchAllocator(
     Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
-  ROCMFftPlan* rocm_fft_plan = dynamic_cast<ROCMFftPlan*>(plan);
+  ROCMFftPlan *rocm_fft_plan = dynamic_cast<ROCMFftPlan *>(plan);
   port::Status status =
       rocm_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
   if (!status.ok()) {

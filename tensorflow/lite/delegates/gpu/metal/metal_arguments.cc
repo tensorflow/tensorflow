@@ -141,6 +141,7 @@ absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
   RETURN_IF_ERROR(AddObjectArgs(args));
   RETURN_IF_ERROR(ResolveSelectorsPass(*args, {}, code));
   RETURN_IF_ERROR(SetObjectsResources(*args));
+  object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
   std::string struct_desc = "struct uniforms_buffer {\n";
   int pos = 0;
@@ -229,6 +230,25 @@ absl::Status MetalArguments::SetHalf(const std::string& name, half value) {
       "No support of half uniforms in Metal backend");
 }
 
+absl::Status MetalArguments::SetObjectRef(const std::string& name,
+                                          const GPUObject& object) {
+  auto it = object_refs_.find(name);
+  if (it == object_refs_.end()) {
+    return absl::NotFoundError(
+        absl::StrCat("No object ref with name - ", name));
+  }
+  GPUResourcesWithValue resources;
+  RETURN_IF_ERROR(object.GetGPUResources(it->second.get(), &resources));
+  for (const auto& r : resources.ints) {
+    RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
+  }
+  for (const auto& r : resources.floats) {
+    RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
+  }
+  return absl::OkStatus();
+  // return SetGPUResources(name, resources);
+}
+
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
                             int buffer_offset) const {
   for (auto& b : buffers_) {
@@ -258,7 +278,14 @@ absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
     AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   for (auto& t : args->object_refs_) {
-    AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    auto resources = t.second->GetGPUResources();
+    for (const auto& r : resources.ints) {
+      args->AddInt(absl::StrCat(t.first, "_", r));
+    }
+    for (const auto& r : resources.floats) {
+      args->AddFloat(absl::StrCat(t.first, "_", r));
+    }
+    // AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   return absl::OkStatus();
 }

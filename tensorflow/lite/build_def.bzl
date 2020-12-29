@@ -435,7 +435,7 @@ def generated_test_models_successful(conversion_mode):
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    return ["toco-flex", "forward-compat", ""]
+    return ["toco-flex", "forward-compat", "", "mlir-quant"]
 
 def common_test_args_for_generated_models(conversion_mode, failing):
     """Returns test args for generated model tests.

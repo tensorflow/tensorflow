@@ -27,13 +27,11 @@ namespace metal {
 // Reshapes a tensor.
 // Given tensor, this operation returns a tensor that has the same values
 // as tensor with shape dst_shape.
-ComputeTaskDescriptor Reshape(const OperationDef& definition,
-                              const ReshapeAttributes& attr);
+ComputeTaskDescriptor Reshape(const OperationDef& definition);
 
 // This specialization performs faster for the case
 // src_channels % 4 == 0 and dst_channels % 4 == 0
-ComputeTaskDescriptor Reshapex4(const OperationDef& definition,
-                                const ReshapeAttributes& attr);
+ComputeTaskDescriptor Reshapex4(const OperationDef& definition);
 
 }  // namespace metal
 }  // namespace gpu

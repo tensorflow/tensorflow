@@ -23,10 +23,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
@@ -35,41 +35,18 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-/// Stages of model preprocessing:
-/// 1. Operations' initialization. All operations are initialized and added into
-///    model. Every operation is represented as a vector of
-///    ComputeTaskDescriptors.
-/// 2. Model compilation. Global list of ComputeTaskDescriptors is transformed
-///    into the sorted list of sets of descriptors. A set can be transformed
-///    later into a single GPU task.
-/// 3. GPU compute tasks generation. Shader code generation happens here.
-/// 4. Intermediate resource allocation.
-/// Inference.
-
 class InferenceContext {
  public:
+  struct CreateInferenceInfo {
+    CalculationsPrecision precision;
+    TensorStorageType storage_type;
+    ModelHints hints;
+  };
+
   InferenceContext() = default;
-  /// Compiles model: groups operations to be fused; validates model structure.
-  /// @param device Used to create resources: shaders, buffers. Also the device
-  /// is used in
-  ///             consecutive call setInputDimensions().
-  /// @param model Contains ordered vector of shader programs ready to be
-  /// compiled for GPU and
-  ///             with all supplementary buffers data.
-  /// @param inputBufferIDs IDs must match the input of added operations.
-  /// @param outputBufferIDs IDs must match the output of added operations.
-  /// @param runtimeOptions Options are used to specify data/calculations
-  /// precision.
-  /// @return Status signals whether model is compiled successfully or not.
-  /// @discussion Previously added operations are distilled into sorted list of
-  /// sets of
-  ///             ComputeTaskDescriptors, which can be fused into a single GPU
-  ///             task.
-  absl::Status CompileModelWithDevice(id<MTLDevice> device,
-                                      const CompiledModel& compiled_model,
-                                      const std::vector<ValueId>& input_ids,
-                                      const std::vector<ValueId>& output_ids,
-                                      CalculationsPrecision precision);
+
+  absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
+                             const GraphFloat32& graph, id<MTLDevice> device);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -110,6 +87,25 @@ class InferenceContext {
       const std::map<ValueId, id<MTLBuffer>>& in_out_buffers, int flush_period);
 
  private:
+  struct CompiledModel {
+    std::vector<NodeDescriptor> nodes;
+    std::map<ValueId, BHWC> tensor_shapes;
+  };
+  absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
+                       CalculationsPrecision precision,
+                       CompiledModel* compiled_model);
+
+  absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
+                                     const std::vector<ValueId>& output_buffers,
+                                     const CompiledModel& input_model,
+                                     CompiledModel* output_model);
+
+  absl::Status CompileModelWithDevice(id<MTLDevice> device,
+                                      const CompiledModel& compiled_model,
+                                      const std::vector<ValueId>& input_ids,
+                                      const std::vector<ValueId>& output_ids,
+                                      CalculationsPrecision precision);
+
   absl::Status AllocateTensors(id<MTLDevice> device);
   absl::Status AllocateMemoryForBuffers(id<MTLDevice> device);
   void BindTensorsToOperations();

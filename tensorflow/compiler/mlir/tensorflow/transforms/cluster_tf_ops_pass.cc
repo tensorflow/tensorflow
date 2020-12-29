@@ -193,7 +193,7 @@ void CreateFunctions(ModuleOp module_op,
     std::replace(func_name.begin(), func_name.end(), '/', '_');
 
     FunctionType func_type =
-        FunctionType::get(input_types, result_types, context);
+        FunctionType::get(context, input_types, result_types);
     Location loc = metadata.ops.front()->getLoc();
     FuncOp func_op = FuncOp::create(loc, func_name, func_type);
     // Sets the device attribute for every input and every result of the

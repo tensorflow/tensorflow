@@ -238,9 +238,9 @@ StatusOr<::xla::HloOpcode> MhloToHloOpcode(mlir::Operation* op) {
     return xla::HloOpcode::kSubtract;
   } else if (isa<mlir::mhlo::XorOp, mlir::lmhlo::XorOp>(op)) {
     return xla::HloOpcode::kXor;
-  } else if (isa<mlir::mhlo::InfeedOp, mlir::lmhlo::Infeed>(op)) {
+  } else if (isa<mlir::mhlo::InfeedOp, mlir::lmhlo::InfeedOp>(op)) {
     return xla::HloOpcode::kInfeed;
-  } else if (isa<mlir::mhlo::OutfeedOp, mlir::lmhlo::Outfeed>(op)) {
+  } else if (isa<mlir::mhlo::OutfeedOp, mlir::lmhlo::OutfeedOp>(op)) {
     return xla::HloOpcode::kOutfeed;
   } else if (isa<mlir::mhlo::SendOp>(op)) {
     return xla::HloOpcode::kSend;

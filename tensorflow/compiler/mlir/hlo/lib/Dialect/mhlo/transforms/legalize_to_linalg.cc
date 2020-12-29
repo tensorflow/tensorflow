@@ -70,6 +70,34 @@ bool VerifyHloOpBufferOrTensorSemantics(Operation* op) {
                 : llvm::all_of(op->getResults(), verify_type);
 }
 
+// TODO(pifon): Migrate to InitTensorOp when available.
+template <bool isLHLO>
+Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type,
+                    SmallVectorImpl<Value>& dyn_sizes) {
+  if (isLHLO) return nullptr;
+  return b.create<linalg::InitTensorOp>(loc, dyn_sizes, type.getShape(),
+                                        type.getElementType());
+}
+
+template <bool isLHLO>
+Value GetInitTensor(OpBuilder& b, Location loc, ShapedType type) {
+  SmallVector<Value, 0> empty;
+  return GetInitTensor<isLHLO>(b, loc, type, empty);
+}
+
+// TODO(pifon): This logic is used everywhere, the code should be shared.
+SmallVector<Value, 2> ExtractDynamicSizes(OpBuilder& b, Location loc,
+                                          Value tensor) {
+  auto tensor_type = tensor.getType().dyn_cast<RankedTensorType>();
+  if (!tensor_type) return {};
+  SmallVector<Value, 2> dyn_sizes;
+  for (auto& en : llvm::enumerate(tensor_type.getShape())) {
+    if (en.value() != ShapedType::kDynamicSize) continue;
+    dyn_sizes.push_back(b.create<DimOp>(loc, tensor, en.index()));
+  }
+  return dyn_sizes;
+}
+
 template <typename OpTy, bool isLHLO = true>
 class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
  public:
@@ -113,18 +141,19 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     for (Value in : inputs)
       body_arg_types.emplace_back(getElementTypeOrSelf(in.getType()));
 
-    ValueRange output_buffers(args.take_back(args.size() - num_inputs));
-    for (Value out : output_buffers)
-      body_result_types.emplace_back(getElementTypeOrSelf(out.getType()));
-
-    if (!isLHLO) {
-      // HLO operations have return as tensor types.
-      assert(body_result_types.empty() &&
-             "When lowering HLO ops result can't be part of arguments");
+    SmallVector<Value, 4> output_buffers;
+    if (isLHLO) {
+      output_buffers.append(args.begin() + num_inputs, args.end());
+    } else {
       Value result = op.getOperation()->getResult(0);
-      body_result_types.push_back(getElementTypeOrSelf(result));
+      ShapedType result_type = result.getType().template cast<ShapedType>();
+      auto dyn_sizes = ExtractDynamicSizes(rewriter, loc, args[0]);
+      output_buffers.push_back(
+          GetInitTensor<isLHLO>(rewriter, loc, result_type, dyn_sizes));
       op_result_types.push_back(result.getType());
     }
+    body_result_types = llvm::to_vector<4>(llvm::map_range(
+        output_buffers, [](Value v) { return getElementTypeOrSelf(v); }));
 
     AffineMap common_indexing_map =
         nloops ? rewriter.getMultiDimIdentityMap(nloops)
@@ -134,8 +163,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
 
     bool failed = false;
     auto linalg_op = rewriter.create<linalg::GenericOp>(
-        loc, op_result_types, inputs, output_buffers,
-        /*initTensors=*/ValueRange{}, indexing_maps,
+        loc, op_result_types, inputs, output_buffers, indexing_maps,
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
           // TODO(ravishankarm) : For now use the method in lmhlo namespace.
@@ -309,13 +337,19 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
 
     auto nloops = result_type.getRank();
     auto loc = op.getLoc();
+    // TODO(pifon): technically, the op itself could have size operands (e.g.
+    // broadcast into a dynamic dimension).Handle this case.
+    auto dyn_sizes = isLHLO ? SmallVector<Value, 2>()
+                            : ExtractDynamicSizes(rewriter, loc, args[0]);
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc,
         /*resultTensorTypes=*/isLHLO ? ArrayRef<Type>{} : result_type,
         /*inputs=*/args.front(),
-        /*outputBuffers=*/isLHLO ? ValueRange{args.back()} : ValueRange{},
-        /*initTensor=*/ValueRange{}, indexing_maps,
-        GetNParallelLoopsAttrs(nloops),
+        /*outputBuffers=*/
+        isLHLO ? ValueRange{args.back()}
+               : ValueRange{GetInitTensor<isLHLO>(rewriter, loc, result_type,
+                                                  dyn_sizes)},
+        indexing_maps, GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
           nested_builder.create<linalg::YieldOp>(loc, *args.begin());
         });
@@ -712,13 +746,16 @@ class IotaConverter : public OpConversionPattern<OpTy> {
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = result_shaped_type.getRank();
 
+    Location loc = iota_op.getLoc();
     auto linalg_op = rewriter.create<linalg::IndexedGenericOp>(
-        iota_op.getLoc(),
+        loc,
         /*resultTensorTypes=*/
         isLHLO ? ArrayRef<Type>{} : ArrayRef<Type>{result_shaped_type},
         /*inputs=*/ValueRange{},
-        /*outputBuffers=*/isLHLO ? ValueRange{args} : ValueRange{},
-        /*initTensors=*/ValueRange{},
+        /*outputBuffers=*/
+        isLHLO ? ValueRange{args}
+               : ValueRange{GetInitTensor<isLHLO>(rewriter, loc,
+                                                  result_shaped_type)},
         llvm::makeArrayRef(rewriter.getMultiDimIdentityMap(nloops)),
         GetNParallelLoopsAttrs(nloops),
         [&](OpBuilder& nested_builder, Location nested_loc, ValueRange ivs,
@@ -818,8 +855,8 @@ class ReduceConverter : public OpConversionPattern<lmhlo::ReduceOp> {
 
     auto linalg_op = rewriter.create<linalg::GenericOp>(
         loc, /*resultTensorTypes=*/ArrayRef<Type>{},
-        /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(),
-        /*initTensors=*/ValueRange{}, maps, types);
+        /*inputs=*/adaptor.operands(), /*outputBuffers=*/adaptor.out(), maps,
+        types);
     rewriter.inlineRegionBefore(reduce_op.body(), linalg_op.region(),
                                 linalg_op.region().end());
     {

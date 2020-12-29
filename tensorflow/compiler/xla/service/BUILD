@@ -1036,31 +1036,8 @@ cc_library(
     ],
 )
 
-# This flag enables experimental MLIR GPU support.
-config_setting(
-    name = "with_mlir_gpu_support",
-    define_values = {"with_mlir_gpu_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-# Lets us choose the right GPU plugin depending on whether the experimental MLIR
-# GPU plugin should be used or not.
 cc_library(
     name = "gpu_plugin",
-    deps = select(
-        {
-            ":with_mlir_gpu_support": [
-                ":gpu_plugin_mlir",
-            ],
-            "//conditions:default": [
-                ":gpu_plugin_no_mlir",
-            ],
-        },
-    ),
-)
-
-cc_library(
-    name = "gpu_plugin_no_mlir",
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1072,17 +1049,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
-    ]) + internal_cuda_deps(),
-)
-
-cc_library(
-    name = "gpu_plugin_mlir",
-    deps = [
-        ":service",
-        "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
-    ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler_impl",
     ]) + internal_cuda_deps(),
 )
 

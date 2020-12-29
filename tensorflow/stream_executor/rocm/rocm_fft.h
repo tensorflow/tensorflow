@@ -81,7 +81,8 @@ class ROCMFftPlan : public fft::Plan {
                                       ScratchAllocator* scratch_allocator);
 
   ScratchAllocator* GetScratchAllocator() const { return scratch_allocator_; }
- protected:
+
+protected:
   bool IsInitialized() const { return is_initialized_; }
   ScratchAllocator* scratch_allocator_;
 

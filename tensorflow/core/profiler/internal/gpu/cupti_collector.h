@@ -49,8 +49,23 @@ struct MemcpyDetails {
 };
 
 struct MemAllocDetails {
-  // The amount of data requested for cudaMalloc events.
-  uint64 num_bytes;
+  // Size of memory to be written over in bytes.
+  size_t num_bytes;
+  // The CUpti_ActivityMemoryKind value for this activity event.
+  int8 kind;
+  // The virtual address of allocation. 0 if it is a free operation.
+  uint64 address;
+};
+
+using MemFreeDetails = MemAllocDetails;
+
+struct MemsetDetails {
+  // Size of memory to be written over in bytes.
+  size_t num_bytes;
+  // The CUpti_ActivityMemoryKind value for this activity event.
+  int8 kind;
+  // Whether or not the memset is asynchronous.
+  bool async;
 };
 
 struct KernelDetails {
@@ -86,6 +101,9 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
       " occ_pct:", occupancy_pct);
 }
 
+// Gets the name of the CUpti_ActivityMemoryKind value.
+absl::string_view GetMemoryKindName(int8 kind);
+
 enum class CuptiTracerEventType {
   Unsupported = 0,
   Kernel = 1,
@@ -97,6 +115,8 @@ enum class CuptiTracerEventType {
   MemoryAlloc = 7,
   Overhead = 8,
   UnifiedMemory = 9,
+  MemoryFree = 10,
+  Memset = 11,
   Generic = 100,
 };
 
@@ -136,9 +156,16 @@ struct CuptiTracerEvent {
   int64 context_id = kInvalidContextId;
   int64 stream_id = kInvalidStreamId;
   union {
-    MemcpyDetails memcpy_info;      // If type == Memcpy*
-    MemAllocDetails memalloc_info;  // If type == MemoryAlloc
-    KernelDetails kernel_info;      // If type == Kernel
+    // For Memcpy API and activities. `type` must be Memcpy*.
+    MemcpyDetails memcpy_info;
+    // Used for MemAlloc API. `type` must be MemoryAlloc.
+    MemAllocDetails memalloc_info;
+    // Used for kernel activities. `type` must be Kernel.
+    KernelDetails kernel_info;
+    // Used for MemFree activities. `type` must be MemoryFree.
+    MemFreeDetails memfree_info;
+    // Used for Memset API and activities. `type` must be Memset.
+    MemsetDetails memset_info;
   };
 };
 

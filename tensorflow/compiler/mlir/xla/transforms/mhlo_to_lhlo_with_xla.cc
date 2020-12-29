@@ -1125,7 +1125,7 @@ Status LhloDialectEmitter::Initialize() {
   // The function signature will be composed of:
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
-  llvm::SmallVector<MutableDictionaryAttr, 8> args_attrs;
+  llvm::SmallVector<DictionaryAttr, 8> args_attrs;
   for (const BufferAllocation* alloc : ordered_allocations) {
     if (computation_.IsEntryComputation() &&
         alloc->is_entry_computation_parameter()) {
@@ -1140,20 +1140,19 @@ Status LhloDialectEmitter::Initialize() {
       // First map parameters to memrefs on the operation.
       block->addArgument(arg_type);
       allocations_[alloc] = block->getArguments().back();
-      args_attrs.emplace_back();
-      args_attrs.back().set(builder_.getIdentifier("lmhlo.alloc"),
-                            builder_.getIndexAttr(alloc->index()));
-      args_attrs.back().set(builder_.getIdentifier("lmhlo.params"),
-                            builder_.getIndexAttr(alloc->parameter_number()));
+      NamedAttrList arg_attr_list;
+      arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
+      arg_attr_list.set("lmhlo.params",
+                        builder_.getIndexAttr(alloc->parameter_number()));
+      args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
     } else {
       block->addArgument(MemRefType::get({alloc->size()}, i8_type_));
       allocations_[alloc] = block->getArguments().back();
-      args_attrs.emplace_back();
-      args_attrs.back().set(builder_.getIdentifier("lmhlo.alloc"),
-                            builder_.getIndexAttr(alloc->index()));
-      if (alloc->maybe_live_out())
-        args_attrs.back().set(builder_.getIdentifier("lmhlo.liveout"),
-                              builder_.getBoolAttr(true));
+
+      NamedAttrList arg_attr_list;
+      arg_attr_list.set("lmhlo.alloc", builder_.getIndexAttr(alloc->index()));
+      arg_attr_list.set("lmhlo.liveout", builder_.getBoolAttr(true));
+      args_attrs.push_back(arg_attr_list.getDictionary(builder_.getContext()));
     }
   }
 
