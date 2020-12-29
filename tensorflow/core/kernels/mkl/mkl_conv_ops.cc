@@ -474,9 +474,23 @@ class MklConvOp : public OpKernel {
 
   explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+
+    // Conv and QuantizedConv ops have different padding attributes
+    // (`padding_list` versus `explicit_paddings`). But one and only one
+    // attribute is expected.
+    OP_REQUIRES(
+        context,
+        !(context->HasAttr("padding_list") &&
+          context->HasAttr("explicit_paddings")),
+        errors::InvalidArgument("Can only have 1 `padding` list at most"));
     if (context->HasAttr("padding_list")) {
       OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list_));
     }
+    if (context->HasAttr("explicit_paddings")) {
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("explicit_paddings", &padding_list_));
+    }
+
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
@@ -555,19 +569,20 @@ class MklConvOp : public OpKernel {
           dilations, strides;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
-      // For Quantized-Conv2D and Pad fusion, we get padding from the
-      // `padding_list` attribute. Otherwise, we get it from one of the inputs.
-      bool quantized_pad_enabled = false;
+      // For any Conv with `EXPLICIT` padding, get padding from `padding_list`
+      // attribute. Otherwise, get it from one of the inputs.
+      bool pad_attr_enabled = false;
       for (auto const& padding_val : padding_list_) {
         if (padding_val) {
-          quantized_pad_enabled = true;
+          pad_attr_enabled = true;
+
           break;
         }
       }
 
-      if (fuse_pad_ || quantized_pad_enabled) {
+      if (fuse_pad_ || pad_attr_enabled) {
         PadWithConvFusion(context, padding_left, padding_right,
-                          quantized_pad_enabled);
+                          pad_attr_enabled);
       }
 
       // Get shapes of input tensors in MKL-DNN order
@@ -579,7 +594,7 @@ class MklConvOp : public OpKernel {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
-          &padding_right, (fuse_pad_ || quantized_pad_enabled), is_depthwise);
+          &padding_right, (fuse_pad_ || pad_attr_enabled), is_depthwise);
 
       if (!context->status().ok()) return;
 
@@ -805,13 +820,12 @@ class MklConvOp : public OpKernel {
   }
 
   void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
-                         memory::dims& padding_right,
-                         bool quantized_pad_enabled) {
-    const Tensor& paddings_tf = MklGetInput(context, input_index_pad_);
+                         memory::dims& padding_right, bool pad_attr_enabled) {
     Tpadding* paddings = nullptr;
-    if (quantized_pad_enabled) {
+    if (pad_attr_enabled) {
       paddings = padding_list_.data();
     } else {
+      const Tensor& paddings_tf = MklGetInput(context, input_index_pad_);
       OP_REQUIRES(context, paddings_tf.dims() == 2,
                   errors::InvalidArgument("paddings must be 2-dimensional: ",
                                           paddings_tf.shape().DebugString()));
