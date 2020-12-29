@@ -36,7 +36,7 @@ class SliceTransformer(converter.Base):
   def _process_single_assignment(self, target, value):
     if not isinstance(target, gast.Subscript):
       return None
-    if not isinstance(target.slice, gast.Index):
+    if not isinstance(target.slice, gast.Slice):
       return None
 
     template = """
@@ -57,7 +57,7 @@ class SliceTransformer(converter.Base):
 
   def visit_Subscript(self, node):
     node = self.generic_visit(node)
-    if not isinstance(node.slice, gast.Index):
+    if not isinstance(node.slice, gast.Slice):
       return node
 
     if not isinstance(node.ctx, gast.Load):

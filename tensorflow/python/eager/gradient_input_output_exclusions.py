@@ -131,7 +131,7 @@ class _SubscriptUseTracker(transformer.Base):
       qn = anno.getanno(node, anno.Basic.QN)
       if isinstance(node.ctx, gast.Load):
         self.reads.add(qn)
-    elif not isinstance(node.slice, gast.Index):
+    elif not isinstance(node.slice, gast.Slice):
       if anno.hasanno(node, anno.Basic.QN):
         self.complex_reads.add(anno.getanno(node, anno.Basic.QN))
       elif anno.hasanno(node.value, anno.Basic.QN):

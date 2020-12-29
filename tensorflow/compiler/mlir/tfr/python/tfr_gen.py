@@ -1297,7 +1297,7 @@ class TFRGen(transformer.CodeGenerator):
     # TODO(fengliuai): Here we hardcode the node.slice here to get the index
     # type. Use the visit method once the type inference is done.
     # slice_val, slice_ty = self.visit(node.slice)
-    if isinstance(node.slice, ast.Index):
+    if isinstance(node.slice, ast.Slice):
       if isinstance(node.slice.value, ast.Constant):
         # TODO(fengliuai): promote to an assignment
         idx_val = self._ssa_name('cst')

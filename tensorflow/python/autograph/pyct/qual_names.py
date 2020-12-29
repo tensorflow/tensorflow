@@ -209,7 +209,7 @@ class QN(object):
     if self.has_subscript():
       return gast.Subscript(
           value=self.parent.ast(),
-          slice=gast.Index(self.qn[-1].ast()),
+          slice=gast.Slice(self.qn[-1].ast()),
           ctx=CallerMustSetThis)
     if self.has_attr():
       return gast.Attribute(
