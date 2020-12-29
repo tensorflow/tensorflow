@@ -57,13 +57,14 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
   m.def(
       "ExperimentalMlirQuantizeModel",
       [](py::object input_contents_txt_raw, bool disable_per_channel,
-         bool fully_quantize, int inference_type) {
+         bool fully_quantize, int inference_type, bool enable_numeric_verify) {
         return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), disable_per_channel, fully_quantize,
-            inference_type));
+            inference_type, enable_numeric_verify));
       },
       py::arg("input_contents_txt_raw"), py::arg("disable_per_channel") = false,
       py::arg("fully_quantize") = true, py::arg("inference_type") = 9,
+      py::arg("enable_numeric_verify") = false,
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");

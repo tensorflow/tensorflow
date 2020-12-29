@@ -352,7 +352,7 @@ def execute_with_python_values(executable, arguments, backend):
 def execute_with_python_values_replicated(executable, arguments, backend):
   """Execute on many replicas with Python values as arguments and output.
 
-  Arguments:
+  Args:
     executable: the program to run.
     arguments: a list of lists of Python values indexed by `[replica][arg_num]`
       to pass as inputs.

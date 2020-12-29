@@ -61,6 +61,16 @@ def FinalBufferizePass : Pass<"final-bufferize", "ModuleOp"> {
   let constructor = "transforms::CreateFinalBufferizePass()";
 }
 
+def GpuKernelToNVVMPass : Pass<"gpu-kernel-to-nvvm", "gpu::GPUModuleOp"> {
+  let summary = "Pass to transform a gpu module to nvvm.";
+  let constructor = "transforms::CreateGpuKernelToNvvmPass()";
+}
+
+def GpuKernelToROCDLPass : Pass<"gpu-kernel-to-rocdl", "gpu::GPUModuleOp"> {
+  let summary = "Pass to transform a gpu module to rocdl.";
+  let constructor = "transforms::CreateGpuKernelToRocdlPass()";
+}
+
 def GpuKernelToBlobPass : Pass<"gpu-kernel-to-blob", "gpu::GPUModuleOp"> {
   let summary = "Pass to annotate GPU Module with its PTX";
   let options = [
@@ -96,6 +106,26 @@ def PropagateShapeKnowledgeToKernels
 def EmbedMemRefPrintsPass : FunctionPass<"embed-memref-prints"> {
   let summary = "Pass to print content of memrefs";
   let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
+}
+
+def MapParallelLoopsPass
+    : FunctionPass<"map-parallel-loops-to-gpu"> {
+  let summary = "Greedily maps loops to GPU hardware dimensions.";
+  let constructor = "transforms::CreateMapParallelLoopsPass()";
+  let description = [{
+    Greedily maps loops to GPU hardware dimensions.
+  }];
+}
+
+def FuseInnerParallelLoopsPass
+    : FunctionPass<"fuse-inner-parallel-loops"> {
+  let summary = "Limited pass to forward stores to loads.";
+  let constructor = "transforms::CreateFuseInnerParallelLoopsPass()";
+  let description = [{
+    Directs parallel loop fusion to the inner loops. This cannot be done with
+    a passmanager alone ATM, as nested pass managers require operations to
+    be closed from above.
+  }];
 }
 
 #endif // TF_KERNEL_GEN_PASSES

@@ -1349,6 +1349,9 @@ class HloInstruction {
       const HloPrintOptions& options,
       CanonicalNameMap* canonical_name_map) const;
 
+  const absl::optional<uint64>& fingerprint() const { return fingerprint_; }
+  void set_fingerprint(const uint64 fingerprint) { fingerprint_ = fingerprint; }
+
   // Returns a serialized representation of this instruction.
   virtual HloInstructionProto ToProto() const;
 
@@ -2055,6 +2058,9 @@ class HloInstruction {
   // Has this instruction been marked as dead? Accessed by friend class
   // HloInstruction.
   bool IsMarkedAsDead() const { return marked_as_dead_; }
+
+  // Fingerprint of this instruction alone.
+  absl::optional<uint64> fingerprint_;
 
   int unique_id_;  // Unique to this HloInstruction within a HloModule
 

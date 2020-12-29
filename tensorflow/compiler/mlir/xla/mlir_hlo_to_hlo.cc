@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
@@ -1224,7 +1225,7 @@ LogicalResult ConvertToHloModule::Lower(
     return LowerFunctionCall(call_op, builder, &value_map);
   }
 
-  if (auto op = dyn_cast<mlir::TensorCastOp>(inst)) {
+  if (auto op = dyn_cast<mlir::tensor::CastOp>(inst)) {
     Value operand = op.getOperand();
     auto ty = operand.getType().dyn_cast<ShapedType>();
     // If this was a cast from a static shaped tensors, then it is a noop for

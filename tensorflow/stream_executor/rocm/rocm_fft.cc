@@ -328,7 +328,11 @@ port::Status ROCMFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
 }
 
 port::Status ROCMFftPlan::UpdateScratchAllocator(
+<<<<<<< HEAD
     Stream* stream, ScratchAllocator* scratch_allocator) {
+=======
+    Stream *stream, ScratchAllocator *scratch_allocator) {
+>>>>>>> upstream/master
   if (scratch_size_bytes_ != 0) {
     auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
     if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
@@ -497,7 +501,11 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
 
 void ROCMFft::UpdatePlanWithScratchAllocator(
     Stream *stream, fft::Plan *plan, ScratchAllocator *scratch_allocator) {
+<<<<<<< HEAD
   ROCMFftPlan* rocm_fft_plan = dynamic_cast<ROCMFftPlan*>(plan);
+=======
+  ROCMFftPlan *rocm_fft_plan = dynamic_cast<ROCMFftPlan *>(plan);
+>>>>>>> upstream/master
   port::Status status =
       rocm_fft_plan->UpdateScratchAllocator(stream, scratch_allocator);
   if (!status.ok()) {

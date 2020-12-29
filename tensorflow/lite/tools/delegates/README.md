@@ -78,7 +78,7 @@ Only Android and iOS devices support GPU delegate.
     The relative priority for executions of the model in NNAPI. Should be one
     of the following: default, low, medium and high. This option requires
     Android 11+.
-*   `disable_nnapi_cpu`: `bool` (default=false) \
+*   `disable_nnapi_cpu`: `bool` (default=true) \
     Excludes the
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
     from the possible devices to be used by NNAPI to execute the model. This

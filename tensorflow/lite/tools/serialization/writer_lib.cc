@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -188,11 +189,6 @@ SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
     if (tensor_to_written_tensor_[tensor_index] == -1) continue;
 
     if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
-      // We only need to convert non temporaries
-      if (tensor->allocation_type != kTfLiteArenaRw &&
-          tensor->allocation_type != kTfLiteMmapRo &&
-          tensor->allocation_type != kTfLiteArenaRwPersistent)
-        continue;
       // Allocate a buffer index
       int buffer_index = 0;  // This is null
       if (tensor->allocation_type == kTfLiteMmapRo) {
@@ -331,7 +327,9 @@ TfLiteStatus SubgraphWriter::RegisterCustomWriter(
 TfLiteStatus SubgraphWriter::CheckInputOutput(
     const std::vector<int>& inputs, const std::vector<int>& outputs,
     const std::vector<int>& execution_plan) {
-  std::unordered_set<int> known_tensors(inputs.begin(), inputs.end());
+  absl::flat_hash_set<int> known_tensors(inputs.begin(), inputs.end());
+  known_tensors.insert(subgraph_->variables().begin(),
+                       subgraph_->variables().end());
   // Scan execution plan and confirm input tensors are known before each node
   // executes. Then append output tensors to known tensors.
   for (int op_index : execution_plan) {

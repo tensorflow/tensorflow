@@ -22,6 +22,7 @@ limitations under the License.
 #include <tuple>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -230,6 +231,50 @@ TEST_P(SingleSubgraphTest, CustomInputOutputErrorCasesTest) {
             kTfLiteOk);
 }
 
+// Tests if SetCustomInputOutput handles variable tensors correctly.
+TEST_P(SingleSubgraphTest, CustomInputOutputVariableTensorTest) {
+  Interpreter interpreter;
+  tflite::ops::builtin::BuiltinOpResolver resolver;
+
+  // Create tensors.
+  interpreter.AddTensors(3);
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "a", {3},
+                                           TfLiteQuantization());
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteFloat32, "b", {3},
+                                           TfLiteQuantization(),
+                                           /*is_variable=*/true);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "c", {3},
+                                           TfLiteQuantization());
+  interpreter.SetInputs({0});
+  interpreter.SetOutputs({2});
+  interpreter.SetVariables({1});
+
+  // Create an Add node.
+  TfLiteAddParams* builtin_data =
+      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  builtin_data->activation = kTfLiteActNone;
+  builtin_data->pot_scale_int16 = false;
+  interpreter.AddNodeWithParameters({0, 1}, {2}, nullptr, 0,
+                                    reinterpret_cast<void*>(builtin_data),
+                                    resolver.FindOp(BuiltinOperator_ADD, 1));
+
+  // Write model to file.
+  const std::string test_file = CreateFilePath("test_variables.tflite");
+  SubgraphWriter writer(&interpreter.primary_subgraph());
+  EXPECT_EQ(writer.SetCustomInputOutput(/*inputs=*/{0}, /*outputs=*/{2},
+                                        /*execution_plan=*/{0}),
+            kTfLiteOk);
+  writer.Write(test_file);
+
+  // Read model and test.
+  std::unique_ptr<FlatBufferModel> model =
+      FlatBufferModel::BuildFromFile(test_file.c_str());
+  InterpreterBuilder builder(*model, resolver);
+  std::unique_ptr<Interpreter> new_interpreter;
+  builder(&new_interpreter);
+  CHECK_EQ(new_interpreter->AllocateTensors(), kTfLiteOk);
+}
+
 TEST_P(SingleSubgraphTest, PerTensorQuantizedModelTest) {
   Interpreter interpreter;
   interpreter.AddTensors(3);
@@ -341,7 +386,27 @@ INSTANTIATE_TEST_SUITE_P(
       return name;
     });
 
-class WhileTest : public subgraph_test_util::ControlFlowOpTest {};
+class WhileTest : public subgraph_test_util::ControlFlowOpTest {
+ protected:
+  TfLiteCustomAllocation NewCustomAlloc(size_t num_bytes,
+                                        int required_alignment) {
+    // Extra memory to ensure alignment.
+    char* new_alloc = new char[num_bytes + required_alignment];
+    char* new_underlying_buffer_aligned_ptr = reinterpret_cast<char*>(
+        AlignTo(required_alignment, reinterpret_cast<intptr_t>(new_alloc)));
+    custom_alloc_buffers_.emplace_back(new_alloc);
+
+    return TfLiteCustomAllocation(
+        {new_underlying_buffer_aligned_ptr, num_bytes});
+  }
+
+  intptr_t AlignTo(size_t alignment, intptr_t offset) {
+    return offset % alignment == 0 ? offset
+                                   : offset + (alignment - offset % alignment);
+  }
+
+  std::vector<std::unique_ptr<char[]>> custom_alloc_buffers_;
+};
 
 // The test builds a model that produces the i-th number of
 // triangular number sequence: 1, 3, 6, 10, 15, 21, 28.
@@ -359,7 +424,15 @@ TEST_F(WhileTest, TestTriangularNumberSequence) {
   interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {1});
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
-  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {1});
+
+  // Use custom allocation for second input, to ensure things work well for
+  // non-traditional allocation types.
+  auto alloc =
+      NewCustomAlloc(interpreter_->tensor(interpreter_->inputs()[1])->bytes,
+                     kDefaultTensorAlignment);
+  auto* input_data = reinterpret_cast<int*>(alloc.data);
+  input_data[0] = 1;
+  interpreter_->SetCustomAllocationForTensor(interpreter_->inputs()[1], alloc);
 
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);

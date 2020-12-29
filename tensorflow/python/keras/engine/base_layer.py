@@ -122,7 +122,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   Users will just instantiate a layer and then treat it as a callable.
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: The dtype of the layer's computations and weights. Can also be a
@@ -459,7 +459,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     This is typically used to create the weights of `Layer` subclasses.
 
-    Arguments:
+    Args:
       input_shape: Instance of `TensorShape`, or list of instances of
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
@@ -478,7 +478,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     layers as additional arguments. Whereas `tf.keras` has `compute_mask()`
     method to support masking.
 
-    Arguments:
+    Args:
         inputs: Input tensor, or list/tuple of input tensors.
         **kwargs: Additional keyword arguments. Currently unused.
 
@@ -491,7 +491,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _add_trackable(self, trackable_object, trainable):
     """Adds a Trackable object to this layer's state.
 
-    Arguments:
+    Args:
       trackable_object: The tf.tracking.Trackable object to add.
       trainable: Boolean, whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases) or
@@ -522,7 +522,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                  **kwargs):
     """Adds a new variable to the layer.
 
-    Arguments:
+    Args:
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype`.
@@ -717,7 +717,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     dictionary. It does not handle layer connectivity
     (handled by Network), nor weights (handled by `set_weights`).
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the
             output of get_config.
 
@@ -733,7 +733,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     layer. This assumes that the layer will later be used with inputs that
     match the input shape provided here.
 
-    Arguments:
+    Args:
         input_shape: Shape tuple (tuple of integers)
             or list of shape tuples (one per output tensor of the layer).
             Shape tuples can include None for free dimensions,
@@ -886,7 +886,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
-    Arguments:
+    Args:
         inputs: Tensor or list of tensors.
         mask: Tensor or list of tensors.
 
@@ -907,7 +907,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def __call__(self, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
-    Arguments:
+    Args:
       *args: Positional arguments to be passed to `self.call`.
       **kwargs: Keyword arguments to be passed to `self.call`.
 
@@ -1531,7 +1531,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     model.add_loss(lambda: tf.reduce_mean(d.kernel))
     ```
 
-    Arguments:
+    Args:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
       **kwargs: Additional keyword arguments for backward compatibility.
@@ -1773,7 +1773,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     updates are run on the fly and thus do not need to be tracked for later
     execution).
 
-    Arguments:
+    Args:
       updates: Update op, or list/tuple of update ops, or zero-arg callable
         that returns an update op. A zero-arg callable should be passed in
         order to disable running the updates by setting `trainable=False`
@@ -1828,7 +1828,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
-    Arguments:
+    Args:
         weights: a list of Numpy arrays. The number
             of arrays and their shape must match
             number of the dimensions of the weights
@@ -1925,7 +1925,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Retrieves updates relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1942,7 +1942,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Retrieves losses relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1957,7 +1957,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1977,7 +1977,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_output_mask_at(self, node_index):
     """Retrieves the output mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2041,7 +2041,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_input_shape_at(self, node_index):
     """Retrieves the input shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2061,7 +2061,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_output_shape_at(self, node_index):
     """Retrieves the output shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2081,7 +2081,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_input_at(self, node_index):
     """Retrieves the input tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2100,7 +2100,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def get_output_at(self, node_index):
     """Retrieves the output tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -2261,7 +2261,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     This is an alias of `self.__call__`.
 
-    Arguments:
+    Args:
       inputs: Input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
@@ -2650,7 +2650,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         - get_input_at
         etc...
 
-    Arguments:
+    Args:
         node_index: Integer index of the node from which
             to retrieve the attribute.
         attr: Exact node attribute name.
@@ -2916,7 +2916,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def _flatten_modules(self, recursive=True, include_self=True):
     """Flattens `tf.Module` instances (excluding `Metrics`).
 
-    Arguments:
+    Args:
       recursive: Whether to recursively flatten through submodules.
       include_self: Whether to include this `Layer` instance.
 

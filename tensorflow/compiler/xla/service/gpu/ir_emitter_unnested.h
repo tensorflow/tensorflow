@@ -170,9 +170,10 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status EmitConvolutionThunkFromMlir(MlirEmitterInput input);
   Status EmitGemmThunkFromMlir(MlirEmitterInput input);
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  Status EmitBatchNormThunkFromMlir(MlirEmitterInput input);
+#if GOOGLE_CUDA
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
-#endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#endif  // GOOGLE_CUDA
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(MlirEmitterInput input,

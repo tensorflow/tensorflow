@@ -65,6 +65,10 @@ struct ComputeTaskDescriptor {
   ComputeTaskDescriptor(const ComputeTaskDescriptor&) = delete;
   ComputeTaskDescriptor& operator=(const ComputeTaskDescriptor&) = delete;
 
+  // temporary
+  bool tensors_as_args =
+      false;  // must be true if input/output tensors used throught args.tensor
+
   OperationDef definition;
   Arguments args;
   bool is_linkable = false;
@@ -86,9 +90,6 @@ struct ComputeTaskDescriptor {
   //   output_buffer[linear_index] = value;
   // }
 
-  // when operation associative, we can rearrange input tensors
-  // for example add is associative
-  bool is_associative_op = false;
   std::string shader_source;
   std::vector<std::string> src_tensors_names;
   std::vector<std::string> dst_tensors_names;

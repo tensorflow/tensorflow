@@ -39,6 +39,7 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
@@ -62,6 +63,7 @@ py_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_main_lib",
+        "//tensorflow:tensorflow_py",
         "@six_archive//:six",
     ],
 )
@@ -73,6 +75,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tflite_convert_lib",
+        "//tensorflow:tensorflow_py",
         "@six_archive//:six",
     ],
 )

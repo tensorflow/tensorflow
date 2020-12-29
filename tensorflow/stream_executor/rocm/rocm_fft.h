@@ -77,10 +77,16 @@ class ROCMFftPlan : public fft::Plan {
                           uint64 *elem_count, fft::Type type,
                           ScratchAllocator *scratch_allocator);
 
+<<<<<<< HEAD
   port::Status UpdateScratchAllocator(Stream* stream,
                                       ScratchAllocator* scratch_allocator);
 
   ScratchAllocator* GetScratchAllocator() const { return scratch_allocator_; }
+=======
+  port::Status UpdateScratchAllocator(Stream *stream,
+                                      ScratchAllocator *scratch_allocator);
+
+>>>>>>> upstream/master
  protected:
   bool IsInitialized() const { return is_initialized_; }
   ScratchAllocator* scratch_allocator_;

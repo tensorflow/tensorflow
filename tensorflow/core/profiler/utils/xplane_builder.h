@@ -226,6 +226,7 @@ class XLineBuilder {
 
   int64 NumEvents() const { return line_->events_size(); }
 
+  absl::string_view Name() const { return line_->name(); }
   void SetName(absl::string_view name) { line_->set_name(std::string(name)); }
 
   void SetNameIfEmpty(absl::string_view name) {
@@ -271,6 +272,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
   int64 Id() const { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
+  absl::string_view Name() const { return plane_->name(); }
   void SetName(absl::string_view name) { plane_->set_name(std::string(name)); }
 
   void ReserveLines(size_t num_lines) {

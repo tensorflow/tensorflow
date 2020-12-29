@@ -651,6 +651,36 @@ sorted_keys: A `Tensor` of type K.
 sorted_values: A `Tensor` of type V.
 )doc");
 
+REGISTER_OP("XlaVariadicSort")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: list(type) >= 1")
+    .Attr("comparator: func")
+    .Attr("dimension: int")
+    .Attr("is_stable: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      for (int i = 0; i < c->num_inputs(); ++i) {
+        c->set_output(i, c->input(i));
+      }
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the XLA Sort operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts one or more tensors, with support for custom comparator, dimension, and
+is_stable attributes.
+
+input: A list of `Tensor` of identical shape by possibly different types.
+comparator: A comparator function to apply to 2*N scalars and returning a
+  boolean. N is the number of sort inputs. If you want to sort in ascending
+  order then the comparator should perform a less-than comparison.
+output: A list of `Tensor` of type T.
+dimension: The dimension along which to sort.
+is_stable: Whether to use stable sort.
+)doc");
+
 // TODO(b/37549631) setting the While Op to always be stateful is too
 // conservative.
 REGISTER_OP("XlaWhile")

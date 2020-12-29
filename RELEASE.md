@@ -5,7 +5,8 @@
 ## Breaking Changes
 
 * <DOCUMENT BREAKING CHANGES HERE>
-* <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
+* The `TF_CPP_MIN_VLOG_LEVEL` environment variable has been renamed to to
+  `TF_CPP_MAX_VLOG_LEVEL` which correctly describes its effect.
 
 ## Known Caveats
 
@@ -71,6 +72,7 @@
         * TFLiteConverter exports models with SignatureDef
         * Interpreter supports getting a list of signatures and getting callable
           function for a given signaturedef.
+    * Add int8 support for `ReshapeV2`.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

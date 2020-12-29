@@ -933,6 +933,7 @@ cc_library(
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_outside_compilation_cluster.cc",
         "transforms/tpu_parallel_execute_sink_resource_write.cc",
+        "transforms/tpu_resource_partitioning.cc",
         "transforms/tpu_resource_read_for_write.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",

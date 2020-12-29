@@ -154,7 +154,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
   the one specified in your Keras config at `~/.keras/keras.json`.
   If you have never configured it, it defaults to `"channels_last"`.
 
-  Arguments:
+  Args:
     include_top: Whether to include the fully-connected
         layer at the top of the network. Defaults to True.
     weights: One of `None` (random initialization),
@@ -218,7 +218,7 @@ def EfficientNet(
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Arguments:
+  Args:
     width_coefficient: float, scaling coefficient for network width.
     depth_coefficient: float, scaling coefficient for network depth.
     default_size: integer, default input image size.
@@ -423,7 +423,7 @@ def block(inputs,
           id_skip=True):
   """An inverted residual block.
 
-  Arguments:
+  Args:
       inputs: input tensor.
       activation: activation function.
       drop_rate: float between 0 and 1, fraction of the input units to drop.

@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
@@ -110,7 +111,7 @@ class LhloFuseLinalgPass
         continue;
       }
 
-      if (auto tensor_cast = dyn_cast<TensorCastOp>(definingOp)) {
+      if (auto tensor_cast = dyn_cast<tensor::CastOp>(definingOp)) {
         auto alias = tensor_cast.source();
         if (result_buffers.insert(alias).second) {
           worklist.push_back(alias);

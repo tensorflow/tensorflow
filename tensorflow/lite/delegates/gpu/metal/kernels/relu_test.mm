@@ -36,10 +36,10 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
-@interface SliceTest : XCTestCase
+@interface ReLUTest : XCTestCase
 @end
 
-@implementation SliceTest
+@implementation ReLUTest
 - (void)setUp {
   [super setUp];
 }

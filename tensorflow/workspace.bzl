@@ -366,12 +366,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "org_sqlite",
         build_file = clean_dep("//third_party:sqlite.BUILD"),
-        sha256 = "b34f4c0c0eefad9a7e515c030c18702e477f4ef7d8ade6142bdab8011b487ac6",
-        strip_prefix = "sqlite-amalgamation-3330000",
+        sha256 = "8ff0b79fd9118af7a760f1f6a98cac3e69daed325c8f9f0a581ecb62f797fd64",
+        strip_prefix = "sqlite-amalgamation-3340000",
         system_build_file = clean_dep("//third_party/systemlibs:sqlite.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/www.sqlite.org/2020/sqlite-amalgamation-3330000.zip",
-            "https://www.sqlite.org/2020/sqlite-amalgamation-3330000.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/www.sqlite.org/2020/sqlite-amalgamation-3340000.zip",
+            "https://www.sqlite.org/2020/sqlite-amalgamation-3340000.zip",
         ],
     )
 
@@ -685,8 +685,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "511cfe9441955f20a8b93573fb9b62433b053550"
-    LLVM_SHA256 = "57626cf2eb850c717b712e43774cad308f19cd9161db9ed286844ba8f42abd70"
+    LLVM_COMMIT = "c3acda0798f9b10ac3187ad941bbd8af82fb84a1"
+    LLVM_SHA256 = "bd707c585368c86a4d9de1f262d39adb230f7dac889aa786b2721bf67b447a8c"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
