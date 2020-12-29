@@ -418,6 +418,14 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseUnpack(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_WHERE: {
+      return ParseWhere(op, error_reporter, allocator, builtin_data);
+    }
+
+    case BuiltinOperator_ZEROS_LIKE: {
+      return ParseZerosLike(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_CAST: {
       auto params = safe_allocator.Allocate<TfLiteCastParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -814,14 +822,12 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
     case BuiltinOperator_POW:
-    case BuiltinOperator_ZEROS_LIKE:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_REVERSE_V2:
     case BuiltinOperator_ADD_N:
     case BuiltinOperator_GATHER_ND:
-    case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
     case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
     case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
@@ -1825,6 +1831,22 @@ TfLiteStatus ParseUnpack(const Operator* op, ErrorReporter* error_reporter,
   }
 
   *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseWhere(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                        void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseZerosLike(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                            void**) {
   return kTfLiteOk;
 }
 
