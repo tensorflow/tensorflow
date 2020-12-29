@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -78,24 +79,8 @@ constexpr char kBadArrayElementMsg[] =
 constexpr char kBadArrayAttrLengthMsg[] =
     "bad '{0}' attribute, expected array attribute of size {1}, got size {2}";
 
-// Rewrites `tf_device.cluster_func` operations assigned to TPU into actual TPU
-// jit-compile runtime ops.
-//
-// For example:
-//   %1 = "tf_device.cluster_func"(%0) {_tpu_replicate = "cluster", func =
-//         @tpu_func}
-//   %2 = "tf.SomeOp"(%1)
-//
-// Would become following ops (unimportant attributes, types are omitted):
-//    %1 = "tf.Shape"(%0)
-//    %2:2 = "tf._TPUCompileMlir"(%1) {module = "<Serialized @tpu_func>"}
-//    "tf.TPUCompileSucceededAssert"(%2#0)
-//    %3 = "tf.TPUExecute"(%0, %2#1)
-//    %4 = "tf.SomeOp"(%3)
-
 namespace {
-struct TPURewritePass
-    : public PassWrapper<TPURewritePass, OperationPass<ModuleOp>> {
+struct TPURewritePass : public TF::TPURewritePassBase<TPURewritePass> {
   void runOnOperation() override;
 };
 
@@ -578,59 +563,6 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
   WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
 }
 
-// Rewrites a `tf_device.cluster_func` operation into a set of TPU Runtime
-// Operations that jit-compiles and executes function in
-// `tf_device.cluster_func` on TPU. Device assignment is determined from
-// available devices in `devices`. If it is not possible to rewrite the
-// operation or device assignment fails, a failure will be returned.
-//
-// For example, a non replicated `tf_device.cluster_func`:
-//
-// func @main(%arg0: tensor<i1>) {
-//   %0 = "tf_device.cluster_func"(%arg0)
-//          {_tpu_replicate = "cluster0", device = "", func = @_func} :
-//          (tensor<i1>) -> tensor<i1>
-//   return
-// }
-//
-// will be rewritten as:
-//
-// func @main(%arg0: tensor<i1>) {
-//   %0 = "tf.Shape"(%arg0) : (tensor<i1>) -> tensor<?xi32>
-//   %1:2 = "tf._TPUCompileMlir"(%0) {device = "/CPU:0"} :
-//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
-//   %2 = "tf.TPUExecute"(%arg0, %1#0) {device = "/TPU:0"} :
-//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
-//   return
-// }
-//
-// and a replicated `tf_device.cluster_func`:
-//
-// func @main(%arg0: tensor<i1>, %arg1: tensor<i1>) {
-//   %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>)
-//                              {n = 2 : i32} {
-//     %1 = "tf_device.cluster_func"(%ri)
-//            {_tpu_replicate = "cluster0", device = "", func = @_func} :
-//            (tensor<i1>) -> tensor<i1>
-//     tf_device.return %1 : tensor<i1>
-//   }
-//   return
-// }
-//
-// will be rewritten as:
-//
-// func @main(%arg0: tensor<i1>, %arg1: tensor<i1>) {
-//   %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>)
-//                              {n = 2 : i32, devices = ["/TPU:0", "/TPU:1"]} {
-//     %1 = "tf.Shape"(%ri) : (tensor<i1>) -> tensor<?xi32>
-//     %2:2 = "tf._TPUCompileMlir"(%1) {device = "/CPU:0"} :
-//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
-//     %3 = "tf.TPUExecute"(%ri, %2#0) :
-//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
-//     tf_device.return %3 : tensor<i1>
-//   }
-//   return
-// }
 LogicalResult Rewrite(
     tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
@@ -830,10 +762,6 @@ void TPURewritePass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
-
-static PassRegistration<TPURewritePass> pass(
-    "tf-tpu-rewrite",
-    "Rewriting `tf_device.cluster_func` on TPUs into TPU runtime ops");
 
 }  // namespace TFTPU
 }  // namespace mlir
