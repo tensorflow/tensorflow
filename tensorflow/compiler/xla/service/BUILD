@@ -5222,9 +5222,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "integral_upcaster",
-    srcs = ["integral_upcaster.cc"],
-    hdrs = ["integral_upcaster.h"],
+    name = "operand_upcaster",
+    srcs = ["operand_upcaster.cc"],
+    hdrs = ["operand_upcaster.h"],
     deps = [
         ":hlo",
         ":op_expander_pass",
@@ -5233,11 +5233,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "integral_upcaster_test",
-    srcs = ["integral_upcaster_test.cc"],
+    name = "operand_upcaster_test",
+    srcs = ["operand_upcaster_test.cc"],
     deps = [
         ":hlo_matchers",
-        ":integral_upcaster",
+        ":operand_upcaster",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

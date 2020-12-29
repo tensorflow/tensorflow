@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/integral_upcaster.h"
+#include "tensorflow/compiler/xla/service/operand_upcaster.h"
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -25,7 +25,7 @@ namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
 
-class IntegralUpcasterTest
+class OperandUpcasterTest
     : public HloTestBase,
       public ::testing::WithParamInterface<
           std::tuple<PrimitiveType, PrimitiveType, PrimitiveType>> {};
@@ -35,7 +35,7 @@ bool ShouldUpcast(PrimitiveType operand_type, PrimitiveType result_type) {
          primitive_util::BitWidth(result_type);
 }
 
-TEST_P(IntegralUpcasterTest, ConvertInserted) {
+TEST_P(OperandUpcasterTest, ConvertInserted) {
   PrimitiveType lhs_type, rhs_type, result_type;
   std::tie(lhs_type, rhs_type, result_type) = GetParam();
   absl::string_view module_tmpl = R"(
@@ -53,7 +53,7 @@ TEST_P(IntegralUpcasterTest, ConvertInserted) {
       primitive_util::LowercasePrimitiveTypeName(result_type));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(module_string));
-  TF_ASSERT_OK_AND_ASSIGN(bool upcasted, IntegralUpcaster().Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool upcasted, OperandUpcaster().Run(module.get()));
   EXPECT_EQ(upcasted, ShouldUpcast(lhs_type, result_type) ||
                           ShouldUpcast(rhs_type, result_type));
   auto original_lhs = op::Parameter(0);
@@ -80,19 +80,24 @@ TEST_P(IntegralUpcasterTest, ConvertInserted) {
                 primitive_util::LowercasePrimitiveTypeName(result_type)))));
 }
 
-INSTANTIATE_TEST_SUITE_P(S16U16, IntegralUpcasterTest,
+INSTANTIATE_TEST_SUITE_P(S16U16, OperandUpcasterTest,
                          ::testing::Values(std::make_tuple(S8, S8, S16),
                                            std::make_tuple(U8, U8, U16)));
 
-INSTANTIATE_TEST_SUITE_P(S32, IntegralUpcasterTest,
+INSTANTIATE_TEST_SUITE_P(S32, OperandUpcasterTest,
                          ::testing::Combine(::testing::Values(S8, S16),
                                             ::testing::Values(S8, S16),
                                             ::testing::Values(S32)));
 
-INSTANTIATE_TEST_SUITE_P(U32, IntegralUpcasterTest,
+INSTANTIATE_TEST_SUITE_P(U32, OperandUpcasterTest,
                          ::testing::Combine(::testing::Values(U8, U16),
                                             ::testing::Values(U8, U16),
                                             ::testing::Values(U32)));
+
+INSTANTIATE_TEST_SUITE_P(F32, OperandUpcasterTest,
+                         ::testing::Combine(::testing::Values(BF16, F16),
+                                            ::testing::Values(BF16, F16),
+                                            ::testing::Values(F32)));
 
 }  // namespace
 

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/integral_upcaster.h"
+#include "tensorflow/compiler/xla/service/operand_upcaster.h"
 
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
@@ -35,28 +35,26 @@ StatusOr<absl::optional<Shape>> MaybeInferShape(
           instruction->window(), instruction->convolution_dimension_numbers(),
           /*preferred_element_type=*/absl::nullopt);
     default:
-      return absl::make_optional<Shape>();
+      return absl::optional<Shape>(absl::nullopt);
   }
 }
 
 }  // namespace
 
-bool IntegralUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
-  if (!ShapeUtil::ElementIsIntegral(instruction->shape())) {
-    return false;
-  }
+bool OperandUpcaster::InstructionMatchesPattern(HloInstruction* instruction) {
   auto status_or_inferred_shape = MaybeInferShape(instruction);
   if (!status_or_inferred_shape.ok() ||
       !status_or_inferred_shape->has_value()) {
     return false;
   }
   const Shape& inferred_shape = status_or_inferred_shape.ValueOrDie().value();
-
-  return inferred_shape.element_type() != instruction->shape().element_type() &&
-         ShapeUtil::CanUpcastIntegral(inferred_shape, instruction->shape());
+  if (inferred_shape.element_type() == instruction->shape().element_type()) {
+    return false;
+  }
+  return ShapeUtil::ElementCanUpcast(inferred_shape, instruction->shape());
 }
 
-StatusOr<HloInstruction*> IntegralUpcaster::ExpandInstruction(
+StatusOr<HloInstruction*> OperandUpcaster::ExpandInstruction(
     HloInstruction* instruction) {
   auto* computation = instruction->parent();
   auto type = instruction->shape().element_type();
