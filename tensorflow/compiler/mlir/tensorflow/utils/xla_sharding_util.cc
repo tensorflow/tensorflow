@@ -237,6 +237,25 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
         sharding_attr.cast<mlir::StringAttr>().getValue().str());
 
     const auto input_sharding_type = sharding.type();
+
+    // If input is already partitioned using the `tf.TPUPartitionedInput` op,
+    // only replicated sharding is supported where i-th operand to
+    // `tf.TPUPartitionedInput` op is input to the i-th logical device.
+    if (auto partitioned_input =
+            llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedInputOp>(
+                input_value.getDefiningOp())) {
+      if (input_sharding_type != xla::OpSharding::REPLICATED)
+        return cluster_func->emitOpError()
+               << "unsupported input sharding type "
+               << OpSharding_Type_Name(input_sharding_type) << " for "
+               << input_index << "-th input";
+      for (auto& index_and_inputs : llvm::enumerate(*input_list)) {
+        index_and_inputs.value().emplace_back(
+            partitioned_input.getOperand(index_and_inputs.index()));
+      }
+      continue;
+    }
+
     if (input_sharding_type == xla::OpSharding::OTHER) {
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
       auto result = HandleTileShardedInputs(
@@ -328,8 +347,7 @@ bool IsAssignedToLogicalDevice(const int core_id,
 // Returns the index of the return value of region in
 // `tf_device.parallel_execute` that represents cluster func output at
 // index |cluster_func_output_index|. Regions of parallel_execute may
-// have different return values depending on outside sharding
-// configuration.
+// have different return values depending on output sharding configuration.
 int MapClusterOutputIndexWithRegionOutputIndex(
     llvm::ArrayRef<xla::OpSharding> output_sharding_config, const int core_id,
     const int cluster_func_output_index) {
@@ -479,7 +497,7 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
   return mlir::success();
 }
 
-void RemapOutputsFromLogicalDevices(
+mlir::LogicalResult RemapOutputsFromLogicalDevices(
     const mlir::Location& location,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     mlir::tf_device::ClusterFuncOp cluster_func,
@@ -490,6 +508,40 @@ void RemapOutputsFromLogicalDevices(
     const auto cluster_func_output = result_and_index.value();
     const auto& output_sharding = output_sharding_config[output_index];
     const auto output_sharding_type = output_sharding.type();
+
+    // If output is demultiplexed using the `tf.TPUPartitionedOutput` op, only
+    // replicated sharding is supported where i-th output of
+    // `tf.TPUPartitionedOutput` op maps to the output of i-th logical device.
+    // Also `tf.TPUPartitionedOutput` op must be a unique user of
+    // `tf_device.cluster_func` output.
+    mlir::TF::TPUPartitionedOutputOp partitioned_output;
+    for (auto user : cluster_func_output.getUsers()) {
+      if (auto partitioned_output_user =
+              llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedOutputOp>(user)) {
+        partitioned_output = partitioned_output_user;
+        break;
+      }
+    }
+    if (partitioned_output) {
+      if (!cluster_func_output.hasOneUse())
+        return partitioned_output.emitOpError()
+               << "must be a unique user of tf_device.cluster_func output "
+               << *cluster_func_output.getOwner();
+      if (output_sharding_type != xla::OpSharding::REPLICATED)
+        return cluster_func.emitOpError()
+               << "unsupported output sharding type "
+               << OpSharding_Type_Name(output_sharding_type) << " for "
+               << output_index << "-th output";
+      for (auto index_and_output :
+           llvm::enumerate(partitioned_output.output())) {
+        const auto output_from_logical_device =
+            parallel_execute.GetRegionOutputs(
+                index_and_output.index())[output_index];
+        index_and_output.value().replaceAllUsesWith(output_from_logical_device);
+      }
+      continue;
+    }
+
     if (output_sharding_type == xla::OpSharding::OTHER) {
       HandleTileShardedOutputs(output_index, output_sharding, location,
                                cluster_func_output, parallel_execute, builder);
@@ -509,6 +561,7 @@ void RemapOutputsFromLogicalDevices(
         logical_device_id)[region_output_index];
     cluster_func_output.replaceAllUsesWith(output_from_logical_device);
   }
+  return mlir::success();
 }
 
 llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(

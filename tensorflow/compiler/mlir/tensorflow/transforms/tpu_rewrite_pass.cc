@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <deque>
 #include <string>
 #include <type_traits>
 
@@ -752,27 +753,47 @@ LogicalResult Rewrite(
     // ops, the number of return values of parallel_execute op exceeds that of
     // cluster_func op. As so, each return value of parallel_execute op must be
     // mapped with corresponding return value usages of cluster_func.
-    tensorflow::RemapOutputsFromLogicalDevices(cluster_func.getLoc(),
-                                               output_shardings, cluster_func,
-                                               execute_op, builder);
-  } else {
-    llvm::SmallVector<Value, 4> execute_inputs(cluster_func.getOperands());
-    execute_inputs.emplace_back(compile_op->getResult(1));
-
-    TF::TPUExecuteOp execute_op;
-    result = BuildExecuteOp(
-        /*core_id=*/0, output_shardings, execute_inputs, cluster_func, builder,
-        &execute_op);
-    if (failed(result)) return failure();
-
-    tf_device::LaunchOp launch_op = AssignDevicesToReplicatedExecute(
-        tpu_device_assignment.tpu_devices, execute_op, builder);
-    cluster_func.replaceAllUsesWith(launch_op);
+    return tensorflow::RemapOutputsFromLogicalDevices(
+        cluster_func.getLoc(), output_shardings, cluster_func, execute_op,
+        builder);
   }
 
-  cluster_func.erase();
+  llvm::SmallVector<Value, 4> execute_inputs(cluster_func.getOperands());
+  execute_inputs.emplace_back(compile_op->getResult(1));
 
+  TF::TPUExecuteOp execute_op;
+  result = BuildExecuteOp(
+      /*core_id=*/0, output_shardings, execute_inputs, cluster_func, builder,
+      &execute_op);
+  if (failed(result)) return failure();
+
+  tf_device::LaunchOp launch_op = AssignDevicesToReplicatedExecute(
+      tpu_device_assignment.tpu_devices, execute_op, builder);
+  cluster_func.replaceAllUsesWith(launch_op);
   return success();
+}
+
+// Erase rewritten ClusterFuncOp(s). If TPUPartitionedInputOp /
+// TPUPartitionedOutputOp are present, they must be removed alongwith the
+// ClusterFuncOp(s).
+void EraseClusterFuncs(std::deque<Operation*>& to_be_erased) {
+  for (auto cluster : to_be_erased) {
+    // Add TPUPartitionedInputOp inputs to ClusterFuncOp to be removed at the
+    // end.
+    for (auto operand : cluster->getOperands()) {
+      if (llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(
+              operand.getDefiningOp()))
+        to_be_erased.emplace_back(operand.getDefiningOp());
+    }
+    // Add TPUPartitionedOutputOp users of ClusterFuncOp to be removed first.
+    for (auto user : cluster->getUsers()) {
+      if (llvm::isa<TF::TPUPartitionedOutputOp>(user))
+        to_be_erased.emplace_front(user);
+    }
+  }
+  for (auto op : to_be_erased) {
+    if (op->use_empty()) op->erase();
+  }
 }
 
 void TPURewritePass::runOnOperation() {
@@ -780,15 +801,19 @@ void TPURewritePass::runOnOperation() {
   if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
     return signalPassFailure();
 
+  std::deque<Operation*> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
     if (failed(Rewrite(op, devices.device_names(), &builder)))
       return WalkResult::interrupt();
 
+    to_be_erased.emplace_back(op.getOperation());
     return WalkResult::advance();
   });
 
   if (result.wasInterrupted()) return signalPassFailure();
+
+  EraseClusterFuncs(to_be_erased);
 
   // Eliminate TPUCompilationResultOp now that the rewrite is complete.
   getOperation().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
