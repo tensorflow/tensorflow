@@ -378,6 +378,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseSoftmax(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_SPACE_TO_DEPTH: {
+      return ParseSpaceToDepth(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_SPLIT: {
       return ParseSplit(op, error_reporter, allocator, builtin_data);
     }
@@ -590,10 +594,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       }
       *builtin_data = params.release();
       return kTfLiteOk;
-    }
-
-    case BuiltinOperator_SPACE_TO_DEPTH: {
-      return ParseSpaceToDepth(op, error_reporter, allocator, builtin_data);
     }
 
     case BuiltinOperator_DEPTH_TO_SPACE: {
