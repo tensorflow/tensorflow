@@ -1653,9 +1653,30 @@ Status IrEmitterUnnested::EmitLoopFusionFromMlir(MlirEmitterInput input,
     unroll_factor = ComputeMaxUnrollFactor(fusion, hlo_module_config_);
   }
 
+  bool few_waves = [fusion]() mutable {
+    for (mlir::Operation& op : fusion.region().front()) {
+      if (mlir::isa<mlir::TensorLoadOp, mlir::TensorStoreOp,
+                    mlir::lmhlo::TerminatorOp, mlir::mhlo::ReturnOp>(op)) {
+        continue;
+      }
+      HloOpcode opcode = *MhloToHloOpcode(&op);
+      if (HloInstruction::IsOpElementwise(opcode)) {
+        continue;
+      }
+      if (auto broadcast = mlir::dyn_cast<mlir::mhlo::BroadcastOp>(op)) {
+        if (broadcast.broadcast_sizes().size() == 0) {
+          continue;
+        }
+      }
+      return false;
+    }
+    return true;
+  }();
+
   Shape element_shape = context.output_shapes[0];
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor);
+      element_shape, ir_emitter_context_->gpu_device_info(), unroll_factor,
+      few_waves);
   UpdateLaunchDimensions(launch_dimensions, kernel_thunk,
                          ir_emitter_context_->llvm_module());
   llvm::Type* index_type = GetIndexTypeForKernelFromMlir(
