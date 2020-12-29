@@ -1073,6 +1073,13 @@ class MklFusedMatMulOpTest : public OpsTestBase {
             next_op = ops::Add(root.WithOpName("with_add"), next_op, input_op);
           }
 
+          if (std::find(fused_ops.begin(), fused_ops.end(), "LeakyRelu") !=
+              fused_ops.end()) {
+            last_op = "with_leakyrelu";
+            next_op =
+                ops::internal::LeakyRelu(root.WithOpName(last_op), next_op);
+          }
+
           CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
         };
 
@@ -1148,18 +1155,32 @@ TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndAdd) {
                           {"BiasAdd", "Add"});
 }
 
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndLeakyRelu) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "LeakyRelu"});
+}
+
 REGISTER_TYPED_TEST_SUITE_P(MklFusedMatMulOpTest,  //
                             WithBias,              //
                             WithBiasAndRelu,       //
                             WithBiasAndRelu6,      //
                             WithBiasAndElu,        //
                             WithBiasAndTanh,       //
+                            WithBiasAndLeakyRelu,  //
                             WithBiasAndAdd);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedMatMulOpTest,
                                MklFusedMatMulDataTypes);
 
+// This test is flaky for --config=mkl_threadpool (The supposedly cached op
+// sometimes took longer than even 0.9 * original_time.)
+// TODO(intel-tf): Re-enable the test for --config=mkl_threadpool.
+#ifndef ENABLE_MKLDNN_THREADPOOL
 // Test the performance of MklFusedMatMul weight cache.
 // For the first time B matrix will be reordered and cached which will be
 // used for subsequent runs
@@ -1262,6 +1283,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCached) {
     test::ExpectTensorNear<float>(expected, output_new, 1e-5);
   }
 }
+#endif  // ENABLE_MKLDNN_THREADPOOL
 
 class BiasCacheTest : public OpsTestBase {
  public:

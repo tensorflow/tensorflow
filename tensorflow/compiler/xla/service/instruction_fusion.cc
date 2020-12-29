@@ -599,7 +599,6 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     }
     VLOG(1) << "There are " << fused_count << " fused bits that cause "
             << fuse_count << " fusion actions.";
-    VLOG(1) << FusionConfigToString(*fusion_config);
     module->set_config(module_config);
   }
 

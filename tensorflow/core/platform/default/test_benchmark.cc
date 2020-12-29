@@ -204,12 +204,12 @@ void Benchmark::Run(const char* pattern) {
       char buf[100];
       std::string full_label = label;
       if (bytes_processed > 0) {
-        snprintf(buf, sizeof(buf), " %.1fMB/s",
+        snprintf(buf, sizeof(buf), " %.5fMB/s",
                  (bytes_processed * 1e-6) / seconds);
         full_label += buf;
       }
       if (items_processed > 0) {
-        snprintf(buf, sizeof(buf), " %.1fM items/s",
+        snprintf(buf, sizeof(buf), " %.5fM items/s",
                  (items_processed * 1e-6) / seconds);
         full_label += buf;
       }

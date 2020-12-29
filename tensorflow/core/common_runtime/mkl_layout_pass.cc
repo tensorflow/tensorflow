@@ -1494,7 +1494,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
   static bool MatMulRewrite(const Node* n) {
     DataType T;
-    GetNodeAttr(n->def(), "T", &T);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &T));
     if ((T == DT_FLOAT) || (T == DT_BFLOAT16)) {
       VLOG(2) << "Rewriting MatMul to _MklMatMul";
       return true;
@@ -1504,7 +1504,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // For oneDNN, only int32 is supported for axis data type
   static bool ConcatV2Rewrite(const Node* n) {
     DataType T;
-    GetNodeAttr(n->def(), "Tidx", &T);
+    TF_CHECK_OK(GetNodeAttr(n->def(), "Tidx", &T));
     return (T == DT_INT32);
   }
 

@@ -702,8 +702,15 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
       ProcessFuncBatch(std::move(batch));
     }
   };
-  TF_RETURN_IF_ERROR(batcher_->AddQueue(batcher_queue_options_,
-                                        process_batch_callback, &new_queue));
+  if (batcher_) {
+    TF_RETURN_IF_ERROR(batcher_->AddQueue(batcher_queue_options_,
+                                          process_batch_callback, &new_queue));
+  } else if (adaptive_batcher_) {
+    TF_RETURN_IF_ERROR(adaptive_batcher_->AddQueue(
+        adaptive_batcher_queue_options_, process_batch_callback, &new_queue));
+  } else {
+    return errors::Internal("No batcher defined.");
+  }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
   return Status::OK();

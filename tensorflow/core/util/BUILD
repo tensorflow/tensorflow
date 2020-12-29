@@ -291,6 +291,7 @@ filegroup(
     name = "mkl_util_hdrs",
     srcs = [
         "mkl_threadpool.h",
+        "mkl_types.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],

@@ -23,20 +23,6 @@ limitations under the License.
 
 namespace xla {
 
-// Fusion configuration.
-using FusionConfig = std::vector<std::vector<bool>>;
-
-// Converts fusion config to string format.
-static std::string FusionConfigToString(const FusionConfig& config) {
-  std::string s;
-  for (const auto& edge_list : config) {
-    for (bool edge : edge_list) {
-      absl::StrAppend(&s, edge ? "1" : "0");
-    }
-  }
-  return s;
-}
-
 // A queue interface that allows implementations to choose fusion candidates in
 // custom order.
 class FusionQueue {
