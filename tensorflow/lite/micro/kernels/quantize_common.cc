@@ -110,24 +110,24 @@ TfLiteStatus EvalQuantizeReference(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   } else if (input->type == kTfLiteUInt8) {
-     // UInt8 to Int8 requantization, required if the input and output
-     // tensors have different scales and/or zero points.
-     // Input being UInt8 is quite possible. (e.g., image data)
-     size_t size = ElementCount(*input->dims);
-     switch (output->type) {
-       case kTfLiteInt8:
+    // UInt8 to Int8 requantization, required if the input and output
+    // tensors have different scales and/or zero points.
+    // Input being UInt8 is quite possible. (e.g., image data)
+    size_t size = ElementCount(*input->dims);
+    switch (output->type) {
+      case kTfLiteInt8:
         reference_ops::Requantize(
             tflite::micro::GetTensorData<uint8_t>(input), size,
             data->requantize_output_multiplier, data->requantize_output_shift,
             data->input_zero_point, data->quantization_params.zero_point,
             tflite::micro::GetTensorData<int8_t>(output));
-         break;
+        break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                            TfLiteTypeGetName(input->type),
                            TfLiteTypeGetName(output->type));
         return kTfLiteError;
-     }
+    }
   } else {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                        TfLiteTypeGetName(input->type),
