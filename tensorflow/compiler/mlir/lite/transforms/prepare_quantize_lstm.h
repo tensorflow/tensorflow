@@ -60,7 +60,122 @@ namespace operator_property = ::tflite::optimize::operator_property;
 using Q = quant::QuantizeCastOp;
 using DQ = quant::DequantizeCastOp;
 
-// Quantize recurrent input of LSTM with 16 bits.
+template <typename LstmOp>
+static LogicalResult GetLstmProperty(
+    LstmOp op, operator_property::OpVariant* lstm_variant,
+    operator_property::OperatorProperty* op_property) {
+  if (llvm::isa<TFL::LSTMOp>(op.getOperation())) {
+    lstm_variant->op_code = tflite::BuiltinOperator_LSTM;
+  } else if (llvm::isa<TFL::UnidirectionalSequenceLSTMOp>(op.getOperation())) {
+    lstm_variant->op_code =
+        tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM;
+  } else {
+    op.emitError("ConvertLstmStatsToQDQs pass only supports LSTMs.");
+    return failure();
+  }
+  lstm_variant->use_projection =
+      !op.projection_weights().getType().template isa<NoneType>();
+  lstm_variant->use_peephole =
+      !op.cell_to_output_weights().getType().template isa<NoneType>();
+  lstm_variant->use_peephole =
+      !op.cell_to_output_weights().getType().template isa<NoneType>();
+  lstm_variant->use_layer_norm =
+      !op.forget_layer_norm_coefficients().getType().template isa<NoneType>();
+
+  *op_property = operator_property::GetOperatorProperty(*lstm_variant);
+  return success();
+}
+
+template <typename SourceOp>
+struct PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
+ public:
+  explicit PrepareLstmOutputScale(MLIRContext* context)
+      : OpRewritePattern<SourceOp>(context) {}
+  LogicalResult matchAndRewrite(SourceOp op,
+                                PatternRewriter& rewriter) const override {
+    operator_property::OpVariant lstm_variant;
+    operator_property::OperatorProperty lstm_property;
+
+    if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property))) {
+      return failure();
+    }
+    if (lstm_property.restrict_scale.size() != 1) {
+      op.emitError() << "The LSTM's operator property expects exactly one "
+                     << "restrict scale requirement. Got "
+                     << lstm_property.restrict_scale.size()
+                     << " restrict scale requirements.";
+      return failure();
+    }
+
+    // Use same scale for input and output specified in restrict_scale.
+    const std::vector<int>& tensors = lstm_property.restrict_scale[0];
+    if (tensors.size() != 2) {
+      op.emitError(
+          "Unexpected restricted_scale from operator property."
+          " Should only have a pair of indices.");
+      return failure();
+    }
+    return processRestrictScale(op, tensors[0], tensors[1], rewriter);
+  }
+
+ private:
+  // For LSTM's recurrent input activation and output, they are quantized with
+  // the collective range of both tensors, because theoretically the input
+  // activation value for the very first inference is not reflected in the
+  // output and the input activation is not captured.
+  LogicalResult processRestrictScale(SourceOp op, int input_index,
+                                     int output_index,
+                                     PatternRewriter& rewriter) const {
+    assert(output_index == 0);
+    if (!op.getResult().hasOneUse()) {
+      op.emitError()
+          << "output " << output_index
+          << " should have only one use, which should be quant.stats.";
+      return failure();
+    }
+
+    llvm::SmallVector<quant::StatisticsOp, 2> stats_ops = {
+        llvm::dyn_cast_or_null<quant::StatisticsOp>(
+            op.getOperand(input_index).getDefiningOp()),
+        llvm::dyn_cast_or_null<quant::StatisticsOp>(
+            *op.getResult().getUsers().begin()),
+    };
+
+    if (!stats_ops[0] || !stats_ops[1]) {
+      return failure();  // Already converted to Q-DQ pair.
+    }
+
+    llvm::SmallVector<llvm::APFloat, 4> min_max_values;
+
+    for (auto& stats_op : stats_ops) {
+      auto values = stats_op.layerStats()
+                        .dyn_cast<DenseFPElementsAttr>()
+                        .getValues<llvm::APFloat>();
+      min_max_values.insert(min_max_values.end(), values.begin(), values.end());
+    }
+
+    // min and max values of two stats are already the same.
+    if (min_max_values[0] == min_max_values[2] &&
+        min_max_values[1] == min_max_values[3]) {
+      return failure();
+    }
+
+    mlir::ElementsAttr layer_stats = mlir::DenseFPElementsAttr::get(
+        mlir::RankedTensorType::get({2}, rewriter.getF32Type()),
+        {llvm::minimum(min_max_values[0], min_max_values[2]),
+         llvm::maximum(min_max_values[1], min_max_values[3])});
+    mlir::ElementsAttr axis_stats;
+    mlir::IntegerAttr axis;
+    for (auto& stats_op : stats_ops) {
+      rewriter.setInsertionPointAfter(stats_op);
+      rewriter.replaceOpWithNewOp<quant::StatisticsOp>(
+          stats_op, stats_op.arg(), layer_stats, axis_stats, axis);
+    }
+    return success();
+  }
+};
+
+// Quantize LSTM according to its quantization recipe.
 template <typename SourceOp>
 struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
  public:
@@ -72,42 +187,9 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
   LogicalResult matchAndRewrite(SourceOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant lstm_variant;
-    if (llvm::isa<TFL::LSTMOp>(op.getOperation())) {
-      lstm_variant.op_code = tflite::BuiltinOperator_LSTM;
-    } else if (llvm::isa<TFL::UnidirectionalSequenceLSTMOp>(
-                   op.getOperation())) {
-      lstm_variant.op_code =
-          tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM;
-    } else {
-      op.emitError("ConvertLstmStatsToQDQs pass only supports LSTMs.");
+    operator_property::OperatorProperty lstm_property;
+    if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property))) {
       return failure();
-    }
-    lstm_variant.use_projection =
-        !op.projection_weights().getType().template isa<NoneType>();
-    lstm_variant.use_peephole =
-        !op.cell_to_output_weights().getType().template isa<NoneType>();
-    lstm_variant.use_peephole =
-        !op.cell_to_output_weights().getType().template isa<NoneType>();
-    lstm_variant.use_layer_norm =
-        !op.forget_layer_norm_coefficients().getType().template isa<NoneType>();
-
-    const auto lstm_property =
-        operator_property::GetOperatorProperty(lstm_variant);
-
-    // Use same scale for input and output specified in restrict_scale.
-    for (const std::vector<int>& tensors : lstm_property.restrict_scale) {
-      if (tensors.empty()) {
-        continue;
-      }
-      if (tensors.size() != 2) {
-        op.emitError(
-            "Unexpected restricted_scale from operator property."
-            " Should only have a pair of indices.");
-        return failure();
-      }
-      if (failed(processRestrictScale(op, tensors[0], tensors[1], rewriter))) {
-        return failure();
-      }
     }
 
     if (failed(processIntermediates(op, lstm_variant, lstm_property)) ||
@@ -396,61 +478,6 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
     Type result_type = quant_type.castFromExpressedType(stats_op.getType());
     auto q = rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.arg());
     rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
-    return success();
-  }
-
-  // For LSTM's recurrent input activation and output, they are quantized with
-  // the collective range of both tensors, because theoretically the input
-  // activation value for the very first inference is not reflected in the
-  // output and the input activation is not captured.
-  LogicalResult processRestrictScale(SourceOp op, int input_index,
-                                     int output_index,
-                                     PatternRewriter& rewriter) const {
-    assert(output_index == 0);
-    if (!op.getResult().hasOneUse()) {
-      op.emitError()
-          << "output " << output_index
-          << " should have only one use, which should be quant.stats.";
-      return failure();
-    }
-
-    llvm::SmallVector<quant::StatisticsOp, 2> stats_ops = {
-        llvm::dyn_cast_or_null<quant::StatisticsOp>(
-            op.getOperand(input_index).getDefiningOp()),
-        llvm::dyn_cast_or_null<quant::StatisticsOp>(
-            *op.getResult().getUsers().begin()),
-    };
-
-    if (!stats_ops[0] || !stats_ops[1]) {
-      return failure();  // Already converted to Q-DQ pair.
-    }
-
-    llvm::SmallVector<llvm::APFloat, 4> min_max_values;
-
-    for (auto& stats_op : stats_ops) {
-      auto values = stats_op.layerStats()
-                        .dyn_cast<DenseFPElementsAttr>()
-                        .getValues<llvm::APFloat>();
-      min_max_values.insert(min_max_values.end(), values.begin(), values.end());
-    }
-
-    // min and max values of two stats are already the same.
-    if (min_max_values[0] == min_max_values[2] &&
-        min_max_values[1] == min_max_values[3]) {
-      return success();
-    }
-
-    mlir::ElementsAttr layer_stats = mlir::DenseFPElementsAttr::get(
-        mlir::RankedTensorType::get({2}, rewriter.getF32Type()),
-        {llvm::minimum(min_max_values[0], min_max_values[2]),
-         llvm::maximum(min_max_values[1], min_max_values[3])});
-    mlir::ElementsAttr axis_stats;
-    mlir::IntegerAttr axis;
-    for (auto& stats_op : stats_ops) {
-      rewriter.setInsertionPointAfter(stats_op);
-      rewriter.replaceOpWithNewOp<quant::StatisticsOp>(
-          stats_op, stats_op.arg(), layer_stats, axis_stats, axis);
-    }
     return success();
   }
 };

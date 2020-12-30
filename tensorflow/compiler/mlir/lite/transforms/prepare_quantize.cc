@@ -87,8 +87,8 @@ namespace {
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect,
-                    ::mlir::quant::QuantizationDialect>();
+    registry
+        .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
   }
 
  public:
@@ -321,11 +321,6 @@ bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
-using PrepareLstmQuantStats = TFL::ConvertLstmStatsToQDQs<TFL::LSTMOp>;
-
-using PrepareUnidirectionalLstmQuantStats =
-    TFL::ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp>;
-
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
@@ -361,8 +356,9 @@ void PrepareQuantizePass::runOnFunction() {
   // consistent. Otherwise some FileCheck tests would fail.
   OwningRewritePatternList patterns_1;
   if (quant_specs_.post_training_quantization) {
-    patterns_1.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
-    patterns_1.insert<PrepareUnidirectionalLstmQuantStats>(ctx, quant_specs_);
+    patterns_1.insert<PrepareLstmOutputScale<LSTMOp>>(ctx);
+    patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
+        ctx);
   }
   applyPatternsAndFoldGreedily(func, std::move(patterns_1));
 
@@ -379,6 +375,12 @@ void PrepareQuantizePass::runOnFunction() {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns_2.insert<PrepareQuantStats>(bit_width, false, false, ctx);
+  }
+
+  if (quant_specs_.post_training_quantization) {
+    patterns_2.insert<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
+    patterns_2.insert<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
+        ctx, quant_specs_);
   }
   applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
