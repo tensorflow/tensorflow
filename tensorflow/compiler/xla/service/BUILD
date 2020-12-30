@@ -4666,48 +4666,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "while_loop_all_reduce_code_motion",
-    srcs = ["while_loop_all_reduce_code_motion.cc"],
-    hdrs = ["while_loop_all_reduce_code_motion.h"],
-    deps = [
-        ":call_graph",
-        ":hlo",
-        ":hlo_casting_utils",
-        ":hlo_pass",
-        ":hlo_query",
-        ":pattern_matcher",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/platform:status",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_test(
-    name = "while_loop_all_reduce_code_motion_test",
-    srcs = ["while_loop_all_reduce_code_motion_test.cc"],
-    deps = [
-        ":hlo",
-        ":hlo_casting_utils",
-        ":hlo_matchers",
-        ":hlo_verifier",
-        ":while_loop_all_reduce_code_motion",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:test",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "while_loop_invariant_code_motion",
     srcs = ["while_loop_invariant_code_motion.cc"],
     hdrs = ["while_loop_invariant_code_motion.h"],
