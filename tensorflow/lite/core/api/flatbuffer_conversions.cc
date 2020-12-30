@@ -1059,7 +1059,7 @@ TfLiteStatus ParseDepthToSpace(const Operator* op,
   if (schema_params != nullptr) {
     params->block_size = schema_params->block_size();
   } else {
-    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // old todo (b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
     // better undertand the ramifications of changing the legacy behavior.
   }
