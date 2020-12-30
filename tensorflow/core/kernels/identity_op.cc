@@ -60,7 +60,6 @@ REGISTER_KERNEL_BUILDER(Name("Identity")
                             .HostMemory("output"),
                         IdentityOp);
 
-
 #define REGISTER_GPU_KERNEL(type)                                           \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("Identity").Device(DEVICE_GPU).TypeConstraint<type>("T"),        \
@@ -88,6 +87,34 @@ REGISTER_GPU_KERNEL(Variant);
 REGISTER_GPU_KERNEL(bool);
 
 #undef REGISTER_GPU_KERNEL
+
+#define REGISTER_DEFAULT_KERNEL(type)                                        \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Identity").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"),     \
+      IdentityOp);                                                           \
+  REGISTER_KERNEL_BUILDER(Name("PreventGradient")                            \
+                              .Device(DEVICE_DEFAULT)                        \
+                              .TypeConstraint<type>("T"),                    \
+                          IdentityOp);                                       \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("RefIdentity").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"),  \
+      IdentityOp);                                                           \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("StopGradient").Device(DEVICE_DEFAULT).TypeConstraint<type>("T"), \
+      IdentityOp);                                                           \
+  REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity")                      \
+                              .Device(DEVICE_DEFAULT)                        \
+                              .TypeConstraint<type>("T"),                    \
+                          IdentityOp);                                       \
+  REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")                     \
+                              .Device(DEVICE_DEFAULT)                        \
+                              .TypeConstraint<type>("dtype"),                \
+                          IdentityOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_DEFAULT_KERNEL);
+REGISTER_DEFAULT_KERNEL(bool);
+
+#undef REGISTER_DEFAULT_KERNEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -127,5 +154,34 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 #undef REGISTER_GPU_HOST_KERNEL
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#define REGISTER_DEFAULT_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("Identity")                    \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("RefIdentity")                 \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("StopGradient")                \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("T"),     \
+                          IdentityOp);                        \
+  REGISTER_KERNEL_BUILDER(Name("PlaceholderWithDefault")      \
+                              .Device(DEVICE_DEFAULT)         \
+                              .HostMemory("input")            \
+                              .HostMemory("output")           \
+                              .TypeConstraint<type>("dtype"), \
+                          IdentityOp)
+
+REGISTER_DEFAULT_HOST_KERNEL(int32);
+#undef REGISTER_DEFAULT_HOST_KERNEL
 
 }  // namespace tensorflow

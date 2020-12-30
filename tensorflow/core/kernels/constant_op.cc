@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/constant_op.h"
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -38,7 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/macros.h"
-
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -124,6 +123,17 @@ REGISTER_KERNEL(GPU, Variant);
 #undef REGISTER_KERNEL
 #endif
 
+#define REGISTER_DEFAULT_KERNEL(TYPE)                                     \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("Const").Device(DEVICE_DEFAULT).TypeConstraint<TYPE>("dtype"), \
+      ConstantOp);
+TF_CALL_NUMBER_TYPES(REGISTER_DEFAULT_KERNEL);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DEFAULT_KERNEL);
+TF_CALL_qint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_quint16(REGISTER_DEFAULT_KERNEL);
+TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
+TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
+#undef REGISTER_DEFAULT_KERNEL
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -189,7 +199,6 @@ REGISTER_KERNEL(CPU, qint8);
 REGISTER_KERNEL(CPU, qint16);
 REGISTER_KERNEL(CPU, qint32);
 #undef REGISTER_CPU_KERNEL
-
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -264,7 +273,6 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CPU);
 REGISTER_CPU(Variant);
 #undef REGISTER_CPU
 
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 REGISTER_KERNEL(bool, GPU);
@@ -308,7 +316,6 @@ class OnesLikeOp : public OpKernel {
 #define REGISTER_CPU(type) REGISTER_KERNEL(type, CPU)
 TF_CALL_POD_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
-
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)

@@ -216,6 +216,11 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_CPU),
                         ReadVariablesOp);
 
+REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_DEFAULT),
+                        ReadVariableOp);
+REGISTER_KERNEL_BUILDER(Name("_ReadVariablesOp").Device(DEVICE_DEFAULT),
+                        ReadVariablesOp);
+
 VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("container", &container_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_name", &name_));
@@ -254,6 +259,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_CPU), VarHandleOp);
+REGISTER_KERNEL_BUILDER(Name("VarHandleOp").Device(DEVICE_DEFAULT),
+                        VarHandleOp);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
@@ -601,6 +608,8 @@ class VarIsInitializedOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_CPU),
+                        VarIsInitializedOp);
+REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp").Device(DEVICE_DEFAULT),
                         VarIsInitializedOp);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
