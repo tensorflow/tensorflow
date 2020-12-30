@@ -3244,9 +3244,10 @@ cuda_py_test(
     name = "extract_volume_patches_grad_test",
     size = "medium",
     srcs = ["extract_volume_patches_grad_test.py"],
-    shard_count = 20,
+    shard_count = 50,
     tags = [
         "no_pip",
+        "nogpu",  # http://b/171837334
         "nomac",  # http://b/139946976
         "notap",  # http://b/31080670
     ],
