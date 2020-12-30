@@ -36,3 +36,9 @@ module attributes {tf.versions = {producer = 179 : i32}} {
 // CHECK-SAME:    {maximal device=0}
 // CHECK-SAME:    {replicated}
 // CHECK-SAME:    }
+// CHECK:         get-tuple-element((f32[128,10]{1,0}, f32[10,1024]{1,0}, f32[128,1024]{1,0}) %[[ARG_TUPLE]]), index=0
+// CHECK-SAME:    sharding={devices=[1,2]0,1}
+// CHECK:         get-tuple-element((f32[128,10]{1,0}, f32[10,1024]{1,0}, f32[128,1024]{1,0}) %[[ARG_TUPLE]]), index=1
+// CHECK-SAME:    sharding={maximal device=0}
+// CHECK:         get-tuple-element((f32[128,10]{1,0}, f32[10,1024]{1,0}, f32[128,1024]{1,0}) %[[ARG_TUPLE]]), index=2
+// CHECK-SAME:    sharding={replicated}
