@@ -174,6 +174,19 @@ Status BatchResourceBase::RegisterInput(
       batcher_queue_options_.max_enqueued_batches, GetModelName(context));
   RecordBatchParamAllowedBatchSizes(allowed_batch_sizes_str_,
                                     GetModelName(context));
+
+  // Degenerate case where the input is empty. Just return an empty tensor.
+  if (tensors[0].shape().dim_size(0) == 0) {
+    for (int i = 0; i < context->num_outputs(); i++) {
+      Tensor* empty_output;
+      AllocatorAttributes cpu_alloc;
+      cpu_alloc.set_on_host(true);
+      TF_RETURN_IF_ERROR(context->allocate_output(i, TensorShape({0}),
+                                                  &empty_output, cpu_alloc));
+    }
+    done_callback();
+    return Status::OK();
+  }
   OpInputList captured_tensors;
   const auto captured_status =
       context->input_list("captured_tensors", &captured_tensors);
