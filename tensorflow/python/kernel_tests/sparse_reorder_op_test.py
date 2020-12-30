@@ -124,6 +124,18 @@ class SparseReorderTest(test.TestCase):
             x_init_value=input_val.values)
         self.assertLess(err, 1e-11)
 
+  def testShapeOverflow(self):
+    # Test case for GitHub issue 45392
+    sp_input = sparse_tensor.SparseTensor(
+        indices=[[0, 0, 0, 0, 0, 0]],
+        values=[0.0],
+        dense_shape=[4096, 4096, 4096, 4096, 4096, 4096])
+    self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
+                        sp_input.get_shape())
+    sp_output = sparse_ops.sparse_reorder(sp_input)
+    self.assertAllEqual((4096, 4096, 4096, 4096, 4096, 4096),
+                        sp_output.get_shape())
+
 
 if __name__ == "__main__":
   test.main()
