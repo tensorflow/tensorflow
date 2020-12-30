@@ -529,6 +529,12 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
     mlir::BlockArgument mlir_arg = main_fn.getArgument(idx);
     if (xla_arg.kind == XlaArgument::kResource) {
       mlir::Type element_type;
+      if (xla_arg.type == DT_INVALID) {
+        return errors::Unimplemented(absl::StrCat(
+            "Argument ", idx,
+            " is an uninitialized resource variable which is currently"
+            " unsupported in the MLIR-based TPU bridge"));
+      }
       TF_RETURN_IF_ERROR(ConvertDataType(xla_arg.type, builder, &element_type));
       TF_ASSIGN_OR_RETURN(TensorShape arg_shape,
                           GetTensorShapeFromXlaArgument(xla_arg));
