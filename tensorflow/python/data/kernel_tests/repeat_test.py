@@ -55,6 +55,24 @@ class RepeatTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertAllEqual(component, result_component)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testInfiniteEmptyRepeat(self):
+    dataset = dataset_ops.Dataset.range(0).repeat()
+    self.assertDatasetProduces(dataset, [])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testInfiniteProbablyEmptyRepeat(self):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset.shuffle(100)
+    dataset = dataset.take(1)
+    dataset = dataset.filter(lambda x: x < 5)
+    # At this point `dataset` has a 5% chance of being nonempty.
+    dataset = dataset.repeat()
+    dataset = dataset.take(10)
+    # repeat() should try many times to get data from the dataset instead of
+    # giving up and returning empty sequence.
+    self.assertNotEmpty(self.getDatasetOutput(dataset))
+
+  @combinations.generate(test_base.default_test_combinations())
   def testRepeatRepeat(self):
     """Test the composition of repeat datasets."""
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))

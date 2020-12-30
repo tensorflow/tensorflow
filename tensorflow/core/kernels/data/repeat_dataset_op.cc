@@ -37,6 +37,12 @@ constexpr char kCurIteration[] = "i";
 constexpr char kInputImplEmpty[] = "input_impl_empty";
 constexpr char kUninitialized[] = "uninitialized";
 constexpr int64 kKnownRatio = 1;
+// Number of empty iterations before returning `end_of_sequence` from
+// ForeverRepeat. We choose 10000 to be low enough that it takes very little
+// time for datasets to detect infinite loops, but high enough to be reasonably
+// confident that the input dataset will continue to produce empty sequence
+// forever.
+constexpr int64 kMinEmptyForeverRepeatRetries = 10000;
 
 class RepeatDatasetOp::Dataset : public DatasetBase {
  public:
@@ -227,6 +233,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
+      int64 empty_iterations = 0;
       do {
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
@@ -234,13 +241,16 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
         }
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
         DCHECK(!*end_of_sequence || out_tensors->empty());
-        if (first_call_ && *end_of_sequence && !ctx->split_provider()) {
-          // If the first call to GetNext() fails because the end
-          // of sequence has been reached, we terminate the
-          // iteration immediately. (Otherwise, this iterator
-          // would loop infinitely and never produce a value.)
+        if (*end_of_sequence &&
+            empty_iterations >= kMinEmptyForeverRepeatRetries) {
+          LOG(WARNING) << "Exiting repeat() early to avoid infinite loop. "
+                          "Upstream iterator was empty "
+                       << empty_iterations << " times in a row";
           input_impl_.reset();
           return Status::OK();
+        }
+        if (first_call_ && *end_of_sequence) {
+          empty_iterations++;
         }
         first_call_ = false;
         if (!*end_of_sequence) {
