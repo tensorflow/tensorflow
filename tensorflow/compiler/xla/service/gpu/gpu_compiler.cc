@@ -649,14 +649,15 @@ static Status CompileModuleToLlvmIrImpl(
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-GpuCompiler::CompileToTargetBinary(const HloModule& module,
+GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                                    std::unique_ptr<llvm::Module> llvm_module,
                                    se::StreamExecutor* stream_exec,
-                                   const CompileOptions& options) {
+                                   const CompileOptions& options,
+                                   const HloModule* debug_module) {
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
 
   const auto compile_single_module =
-      [this, stream_exec, &module](
+      [this, stream_exec, &module_config, debug_module](
           llvm::Module* llvm_module,
           bool relocatable) -> StatusOr<BackendCompileResult> {
     {
@@ -671,27 +672,25 @@ GpuCompiler::CompileToTargetBinary(const HloModule& module,
           << "Invalid LLVM IR before optimizations:\n"
           << err_stream.str()
           << "\nThis probably indicates a bug in the HLO -> LLVM IR "
-             "lowering. "
-             "Rerun with --xla_dump_to to get the IR and looks for files "
-             "with "
-             "name containing: *"
-          << FilenameFor(module, "", "") << "*";
+             "lowering. Rerun with --xla_dump_to to get the IR"
+          << (debug_module
+                  ? absl::StrCat(" and looks for files with name containing: *",
+                                 FilenameFor(*debug_module, "", ""), "*")
+                  : ".");
     }
     GpuVersion gpu_version = GetGpuVersion(stream_exec);
-    return CompileTargetBinary(&module, llvm_module, gpu_version, stream_exec,
-                               relocatable);
+    return CompileTargetBinary(module_config, llvm_module, gpu_version,
+                               stream_exec, relocatable, debug_module);
   };
 
   tensorflow::thread::ThreadPool* thread_pool = options.thread_pool;
 
   absl::optional<tensorflow::thread::ThreadPool> overriding_thread_pool;
-  if (module.config().debug_options().xla_gpu_force_compilation_parallelism() !=
+  if (module_config.debug_options().xla_gpu_force_compilation_parallelism() !=
       0) {
     overriding_thread_pool.emplace(
         tensorflow::Env::Default(), "",
-        module.config()
-            .debug_options()
-            .xla_gpu_force_compilation_parallelism());
+        module_config.debug_options().xla_gpu_force_compilation_parallelism());
     thread_pool = &*overriding_thread_pool;
   }
 
@@ -857,9 +856,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/false);
 
   using BackendCompileResult = std::pair<std::string, std::vector<uint8>>;
-  TF_ASSIGN_OR_RETURN(BackendCompileResult backend_result,
-                      CompileToTargetBinary(*module, std::move(llvm_module),
-                                            stream_exec, options));
+  TF_ASSIGN_OR_RETURN(
+      BackendCompileResult backend_result,
+      CompileToTargetBinary(module->config(), std::move(llvm_module),
+                            stream_exec, options, module.get()));
   if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
