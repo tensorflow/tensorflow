@@ -578,6 +578,9 @@ static Status CompileModuleToLlvmIrImpl(
                          "after_optimizations");
 
   mlir::MLIRContext mlir_context;
+  mlir_context.loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+                           mlir::StandardOpsDialect,
+                           mlir::lmhlo_gpu::LmhloGpuDialect>();
 
   IrEmitterContext ir_emitter_context(
       hlo_module, buffer_assignment->get(), platform_name, gpu_device_info,
