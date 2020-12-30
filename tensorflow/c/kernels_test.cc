@@ -27,7 +27,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/container/inlined_vector.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 struct MyCustomKernel {
   bool created;
@@ -589,49 +589,76 @@ TEST(TestKernel, DeleteKernelBuilderIsOkOnNull) {
   TF_DeleteKernelBuilder(nullptr);
 }
 
-TEST(TestKernel, TestTypeConstraint) {
-  const char* node_name = "SomeNodeName";
-  const char* op_name = "TypeOp";
-  const char* device_name = "FakeDeviceName1";
-
-  REGISTER_OP(op_name)
-      .Input("input1: double")
-      .Input("input2: uint8")
-      .Output("output1: uint8")
-      .Attr("T: type");
-
-  TF_KernelBuilder* builder = TF_NewKernelBuilder(
-      op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc);
-  TF_Status* status = TF_NewStatus();
-  TF_KernelBuilder_TypeConstraint(builder, "T", TF_DataType::TF_INT32, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status));
-  TF_RegisterKernelBuilder(node_name, builder, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status));
-
-  TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status));
-  KernelList list;
-  list.ParseFromArray(buf->data, buf->length);
+std::string expected_string(const char* type) {
   const auto expected_str = R"str(kernel {
-  op: "TypeOp"
+  op: "TypeOp)str" + std::string(type) +
+                            std::string("\"") +
+                            R"str(
   device_type: "FakeDeviceName1"
   constraint {
     name: "T"
     allowed_values {
       list {
-        type: DT_INT32
+        type: )str" + std::string(type) +
+                            R"##(
       }
     }
   }
 }
-)str";
-  ASSERT_EQ(expected_str, list.DebugString());
-
-  TF_DeleteBuffer(buf);
-  TF_DeleteStatus(status);
-  TF_DeleteKernelBuilder(builder);
-  ASSERT_TRUE(delete_called);
+)##";
+  return expected_str;
 }
+
+#define TEST_KERNEL_TYPE_CONSTRAINT(tf_type, dtype)                          \
+  TEST(TestKernel, TestTypeConstraint##tf_type) {                            \
+    const char* node_name = "SomeNodeName";                                  \
+    const char* op_name = "TypeOp" #dtype;                                   \
+    const char* device_name = "FakeDeviceName1";                             \
+                                                                             \
+    REGISTER_OP(op_name)                                                     \
+        .Input("input1: double")                                             \
+        .Input("input2: uint8")                                              \
+        .Output("output1: uint8")                                            \
+        .Attr("T: type");                                                    \
+                                                                             \
+    TF_KernelBuilder* builder = TF_NewKernelBuilder(                         \
+        op_name, device_name, &MyCreateFunc, &MyComputeFunc, &MyDeleteFunc); \
+    TF_Status* status = TF_NewStatus();                                      \
+    TF_KernelBuilder_TypeConstraint(builder, "T", TF_DataType::tf_type,      \
+                                    status);                                 \
+    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
+    TF_RegisterKernelBuilder(node_name, builder, status);                    \
+    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
+                                                                             \
+    TF_Buffer* buf = TF_GetRegisteredKernelsForOp(op_name, status);          \
+    EXPECT_EQ(TF_OK, TF_GetCode(status));                                    \
+    KernelList list;                                                         \
+    list.ParseFromArray(buf->data, buf->length);                             \
+    ASSERT_EQ(expected_string(#dtype), list.DebugString());                  \
+                                                                             \
+    TF_DeleteBuffer(buf);                                                    \
+    TF_DeleteStatus(status);                                                 \
+    TF_DeleteKernelBuilder(builder);                                         \
+    ASSERT_TRUE(delete_called);                                              \
+  }
+
+TEST_KERNEL_TYPE_CONSTRAINT(TF_HALF, DT_HALF);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_BFLOAT16, DT_BFLOAT16);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_FLOAT, DT_FLOAT);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_DOUBLE, DT_DOUBLE);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_UINT64, DT_UINT64);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_UINT32, DT_UINT32);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_UINT16, DT_UINT16);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_UINT8, DT_UINT8);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_INT8, DT_INT8);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_INT32, DT_INT32);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_COMPLEX64, DT_COMPLEX64);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_COMPLEX128, DT_COMPLEX128);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_QINT8, DT_QINT8);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_QUINT8, DT_QUINT8);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_QINT32, DT_QINT32);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_QINT16, DT_QINT16);
+TEST_KERNEL_TYPE_CONSTRAINT(TF_QUINT16, DT_QUINT16);
 
 TEST(TestKernel, TestHostMemory) {
   const char* node_name = "SomeNodeName";
