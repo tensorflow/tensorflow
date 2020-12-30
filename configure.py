@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from pathlib import Path
 
 import argparse
 import errno
@@ -1235,8 +1236,14 @@ def validate_cuda_config(environ_cp):
     if environ_cp.get('TF_NCCL_VERSION', None):
       cuda_libraries.append('nccl')
 
+  find_cuda_path = 'third_party/gpus/find_cuda_config.py'
+  if not Path(find_cuda_path).is_file():
+      find_cuda_path = Path().glob('**/third_party/gpus/find_cuda_config.py')
+      find_cuda_path = find_cuda_path.__next__()
+      assert find_cuda_path, "Can't find 'find_cuda_config.py' script"
+
   proc = subprocess.Popen(
-      [environ_cp['PYTHON_BIN_PATH'], 'third_party/gpus/find_cuda_config.py'] +
+      [environ_cp['PYTHON_BIN_PATH'], find_cuda_path] +
       cuda_libraries,
       stdout=subprocess.PIPE,
       env=maybe_encode_env(environ_cp))
