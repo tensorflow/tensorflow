@@ -69,7 +69,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
       # Jump to that directory until this test is done.
       with self.tempWorkingDir(tempdir):
         # Save training snapshots to a relative path.
-        traindir = "train/"
+        traindir = "train"
         os.mkdir(traindir)
         # Collides with the default name of the checkpoint state file.
         filepath = os.path.join(traindir, "checkpoint")
