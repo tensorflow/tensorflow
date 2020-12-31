@@ -200,6 +200,11 @@ mlir::LogicalResult HandleTileShardedInputs(
   return mlir::success();
 }
 
+bool UnsupportedPartitionedShardingType(xla::OpSharding::Type sharding) {
+  return sharding != xla::OpSharding::REPLICATED &&
+         sharding != xla::OpSharding::OTHER;
+}
+
 }  // namespace
 
 mlir::LogicalResult ExtractInputsForLogicalDevices(
@@ -238,20 +243,42 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
 
     const auto input_sharding_type = sharding.type();
 
+    auto tiled_sharding_mismatched = [&](int tiled_input_size) {
+      return cluster_func.emitError(
+          llvm::formatv("incorrect {0}-th tiled input sharding received. "
+                        "Product of tile sharding splits({1}) must be equal to "
+                        "number of logical devices : {2}",
+                        input_index, tiled_input_size, num_cores_per_replica));
+    };
+
     // If input is already partitioned using the `tf.TPUPartitionedInput` op,
     // only replicated sharding is supported where i-th operand to
     // `tf.TPUPartitionedInput` op is input to the i-th logical device.
     if (auto partitioned_input =
             llvm::dyn_cast_or_null<mlir::TF::TPUPartitionedInputOp>(
                 input_value.getDefiningOp())) {
-      if (input_sharding_type != xla::OpSharding::REPLICATED)
+      if (UnsupportedPartitionedShardingType(input_sharding_type))
         return cluster_func->emitOpError()
                << "unsupported input sharding type "
                << OpSharding_Type_Name(input_sharding_type) << " for "
                << input_index << "-th input";
-      for (auto& index_and_inputs : llvm::enumerate(*input_list)) {
-        index_and_inputs.value().emplace_back(
-            partitioned_input.getOperand(index_and_inputs.index()));
+
+      if (input_sharding_type == xla::OpSharding::REPLICATED) {
+        for (auto& index_and_inputs : llvm::enumerate(*input_list)) {
+          index_and_inputs.value().emplace_back(
+              partitioned_input.getOperand(index_and_inputs.index()));
+        }
+      } else {
+        assert(input_sharding_type == xla::OpSharding::OTHER);
+        if (partitioned_input.inputs().size() != num_cores_per_replica)
+          return tiled_sharding_mismatched(partitioned_input.inputs().size());
+
+        for (int i = 0; i < sharding.tile_assignment_devices_size(); ++i) {
+          const int assigned_logical_device =
+              sharding.tile_assignment_devices(i);
+          (*input_list)[assigned_logical_device].emplace_back(
+              partitioned_input.inputs()[i]);
+        }
       }
       continue;
     }
@@ -264,11 +291,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
 
       const int64 tiled_inputs_size = tiled_inputs.size();
       if (tiled_inputs_size != num_cores_per_replica)
-        cluster_func.emitError(llvm::formatv(
-            "incorrect {0}-th tiled input sharding received. "
-            "Product of tile sharding splits({1}) must be equal to "
-            "number of logical devices : {2}",
-            input_index, tiled_inputs.size(), num_cores_per_replica));
+        return tiled_sharding_mismatched(tiled_inputs.size());
 
       for (int i = 0; i < sharding.tile_assignment_devices_size(); ++i) {
         const int assigned_logical_device = sharding.tile_assignment_devices(i);
@@ -363,6 +386,26 @@ int MapClusterOutputIndexWithRegionOutputIndex(
   return region_output_index;
 }
 
+// Collects tile sharded outputs from a tf_device.parallel_execute to remap from
+// the TPU computation result.
+llvm::SmallVector<mlir::Value, 4> GetTileShardedOutputsToMerge(
+    const int cluster_func_output_index, const xla::OpSharding& sharding,
+    mlir::tf_device::ParallelExecuteOp parallel_execute) {
+  // Reorders outputs from TPUExecute op as defined by the output sharding
+  // configuration.
+  llvm::SmallVector<mlir::Value, 4> outputs_to_merge;
+  outputs_to_merge.reserve(sharding.tile_assignment_devices_size());
+  for (const auto logical_device_id : sharding.tile_assignment_devices()) {
+    const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
+        sharding, logical_device_id, cluster_func_output_index);
+    const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
+        logical_device_id)[region_output_index];
+    outputs_to_merge.emplace_back(output_from_logical_device);
+  }
+
+  return outputs_to_merge;
+}
+
 // Merges outputs from TPU computation for tile-sharded outputs.
 mlir::LogicalResult HandleTileShardedOutputs(
     const int cluster_func_output_index, const xla::OpSharding& sharding,
@@ -375,15 +418,8 @@ mlir::LogicalResult HandleTileShardedOutputs(
 
   // Reorders outputs from TPUExecute op as defined by the output sharding
   // configuration.
-  llvm::SmallVector<mlir::Value, 4> outputs_to_merge;
-  outputs_to_merge.reserve(sharding.tile_assignment_devices_size());
-  for (const auto logical_device_id : sharding.tile_assignment_devices()) {
-    const int region_output_index = MapClusterOutputIndexWithRegionOutputIndex(
-        sharding, logical_device_id, cluster_func_output_index);
-    const auto output_from_logical_device = parallel_execute.GetRegionOutputs(
-        logical_device_id)[region_output_index];
-    outputs_to_merge.emplace_back(output_from_logical_device);
-  }
+  auto outputs_to_merge = GetTileShardedOutputsToMerge(
+      cluster_func_output_index, sharding, parallel_execute);
 
   // Creates a tree of Concat ops that merges outputs from multiple logical
   // devices to a single replica output.
@@ -527,17 +563,28 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
         return partitioned_output.emitOpError()
                << "must be a unique user of tf_device.cluster_func output "
                << *cluster_func_output.getOwner();
-      if (output_sharding_type != xla::OpSharding::REPLICATED)
+      if (UnsupportedPartitionedShardingType(output_sharding_type))
         return cluster_func.emitOpError()
                << "unsupported output sharding type "
                << OpSharding_Type_Name(output_sharding_type) << " for "
                << output_index << "-th output";
-      for (auto index_and_output :
-           llvm::enumerate(partitioned_output.output())) {
-        const auto output_from_logical_device =
-            parallel_execute.GetRegionOutputs(
-                index_and_output.index())[output_index];
-        index_and_output.value().replaceAllUsesWith(output_from_logical_device);
+
+      if (output_sharding_type == xla::OpSharding::REPLICATED) {
+        for (auto index_and_output :
+             llvm::enumerate(partitioned_output.output())) {
+          const auto output_from_logical_device =
+              parallel_execute.GetRegionOutputs(
+                  index_and_output.index())[output_index];
+          index_and_output.value().replaceAllUsesWith(
+              output_from_logical_device);
+        }
+      } else {
+        assert(output_sharding_type == xla::OpSharding::OTHER);
+        auto tile_sharded_outputs = GetTileShardedOutputsToMerge(
+            output_index, output_sharding, parallel_execute);
+        for (auto result :
+             llvm::zip(partitioned_output.output(), tile_sharded_outputs))
+          std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
       }
       continue;
     }
