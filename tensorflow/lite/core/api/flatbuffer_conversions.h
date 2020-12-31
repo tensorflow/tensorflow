@@ -202,6 +202,9 @@ TfLiteStatus ParsePadV2(const Operator* op, ErrorReporter* error_reporter,
 TfLiteStatus ParsePool(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
 
+TfLiteStatus ParsePow(const Operator* op, ErrorReporter* error_reporter,
+                      BuiltinDataAllocator* allocator, void** builtin_data);
+
 TfLiteStatus ParsePrelu(const Operator* op, ErrorReporter* error_reporter,
                         BuiltinDataAllocator* allocator, void** builtin_data);
 
@@ -279,6 +282,10 @@ TfLiteStatus ParseTransposeConv(const Operator* op,
 
 TfLiteStatus ParseUnpack(const Operator* op, ErrorReporter* error_reporter,
                          BuiltinDataAllocator* allocator, void** builtin_data);
+
+TfLiteStatus ParseZerosLike(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
 
 }  // namespace tflite
 
