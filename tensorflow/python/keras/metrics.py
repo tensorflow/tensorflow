@@ -1470,11 +1470,17 @@ class SensitivitySpecificityBase(Metric):
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
   """
 
-  def __init__(self, value, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               value,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     super(SensitivitySpecificityBase, self).__init__(name=name, dtype=dtype)
     if num_thresholds <= 0:
       raise ValueError('`num_thresholds` must be > 0.')
     self.value = value
+    self.class_id = class_id
     self.true_positives = self.add_weight(
         'true_positives',
         shape=(num_thresholds,),
@@ -1523,12 +1529,18 @@ class SensitivitySpecificityBase(Metric):
         y_true,
         y_pred,
         thresholds=self.thresholds,
+        class_id=self.class_id,
         sample_weight=sample_weight)
 
   def reset_states(self):
     num_thresholds = len(self.thresholds)
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
+
+  def get_config(self):
+    config = {'class_id': self.class_id}
+    base_config = super(SensitivitySpecificityBase, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
 
   def _find_max_under_constraint(self, constrained, dependent, predicate):
     """Returns the maximum of dependent_statistic that satisfies the constraint.
@@ -1573,6 +1585,11 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   For additional information about specificity and sensitivity, see
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
@@ -1580,6 +1597,9 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
     specificity: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given specificity.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1606,13 +1626,22 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, specificity, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               specificity,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if specificity < 0 or specificity > 1:
       raise ValueError('`specificity` must be in the range [0, 1].')
     self.specificity = specificity
     self.num_thresholds = num_thresholds
     super(SensitivityAtSpecificity, self).__init__(
-        specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+        specificity,
+        num_thresholds=num_thresholds,
+        class_id=class_id,
+        name=name,
+        dtype=dtype)
 
   def result(self):
     specificities = math_ops.div_no_nan(
@@ -1648,6 +1677,11 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   For additional information about specificity and sensitivity, see
   [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
@@ -1655,6 +1689,9 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
     sensitivity: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given sensitivity.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1681,13 +1718,22 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, sensitivity, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               sensitivity,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if sensitivity < 0 or sensitivity > 1:
       raise ValueError('`sensitivity` must be in the range [0, 1].')
     self.sensitivity = sensitivity
     self.num_thresholds = num_thresholds
     super(SpecificityAtSensitivity, self).__init__(
-        sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
+        sensitivity,
+        num_thresholds=num_thresholds,
+        class_id=class_id,
+        name=name,
+        dtype=dtype)
 
   def result(self):
     sensitivities = math_ops.div_no_nan(
@@ -1718,10 +1764,18 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   Args:
     recall: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given recall.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1748,7 +1802,12 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, recall, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               recall,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if recall < 0 or recall > 1:
       raise ValueError('`recall` must be in the range [0, 1].')
     self.recall = recall
@@ -1756,6 +1815,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
     super(PrecisionAtRecall, self).__init__(
         value=recall,
         num_thresholds=num_thresholds,
+        class_id=class_id,
         name=name,
         dtype=dtype)
 
@@ -1788,10 +1848,18 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
+  If `class_id` is specified, we calculate precision by considering only the
+  entries in the batch for which `class_id` is above the threshold predictions,
+  and computing the fraction of them for which `class_id` is indeed a correct
+  label.
+
   Args:
     precision: A scalar value in range `[0, 1]`.
     num_thresholds: (Optional) Defaults to 200. The number of thresholds to
       use for matching the given precision.
+    class_id: (Optional) Integer class ID for which we want binary metrics.
+      This must be in the half-open interval `[0, num_classes)`, where
+      `num_classes` is the last dimension of predictions.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
 
@@ -1818,7 +1886,12 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   ```
   """
 
-  def __init__(self, precision, num_thresholds=200, name=None, dtype=None):
+  def __init__(self,
+               precision,
+               num_thresholds=200,
+               class_id=None,
+               name=None,
+               dtype=None):
     if precision < 0 or precision > 1:
       raise ValueError('`precision` must be in the range [0, 1].')
     self.precision = precision
@@ -1826,6 +1899,7 @@ class RecallAtPrecision(SensitivitySpecificityBase):
     super(RecallAtPrecision, self).__init__(
         value=precision,
         num_thresholds=num_thresholds,
+        class_id=class_id,
         name=name,
         dtype=dtype)
 
