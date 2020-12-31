@@ -109,7 +109,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
       with self.tempWorkingDir(tempdir):
 
         # Save training snapshots to a relative path.
-        traindir = "train/"
+        traindir = "train"
         os.mkdir(traindir)
 
         filename = "snapshot"
