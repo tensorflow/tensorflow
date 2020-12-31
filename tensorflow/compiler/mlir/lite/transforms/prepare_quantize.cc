@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_lstm.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_allowlist(
@@ -78,6 +79,10 @@ namespace mlir {
 namespace TFL {
 
 namespace {
+
+auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/lite/quantization/transforms/stats",
+    "The number of quantization pass invocations.", "path");
 
 // Applies prepare quantization on the model in TFL dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
@@ -327,8 +332,10 @@ void PrepareQuantizePass::runOnFunction() {
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   if (quant_specs_.post_training_quantization) {
+    tflite_quantizer_usage_stats->GetCell("post_training")->IncrementBy(1);
     RemoveRedundantStats(func);
   } else {
+    tflite_quantizer_usage_stats->GetCell("during_training")->IncrementBy(1);
     // Set the quantization parameters for the quantizable input nodes. If this
     // failed, return the function immediately. This is only required for
     // quantization aware training model conversion.
