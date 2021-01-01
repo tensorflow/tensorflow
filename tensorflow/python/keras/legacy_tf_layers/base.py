@@ -163,7 +163,7 @@ class Layer(base_layer.Layer):
   It is considered legacy, and we recommend the use of `tf.keras.layers.Layer`
   instead.
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: Default dtype of the layer's weights (default of `None` means use the
@@ -334,7 +334,7 @@ class Layer(base_layer.Layer):
                  **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
-    Arguments:
+    Args:
       name: variable name.
       shape: variable shape.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -489,7 +489,7 @@ class Layer(base_layer.Layer):
   def __call__(self, inputs, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
-    Arguments:
+    Args:
       inputs: input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.

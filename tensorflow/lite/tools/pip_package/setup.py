@@ -209,6 +209,7 @@ setup(
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
@@ -220,7 +221,6 @@ setup(
     ext_modules=[ext],
     install_requires=[
         'numpy >= 1.16.0',
-        'pybind11 >= 2.4.3',
     ],
     cmdclass={
         'build_ext': CustomBuildExt,

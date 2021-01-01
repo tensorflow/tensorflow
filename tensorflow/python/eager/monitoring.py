@@ -484,7 +484,7 @@ class MonitoredTimer(object):
 def monitored_timer(cell):
   """A function decorator for adding MonitoredTimer support.
 
-  Arguments:
+  Args:
     cell: the cell associated with the time metric that will be inremented.
   Returns:
     A decorator that measure the function runtime and increment the specified

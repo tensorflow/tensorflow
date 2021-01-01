@@ -114,10 +114,11 @@ absl::Status ClOperation::CompileDeserialized(
       *creation_context.context, *creation_context.device, &kernel_);
 }
 
-absl::Status ClOperation::Tune(const TuningParameters& params) {
+absl::Status ClOperation::Tune(TuningType tuning_type, const GpuInfo& gpu_info,
+                               ProfilingCommandQueue* profiling_queue) {
   std::vector<int3> possible_work_groups;
-  operation_->GetPossibleKernelWorkGroups(params.tuning_type, *params.info,
-                                          kernel_.info_, &possible_work_groups);
+  operation_->GetPossibleKernelWorkGroups(tuning_type, gpu_info, kernel_.info_,
+                                          &possible_work_groups);
   if (possible_work_groups.empty()) {
     return absl::NotFoundError(
         "Can not found work_group size to launch kernel");
@@ -137,8 +138,8 @@ absl::Status ClOperation::Tune(const TuningParameters& params) {
     }
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     int best_work_group_index;
-    RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
-        kernel_, *params.info, work_groups_count, possible_work_groups,
+    RETURN_IF_ERROR(profiling_queue->GetBestWorkGroupIndex(
+        kernel_, gpu_info, work_groups_count, possible_work_groups,
         &best_work_group_index));
     operation_->work_group_size_ = possible_work_groups[best_work_group_index];
     operation_->work_groups_count_ = GetWorkGroupsCount(

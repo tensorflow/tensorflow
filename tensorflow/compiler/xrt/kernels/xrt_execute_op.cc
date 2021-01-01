@@ -272,16 +272,16 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> CreateOutputTuple(
   if (shaped_buffer->on_device_shape().is_dynamic()) {
     // Update dynamic shapes from output buffer, and create a XRT tensor with
     // dimension sizes read from metadata.
-    xla::Shape output_host_shape = shaped_buffer->on_host_shape();
     xla::Shape output_device_shape = shaped_buffer->on_device_shape();
     TF_ASSIGN_OR_RETURN(
         auto transfer_manager,
         xla::TransferManager::GetForPlatform(stream->parent()->platform()));
     TF_RETURN_IF_ERROR(transfer_manager->ReadDynamicShapes(
-        stream, shaped_buffer, &output_host_shape, &output_device_shape));
+        stream, shaped_buffer, &output_device_shape));
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
-        *shaped_buffer, output_host_shape, output_device_shape, backend,
-        device_ordinal, &output_tuple));
+        *shaped_buffer,
+        xla::ShapeUtil::DeviceShapeToHostShape(output_device_shape),
+        output_device_shape, backend, device_ordinal, &output_tuple));
   } else {
     // Fast-path: Don't copy shapes of output buffer.
     TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
@@ -322,7 +322,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
     run_options.set_device_assignment(
         &executable->executable()->module_config().static_device_assignment());
   }
-  xla::GpuExecutableRunOptions gpu_options;
+  xla::gpu::GpuExecutableRunOptions gpu_options;
   std::vector<xla::GlobalDeviceId> gpu_global_ids;
   if (config.local_replica_mapping_size() > 0) {
     gpu_global_ids.reserve(config.local_replica_mapping_size());
@@ -334,7 +334,7 @@ xla::StatusOr<RefPtr<XRTTupleAllocation>> RunExecutable(
   std::shared_ptr<NcclUniqueIdFactory> nccl_factory = GetNcclUniqueIdFactory();
   if (nccl_factory != nullptr) {
     auto uid_callback =
-        [&](const xla::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
+        [&](const xla::gpu::NcclCliqueKey& key) -> xla::StatusOr<std::string> {
       std::vector<xla::int64> replicas;
       for (auto& device : key.devices()) {
         replicas.push_back(device.value());

@@ -364,8 +364,8 @@ struct gemm_pack_colmajor_block<
 
     // Original input column and row after applying all non-standard strides and
     // dilations. Computed by padOrSkip{Row,Col}.
-    Index orig_c;
-    Index orig_r;
+    Index orig_c = 0;
+    Index orig_r = 0;
 
     for (StorageIndex col = 0; col < cols; ++col) {
       SubMapper lm = rhs.getLinearMapper(0, col);

@@ -52,7 +52,11 @@ class MlirBridgeV1CompatPass : public MlirV1CompatOptimizationPass {
 
   bool IsEnabled(const ConfigProto& config_proto,
                  const Graph& graph) const override {
-    return IsMlirBridgePassEnabled(graph, config_proto);
+    // Do not run the bridge if it's enabled by the graph analysis,
+    // only run if it's enabled by the user explicitly.
+    MlirBridgeRolloutPolicy policy =
+        GetMlirBridgeRolloutPolicy(graph, config_proto);
+    return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
   }
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule

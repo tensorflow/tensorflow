@@ -39,12 +39,13 @@ limitations under the License.
 
 namespace tensorflow {
 
-auto* shadow_run_success = monitoring::Counter<0>::New(
-    "/tensorflow/mlir/shadow_run_success", "Success count of MLIR shadow runs");
+auto* shadow_run_success =
+    monitoring::Counter<0>::New("/tensorflow/core/mlir_shadow_run_success",
+                                "Success count of MLIR shadow runs");
 
 auto* shadow_run_failure = monitoring::Counter<2>::New(
-    "/tensorflow/mlir/shadow_run_failure", "Failure count of MLIR shadow runs",
-    "kind", "name");
+    "/tensorflow/core/mlir_shadow_run_failure",
+    "Failure count of MLIR shadow runs", "kind", "name");
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -151,6 +152,12 @@ Status MlirFunctionOptimizationPass::Run(
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
   import_config.upgrade_legacy = true;
+  // Disable shape inference during import as some TensorFlow op fails during
+  // shape inference with dynamic shaped operands. This in turn causes the
+  // import to fail. Shape inference during import is going to be removed and
+  // the shape inference pass is run early in the pass pipeline, shape inference
+  // during import is not necessary.
+  import_config.enable_shape_inference = false;
 
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);

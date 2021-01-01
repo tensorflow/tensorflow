@@ -55,7 +55,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("all_gather_dimension"), py::arg("shard_count"),
           py::arg("replica_groups") = py::list(),
           py::arg("channel_id") = absl::nullopt,
-          py::arg("shape_with_layout") = absl::nullopt);
+          py::arg("shape_with_layout") = absl::nullopt,
+          py::arg("use_global_device_ids") = absl::nullopt);
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(
@@ -108,7 +109,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("lhs_dilation"), py::arg("rhs_dilation"),
           py::arg("dimension_numbers"), py::arg("feature_group_count") = 1,
           py::arg("batch_group_count") = 1,
-          py::arg("precision_config") = nullptr);
+          py::arg("precision_config") = nullptr,
+          py::arg("preferred_element_type") = absl::nullopt);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def(
@@ -136,9 +138,11 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
       py::arg("opaque") = py::bytes(""), py::arg("has_side_effect") = false);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
-          py::arg("precision_config") = nullptr);
+          py::arg("precision_config") = nullptr,
+          py::arg("preferred_element_type") = absl::nullopt);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
-          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
+          py::arg("dimension_numbers"), py::arg("precision_config") = nullptr,
+          py::arg("preferred_element_type") = absl::nullopt);
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
                                 absl::Span<const int64>)>(&DynamicSlice),

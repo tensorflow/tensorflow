@@ -35,7 +35,6 @@ import six
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import context
@@ -73,6 +72,7 @@ except ImportError:
   requests = None
 
 
+# Note: `configure_callbacks` is only used in TF1.
 def configure_callbacks(callbacks,
                         model,
                         do_validation=False,
@@ -85,7 +85,7 @@ def configure_callbacks(callbacks,
                         mode=ModeKeys.TRAIN):
   """Configures callbacks for use in various training loops.
 
-  Arguments:
+  Args:
       callbacks: List of Callbacks.
       model: Model being trained.
       do_validation: Whether or not validation loop will be run.
@@ -146,7 +146,7 @@ def set_callback_parameters(callback_list,
                             mode=ModeKeys.TRAIN):
   """Sets callback parameters.
 
-  Arguments:
+  Args:
       callback_list: CallbackList instance.
       model: Model being trained.
       do_validation: Whether or not validation loop will be run.
@@ -216,7 +216,7 @@ class CallbackList(object):
     to call them all at once via a single endpoint
     (e.g. `callback_list.on_epoch_end(...)`).
 
-    Arguments:
+    Args:
       callbacks: List of `Callback` instances.
       add_history: Whether a `History` callback should be added, if one does not
         already exist in the `callbacks` list.
@@ -397,7 +397,7 @@ class CallbackList(object):
 
     This function should only be called during TRAIN mode.
 
-    Arguments:
+    Args:
         epoch: Integer, index of epoch.
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
@@ -417,7 +417,7 @@ class CallbackList(object):
 
     This function should only be called during TRAIN mode.
 
-    Arguments:
+    Args:
         epoch: Integer, index of epoch.
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
@@ -436,7 +436,7 @@ class CallbackList(object):
   def on_train_batch_begin(self, batch, logs=None):
     """Calls the `on_train_batch_begin` methods of its callbacks.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.train_step`. Typically,
           the values of the `Model`'s metrics are returned.  Example:
@@ -448,7 +448,7 @@ class CallbackList(object):
   def on_train_batch_end(self, batch, logs=None):
     """Calls the `on_train_batch_end` methods of its callbacks.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
     """
@@ -458,7 +458,7 @@ class CallbackList(object):
   def on_test_batch_begin(self, batch, logs=None):
     """Calls the `on_test_batch_begin` methods of its callbacks.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.test_step`. Typically,
           the values of the `Model`'s metrics are returned.  Example:
@@ -470,7 +470,7 @@ class CallbackList(object):
   def on_test_batch_end(self, batch, logs=None):
     """Calls the `on_test_batch_end` methods of its callbacks.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
     """
@@ -480,7 +480,7 @@ class CallbackList(object):
   def on_predict_batch_begin(self, batch, logs=None):
     """Calls the `on_predict_batch_begin` methods of its callbacks.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.predict_step`,
           it typically returns a dict with a key 'outputs' containing
@@ -492,7 +492,7 @@ class CallbackList(object):
   def on_predict_batch_end(self, batch, logs=None):
     """Calls the `on_predict_batch_end` methods of its callbacks.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
     """
@@ -502,7 +502,7 @@ class CallbackList(object):
   def on_train_begin(self, logs=None):
     """Calls the `on_train_begin` methods of its callbacks.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -519,7 +519,7 @@ class CallbackList(object):
   def on_train_end(self, logs=None):
     """Calls the `on_train_end` methods of its callbacks.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -536,7 +536,7 @@ class CallbackList(object):
   def on_test_begin(self, logs=None):
     """Calls the `on_test_begin` methods of its callbacks.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -553,7 +553,7 @@ class CallbackList(object):
   def on_test_end(self, logs=None):
     """Calls the `on_test_end` methods of its callbacks.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -570,7 +570,7 @@ class CallbackList(object):
   def on_predict_begin(self, logs=None):
     """Calls the 'on_predict_begin` methods of its callbacks.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -587,7 +587,7 @@ class CallbackList(object):
   def on_predict_end(self, logs=None):
     """Calls the `on_predict_end` methods of its callbacks.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -652,7 +652,7 @@ class Callback(object):
     Subclasses should override for any actions to run. This function should only
     be called during TRAIN mode.
 
-    Arguments:
+    Args:
         epoch: Integer, index of epoch.
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
@@ -665,11 +665,11 @@ class Callback(object):
     Subclasses should override for any actions to run. This function should only
     be called during TRAIN mode.
 
-    Arguments:
+    Args:
         epoch: Integer, index of epoch.
         logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
-          are prefixed with `val_`. For training epoch, the values of the  
+          are prefixed with `val_`. For training epoch, the values of the
          `Model`'s metrics are returned. Example : `{'loss': 0.2, 'acc': 0.7}`.
     """
 
@@ -684,7 +684,7 @@ class Callback(object):
     `tf.keras.Model` is set to `N`, this method will only be called every `N`
     batches.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.train_step`. Typically,
           the values of the `Model`'s metrics are returned.  Example:
@@ -704,7 +704,7 @@ class Callback(object):
     `tf.keras.Model` is set to `N`, this method will only be called every `N`
     batches.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
     """
@@ -725,7 +725,7 @@ class Callback(object):
     `tf.keras.Model` is set to `N`, this method will only be called every `N`
     batches.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.test_step`. Typically,
           the values of the `Model`'s metrics are returned.  Example:
@@ -746,7 +746,7 @@ class Callback(object):
     `tf.keras.Model` is set to `N`, this method will only be called every `N`
     batches.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
     """
@@ -762,7 +762,7 @@ class Callback(object):
     `tf.keras.Model` is set to `N`, this method will only be called every `N`
     batches.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.predict_step`,
           it typically returns a dict with a key 'outputs' containing
@@ -780,7 +780,7 @@ class Callback(object):
     `tf.keras.Model` is set to `N`, this method will only be called every `N`
     batches.
 
-    Arguments:
+    Args:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
     """
@@ -791,7 +791,7 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -802,7 +802,7 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
-    Arguments:
+    Args:
         logs: Dict. Currently the output of the last call to `on_epoch_end()`
           is passed to this argument for this method but that may change in
           the future.
@@ -814,7 +814,7 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -825,7 +825,7 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
-    Arguments:
+    Args:
         logs: Dict. Currently the output of the last call to
           `on_test_batch_end()` is passed to this argument for this method
           but that may change in the future.
@@ -837,7 +837,7 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -848,7 +848,7 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
-    Arguments:
+    Args:
         logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
@@ -877,7 +877,7 @@ class BaseLogger(Callback):
 
   This callback is automatically applied to every Keras model.
 
-  Arguments:
+  Args:
       stateful_metrics: Iterable of string names of metrics that
           should *not* be averaged over an epoch.
           Metrics in this list will be logged as-is in `on_epoch_end`.
@@ -943,7 +943,7 @@ class TerminateOnNaN(Callback):
 class ProgbarLogger(Callback):
   """Callback that prints metrics to stdout.
 
-  Arguments:
+  Args:
       count_mode: One of `"steps"` or `"samples"`.
           Whether the progress bar should
           count samples seen or steps (batches) seen.
@@ -1172,13 +1172,15 @@ class ModelCheckpoint(Callback):
   model.load_weights(checkpoint_filepath)
   ```
 
-  Arguments:
-      filepath: string or `PathLike`, path to save the model file. `filepath`
+  Args:
+      filepath: string or `PathLike`, path to save the model file. e.g.
+        filepath = os.path.join(working_dir, 'ckpt', file_name). `filepath`
         can contain named formatting options, which will be filled the value of
         `epoch` and keys in `logs` (passed in `on_epoch_end`). For example: if
         `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
         checkpoints will be saved with the epoch number and the validation loss
-        in the filename.
+        in the filename. The directory of the filepath should not be reused by
+        any other callbacks to avoid conflicts.
       monitor: The metric name to monitor. Typically the metrics are set by the
         `Model.compile` method. Note:
 
@@ -1365,7 +1367,7 @@ class ModelCheckpoint(Callback):
   def _save_model(self, epoch, logs):
     """Saves the model.
 
-    Arguments:
+    Args:
         epoch: the epoch this iteration is in.
         logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
     """
@@ -1486,7 +1488,7 @@ class ModelCheckpoint(Callback):
         file_paths[-1])
     ```
 
-    Arguments:
+    Args:
         pattern: The file pattern that may optionally contain python placeholder
             such as `{epoch:02d}`.
 
@@ -1574,7 +1576,7 @@ class BackupAndRestore(Callback):
   ...     if epoch == 4:
   ...       raise RuntimeError('Interrupting!')
   >>> callback = tf.keras.callbacks.experimental.BackupAndRestore(
-  ... backup_dir="/tmp")
+  ... backup_dir="/tmp/backup")
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
   >>> try:
@@ -1590,12 +1592,14 @@ class BackupAndRestore(Callback):
   >>> len(history.history['loss'])
   6
 
-  Arguments:
-      backup_dir: String, path to save the model file. This is the directory in
-        which the system stores temporary files to recover the model from jobs
-        terminated unexpectedly. The directory cannot be reused elsewhere to
-        store other checkpoints, e.g. by BackupAndRestore callback of another
-        training, or by another callback (ModelCheckpoint) of the same training.
+  Args:
+      backup_dir: String, path to store the checkpoint.
+        e.g. backup_dir = os.path.join(working_dir, 'backup')
+        This is the directory in which the system stores temporary files to
+        recover the model from jobs terminated unexpectedly. The directory
+        cannot be reused elsewhere to store other files, e.g. by
+        BackupAndRestore callback of another training, or by another callback
+        (ModelCheckpoint) of the same training.
   """
 
   def __init__(self, backup_dir):
@@ -1603,7 +1607,6 @@ class BackupAndRestore(Callback):
     self.backup_dir = backup_dir
     self._supports_tf_logs = True
     self._supported_strategies = (
-        distribute_lib._DefaultDistributionStrategy,
         mirrored_strategy.MirroredStrategy,
         collective_all_reduce_strategy.CollectiveAllReduceStrategy,
         tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)
@@ -1631,8 +1634,8 @@ class BackupAndRestore(Callback):
     # failure-recovery of a worker in training.
     # pylint: disable=protected-access
 
-    if not isinstance(self.model.distribute_strategy,
-                      self._supported_strategies):
+    if self.model._distribution_strategy and not isinstance(
+        self.model.distribute_strategy, self._supported_strategies):
       raise NotImplementedError(
           '%s is not supported yet. '
           'Currently BackupAndRestore callback only supports empty strategy, '
@@ -1672,7 +1675,7 @@ class EarlyStopping(Callback):
   The quantity to be monitored needs to be available in `logs` dict.
   To make it so, pass the loss or metrics at `model.compile()`.
 
-  Arguments:
+  Args:
     monitor: Quantity to be monitored.
     min_delta: Minimum change in the monitored quantity
         to qualify as an improvement, i.e. an absolute
@@ -1805,7 +1808,7 @@ class RemoteMonitor(Callback):
   `"application/json"`.
   Otherwise the serialized JSON will be sent within a form.
 
-  Arguments:
+  Args:
     root: String; root url of the target server.
     path: String; path relative to `root` to which the events will be sent.
     field: String; JSON field under which the data will be stored.
@@ -1865,7 +1868,7 @@ class LearningRateScheduler(Callback):
   and current learning rate, and applies the updated learning rate
   on the optimizer.
 
-  Arguments:
+  Args:
     schedule: a function that takes an epoch index (integer, indexed from 0)
         and current learning rate (float) as inputs and returns a new
         learning rate as output (float).
@@ -1991,9 +1994,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 
-  Arguments:
+  Args:
       log_dir: the path of the directory where to save the log files to be
-        parsed by TensorBoard.
+        parsed by TensorBoard. e.g. log_dir = os.path.join(working_dir, 'logs')
+        This directory should not be reused by any other callbacks.
       histogram_freq: frequency (in epochs) at which to compute activation and
         weight histograms for the layers of the model. If set to 0, histograms
         won't be computed. Validation data (or split) must be specified for
@@ -2002,6 +2006,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         can become quite large when write_graph is set to True.
       write_images: whether to write model weights to visualize as image in
         TensorBoard.
+      write_steps_per_second: whether to log the training steps per second into
+        Tensorboard. This supports both epoch and batch frequency logging.
       update_freq: `'batch'` or `'epoch'` or integer. When using `'batch'`,
         writes the losses and metrics to TensorBoard after each batch. The same
         applies for `'epoch'`. If using an integer, let's say `1000`, the
@@ -2097,6 +2103,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
                histogram_freq=0,
                write_graph=True,
                write_images=False,
+               write_steps_per_second=False,
                update_freq='epoch',
                profile_batch=2,
                embeddings_freq=0,
@@ -2110,12 +2117,16 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self.histogram_freq = histogram_freq
     self.write_graph = write_graph
     self.write_images = write_images
+    self.write_steps_per_second = write_steps_per_second
     self.update_freq = 1 if update_freq == 'batch' else update_freq
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
     self._init_profile_batch(profile_batch)
     self._epoch = 0
     self._global_train_batch = 0
+    self._previous_epoch_iterations = 0
+    self._train_accumulated_time = 0
+    self._batch_start_time = 0
 
     # Lazily initialized in order to avoid creating event files when
     # not needed.
@@ -2201,7 +2212,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         train_fn = self.model.train_function
         # If the train_function is a `tf.function`, we can write out a graph
         if hasattr(train_fn, 'function_spec'):
-          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph, step=0)  # pylint: disable=protected-access
+          summary_ops_v2.graph(train_fn._concrete_stateful_fn.graph)  # pylint: disable=protected-access
 
   def _write_keras_model_summary(self):
     """Writes Keras graph network summary to TensorBoard."""
@@ -2289,7 +2300,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _init_profile_batch(self, profile_batch):
     """Validate profile_batch value and set the range of batches to profile.
 
-    Arguments:
+    Args:
       profile_batch: The range of batches to profile. Should be a non-negative
         integer or a comma separated string of pair of positive integers. A pair
         of positive integers signify a range of batches to profile.
@@ -2336,6 +2347,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def on_train_begin(self, logs=None):
     self._global_train_batch = 0
+    self._previous_epoch_iterations = 0
+    self._train_accumulated_time = 0
     self._push_writer(self._train_writer, self._train_step)
 
   def on_train_end(self, logs=None):
@@ -2358,6 +2371,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
   def on_train_batch_begin(self, batch, logs=None):
     self._global_train_batch += 1
+    if self.write_steps_per_second:
+      self._batch_start_time = time.time()
     if not self._should_trace:
       return
 
@@ -2368,6 +2383,10 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self._should_write_train_graph:
       self._write_keras_model_train_graph()
       self._should_write_train_graph = False
+    if self.write_steps_per_second:
+      batch_run_time = time.time() - self._batch_start_time
+      self._train_accumulated_time += batch_run_time
+      summary_ops_v2.scalar('batch_steps_per_second', 1. / batch_run_time)
     if not self._should_trace:
       return
 
@@ -2377,6 +2396,9 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def on_epoch_begin(self, epoch, logs=None):
     # Keeps track of epoch for profiling.
     self._epoch = epoch
+    if self.write_steps_per_second:
+      self._previous_epoch_iterations = self.model.optimizer.iterations.numpy()
+      self._train_accumulated_time = 0
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
@@ -2410,10 +2432,16 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
       logs['learning_rate'] = lr_schedule(self.model.optimizer.iterations)
     return logs
 
+  def _compute_steps_per_second(self):
+    current_iteration = self.model.optimizer.iterations.numpy()
+    steps_per_second = ((current_iteration - self._previous_epoch_iterations) /
+                        (self._train_accumulated_time))
+    return steps_per_second
+
   def _log_epoch_metrics(self, epoch, logs):
     """Writes epoch metrics out as scalar summaries.
 
-    Arguments:
+    Args:
         epoch: Int. The global step to use for TensorBoard.
         logs: Dict. Keys are scalar summary names, values are scalars.
     """
@@ -2423,6 +2451,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     train_logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
     val_logs = {k: v for k, v in logs.items() if k.startswith('val_')}
     train_logs = self._collect_learning_rate(train_logs)
+    if self.write_steps_per_second:
+      train_logs['steps_per_second'] = self._compute_steps_per_second()
 
     with summary_ops_v2.record_if(True):
       if train_logs:
@@ -2494,7 +2524,7 @@ class ReduceLROnPlateau(Callback):
   model.fit(X_train, Y_train, callbacks=[reduce_lr])
   ```
 
-  Arguments:
+  Args:
       monitor: quantity to be monitored.
       factor: factor by which the learning rate will be reduced.
         `new_lr = lr * factor`.
@@ -2615,7 +2645,7 @@ class CSVLogger(Callback):
   model.fit(X_train, Y_train, callbacks=[csv_logger])
   ```
 
-  Arguments:
+  Args:
       filename: Filename of the CSV file, e.g. `'run/log.csv'`.
       separator: String used to separate elements in the CSV file.
       append: Boolean. True: append if file exists (useful for continuing
@@ -2707,7 +2737,7 @@ class LambdaCallback(Callback):
   - `on_train_begin` and `on_train_end` expect one positional argument:
     `logs`
 
-  Arguments:
+  Args:
       on_epoch_begin: called at the beginning of every epoch.
       on_epoch_end: called at the end of every epoch.
       on_batch_begin: called at the beginning of every batch.

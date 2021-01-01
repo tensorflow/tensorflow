@@ -131,7 +131,7 @@ class MklLayoutPassTest : public ::testing::Test {
   T DoMklLayoutOptimizationPassGetAttrVal(const string& attr,
                                           const string& node_name) {
     DoMklLayoutOptimizationPass();
-    T attr_val;
+    T attr_val = T();
     for (const Node* n : graph_.nodes()) {
       if (IncludeNode(n) && n->type_string() == node_name) {
         TF_CHECK_OK(GetNodeAttr(n->def(), attr, &attr_val));
@@ -147,8 +147,6 @@ class MklLayoutPassTest : public ::testing::Test {
   string original_;
 };
 
-// TODO(mabuzain): clean up these ops once the mkl_layout_pass tests are
-// modified to use new type-specific ops.
 REGISTER_OP("Input").Output("o: float").SetIsStateful();
 REGISTER_OP("InputList").Output("o: N * float").Attr("N: int").SetIsStateful();
 REGISTER_OP("Output2").Input("i: float").Input("i1: float").SetIsStateful();

@@ -20,9 +20,10 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -38,6 +39,12 @@ class ConvertResultsBroadcastableShapeOp : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override;
+
+ private:
+  template <typename Op>
+  LogicalResult RewriteEqOp(Operation* op, PatternRewriter& rewriter) const;
+
+  LogicalResult RewriteOp(Operation* op, PatternRewriter& rewriter) const;
 };
 
 class BroadcastFoldPass : public PassWrapper<BroadcastFoldPass, FunctionPass> {
@@ -47,7 +54,27 @@ class BroadcastFoldPass : public PassWrapper<BroadcastFoldPass, FunctionPass> {
 
 LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  if (!op->hasTrait<OpTrait::ResultsBroadcastableShape>()) return failure();
+  if (op->hasTrait<OpTrait::ResultsBroadcastableShape>())
+    return RewriteOp(op, rewriter);
+
+  // tf.Equal and tf.NotEqual ops only satisfy ResultsBroadcastableShape when
+  // incompatible_shape_error is `true` (what is also checked by the verifier).
+  if (succeeded(RewriteEqOp<TF::EqualOp>(op, rewriter))) return success();
+  if (succeeded(RewriteEqOp<TF::NotEqualOp>(op, rewriter))) return success();
+
+  return failure();
+}
+
+template <typename Op>
+LogicalResult ConvertResultsBroadcastableShapeOp::RewriteEqOp(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto eq_op = llvm::dyn_cast_or_null<Op>(op);
+  if (eq_op && eq_op.incompatible_shape_error()) return RewriteOp(op, rewriter);
+  return failure();
+}
+
+LogicalResult ConvertResultsBroadcastableShapeOp::RewriteOp(
+    Operation* op, PatternRewriter& rewriter) const {
   if (op->getNumOperands() != 2 || op->getResultTypes().size() != 1)
     return failure();
 
@@ -56,6 +83,7 @@ LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
       op->getResultTypes().front().dyn_cast_or_null<RankedTensorType>();
   if (!result_type || !result_type.hasStaticShape()) return failure();
 
+  bool changed = false;
   for (uint64_t i = 0, e = op->getNumOperands(); i < e; ++i) {
     // Check that the i'th operand is a broadcast.
     auto broadcast = llvm::dyn_cast_or_null<TF::BroadcastToOp>(
@@ -89,10 +117,9 @@ LogicalResult ConvertResultsBroadcastableShapeOp::matchAndRewrite(
     // Update the operand of the op to be the operand of the broadcast.
     rewriter.updateRootInPlace(
         op, [&]() { op->getOpOperand(i).set(broadcast.input()); });
-    return success();
+    changed = true;
   }
-
-  return failure();
+  return success(changed);
 }
 
 void BroadcastFoldPass::runOnFunction() {

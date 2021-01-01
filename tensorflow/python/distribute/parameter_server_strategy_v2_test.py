@@ -19,11 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import functools
 import os
 
 from absl.testing import parameterized
-
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
@@ -72,6 +73,61 @@ class ParameterServerStrategyV2Test(test.TestCase):
     self.assertEqual(v3.device, "/job:ps/replica:0/task:1/device:CPU:0")
     self.assertEqual(v4.device, "/job:ps/replica:0/task:2/device:CPU:0")
     self.assertEqual(v5.device, "/job:ps/replica:0/task:0/device:CPU:0")
+
+  @contextlib.contextmanager
+  def _assertRaisesUsageError(self):
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        "`tf.distribute.experimental.ParameterServerStrategy` must be used "
+        "with `tf.distribute.experimental.coordinator.ClusterCoordinator`."):
+      yield
+
+  @contextlib.contextmanager
+  def _assertRaisesUsageErrorWithSchedule(self):
+    with self.assertRaisesRegexp(
+        NotImplementedError,
+        "`tf.distribute.experimental.ParameterServerStrategy`'s `run` or "
+        "`reduce` must be used within a function passed to `"
+        "tf.distribute.experimental.coordinator.ClusterCoordinator.schedule`."):
+      yield
+
+  def testRunNotUsedWithClusterCoordinator(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    dataset = dataset_ops.DatasetV2.range(3)
+    with strategy.scope():
+      v = variables.Variable(1, dtype=dtypes.int64)
+
+    def step_fn(iterator):
+      return next(iterator) + v
+
+    with self._assertRaisesUsageErrorWithSchedule():
+      strategy.run(step_fn, args=(iter(dataset),))
+
+  def testReduceNotUsedWithClusterCoordinator(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    with self._assertRaisesUsageErrorWithSchedule():
+      strategy.reduce("SUM", None, axis=None)
+
+  def testDistributeDatasetNotUsedWithClusterCoordinator(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+    dataset = dataset_ops.DatasetV2.range(3)
+    with self._assertRaisesUsageError():
+      def_function.function(
+          lambda: strategy.experimental_distribute_dataset(dataset))()
+
+  def testDistributeDatasetFromFunctionNotUsedWithClusterCoordinator(self):
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        self.cluster_resolver)
+
+    def dataset_fn(_):
+      return dataset_ops.DatasetV2.range(3)
+
+    with self._assertRaisesUsageError():
+      def_function.function(
+          lambda: strategy.distribute_datasets_from_function(dataset_fn))()
 
 
 class PartitionAwareIdentity(object):

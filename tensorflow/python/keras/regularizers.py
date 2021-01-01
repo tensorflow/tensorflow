@@ -183,7 +183,7 @@ class Regularizer(object):
     loading models to HDF5 formats, Keras model cloning, some visualization
     utilities, and exporting models to and from JSON.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
 
     Returns:
@@ -235,7 +235,7 @@ class L1L2(Regularizer):
 
   def __init__(self, l1=0., l2=0.):  # pylint: disable=redefined-outer-name
     # The default value for l1 and l2 are different from the value in l1_l2
-    # for backward compatiblity reason. Eg, L1L2(l2=0.1) will only have l2
+    # for backward compatibility reason. Eg, L1L2(l2=0.1) will only have l2
     # and no l1 penalty.
     l1 = 0. if l1 is None else l1
     l2 = 0. if l2 is None else l2
@@ -335,7 +335,7 @@ def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   The L2 regularization penalty is computed as:
   `loss = l2 * reduce_sum(square(x))`
 
-  Arguments:
+  Args:
       l1: Float; L1 regularization factor.
       l2: Float; L2 regularization factor.
 

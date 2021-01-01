@@ -73,6 +73,8 @@ class MLPReutersBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata('mlp', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_mlp_reuters_bs_256(self):
@@ -88,6 +90,8 @@ class MLPReutersBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata('mlp', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_mlp_reuters_bs_512(self):
@@ -103,6 +107,8 @@ class MLPReutersBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata('mlp', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_mlp_reuters_bs_512_gpu_2(self):
@@ -123,6 +129,8 @@ class MLPReutersBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata('mlp', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 

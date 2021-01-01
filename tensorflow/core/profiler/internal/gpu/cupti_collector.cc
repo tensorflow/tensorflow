@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_occupancy.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -59,13 +63,71 @@ bool IsHostEvent(const CuptiTracerEvent& event, int64* line_id) {
   }
 }
 
+struct DeviceOccupancyParams {
+  cudaOccFuncAttributes attributes = {};
+  int block_size = 0;
+  size_t dynamic_smem_size = 0;
+
+  friend bool operator==(const DeviceOccupancyParams& lhs,
+                         const DeviceOccupancyParams& rhs) {
+    return 0 == memcmp(&lhs, &rhs, sizeof(lhs));
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H hash_state, const DeviceOccupancyParams& params) {
+    return H::combine(
+        std::move(hash_state), params.attributes.maxThreadsPerBlock,
+        params.attributes.numRegs, params.attributes.sharedSizeBytes,
+        static_cast<uint32_t>(params.attributes.partitionedGCConfig),
+        static_cast<uint32_t>(params.attributes.shmemLimitConfig),
+        params.attributes.maxDynamicSharedSizeBytes, params.block_size,
+        params.dynamic_smem_size);
+  }
+};
+
+struct OccupancyStats {
+  double occupancy_pct = 0.0;
+  int min_grid_size = 0;
+  int suggested_block_size = 0;
+};
+
 struct CorrelationInfo {
   CorrelationInfo(uint32 t, uint32 e) : thread_id(t), enqueue_time_ns(e) {}
   uint32 thread_id;
   uint64 enqueue_time_ns;
 };
 
-struct PerDeviceCollector {
+class PerDeviceCollector {
+ private:
+  OccupancyStats GetOccupancy(const DeviceOccupancyParams& params) const {
+    OccupancyStats stats;
+    if (device_properties_.computeMajor == 0) {
+      return {};
+    }
+
+    const cudaOccDeviceState state = {};
+    cudaOccResult occ_result;
+    cudaOccError status = cudaOccMaxActiveBlocksPerMultiprocessor(
+        &occ_result, &device_properties_, &params.attributes, &state,
+        params.block_size, params.dynamic_smem_size);
+    if (status != CUDA_OCC_SUCCESS) {
+      return {};
+    }
+
+    stats.occupancy_pct =
+        occ_result.activeBlocksPerMultiprocessor * params.block_size * 100;
+    stats.occupancy_pct /= device_properties_.maxThreadsPerMultiprocessor;
+
+    status = cudaOccMaxPotentialOccupancyBlockSize(
+        &stats.min_grid_size, &stats.suggested_block_size, &device_properties_,
+        &params.attributes, &state, NULL, params.dynamic_smem_size);
+    if (status != CUDA_OCC_SUCCESS) {
+      return {};
+    }
+
+    return stats;
+  }
+
   void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
                     uint64 start_gpu_ns, uint64 end_gpu_ns,
                     XLineBuilder* line) {
@@ -83,6 +145,7 @@ struct PerDeviceCollector {
     XEventMetadata* event_metadata =
         plane->GetOrCreateEventMetadata(std::move(kernel_name));
     XEventBuilder xevent = line->AddEvent(*event_metadata);
+    VLOG(7) << "Adding event to line=" << line->Id();
     xevent.SetTimestampNs(event.start_time_ns);
     xevent.SetEndTimestampNs(event.end_time_ns);
     if (event.source == CuptiTracerEventSource::DriverCallback) {
@@ -100,65 +163,113 @@ struct PerDeviceCollector {
                               GetStatTypeStr(StatType::kKernelAnnotation)),
                           *plane->GetOrCreateStatMetadata(event.annotation));
     }
+    if (!event.nvtx_range.empty()) {
+      xevent.AddStatValue(
+          *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),
+          *plane->GetOrCreateStatMetadata(event.nvtx_range));
+    }
     if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kContextId)),
           absl::StrCat("$$", static_cast<uint64>(event.context_id)));
     }
-    if (event.type == CuptiTracerEventType::Kernel) {
-      std::string kernel_details = absl::StrCat(
-          "regs:", event.kernel_info.registers_per_thread,
-          " shm:", event.kernel_info.static_shared_memory_usage,
-          " grid:", event.kernel_info.grid_x, ",", event.kernel_info.grid_y,
-          ",", event.kernel_info.grid_z, " block:", event.kernel_info.block_x,
-          ",", event.kernel_info.block_y, ",", event.kernel_info.block_z);
+
+    if (event.type == CuptiTracerEventType::Kernel &&
+        event.source == CuptiTracerEventSource::Activity) {
+      DeviceOccupancyParams params{};
+      params.attributes.maxThreadsPerBlock = INT_MAX;
+      params.attributes.numRegs =
+          static_cast<int>(event.kernel_info.registers_per_thread);
+      params.attributes.sharedSizeBytes =
+          event.kernel_info.static_shared_memory_usage;
+      params.attributes.partitionedGCConfig = PARTITIONED_GC_OFF;
+      params.attributes.shmemLimitConfig = FUNC_SHMEM_LIMIT_DEFAULT;
+      params.attributes.maxDynamicSharedSizeBytes = 0;
+      params.block_size = static_cast<int>(event.kernel_info.block_x *
+                                           event.kernel_info.block_y *
+                                           event.kernel_info.block_z);
+
+      params.dynamic_smem_size = event.kernel_info.dynamic_shared_memory_usage;
+
+      OccupancyStats& occ_stats = occupancy_cache_[params];
+      if (occ_stats.occupancy_pct == 0.0) {
+        occ_stats = GetOccupancy(params);
+      }
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
+                              StatType::kTheoreticalOccupancyPct)),
+                          occ_stats.occupancy_pct);
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kOccupancyMinGridSize)),
+                          static_cast<int32>(occ_stats.min_grid_size));
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(GetStatTypeStr(
+                              StatType::kOccupancySuggestedBlockSize)),
+                          static_cast<int32>(occ_stats.suggested_block_size));
       xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                               GetStatTypeStr(StatType::kKernelDetails)),
-                          *plane->GetOrCreateStatMetadata(kernel_details));
+                          *plane->GetOrCreateStatMetadata(ToXStat(
+                              event.kernel_info, occ_stats.occupancy_pct)));
     } else if (event.type == CuptiTracerEventType::MemcpyH2D ||
                event.type == CuptiTracerEventType::MemcpyD2H ||
                event.type == CuptiTracerEventType::MemcpyD2D ||
                event.type == CuptiTracerEventType::MemcpyP2P ||
                event.type == CuptiTracerEventType::MemcpyOther) {
+      VLOG(7) << "Add Memcpy stat";
       const auto& memcpy_info = event.memcpy_info;
       std::string memcpy_details = absl::StrCat(
-          "size:", memcpy_info.num_bytes, " dest:", memcpy_info.destination,
+          "kind:", GetMemoryKindName(event.memcpy_info.kind),
+          " size:", memcpy_info.num_bytes, " dest:", memcpy_info.destination,
           " async:", memcpy_info.async);
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(
               GetStatTypeStr(StatType::kMemcpyDetails)),
           *plane->GetOrCreateStatMetadata(std::move(memcpy_details)));
     } else if (event.type == CuptiTracerEventType::MemoryAlloc) {
-      std::string memalloc_details =
-          absl::StrCat("num_bytes:", event.memalloc_info.num_bytes);
-      xevent.AddStatValue(
-          *plane->GetOrCreateStatMetadata(
-              GetStatTypeStr(StatType::kMemallocDetails)),
-          *plane->GetOrCreateStatMetadata(std::move(memalloc_details)));
+      VLOG(7) << "Add MemAlloc stat";
+      std::string value =
+          absl::StrCat("kind:", GetMemoryKindName(event.memalloc_info.kind),
+                       " num_bytes:", event.memalloc_info.num_bytes);
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kMemallocDetails)),
+                          *plane->GetOrCreateStatMetadata(std::move(value)));
+    } else if (event.type == CuptiTracerEventType::MemoryFree) {
+      VLOG(7) << "Add MemFree stat";
+      std::string value =
+          absl::StrCat("kind:", GetMemoryKindName(event.memfree_info.kind),
+                       " num_bytes:", event.memfree_info.num_bytes);
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kMemFreeDetails)),
+                          *plane->GetOrCreateStatMetadata(std::move(value)));
+    } else if (event.type == CuptiTracerEventType::Memset) {
+      VLOG(7) << "Add Memset stat";
+      auto value =
+          absl::StrCat("kind:", GetMemoryKindName(event.memset_info.kind),
+                       " num_bytes:", event.memset_info.num_bytes,
+                       " async:", event.memset_info.async);
+      xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                              GetStatTypeStr(StatType::kMemsetDetails)),
+                          *plane->GetOrCreateStatMetadata(std::move(value)));
     }
 
     std::vector<Annotation> annotation_stack =
         ParseAnnotationStack(event.annotation);
-    // If multiple metadata have the same key name, show the values from the top
-    // of the stack (innermost annotation). Concatenate the values from
-    // "hlo_op".
-    absl::flat_hash_set<absl::string_view> key_set;
-    std::vector<absl::string_view> hlo_op_names;
-    for (auto annotation = annotation_stack.rbegin();
-         annotation != annotation_stack.rend(); ++annotation) {
-      for (const Annotation::Metadata& metadata : annotation->metadata) {
-        if (metadata.key == "tf_op") {
-          continue;  // ignored, obtained from HLO proto via DebugInfoMap
-        } else if (key_set.insert(metadata.key).second) {
-          xevent.ParseAndAddStatValue(
-              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
-        }
-      }
-    }
     if (!annotation_stack.empty()) {
       xevent.AddStatValue(
           *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kTfOp)),
           *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
+    }
+    // If multiple metadata have the same key name, show the values from the top
+    // of the stack (innermost annotation). Concatenate the values from
+    // "hlo_op".
+    absl::flat_hash_set<absl::string_view> key_set;
+
+    for (auto annotation = annotation_stack.rbegin();
+         annotation != annotation_stack.rend(); ++annotation) {
+      for (const Annotation::Metadata& metadata : annotation->metadata) {
+        if (key_set.insert(metadata.key).second) {
+          xevent.ParseAndAddStatValue(
+              *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
+        }
+      }
     }
   }
 
@@ -184,25 +295,28 @@ struct PerDeviceCollector {
     return absl::StrCat(line_name, "(", absl::StrJoin(type_names, ","), ")");
   }
 
+ public:
+  PerDeviceCollector() = default;
+
   void AddEvent(CuptiTracerEvent&& event) {
-    mutex_lock l(m);
+    mutex_lock l(m_);
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       // Cupti api callback events were used to populate launch times etc.
       if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
-        correlation_info.insert(
+        correlation_info_.insert(
             {event.correlation_id,
              CorrelationInfo(event.thread_id, event.start_time_ns)});
       }
-      events.emplace_back(std::move(event));
+      events_.emplace_back(std::move(event));
     } else {
       // Cupti activity events measure device times etc.
-      events.emplace_back(std::move(event));
+      events_.emplace_back(std::move(event));
     }
   }
 
   void Flush(int32 device_ordinal, uint64 start_walltime_ns,
              uint64 start_gpu_ns, StepStats* step_stats) {
-    mutex_lock l(m);
+    mutex_lock l(m_);
     absl::flat_hash_map<std::pair<int64 /*stream_id*/, CuptiTracerEventType>,
                         DeviceStepStats*>
         stream_dev_stats_map;
@@ -210,7 +324,7 @@ struct PerDeviceCollector {
     DeviceStepStats* all_streams_dev_stats = nullptr;
     DeviceStepStats* memcpy_dev_stats = nullptr;
     DeviceStepStats* sync_dev_stats = nullptr;
-    for (const CuptiTracerEvent& event : events) {
+    for (const CuptiTracerEvent& event : events_) {
       NodeExecStats* ns = new NodeExecStats;
       ns->set_all_start_micros(
           (start_walltime_ns + (event.start_time_ns - start_gpu_ns)) / 1000);
@@ -236,8 +350,8 @@ struct PerDeviceCollector {
       } else {  // CuptiTracerEventSource::Activity
         // Get launch information if available.
         if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
-          auto it = correlation_info.find(event.correlation_id);
-          if (it != correlation_info.end()) {
+          auto it = correlation_info_.find(event.correlation_id);
+          if (it != correlation_info_.end()) {
             ns->set_scheduled_micros(it->second.enqueue_time_ns / 1000);
             ns->set_thread_id(it->second.thread_id);
           }
@@ -284,7 +398,7 @@ struct PerDeviceCollector {
             std::string details = absl::StrCat(
                 activity_name, " bytes:", event.memcpy_info.num_bytes);
             if (event.memcpy_info.async) {
-              absl::StrAppend(&details, " aync");
+              absl::StrAppend(&details, " async");
             }
             if (event.memcpy_info.destination != event.device_id) {
               absl::StrAppend(&details,
@@ -321,22 +435,26 @@ struct PerDeviceCollector {
         }
       }
     }
-    events.clear();
+    events_.clear();
   }
 
   size_t Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
                XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
-    mutex_lock l(m);
+    mutex_lock l(m_);
     // Tracking event types per line.
     absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
         events_types_per_line;
-    for (auto& event : events) {
+    for (auto& event : events_) {
       int64 line_id = CuptiTracerEvent::kInvalidThreadId;
       bool is_host_event = IsHostEvent(event, &line_id);
       if (line_id == CuptiTracerEvent::kInvalidThreadId ||
           line_id == CuptiTracerEvent::kInvalidStreamId)
         continue;
       auto* plane = is_host_event ? host_plane : device_plane;
+      VLOG(7) << "Event"
+              << " type=" << (int)event.type << " line_id=" << line_id
+              << (is_host_event ? " host plane=" : " device plane=")
+              << plane->Name();
       XLineBuilder line = plane->GetOrCreateLine(line_id);
       line.SetTimestampNs(start_gpu_ns);
       CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
@@ -349,8 +467,8 @@ struct PerDeviceCollector {
     host_plane->ForEachLine([&](XLineBuilder line) {
       line.SetName(absl::StrCat("Host Threads/", line.Id()));
     });
-    size_t num_events = events.size();
-    events.clear();
+    size_t num_events = events_.size();
+    events_.clear();
     return num_events;
   }
 
@@ -416,19 +534,58 @@ struct PerDeviceCollector {
               GetStatTypeStr(StatType::kDevCapComputeCapMinor)),
           *compute_capability_minor);
     }
+
+    auto max_threads_per_block =
+        GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK);
+    auto max_threads_per_sm = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_MULTIPROCESSOR);
+    auto regs_per_block =
+        GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_REGISTERS_PER_BLOCK);
+    auto regs_per_sm = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_REGISTERS_PER_MULTIPROCESSOR);
+    auto warp_size = GetDeviceAttribute(device, CU_DEVICE_ATTRIBUTE_WARP_SIZE);
+    auto shared_mem_per_block = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
+    auto shared_mem_per_sm = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_MULTIPROCESSOR);
+    auto shared_mem_per_block_optin = GetDeviceAttribute(
+        device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
+
+    // Precondition for calculating GPU occupancy is to have all of these
+    // inputs. Otherwise, GPU occupancy will be left unset as 0%.
+    if (core_count && compute_capability_major && compute_capability_minor &&
+        max_threads_per_block && max_threads_per_sm && regs_per_block &&
+        regs_per_sm && warp_size && shared_mem_per_block && shared_mem_per_sm &&
+        shared_mem_per_block_optin) {
+      device_properties_.computeMajor = *compute_capability_major;
+      device_properties_.computeMinor = *compute_capability_minor;
+      device_properties_.numSms = *core_count;
+      device_properties_.maxThreadsPerBlock = *max_threads_per_block;
+      device_properties_.maxThreadsPerMultiprocessor = *max_threads_per_sm;
+      device_properties_.regsPerBlock = *regs_per_block;
+      device_properties_.regsPerMultiprocessor = *regs_per_sm;
+      device_properties_.warpSize = *warp_size;
+      device_properties_.sharedMemPerBlock = *shared_mem_per_block;
+      device_properties_.sharedMemPerMultiprocessor = *shared_mem_per_sm;
+      device_properties_.sharedMemPerBlockOptin = *shared_mem_per_block_optin;
+    }
   }
 
-  mutex m;
-  std::vector<CuptiTracerEvent> events TF_GUARDED_BY(m);
-  absl::flat_hash_map<uint32, CorrelationInfo> correlation_info
-      TF_GUARDED_BY(m);
+ private:
+  mutex m_;
+  std::vector<CuptiTracerEvent> events_ TF_GUARDED_BY(m_);
+  absl::flat_hash_map<uint32, CorrelationInfo> correlation_info_
+      TF_GUARDED_BY(m_);
+  cudaOccDeviceProp device_properties_;
+  absl::flat_hash_map<DeviceOccupancyParams, OccupancyStats> occupancy_cache_;
 };
 
 }  // namespace
 
 void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
-                        const std::string& annotation) {
-  if (annotation.empty()) return;
+                        const absl::string_view annotation,
+                        const absl::string_view nvtx_range) {
+  if (annotation.empty() && nvtx_range.empty()) return;
   VLOG(3) << "Add annotation: device_id: " << device_id
           << " correlation_id: " << correlation_id
           << " annotation: " << annotation;
@@ -436,20 +593,22 @@ void AnnotationMap::Add(uint32 device_id, uint32 correlation_id,
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   if (per_device_map.annotations.size() < max_size_) {
-    absl::string_view annotation_str =
-        *per_device_map.annotations.insert(annotation).first;
-    per_device_map.correlation_map.emplace(correlation_id, annotation_str);
+    AnnotationInfo info;
+    info.annotation = *per_device_map.annotations.emplace(annotation).first;
+    if (!nvtx_range.empty())
+      info.nvtx_range = *per_device_map.nvtx_ranges.emplace(nvtx_range).first;
+    per_device_map.correlation_map.emplace(correlation_id, info);
   }
 }
 
-absl::string_view AnnotationMap::LookUp(uint32 device_id,
-                                        uint32 correlation_id) {
-  if (device_id >= per_device_map_.size()) return absl::string_view();
+AnnotationMap::AnnotationInfo AnnotationMap::LookUp(uint32 device_id,
+                                                    uint32 correlation_id) {
+  if (device_id >= per_device_map_.size()) return AnnotationInfo();
   auto& per_device_map = per_device_map_[device_id];
   absl::MutexLock lock(&per_device_map.mutex);
   auto it = per_device_map.correlation_map.find(correlation_id);
   return it != per_device_map.correlation_map.end() ? it->second
-                                                    : absl::string_view();
+                                                    : AnnotationInfo();
 }
 
 // CuptiTraceCollectorImpl store the CuptiTracerEvents from CuptiTracer and
@@ -509,15 +668,21 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       std::string name = GpuPlaneName(device_ordinal);
       XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
       device_plane.SetId(device_ordinal);
-      num_events += per_device_collector_[device_ordinal].Flush(
-          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane);
+      VLOG(4) << "Creating plane for"
+              << " name=" << name << " ordinal=" << device_ordinal;
+
+      // Calculate device capabilities before flushing, so that device
+      // properties are available to the occupancy calculator in Flush().
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
+      num_events += per_device_collector_[device_ordinal].Flush(
+          start_gpu_ns_, end_gpu_ns, &device_plane, &host_plane);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
     return num_events > 0;
   }
+
   std::string ReportDroppedEvents() {
     absl::MutexLock lock(&mutex_);
     string result;
@@ -569,6 +734,30 @@ std::unique_ptr<CuptiTraceCollector> CreateCuptiCollector(
     const uint64 start_gputime_ns) {
   return absl::make_unique<CuptiTraceCollectorImpl>(options, start_walltime_ns,
                                                     start_gputime_ns);
+}
+
+// The strings are parser friendly and have no whitespaces in them.
+absl::string_view GetMemoryKindName(int8 kind) {
+  auto memory_kind = static_cast<CUpti_ActivityMemoryKind>(kind);
+  switch (memory_kind) {
+    case CUPTI_ACTIVITY_MEMORY_KIND_ARRAY:
+      return "array";
+    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE:
+      return "device";
+    case CUPTI_ACTIVITY_MEMORY_KIND_DEVICE_STATIC:
+      return "device_static";
+    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED:
+      return "managed";
+    case CUPTI_ACTIVITY_MEMORY_KIND_MANAGED_STATIC:
+      return "managed_static";
+    case CUPTI_ACTIVITY_MEMORY_KIND_PAGEABLE:
+      return "pageable";
+    case CUPTI_ACTIVITY_MEMORY_KIND_PINNED:
+      return "pinned";
+    case CUPTI_ACTIVITY_MEMORY_KIND_UNKNOWN:
+    default:
+      return "unknown";
+  }
 }
 
 }  // namespace profiler

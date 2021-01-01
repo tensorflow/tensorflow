@@ -1286,3 +1286,41 @@ func @while_body(%arg0: !tf_res) -> !tf_res {
   %0 = "tf.Cast"(%arg0) : (!tf_res) -> !tf_res
   return %0 : !tf_res
 }
+
+// -----
+
+// Tests passthrough tf.Cast ops are removed.
+
+!tf_res_static = type tensor<!tf.resource<tensor<f32>>>
+!tf_res_dynamic = type tensor<*x!tf.resource<tensor<f32>>>
+
+// CHECK-LABEL: func @tpu_computation
+func @tpu_computation(%arg0: !tf_res_static) {
+  "tf_device.cluster"() ( {
+    %0 = "tf.While"(%arg0) {body = @while_body, cond = @while_cond, is_stateless = false} : (!tf_res_static) -> !tf_res_dynamic
+    %1 = "tf.WhileRegion"(%arg0) ( {
+    ^cond(%carg0: !tf_res_static):
+      %2 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+      "tf.Yield"(%2) : (tensor<i1>) -> ()
+    }, {
+    ^body(%barg0: !tf_res_static):
+      // CHECK-NOT: tf.Cast
+      %2 = "tf.Cast"(%barg0) : (!tf_res_static) -> !tf_res_dynamic
+      "tf.Yield"(%2) : (!tf_res_dynamic) -> ()
+    }) {is_stateless = false} : (!tf_res_static) -> !tf_res_dynamic
+    tf_device.return
+  }) {} : () -> ()
+  return
+}
+
+func @while_cond(%arg0: !tf_res_static) -> tensor<i1> {
+  %0 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @while_body
+func @while_body(%arg0: !tf_res_static) -> !tf_res_dynamic {
+  // CHECK-NOT: tf.Cast
+  %0 = "tf.Cast"(%arg0) : (!tf_res_static) -> !tf_res_dynamic
+  return %0 : !tf_res_dynamic
+}

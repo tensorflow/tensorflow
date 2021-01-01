@@ -61,7 +61,7 @@ class Conv(Layer):
   Note: layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 
-  Arguments:
+  Args:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -72,9 +72,9 @@ class Conv(Layer):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`,  `"same"`, or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to 
-      the left/right or up/down of the input such that output has the same 
-      height/width dimension as the input. `"causal"` results in causal 
+      `"valid"` means no padding. `"same"` results in padding with zeros
+      evenly to the left/right or up/down of the input such that output has the
+      same height/width dimension as the input. `"causal"` results in causal
       (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -409,7 +409,7 @@ class Conv1D(Conv):
   >>> print(y.shape)
   (4, 7, 8, 32)
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of a single integer,
@@ -419,8 +419,8 @@ class Conv1D(Conv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"` or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
       `"causal"` results in causal (dilated) convolutions, e.g. `output[t]`
       does not depend on `input[t+1:]`. Useful when modeling temporal data
@@ -564,7 +564,7 @@ class Conv2D(Conv):
   (4, 7, 26, 26, 2)
 
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number of
       output filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the height
@@ -575,8 +575,8 @@ class Conv2D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
@@ -708,7 +708,7 @@ class Conv3D(Conv):
   >>> print(y.shape)
   (4, 7, 26, 26, 26, 2)
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number of
       output filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the depth,
@@ -719,8 +719,8 @@ class Conv3D(Conv):
       specify the same value for all spatial dimensions. Specifying any stride
       value != 1 is incompatible with specifying any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs. `channels_last` corresponds
@@ -835,7 +835,7 @@ class Conv1DTranspose(Conv1D):
   (tuple of integers or `None`, does not include the sample axis),
   e.g. `input_shape=(128, 3)` for data with 128 time steps and 3 channels.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer length of the 1D convolution window.
@@ -843,8 +843,8 @@ class Conv1DTranspose(Conv1D):
       time dimension. Specifying a stride value != 1 is incompatible with
       specifying a `dilation_rate` value != 1. Defaults to 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer specifying the amount of padding along
       the time dimension of the output tensor.
@@ -1083,7 +1083,7 @@ class Conv2DTranspose(Conv2D):
   e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
   in `data_format="channels_last"`.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
@@ -1097,8 +1097,8 @@ class Conv2DTranspose(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer or tuple/list of 2 integers,
       specifying the amount of padding along the height and width
@@ -1386,7 +1386,7 @@ class Conv3DTranspose(Conv3D):
   e.g. `input_shape=(128, 128, 128, 3)` for a 128x128x128 volume with 3 channels
   if `data_format="channels_last"`.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the
@@ -1401,8 +1401,8 @@ class Conv3DTranspose(Conv3D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     output_padding: An integer or tuple/list of 3 integers,
       specifying the amount of padding along the depth, height, and
@@ -1688,7 +1688,7 @@ class SeparableConv(Conv):
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1701,8 +1701,8 @@ class SeparableConv(Conv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -1897,7 +1897,7 @@ class SeparableConv1D(SeparableConv):
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A single integer specifying the spatial
@@ -1907,8 +1907,8 @@ class SeparableConv1D(SeparableConv):
       Specifying any `stride` value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: One of `"valid"`, `"same"`, or `"causal"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input. `"causal"` results in causal
       (dilated) convolutions, e.g. `output[t]` does not depend on `input[t+1:]`.
     data_format: A string, one of `channels_last` (default) or `channels_first`.
@@ -2081,7 +2081,7 @@ class SeparableConv2D(SeparableConv):
   a way to factorize a convolution kernel into two smaller kernels,
   or as an extreme version of an Inception block.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
@@ -2095,8 +2095,8 @@ class SeparableConv2D(SeparableConv):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `"valid"` or `"same"` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
@@ -2246,7 +2246,7 @@ class DepthwiseConv2D(Conv2D):
   The `depth_multiplier` argument controls how many
   output channels are generated per input channel in the depthwise step.
 
-  Arguments:
+  Args:
     kernel_size: An integer or tuple/list of 2 integers, specifying the
       height and width of the 2D convolution window.
       Can be a single integer to specify the same value for
@@ -2258,8 +2258,8 @@ class DepthwiseConv2D(Conv2D):
       Specifying any stride value != 1 is incompatible with specifying
       any `dilation_rate` value != 1.
     padding: one of `'valid'` or `'same'` (case-insensitive).
-      `"valid"` means no padding. `"same"` results in padding evenly to
-      the left/right or up/down of the input such that output has the same
+      `"valid"` means no padding. `"same"` results in padding with zeros evenly
+      to the left/right or up/down of the input such that output has the same
       height/width dimension as the input.
     depth_multiplier: The number of depthwise convolution output channels
       for each input channel.
@@ -2480,7 +2480,7 @@ class UpSampling1D(Layer):
       [ 9 10 11]
       [ 9 10 11]]], shape=(2, 4, 3), dtype=int64)
 
-  Arguments:
+  Args:
     size: Integer. Upsampling factor.
 
   Input shape:
@@ -2538,7 +2538,7 @@ class UpSampling2D(Layer):
       [[ 9 10 11]
        [ 9 10 11]]]], shape=(2, 2, 2, 3), dtype=int64)
 
-  Arguments:
+  Args:
     size: Int, or tuple of 2 integers.
       The upsampling factors for rows and columns.
     data_format: A string,
@@ -2629,7 +2629,7 @@ class UpSampling3D(Layer):
   >>> print(y.shape)
   (2, 2, 4, 2, 3)
 
-  Arguments:
+  Args:
     size: Int, or tuple of 3 integers.
       The upsampling factors for dim1, dim2 and dim3.
     data_format: A string,
@@ -2724,7 +2724,7 @@ class ZeroPadding1D(Layer):
       [ 0  0  0]
       [ 0  0  0]]], shape=(2, 6, 3), dtype=int64)
 
-  Arguments:
+  Args:
       padding: Int, or tuple of int (length 2), or dictionary.
           - If int:
           How many zeros to add at the beginning and end of
@@ -2791,7 +2791,7 @@ class ZeroPadding2D(Layer):
        [0 0]
        [0 0]]]], shape=(1, 3, 4, 2), dtype=int64)
 
-  Arguments:
+  Args:
     padding: Int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
       - If int: the same symmetric padding
         is applied to height and width.
@@ -2898,7 +2898,7 @@ class ZeroPadding3D(Layer):
   >>> print(y.shape)
   (1, 5, 6, 6, 3)
 
-  Arguments:
+  Args:
     padding: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric padding
         is applied to height and width.
@@ -3035,7 +3035,7 @@ class Cropping1D(Layer):
     [[[2 3]]
      [[8 9]]], shape=(2, 1, 2), dtype=int64)
 
-  Arguments:
+  Args:
     cropping: Int or tuple of int (length 2)
       How many units should be trimmed off at the beginning and end of
       the cropping dimension (axis 1).
@@ -3087,7 +3087,7 @@ class Cropping2D(Layer):
   >>> print(y.shape)
   (2, 24, 20, 3)
 
-  Arguments:
+  Args:
     cropping: Int, or tuple of 2 ints, or tuple of 2 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to height and width.
@@ -3212,7 +3212,7 @@ class Cropping3D(Layer):
   >>> print(y.shape)
   (2, 24, 20, 6, 3)
 
-  Arguments:
+  Args:
     cropping: Int, or tuple of 3 ints, or tuple of 3 tuples of 2 ints.
       - If int: the same symmetric cropping
         is applied to depth, height, and width.

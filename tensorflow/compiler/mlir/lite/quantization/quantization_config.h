@@ -53,10 +53,11 @@ struct QuantizationSpecs {
   bool disable_per_channel = false;
 
   // When set to true, the fixed output ranges of the activation ops (tanh,
-  // sigmoid, etc.) are not enforced. Then, to quantize these ops, quantization
-  // emulation ops should be specified after the ops in the input graph. This
-  // flag should be set to false for post-training quantization.
-  bool disable_enforced_fixed_output_range = false;
+  // sigmoid, etc.) and the weight constants are not inferred. Then, to quantize
+  // these ops, quantization emulation ops should be placed after the ops in the
+  // input graph. This flag should be set to false for post-training
+  // quantization.
+  bool disable_infer_tensor_range = false;
 
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
@@ -123,6 +124,10 @@ struct QuantizationSpecs {
         return 0;
     }
   }
+
+  // Whether add the NumericVerify ops to verify numbers before and after
+  // quantization.
+  bool verify_numeric = false;
 };
 
 // Parses the command line flag strings to the quantization specification for

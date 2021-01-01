@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -73,6 +74,21 @@ TEST_F(HloShardingTest, DevicePlacement) {
       sharding.GetAsShapeTree(ShapeUtil::MakeShape(U32, {4}));
   EXPECT_EQ(shape_tree.element({}), sharding);
   EXPECT_TRUE(shape_tree.IsLeaf({}));
+}
+
+TEST_F(HloShardingTest, ProtoRoundTrip) {
+  OpSharding proto;
+  proto.set_type(OpSharding::TUPLE);
+  auto tiled = proto.add_tuple_shardings();
+  tiled->set_type(OpSharding::OTHER);
+  tiled->add_tile_assignment_devices(0);
+  tiled->add_tile_assignment_devices(1);
+  tiled->add_tile_assignment_dimensions(1);
+  tiled->add_tile_assignment_dimensions(2);
+  proto.add_tuple_shardings()->set_type(OpSharding::REPLICATED);
+  proto.add_tuple_shardings()->set_type(OpSharding::MANUAL);
+  HloSharding sharding = HloSharding::FromProto(proto).ConsumeValueOrDie();
+  EXPECT_TRUE(protobuf_util::ProtobufEquals(proto, sharding.ToProto()));
 }
 
 TEST_F(HloShardingTest, Tile) {

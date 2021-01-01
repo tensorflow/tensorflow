@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/python/mlir_wrapper/mlir_wrapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -33,7 +33,7 @@ void init_types(py::module& m) {
       .def("getF64", &mlir::FloatType::getF64);
 
   py::class_<mlir::IntegerType, mlir::Type>(m, "IntegerType")
-      .def("get", py::overload_cast<unsigned, mlir::MLIRContext*>(
+      .def("get", py::overload_cast<mlir::MLIRContext*, unsigned>(
                       &mlir::IntegerType::get));
 
   py::class_<mlir::UnrankedTensorType, mlir::Type>(m, "UnrankedTensorType")

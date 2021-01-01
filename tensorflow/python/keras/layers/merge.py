@@ -39,7 +39,7 @@ class _Merge(Layer):
   def __init__(self, **kwargs):
     """Intializes a Merge layer.
 
-    Arguments:
+    Args:
       **kwargs: standard layer keyword arguments.
     """
     super(_Merge, self).__init__(**kwargs)
@@ -51,7 +51,7 @@ class _Merge(Layer):
   def _compute_elemwise_op_output_shape(self, shape1, shape2):
     """Computes the shape of the resultant of an elementwise operation.
 
-    Arguments:
+    Args:
         shape1: tuple or None. Shape of the first tensor
         shape2: tuple or None. Shape of the second tensor
 
@@ -477,7 +477,7 @@ class Concatenate(_Merge):
             [15, 16, 17, 18, 19],
             [25, 26, 27, 28, 29]]])>
 
-    Arguments:
+    Args:
       axis: Axis along which to concatenate.
       **kwargs: standard layer keyword arguments.
     """
@@ -489,9 +489,9 @@ class Concatenate(_Merge):
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not isinstance(input_shape[0], tuple) or len(input_shape) < 2:
+    if not isinstance(input_shape[0], tuple) or len(input_shape) < 1:
       raise ValueError('A `Concatenate` layer should be called '
-                       'on a list of at least 2 inputs')
+                       'on a list of at least 1 input.')
     if all(shape is None for shape in input_shape):
       return
     reduced_inputs_shapes = [list(shape) for shape in input_shape]
@@ -628,7 +628,7 @@ class Dot(_Merge):
       array([[[260, 360],
               [320, 445]]])>
 
-    Arguments:
+    Args:
       axes: Integer or tuple of integers,
         axis or axes along which to take the dot product. If a tuple, should
         be two integers corresponding to the desired axis from the first input
@@ -741,7 +741,7 @@ class Dot(_Merge):
 def add(inputs, **kwargs):
   """Functional interface to the `tf.keras.layers.Add` layer.
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2) with the same shape.
       **kwargs: Standard layer keyword arguments.
 
@@ -775,7 +775,7 @@ def add(inputs, **kwargs):
 def subtract(inputs, **kwargs):
   """Functional interface to the `Subtract` layer.
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (exactly 2).
       **kwargs: Standard layer keyword arguments.
 
@@ -804,7 +804,7 @@ def subtract(inputs, **kwargs):
 def multiply(inputs, **kwargs):
   """Functional interface to the `Multiply` layer.
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2).
       **kwargs: Standard layer keyword arguments.
 
@@ -836,7 +836,7 @@ def average(inputs, **kwargs):
   >>> out = tf.keras.layers.Dense(4)(avg)
   >>> model = tf.keras.models.Model(inputs=[input1, input2], outputs=out)
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2).
       **kwargs: Standard layer keyword arguments.
 
@@ -868,7 +868,7 @@ def maximum(inputs, **kwargs):
   model = tf.keras.models.Model(inputs=[input1, input2], outputs=out)
   ```
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2) of same shape.
       **kwargs: Standard layer keyword arguments.
 
@@ -886,7 +886,7 @@ def maximum(inputs, **kwargs):
 def minimum(inputs, **kwargs):
   """Functional interface to the `Minimum` layer.
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2).
       **kwargs: Standard layer keyword arguments.
 
@@ -920,7 +920,7 @@ def concatenate(inputs, axis=-1, **kwargs):
         [15, 16, 17, 18, 19],
         [25, 26, 27, 28, 29]]])>
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2).
       axis: Concatenation axis.
       **kwargs: Standard layer keyword arguments.
@@ -935,7 +935,7 @@ def concatenate(inputs, axis=-1, **kwargs):
 def dot(inputs, axes, normalize=False, **kwargs):
   """Functional interface to the `Dot` layer.
 
-  Arguments:
+  Args:
       inputs: A list of input tensors (at least 2).
       axes: Integer or tuple of integers,
           axis or axes along which to take the dot product.

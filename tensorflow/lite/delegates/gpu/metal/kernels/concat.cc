@@ -42,61 +42,90 @@ bool IsAllChannelsX4(const std::vector<int>& channels) {
   return true;
 }
 
-std::string GetConcatZCode(const std::vector<int> channels) {
-  const std::string postfix[] = {".x", ".y", ".z", ".w"};
+std::string GetConcatChannelsCode(const OperationDef& op_def,
+                                  const std::vector<int>& channels) {
+  std::vector<std::string> tensor_names(op_def.src_tensors.size());
+  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+    tensor_names[i] = "src_tensor_" + std::to_string(i);
+  }
+
   std::string c = R"(
     #include <metal_stdlib>
     using namespace metal;
-    struct uniforms {
-      int4 src_size;
-      int4 dst_size;
-    };
 
     $0
     kernel void ComputeFunction(
                                 $1
-                                uint2 ugid[[thread_position_in_grid]]) {
+                                uint3 ugid[[thread_position_in_grid]]) {
   int X = static_cast<int>(ugid.x);
   int Y = static_cast<int>(ugid.y);
-  int Z = 0;
-  if (X >= U.dst_size.x || Y >= U.dst_size.y) return;
-
-  FLT4 value = FLT4(0.0f);
-  const int xy_offset = Y * U.src_size.x + X;
-  int linear_index = xy_offset;
 )";
+
+  std::string coords = "X, Y";
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int Z = static_cast<int>(ugid.z);\n";
+    c += "  if (Z >= args.dst_tensor.Depth()) return;\n";
+    coords = "X, Y, Z";
+  }
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+       "return; \n";
 
   if (IsAllChannelsX4(channels)) {
     // When all channels % 4 == 0 we can read/assign/write FLT4 elements easily.
     // Also it is easy to write a loop in this case, to prevent long kernel
     // generation.
+    c += "  int S = 0;\n";
     for (int i = 0; i < channels.size(); ++i) {
+      std::string t_name = "args." + tensor_names[i];
       const int depth = DivideRoundUp(channels[i], 4);
-      const std::string src_buffer = "src_buffer" + std::to_string(i);
-      c += "  for (int i = 0; i < " + std::to_string(depth) + "; ++i) {\n";
-      c += "    int src_index = i * U.src_size.w + xy_offset;\n";
-      c += "    value = " + src_buffer + "[src_index];\n";
-      c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(Z));\n";
-      c += "    $2\n";
-      c += "    dst_buffer[linear_index] = value;\n";
-      c += "    linear_index += U.src_size.w;\n";
-      c += "    Z++;\n";
-      c += "  }\n";
+      if (depth % 2 == 0) {
+        // We can read more at once inside of loop in case depth % 2 == 0
+        // it should be better for reading latency hiding
+        c += "  for (int i = 0; i < " + t_name + ".Slices(); i += 2) {\n";
+        c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";
+        c += "    FLT4 result1 = " + t_name + ".Read(" + coords + ", i + 1);\n";
+        c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(S));\n";
+        c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
+             ", S);\n";
+        c += "    $2\n";
+        c += "    FLT4 value = result0;\n";
+        c += "    args.dst_tensor.Write(value, " + coords + ", S);\n";
+        c += "    gid = uint3(ugid.x, ugid.y, uint(S + 1));\n";
+        c += "    args.dst_tensor.GetAddress(linear_index2, " + coords +
+             ", S);\n";
+        c += "    linear_index = linear_index2;\n";
+        c += "    $2\n";
+        c += "    value = result1;\n";
+        c += "    args.dst_tensor.Write(value, " + coords + ", S + 1);\n";
+        c += "    S += 2;\n";
+        c += "  }\n";
+      } else {
+        c += "  for (int i = 0; i < " + t_name + ".Slices(); ++i) {\n";
+        c += "    FLT4 result = " + t_name + ".Read(" + coords + ", i);\n";
+        c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(S));\n";
+        c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
+             ", S);\n";
+        c += "    $2\n";
+        c += "    FLT4 value = result;\n";
+        c += "    args.dst_tensor.Write(value, " + coords + ", S);\n";
+        c += "    S++;\n";
+        c += "  }\n";
+      }
     }
   } else {
+    c += "  FLT4 value = FLT4(0.0);\n";
     int out_channel = 0;
     int read_index = 0;
     int z = 0;
+    const std::string postfix[] = {".x", ".y", ".z", ".w"};
     for (int i = 0; i < channels.size(); ++i) {
+      std::string tensor_name = "args." + tensor_names[i];
       const int depth = DivideRoundUp(channels[i], 4);
-      const std::string src_buffer = "src_buffer" + std::to_string(i);
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);
-        const std::string src_index =
-            std::to_string(d) + " * U.src_size.w + xy_offset";
-        c += "  FLT4 " + temp_name + " = " + src_buffer + "[" + src_index +
-             "];\n";
+        c += "  FLT4 " + temp_name + " = " + tensor_name + ".Read(" + coords +
+             ", " + std::to_string(d) + ");\n";
         for (int ch = 0; ch < channels_in_group; ++ch) {
           c += "  value" + postfix[out_channel] + " = ";
           c += temp_name + postfix[ch] + ";\n";
@@ -104,12 +133,14 @@ std::string GetConcatZCode(const std::vector<int> channels) {
           if (out_channel == 4) {
             out_channel = 0;
             c += "  {\n";
-            c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(Z));\n";
+            c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(" +
+                 std::to_string(z) + "));\n";
+            c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
+                 ", " + std::to_string(z) + ");\n";
             c += "    $2\n";
-            c += "    dst_buffer[linear_index] = value;\n";
-            c += "    linear_index += U.src_size.w;\n";
-            c += "    Z++;\n";
             c += "  }\n";
+            c += "  args.dst_tensor.Write(value, " + coords + ", " +
+                 std::to_string(z) + ");\n";
             z++;
           }
         }
@@ -118,70 +149,44 @@ std::string GetConcatZCode(const std::vector<int> channels) {
     }
     if (out_channel != 0) {
       c += "  {\n";
-      c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(Z));\n";
+      c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(" + std::to_string(z) +
+           "));\n";
+      c += "    args.dst_tensor.GetAddress(linear_index, " + coords + ", " +
+           std::to_string(z) + ");\n";
       c += "    $2\n";
-      c += "    dst_buffer[linear_index] = value;\n";
       c += "  }\n";
+      c += "  args.dst_tensor.Write(value, " + coords + ", " +
+           std::to_string(z) + ");\n";
     }
   }
   c += "}\n";
   return c;
 }
+
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ConcatZ(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
+ComputeTaskDescriptor ConcatZ(const OperationDef& definition,
+                              const ConcatAttributes& attr,
+                              const std::vector<BHWC>& input_shapes) {
   std::vector<int> channels;
   channels.reserve(input_shapes.size());
   for (const auto& shape : input_shapes) {
     channels.push_back(shape.c);
   }
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source = GetConcatZCode(channels);
+  ComputeTaskDescriptor desc(definition);
+  desc.tensors_as_args = true;
+  desc.shader_source = GetConcatChannelsCode(definition, channels);
 
-  for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
+  for (int i = 0; i < definition.src_tensors.size(); ++i) {
+    desc.AddSrcTensor("src_tensor_" + std::to_string(i),
+                      definition.src_tensors[i]);
   }
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_ids, attr](const std::map<ValueId, BHWC>& buffers) {
-        std::vector<BHWC> src_shapes(input_ids.size());
-        for (int i = 0; i < input_ids.size(); ++i) {
-          src_shapes[i] = buffers.find(input_ids[i])->second;
-        }
-        BHWC dst_shape;
-        CalculateOutputShape(src_shapes, attr, &dst_shape).IgnoreError();
-        return dst_shape;
-      }};
 
-  desc->uniform_buffers = {
-      {"constant uniforms& U",
-       [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& src_shape = buffers.find(input_ids[0])->second;
-         const auto& dst_shape = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{
-             src_shape.w,
-             src_shape.h,
-             DivideRoundUp(src_shape.c, 4),
-             src_shape.w * src_shape.h,
-             dst_shape.w,
-             dst_shape.h,
-             DivideRoundUp(dst_shape.c, 4),
-             dst_shape.w * dst_shape.h,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& dst_shape = buffers.find(output_id)->second;
-    uint3 grid(dst_shape.w, dst_shape.h, 1);
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    uint3 grid(dst_shapes[0].w, dst_shapes[0].h, 1);
     uint3 group_size{8u, 4u, 1u};
     uint3 groups;
     groups.x = DivideRoundUp(grid.x, group_size.x);
@@ -190,199 +195,166 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
     return std::make_pair(group_size, groups);
   };
 
-  return {desc};
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ConcatX(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+namespace {
+std::string GetConcatKernelCode(const OperationDef& op_def,
+                                const ConcatAttributes& attr) {
+  std::vector<std::string> tensor_names(op_def.src_tensors.size());
+  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+    tensor_names[i] = "src_tensor_" + std::to_string(i);
+  }
 
-  std::string code = R"(
+  std::map<Axis, std::string> axis_to_selector = {
+      {Axis::WIDTH, "Width"}, {Axis::HEIGHT, "Height"},
+      {Axis::DEPTH, "Depth"}, {Axis::CHANNELS, "Channels"},
+      {Axis::BATCH, "Batch"},
+  };
+  std::map<Axis, std::string> axis_to_coord = {
+      {Axis::WIDTH, "X"},    {Axis::HEIGHT, "Y"}, {Axis::DEPTH, "D"},
+      {Axis::CHANNELS, "S"}, {Axis::BATCH, "B"},
+  };
+
+  std::vector<std::string> src_coords;
+  std::vector<std::string> dst_coords;
+  for (auto axis :
+       {Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH, Axis::CHANNELS, Axis::BATCH}) {
+    if (op_def.src_tensors[0].HasAxis(axis) && axis != Axis::BATCH) {
+      if (axis == attr.axis) {
+        src_coords.push_back("coord");
+      } else {
+        src_coords.push_back(axis_to_coord[axis]);
+      }
+    }
+    if (op_def.dst_tensors[0].HasAxis(axis)) {
+      dst_coords.push_back(axis_to_coord[axis]);
+    }
+  }
+  std::string src_coord = src_coords[0];
+  for (int i = 1; i < src_coords.size(); ++i) {
+    src_coord += ", " + src_coords[i];
+  }
+  std::string dst_coord = dst_coords[0];
+  for (int i = 1; i < dst_coords.size(); ++i) {
+    dst_coord += ", " + dst_coords[i];
+  }
+
+  std::string c = R"(
     #include <metal_stdlib>
     using namespace metal;
+
     $0
     kernel void ComputeFunction(
                                 $1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
-        return;
-      }
-      FLT4 value;
-    )";
-  int output_width = 0;
-  for (int buffer_index = 0; buffer_index < input_shapes.size();
-       buffer_index++) {
-    const auto& dims = input_shapes[buffer_index];
-    output_width += dims.w;
-
-    // Generated shader example:
-    // if (gid.x < 10) value = src_buffer0[(gid.y + gid.z * 3) * 4 + gid.x - 3];
-    // else
-    if (buffer_index < input_shapes.size() - 1) {
-      code += "if (gid.x < " + std::to_string(output_width) + ")";
-    }
-    code += "value = src_buffer" + std::to_string(buffer_index) +
-            "[(gid.y + gid.z * " + std::to_string(dims.h) + ") * " +
-            std::to_string(dims.w) + " + gid.x - " +
-            std::to_string(output_width - dims.w) + "];\n";
-    if (buffer_index < input_shapes.size() - 1) {
-      code += "else ";
-    }
-  }
-  code += "const int linear_index = (gid.y + gid.z * " +
-          std::to_string(input_shapes[0].h) + ") * " +
-          std::to_string(output_width) + " + gid.x;";
-  code += R"(
-      $2
-      dst_buffer[linear_index] = value;
-    }
-  )";
-  desc->shader_source = code;
-
-  for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
-  }
-
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_ids, attr](const std::map<ValueId, BHWC>& buffers) {
-        std::vector<BHWC> src_shapes(input_ids.size());
-        for (int i = 0; i < input_ids.size(); ++i) {
-          src_shapes[i] = buffers.find(input_ids[i])->second;
-        }
-        BHWC dst_shape;
-        CalculateOutputShape(src_shapes, attr, &dst_shape).IgnoreError();
-        return dst_shape;
-      }};
-
-  desc->uniform_buffers = {
-      {"constant int3& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         DivideRoundUp(dimension.c, 4),
-                                         /*padding=*/0};
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& output_dims = buffers.find(output_id)->second;
-    const uint3 groups_size{8, 4, 1};
-    int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
-    int groups_y = DivideRoundUp(output_dims.h, groups_size.y);
-    int groups_z = DivideRoundUp(output_dims.c, 4);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
-
-  return {desc};
-}
-
-std::vector<ComputeTaskDescriptorPtr> ConcatY(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
-
-  std::string code = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    $0
-    kernel void ComputeFunction(
-                                $1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
-        return;
-      }
-      FLT4 value;
-  )";
-  int output_height = 0;
-  for (int buffer_index = 0; buffer_index < input_shapes.size();
-       buffer_index++) {
-    const auto& dims = input_shapes[buffer_index];
-    output_height += dims.h;
-
-    // Generated shader example:
-    // if (gid.y < 10) value = src_buffer0[(gid.y - 3 + gid.z * 5) * 4 + gid.x];
-    // else
-    if (buffer_index < input_shapes.size() - 1) {
-      code += "if (gid.y < " + std::to_string(output_height) + ")";
-    }
-    code += "value = src_buffer" + std::to_string(buffer_index) + "[(gid.y - " +
-            std::to_string(output_height - dims.h) + " + gid.z * " +
-            std::to_string(dims.h) + ") * " + std::to_string(dims.w) +
-            " + gid.x];\n";
-    if (buffer_index < input_shapes.size() - 1) {
-      code += "else ";
-    }
-  }
-  const auto& dims = input_shapes[0];
-  code += "const int linear_index = (gid.y + gid.z * " +
-          std::to_string(output_height) + ") * " + std::to_string(dims.w) +
-          " + gid.x;";
-  code += R"(
-      $2
-      dst_buffer[linear_index] = value;
-    }
-  )";
-  desc->shader_source = code;
-
-  for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
-  }
-
-  desc->output_buffer = {
-      output_id, "device FLT4* dst_buffer",
-      [input_ids, attr](const std::map<ValueId, BHWC>& buffers) {
-        std::vector<BHWC> src_shapes(input_ids.size());
-        for (int i = 0; i < input_ids.size(); ++i) {
-          src_shapes[i] = buffers.find(input_ids[i])->second;
-        }
-        BHWC dst_shape;
-        CalculateOutputShape(src_shapes, attr, &dst_shape).IgnoreError();
-        return dst_shape;
-      }};
-
-  desc->uniform_buffers = {
-      {"constant int3& size",
-       [output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(output_id)->second;
-         std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         DivideRoundUp(dimension.c, 4),
-                                         /*padding=*/0};
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const auto& output_dims = buffers.find(output_id)->second;
-    const uint3 groups_size{8, 4, 1};
-    int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
-    int groups_y = DivideRoundUp(output_dims.h, groups_size.y);
-    int groups_z = DivideRoundUp(output_dims.c, 4);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
-  };
-
-  return {desc};
-}
-
-std::vector<ComputeTaskDescriptorPtr> Concat(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const ConcatAttributes& attr, const std::vector<BHWC>& input_shapes) {
-  if (attr.axis == Axis::CHANNELS) {
-    return ConcatZ(id, input_ids, output_id, attr, input_shapes);
-  } else if (attr.axis == Axis::WIDTH) {
-    return ConcatX(id, input_ids, output_id, attr, input_shapes);
+                                uint3 ugid[[thread_position_in_grid]]) {
+)";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id_0 = static_cast<int>(ugid.x);\n";
+    c += "  int X = linear_id_0 / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id_0 % args.dst_tensor.Batch();\n";
   } else {
-    return ConcatY(id, input_ids, output_id, attr, input_shapes);
+    c += "  int X = static_cast<int>(ugid.x);\n";
+  }
+  if (op_def.dst_tensors[0].HasAxis(Axis::DEPTH)) {
+    c += "  int linear_id_1 = static_cast<int>(ugid.y);\n";
+    c += "  int Y = linear_id_1 / args.dst_tensor.Depth();\n";
+    c += "  int D = linear_id_1 % args.dst_tensor.Depth();\n";
+  } else {
+    c += "  int Y = static_cast<int>(ugid.y);\n";
+  }
+  c += "  int S = static_cast<int>(ugid.z);\n";
+  c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || "
+       "S >= args.dst_tensor.Slices()) { \n";
+  c += "    return; \n";
+  c += "  } \n";
+  c += "  FLT4 value = FLT4(0.0f);\n";
+  c += "  int coord = " + axis_to_coord[attr.axis] + ";\n";
+  for (int i = 0; i < op_def.src_tensors.size(); ++i) {
+    const std::string field =
+        "args." + tensor_names[i] + "." + axis_to_selector[attr.axis] + "()";
+    c += "  if (coord >= 0 && coord < " + field + ") { \n";
+    if (op_def.src_tensors[i].HasAxis(Axis::BATCH)) {
+      if (attr.axis == Axis::BATCH) {
+        c += "  args." + tensor_names[i] + ".SetBatchRef(coord);\n";
+      } else {
+        c += "  args." + tensor_names[i] + ".SetBatchRef(B);\n";
+      }
+    }
+    c += "    value = args." + tensor_names[i] + ".Read(" + src_coord + ");\n";
+    c += "  } \n";
+    c += "  coord -= " + field + ";\n";
+  }
+  c += "  {\n";
+  c += "    uint3 gid = uint3(ugid.x, ugid.y, ugid.z);\n";
+  c += "    args.dst_tensor.GetAddress(linear_index, " + dst_coord + ");\n";
+  c += "    $2\n";
+  c += "  }\n";
+  c += "  args.dst_tensor.Write(value, " + dst_coord + ");\n";
+  c += "}\n";
+  return c;
+}
+}  // namespace
+
+ComputeTaskDescriptor ConcatX(const OperationDef& definition,
+                              const ConcatAttributes& attr,
+                              const std::vector<BHWC>& input_shapes) {
+  ComputeTaskDescriptor desc(definition);
+  desc.tensors_as_args = true;
+  desc.shader_source = GetConcatKernelCode(definition, attr);
+
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    desc.AddSrcTensor("src_tensor_" + std::to_string(i),
+                      definition.src_tensors[i]);
+  }
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    const uint3 groups_size{8, 4, 1};
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
+    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
+  };
+
+  return desc;
+}
+
+ComputeTaskDescriptor ConcatY(const OperationDef& definition,
+                              const ConcatAttributes& attr,
+                              const std::vector<BHWC>& input_shapes) {
+  ComputeTaskDescriptor desc(definition);
+  desc.tensors_as_args = true;
+  desc.shader_source = GetConcatKernelCode(definition, attr);
+
+  for (int i = 0; i < input_shapes.size(); ++i) {
+    desc.AddSrcTensor("src_tensor_" + std::to_string(i),
+                      definition.src_tensors[i]);
+  }
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    const uint3 groups_size{8, 4, 1};
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
+    int groups_z = DivideRoundUp(dst_shapes[0].c, 4);
+    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
+  };
+
+  return desc;
+}
+
+ComputeTaskDescriptor Concat(const OperationDef& definition,
+                             const ConcatAttributes& attr,
+                             const std::vector<BHWC>& input_shapes) {
+  if (attr.axis == Axis::CHANNELS) {
+    return ConcatZ(definition, attr, input_shapes);
+  } else if (attr.axis == Axis::WIDTH) {
+    return ConcatX(definition, attr, input_shapes);
+  } else {
+    return ConcatY(definition, attr, input_shapes);
   }
 }
 

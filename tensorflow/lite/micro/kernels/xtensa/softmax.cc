@@ -165,7 +165,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   // and scale here, since each softmax op may have different beta and scale
   // values. Beta and scale will remain constant for a given softmax op.
   op_data->exp_lut = static_cast<uint16_t*>(context->AllocatePersistentBuffer(
-      context, kInt8Range * sizeof(uint16_t)));
+      context, (kInt8Range + 1) * sizeof(uint16_t)));
   TF_LITE_ENSURE(context, op_data->exp_lut != nullptr);
 
   TF_LITE_ENSURE_STATUS(

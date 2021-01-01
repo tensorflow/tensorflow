@@ -294,6 +294,9 @@ Status LinkWithBitcodeVector(llvm::Module* module,
 
     std::unique_ptr<llvm::Module> bitcode_module =
         LoadIRModule(bitcode_path, &module->getContext());
+    // Ignore the data layout of the module we're importing. This avoids a
+    // warning from the linker.
+    bitcode_module->setDataLayout(module->getDataLayout());
     if (linker.linkInModule(
             std::move(bitcode_module), llvm::Linker::Flags::LinkOnlyNeeded,
             [](llvm::Module& M, const llvm::StringSet<>& GVS) {
@@ -835,11 +838,11 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
   // Delete the first two lines, since they usually vary even when the rest of
   // the code is the same (but verify that they are what we expect).
   if (str.size() >= 13 && str.substr(0, 13) == "; ModuleID = ") {
-    auto pos = str.find("\n");
+    auto pos = str.find('\n');
     if (pos != std::string::npos) str = str.substr(pos + 1);
   }
   if (str.size() >= 18 && str.substr(0, 18) == "source_filename = ") {
-    auto pos = str.find("\n");
+    auto pos = str.find('\n');
     if (pos != std::string::npos) str = str.substr(pos + 1);
   }
   str += hlo_module_config.compilation_cache_key();

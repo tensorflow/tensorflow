@@ -44,6 +44,8 @@ public final class InterpreterTest {
       "tensorflow/lite/testdata/dynamic_shapes.bin";
   private static final String BOOL_MODEL =
       "tensorflow/lite/java/src/testdata/tile_with_bool_input.bin";
+  private static final String MODEL_WITH_SIGNATURE_PATH =
+      "tensorflow/lite/java/src/testdata/mul_add_signature_def.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
@@ -55,6 +57,8 @@ public final class InterpreterTest {
   private static final ByteBuffer DYNAMIC_SHAPES_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(DYNAMIC_SHAPES_MODEL_PATH);
   private static final ByteBuffer BOOL_MODEL_BUFFER = TestUtils.getTestFileAsBuffer(BOOL_MODEL);
+  private static final ByteBuffer MODEL_WITH_SIGNATURE_BUFFER =
+      TestUtils.getTestFileAsBuffer(MODEL_WITH_SIGNATURE_PATH);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -484,6 +488,10 @@ public final class InterpreterTest {
       fail();
     } catch (IllegalStateException e) {
       // Expected failure.
+    } catch (IllegalArgumentException e) {
+      // As we could apply some TfLite delegate by default, the flex ops preparation could fail if
+      // the flex delegate isn't applied first, in which this type of exception is thrown.
+      // Expected failure
     }
   }
 
@@ -716,6 +724,91 @@ public final class InterpreterTest {
 
       FloatBuffer expected = fill(FloatBuffer.allocate(8 * 1 * 1024), 2.0f);
       assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testModelWithSignatureDef() {
+    try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {"mul_add"};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+
+      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] expectedSignatureInputs = {"x", "y"};
+      assertThat(signatureInputs).isEqualTo(expectedSignatureInputs);
+
+      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] expectedSignatureOutputs = {"output_0"};
+      assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
+
+      FloatBuffer output = FloatBuffer.allocate(1);
+      float[] inputX = {2.0f};
+      float[] inputY = {4.0f};
+      Map<String, Object> inputs = new HashMap<>();
+      inputs.put("x", inputX);
+      inputs.put("y", inputY);
+      Map<String, Object> outputs = new HashMap<>();
+      outputs.put("output_0", output);
+      interpreter.runSignature(inputs, outputs, "mul_add");
+      // Result should be x * 3.0 + y
+      FloatBuffer expected = fill(FloatBuffer.allocate(1), 10.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testModelWithSignatureDefNullMethodName() {
+    try (Interpreter interpreter = new Interpreter(MODEL_WITH_SIGNATURE_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {"mul_add"};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+
+      String[] signatureInputs = interpreter.getSignatureInputs(expectedSignatureNames[0]);
+      String[] expectedSignatureInputs = {"x", "y"};
+      assertThat(signatureInputs).isEqualTo(expectedSignatureInputs);
+
+      String[] signatureOutputs = interpreter.getSignatureOutputs(expectedSignatureNames[0]);
+      String[] expectedSignatureOutputs = {"output_0"};
+      assertThat(signatureOutputs).isEqualTo(expectedSignatureOutputs);
+
+      FloatBuffer output = FloatBuffer.allocate(1);
+      float[] inputX = {2.0f};
+      float[] inputY = {4.0f};
+      Map<String, Object> inputs = new HashMap<>();
+      inputs.put("x", inputX);
+      inputs.put("y", inputY);
+      Map<String, Object> outputs = new HashMap<>();
+      outputs.put("output_0", output);
+      interpreter.runSignature(inputs, outputs, null);
+      // Result should be x * 3.0 + y
+      FloatBuffer expected = fill(FloatBuffer.allocate(1), 10.0f);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+      output = FloatBuffer.allocate(1);
+      outputs.put("output_0", output);
+      interpreter.runSignature(inputs, outputs);
+      assertThat(output.array()).usingTolerance(0.1f).containsExactly(expected.array()).inOrder();
+    }
+  }
+
+  @Test
+  public void testModelWithSignatureDefNoSignatures() {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      String[] signatureNames = interpreter.getSignatureDefNames();
+      String[] expectedSignatureNames = {};
+      assertThat(signatureNames).isEqualTo(expectedSignatureNames);
+      Map<String, Object> inputs = new HashMap<>();
+      Map<String, Object> outputs = new HashMap<>();
+      try {
+        interpreter.runSignature(inputs, outputs);
+        fail();
+      } catch (IllegalArgumentException e) {
+        assertThat(e)
+            .hasMessageThat()
+            .contains(
+                "Input error: SignatureDef methodName should not be null. null is only allowed if"
+                    + " the model has a single Signature");
+      }
     }
   }
 

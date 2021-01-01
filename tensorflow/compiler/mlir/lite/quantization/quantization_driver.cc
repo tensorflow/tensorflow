@@ -29,11 +29,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
@@ -100,13 +100,13 @@ class QuantizationDriver {
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
                               bool disable_per_channel,
                               OpQuantSpecGetter op_quant_spec_getter,
-                              bool enforce_fixed_output_range)
+                              bool infer_tensor_range)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
         op_quant_spec_getter_(op_quant_spec_getter),
-        enforce_fixed_output_range_(enforce_fixed_output_range) {}
+        infer_tensor_range_(infer_tensor_range) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -384,7 +384,9 @@ class QuantizationDriver {
 
   OpQuantSpecGetter op_quant_spec_getter_;
 
-  bool enforce_fixed_output_range_;
+  // Infer output ranges for activation ops and constants. This is usually
+  // required for post-training quantization.
+  bool infer_tensor_range_;
 };
 }  // namespace
 
@@ -530,7 +532,7 @@ void QuantizationDriver::QuantizeValue(Value value, QuantParams params,
   // quantization pass. These ops can be removed without losing original
   // program accuracy.
   // TODO(fengliuai): make the attribute being part of op definition.
-  quantize.setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
+  quantize->setAttr(kVolatileOpAttrName, builder_.getUnitAttr());
 
   // `original_result` has a use to `quantize`, so this will replace that use
   // by the result of `dequantize`. Remember to reset that use afterwards
@@ -670,37 +672,48 @@ void QuantizationDriver::PreprocessConstantOps() {
 
     Value value = cst.getResult();
     builder_.setInsertionPoint(cst);
-    for (auto indexed_use : llvm::enumerate(value.getUses())) {
-      auto &use = indexed_use.value();
-      auto spec = GetQuantSpec(use.getOwner());
-      auto biases = spec->biases_params;
-      Operation *user = use.getOwner();
-      int operand_num = use.getOperandNumber();
 
+    // The following loop will change the value uses, thus we cache all the uses
+    // needs to be changed.
+    llvm::SmallVector<std::pair<Operation *, int>, 4> uses;
+    for (auto &use : value.getUses()) {
+      uses.push_back({use.getOwner(), use.getOperandNumber()});
+    }
+    for (auto indexed_use : llvm::enumerate(uses)) {
+      Operation *user = indexed_use.value().first;
+      int operand_num = indexed_use.value().second;
+
+      auto spec = GetQuantSpec(user);
+      auto biases = spec->biases_params;
+
+      // The quantization parameters of a `weight` shouldn't be determined by
+      // other values. So any constants which are not bias, an operand of an
+      // op with same scale requirements, and haven't been quantized are
+      // weights.
       if (biases.find(operand_num) == biases.end() &&
           !llvm::dyn_cast<mlir::SameScalesOpInterface>(user) &&
           !llvm::dyn_cast<quant::QuantizeCastOp>(user)) {
-        // Needs to scan the content to get the quantization parameters if there
-        // are no quantization parameters (FakeQuant ops).
-        // For this case, the weight isn't duplicated.
+        // Needs to scan the content of weights to get the quantization
+        // parameters if there are no quantization parameters (FakeQuant ops).
+        // For this case, the weight will not be duplicated.
         weights_.insert(cst);
         auto affine_user =
             llvm::dyn_cast<mlir::AffineQuantizedOpInterface>(user);
-        if (affine_user &&
-            affine_user.GetAffineOperandIndex() == use.getOperandNumber() &&
+        if (affine_user && affine_user.GetAffineOperandIndex() == operand_num &&
             affine_user.RequiredNarrowRangeAffineOperand()) {
           optimized_weights_.insert(
               {cst, affine_user.GetQuantizationDimIndex()});
         }
       } else {
-        // This is a bias, so the quantization parameter isn't determined by the
-        // local content. Same if the user can have quantization parameter
-        // propagated from other places.
-        // Duplicate this constant in case it is shared by different users.
-        if (indexed_use.index() > 0) {
-          cst = builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+        // This is a bias or an operand of an op with same scale requirements,
+        // so the quantization parameter are propagated from or determined by
+        // other values. Duplicate this constant in case it is shared by
+        // different users.
+        if (uses.size() > 1) {
+          auto new_cst =
+              builder_.create<ConstantOp>(cst.getLoc(), cst.getValue());
+          user->setOperand(operand_num, new_cst);
         }
-        user->setOperand(operand_num, cst);
       }
     }
   });
@@ -786,12 +799,14 @@ bool QuantizationDriver::PropagateParams() {
     quantized_.insert(op);
 
     if (auto cst = llvm::dyn_cast<ConstantOp>(op)) {
-      // If it isn't a weight or has been quantized, skip.
-      if (!IsWeight(cst) || IsQuantized(op)) continue;
-
-      // The quantization parameters are determined by the content of the
-      // constant.
-      changed |= SetConstantResultParams(op);
+      // If the workflow requires inferring ranges from the content
+      // (post-training quantization) and it is weight (filter) and hasn't
+      // been quantized, we infer the quantization parameters from the content.
+      if (infer_tensor_range_ && IsWeight(cst) && !IsQuantized(op)) {
+        // The quantization parameters are determined by the content of the
+        // constant.
+        changed |= SetConstantResultParams(op);
+      }
       continue;
     }
 
@@ -826,7 +841,9 @@ bool QuantizationDriver::PropagateParams() {
 
     // TODO(fengliuai): make the bit width configurable.
     auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op);
-    if (restricted && enforce_fixed_output_range_) {
+    if (restricted && infer_tensor_range_) {
+      // Infer ranges from the activation ops. This is usually required for
+      // the post-training quantization workflow.
       // TODO(fengliuai): different result can have different fixed range.
       auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
       for (auto i = 0; i < op->getNumResults(); ++i) {
@@ -903,9 +920,9 @@ void QuantizationDriver::Run() {
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
                                         bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
-                                        bool post_training_quantization) {
+                                        bool infer_tensor_ranges) {
   QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
-                     post_training_quantization)
+                     infer_tensor_ranges)
       .Run();
 }
 

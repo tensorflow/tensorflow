@@ -237,7 +237,7 @@ def : Pat<(TF_RoundOp:$res TF_FloatTensor:$input),
             (TF_SubOp $input, (TF_FloorOp:$floor $input)),
             (TF_ConstOp (GetScalarOfFloatType<"0.5"> $input))),
            $floor,
-           (TF_AddOp
+           (TF_AddV2Op
             (TF_ConstOp (GetScalarOfType<1> $input)), $floor))>;
 
 
@@ -298,3 +298,19 @@ def LowerScatterNdOp :
       (TF_TensorScatterAddOp
        (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
        $indices, $updates)>;
+
+//===----------------------------------------------------------------------===//
+// Xdivy, Xlog1p and Xlogy op patterns.
+//===----------------------------------------------------------------------===//
+
+class BinaryXopyPat<dag From, dag To>
+  : Pat<From,
+        (TF_SelectV2Op (TF_EqualOp $x,
+                                   (TF_ConstOp:$zero (GetScalarOfType<0> $x)),
+                       /*incompatible_shape_error*/ConstBoolAttrTrue),
+           $zero, To)>;
+
+foreach fromToPair = [[(TF_XdivyOp $x, $y), (TF_DivOp $x, $y)],
+                      [(TF_Xlog1pyOp $x, $y), (TF_MulOp $x, (TF_Log1pOp $y))],
+                      [(TF_XlogyOp $x, $y), (TF_MulOp $x, (TF_LogOp $y))]] in
+  def : BinaryXopyPat<fromToPair[0], fromToPair[1]>;

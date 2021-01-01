@@ -401,7 +401,7 @@ class MklDnnConvUtil {
     }
 
     int64 out_rows = 0, out_cols = 0, out_planes = 0;
-    int64 pad_top = 0, pad_bottom = 0, pad_left, pad_right;
+    int64 pad_top = 0, pad_bottom = 0, pad_left = 0, pad_right = 0;
     int64 pad_D1, pad_D2;
 
     if (is_conv2d) {

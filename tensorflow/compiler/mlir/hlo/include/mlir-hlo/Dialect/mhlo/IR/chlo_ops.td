@@ -372,6 +372,19 @@ def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
   }];
 }
 
+def HLOClient_ConjOp : HLOClient_UnaryElementwiseOp<"conj", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Conj operator";
+
+  let description = [{
+    Returns `Conj(operand)` element-wise.
+
+    $$
+    \conj(x) = (\real(x), \neg(\imag(x)))
+    $$
+  }];
+}
+
 def HLOClient_SinhOp : HLOClient_UnaryElementwiseOp<"sinh", [],
     HLO_FpOrComplexTensor> {
   let summary = "Sinh operation";
@@ -415,6 +428,32 @@ def HLOClient_ConstantLikeOp : HLOClient_Op<"constant_like",
   let results = (outs HLO_Tensor);
 
   let hasCanonicalizer = 1;
+}
+
+def HLOClient_ErfOp : HLOClient_UnaryElementwiseOp<"erf",
+    [NoSideEffect, SameOperandsAndResultShape],
+    HLO_FpTensor> {
+  let summary = "Erfc operator";
+
+  let description = [{
+    Computes the Gauss error function of `x` element-wise.
+
+    erf(x) = erf_impl(x)            if |x| < 1
+           = 1 - erfc_impl(x)       otherwise
+  }];
+}
+
+def HLOClient_ErfcOp : HLOClient_UnaryElementwiseOp<"erfc",
+    [NoSideEffect, SameOperandsAndResultShape],
+    HLO_FpTensor> {
+  let summary = "Erfc operator";
+
+  let description = [{
+    Computes an approximation of the error function complement (1 - erf(x)).
+
+    erfc(x) = erfc_impl(x)           if |x| > 1
+            = 1 - erf_impl(x)        otherwise
+  }];
 }
 
 //===----------------------------------------------------------------------===//

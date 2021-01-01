@@ -37,12 +37,12 @@ filegroup(
         "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_base.td",
         "//tensorflow/compiler/mlir/tensorflow:ir/tf_op_interfaces.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeBase.td",
         "@llvm-project//mlir:include/mlir/Dialect/Shape/IR/ShapeOps.td",
         "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
     compatible_with = get_compatible_with_cloud(),
 )
@@ -104,7 +104,9 @@ cc_library(
         "utils/utils.h",
     ],
     deps = [
+        ":tfr",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

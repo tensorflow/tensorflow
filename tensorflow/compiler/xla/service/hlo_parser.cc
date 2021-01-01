@@ -1366,16 +1366,25 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &reduce_computation};
-      if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
       if (!window) {
         window.emplace();
       }
+      if (operands.size() % 2) {
+        auto loc = lexer_.GetLoc();
+        return Error(loc, StrCat("expects an even number of operands, but has ",
+                                 operands.size(), " operands"));
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
-          shape, /*operand=*/operands[0], /*init_value=*/operands[1], *window,
-          *reduce_computation));
+          shape, /*operands=*/
+          absl::Span<HloInstruction* const>(operands).subspan(
+              0, operands.size() / 2),
+          /*init_values=*/
+          absl::Span<HloInstruction* const>(operands).subspan(operands.size() /
+                                                              2),
+          *window, *reduce_computation));
       break;
     }
     case HloOpcode::kConvolution: {
@@ -2252,7 +2261,7 @@ bool HloParserImpl::ParseFrontendAttributes(
                     "expects '}' at the end of frontend attributes");
 }
 
-//  ::= '{' 'replicated'? 'maximal'? ('device=' int)? shape?
+//  ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
 //          ('devices=' ('[' dims ']')* device_list)? '}'
 // dims ::= int_list device_list ::= int_list
 bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
@@ -2266,6 +2275,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   LocTy loc = lexer_.GetLoc();
   bool maximal = false;
   bool replicated = false;
+  bool manual = false;
   bool last_tile_dim_replicate = false;
   std::vector<int64> devices;
   std::vector<int64> tile_assignment_dimensions;
@@ -2277,6 +2287,10 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         break;
       case TokKind::kw_replicated:
         replicated = true;
+        lexer_.Lex();
+        break;
+      case TokKind::kw_manual:
+        manual = true;
         lexer_.Lex();
         break;
       case TokKind::kAttributeName: {
@@ -2342,6 +2356,12 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     }
     sharding->set_type(OpSharding::MAXIMAL);
     sharding->add_tile_assignment_devices(devices[0]);
+  } else if (manual) {
+    if (!devices.empty()) {
+      return Error(loc,
+                   "manual shardings should not have any devices assigned");
+    }
+    sharding->set_type(OpSharding::MANUAL);
   } else {
     if (devices.size() <= 1) {
       return Error(
@@ -3574,7 +3594,7 @@ bool HloParserImpl::ParseWindow(Window* window, bool expect_outer_curlies) {
 }
 
 // This is the inverse of HloInstruction::ConvolutionDimensionNumbersToString.
-// The string looks like "dim_labels=0bf_0io->0bf".
+// Thestring looks like "dim_labels=0bf_0io->0bf".
 bool HloParserImpl::ParseConvolutionDimensionNumbers(
     ConvolutionDimensionNumbers* dnums) {
   if (lexer_.GetKind() != TokKind::kDimLabels) {

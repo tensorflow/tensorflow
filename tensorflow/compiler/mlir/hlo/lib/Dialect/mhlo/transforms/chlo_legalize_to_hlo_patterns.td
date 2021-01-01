@@ -23,10 +23,18 @@ include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
+def NonComplexElementType : Type<
+  CPred<"!$_self.cast<ShapedType>().getElementType().isa<ComplexType>()">,
+  "Non complex element type">;
+
 // Expand acos to MHLO dialect as follows:
 //   acos(x) = 2 * atan2(sqrt(1 - x^2), (1 + x))  if x != -1
 //           = pi                                 if x == -1
-def : Pat<(HLOClient_AcosOp $input),
+//
+// TODO(hinsu): Support operands with complex element types separately using
+// the following formula.
+//   acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
+def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
   (HLO_SelectOp
     (HLO_CompareOp
       $input,
@@ -60,10 +68,17 @@ def : Pat<(HLOClient_AtanOp $input),
     (HLO_ConstantLike<"1"> $input)
   )>;
 
+// Express `conj` as
+//   conj(x) = (re(x), -im(x)).
+def : Pat<(HLOClient_ConjOp $v),
+          (HLO_ComplexOp (HLO_RealOp $v), (HLO_NegOp (HLO_ImagOp $v)))>;
+
 // Express `sinh` as
 //   sinh(x) = (e^x - e^-x) / 2                     if |x| < 1
 //           = e^(x + log(1/2)) - e^(-x + log(1/2)) otherwise.
-def : Pat<(HLOClient_SinhOp $input),
+// TODO(hinsu): Support operands with complex element types by always using the
+// second formula. The compare op below is not legal for complex numbers.
+def : Pat<(HLOClient_SinhOp NonComplexElementType:$input),
   (HLO_SelectOp
     (HLO_CompareOp
       (HLO_AbsOp $input),

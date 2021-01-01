@@ -219,7 +219,7 @@ genrule(
            " --infile $(location testdata/test_file_v0_11.py)" +
            " --outfile $(location test_file_v1_0.py)" +
            " --reportfile $(location report.txt)"),
-    exec_tools = [":tf_upgrade"],
+    tools = [":tf_upgrade"],
 )
 
 py_test(
@@ -246,7 +246,7 @@ genrule(
            " --outfile $(location test_file_v2_0.py)" +
            " --reportfile $(location report_v2.txt) && " +
            "sed -i'.original' 's/_TEST_VERSION = 1/_TEST_VERSION = 2/g' $(location test_file_v2_0.py)"),
-    exec_tools = [":tf_upgrade_v2"],
+    tools = [":tf_upgrade_v2"],
 )
 
 py_test(
@@ -270,7 +270,6 @@ py_test(
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

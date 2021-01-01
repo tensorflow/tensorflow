@@ -68,9 +68,9 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     return signalPassFailure();
   }
   ModuleOp outlined_module = ModuleOp::create(getOperation().getLoc());
-  outlined_module.setAttrs(getOperation().getAttrs());
-  outlined_module.setAttr(SymbolTable::getSymbolAttrName(),
-                          StringAttr::get(kNestedModule, ctx));
+  outlined_module->setAttrs(getOperation()->getAttrDictionary());
+  outlined_module->setAttr(SymbolTable::getSymbolAttrName(),
+                           StringAttr::get(kNestedModule, ctx));
   symbol_table.insert(outlined_module);
   SymbolTable outlined_symbol_table(outlined_module);
 
@@ -78,7 +78,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   // in a new module to run the V1 bridge there.
   SmallVector<IslandOp, 8> islands_to_outline;
   getOperation().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
-    auto island_op = cast<IslandOp>(replicate_op.getParentOp());
+    auto island_op = cast<IslandOp>(replicate_op->getParentOp());
     if (!island_op || island_op.WrapsSingleOp()) return;
     islands_to_outline.push_back(island_op);
   });
@@ -100,7 +100,7 @@ void TPUBridgeExecutorIslandOutlining::runOnOperation() {
     for (Value operand : island_op.GetYield().getOperands())
       func_result_types.push_back(operand.getType());
     FunctionType func_type =
-        FunctionType::get(func_operand_types, func_result_types, ctx);
+        FunctionType::get(ctx, func_operand_types, func_result_types);
 
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;

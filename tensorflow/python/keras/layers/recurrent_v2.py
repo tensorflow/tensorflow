@@ -60,11 +60,11 @@ _RUNTIME_UNKNOWN = 0
 _RUNTIME_CPU = 1
 _RUNTIME_GPU = 2
 
-_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernel when run on GPU.'
-_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernel since it '
-                            'doesn\'t meet the cuDNN kernel criteria. It will '
-                            'use generic GPU kernel as fallback when running '
-                            'on GPU')
+_CUDNN_AVAILABLE_MSG = 'Layer %s will use cuDNN kernels when running on GPU.'
+_CUDNN_NOT_AVAILABLE_MSG = ('Layer %s will not use cuDNN kernels since it '
+                            'doesn\'t meet the criteria. It will '
+                            'use a generic GPU kernel as fallback when running '
+                            'on GPU.')
 
 
 def _use_new_code():
@@ -133,7 +133,7 @@ class GRUCell(recurrent.GRUCell):
   >>> print(final_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
       (`tanh`). If you pass None, no activation is applied
@@ -266,7 +266,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
   >>> print(final_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`).
@@ -335,6 +335,9 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     inputs: A 3D tensor, with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[samples, timesteps]` indicating whether
       a given timestep should be masked  (optional, defaults to `None`).
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the
+      corresponding timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -563,7 +566,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
   counterpart. The RNN step logic has been simplified, eg dropout and mask is
   removed since CuDNN implementation does not support that.
 
-  Arguments:
+  Args:
     inputs: Input tensor of GRU layer.
     init_h: Initial state tensor for the cell output.
     kernel: Weights for cell kernel.
@@ -571,7 +574,9 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, mask,
     bias: Weights for cell kernel bias and recurrent bias. The bias contains the
       combined input_bias and recurrent_bias.
     mask: Binary tensor of shape `(samples, timesteps)` indicating whether
-      a given timestep should be masked.
+      a given timestep should be masked. An individual `True` entry indicates
+      that the corresponding timestep should be utilized, while a `False` entry
+      indicates that the corresponding timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -741,6 +746,9 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
     bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -874,7 +882,7 @@ class LSTMCell(recurrent.LSTMCell):
   >>> print(final_carry_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use. Default: hyperbolic tangent
       (`tanh`). If you pass `None`, no activation is applied (ie. "linear"
@@ -1000,7 +1008,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
   >>> print(final_carry_state.shape)
   (32, 4)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       Default: hyperbolic tangent (`tanh`). If you pass `None`, no activation
@@ -1063,6 +1071,9 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     inputs: A 3D tensor with shape `[batch, timesteps, feature]`.
     mask: Binary tensor of shape `[batch, timesteps]` indicating whether
       a given timestep should be masked (optional, defaults to `None`).
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     training: Python boolean indicating whether the layer should behave in
       training mode or in inference mode. This argument is passed to the cell
       when calling it. This is only relevant if `dropout` or
@@ -1349,6 +1360,9 @@ def standard_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias,
     bias: weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -1421,6 +1435,9 @@ def gpu_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, mask,
     bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of [time, batch,
       feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence
@@ -1551,6 +1568,9 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
     bias: Weights for cell kernel bias and recurrent bias. Only recurrent bias
       is used in this case.
     mask: Boolean tensor for mask out the steps within sequence.
+      An individual `True` entry indicates that the corresponding timestep
+      should be utilized, while a `False` entry indicates that the corresponding
+      timestep should be ignored.
     time_major: Boolean, whether the inputs are in the format of
       [time, batch, feature] or [batch, time, feature].
     go_backwards: Boolean (default False). If True, process the input sequence

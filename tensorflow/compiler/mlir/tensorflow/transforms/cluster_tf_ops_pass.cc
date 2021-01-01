@@ -41,8 +41,11 @@ namespace {
 using DeviceNameUtils = ::tensorflow::DeviceNameUtils;
 using ParsedName = ::tensorflow::DeviceNameUtils::ParsedName;
 
+constexpr const char *kHostAttr = "host";
 constexpr const char *kDeviceAttr = "device";
 constexpr const char *kTFDeviceAttr = "tf.device";
+// TODO(donglin): Handle the case where the address of localhost is different
+// from /job:localhost/replica:0/task:0.
 constexpr const char *kLocalhost = "/job:localhost/replica:0/task:0";
 constexpr const char *kErrorMessage =
     "The operation that uses the operand is on a different host than the "
@@ -53,8 +56,9 @@ constexpr const char *kErrorMessage =
 std::string GetHost(llvm::StringRef device) {
   ParsedName parsed_name;
   DeviceNameUtils::ParseFullName(device.str(), &parsed_name);
-  return DeviceNameUtils::ParsedNameToString(
+  std::string result = DeviceNameUtils::ParsedNameToString(
       DeviceNameUtils::AddressSpace(parsed_name));
+  return result.empty() ? kLocalhost : result;
 }
 
 std::string GetHost(Operation *op) {
@@ -70,12 +74,9 @@ std::string GetHost(Operation *op) {
 // 1) None of the job/replica/task is specified in the device name.
 // 2) The job/replica/task in the device name are explicitly specified as
 //    /job:localhost/replica:0/task:0.
-//
-// TODO(dnglin): Handle the case where the address of localhost is different
-// from /job:localhost/replica:0/task:0.
 bool IsOnLocalHost(llvm::StringRef device) {
   std::string host = GetHost(device);
-  return host.empty() || host == kLocalhost;
+  return host == kLocalhost;
 }
 
 // This structure contains the metadata of the per-host function. All operations
@@ -192,7 +193,7 @@ void CreateFunctions(ModuleOp module_op,
     std::replace(func_name.begin(), func_name.end(), '/', '_');
 
     FunctionType func_type =
-        FunctionType::get(input_types, result_types, context);
+        FunctionType::get(context, input_types, result_types);
     Location loc = metadata.ops.front()->getLoc();
     FuncOp func_op = FuncOp::create(loc, func_name, func_type);
     // Sets the device attribute for every input and every result of the
@@ -207,6 +208,7 @@ void CreateFunctions(ModuleOp module_op,
           StringAttr::get(metadata.result_devices[i], context));
     }
 
+    func_op->setAttr(kHostAttr, StringAttr::get(host, context));
     func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 
@@ -289,7 +291,7 @@ class ClusterTFOpsByHostPass
   void runOnFunction() override {
     MLIRContext *context = &getContext();
     FuncOp func_op = getOperation();
-    ModuleOp module_op = func_op.getParentOfType<mlir::ModuleOp>();
+    ModuleOp module_op = func_op->getParentOfType<mlir::ModuleOp>();
 
     llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
         GetFunctionMetadatas(func_op);

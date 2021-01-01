@@ -18,7 +18,7 @@ echo on
 @REM Set Environment Variables
 @REM
 IF NOT DEFINED PYTHON_DIRECTORY (
-  SET PYTHON_DIRECTORY=Python36
+  SET PYTHON_DIRECTORY=Python37
 )
 SET PY_EXE=C:\%PYTHON_DIRECTORY%\python.exe
 SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
@@ -32,11 +32,11 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PY_EXE% -m pip install "astunparse ~= 1.6.3"
 %PY_EXE% -m pip install "flatbuffers ~= 1.12.0"
 %PY_EXE% -m pip install "google_pasta ~= 0.2"
-%PY_EXE% -m pip install "h5py ~= 2.10.0"
+%PY_EXE% -m pip install "h5py ~= 3.1.0"
 %PY_EXE% -m pip install "keras_preprocessing ~= 1.1.2"
 %PY_EXE% -m pip install "numpy ~= 1.19.2"
 %PY_EXE% -m pip install "opt_einsum ~= 3.3.0"
-%PY_EXE% -m pip install "protobuf ~= 3.13.0"
+%PY_EXE% -m pip install "protobuf >= 3.9.2"
 %PY_EXE% -m pip install "six ~= 1.15.0"
 %PY_EXE% -m pip install "termcolor ~= 1.1.0"
 %PY_EXE% -m pip install "typing_extensions ~= 3.7.4"
@@ -71,7 +71,7 @@ SET PATH=%CUDNN_INSTALL_PATH%\bin;%PATH%
 @REM Setup Bazel
 @REM
 :: Download Bazel from github and make sure its found in PATH.
-SET BAZEL_VERSION=3.1.0
+SET BAZEL_VERSION=3.7.2
 md C:\tools\bazel\
 wget -q https://github.com/bazelbuild/bazel/releases/download/%BAZEL_VERSION%/bazel-%BAZEL_VERSION%-windows-x86_64.exe -O C:/tools/bazel/bazel.exe
 SET PATH=C:\tools\bazel;%PATH%

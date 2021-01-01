@@ -23,6 +23,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <vector>
 
 #include "absl/base/log_severity.h"
 #include "absl/strings/string_view.h"
@@ -49,16 +50,16 @@ class LogMessage : public std::basic_ostringstream<char> {
   // Change the location of the log message.
   LogMessage& AtLocation(const char* fname, int line);
 
-  // Returns the minimum log level for VLOG statements.
-  // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
+  // Returns the maximum log level for VLOG statements.
+  // E.g., if MaxVLogLevel() is 2, then VLOG(2) statements will produce output,
   // but VLOG(3) will not. Defaults to 0.
-  static int64 MinVLogLevel();
+  static int64 MaxVLogLevel();
 
   // Returns whether VLOG level lvl is activated for the file fname.
   //
   // E.g. if the environment variable TF_CPP_VMODULE contains foo=3 and fname is
   // foo.cc and lvl is <= 3, this will return true. It will also return true if
-  // the level is lower or equal to TF_CPP_MIN_VLOG_LEVEL (default zero).
+  // the level is lower or equal to TF_CPP_MAX_VLOG_LEVEL (default zero).
   //
   // It is expected that the result of this query will be cached in the VLOG-ing
   // call site to avoid repeated lookups. This routine performs a hash-map
@@ -116,7 +117,7 @@ class LogMessageNull : public std::basic_ostringstream<char> {
 
 #else
 
-// Otherwise, set TF_CPP_MIN_VLOG_LEVEL environment to update minimum log level
+// Otherwise, set TF_CPP_MAX_VLOG_LEVEL environment to update minimum log level
 // of VLOG, or TF_CPP_VMODULE to set the minimum log level for individual
 // translation units.
 #define VLOG_IS_ON(lvl)                                                     \
@@ -461,7 +462,7 @@ T&& CheckNotNull(const char* file, int line, const char* exprtext, T&& t) {
 
 int64 MinLogLevelFromEnv();
 
-int64 MinVLogLevelFromEnv();
+int64 MaxVLogLevelFromEnv();
 
 }  // namespace internal
 
@@ -477,15 +478,27 @@ class TFLogEntry {
   }
 
  public:
-  explicit TFLogEntry(int severity, absl::string_view log_line)
-      : severity_(AsAbslLogSeverity(severity)), log_line_(log_line) {}
+  explicit TFLogEntry(int severity, absl::string_view message)
+      : severity_(AsAbslLogSeverity(severity)), message_(message) {}
+
+  explicit TFLogEntry(int severity, absl::string_view fname, int line,
+                      absl::string_view message)
+      : severity_(AsAbslLogSeverity(severity)),
+        fname_(fname),
+        line_(line),
+        message_(message) {}
 
   absl::LogSeverity log_severity() const { return severity_; }
-  std::string ToString() const { return std::string(log_line_); }
+  std::string FName() const { return fname_; }
+  int Line() const { return line_; }
+  std::string ToString() const { return message_; }
+  absl::string_view text_message() const { return message_; }
 
  private:
   const absl::LogSeverity severity_;
-  const absl::string_view log_line_;
+  const std::string fname_;
+  int line_ = -1;
+  const std::string message_;
 };
 
 class TFLogSink {
@@ -513,9 +526,22 @@ class TFLogSink {
   virtual void WaitTillSent() {}
 };
 
+// This is the default log sink. This log sink is used if there are no other
+// log sinks registered. To disable the default log sink, set the
+// "no_default_logger" Bazel config setting to true or define a
+// NO_DEFAULT_LOGGER preprocessor symbol. This log sink will always log to
+// stderr.
+class TFDefaultLogSink : public TFLogSink {
+ public:
+  void Send(const TFLogEntry& entry) override;
+};
+
 // Add or remove a `LogSink` as a consumer of logging data.  Thread-safe.
 void TFAddLogSink(TFLogSink* sink);
 void TFRemoveLogSink(TFLogSink* sink);
+
+// Get all the log sinks.  Thread-safe.
+std::vector<TFLogSink*> TFGetLogSinks();
 
 }  // namespace tensorflow
 

@@ -44,6 +44,7 @@ enum TensorType : byte {
   INT8 = 9,
   FLOAT64 = 10,
   COMPLEX128 = 11,
+  UINT64 = 12,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -354,7 +355,8 @@ enum BuiltinOperator : int32 {
   PLACEHOLDER_FOR_GREATER_OP_CODES = 127,
   CUMSUM = 128,
   CALL_ONCE = 129,
-  BROADCAST_TO = 130
+  BROADCAST_TO = 130,
+  RFFT2D = 131,
 }
 
 
@@ -463,7 +465,8 @@ union BuiltinOptions {
   BatchMatMulOptions,
   CumsumOptions,
   CallOnceOptions,
-  BroadcastToOptions
+  BroadcastToOptions,
+  Rfft2dOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -989,6 +992,10 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true, then weights-only op will use asymmetric quantization for
+  // inputs.
+  asymmetric_quantize_inputs: bool;
 }
 
 table CumsumOptions {
@@ -997,6 +1004,9 @@ table CumsumOptions {
 }
 
 table BroadcastToOptions {
+}
+
+table Rfft2dOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

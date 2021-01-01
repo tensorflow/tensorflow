@@ -25,9 +25,6 @@ cuda_py_tests(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_cuda_asan",  # b/173048748: times out
-    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -128,6 +125,7 @@ cuda_py_tests(
     srcs = ["spectral_ops_test.py"],
     python_version = "PY3",
     tags = [
+        "no_rocm",
         "nomac",
     ],
     deps = [

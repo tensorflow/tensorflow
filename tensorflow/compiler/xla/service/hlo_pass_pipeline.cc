@@ -67,7 +67,7 @@ void RecordPassEndMetadata(HloModule& module, const std::string& pass_name,
   Status status =
       AttemptRecordPassEndMetadata(module, pass_name, module_changed);
   if (!status.ok()) {
-    LOG(FATAL) << status.error_message();
+    LOG(FATAL) << status;
   }
 }
 
@@ -91,7 +91,30 @@ void RecordPassEndMetadata(HloModuleGroup& module_group,
   Status status =
       AttemptRecordPassEndMetadata(module_group, pass_name, module_changed);
   if (!status.ok()) {
-    LOG(FATAL) << status.error_message();
+    LOG(FATAL) << status;
+  }
+}
+
+void SetInstructionMetadata(HloModule& module) {
+  StatusOr<int64> pass_id = module.metadata()->current_pass_id();
+  if (!pass_id.ok()) {
+    LOG(FATAL) << pass_id.status();
+  }
+  for (xla::HloComputation* computation : module.computations()) {
+    for (xla::HloInstruction* instruction : computation->instructions()) {
+      if (instruction->metadata().creation_pass_id() == 0) {
+        instruction->set_creation_pass_id(*pass_id);
+      }
+      if (instruction->metadata().op_name().empty()) {
+        instruction->set_metadata_op_name(absl::StrCat("DUMMY_", *pass_id));
+      }
+    }
+  }
+}
+
+void SetInstructionMetadata(HloModuleGroup& module_group) {
+  for (HloModule* module : module_group.modules()) {
+    SetInstructionMetadata(*module);
   }
 }
 
@@ -127,6 +150,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   TF_RETURN_IF_ERROR(RunInvariantCheckers(hlo, kPipelineStart));
 
   RecordPassStartMetadata(*hlo, std::string(kPipelineStart), pipeline_name);
+  SetInstructionMetadata(*hlo);
   MaybeDumpHloAndSaveFilenames(*hlo,
                                /*after_pass_name=*/kPipelineStart,
                                /*before_pass_name=*/passes.empty()
@@ -147,6 +171,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
     }
     RecordPassStartMetadata(*hlo, pass_name, pipeline_name);
     TF_ASSIGN_OR_RETURN(bool pass_changed, RunHelper(pass, hlo));
+    SetInstructionMetadata(*hlo);
     MaybeDumpHloAndSaveFilenames(*hlo,
                                  /*after_pass_name=*/pass_name,
                                  /*before_pass_name=*/i + 1 >= passes.size()
@@ -216,7 +241,7 @@ void HloPassPipeline::MaybeDumpHloAndSaveFilenames(
            name(), before_pass_name, after_pass_name, module)) {
     Status status = module.metadata()->add_current_pass_dump_filename(filename);
     if (!status.ok()) {
-      LOG(FATAL) << status.error_message();
+      LOG(FATAL) << status;
     }
   }
 }

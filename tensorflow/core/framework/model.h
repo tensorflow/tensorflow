@@ -296,6 +296,10 @@ class Node {
     }
   }
 
+  // Returns whether work is currently being recorded, i.e. whether we are
+  // currently between a `record_start` and a `record_stop`.
+  bool is_recording() TF_LOCKS_EXCLUDED(mu_) { return work_start_ > 0; }
+
   // Removes an input.
   void remove_input(std::shared_ptr<Node> input) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
@@ -499,7 +503,7 @@ class Node {
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Collect tunable parameters for the node.
+  // Collect tunable parameters on the nodes which have recorded elements.
   void CollectTunableParametersHelper(
       absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
@@ -644,16 +648,17 @@ class Model {
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
   CollectTunableParameters(std::shared_ptr<Node> node);
 
-  // Collects "essential" parallelism parameters of transformations in the tree
-  // rooted in the given node. Which parameters are essential is determined by
-  // comparison the processing time spent in the corresponding transformation
-  // relative to other transformations. The collected parameters are returned
-  // as a mapping from a (unique) node name to a parallelism parameter.
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-  CollectEssentialParallelism(
-      std::shared_ptr<Node> node,
+  // Determines if we should stop the gradient descent optimization iterations
+  // based on number of increasable parameters, CPU budget, RAM budget and
+  // current resource usage.
+  bool ShouldStop(
+      int64 cpu_budget, int64 ram_budget,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>& parameters,
       const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
-          parameters);
+          parallelism_parameters,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+          buffer_size_parameters,
+      std::shared_ptr<Node> snapshot, bool* cpu_budget_reached);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the

@@ -29,7 +29,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -151,7 +151,7 @@ AnnotateCompileOpAndGetExecuteArgToWhileArgsMapping(
 
   llvm::SmallVector<std::pair<int64_t, llvm::SmallVector<Value, 4>>, 4> mapping;
   auto mirrored_variable_indices_attr =
-      replicate.getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
+      replicate->getAttrOfType<ArrayAttr>(kMirroredVariableIndicesAttr);
   if (!mirrored_variable_indices_attr) return mapping;
 
   // Finds the mapping from a replicate argument to an execute operand.

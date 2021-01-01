@@ -140,8 +140,9 @@ typedef enum SE_EventStatus {
 // https://cs.opensource.google/tensorflow/tensorflow/+/refs/tags/v2.3.0:tensorflow/stream_executor/device_memory.h;l=57
 typedef struct SP_DeviceMemoryBase {
   size_t struct_size;
-  void* ext;  // free-form data set by plugin
+  void* ext;  // Reserved for future use
   // Platform-dependent value representing allocated memory.
+  // Note that the pointer does not have to be to the virtual address itself.
   void* opaque;
   uint64_t size;     // Size in bytes of this allocation.
   uint64_t payload;  // Value for plugin's use

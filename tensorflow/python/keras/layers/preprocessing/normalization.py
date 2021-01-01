@@ -60,7 +60,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
     as the layer's weights. `adapt` should be called before `fit`, `evaluate`,
     or `predict`.
 
-  Arguments:
+  Args:
       axis: Integer or tuple of integers, the axis or axes that should be
         "kept". These axes are not be summed over when calculating the
         normalization statistics. By default the last axis, the `features` axis

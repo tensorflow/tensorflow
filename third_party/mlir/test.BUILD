@@ -20,8 +20,10 @@ cc_library(
 filegroup(
     name = "TestOpTdFiles",
     srcs = [
+        "lib/Dialect/Test/TestInterfaces.td",
         "lib/Dialect/Test/TestOps.td",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
         "@llvm-project//mlir:include/mlir/IR/RegionKindInterface.td",
         "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
@@ -29,7 +31,6 @@ filegroup(
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CopyOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -90,11 +91,20 @@ gentbl(
             "-gen-type-interface-defs",
             "lib/Dialect/Test/TestTypeInterfaces.cpp.inc",
         ),
+        (
+            "-gen-op-interface-decls",
+            "lib/Dialect/Test/TestOpInterfaces.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "lib/Dialect/Test/TestOpInterfaces.cpp.inc",
+        ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "lib/Dialect/Test/TestInterfaces.td",
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectBaseTdFiles",
     ],
     test = True,
 )
@@ -124,12 +134,14 @@ cc_library(
     name = "TestDialect",
     srcs = [
         "lib/Dialect/Test/TestDialect.cpp",
+        "lib/Dialect/Test/TestInterfaces.cpp",
         "lib/Dialect/Test/TestPatterns.cpp",
         "lib/Dialect/Test/TestTraits.cpp",
         "lib/Dialect/Test/TestTypes.cpp",
     ],
     hdrs = [
         "lib/Dialect/Test/TestDialect.h",
+        "lib/Dialect/Test/TestInterfaces.h",
         "lib/Dialect/Test/TestTypes.h",
     ],
     includes = [
@@ -190,6 +202,19 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "TestRewrite",
+    srcs = [
+        "lib/Rewrite/TestPDLByteCode.cpp",
+    ],
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )
 
@@ -261,6 +286,20 @@ cc_library(
 )
 
 cc_library(
+    name = "TestShapeDialect",
+    srcs = [
+        "lib/Dialect/Shape/TestShapeFunctions.cpp",
+    ],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
+    ],
+)
+
+cc_library(
     name = "TestSPIRV",
     srcs = glob([
         "lib/Dialect/SPIRV/*.cpp",
@@ -269,9 +308,10 @@ cc_library(
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SPIRVConversion",
         "@llvm-project//mlir:SPIRVDialect",
-        "@llvm-project//mlir:SPIRVLinking",
-        "@llvm-project//mlir:SPIRVLowering",
+        "@llvm-project//mlir:SPIRVModuleCombiner",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

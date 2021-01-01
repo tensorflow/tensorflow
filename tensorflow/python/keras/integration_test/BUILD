@@ -17,8 +17,8 @@ tf_py_test(
     srcs = ["forwardprop_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -27,8 +27,7 @@ tf_py_test(
     srcs = ["function_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -37,8 +36,7 @@ tf_py_test(
     srcs = ["gradients_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -47,8 +45,8 @@ cuda_py_test(
     srcs = ["saved_model_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -57,8 +55,7 @@ tf_py_test(
     srcs = ["legacy_rnn_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -66,8 +63,7 @@ tf_py_test(
     name = "module_test",
     srcs = ["module_test.py"],
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -76,8 +72,7 @@ tf_py_test(
     srcs = ["vectorized_map_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -87,8 +82,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = ["no_rocm"],
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
     ],
 )
 
@@ -100,8 +94,8 @@ tpu_py_test(
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -111,11 +105,13 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 3,
     tags = [
+        "no_tfrt",  # TODO(b/171765113)
         "noasan",  # TODO(b/156029134)
         "nomsan",  # TODO(b/156029134)
         "notsan",  # TODO(b/156029134)
     ],
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow:tensorflow_py_no_contrib",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

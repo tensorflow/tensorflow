@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_TRACEME_RECORDER_H_
 
 #include <atomic>
+#include <deque>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -74,7 +76,7 @@ class TraceMeRecorder {
   };
   struct ThreadEvents {
     ThreadInfo thread;
-    std::vector<Event> events;
+    std::deque<Event> events;
   };
   using Events = std::vector<ThreadEvents>;
 
@@ -103,6 +105,7 @@ class TraceMeRecorder {
 
  private:
   class ThreadLocalRecorder;
+  class ThreadLocalRecorderWrapper;
 
   // Returns singleton.
   static TraceMeRecorder* Get();
@@ -111,22 +114,29 @@ class TraceMeRecorder {
 
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
-  void RegisterThread(uint32 tid, ThreadLocalRecorder* thread);
+  void RegisterThread(uint32 tid, std::shared_ptr<ThreadLocalRecorder> thread);
   void UnregisterThread(uint32 tid);
 
   bool StartRecording(int level);
   Events StopRecording();
 
+  // Clears events from all active threads that were added due to Record
+  // racing with StopRecording.
+  void Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   // Gathers events from all active threads, and clears their buffers.
-  Events Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  TF_MUST_USE_RESULT Events Consume() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutex mutex_;
-  // Map of the static container instances (thread_local storage) for each
-  // thread. While active, a ThreadLocalRecorder stores trace events.
-  absl::flat_hash_map<uint32, ThreadLocalRecorder*> threads_
+  // A ThreadLocalRecorder stores trace events. Ownership is shared with
+  // ThreadLocalRecorderWrapper, which is allocated in thread_local storage.
+  // ThreadLocalRecorderWrapper creates the ThreadLocalRecorder and registers it
+  // with TraceMeRecorder on the first TraceMe executed on a thread while
+  // tracing is active. If the thread is destroyed during tracing, the
+  // ThreadLocalRecorder is marked inactive but remains alive until tracing
+  // stops so the events can be retrieved.
+  absl::flat_hash_map<uint32, std::shared_ptr<ThreadLocalRecorder>> threads_
       TF_GUARDED_BY(mutex_);
-  // Events from threads that died during recording.
-  TraceMeRecorder::Events orphaned_events_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace profiler

@@ -26,6 +26,8 @@ import warnings
 
 import six
 from six.moves import zip
+# Needed to enable TF2 by default.
+import tensorflow as tf  # pylint: disable=unused-import
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.convert import register_custom_opdefs
@@ -192,6 +194,16 @@ def _convert_tf1_model(flags):
                          "{0}".format(",".join(ops_set_options)))
       converter.target_spec.supported_ops.add(lite.OpsSet(option))
 
+  if flags.experimental_select_user_tf_ops:
+    if lite.OpsSet.SELECT_TF_OPS not in converter.target_spec.supported_ops:
+      raise ValueError("--experimental_select_user_tf_ops can only be set if "
+                       "--target_ops contains SELECT_TF_OPS.")
+    user_op_set = set()
+    for op_name in six.ensure_str(
+        flags.experimental_select_user_tf_ops).split(","):
+      user_op_set.add(op_name)
+    converter.target_spec.experimental_select_user_tf_ops = list(user_op_set)
+
   if flags.post_training_quantize:
     converter.optimizations = [lite.Optimize.DEFAULT]
     if converter.inference_type != dtypes.float32:
@@ -313,6 +325,10 @@ def _check_tf1_flags(flags, unparsed):
                      "--experimental_new_converter")
   if flags.custom_opdefs and not flags.allow_custom_ops:
     raise ValueError("--custom_opdefs must be used with --allow_custom_ops")
+  if (flags.experimental_select_user_tf_ops and
+      not flags.experimental_new_converter):
+    raise ValueError("--experimental_select_user_tf_ops must be used with "
+                     "--experimental_new_converter")
 
 
 def _check_tf2_flags(flags):
@@ -491,6 +507,11 @@ def _get_tf1_flags(parser):
             "indicating which converter to use. Options: {0}. One or more "
             "option may be specified. (default set([OpsSet.TFLITE_BUILTINS]))"
             "".format(",".join(lite.OpsSet.get_options()))))
+  parser.add_argument(
+      "--experimental_select_user_tf_ops",
+      type=str,
+      help=("Experimental flag, subject to change. Comma separated list of "
+            "user's defined TensorFlow operators required in the runtime."))
 
   # Logging flags.
   parser.add_argument(

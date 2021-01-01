@@ -98,20 +98,20 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
     if (use_device_step_events &&
         device_step_events.find(group_id) == device_step_events.end())
       return;
-    Timespan timespan = Timespan(event.TimestampPs(), event.DurationPs());
     if (IsExplicitHostStepMarker(event.Name())) {
-      result[group_id].AddMarker(StepMarker(
-          StepMarkerType::kExplicitHostStepMarker, event.Name(), timespan));
+      result[group_id].AddMarker(
+          StepMarker(StepMarkerType::kExplicitHostStepMarker, event.Name(),
+                     event.GetTimespan()));
     } else if (!step_name.empty()) {
       // Grouping adds a step_name stat to implicit host step markers.
-      result[group_id].AddMarker(StepMarker(
-          StepMarkerType::kImplicitHostStepMarker, event.Name(), timespan));
+      result[group_id].AddMarker(
+          StepMarker(StepMarkerType::kImplicitHostStepMarker, event.Name(),
+                     event.GetTimespan()));
     } else if (IsRealCpuCompute(event.Name())) {
-      EventTypeSpan event_type_span(
-          ClassifyCpuEvent(event.Name(), correlation_id,
-                           use_device_step_events),
-          timespan);
-      result[group_id].AddEvent(event_type_span);
+      result[group_id].AddEvent(
+          EventTypeSpan(ClassifyCpuEvent(event.Name(), correlation_id,
+                                         use_device_step_events),
+                        event.GetTimespan()));
     }
   });
   return result;
@@ -136,7 +136,7 @@ StepEvents ConvertDeviceStepInfoToStepMarkers(const XLineVisitor& line) {
     if (absl::optional<XStatVisitor> stat = event.GetStat(StatType::kGroupId)) {
       result[stat->IntValue()].AddMarker(
           StepMarker(StepMarkerType::kDeviceStepMarker, event.Name(),
-                     Timespan(event.TimestampPs(), event.DurationPs())));
+                     event.GetTimespan()));
     }
   });
   return result;
