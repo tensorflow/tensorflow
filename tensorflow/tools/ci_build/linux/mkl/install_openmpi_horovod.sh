@@ -71,7 +71,7 @@ if [[ ${BUILD_SSH} == "yes" ]]; then
 	apt-get clean && apt-get update && \
 	    apt-get install -y --no-install-recommends --fix-missing \
 	        libnuma-dev cmake
-        SSH_CONFIG_PATH=/usr/loca/etc/ssh_config
+        SSH_CONFIG_PATH=/usr/local/etc/ssh_config
 else
 	apt-get clean && apt-get update && \
 	    apt-get install -y --no-install-recommends --fix-missing \
