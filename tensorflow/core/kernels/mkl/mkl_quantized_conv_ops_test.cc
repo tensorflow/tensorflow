@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
+#include "tensorflow/core/kernels/mkl/mkl_kernel_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
@@ -42,30 +43,6 @@ namespace tensorflow {
 
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
-
-class ConvMklToTF : public OpsTestBase {
- public:
-  // TODO(bhavanis): Move the below ConvertMklToTF() to mkl_util.h
-  template <typename T>
-  void ConvertMklToTF(DataType dtype, const Tensor& input,
-                      const Tensor& input_metadata_tensor, Tensor& output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // MKL metadata tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklLayoutDependentOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(input.shape(), input.flat<T>());
-    AddInputFromArray<uint8>(input_metadata_tensor.shape(),
-                             input_metadata_tensor.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    output = *GetOutput(0);
-  }
-  void TestBody() {}
-};
 
 class QuantizedConv2DTest : public OpsTestBase {
  protected:
@@ -82,7 +59,6 @@ class QuantizedConv2DTest : public OpsTestBase {
             .Input(FakeInput(DT_FLOAT))   // Max filter
             .Attr("Tinput", DataTypeToEnum<quint8>::v())
             .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-            .Attr("T", DataTypeToEnum<quint8>::v())
             .Attr("out_type", DataTypeToEnum<qint32>::v())
             .Attr("strides", {1, stride, stride, 1})
             .Attr("padding", "SAME")
@@ -94,7 +70,8 @@ class QuantizedConv2DTest : public OpsTestBase {
           .Input(FakeInput(DT_UINT8))
           .Input(FakeInput(DT_UINT8))
           .Input(FakeInput(DT_UINT8))
-          .Input(FakeInput(DT_UINT8));
+          .Input(FakeInput(DT_UINT8))
+          .Attr("T", DataTypeToEnum<quint8>::v());
     }
     TF_ASSERT_OK(builder.Finalize(node_def()));
     TF_ASSERT_OK(InitOp());
@@ -178,12 +155,8 @@ class QuantizedConv2DTest : public OpsTestBase {
     const Tensor& output = *GetOutput(0);
     if (!NativeFormatEnabled()) {
       const Tensor& output_mkl_metadata = *GetOutput(3);
-
-      ConvMklToTF conv_comp;
-      Tensor output_quantized;
-      conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                       output_quantized);
-
+      Tensor output_quantized =
+          GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
       test::ExpectTensorEqual<qint32>(expected, output_quantized);
     } else {
       test::ExpectTensorEqual<qint32>(expected, output);
@@ -285,16 +258,10 @@ TEST_F(QuantizedConv2DTest, Small) {
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  Tensor output_quantized;
-  if (!NativeFormatEnabled()) {
-    const Tensor& output_mkl_metadata = *GetOutput(3);
-    ConvMklToTF conv_comp;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
-  }
-  Tensor output_float = QuantizedTensorToFloat<qint32>(
-      NativeFormatEnabled() ? output : output_quantized, output_min,
-      output_max);
+  const Tensor* output_mkl_metadata =
+      NativeFormatEnabled() ? nullptr : GetOutput(3);
+  Tensor output_float = QuantizedToFloatTFFormat<qint32>(
+      DT_QINT32, output, output_mkl_metadata, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
@@ -321,7 +288,6 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
           .Input(FakeInput(DT_FLOAT))  // Max filter
           .Attr("Tinput", DataTypeToEnum<qint8>::v())
           .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-          .Attr("T", DataTypeToEnum<quint8>::v())
           .Attr("padding", "VALID")
           .Attr("out_type", DataTypeToEnum<qint32>::v())
           .Attr("strides", {1, stride, stride, 1})
@@ -333,7 +299,8 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
         .Input(FakeInput(DT_UINT8))
         .Input(FakeInput(DT_UINT8))
         .Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(DT_UINT8));
+        .Input(FakeInput(DT_UINT8))
+        .Attr("T", DataTypeToEnum<quint8>::v());
   }
   TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
@@ -393,20 +360,12 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
   test::FillValues<float>(&expected_float, {1});
 
   const Tensor& output = *GetOutput(0);
-  Tensor output_quantized;
-  if (!NativeFormatEnabled()) {
-    const Tensor& output_mkl_metadata = *GetOutput(3);
-
-    ConvMklToTF conv_comp;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
-  }
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  Tensor output_float = QuantizedTensorToFloat<qint32>(
-      NativeFormatEnabled() ? output : output_quantized, output_min,
-      output_max);
-
+  const Tensor* output_mkl_metadata =
+      NativeFormatEnabled() ? nullptr : GetOutput(3);
+  Tensor output_float = QuantizedToFloatTFFormat<qint32>(
+      DT_QINT32, output, output_mkl_metadata, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 // Output -> qint32
@@ -461,11 +420,8 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
     const Tensor& output_mkl_metadata = *GetOutput(3);
-
-    ConvMklToTF conv_comp;
-    Tensor output_quantized;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
+    Tensor output_quantized =
+        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -487,7 +443,6 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
           .Input(FakeInput(DT_FLOAT))   // Max filter
           .Attr("Tinput", DataTypeToEnum<quint8>::v())
           .Attr("Tfilter", DataTypeToEnum<qint8>::v())
-          .Attr("T", DataTypeToEnum<quint8>::v())
           .Attr("out_type", DataTypeToEnum<qint32>::v())
           .Attr("strides", {1, stride, stride, 1})
           .Attr("padding", "SAME")
@@ -500,7 +455,8 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
         .Input(FakeInput(DT_UINT8))
         .Input(FakeInput(DT_UINT8))
         .Input(FakeInput(DT_UINT8))
-        .Input(FakeInput(DT_UINT8));
+        .Input(FakeInput(DT_UINT8))
+        .Attr("T", DataTypeToEnum<quint8>::v());
   }
   TF_ASSERT_OK(builder.Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
@@ -552,12 +508,8 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
     const Tensor& output_mkl_metadata = *GetOutput(3);
-
-    ConvMklToTF conv_comp;
-    Tensor output_quantized;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
-
+    Tensor output_quantized =
+        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -612,11 +564,8 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
     const Tensor& output_mkl_metadata = *GetOutput(3);
-
-    ConvMklToTF conv_comp;
-    Tensor output_quantized;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
+    Tensor output_quantized =
+        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -674,11 +623,8 @@ TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
     const Tensor& output_mkl_metadata = *GetOutput(3);
-
-    ConvMklToTF conv_comp;
-    Tensor output_quantized;
-    conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
-                                     output_quantized);
+    Tensor output_quantized =
+        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
