@@ -783,7 +783,6 @@ tf_cc_test(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_windows"],  # b/150411480
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

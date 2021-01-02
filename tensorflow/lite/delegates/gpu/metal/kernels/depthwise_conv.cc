@@ -484,6 +484,7 @@ kernel void ComputeFunction(
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
+  const int dst_ch_aligned = AlignByN(output_channels_count, 4);
   BufferDescriptor weights_desc;
   weights_desc.element_type = data_type;
   weights_desc.element_size = 4;
@@ -496,8 +497,8 @@ kernel void ComputeFunction(
   BufferDescriptor bias_desc;
   bias_desc.element_type = data_type;
   bias_desc.element_size = 4;
-  bias_desc.data = GetByteBufferConvertedResized(attr.bias.data, data_type,
-                                                 output_channels_count);
+  bias_desc.data =
+      GetByteBufferConvertedResized(attr.bias.data, data_type, dst_ch_aligned);
   bias_desc.size = bias_desc.data.size();
   desc.args.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
