@@ -21,11 +21,11 @@ limitations under the License.
 
 namespace xla {
 
-// Inserts Convert to integral operands of instructions that allows result
-// accumulation as wider integral types.
-class IntegralUpcaster : public OpExpanderPass {
+// Inserts Convert to operands of instructions that allows result accumulation
+// as wider integral types.
+class OperandUpcaster : public OpExpanderPass {
  public:
-  absl::string_view name() const override { return "integral_upcaster"; }
+  absl::string_view name() const override { return "operand_upcaster"; }
 
  protected:
   bool InstructionMatchesPattern(HloInstruction* instruction) override;

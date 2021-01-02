@@ -320,3 +320,26 @@ func @partitioned_input_output(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 func @cluster_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   return %arg0 : tensor<*xi32>
 }
+
+// -----
+
+// Tests output sharding of unpartitioned resource write takes on same sharding
+// as unpartitioned resource.
+
+// CHECK-LABEL: func @partitioned_input_output
+func @partitioned_input_output(%arg0: tensor<!tf.resource<tensor<f32>>>) {
+  %0 = "tf.TPUPartitionedInput"(%arg0) {_XlaSharding = "\01\02\03", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<!tf.resource<tensor<f32>>>
+  // CHECK:      tf_device.cluster_func
+  // CHECK-SAME: input_sharding_configuration = []
+  // CHECK-SAME: output_sharding_configuration = ["\01\02\03"]
+  %1 = "tf_device.cluster_func"() {func = @cluster_func, use_spmd_for_xla_partitioning = true} : () -> tensor<f32>
+  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+  return
+}
+
+// CHECK-LABEL: func @cluster_func
+// CHECK-SAME: -> (tensor<f32> {mhlo.sharding = "\01\02\03"})
+func @cluster_func() -> tensor<f32> {
+  %0 = "tf.Const"() {value = dense<0.0> : tensor<f32>} : () -> tensor<f32>
+  return %0 : tensor<f32>
+}

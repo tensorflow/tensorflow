@@ -1089,10 +1089,13 @@ def _should_skip_first_node(layer):
   # Networks that are constructed with an Input layer/shape start with a
   # pre-existing node linking their input to output. This node is excluded from
   # the network config.
-  return (isinstance(layer, Functional) and
-          # Filter out Sequential models without an input shape.
-          isinstance(layer._self_tracked_trackables[0],
-                     input_layer_module.InputLayer))
+  if layer._self_tracked_trackables:
+    return (isinstance(layer, Functional) and
+            # Filter out Sequential models without an input shape.
+            isinstance(layer._self_tracked_trackables[0],
+                       input_layer_module.InputLayer))
+  else:
+    return isinstance(layer, Functional)
 
 
 def connect_ancillary_layers(model, created_layers):

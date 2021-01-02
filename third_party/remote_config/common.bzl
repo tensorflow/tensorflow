@@ -274,7 +274,7 @@ def realpath(repository_ctx, path, bash_bin = None):
     if bash_bin == None:
         bash_bin = get_bash_bin(repository_ctx)
 
-    return execute(repository_ctx, [bash_bin, "-cl", "realpath \"%s\"" % path]).stdout.strip()
+    return execute(repository_ctx, [bash_bin, "-c", "realpath \"%s\"" % path]).stdout.strip()
 
 def err_out(result):
     """Returns stderr if set, else stdout.

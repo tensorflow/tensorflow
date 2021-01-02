@@ -483,7 +483,7 @@ ComputeTaskDescriptor ConvolutionTransposed(
   bias_desc.element_type = data_type;
   bias_desc.element_size = 4;
   bias_desc.data = GetByteBufferConvertedResized(params.bias.data, data_type,
-                                                 params.weights.shape.o);
+                                                 dst_ch_aligned);
   bias_desc.size = bias_desc.data.size();
   desc.args.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
@@ -549,8 +549,9 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   auto filters = GetByteBufferConverted(gpu_data, data_type);
+  const int dst_ch_aligned = AlignByN(params.weights.shape.o, 4);
   auto biases = GetByteBufferConvertedResized(params.bias.data, data_type,
-                                              params.weights.shape.o);
+                                              dst_ch_aligned);
 
   ComputeTaskDescriptor desc(definition);
   desc.tensors_as_args = true;
