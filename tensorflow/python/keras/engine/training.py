@@ -974,10 +974,9 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             chunks. Has no effect when `steps_per_epoch` is not `None`.
         class_weight: Optional dictionary mapping class indices (integers)
             to a weight (float) value, used for weighting the loss function
-            (during training only).
-            This can be useful to tell the model to
-            "pay more attention" to samples from
-            an under-represented class.
+            (during training only). This can be useful to tell the model to
+            "pay more attention" to samples from an under-represented class.
+            Requires one-hot y-representation, if used.
         sample_weight: Optional Numpy array of weights for
             the training samples, used for weighting the loss function
             (during training only). You can either pass a flat (1D)
@@ -1761,7 +1760,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         class_weight: Optional dictionary mapping class indices (integers) to a
           weight (float) to apply to the model's loss for the samples from this
           class during training. This can be useful to tell the model to "pay
-          more attention" to samples from an under-represented class.
+          more attention" to samples from an under-represented class. Requires
+          one-hot y-representation, if used.
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
@@ -1785,9 +1785,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     _disallow_inside_tf_function('train_on_batch')
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
-      iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
-                                                    y, sample_weight,
-                                                    class_weight)
+      iterator = data_adapter.single_batch_iterator(
+        strategy=self.distribute_strategy,
+        x=x, 
+        y=y,
+        sample_weight=sample_weight,
+        class_weight=class_weight,
+      )
       self.train_function = self.make_train_function()
       logs = self.train_function(iterator)
 

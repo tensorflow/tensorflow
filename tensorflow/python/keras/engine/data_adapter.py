@@ -1177,21 +1177,25 @@ class DataHandler(object):
     self._step_increment = self._steps_per_execution_value - 1
     self._insufficient_data = False
 
-    self._configure_dataset_and_inferred_steps(strategy, x, steps_per_epoch,
-                                               class_weight, distribute)
+    self._configure_dataset_and_inferred_steps(
+      strategy, x, steps_per_epoch, class_weight, distribute)
 
   def _verify_data_adapter_compatibility(self, adapter_cls):
     if adapter_cls == DatasetCreatorAdapter:
       raise NotImplementedError("`DatasetCreator` input is only supported in "
                                 "`ParameterServerStrategy` at this time.")
 
-  def _configure_dataset_and_inferred_steps(self, strategy, x, steps_per_epoch,
-                                            class_weight, distribute):
+  def _configure_dataset_and_inferred_steps(
+      self, strategy, x, steps_per_epoch, class_weight, distribute):
     """Configure the `_dataset` and `_inferred_steps` attributes."""
     del x
     dataset = self._adapter.get_dataset()
-    if class_weight:
+
+    if class_weight is not None:
+      if not isinstance(class_weight, dict):
+        raise ValueError("`class_weight` must be dict {0: weight, ...}")
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
+
     self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
 
     # `PreprocessingLayer.adapt` does not currently support distributed
@@ -1381,12 +1385,12 @@ def get_data_handler(*args, **kwargs):
 def _make_class_weight_map_fn(class_weight):
   """Applies class weighting to a `Dataset`.
 
-  The `Dataset` is assumed to be in format `(x, y)` or `(x, y, sw)`, where
-  `y` must be a single `Tensor`.
+  The `Dataset` is assumed to be in format `(x, y)` or `(x, y, sw)`,
+  where `y` must be a single, one-hot encoded `Tensor`.
 
   Args:
-    class_weight: A map where the keys are integer class ids and values are
-      the class weights, e.g. `{0: 0.2, 1: 0.6, 2: 0.3}`
+    class_weight (dict): A map where the keys are integer class ids
+      and values are the class weights, e.g. `{0: 0.2, 1: 0.6, 2: 0.3}`
 
   Returns:
     A function that can be used with `tf.data.Dataset.map` to apply class
@@ -1395,40 +1399,42 @@ def _make_class_weight_map_fn(class_weight):
   class_ids = list(sorted(class_weight.keys()))
   expected_class_ids = list(range(len(class_ids)))
   if class_ids != expected_class_ids:
-    error_msg = (
+    raise ValueError(
         "Expected `class_weight` to be a dict with keys from 0 to one less "
-        "than the number of classes, found {}").format(class_weight)
-    raise ValueError(error_msg)
+        "than the number of classes, found {}".format(class_weight))
 
   class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
       [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):
-    """Convert `class_weight` to `sample_weight`."""
+    """Convert `class_weight` to `sample_weight`. Requires one-hot y."""
     x, y, sw = unpack_x_y_sample_weight(data)
 
     if nest.is_nested(y):
       raise ValueError(
           "`class_weight` is only supported for Models with a single output.")
 
-    if y.shape.rank > 2:
-      raise ValueError("`class_weight` not supported for "
-                       "3+ dimensional targets.")
+    # Won't catch coincidence that dense label has len(classes) in final dim,
+    # i.e. where one-hot shape would have been (..., n_classes, n_classes)
+    if class_weight and y.shape[-1] != len(class_weight):
+      raise ValueError(
+        "Expected final dim in {} to be n_classes ({}), i.e. one-hot label, "
+        "when using `class_weight`s".format(y.shape, len(class_weight)))
 
-    y_classes = smart_cond.smart_cond(
-        y.shape.rank == 2 and backend.shape(y)[1] > 1,
-        lambda: backend.argmax(y, axis=1),
-        lambda: math_ops.cast(backend.reshape(y, (-1,)), dtypes.int64))
+    dense_y_classes = backend.argmax(y, axis=-1)
+    cw = array_ops.gather_v2(class_weight_tensor, dense_y_classes)
 
-    cw = array_ops.gather_v2(class_weight_tensor, y_classes)
     if sw is not None:
+      # `class_weight` and `sample_weight` are multiplicative
+      # First match dtype, then ndims (as sw can have any dimensionality)
       cw = math_ops.cast(cw, sw.dtype)
-      sw, cw = expand_1d((sw, cw))
-      # `class_weight` and `sample_weight` are multiplicative.
+      while sw.shape.rank < cw.shape.rank:
+        sw = array_ops.expand_dims_v2(sw, axis=-1)
+      while cw.shape.rank < sw.shape.rank:
+        cw = array_ops.expand_dims_v2(cw, axis=-1)
       sw = sw * cw
     else:
       sw = cw
-
     return x, y, sw
 
   return _class_weights_map_fn
@@ -1613,11 +1619,13 @@ def pack_x_y_sample_weight(x, y=None, sample_weight=None):
     return (x, y, sample_weight)
 
 
-def single_batch_iterator(strategy,
-                          x,
-                          y=None,
-                          sample_weight=None,
-                          class_weight=None):
+def single_batch_iterator(
+    strategy,
+    x,
+    y=None,
+    sample_weight=None,
+    class_weight=None
+):
   """Creates a single-batch dataset."""
   x, y, sample_weight = _process_tensorlike((x, y, sample_weight))
   if y is None:

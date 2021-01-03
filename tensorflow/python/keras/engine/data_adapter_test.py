@@ -973,9 +973,8 @@ class DataHandlerTest(keras_parameterized.TestCase):
                                      [([0],), ([1],), ([2],)]])
 
   def test_list_of_scalars(self):
-    data_handler = data_adapter.DataHandler([[0], [1], [2]],
-                                            epochs=2,
-                                            steps_per_epoch=3)
+    data_handler = data_adapter.DataHandler(
+      [[0], [1], [2]], epochs=2, steps_per_epoch=3)
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -983,10 +982,128 @@ class DataHandlerTest(keras_parameterized.TestCase):
         epoch_data.append(next(iterator))
       returned_data.append(epoch_data)
     returned_data = self.evaluate(returned_data)
-    self.assertEqual(returned_data, [[([0],), ([1],),
-                                      ([2],)], [([0],), ([1],), ([2],)]])
+    self.assertEqual(
+      returned_data,
+      [ [([0],), ([1],), ([2],)], [([0],), ([1],), ([2],)] ])
+
+  def assert_data_handler_operation(self, handler, num_steps=None):
+    """Extract the data from a data handler
+
+    Returns tuple of:
+        xs: list of batches per epoch within a list of epochs for x data
+        ys: list of batches per epoch within a list of epochs for y data
+        sw: list of batches per epoch within a list of epochs for 
+          calculated sample weights
+    """
+    self.assertFalse(handler._adapter.should_recreate_iterator())
+    if num_steps is not None:
+        self.assertEqual(handler.inferred_steps, num_steps)
+
+    returned_xs, returned_ys, returned_sw = [], [], []
+    for _, epoch_iterator in handler.enumerate_epochs():
+      xs_epoch_data, ys_epoch_data, sw_epoch_data = [], [], []
+      for _ in handler.steps():
+        x_batch, y_batch, sw_batch = next(epoch_iterator)
+        xs_epoch_data.append(x_batch.numpy())
+        ys_epoch_data.append(y_batch.numpy())
+        sw_epoch_data.append(sw_batch.numpy())
+      returned_xs.append(xs_epoch_data)
+      returned_ys.append(ys_epoch_data)
+      returned_sw.append(sw_epoch_data)
+    return returned_xs, returned_ys, returned_sw
+
+  @parameterized.named_parameters(
+    ('rank_2_cw_one_hot', 'cw'),
+    ('rank_2_sw_one_hot', 'sw'),
+    ('rank_2_cw_and_sw_one_hot', 'cw_and_sw'),
+  )
+  def test_class_weight_single_dim(self, config):
+    xs = np.ones((10, 10))
+    ys = np.array([0, 2] + [1] * 8)
+    batch_size = 5
+    n_classes = 3
+
+    ys = np.eye(n_classes)[ys]
+
+    sw = np.array([0.5, 1., 2.] + [1.] * 7)
+    cw = {0: 0.5, 1: 1., 2: 1.5}
+
+    data_handler = data_adapter.DataHandler(
+      x=xs, y=ys, epochs=1, batch_size=batch_size,
+      sample_weight=sw if 'sw' in config else None,
+      class_weight=cw if 'cw' in config else None)
+
+    returned_x, returned_y, returned_sw = self.assert_data_handler_operation(
+      data_handler, num_steps=2)
+
+    ys_to_take = np.argmax(ys, axis=-1)[:batch_size]
+    class_weighted = np.take(list(cw.values()), ys_to_take)
+    if config == 'cw':
+      sw_batch_0 = class_weighted
+    elif config == 'sw':
+      sw_batch_0 = sw[:batch_size]
+    elif config == 'cw_and_sw':
+      assert class_weighted.shape == sw[:batch_size].shape
+      sw_batch_0 = class_weighted * sw[:batch_size]
+    else:
+      assert False, "Error in test config: {}".format(config)
+
+    assert np.all(returned_x[0][0] == xs[:batch_size, :])
+    assert np.all(returned_y[0][0] == ys[:batch_size])
+    assert np.all(np.squeeze(returned_sw[0][0]) == sw_batch_0)
+
+  @parameterized.named_parameters(
+    ('one_hot_cw', 'cw'),
+    ('one_hot_sw', 'sw'),
+    ('one_hot_cw_and_sw', 'cw_and_sw')
+  )
+  def test_class_weight_multi_dim(self, config):
+    """Test class and sample weights work for multi-dim data"""
+    data_shape = (10, 8, 5)
+    xs = np.ones(data_shape)  # e.g. 10 8-by-5 greyscale images
+    ys = np.ones(data_shape, dtype=int)
+    ys[0, 0, 0] = 0
+    ys[0, 1, 0] = 2
+    batch_size = 5
+    n_classes = 3
+
+    # only one-hot ys valid with class weights
+    ys = np.eye(n_classes)[ys]
+
+    cw = {0: 0.5, 1: 1., 2: 1.5}
+    sw = np.ones(data_shape)
+    sw[0, 1, 0] = 0.75
+    sw[0, 0, 1] = 2.5
+
+    data_handler = data_adapter.DataHandler(
+      x=xs, y=ys, epochs=1, batch_size=batch_size,
+      class_weight=cw if 'cw' in config else None,
+      sample_weight=sw if 'sw' in config else None,
+    )
+
+    returned_x, returned_y, returned_sw = self.assert_data_handler_operation(
+      data_handler, num_steps=2)
+
+    dense_ys_to_take = np.argmax(ys, axis=-1)[:batch_size]
+    class_weighted = np.take(list(cw.values()), dense_ys_to_take)
+    if config == 'sw':
+      sw_batch_0 = sw[:batch_size]
+    elif config == 'cw':
+      sw_batch_0 = class_weighted
+    elif config == 'cw_and_sw':
+      assert class_weighted.shape == sw[:batch_size].shape, (
+          "{} != {}".format(class_weighted.shape, sw[:batch_size].shape)
+      )
+      sw_batch_0 = class_weighted * sw[:batch_size]
+    else:
+      assert False, "Error in test config: {}".format(config)
+
+    assert np.all(returned_x[0][0] == xs[:batch_size, :])
+    assert np.all(returned_y[0][0] == ys[:batch_size])
+    assert np.all(np.squeeze(returned_sw[0][0]) == sw_batch_0)
 
   def test_class_weight_user_errors(self):
+    # Class weight missing a key
     with self.assertRaisesRegex(ValueError, 'to be a dict with keys'):
       data_adapter.DataHandler(
           x=[[0], [1], [2]],
@@ -999,16 +1116,41 @@ class DataHandlerTest(keras_parameterized.TestCase):
               3: 1.5  # Skips class `2`.
           })
 
+    # Model has multiple outputs
     with self.assertRaisesRegex(ValueError, 'with a single output'):
       data_adapter.DataHandler(
           x=np.ones((10, 1)),
-          y=[np.ones((10, 1)), np.zeros((10, 1))],
+          y=[np.ones((10, 1)), np.zeros((10, 2))],
           batch_size=2,
-          class_weight={
-              0: 0.5,
-              1: 1.,
-              2: 1.5
-          })
+          class_weight={0: 0.5, 1: 1., 2: 1.5}
+      )
+
+    # Attempt to use unsqueezed dense label (not one-hot)
+    with self.assertRaisesRegex(ValueError, 'i.e. one-hot label'):
+      data_adapter.DataHandler(
+        x=np.ones((10, 5)),
+        y=np.ones((10, 5, 1)),
+        batch_size=2,
+        class_weight={0: 0.5, 1: 1., 2: 1.5}
+      )
+
+    # Attempt to use squeezed dense label (not one-hot)
+    with self.assertRaisesRegex(ValueError, 'i.e. one-hot label'):
+      data_adapter.DataHandler(
+        x=np.ones((10, 5, 5)),
+        y=np.ones((10, 5, 5)),
+        batch_size=2,
+        class_weight={0: 0.5, 1: 1., 2: 1.5},
+      )
+
+    # array attempted for class weights
+    with self.assertRaisesRegex(ValueError, 'must be dict'):
+      data_adapter.DataHandler(
+        x=np.ones((10, 1)),
+        y=np.ones((10,)),
+        batch_size=2,
+        class_weight=np.array([0.5, 1.])
+      )
 
   @parameterized.named_parameters(('numpy', True), ('dataset', False))
   def test_single_x_input_no_tuple_wrapping(self, use_numpy):

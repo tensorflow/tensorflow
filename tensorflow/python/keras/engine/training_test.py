@@ -1927,6 +1927,93 @@ class LossWeightingTest(keras_parameterized.TestCase):
         self.assertLess(score[0], ref_score[0])
 
   @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(
+      ('none', 'none'),
+      ('single', 'single'),
+      ('temporal', 'temporal'))
+  def test_multi_dim_class_weights(self, sw_mode):
+    """Test class weights on, e.g., greyscale image data"""
+    train_samples = 10
+    test_samples = 4
+    batch_size = 2
+    x_dim = 3
+    y_dim = 4
+    input_dim = (x_dim, y_dim, 1)
+    num_classes = 3
+
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(3))
+
+    np.random.seed(1337)
+
+    model.compile(
+      loss='categorical_crossentropy',
+      optimizer=optimizer_v2.adam.Adam(0.001),
+      run_eagerly=testing_utils.should_run_eagerly()
+    )
+
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+      train_samples=train_samples,
+      test_samples=test_samples,
+      input_shape=input_dim,
+      num_classes=num_classes
+    )
+
+    y_train = np.expand_dims(y_train, axis=1)
+    y_train = np.repeat(y_train, x_dim, axis=1)
+    y_train = np.expand_dims(y_train, axis=2)
+    y_train = np.repeat(y_train, y_dim, axis=2)
+    y_train = np.expand_dims(y_train, axis=3)
+    y_train = np.repeat(y_train, num_classes, axis=-1)
+
+    y_test = y_train.copy()[:test_samples]
+
+    class_weights = {0: 1., 1: 2., 2: 1.}
+
+    if sw_mode == 'none':
+      sw = None
+    elif sw_mode == 'single':
+      sw = np.array([2.] + [1.] * 9)
+    elif sw_mode == 'temporal':
+      sw = np.concatenate(
+        (np.ones((10, 1)) + 1., np.ones((10, num_classes-1))),
+        axis=-1
+      )
+    else:
+      assert False, 'Error in sw_mode: {}'.format(sw_mode)
+
+    model.fit(
+      x_train,
+      y_train,
+      batch_size=batch_size,
+      epochs=1,
+      verbose=0,
+      class_weight=class_weights,
+      sample_weight=sw)
+
+    model.fit(
+      x_train,
+      y_train,
+      batch_size=batch_size,
+      epochs=1,
+      verbose=0,
+      sample_weight=sw,
+      class_weight=class_weights,
+      validation_split=0.2)
+
+    model.train_on_batch(
+      x_train[:batch_size],
+      y_train[:batch_size],
+      class_weight=class_weights,
+      sample_weight=sw[:batch_size] if sw is not None else None)
+    model.test_on_batch(
+      x_test[:batch_size],
+      y_test[:batch_size],
+      sample_weight=sw[:batch_size] if sw is not None else None)
+
+    ref_score = model.evaluate(x_train, y_train, verbose=0)
+
+  @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   def test_fit_with_incorrect_weights(self):
     input_a = layers_module.Input(shape=(3,), name='input_a')
