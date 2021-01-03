@@ -2135,12 +2135,6 @@ class _UnreadVariable(BaseResourceVariable):
     return self._parent_op
 
 
-@ops.RegisterGradient("ReadVariableOp")
-def _ReadGrad(_, grad):
-  """Gradient for read op."""
-  return grad
-
-
 def variable_shape(handle, out_type=dtypes.int32):
   if getattr(handle, "_handle_data",
              None) is None or not handle._handle_data.is_set:  # pylint: disable=protected-access
