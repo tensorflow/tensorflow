@@ -53,13 +53,11 @@ class ResourceVariableGradTest : public ::testing::Test {
 
 TEST_F(ResourceVariableGradTest, ReadVariableOpGrad) {
   TensorShape shape({5, 2});
-    auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-    auto var = VarHandleOp(scope_, DT_FLOAT, {});
-    auto init = AssignVariableOp(scope_, var, x);
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto var = VarHandleOp(scope_, DT_FLOAT, {});
+  auto init = AssignVariableOp(scope_, var, x);
 
-  auto y = ReadVariableOp(
-      scope_, var,
-    DT_FLOAT);
+  auto y = ReadVariableOp(scope_, var, DT_FLOAT);
 
   RunTest(x, shape, y, shape);
 }
