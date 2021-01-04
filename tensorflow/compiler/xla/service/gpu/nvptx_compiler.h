@@ -51,9 +51,9 @@ class NVPTXCompiler : public GpuCompiler {
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
-      const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
-      bool relocatable) override;
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) override;
 
  private:
   StatusOr<std::vector<uint8>> LinkModules(

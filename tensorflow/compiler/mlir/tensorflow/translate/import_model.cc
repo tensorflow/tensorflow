@@ -440,6 +440,9 @@ class ImporterBase {
  protected:
   // Maps feed as TensorId to new Placeholder node name.
   absl::flat_hash_map<TensorId, absl::string_view> remapped_feeds_;
+
+  // All the TF ops encountered that aren't modelled in dialect.
+  llvm::DenseSet<mlir::Identifier> unmodelled_op_types_;
 };
 
 // Returns true if the node with given name has a non primary output that is
@@ -1781,6 +1784,19 @@ mlir::Operation* ImporterBase::CreateOperation(
       set_segment_sizes_attr(output_ranges, node.op_def().output_arg(),
                              mlir::OpTrait::AttrSizedResultSegments<
                                  void>::getResultSegmentSizeAttr());
+    }
+  }
+
+  mlir::OperationName name = inner_op->getName();
+  if (!name.getAbstractOperation() &&
+      // Skip unmodelled ops that are handled differently.
+      (node_type_name != "_Arg" && node_type_name != "_Retval")) {
+    if (unmodelled_op_types_.insert(name.getIdentifier()).second) {
+      LOG(WARNING) << "Unmodelled op type `" << node.type_string() << "`"
+                   << (node.op_def().is_stateful()
+                           ? " is stateful but effects not modelled"
+                           : " is not stateful but will be treated as such "
+                             "conservatively");
     }
   }
 

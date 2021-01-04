@@ -311,6 +311,7 @@ cc_library(
         "@llvm-project//mlir:SPIRVConversion",
         "@llvm-project//mlir:SPIRVDialect",
         "@llvm-project//mlir:SPIRVModuleCombiner",
+        "@llvm-project//mlir:Transforms",
     ],
 )
 

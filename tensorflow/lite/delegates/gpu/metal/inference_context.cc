@@ -648,17 +648,18 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     // associativity and ADD can be linked. In current approach "linking"
     // tensor can be only latest written tensor(during linear order of
     // execution) among input tensors.
-    if (IsGenericAdd(node, inputs, outputs)) {
-      int latest_written_tensor_index = 0;
-      int last_usage = tensor_usages[inputs[0]->id];
-      for (int j = 1; j < inputs.size(); ++j) {
-        if (tensor_usages[inputs[j]->id] > last_usage) {
-          last_usage = tensor_usages[inputs[j]->id];
-          latest_written_tensor_index = j;
-        }
-      }
-      std::swap(inputs[0], inputs[latest_written_tensor_index]);
-    }
+    // TODO(b/176397043) sorokin, check failure on segmentation model
+    // if (IsGenericAdd(node, inputs, outputs)) {
+    //   int latest_written_tensor_index = 0;
+    //   int last_usage = tensor_usages[inputs[0]->id];
+    //   for (int j = 1; j < inputs.size(); ++j) {
+    //     if (tensor_usages[inputs[j]->id] > last_usage) {
+    //       last_usage = tensor_usages[inputs[j]->id];
+    //       latest_written_tensor_index = j;
+    //     }
+    //   }
+    //   std::swap(inputs[0], inputs[latest_written_tensor_index]);
+    // }
     DataType data_type = DeduceDataTypeFromPrecision(precision);
     TensorDescriptor tensor_descriptor =
         TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC};

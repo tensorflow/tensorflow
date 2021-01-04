@@ -71,14 +71,14 @@ objc_library(
     alwayslink = 1,
 )
 
+# NOTE: This test target name must be lower-cased in order to match it with the
+# directory name. (See: b/174508866)
 ios_unit_test(
-    name = "Tests",
+    name = "tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     runner = tflite_ios_lab_runner("IOS_LATEST"),
-    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
-        "nozapfhahn",  # TODO(b/145984659): Enable after solving tool failure.
-    ],
+    tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS,
     deps = [
         ":TestsLibrary",
     ],

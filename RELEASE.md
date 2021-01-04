@@ -68,6 +68,7 @@
         * Both symmetric and asymmetric quantized input tensor are supported.
     *  Add `RFFT2D` as builtin op. (`RFFT2D` also supports `RFFTD`.) Currently
        only supports float32 input.
+    *  Add 5D support to `SLICE` op.
     *  TFLite Supports SingatureDef:
         * TFLiteConverter exports models with SignatureDef
         * Interpreter supports getting a list of signatures and getting callable
