@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import abc
 import functools
 import sys
@@ -1209,6 +1210,19 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     with ops.name_scope("list_files"):
       if shuffle is None:
         shuffle = True
+      if isinstance(file_pattern, str):
+        if file_pattern.startswith("~"):
+          file_pattern = file_pattern.replace("~", os.path.expanduser("~"))
+      if isinstance(file_pattern, list):
+        tmp_pattern = []
+        for pattern in iter(file_pattern):
+          if pattern.startswith("~"):
+            pattern = pattern.replace("~", os.path.expanduser("~"))
+            tmp_pattern.append(pattern)
+          else:
+            tmp_pattern.append(pattern)
+        file_pattern = tmp_pattern
+        del tmp_pattern
       file_pattern = ops.convert_to_tensor(
           file_pattern, dtype=dtypes.string, name="file_pattern")
       matching_files = gen_io_ops.matching_files(file_pattern)
