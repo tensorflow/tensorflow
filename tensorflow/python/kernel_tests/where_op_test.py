@@ -267,6 +267,11 @@ class WhereOpTest(test.TestCase):
       tf_val = array_ops.where(c_vec, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
 
+  def testV2BoolFromBuffer(self):
+    x = np.frombuffer(b'\x00\x01\x02\x01', dtype=np.bool)
+    truth = np.where(np.abs(x) > 0)  # Tuples of indices by axis.
+    truth = np.vstack(truth).T  # Convert to [num_true, indices].
+    self._testWhere(x, truth, None, array_ops.where_v2)
 
 class WhereBenchmark(test.Benchmark):
 
