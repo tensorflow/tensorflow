@@ -164,6 +164,7 @@ cc_library(
         ":manip_grad",
         ":math_grad",
         ":nn_grad",
+        ":resource_variable_grad",
     ],
 )
 
@@ -518,6 +519,36 @@ tf_cc_test(
         ":cc_ops",
         ":gradient_checker",
         ":manip_grad",
+        ":testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "resource_variable_grad",
+    srcs = ["gradients/resource_variable_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_op_registry",
+        ":gradients",
+        "//tensorflow/core:lib_proto_parsing",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_resource_variable_grad_test",
+    srcs = ["gradients/resource_variable_grad_test.cc"],
+    deps = [
+        ":resource_variable_grad",
+        ":cc_ops",
+        ":cc_ops_internal",
+        ":grad_op_registry",
+        ":grad_testutil",
+        ":gradient_checker",
         ":testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
