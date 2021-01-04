@@ -245,6 +245,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParsePool(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_LEAKY_RELU: {
+      return ParseLeakyRelu(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_LESS: {
       return ParseLess(op, error_reporter, allocator, builtin_data);
     }
@@ -670,16 +674,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* schema_params = op->builtin_options_as_OneHotOptions()) {
         params->axis = schema_params->axis();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_LEAKY_RELU: {
-      auto params = safe_allocator.Allocate<TfLiteLeakyReluParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* leaky_relu_params =
-              op->builtin_options_as_LeakyReluOptions()) {
-        params->alpha = leaky_relu_params->alpha();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -1243,6 +1237,22 @@ TfLiteStatus ParseL2Normalization(const Operator* op,
     // better undertand the ramifications of changing the legacy behavior.
   }
 
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseLeakyRelu(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteLeakyReluParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* leaky_relu_params =
+          op->builtin_options_as_LeakyReluOptions()) {
+    params->alpha = leaky_relu_params->alpha();
+  }
   *builtin_data = params.release();
   return kTfLiteOk;
 }

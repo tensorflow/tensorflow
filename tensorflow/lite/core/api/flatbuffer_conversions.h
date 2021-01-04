@@ -148,6 +148,10 @@ TfLiteStatus ParseL2Normalization(const Operator* op,
                                   BuiltinDataAllocator* allocator,
                                   void** builtin_data);
 
+TfLiteStatus ParseLeakyRelu(const Operator* op, ErrorReporter* error_reporter,
+                            BuiltinDataAllocator* allocator,
+                            void** builtin_data);
+
 TfLiteStatus ParseLess(const Operator* op, ErrorReporter* error_reporter,
                        BuiltinDataAllocator* allocator, void** builtin_data);
 
