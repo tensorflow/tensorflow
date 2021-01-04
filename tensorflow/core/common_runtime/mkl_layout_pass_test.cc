@@ -5144,8 +5144,8 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
 
   bool first = true;
   while (iters > 0) {
-    Graph* graph = new Graph(OpRegistry::Global());
-    InitGraph(s, graph);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    InitGraph(s, graph.get());
     int N = graph->num_node_ids();
     if (first) {
       testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
@@ -5153,7 +5153,7 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
     }
     {
       testing::StartTiming();
-      std::unique_ptr<Graph> ug(graph);
+      std::unique_ptr<Graph> ug(graph.get());
       RunMklLayoutRewritePass(&ug);
       testing::StopTiming();
     }
