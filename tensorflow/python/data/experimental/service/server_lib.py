@@ -29,10 +29,10 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.service.DispatcherConfig")
 class DispatcherConfig(
-    collections.namedtuple("DispatcherConfig", [
-        "port", "protocol", "work_dir", "fault_tolerant_mode",
-        "job_gc_check_interval_ms", "job_gc_timeout_ms"
-    ])):
+        collections.namedtuple("DispatcherConfig", [
+            "port", "protocol", "work_dir", "fault_tolerant_mode",
+            "job_gc_check_interval_ms", "job_gc_timeout_ms"
+        ])):
   """Configuration class for tf.data service dispatchers.
 
   Fields:
@@ -88,7 +88,8 @@ class DispatchServer(object):
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
-  >>> worker = tf.data.experimental.service.WorkerServer(WorkerConfig(
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
   ...     dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
@@ -215,10 +216,10 @@ class DispatchServer(object):
 
 @tf_export("data.experimental.service.WorkerConfig")
 class WorkerConfig(
-    collections.namedtuple("WorkerConfig", [
-        "dispatcher_address", "worker_address", "port", "protocol",
-        "heartbeat_interval_ms", "dispatcher_timeout_ms"
-    ])):
+        collections.namedtuple("WorkerConfig", [
+            "dispatcher_address", "worker_address", "port", "protocol",
+            "heartbeat_interval_ms", "dispatcher_timeout_ms"
+        ])):
   """Configuration class for tf.data service dispatchers.
 
   Fields:
