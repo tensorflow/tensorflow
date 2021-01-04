@@ -529,7 +529,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
               processing_mode="invalid", service="grpc://localhost:5000"))
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testZipMultipleProcessingModes(self):
+  def testZipDatasetsWithDifferentProcessingModes(self):
     cluster = self.create_cluster(num_workers=2)
     num_elements = 100
     ds1 = dataset_ops.Dataset.range(num_elements)
