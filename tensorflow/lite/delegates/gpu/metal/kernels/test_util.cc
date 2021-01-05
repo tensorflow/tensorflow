@@ -235,6 +235,32 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   metal_node.description = "test_op";
   metal_node.id = 0;
 
+  std::string buffer_declarations;
+  int index = 0;
+  for (int i = 0; i < metal_node.task->dst_tensors_names.size(); ++i) {
+    buffer_declarations += metal_node.task->dst_tensors_names[i] + "[[buffer(" +
+                           std::to_string(index) + ")]],\n";
+    index++;
+  }
+  for (int i = 0; i < metal_node.task->src_tensors_names.size(); ++i) {
+    buffer_declarations += metal_node.task->src_tensors_names[i] + "[[buffer(" +
+                           std::to_string(index) + ")]],\n";
+    index++;
+  }
+  for (const auto& buffer : metal_node.task->immutable_buffers) {
+    buffer_declarations +=
+        buffer.declaration + "[[buffer(" + std::to_string(index) + ")]],\n";
+    index++;
+  }
+  for (const auto& buffer : metal_node.task->uniform_buffers) {
+    buffer_declarations +=
+        buffer.declaration + "[[buffer(" + std::to_string(index) + ")]],\n";
+    index++;
+  }
+
+  metal_node.task->shader_source = absl::Substitute(
+      metal_node.task->shader_source, "$0", buffer_declarations + "$1", "");
+
   ComputeTask gpu_task;
   RETURN_IF_ERROR(
       gpu_task.CompileWithDevice(device_, metal_node, op_def.precision));

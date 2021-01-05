@@ -35,6 +35,9 @@ ComputeTaskDescriptor QuantizeAndDequantize(
       return round(value) * FLT4(params.z) + FLT4(params.x);
     }
   )";
+
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
   desc.uniform_buffers = {
       {"constant float3&",
        [attr](const std::vector<BHWC>& src_shapes,

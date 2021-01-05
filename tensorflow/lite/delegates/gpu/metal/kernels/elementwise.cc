@@ -107,7 +107,9 @@ ComputeTaskDescriptor ElementwiseWithTwoInputs(const OperationDef& definition,
 
   desc.shader_source = code;
 
-  desc.AddSrcTensor("second_tensor", definition.src_tensors[1]);
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddSrcTensor("", definition.src_tensors[1]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
       {"constant int2&",
@@ -132,6 +134,9 @@ ComputeTaskDescriptor ElementwiseWithOneInput(const OperationDef& definition,
   desc.shader_source +=
       "    return " + OneInputFunctor(op_type, "value") + ";\n";
   desc.shader_source += "  }";
+
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
   return desc;
 }
 
@@ -177,6 +182,8 @@ ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
       "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
   desc.shader_source += "  }";
 
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   if (scalar) {
     std::vector<uint8_t> scalar_bits =

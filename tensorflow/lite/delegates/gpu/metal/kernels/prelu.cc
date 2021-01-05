@@ -55,6 +55,8 @@ ComputeTaskDescriptor PReLU(const OperationDef& definition,
         return FLT4(max(FLT4(0.0f), value) + alphas[gid.z] * min(FLT4(0.0f), value));
     })";
   }
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const",
@@ -95,6 +97,8 @@ ComputeTaskDescriptor PReLUFull(const OperationDef& definition,
         return FLT4(max(FLT4(0.0f), value) + alphas[linear_index] * min(FLT4(0.0f), value));
     })";
   }
+  desc.AddSrcTensor("", definition.src_tensors[0]);
+  desc.AddDstTensor("", definition.dst_tensors[0]);
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   desc.immutable_buffers = {
       {"device FLT4* const",
