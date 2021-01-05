@@ -139,6 +139,33 @@ class SparseOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     epsilon = 1e-4
     self.assertLess(gradient_checker.max_error(*grads), epsilon)
 
+  @parameterized.named_parameters([
+      ("MulScalar", True, 1.0),
+      ("MulVector", True, [1.0, 2.0]),
+      ("MulMatrix", True, np.arange(8, dtype=np.float32).reshape(4, 2) + 1),
+      ("DivScalar", False, 1.0),
+      ("DivVector", False, [1.0, 2.0]),
+      ("DivMatrix", False, np.arange(8, dtype=np.float32).reshape(4, 2) + 1),
+  ])
+  def testSparseCwiseMulOrDivGradient(self, is_mul, dense_values):
+
+    def f(sparse_values, dense_values):
+      st = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [1, 1]],
+          values=sparse_values,
+          dense_shape=[4, 2])
+      if is_mul:
+        st = st * dense_values
+      else:
+        st = st / dense_values
+      return sparse_ops.sparse_reduce_sum_v2(st)
+
+    grads = gradient_checker.compute_gradient(
+        f, [constant_op.constant([1.0, 2.0]),
+            constant_op.constant(dense_values)])
+    epsilon = 1e-4
+    self.assertLess(gradient_checker.max_error(*grads), epsilon)
+
   def testSparseTensorToDenseString(self):
     sp = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 2]], values=['a', 'b'], dense_shape=[2, 3])
