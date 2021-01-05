@@ -598,6 +598,14 @@ cc_library(
         "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
