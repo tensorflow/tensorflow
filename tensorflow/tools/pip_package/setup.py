@@ -127,6 +127,8 @@ if sys.byteorder == 'little':
 TEST_PACKAGES = [
     'portpicker ~= 1.3.1',
     'scipy ~= 1.5.2',
+    'tblib ~= 1.7.0',
+    'dill ~= 0.3.2',
 ]
 
 
