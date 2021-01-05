@@ -133,7 +133,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
   TFL_RuntimePredOpTrait<"operands do not have the same shape or "
       "broadcastable shapes within the rank " # max_bcast_rank,
     CPred<"TFL::VerifyOperandsHaveSameShapesOrBroadcastableShape("
-            "$_op, llvm::ArrayRef<unsigned>({" # StrJoinInt<indices>.result #
+            "$_op, llvm::ArrayRef<unsigned>({" # !interleave(indices, ", ") #
             "}), " # max_bcast_rank # ")">>;
 
 // These additional types/type constraints here are used to decouple the ops

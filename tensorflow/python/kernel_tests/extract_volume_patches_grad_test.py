@@ -58,6 +58,9 @@ class ExtractVolumePatchesGradTest(test.TestCase, parameterized.TestCase):
       },
   ])
   def testGradient(self, in_shape, ksizes, strides):
+    if test_util.is_gpu_available():
+      self.skipTest('b/171837334: skip gpu test.')
+
     # Set graph seed for determinism.
     random_seed = 42
     random_seed_lib.set_random_seed(random_seed)
