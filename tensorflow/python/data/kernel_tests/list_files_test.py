@@ -22,7 +22,6 @@ import os
 from os import path
 import shutil
 import tempfile
-import datetime
 
 from absl.testing import parameterized
 
@@ -39,25 +38,14 @@ class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
   def setUp(self):
     super(ListFilesTest, self).setUp()
     self.tmp_dir = tempfile.mkdtemp()
-    self.tmp_home_dir = path.join(
-        path.expanduser("~"),
-        "tf_test_" + datetime.datetime.now().strftime("%y%m%d%H%M%S")
-    )
-    if not os.path.exists(self.tmp_home_dir):
-      os.mkdir(self.tmp_home_dir)
 
   def tearDown(self):
     shutil.rmtree(self.tmp_dir, ignore_errors=True)
-    shutil.rmtree(self.tmp_home_dir, ignore_errors=True)
     super(ListFilesTest, self).tearDown()
 
   def _touchTempFiles(self, filenames):
     for filename in filenames:
       open(path.join(self.tmp_dir, filename), 'a').close()
-
-  def _touchTempHomeFiles(self, filenames):
-    for filename in filenames:
-      open(path.join(self.tmp_home_dir, filename), 'a').close()
 
   @combinations.generate(test_base.default_test_combinations())
   def testEmptyDirectory(self):
@@ -248,18 +236,31 @@ class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleHomeDirPatternsAsTensor(self):
+
+    original_home = os.environ['HOME']
+    original_userprofile = os.environ['USERPROFILE']
+    os.environ['HOME'] = self.tmp_dir
+    os.environ['USERPROFILE'] = self.tmp_dir
+
+    # the environment variables are set within the function so as to
+    # not interfere with other tests which might be using the original
+    # `HOME` environment variable.
+    # Additionally, the `USERPROFILE` must be set to address:
+    # https://bugs.python.org/issue36264 on windows
+
     filenames = ['a.txt', 'b.py', 'c.py', 'd.pyc']
-    self._touchTempHomeFiles(filenames)
-    dir_name = self.tmp_home_dir.split("/")[-1]
-    dataset = dataset_ops.Dataset.list_files(
-        ['~/{}/*.pyc'.format(dir_name), '~/{}/*.py'.format(dir_name)])
+    self._touchTempFiles(filenames)
+    dataset = dataset_ops.Dataset.list_files(['~/*.pyc', '~/*.py'])
     self.assertDatasetProduces(
         dataset,
         expected_output=[
-            compat.as_bytes(path.join(self.tmp_home_dir, filename))
+            compat.as_bytes(path.join(self.tmp_dir, filename))
             for filename in filenames[1:]
         ],
         assert_items_equal=True)
+
+    os.environ['HOME'] = original_home
+    os.environ['USERPROFILE'] = original_userprofile
 
 
 if __name__ == '__main__':
