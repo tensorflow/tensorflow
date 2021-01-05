@@ -313,6 +313,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParsePadV2(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_POW: {
+      return ParsePow(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_PRELU: {
       return ParsePrelu(op, error_reporter, allocator, builtin_data);
     }
@@ -422,19 +426,12 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseUnpack(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_ZEROS_LIKE: {
+      return ParseZerosLike(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_CAST: {
-      auto params = safe_allocator.Allocate<TfLiteCastParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->in_data_type(),
-                                                &params->in_data_type,
-                                                error_reporter));
-        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
-                                                &params->out_data_type,
-                                                error_reporter));
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
+      return ParseCast(op, error_reporter, allocator, builtin_data);
     }
     case BuiltinOperator_LSH_PROJECTION: {
       auto params = safe_allocator.Allocate<TfLiteLSHProjectionParams>();
@@ -805,8 +802,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TILE:
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_TRANSPOSE:
-    case BuiltinOperator_POW:
-    case BuiltinOperator_ZEROS_LIKE:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
@@ -960,6 +955,27 @@ TfLiteStatus ParseArgMin(const Operator* op, ErrorReporter* error_reporter,
     // better undertand the ramifications of changing the legacy behavior.
   }
 
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseCast(const Operator* op, ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  auto params = safe_allocator.Allocate<TfLiteCastParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+  if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
+    TF_LITE_ENSURE_STATUS(ConvertTensorType(
+        schema_params->in_data_type(), &params->in_data_type, error_reporter));
+    TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
+                                            &params->out_data_type,
+                                            error_reporter));
+  }
   *builtin_data = params.release();
   return kTfLiteOk;
 }
@@ -1422,6 +1438,14 @@ TfLiteStatus ParsePool(const Operator* op, ErrorReporter* error_reporter,
 // We have this parse function instead of directly returning kTfLiteOk from the
 // switch-case in ParseOpData because this function is used as part of the
 // selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParsePow(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
+                      void**) {
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParsePrelu(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                         void**) {
   return kTfLiteOk;
@@ -1843,6 +1867,14 @@ TfLiteStatus ParseUnpack(const Operator* op, ErrorReporter* error_reporter,
   }
 
   *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseZerosLike(const Operator*, ErrorReporter*,
+                            BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 
