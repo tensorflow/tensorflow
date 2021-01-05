@@ -114,9 +114,9 @@ TEST_F(QuantizedMatMulTest, Small_withBias) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &mkl_shape_tensor);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -196,9 +196,9 @@ TEST_F(QuantizedMatMulTest, Small_withNegBias) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &mkl_shape_tensor);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -294,9 +294,9 @@ TEST_F(QuantizedMatMulTest, Small_WithNegInp) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &mkl_shape_tensor);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -396,9 +396,9 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReq) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<quint8>(DT_QUINT8, output, &mkl_shape_tensor);
+        GetTFFormatTensor<quint8>(DT_QUINT8, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<quint8>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<quint8>(expected, output);
@@ -498,9 +498,9 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndDeq) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(1);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(1);
     Tensor output_dequantized =
-        GetTFFormatTensor<float>(DT_FLOAT, output, &mkl_shape_tensor);
+        GetTFFormatTensor<float>(DT_FLOAT, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<float>(expected, output_dequantized);
   } else {
     test::ExpectTensorEqual<float>(expected, output);
@@ -584,9 +584,9 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndRelu) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &mkl_shape_tensor);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -689,9 +689,9 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReluAndReq) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<quint8>(DT_QUINT8, output, &mkl_shape_tensor);
+        GetTFFormatTensor<quint8>(DT_QUINT8, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<quint8>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<quint8>(expected, output);
@@ -772,9 +772,9 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor = *GetOutput(3);
+    const Tensor* mkl_shape_tensor_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &mkl_shape_tensor);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, mkl_shape_tensor_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -794,9 +794,9 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
   // Compare the result with expected result
   const Tensor& output_new = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& mkl_shape_tensor_new = *GetOutput(3);
-    Tensor output_quantized_new =
-        GetTFFormatTensor<qint32>(DT_QINT32, output_new, &mkl_shape_tensor_new);
+    const Tensor* mkl_shape_tensor_new_ptr = GetOutput(3);
+    Tensor output_quantized_new = GetTFFormatTensor<qint32>(
+        DT_QINT32, output_new, mkl_shape_tensor_new_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized_new);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output_new);
