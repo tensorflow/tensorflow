@@ -35,6 +35,7 @@
         *   Discretization combiner implemented, with additional arg `epsilon`.
     *   Improvements to model saving/loading:
         *   `model.load_weights` now accepts paths to saved models.
+    *   Keras inputs can now be created directly from arbitrary `tf.TypeSpecs`.
 
 *   `tf.data`:
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
