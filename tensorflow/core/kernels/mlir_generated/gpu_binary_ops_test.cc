@@ -385,6 +385,23 @@ GENERATE_DEFAULT_TESTS(AddV2,
 GENERATE_DEFAULT_TESTS(AddV2,
                        /*test_name=*/Int64, int64, int64, baseline_add)
 
+/// Test `tf.Sub`.
+
+template <typename T>
+T baseline_sub(T lhs, T rhs) {
+  return lhs - rhs;
+}
+
+GENERATE_DEFAULT_TESTS(Sub,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_sub)
+GENERATE_DEFAULT_TESTS(Sub,
+                       /*test_name=*/Float, float, float, baseline_sub)
+GENERATE_DEFAULT_TESTS(Sub,
+                       /*test_name=*/Double, double, double, baseline_sub)
+GENERATE_DEFAULT_TESTS(Sub,
+                       /*test_name=*/Int64, int64, int64, baseline_sub)
+
 /// Test `tf.BitwiseAnd`.
 
 template <typename T>

@@ -146,6 +146,7 @@ tf_kernel_library(
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
         "gpu_op_right_shift.cc",
+        "gpu_op_sub.cc",
     ],
     tags = [
         "manual",
@@ -170,6 +171,7 @@ tf_kernel_library(
         ":mul_kernels",
         ":not_equal_kernels",
         ":right_shift_kernels",
+        ":sub_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -366,18 +368,24 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
-gen_kernel_library(
-    name = "add_v2",
-    tile_size = "256,1,1",
-    types = [
-        "f16",
-        "f32",
-        "f64",
-        "i64",
-    ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
-)
+[
+    gen_kernel_library(
+        name = name,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "add_v2",
+        "sub",
+    ]
+]
 
 gen_kernel_library(
     name = "complex",
