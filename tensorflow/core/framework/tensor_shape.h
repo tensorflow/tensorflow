@@ -210,6 +210,10 @@ class TensorShapeBase : public TensorShapeRep {
   /// Use if unsure is `size >= 0`, to prevent `CHECK`-crashes.
   Status AddDimWithStatus(int64 size);
 
+  /// Same as `AddDim` but returns a `Status`.
+  /// Use if unsure is `size >= 0`, to prevent `CHECK`-crashes.
+  Status AddDimWithStatus(int64 size);
+
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShapeBase& shape);
 
@@ -325,7 +329,7 @@ class TensorShapeBase : public TensorShapeRep {
 
  private:
   Status RecomputeNumElements();
-  void InitDims(gtl::ArraySlice<int64> dim_sizes);
+  Status InitDims(gtl::ArraySlice<int64> dim_sizes);
 
   // True for PartialTensorShape, false for TensorShape
   static constexpr bool kIsPartial =
@@ -580,9 +584,12 @@ class PartialTensorShapeUtils {
 // ----------------------------------------------------------------------------
 
 template <int NDIMS, typename IndexType>
-Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizes() const {
-  CheckDimsEqual(NDIMS);
-  return AsEigenDSizesWithPadding<NDIMS, IndexType>();
+Eigen::DSizes<IndexType, NDIMS> TensorShape::AsEigenDSizesCopy() const {
+  Eigen::DSizes<IndexType, NDIMS> dsizes;
+  for (int d = 0; d < NDIMS; d++) {
+    dsizes[d] = static_cast<IndexType>(dim_size(d));
+  }
+  return dsizes;
 }
 
 template <int NDIMS, typename IndexType>
