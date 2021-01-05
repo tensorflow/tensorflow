@@ -61,6 +61,7 @@ test_suite(
         ":test_graph_tfvariable_test",
         ":tfcompile_test",
     ],
+    visibility = ["//visibility:public"],
 )
 
 py_binary(

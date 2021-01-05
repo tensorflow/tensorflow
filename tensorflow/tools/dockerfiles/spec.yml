@@ -351,7 +351,6 @@ slice_sets:
           args:
               - CENTOS_VERSION=8
               - PYTHON=python3
-              - HOROVOD_VERSION=0.19.5
               - TF_PACKAGE=intel-tensorflow
 
     devel-onednn-mpi-horovod:
@@ -499,7 +498,6 @@ slice_sets:
           args:
               - CENTOS_VERSION=8
               - PYTHON=python3
-              - HOROVOD_VERSION=0.19.5
               - TF_PACKAGE=intel-tensorflow
 
     devel-onednn-mpich-horovod:

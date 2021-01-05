@@ -645,7 +645,7 @@ def main():
     for key, value in sorted(find_cuda_config().items()):
       print("%s: %s" % (key, value))
   except ConfigError as e:
-    sys.stderr.write(str(e))
+    sys.stderr.write(str(e) + '\n')
     sys.exit(1)
 
 

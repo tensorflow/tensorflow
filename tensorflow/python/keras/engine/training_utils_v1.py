@@ -96,7 +96,7 @@ class Aggregator(object):
   def create(self, batch_outs):
     """Creates the initial results from the first batch outputs.
 
-    Arguments:
+    Args:
       batch_outs: A list of batch-level outputs.
     """
     raise NotImplementedError('Must be implemented in subclasses.')
@@ -105,7 +105,7 @@ class Aggregator(object):
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
     """Aggregates batch-level results into total results.
 
-    Arguments:
+    Args:
       batch_outs: A list of batch-level outputs.
       batch_start: The start index of this batch. Always `None` if `use_steps`
         is `True`.
@@ -227,7 +227,7 @@ def _append_composite_tensor(target, to_append):
   working with CompositeTensor Value objects that have no connection with the
   CompositeTensors that created them.
 
-  Arguments:
+  Args:
     target: CompositeTensor or CompositeTensor value object that will be
       appended to.
     to_append: CompositeTensor or CompositeTensor value object to append to.
@@ -487,7 +487,7 @@ def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
   The number of samples is not defined when running with `steps`,
   in which case the number of samples is set to `None`.
 
-  Arguments:
+  Args:
       ins: List of tensors to be fed to the Keras function.
       batch_size: Integer batch size or `None` if not defined.
       steps: Total number of steps (batches of samples) before declaring
@@ -559,7 +559,7 @@ def standardize_input_data(data,
   arrays (same order as `names`), while checking that the provided
   arrays have shapes that match the network's expectations.
 
-  Arguments:
+  Args:
       data: User-provided input data (polymorphic).
       names: List of expected array names.
       shapes: Optional list of expected array shapes.
@@ -676,7 +676,7 @@ def standardize_input_data(data,
 def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
   """Maps `sample_weight` or `class_weight` to model outputs.
 
-  Arguments:
+  Args:
       x_weight: User-provided `sample_weight` or `class_weight` argument.
       output_names: List of output names (strings) in the model.
       weight_type: A string used purely for exception printing.
@@ -732,7 +732,7 @@ def standardize_sample_weights(sample_weight, output_names):
 def check_array_lengths(inputs, targets, weights=None):
   """Does user input validation for numpy arrays.
 
-  Arguments:
+  Args:
       inputs: list of Numpy arrays of inputs.
       targets: list of Numpy arrays of targets.
       weights: list of Numpy arrays of sample weights.
@@ -789,7 +789,7 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
   This helps prevent users from using loss functions incorrectly. This check
   is purely for UX purposes.
 
-  Arguments:
+  Args:
       targets: list of Numpy arrays of targets.
       loss_fns: list of loss functions.
       output_shapes: list of shapes of model outputs.
@@ -849,7 +849,7 @@ def collect_per_output_metric_info(metrics,
                                    is_weighted=False):
   """Maps metric names and functions to model outputs.
 
-  Arguments:
+  Args:
       metrics: a list or a list of lists or a dict of metric functions.
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
@@ -927,7 +927,7 @@ def batch_shuffle(index_array, batch_size):
   Useful for shuffling HDF5 arrays
   (where one cannot access arbitrary indices).
 
-  Arguments:
+  Args:
       index_array: array of indices to be shuffled.
       batch_size: integer.
 
@@ -955,7 +955,7 @@ def standardize_weights(y,
   weight array. If both `sample_weight` and `class_weight` are provided,
   the weights are multiplied.
 
-  Arguments:
+  Args:
       y: Numpy array or Tensor of model targets to be weighted.
       sample_weight: User-provided `sample_weight` argument.
       class_weight: User-provided `class_weight` argument.
@@ -1099,7 +1099,7 @@ def has_tensors(ls):
 def get_metric_name(metric, weighted=False):
   """Returns the name corresponding to the given metric input.
 
-  Arguments:
+  Args:
     metric: Metric function name or reference.
     weighted: Boolean indicating if the given metric is weighted.
 
@@ -1134,7 +1134,7 @@ def get_metric_name(metric, weighted=False):
 def get_metric_function(metric, output_shape=None, loss_fn=None):
   """Returns the metric function corresponding to the given metric input.
 
-  Arguments:
+  Args:
       metric: Metric function name or reference.
       output_shape: The shape of the output that this metric will be calculated
         for.
@@ -1232,7 +1232,7 @@ def get_loss_function(loss):
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
-  Arguments:
+  Args:
     x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
       Expected to be `None` when `x` is a dataset iterator.
@@ -1310,7 +1310,7 @@ def check_steps_argument(input_data, steps, steps_name):
        required and is `None`.
     3. input data passed is a symbolic tensor.
 
-  Arguments:
+  Args:
       input_data: Input data. Can be Numpy array(s) or TensorFlow tensor(s) or
         tf.data.Dataset iterator or `None`.
       steps: Integer or `None`. Total number of steps (batches of samples) to
@@ -1458,7 +1458,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
 def prepare_loss_functions(loss, output_names):
   """Converts loss to a list of loss functions.
 
-  Arguments:
+  Args:
       loss: String (name of objective function), objective function or
         `tf.losses.Loss` instance. See `tf.losses`. If the model has multiple
         outputs, you can use a different loss on each output by passing a
@@ -1502,7 +1502,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
 
   The result loss weights will be populated on the training endpoint.
 
-  Arguments:
+  Args:
       training_endpoints: List of model training endpoints.
       loss_weights: Optional list or dictionary specifying scalar coefficients
         (Python floats) to weight the loss contributions of different model
@@ -1609,7 +1609,7 @@ def initialize_iterator(iterator):
 def extract_tensors_from_dataset(dataset):
   """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
 
-  Arguments:
+  Args:
     dataset: Dataset instance.
 
   Returns:
@@ -1623,7 +1623,7 @@ def extract_tensors_from_dataset(dataset):
 def unpack_iterator_input(iterator):
   """Convert a dataset iterator to a tuple of tensors `x, y, sample_weights`.
 
-  Arguments:
+  Args:
     iterator: Instance of a dataset iterator.
 
   Returns:
@@ -1661,7 +1661,7 @@ def infer_steps_for_dataset(model,
                             steps_name='steps'):
   """Infers steps_per_epoch needed to loop through a dataset.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       dataset: Input data of type tf.data.Dataset.
       steps: Number of steps to draw from the dataset (may be None if unknown).
@@ -1805,7 +1805,7 @@ def generic_output_names(outputs_list):
 def should_run_validation(validation_freq, epoch):
   """Checks if validation should be run this epoch.
 
-  Arguments:
+  Args:
     validation_freq: Integer or list. If an integer, specifies how many training
       epochs to run before a new validation run is performed. If a list,
       specifies the epochs on which to run validation.

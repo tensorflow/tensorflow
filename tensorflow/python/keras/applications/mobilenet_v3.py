@@ -77,7 +77,7 @@ BASE_DOCSTRING = """Instantiates the {name} architecture.
 
   Optionally loads weights pre-trained on ImageNet.
 
-  Arguments:
+  Args:
     input_shape: Optional shape tuple, to be specified if you would
       like to use a model with an input image resolution that is not
       (224, 224, 3).

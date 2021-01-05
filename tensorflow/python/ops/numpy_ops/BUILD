@@ -110,6 +110,7 @@ cuda_py_test(
 cuda_py_test(
     name = "np_interop_test",
     srcs = ["np_interop_test.py"],
+    tags = ["no_rocm"],
     deps = [
         ":numpy",
         "//tensorflow:tensorflow_py",

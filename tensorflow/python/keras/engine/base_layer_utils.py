@@ -76,7 +76,7 @@ def make_variable(name,
 
   TODO(fchollet): remove this method when no longer needed.
 
-  Arguments:
+  Args:
     name: Variable name.
     shape: Variable shape.
     dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -145,7 +145,7 @@ def make_variable(name,
 def collect_previous_mask(input_tensors):
   """Retrieves the output mask(s) of the previous node.
 
-  Arguments:
+  Args:
       input_tensors: An arbitrary structure of Tensors.
 
   Returns:
@@ -177,7 +177,7 @@ def create_keras_history(tensors):
   Any Tensors not originating from a Keras `Input` Layer will be treated as
   constants when constructing `TensorFlowOpLayer` instances.
 
-  Arguments:
+  Args:
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
 
@@ -205,7 +205,7 @@ _UNSAFE_GRAPH_OP_LAYER_CREATION = False
 def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
-  Arguments:
+  Args:
     tensors: A structure of Tensors for which to create Keras metadata.
     processed_ops: Set. TensorFlow operations that have already been wrapped in
       `TensorFlowOpLayer` instances.
@@ -312,7 +312,7 @@ def needs_keras_history(tensors, ignore_call_context=False):
   if one or more of `tensors` originates from a `keras.Input` and
   does not have `_keras_history` set.
 
-  Arguments:
+  Args:
     tensors: An arbitrary nested structure of Tensors.
     ignore_call_context: Whether to ignore the check of if currently
       outside of a `call` context. This is `True` when creating
@@ -370,7 +370,7 @@ def uses_keras_history(tensors):
   already been checked to not originate from a `keras.Input`
   are marked as `_keras_history_checked`.
 
-  Arguments:
+  Args:
     tensors: An arbitrary nested structure of Tensors.
 
   Returns:
@@ -412,7 +412,7 @@ def mark_checked(tensors):
   This prevents Layers from attempting to create TensorFlowOpLayers
   for these Tensors.
 
-  Arguments:
+  Args:
     tensors: An arbitrary structure of Tensors.
   """
 
@@ -469,7 +469,7 @@ class CallContext(object):
   def enter(self, layer, inputs, build_graph, training, saving=None):
     """Push a Layer and its inputs and state onto the current call context.
 
-    Arguments:
+    Args:
       layer: The `Layer` whose `call` is currently active.
       inputs: The inputs to the currently active `Layer`.
       build_graph: Whether currently inside a Graph or FuncGraph.
@@ -584,7 +584,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   the underlying tensor gets created in a FuncGraph managed by control_flow_v2.
   We need to raise clear error messages in such cases.
 
-  Arguments:
+  Args:
     tensor: Tensor to check, or `False` if it is known that an error
       should be raised.
     method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.

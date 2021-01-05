@@ -61,7 +61,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":c_api_internal",
-        ":common",
+        ":c_api_types",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:create_op_resolver_with_builtin_ops",
         "//tensorflow/lite:framework",
@@ -86,6 +86,13 @@ cc_library(
         "//tensorflow/lite:kernel_api",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
+)
+
+cc_library(
+    name = "c_api_types",
+    hdrs = ["c_api_types.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts(),
 )
 
 cc_test(
@@ -158,6 +165,9 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    deps = [
+        ":c_api_types",
+    ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 
@@ -165,6 +175,7 @@ cc_library(
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
+    "c_api_types.h",
     "common.h",
 ])
 

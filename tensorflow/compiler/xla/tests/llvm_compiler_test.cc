@@ -56,9 +56,9 @@ class GpuDummyCompiler : public GpuCompiler {
   GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) { return 0; }
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileTargetBinary(
-      const HloModule* hlo_module, llvm::Module* llvm_module,
-      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
-      bool relocatable) {
+      const HloModuleConfig& module_config, llvm::Module* llvm_module,
+      GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
+      const HloModule* debug_module) {
     if (user_post_optimization_hook_) {
       user_post_optimization_hook_(*llvm_module);
     }

@@ -34,7 +34,9 @@ cc_library(
         ],
     }),
     copts = micro_copts(),
-    deps = select({
+    deps = [
+        ":xtensa",
+    ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
@@ -62,6 +64,7 @@ cc_library(
     deps = [
         ":fixedpoint_utils",
         ":kernel_util",
+        ":xtensa",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:common",
@@ -162,6 +165,7 @@ cc_library(
         ":kernel_util",
         ":fixedpoint_utils",
         ":micro_utils",
+        ":xtensa",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
@@ -176,6 +180,24 @@ cc_library(
         "//tensorflow/lite/micro:micro_utils",
         "@flatbuffers",
     ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
+cc_library(
+    name = "xtensa",
+    hdrs = select({
+        "//conditions:default": [
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/xtensa.h",
+        ],
+    }),
+    copts = micro_copts(),
+    deps = select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",

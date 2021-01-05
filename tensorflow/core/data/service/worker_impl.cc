@@ -191,8 +191,15 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     }
     auto it = tasks_.find(request->task_id());
     if (it == tasks_.end()) {
-      response->set_end_of_sequence(true);
-      return Status::OK();
+      if (finished_tasks_.contains(request->task_id())) {
+        VLOG(3) << "Task is already finished";
+        response->set_end_of_sequence(true);
+        return Status::OK();
+      } else {
+        // Perhaps the workers hasn't gotten the task from the dispatcher yet.
+        // Return Unavailable so that the client knows to continue retrying.
+        return errors::Unavailable("Task ", request->task_id(), " not found");
+      }
     }
     auto& task = it->second;
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
@@ -362,6 +369,7 @@ Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
     VLOG(3) << "Deleting task " << task_id
             << " at the request of the dispatcher";
     tasks_.erase(task_id);
+    finished_tasks_.insert(task_id);
   }
   return Status::OK();
 }

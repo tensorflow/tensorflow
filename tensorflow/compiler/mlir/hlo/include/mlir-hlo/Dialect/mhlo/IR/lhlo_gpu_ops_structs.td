@@ -21,7 +21,17 @@ include "mlir-hlo/Dialect/mhlo/IR/lhlo_gpu_ops_base.td"
 def ConvolutionBackendConfigAttr : StructAttr<"ConvolutionBackendConfig",
                                           LHLO_GPU_Dialect, [
    StructFieldAttr<"algorithm", I64Attr>,
-   StructFieldAttr<"tensor_ops_enabled", BoolAttr>]> {
+   StructFieldAttr<"tensor_ops_enabled", BoolAttr>,
+   // The following 3 attributes describe the layout as an array of integers
+   // that list the dimensions in minor-to-major order similar to XLA's layout
+   // representation. operand_0_layout and operand_0_layout described the layout
+   // of the first 2 operands of the convolution, and result_layout describes
+   // the layout of the primary output operand of the convolution.
+   // Note: Not using names like input_layout or filter_layout as `input` may be
+   // an input operand (for ConvForward) but output for ConvBackward.
+   StructFieldAttr<"operand_0_layout", I64ArrayAttr>,
+   StructFieldAttr<"operand_1_layout", I64ArrayAttr>,
+   StructFieldAttr<"result_layout", I64ArrayAttr>]> {
    let description = "GPU Convolution backend configuration";
 }
 

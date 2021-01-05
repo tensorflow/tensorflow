@@ -180,8 +180,8 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
   }
 
   if (!var_handle_shared_names->empty())
-    function.setType(FunctionType::get(func_arg_types, func_type.getResults(),
-                                       function.getContext()));
+    function.setType(FunctionType::get(function.getContext(), func_arg_types,
+                                       func_type.getResults()));
 
   return success();
 }

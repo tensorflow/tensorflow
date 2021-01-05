@@ -50,7 +50,7 @@ class BaseDenseAttention(Layer):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -242,7 +242,7 @@ class Attention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.
@@ -381,7 +381,7 @@ class AdditiveAttention(BaseDenseAttention):
     dropout: Float between 0 and 1. Fraction of the units to drop for the
       attention scores.
 
-  Call Arguments:
+  Call Args:
 
     inputs: List of the following tensors:
       * query: Query `Tensor` of shape `[batch_size, Tq, dim]`.

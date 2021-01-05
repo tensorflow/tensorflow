@@ -172,7 +172,7 @@ class _NonAtrousConvolution(object):
   `__call__` are compatible with `input_shape` and filter_shape passed to the
   constructor.
 
-  Arguments:
+  Args:
     input_shape: static input shape, i.e. input.shape.
     filter_shape: static filter shape, i.e. filter.shape.
     padding: see _non_atrous_convolution.

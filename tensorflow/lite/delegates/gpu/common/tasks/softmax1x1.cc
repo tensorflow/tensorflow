@@ -45,7 +45,6 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   args_.AddFloat("mask_y");
   args_.AddFloat("mask_z");
   args_.AddFloat("mask_w");
-  args_.AddInt("slices_x32");
 
   std::string c;
   c += "__kernel void main_function(\n";
@@ -58,24 +57,47 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   }
   c += "  float4 mask = (float4)(args.mask_x, args.mask_y, args.mask_z, "
        "args.mask_w);\n";
-  c += "  int offset = 0;\n";
-  c += "  float sum = 0.0f;\n";
-  c += "  int s = 0;\n";
+  c += "  float4 maxx4 = (float4)(args.src_tensor.Read<float>(0, 0, 0).x);\n";
   c += "  int tid = get_local_id(0);\n";
-  c += "  do {\n";
-  c += "    int z = offset + tid;\n";
-  c += "    if (z < args.dst_tensor.Slices()) {\n";
-  c += "      float4 mask_temp = z == args.dst_tensor.Slices() - 1 ? mask : "
+  c += "  for (int s = tid; s < args.src_tensor.Slices(); s += 32) {\n";
+  c += "    float4 mask_a = s == args.src_tensor.Slices() - 1 ? mask : "
        "(float4)(1.0f);\n";
-  c += "      float4 src = args.src_tensor.Read<float>(0, 0, z);\n";
-  c += "      sum += dot(mask_temp, exp(src));\n";
-  c += "      offset += 32;\n";
-  c += "    }\n";
-  c += "    s++;\n";
-  c += "  } while (s < args.slices_x32);\n";
-  c += "\n";
+  c += "    float4 mask_b = (float4)(1.0f) - mask_a;\n";
+  c += "    float4 src = args.src_tensor.Read<float>(0, 0, s);\n";
+  c += "    src = src * mask_a + mask_b * src.x;\n";
+  c += "    maxx4 = max(maxx4, src);\n";
+  c += "  }\n";
+  c += "  float maximum = max(maxx4.x, maxx4.y);\n";
+  c += "  maximum = max(maximum, maxx4.z);\n";
+  c += "  maximum = max(maximum, maxx4.w);\n";
   c += "  __local float4 tmp[8];\n";
   c += "  __local float* tmpx1 = (__local float*)tmp;\n";
+  c += "  tmpx1[tid] = maximum;\n";
+  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+  c += "  if (tid == 0) {\n";
+  c += "    maxx4 = max(tmp[0], tmp[1]);\n";
+  c += "    maxx4 = max(maxx4, tmp[2]);\n";
+  c += "    maxx4 = max(maxx4, tmp[3]);\n";
+  c += "    maxx4 = max(maxx4, tmp[4]);\n";
+  c += "    maxx4 = max(maxx4, tmp[5]);\n";
+  c += "    maxx4 = max(maxx4, tmp[6]);\n";
+  c += "    maxx4 = max(maxx4, tmp[7]);\n";
+  c += "    maximum = max(maxx4.x, maxx4.y);\n";
+  c += "    maximum = max(maximum, maxx4.z);\n";
+  c += "    maximum = max(maximum, maxx4.w);\n";
+  c += "    tmpx1[0] = maximum;\n";
+  c += "  }\n";
+  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
+  c += "  maximum = tmpx1[0];\n";
+  c += "  float sum = 0.0f;\n";
+  c += "  for (int s = tid; s < args.src_tensor.Slices(); s += 32) {\n";
+  c += "    float4 mask_temp = s == args.src_tensor.Slices() - 1 ? mask : "
+       "(float4)(1.0f);\n";
+  c += "    float4 src = args.src_tensor.Read<float>(0, 0, s) - "
+       "(float4)(maximum);\n";
+  c += "    sum += dot(mask_temp, exp(src));\n";
+  c += "  }\n";
+  c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
   c += "  tmpx1[tid] = sum;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
   c += "  if (tid == 0) {\n";
@@ -92,18 +114,13 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
   c += "  sum = tmpx1[0];\n";
   c += "\n";
-  c += "  offset = 0;\n";
-  c += "  s = 0;\n";
-  c += "  do {\n";
-  c += "    int z = offset + tid;\n";
-  c += "    if (z < args.dst_tensor.Slices()) {\n";
-  c += "      FLT4 res = TO_FLT4(exp(args.src_tensor.Read<float>(0, 0, "
-       "z))*sum);\n";
-  c += "      args.dst_tensor.Write(res, 0, 0, z);\n";
-  c += "      offset += 32;\n";
-  c += "    }\n";
-  c += "    s++;\n";
-  c += "  } while (s < args.slices_x32);\n";
+  c += "  int dst_s = get_global_id(0);\n";
+  c += "  if (dst_s < args.dst_tensor.Slices()) {\n";
+  c += "    float4 src = args.src_tensor.Read<float>(0, 0, dst_s) - "
+       "(float4)(maximum);\n";
+  c += "    FLT4 res = TO_FLT4(exp(src) * sum);\n";
+  c += "    args.dst_tensor.Write(res, 0, 0, dst_s);\n";
+  c += "  }\n";
   c += "}\n";
   return c;
 }
@@ -114,12 +131,12 @@ absl::Status Softmax1x1::BindArguments(ArgumentsBinder* args) {
   RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
   RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
   RETURN_IF_ERROR(args->SetFloat("mask_w", mask.w));
-  RETURN_IF_ERROR(
-      args->SetInt("slices_x32", DivideRoundUp(src_[0]->Slices(), 32)));
   return absl::OkStatus();
 }
 
-int3 Softmax1x1::GetGridSize() const { return int3(32, dst_[0]->Batch(), 1); }
+int3 Softmax1x1::GetGridSize() const {
+  return int3(dst_[0]->Slices(), dst_[0]->Batch(), 1);
+}
 
 Softmax1x1 CreateSoftmax1x1(const OperationDef& definition) {
   return Softmax1x1(definition);

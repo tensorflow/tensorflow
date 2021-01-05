@@ -591,10 +591,10 @@ func @NotReorderReshapeAddIfNotTailingDimAfter(%arg0: tensor<1x30x1x96xf32>) -> 
 }
 
 // CHECK-LABEL: @NotReorderReshapeAddIf5DInputs
-func @NotReorderReshapeAddIf5DInputs(%arg0: tensor<1x1x1x1x1xf32>) -> tensor<1x1x1x1x2xf32> {
+func @NotReorderReshapeAddIf5DInputs(%arg0: tensor<2x1x1x1x1xf32>) -> tensor<1x1x1x1x2xf32> {
   %cst = constant dense<2.0> : tensor<1x1x1x1x2xf32>
   %shape = constant dense<[1, 1, 1, 1, 2]> : tensor<5xi32>
-  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<2x1x1x1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
   %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x2xf32>, tensor<1x1x1x1x2xf32>) -> tensor<1x1x1x1x2xf32>
   return %2 : tensor<1x1x1x1x2xf32>
 
@@ -604,10 +604,10 @@ func @NotReorderReshapeAddIf5DInputs(%arg0: tensor<1x1x1x1x1xf32>) -> tensor<1x1
 }
 
 // CHECK-LABEL: @NotReorderReshapeFloorDivIf5DInputs
-func @NotReorderReshapeFloorDivIf5DInputs(%arg0: tensor<1x1x1x1x1xf32>) -> tensor<1x1x1x1x2xf32> {
+func @NotReorderReshapeFloorDivIf5DInputs(%arg0: tensor<2x1x1x1x1xf32>) -> tensor<1x1x1x1x2xf32> {
   %cst = constant dense<2.0> : tensor<1x1x1x1x2xf32>
   %shape = constant dense<[1, 1, 1, 1, 2]> : tensor<5xi32>
-  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x1x1x1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<2x1x1x1x1xf32>, tensor<5xi32>) -> tensor<1x1x1x1x2xf32>
   %2 = "tfl.floor_div"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x1x1x1x2xf32>, tensor<1x1x1x1x2xf32>) -> tensor<1x1x1x1x2xf32>
   return %2 : tensor<1x1x1x1x2xf32>
 

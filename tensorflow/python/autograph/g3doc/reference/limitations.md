@@ -693,12 +693,25 @@ exceptions exist:
  * functions created dynamically, using `exec` or `eval`
 
 Use
-[inspect.getsource](https://docs.python.org/3/library/inspect.html#inspect.getsource)
+[inspect.findsource](https://docs.python.org/3/library/inspect.html#inspect.findsource)
 to quickly diagnose whether the source code is available for a function.
+
+For example:
+
+```
+import inspect
+
+def simple_function():
+  return 1
+
+# If this raises an error, then AutoGraph prints a warning.
+# If it returns source code, then AutoGraph should work as well.
+inspect.findsource(simple_function)
+```
 
 #### Source code of lambda functions
 
-##### Changes in TF 2.4
+##### TF 2.4 and newer
 
 Key Point: When nesting lambda functions, use distinguishing argument names
 to avoid parse errors.
@@ -726,7 +739,7 @@ use distinct argument names:
 l = lambda outer_x: lambda inner_x: inner_x + 1
 ```
 
-##### TF 2.3 and older
+##### Before TF 2.3 and older
 
 In older versions of TensorFlow, the loading code for lambda functions is not
 robust. Follow the guidance below to avoid errors.

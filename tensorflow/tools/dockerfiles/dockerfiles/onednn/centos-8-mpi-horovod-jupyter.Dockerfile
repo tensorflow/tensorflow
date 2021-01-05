@@ -88,8 +88,10 @@ ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=
 
 RUN yum update -y && yum install -y \
+    cmake \
     gcc \
     gcc-c++ \
+    make \
     python36-devel && \
     yum clean all
 

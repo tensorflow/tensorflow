@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdexcept>
+
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
@@ -61,13 +63,15 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
 
   MLIRContext *context_ = &this->getTypeConverter()->getContext();
 
-  LLVM::LLVMType llvm_void_type_ = LLVM::LLVMType::getVoidTy(context_);
-  LLVM::LLVMType llvm_pointer_type_ = LLVM::LLVMType::getInt8PtrTy(context_);
-  LLVM::LLVMType llvm_pointer_pointer_type_ = llvm_pointer_type_.getPointerTo();
-  LLVM::LLVMType llvm_int8_type_ = LLVM::LLVMType::getInt8Ty(context_);
-  LLVM::LLVMType llvm_int32_type_ = LLVM::LLVMType::getInt32Ty(context_);
-  LLVM::LLVMType llvm_int64_type_ = LLVM::LLVMType::getInt64Ty(context_);
-  LLVM::LLVMType llvm_intptr_type_ = LLVM::LLVMType::getIntNTy(
+  LLVM::LLVMType llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
+  LLVM::LLVMType llvm_pointer_type_ =
+      LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(context_, 8));
+  LLVM::LLVMType llvm_pointer_pointer_type_ =
+      LLVM::LLVMPointerType::get(llvm_pointer_type_);
+  LLVM::LLVMType llvm_int8_type_ = LLVM::LLVMIntegerType::get(context_, 8);
+  LLVM::LLVMType llvm_int32_type_ = LLVM::LLVMIntegerType::get(context_, 32);
+  LLVM::LLVMType llvm_int64_type_ = LLVM::LLVMIntegerType::get(context_, 64);
+  LLVM::LLVMType llvm_intptr_type_ = LLVM::LLVMIntegerType::get(
       context_, this->getTypeConverter()->getPointerBitwidth(0));
 
   llvm::SmallString<32> gpu_binary_annotation_;
@@ -99,12 +103,12 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
   argument_types.reserve(num_arguments);
   for (auto argument : arguments)
     argument_types.push_back(argument.getType().cast<LLVM::LLVMType>());
-  auto struct_type =
-      LLVM::LLVMType::createStructTy(argument_types, StringRef());
+  auto struct_type = LLVM::LLVMStructType::getNewIdentified(
+      context_, StringRef(), argument_types);
   auto one = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
                                               builder.getI32IntegerAttr(1));
   auto struct_ptr = builder.create<LLVM::AllocaOp>(
-      loc, struct_type.getPointerTo(), one, /*alignment=*/0);
+      loc, LLVM::LLVMPointerType::get(struct_type), one, /*alignment=*/0);
   auto array_size = builder.create<LLVM::ConstantOp>(
       loc, llvm_int32_type_, builder.getI32IntegerAttr(num_arguments));
   auto array_ptr = builder.create<LLVM::AllocaOp>(
@@ -115,7 +119,7 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
     auto index = builder.create<LLVM::ConstantOp>(
         loc, llvm_int32_type_, builder.getI32IntegerAttr(en.index()));
     auto field_ptr = builder.create<LLVM::GEPOp>(
-        loc, argument_types[en.index()].getPointerTo(), struct_ptr,
+        loc, LLVM::LLVMPointerType::get(argument_types[en.index()]), struct_ptr,
         ArrayRef<Value>{zero, index.getResult()});
     builder.create<LLVM::StoreOp>(loc, en.value(), field_ptr);
     auto element_ptr = builder.create<LLVM::GEPOp>(
@@ -152,7 +156,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
   assert(kernel_module && "expected a kernel module");
 
   auto binary_attr =
-      kernel_module.getAttrOfType<StringAttr>(gpu_binary_annotation_);
+      kernel_module->getAttrOfType<StringAttr>(gpu_binary_annotation_);
   if (!binary_attr) {
     kernel_module.emitOpError()
         << "missing " << gpu_binary_annotation_ << " attribute";
@@ -180,13 +184,13 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
       LLVM::createGlobalString(loc, rewriter, kernel_name_global_name,
                                kernel_name_buffer, LLVM::Linkage::Internal);
 
-  auto adaptor = gpu::LaunchFuncOpAdaptor(
-      operands, launch_op.getOperation()->getAttrDictionary());
+  auto adaptor =
+      gpu::LaunchFuncOpAdaptor(operands, launch_op->getAttrDictionary());
 
   // The TensorFlow OpKernelContext is the first argument of the surrounding
   // LLVMFunc.
   Value context_arg =
-      launch_op.getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
+      launch_op->getParentOfType<LLVM::LLVMFuncOp>().getArgument(0);
   auto kernel_params = generateParamsArray(launch_op, operands, rewriter);
 
   auto function = SymbolTable::lookupNearestSymbolFrom<LLVM::LLVMFuncOp>(
@@ -208,7 +212,7 @@ LogicalResult ConvertLaunchFuncOpToTfRuntimeCallPattern::matchAndRewrite(
             llvm_pointer_pointer_type_, /* void **kernel_params */
         });
     rewriter.setInsertionPointToStart(
-        launch_op.getParentOfType<ModuleOp>().getBody());
+        launch_op->getParentOfType<ModuleOp>().getBody());
     function = rewriter.create<LLVM::LLVMFuncOp>(
         loc, kTfWrapperLibaryLaunchHelperName, function_type);
   }
@@ -242,7 +246,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     MLIRContext *ctx = m.getContext();
     LLVMTypeConverter type_converter(ctx);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMType::getInt8PtrTy(ctx);
+      return LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8));
     });
 
     // Populate patterns.

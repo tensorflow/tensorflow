@@ -33,7 +33,7 @@ py_strict_library(
     ],
     deps = [
         ":doc_typealias",
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@typing_extensions_archive//:typing_extensions",
     ],

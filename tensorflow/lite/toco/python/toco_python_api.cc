@@ -236,7 +236,8 @@ PyObject* TocoGetPotentiallySupportedOps() {
 }
 
 PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
-                            bool fully_quantize, int inference_type) {
+                            bool fully_quantize, int inference_type,
+                            bool enable_numeric_verify) {
   using tflite::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
@@ -276,7 +277,7 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   auto status = mlir::lite::QuantizeModel(
       *tflite_model, inference_io_type, inference_io_type,
       inference_tensor_type, {}, disable_per_channel, fully_quantize, &builder,
-      error_reporter.get());
+      error_reporter.get(), enable_numeric_verify);
 
   if (status != kTfLiteOk) {
     error_reporter->exception();

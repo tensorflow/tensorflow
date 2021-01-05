@@ -46,8 +46,8 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
   if (VariantDeviceIsCustom(device())) {
     auto* custom_device = absl::get<CustomDevice*>(device());
     TensorHandle* copy;
-    *status = custom_device->CopyTensorFromDevice(
-        this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
+    *status = custom_device->CopyTensorFromDevice(this, ctx_->HostCPU()->name(),
+                                                  &copy);
     if (status->ok()) {
       auto result = copy->Resolve(status);
       copy->Unref();

@@ -1,5 +1,7 @@
 load("//tensorflow/java:build_defs.bzl", "JAVACOPTS")
 load("//tensorflow/lite/delegates/flex:build_def.bzl", "tflite_flex_jni_library")
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 # Following targets are using for testing selective-built flex delegate
 # in Java. Please don't use them for other purposes.
@@ -89,5 +91,30 @@ java_test(
         "//tensorflow/lite/java:tensorflowlitelib",
         "@com_google_truth",
         "@junit",
+    ],
+)
+
+# For build test only.
+ios_static_framework(
+    name = "TestTensorFlowLiteSelectTfOps_framework",
+    testonly = 1,
+    avoid_deps = ["//tensorflow/lite/c:common"],
+    bundle_name = "TestTensorFlowLiteSelectTfOps",
+    minimum_os_version = "9.0",
+    deps = [
+        ":test_flex_delegate",
+    ],
+)
+
+build_test(
+    name = "framework_build_test",
+    # build_test targets are not meant to be run with sanitizers.
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    targets = [
+        ":TestTensorFlowLiteSelectTfOps_framework",
     ],
 )

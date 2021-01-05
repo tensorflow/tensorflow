@@ -26,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -62,11 +63,13 @@ def remove_squeezable_dimensions(
     Tuple of `labels` and `predictions`, possibly with last dim squeezed.
   """
   with K.name_scope(name or 'remove_squeezable_dimensions'):
-    predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
-    labels = ops.convert_to_tensor_v2_with_dispatch(labels)
-    predictions_shape = predictions.get_shape()
+    if not isinstance(predictions, ragged_tensor.RaggedTensor):
+      predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
+    if not isinstance(labels, ragged_tensor.RaggedTensor):
+      labels = ops.convert_to_tensor_v2_with_dispatch(labels)
+    predictions_shape = predictions.shape
     predictions_rank = predictions_shape.ndims
-    labels_shape = labels.get_shape()
+    labels_shape = labels.shape
     labels_rank = labels_shape.ndims
     if (labels_rank is not None) and (predictions_rank is not None):
       # Use static rank.

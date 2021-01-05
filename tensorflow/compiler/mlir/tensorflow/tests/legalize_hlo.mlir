@@ -1851,3 +1851,17 @@ func @convert_round(%arg0: tensor<8x128xbf16>) -> tensor<8x128xbf16> {
   %15 = "mhlo.select"(%13, %14, %3) : (tensor<8x128xi1>, tensor<8x128xbf16>, tensor<8x128xbf16>) -> tensor<8x128xbf16>
   return %15 : tensor<8x128xbf16>
 }
+
+// CHECK-LABEL:   func @convert_gather(
+// CHECK-SAME:                         %[[ARG_0:.*]]: tensor<147456xf16>,
+// CHECK-SAME:                         %[[ARG_1:.*]]: tensor<192x256x1xi32>) -> tensor<192x256xf16> {
+// CHECK:            %[[CST:.*]] = constant dense<0> : tensor<1xi32>
+// CHECK:            %[[VAL_0:.*]] = "tf.GatherV2"(%[[ARG_0]], %[[ARG_1]], %[[CST]]) {batch_dims = 0 : i64} : (tensor<147456xf16>, tensor<192x256x1xi32>, tensor<1xi32>) -> tensor<192x256x1xf16>
+// CHECK:            %[[CST_0:.*]] = constant dense<[192, 256]> : tensor<2xi64>
+// CHECK:            %[[VAL_1:.*]] = "tf.Reshape"(%[[VAL_0]], %[[CST_0]]) : (tensor<192x256x1xf16>, tensor<2xi64>) -> tensor<192x256xf16>
+// CHECK:            return %[[VAL_1]] : tensor<192x256xf16>
+// CHECK:         }
+func @convert_gather(%arg0: tensor<147456xf16>, %arg1: tensor<192x256x1xi32>) -> tensor<192x256xf16> {
+  %0 = "mhlo.gather"(%arg0, %arg1) {dimension_numbers = {collapsed_slice_dims = dense<0> : tensor<1xi64>, index_vector_dim = 2 : i64, offset_dims = dense<> : tensor<0xi64>, start_index_map = dense<0> : tensor<1xi64>}, indices_are_sorted = false, slice_sizes = dense<1> : tensor<1xi64>} : (tensor<147456xf16>, tensor<192x256x1xi32>) -> tensor<192x256xf16>
+  return %0 : tensor<192x256xf16>
+}

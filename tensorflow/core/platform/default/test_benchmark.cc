@@ -176,6 +176,14 @@ void Benchmark::Run(const char* pattern) {
   printf("%s\n", string(width + 22, '-').c_str());
   for (auto b : *all_benchmarks) {
     name = b->name_;
+    if (b->instantiated_num_args_ == -1 && b->args_.empty()) {
+      // The BM_*(int) interface (ie, benchmark without params) automatically
+      // adds a default (-1, -1) arg pair to b->args_.
+      // The BM_(benchmark::State&) interface does not do this because it does
+      // not know how many parameters are going to be registered.
+      // So we just add the place holder here.
+      b->args_.push_back(std::make_pair(-1, -1));
+    }
     for (auto arg : b->args_) {
       name.resize(b->name_.size());
       if (arg.first >= 0) {
@@ -196,12 +204,12 @@ void Benchmark::Run(const char* pattern) {
       char buf[100];
       std::string full_label = label;
       if (bytes_processed > 0) {
-        snprintf(buf, sizeof(buf), " %.1fMB/s",
+        snprintf(buf, sizeof(buf), " %.5fMB/s",
                  (bytes_processed * 1e-6) / seconds);
         full_label += buf;
       }
       if (items_processed > 0) {
-        snprintf(buf, sizeof(buf), " %.1fM items/s",
+        snprintf(buf, sizeof(buf), " %.5fM items/s",
                  (items_processed * 1e-6) / seconds);
         full_label += buf;
       }

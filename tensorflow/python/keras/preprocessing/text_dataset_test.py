@@ -58,13 +58,39 @@ class TextDatasetFromDirectoryTest(keras_parameterized.TestCase):
       paths += class_paths
 
     for i in range(count):
-      path = paths[count % len(paths)]
+      path = paths[i % len(paths)]
       filename = os.path.join(path, 'text_%s.txt' % (i,))
       f = open(os.path.join(temp_dir, filename), 'w')
       text = ''.join([random.choice(string.printable) for _ in range(length)])
       f.write(text)
       f.close()
     return temp_dir
+
+  def test_text_dataset_from_directory_standalone(self):
+    # Test retrieving txt files without labels from a directory and its subdirs.
+    # Save a few extra files in the parent directory.
+    directory = self._prepare_directory(count=7, num_classes=2)
+    for i in range(3):
+      filename = 'text_%s.txt' % (i,)
+      f = open(os.path.join(directory, filename), 'w')
+      text = ''.join([random.choice(string.printable) for _ in range(20)])
+      f.write(text)
+      f.close()
+
+    dataset = text_dataset.text_dataset_from_directory(
+        directory, batch_size=5, label_mode=None, max_length=10)
+    batch = next(iter(dataset))
+    # We just return the texts, no labels
+    self.assertEqual(batch.shape, (5,))
+    self.assertEqual(batch.dtype.name, 'string')
+    # Count samples
+    batch_count = 0
+    sample_count = 0
+    for batch in dataset:
+      batch_count += 1
+      sample_count += batch.shape[0]
+    self.assertEqual(batch_count, 2)
+    self.assertEqual(sample_count, 10)
 
   def test_text_dataset_from_directory_binary(self):
     directory = self._prepare_directory(num_classes=2)
@@ -172,12 +198,17 @@ class TextDatasetFromDirectoryTest(keras_parameterized.TestCase):
       sample_count += batch.shape[0]
     self.assertEqual(sample_count, 25)
 
+  def test_text_dataset_from_directory_no_files(self):
+    directory = self._prepare_directory(num_classes=2, count=0)
+    with self.assertRaisesRegex(ValueError, 'No text files found.'):
+      _ = text_dataset.text_dataset_from_directory(directory)
+
   def test_text_dataset_from_directory_errors(self):
     directory = self._prepare_directory(num_classes=3, count=5)
 
     with self.assertRaisesRegex(ValueError, '`labels` argument should be'):
       _ = text_dataset.text_dataset_from_directory(
-          directory, labels=None)
+          directory, labels='other')
 
     with self.assertRaisesRegex(ValueError, '`label_mode` argument must be'):
       _ = text_dataset.text_dataset_from_directory(

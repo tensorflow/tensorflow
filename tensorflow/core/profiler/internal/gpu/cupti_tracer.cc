@@ -19,6 +19,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/container/node_hash_set.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/generated_nvtx_meta.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -26,6 +28,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/cpu/annotation_stack.h"
+#include "tensorflow/core/profiler/internal/gpu/cupti_collector.h"
+#include "tensorflow/core/profiler/internal/gpu/nvtx_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -155,80 +159,131 @@ DecodeDriverMemcpy(CUpti_CallbackId cbid, const void *params) {
   switch (cbid) {
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoD_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyHtoD_v2_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyH2D,
-                             false);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyH2D, false};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoDAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyHtoDAsync_v2_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyH2D,
-                             true);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyH2D, true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoH_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyDtoH_v2_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2H,
-                             false);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyD2H, false};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoHAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyDtoHAsync_v2_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2H,
-                             true);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyD2H, true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoD_v2: {
       const auto *p = reinterpret_cast<const cuMemcpyDtoD_v2_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2D,
-                             false);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyD2D, false};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpyDtoDAsync_v2_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyD2D,
-                             true);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyD2D, true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
       const auto *p = reinterpret_cast<const cuMemcpy_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
-                             false);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyOther, false};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
       const auto *p = reinterpret_cast<const cuMemcpyAsync_params *>(params);
-      return std::make_tuple(p->ByteCount, CuptiTracerEventType::MemcpyOther,
-                             true);
+      return {p->ByteCount, CuptiTracerEventType::MemcpyOther, true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2D_v2: {
       const auto *p = reinterpret_cast<const cuMemcpy2D_v2_params *>(params);
-      return std::make_tuple(Bytes2D(p->pCopy), MemcpyKind(p->pCopy), false);
+      return {Bytes2D(p->pCopy), MemcpyKind(p->pCopy), false};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy2DAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpy2DAsync_v2_params *>(params);
-      return std::make_tuple(Bytes2D(p->pCopy), MemcpyKind(p->pCopy), true);
+      return {Bytes2D(p->pCopy), MemcpyKind(p->pCopy), true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3D_v2: {
       const auto *p = reinterpret_cast<const cuMemcpy3D_v2_params *>(params);
-      return std::make_tuple(Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true);
+      return {Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2: {
       const auto *p =
           reinterpret_cast<const cuMemcpy3DAsync_v2_params *>(params);
-      return std::make_tuple(Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true);
+      return {Bytes3D(p->pCopy), MemcpyKind(p->pCopy), true};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeer: {
-      const cuMemcpyPeer_params *p2p_params =
+      const auto *p2p_params =
           reinterpret_cast<const cuMemcpyPeer_params *>(params);
-      return std::make_tuple(p2p_params->ByteCount,
-                             CuptiTracerEventType::MemcpyP2P, false);
+      return {p2p_params->ByteCount, CuptiTracerEventType::MemcpyP2P, false};
     }
     case CUPTI_DRIVER_TRACE_CBID_cuMemcpyPeerAsync: {
-      const cuMemcpyPeerAsync_params_st *p2p_params =
-          reinterpret_cast<const cuMemcpyPeerAsync_params_st *>(params);
-      return std::make_tuple(p2p_params->ByteCount,
-                             CuptiTracerEventType::MemcpyP2P, true);
+      const auto *p2p_params =
+          reinterpret_cast<const cuMemcpyPeerAsync_params *>(params);
+      return {p2p_params->ByteCount, CuptiTracerEventType::MemcpyP2P, true};
     }
     default: {
       LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
-      return std::make_tuple(0, CuptiTracerEventType::Unsupported, false);
+      return {0, CuptiTracerEventType::Unsupported, false};
+    }
+  }
+}
+
+std::tuple<size_t /*bytes*/, CuptiTracerEventType, bool /*async*/>
+DecodeDriverMemset(CUpti_CallbackId cbid, const void *params) {
+  switch (cbid) {
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2: {
+      const auto *p = reinterpret_cast<const cuMemsetD8_v2_params *>(params);
+      return {p->N, CuptiTracerEventType::Memset, false};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2: {
+      const auto *p = reinterpret_cast<const cuMemsetD16_v2_params *>(params);
+      return {p->N, CuptiTracerEventType::Memset, false};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2: {
+      const auto *p = reinterpret_cast<const cuMemsetD32_v2_params *>(params);
+      return {p->N, CuptiTracerEventType::Memset, false};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2: {
+      const auto *p = reinterpret_cast<const cuMemsetD2D8_v2_params *>(params);
+      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2: {
+      const auto *p = reinterpret_cast<const cuMemsetD2D16_v2_params *>(params);
+      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2: {
+      const auto *p = reinterpret_cast<const cuMemsetD2D32_v2_params *>(params);
+      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, false};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async: {
+      const auto *p = reinterpret_cast<const cuMemsetD8Async_params *>(params);
+      return {p->N, CuptiTracerEventType::Memset, true};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async: {
+      const auto *p = reinterpret_cast<const cuMemsetD16Async_params *>(params);
+      return {p->N, CuptiTracerEventType::Memset, true};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async: {
+      const auto *p = reinterpret_cast<const cuMemsetD32Async_params *>(params);
+      return {p->N, CuptiTracerEventType::Memset, true};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async: {
+      const auto *p =
+          reinterpret_cast<const cuMemsetD2D8Async_params *>(params);
+      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async: {
+      const auto *p =
+          reinterpret_cast<const cuMemsetD2D16Async_params *>(params);
+      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+    }
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async: {
+      const auto *p =
+          reinterpret_cast<const cuMemsetD2D32Async_params *>(params);
+      return {p->dstPitch * p->Height, CuptiTracerEventType::Memset, true};
+    }
+    default: {
+      LOG(ERROR) << "Unsupported memset activity observed: " << cbid;
+      return {0, CuptiTracerEventType::Unsupported, false};
     }
   }
 }
@@ -301,7 +356,7 @@ void AddKernelEventUponApiExit(CuptiTraceCollector *collector, uint32 device_id,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
-  VLOG(3) << "Cuda Kernel Launched: " << event.name;
+  VLOG(3) << "Cuda Kernel launch API exit. name=" << event.name;
   collector->AddEvent(std::move(event));
 }
 
@@ -336,10 +391,42 @@ void AddNormalMemcpyEventUponApiExit(CuptiTraceCollector *collector,
   std::tie(num_bytes, type, async) =
       DecodeDriverMemcpy(cbid, cbdata->functionParams);
 
-  VLOG(3) << "Cuda Memcpy observed :" << num_bytes;
+  VLOG(3) << "Cuda Memcpy API exit. sz=" << num_bytes;
   CuptiTracerEvent event =
       PopulateMemcpyCallbackEvent(type, cbdata, num_bytes, device_id, device_id,
                                   async, start_time, end_time);
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemsetEventUponApiExit(CuptiTraceCollector *collector,
+                                 uint32 device_id, CUpti_CallbackId cbid,
+                                 const CUpti_CallbackData *cbdata,
+                                 uint64 start_time, uint64 end_time) {
+  // We are casting all variants of cuMemset to cuMemsetD8 for accessing the
+  // first member attribute, a CUdeviceptr.
+  const auto *params =
+      static_cast<const cuMemsetD8_v2_params *>(cbdata->functionParams);
+  size_t num_bytes;
+  bool async;
+  CuptiTracerEventType type;
+  std::tie(num_bytes, type, async) =
+      DecodeDriverMemset(cbid, cbdata->functionParams);
+
+  CuptiTracerEvent event{};
+  event.type = type;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  event.memset_info.num_bytes = num_bytes;
+  // memset_info.kind cannot be determined from API.
+  event.memset_info.async = async;
+  VLOG(3) << "Cuda Memset API exit."
+          << " dptr=" << reinterpret_cast<void *>(params->dstDevice)
+          << " sz=" << num_bytes;
   collector->AddEvent(std::move(event));
 }
 
@@ -355,11 +442,11 @@ void AddP2PMemcpyEventUponApiExit(CuptiTraceCollector *collector,
       DecodeDriverMemcpy(cbid, cbdata->functionParams);
 
   uint32 dst_device = -1, src_device = -1;
-  const cuMemcpyPeer_params *p2p_params =
-      reinterpret_cast<const cuMemcpyPeer_params *>(cbdata->functionParams);
+  const auto *p2p_params =
+      static_cast<const cuMemcpyPeer_params *>(cbdata->functionParams);
   cupti_interface->GetDeviceId(p2p_params->srcContext, &src_device);
   cupti_interface->GetDeviceId(p2p_params->dstContext, &dst_device);
-  VLOG(3) << "Cuda P2P Memcpy observed, src: " << src_device
+  VLOG(3) << "Cuda P2P Memcpy API exit, src: " << src_device
           << " dst: " << dst_device << " size:" << num_bytes;
   CuptiTracerEvent event =
       PopulateMemcpyCallbackEvent(type, cbdata, num_bytes, src_device,
@@ -367,12 +454,12 @@ void AddP2PMemcpyEventUponApiExit(CuptiTraceCollector *collector,
   collector->AddEvent(std::move(event));
 }
 
-void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
+void AddCuMemAllocEventUponApiExit(CuptiTraceCollector *collector,
                                    uint32 device_id, CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata,
                                    uint64 start_time, uint64 end_time) {
-  const cuMemAlloc_v2_params_st *params =
-      reinterpret_cast<const cuMemAlloc_v2_params_st *>(cbdata->functionParams);
+  const auto *params =
+      static_cast<const cuMemAlloc_v2_params *>(cbdata->functionParams);
   CuptiTracerEvent event{};
   event.type = CuptiTracerEventType::MemoryAlloc;
   event.source = CuptiTracerEventSource::DriverCallback;
@@ -384,7 +471,54 @@ void AddCudaMallocEventUponApiExit(CuptiTraceCollector *collector,
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
   event.memalloc_info.num_bytes = params->bytesize;
-  VLOG(3) << "cudaMalloc observed: " << params->bytesize;
+  VLOG(3) << "Cuda MemAlloc API exit."
+          << " dptr=" << reinterpret_cast<void *>(*params->dptr)
+          << " sz=" << params->bytesize;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemAllocPitchEventUponApiExit(CuptiTraceCollector *collector,
+                                        uint32 device_id, CUpti_CallbackId cbid,
+                                        const CUpti_CallbackData *cbdata,
+                                        uint64 start_time, uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemAllocPitch_v2_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::MemoryAlloc;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  const size_t size_in_bytes = *params->pPitch * params->Height;
+  event.memalloc_info.num_bytes = size_in_bytes;
+  VLOG(3) << "Cuda MemAllocPitch API exit."
+          << " dptr=" << reinterpret_cast<void *>(*params->dptr)
+          << " sz=" << size_in_bytes;
+  collector->AddEvent(std::move(event));
+}
+
+void AddCuMemFreeEventUponApiExit(CuptiTraceCollector *collector,
+                                  uint32 device_id, CUpti_CallbackId cbid,
+                                  const CUpti_CallbackData *cbdata,
+                                  uint64 start_time, uint64 end_time) {
+  const auto *params =
+      static_cast<const cuMemFree_v2_params *>(cbdata->functionParams);
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::MemoryFree;
+  event.source = CuptiTracerEventSource::DriverCallback;
+  event.name = cbdata->functionName;
+  event.start_time_ns = start_time;
+  event.end_time_ns = end_time;
+  event.thread_id = Env::Default()->GetCurrentThreadId();
+  event.device_id = device_id;
+  event.context_id = cbdata->contextUid;
+  event.correlation_id = cbdata->correlationId;
+  VLOG(3) << "Cuda MemFree API exit."
+          << " dptr=" << reinterpret_cast<void *>(params->dptr);
   collector->AddEvent(std::move(event));
 }
 
@@ -402,7 +536,8 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
   event.device_id = device_id;
   event.context_id = cbdata->contextUid;
   event.correlation_id = cbdata->correlationId;
-  VLOG(3) << "Observed generic event " << cbdata->functionName;
+  VLOG(3) << "Observed generic API exit."
+          << " name=" << cbdata->functionName;
   collector->AddEvent(std::move(event));
 }
 
@@ -418,8 +553,10 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
   event.context_id = kernel->contextId;
   event.stream_id = kernel->streamId;
   event.correlation_id = kernel->correlationId;
-  event.annotation = collector->annotation_map()->LookUp(event.device_id,
-                                                         event.correlation_id);
+  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
+      event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
+  event.nvtx_range = info.nvtx_range;
   event.kernel_info.registers_per_thread = kernel->registersPerThread;
   event.kernel_info.static_shared_memory_usage = kernel->staticSharedMemory;
   event.kernel_info.dynamic_shared_memory_usage = kernel->dynamicSharedMemory;
@@ -464,8 +601,9 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memcpy->contextId;
   event.stream_id = memcpy->streamId;
   event.correlation_id = memcpy->correlationId;
-  event.annotation = collector->annotation_map()->LookUp(event.device_id,
-                                                         event.correlation_id);
+  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
+      event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
   event.memcpy_info.kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
@@ -488,8 +626,9 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memcpy2->contextId;
   event.stream_id = memcpy2->streamId;
   event.correlation_id = memcpy2->correlationId;
-  event.annotation = collector->annotation_map()->LookUp(event.device_id,
-                                                         event.correlation_id);
+  AnnotationMap::AnnotationInfo info = collector->annotation_map()->LookUp(
+      event.device_id, event.correlation_id);
+  event.annotation = info.annotation;
   event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy2->bytes;
   event.memcpy_info.destination = memcpy2->dstDeviceId;
@@ -577,6 +716,63 @@ void AddUnifiedMemoryActivityEvent(
   }
   event.memcpy_info.destination = record->dstId;
   event.memcpy_info.async = false;
+  collector->AddEvent(std::move(event));
+}
+
+void AddMemAllocActivityEvent(CuptiTraceCollector *collector,
+                              const CUpti_ActivityMemory *memory) {
+  CuptiTracerEvent event{};
+  event.name = absl::StrCat("MemAlloc ", GetMemoryKindName(memory->memoryKind));
+  event.type = CuptiTracerEventType::MemoryAlloc;
+  event.source = CuptiTracerEventSource::Activity;
+  event.start_time_ns = memory->start;
+  event.end_time_ns = std::max(memory->end, memory->start + 1);
+  event.device_id = memory->deviceId;
+  event.context_id = memory->contextId;
+  event.memalloc_info.num_bytes = memory->bytes;
+  event.memalloc_info.kind = memory->memoryKind;
+  event.memalloc_info.address = memory->address;
+  VLOG(5) << "Cuda activity " << event.name
+          << " addr: " << reinterpret_cast<void *>(memory->address)
+          << " bytes: " << memory->bytes;
+  collector->AddEvent(std::move(event));
+}
+
+void AddMemFreeActivityEvent(CuptiTraceCollector *collector,
+                             const CUpti_ActivityMemory *memory) {
+  CuptiTracerEvent event{};
+  event.name = absl::StrCat("MemFree ", GetMemoryKindName(memory->memoryKind));
+  event.type = CuptiTracerEventType::MemoryFree;
+  event.source = CuptiTracerEventSource::Activity;
+  event.start_time_ns = memory->start;
+  event.end_time_ns = std::max(memory->end, memory->start + 1);
+  event.device_id = memory->deviceId;
+  event.context_id = memory->contextId;
+  event.memfree_info.num_bytes = memory->bytes;
+  event.memfree_info.kind = memory->memoryKind;
+  event.memfree_info.address = memory->address;
+  VLOG(5) << "Cuda activity " << event.name
+          << " addr: " << reinterpret_cast<void *>(memory->address)
+          << " bytes: " << memory->bytes;
+  collector->AddEvent(std::move(event));
+}
+
+void AddMemsetActivityEvent(CuptiTraceCollector *collector,
+                            const CUpti_ActivityMemset *memset) {
+  CuptiTracerEvent event{};
+  event.type = CuptiTracerEventType::Memset;
+  event.source = CuptiTracerEventSource::Activity;
+  event.name = absl::StrCat("Memset ", GetMemoryKindName(memset->memoryKind));
+  event.start_time_ns = memset->start;
+  event.end_time_ns = std::max(memset->end, memset->start + 1);
+  event.device_id = memset->deviceId;
+  event.correlation_id = memset->correlationId;
+  event.context_id = memset->contextId;
+  event.memset_info.num_bytes = memset->bytes;
+  event.memset_info.kind = memset->memoryKind;
+  event.memset_info.async = (memset->flags & CUPTI_ACTIVITY_FLAG_MEMSET_ASYNC);
+  VLOG(5) << "Cuda activity " << event.name << " bytes: " << memset->bytes
+          << " async: " << event.memset_info.async;
   collector->AddEvent(std::move(event));
 }
 
@@ -946,8 +1142,9 @@ class CudaEventRecorder {
     event.context_id = stream_info.ctx_info->context_id;
     event.stream_id = stream_info.stream_id;
     event.correlation_id = record.correlation_id;
-    event.annotation =
-        annotation_map->LookUp(event.device_id, event.correlation_id);
+    AnnotationMap::AnnotationInfo info = collector_->annotation_map()->LookUp(
+        event.device_id, event.correlation_id);
+    event.annotation = info.annotation;
     event.kernel_info = record.details;
     collector_->AddEvent(std::move(event));
     return Status::OK();
@@ -974,8 +1171,9 @@ class CudaEventRecorder {
     event.context_id = stream_info.ctx_info->context_id;
     event.stream_id = stream_info.stream_id;
     event.correlation_id = record.correlation_id;
-    event.annotation =
-        annotation_map->LookUp(event.device_id, event.correlation_id);
+    AnnotationMap::AnnotationInfo info = collector_->annotation_map()->LookUp(
+        event.device_id, event.correlation_id);
+    event.annotation = info.annotation;
     event.memcpy_info.num_bytes = record.size_bytes;
     // TODO: support MemcpyD2D where destination != source;
     event.memcpy_info.destination = ordinal_;
@@ -1029,7 +1227,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     switch (cbid) {
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel: {
         DCHECK_NE(cbdata->symbolName, nullptr);
-        auto params =
+        const auto *params =
             static_cast<const cuLaunchKernel_params *>(cbdata->functionParams);
         *cbdata->correlationData = recorder->StartKernel<cuLaunchKernel_params>(
             cbdata->symbolName, cbdata->context, cbdata->correlationId, params);
@@ -1037,17 +1235,18 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
       }
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel: {
         DCHECK_NE(cbdata->symbolName, nullptr);
-        auto params = static_cast<const cuLaunchCooperativeKernel_params_st *>(
-            cbdata->functionParams);
+        const auto *params =
+            static_cast<const cuLaunchCooperativeKernel_params *>(
+                cbdata->functionParams);
         *cbdata->correlationData =
-            recorder->StartKernel<cuLaunchCooperativeKernel_params_st>(
+            recorder->StartKernel<cuLaunchCooperativeKernel_params>(
                 cbdata->symbolName, cbdata->context, cbdata->correlationId,
                 params);
         break;
       }
       case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice: {
 #if CUDA_VERSION >= 10000
-        auto params =
+        const auto *params =
             static_cast<const cuLaunchCooperativeKernelMultiDevice_params *>(
                 cbdata->functionParams);
         std::vector<uint32> record_indices;
@@ -1063,7 +1262,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
           // Because annotation are per device, therefore we need to populate
           // annotation for each device involved.
           collector_->annotation_map()->Add(*dev_id, cbdata->correlationId,
-                                            annotation);
+                                            annotation, "");
           record_indices.push_back(
               cuda_event_recorders_[*dev_id]->StartKernel<CUDA_LAUNCH_PARAMS>(
                   "CooperativeKernelMultiDevice", *context,
@@ -1078,14 +1277,14 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
 #endif
       } break;
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
-        auto params =
+        const auto *params =
             static_cast<const cuMemcpy_params *>(cbdata->functionParams);
         StartMemcpy<cuMemcpy_params>(GetMemcpyType(params->src, params->dst),
                                      cbdata, recorder);
         break;
       }
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyAsync: {
-        auto params =
+        const auto *params =
             static_cast<const cuMemcpyAsync_params *>(cbdata->functionParams);
         StartMemcpyAsync<cuMemcpyAsync_params>(
             GetMemcpyType(params->src, params->dst), cbdata, recorder);
@@ -1121,6 +1320,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     }
     return Status::OK();
   }
+
   Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                          CUpti_CallbackId cbid,
                          const CUpti_CallbackData *cbdata) override {
@@ -1140,7 +1340,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         callback_contexts_.erase(callback_context);
         auto record_indices = std::move(callback_context->record_indices);
         delete callback_context;
-        auto params =
+        const auto *params =
             static_cast<const cuLaunchCooperativeKernelMultiDevice_params *>(
                 cbdata->functionParams);
         if (record_indices.size() != params->numDevices)
@@ -1195,16 +1395,17 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
   static void StartMemcpy(CuptiTracerEventType type,
                           const CUpti_CallbackData *cbdata,
                           CudaEventRecorder *recorder) {
-    auto params = static_cast<const T *>(cbdata->functionParams);
+    const auto *params = static_cast<const T *>(cbdata->functionParams);
     *cbdata->correlationData =
         recorder->StartMemcpy(type, params->ByteCount, cbdata->context, nullptr,
                               cbdata->correlationId, /*async*/ false);
   }
+
   template <typename T>
   static void StartMemcpyAsync(CuptiTracerEventType type,
                                const CUpti_CallbackData *cbdata,
                                CudaEventRecorder *recorder) {
-    auto params = static_cast<const T *>(cbdata->functionParams);
+    const auto *params = static_cast<const T *>(cbdata->functionParams);
     *cbdata->correlationData = recorder->StartMemcpy(
         type, params->ByteCount, cbdata->context, params->hStream,
         cbdata->correlationId, /*async*/ true);
@@ -1306,8 +1507,31 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
                                    cbdata, start_tsc, end_tsc);
       break;
     case CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2:
-      AddCudaMallocEventUponApiExit(collector, device_id, cbid, cbdata,
+      AddCuMemAllocEventUponApiExit(collector, device_id, cbid, cbdata,
                                     start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2:
+      AddCuMemAllocPitchEventUponApiExit(collector, device_id, cbid, cbdata,
+                                         start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2:
+      AddCuMemFreeEventUponApiExit(collector, device_id, cbid, cbdata,
+                                   start_tsc, end_tsc);
+      break;
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async:
+    case CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async:
+      AddCuMemsetEventUponApiExit(collector, device_id, cbid, cbdata, start_tsc,
+                                  end_tsc);
       break;
     default:
       AddGenericEventUponApiExit(collector, device_id, cbid, cbdata, start_tsc,
@@ -1333,6 +1557,10 @@ const char *GetTraceEventTypeName(const CuptiTracerEventType &type) {
       return "Compute";
     case CuptiTracerEventType::MemoryAlloc:
       return "MemoryAlloc";
+    case CuptiTracerEventType::MemoryFree:
+      return "MemoryFree";
+    case CuptiTracerEventType::Memset:
+      return "Memset";
     case CuptiTracerEventType::Overhead:
       return "Overhead";
     case CuptiTracerEventType::UnifiedMemory:
@@ -1425,6 +1653,11 @@ Status CuptiTracer::EnableApiTracing() {
     RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
         1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
   }
+
+  if (option_->enable_nvtx_tracking) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
+        1 /* ENABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
+  }
   return Status::OK();
 }
 
@@ -1441,6 +1674,11 @@ Status CuptiTracer::DisableApiTracing() {
   } else {
     RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
         0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_DRIVER_API));
+  }
+
+  if (option_->enable_nvtx_tracking) {
+    RETURN_IF_CUPTI_ERROR(cupti_interface_->EnableDomain(
+        0 /* DISABLE */, subscriber_, CUPTI_CB_DOMAIN_NVTX));
   }
 
   VLOG(1) << "Disable subscriber";
@@ -1510,11 +1748,31 @@ Status CuptiTracer::Finalize() {
   return 0;
 }
 
+Status CuptiTracer::HandleNVTXCallback(CUpti_CallbackId cbid,
+                                       const CUpti_CallbackData *cbdata) {
+  const CUpti_NvtxData *pdata =
+      reinterpret_cast<const CUpti_NvtxData *>(cbdata);
+  if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePushEx) {
+    const nvtxDomainRangePushEx_params *params =
+        reinterpret_cast<const nvtxDomainRangePushEx_params *>(
+            pdata->functionParams);
+    // TODO(profiler): The messageType is actually NVTX_MESSAGE_TYPE_REGISTERED
+    // (which is 3), However it seems to me that we can not get the registered
+    // string from nvtxDomainRegisterStringA_params. If we reinterpret the
+    // payload as ascii, it happen to work.
+    NVTXRangeTracker::EnterRange(params->core.eventAttrib->message.ascii);
+  } else if (cbid == CUPTI_CBID_NVTX_nvtxDomainRangePop) {
+    NVTXRangeTracker::ExitRange();
+  }
+  return Status::OK();
+}
+
 Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                    CUpti_CallbackId cbid,
                                    const CUpti_CallbackData *cbdata) {
   if (!api_tracing_enabled_) return Status::OK();  // already unsubscribed.
   if (!cupti_driver_api_hook_) return Status::OK();  // already unsubscribed.
+  if (domain == CUPTI_CB_DOMAIN_NVTX) return HandleNVTXCallback(cbid, cbdata);
   if (domain != CUPTI_CB_DOMAIN_DRIVER_API) return Status::OK();
   if (internalCuCall) return Status::OK();
 
@@ -1546,11 +1804,12 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
         // we need to populate per device annotation map respectively.
         for (int i = 0; i < num_gpus_; ++i) {
           collector_->annotation_map()->Add(i, cbdata->correlationId,
-                                            annotation);
+                                            annotation, "");
         }
       } else {
+        absl::string_view nvtx_range = NVTXRangeTracker::CurrentRange();
         collector_->annotation_map()->Add(device_id, cbdata->correlationId,
-                                          annotation);
+                                          annotation, nvtx_range);
       }
     }
 
@@ -1628,6 +1887,19 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
           AddUnifiedMemoryActivityEvent(
               collector_,
               reinterpret_cast<CUpti_ActivityUnifiedMemoryCounter2 *>(record));
+          break;
+        case CUPTI_ACTIVITY_KIND_MEMORY: {
+          const auto *p = reinterpret_cast<CUpti_ActivityMemory *>(record);
+          // Free PC having a value of zero implies an allocation.
+          if (p->freePC == 0) {
+            AddMemAllocActivityEvent(collector_, p);
+          } else {
+            AddMemFreeActivityEvent(collector_, p);
+          }
+        } break;
+        case CUPTI_ACTIVITY_KIND_MEMSET:
+          AddMemsetActivityEvent(
+              collector_, reinterpret_cast<CUpti_ActivityMemset *>(record));
           break;
         default:
           LOG(ERROR) << "Activity type " << record->kind << " not supported.";

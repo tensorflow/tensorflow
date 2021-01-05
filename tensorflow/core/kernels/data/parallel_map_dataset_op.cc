@@ -448,18 +448,20 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                   model_node());
             },
             std::move(input_element));
-        // `ctx->runner()` may execute its logic synchronously so we wrap it in
-        // `RecordStop` and `RecordStart` to prevent invalid nesting of
-        // `RecordStart` calls.
-        RecordStop(ctx.get());
         (*ctx->runner())(
             [this, ctx, fn = std::move(fn), done = std::move(done)]() {
-              RecordStart(ctx.get());
-              auto cleanup =
-                  gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
-              done(fn());
+              Status s;
+              // Check whether we are already recording to prevent invalid
+              // nesting of `RecordStart` calls.
+              if (IsRecording(ctx.get())) {
+                s = fn();
+              } else {
+                RecordStart(ctx.get());
+                s = fn();
+                RecordStop(ctx.get());
+              }
+              done(s);
             });
-        RecordStart(ctx.get());
       }
     }
 
