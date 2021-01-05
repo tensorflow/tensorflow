@@ -161,12 +161,6 @@ template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
-  if (op_name == "Log" || op_name == "Rsqrt") {
-    return DefaultInputGreaterThanZero<T>();
-  }
-  if (op_name == "Sqrt") {
-    return DefaultInputGreaterOrEqualToZero<T>();
-  }
   if (op_name == "Div" || op_name == "FloorDiv") {
     return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.1, 0.1, 1e-6, 0.1,
                                      0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
