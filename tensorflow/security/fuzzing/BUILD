@@ -28,6 +28,16 @@ tf_fuzz_target(
 )
 
 tf_fuzz_target(
+    name = "bfloat16_fuzz",
+    srcs = ["bfloat16_fuzz.cc"],
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core/framework:bfloat16",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_fuzz_target(
     name = "AreAttrValuesEqual_fuzz",
     srcs = ["AreAttrValuesEqual_fuzz.cc"],
     deps = [

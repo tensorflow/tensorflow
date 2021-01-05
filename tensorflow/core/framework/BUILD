@@ -623,7 +623,10 @@ cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
