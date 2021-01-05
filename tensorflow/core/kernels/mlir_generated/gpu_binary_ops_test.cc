@@ -640,5 +640,23 @@ GENERATE_DEFAULT_TESTS(FloorDiv,
                        /*test_name=*/Double, double, double,
                        baseline_floor_div);
 
+/// Test `tf.Div`.
+template <typename T>
+T baseline_div(T lhs, T rhs) {
+  return lhs / rhs;
+}
+
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Half, Eigen::half, Eigen::half,
+                       baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Float, float, float, baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Double, double, double, baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Int16, int16, int16, baseline_div);
+GENERATE_DEFAULT_TESTS(Div,
+                       /*test_name=*/Int64, int64, int64, baseline_div);
+
 }  // namespace
 }  // end namespace tensorflow
