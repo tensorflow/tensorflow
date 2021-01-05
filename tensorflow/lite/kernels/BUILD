@@ -2214,6 +2214,18 @@ cc_test(
 )
 
 cc_test(
+    name = "irfft2d_test",
+    size = "small",
+    srcs = ["irfft2d_test.cc"],
+    deps = [
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "non_max_suppression_test",
     size = "small",
     srcs = ["non_max_suppression_test.cc"],
