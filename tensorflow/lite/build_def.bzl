@@ -312,6 +312,7 @@ def generated_test_models():
         "greater_equal",
         "hardswish",
         "identity",
+        "irfft2d",
         "sum",
         "l2norm",
         "l2norm_shared_epsilon",

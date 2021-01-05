@@ -85,6 +85,7 @@ from tensorflow.lite.testing.op_tests.greater import make_greater_tests
 from tensorflow.lite.testing.op_tests.greater_equal import make_greater_equal_tests
 from tensorflow.lite.testing.op_tests.hardswish import make_hardswish_tests
 from tensorflow.lite.testing.op_tests.identity import make_identity_tests
+from tensorflow.lite.testing.op_tests.irfft2d import make_irfft2d_tests
 from tensorflow.lite.testing.op_tests.l2norm import make_l2norm_tests
 # Note: This is a regression test for a bug (b/122651451) that Toco incorrectly
 # erases the reduction indices array while it's shared with other ops.

@@ -19,12 +19,17 @@ limitations under the License.
 #include <complex>
 #include <vector>
 
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace ops {
-namespace builtin {
+namespace custom {
+
+TfLiteRegistration* Register_IRFFT2D();
 
 namespace {
 
@@ -39,8 +44,8 @@ class Irfft2dOpModel : public SingleOpModel {
     TensorType output_type = TensorType_COMPLEX64;
     output_ = AddOutput({output_type, {}});
 
-    SetBuiltinOp(BuiltinOperator_RFFT2D, BuiltinOptions_Rfft2dOptions,
-                 CreateRfft2dOptions(builder_).Union());
+    const std::vector<uint8_t> custom_option;
+    SetCustomOp("Irfft2d", custom_option, Register_IRFFT2D);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -126,6 +131,6 @@ TEST(Irfft2dOpTest, InputDimsGreaterThan2) {
 }
 
 }  // namespace
-}  // namespace builtin
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
