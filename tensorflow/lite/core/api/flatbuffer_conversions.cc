@@ -169,6 +169,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseAdd(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_ADD_N: {
+      return ParseAddN(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_ARG_MAX: {
       return ParseArgMax(op, error_reporter, allocator, builtin_data);
     }
@@ -801,7 +805,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_RANGE:
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_REVERSE_V2:
-    case BuiltinOperator_ADD_N:
     case BuiltinOperator_GATHER_ND:
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
@@ -901,6 +904,11 @@ TfLiteStatus ParseAdd(const Operator* op, ErrorReporter* error_reporter,
   }
 
   *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseAddN(const Operator* op, ErrorReporter* error_reporter,
+                       BuiltinDataAllocator* allocator, void** builtin_data) {
   return kTfLiteOk;
 }
 
