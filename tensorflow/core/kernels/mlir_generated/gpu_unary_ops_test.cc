@@ -130,32 +130,50 @@ class GpuUnaryOpTest : public OpsTestBase {
 
 #define GENERATE_DEFAULT_TEST2(op_name, InT, BaselineT, OutT, BaselineOutT, \
                                baseline_callback, config)                   \
-  TEST_F(GpuUnaryOpTest, op_name##InT) {                                    \
-    using NativeT = EnumToDataType<InT>::Type;                              \
-    using NativeBaselineT = EnumToDataType<BaselineT>::Type;                \
-    using NativeOutT = EnumToDataType<OutT>::Type;                          \
-    using NativeBaselineOutT = EnumToDataType<BaselineOutT>::Type;          \
-    Test<NativeT, NativeBaselineT, NativeOutT, NativeBaselineOutT>(         \
-        #op_name, test::DefaultInputShape(),                                \
-        test::DefaultInput<NativeT>(#op_name), baseline_callback, config);  \
+  GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES2(                        \
+      op_name, InT, BaselineT, OutT, BaselineOutT,                          \
+      test::DefaultInput<NativeT>(#op_name), baseline_callback, config)
+
+#define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(        \
+    op_name, InT, OutT, input_values, baseline_callback, config) \
+  GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES2(             \
+      op_name, InT, InT, OutT, OutT, input_values, baseline_callback, config)
+
+#define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES2(                    \
+    op_name, InT, BaselineT, OutT, BaselineOutT, input_values,                \
+    baseline_callback, config)                                                \
+  TEST_F(GpuUnaryOpTest, op_name##InT) {                                      \
+    using NativeT = EnumToDataType<InT>::Type;                                \
+    using NativeBaselineT = EnumToDataType<BaselineT>::Type;                  \
+    using NativeOutT = EnumToDataType<OutT>::Type;                            \
+    using NativeBaselineOutT = EnumToDataType<BaselineOutT>::Type;            \
+    Test<NativeT, NativeBaselineT, NativeOutT, NativeBaselineOutT>(           \
+        #op_name, test::DefaultInputShape(), input_values, baseline_callback, \
+        config);                                                              \
   }
 
 /// Test `tf.Abs`.
 
-GENERATE_DEFAULT_TEST(Abs, DT_FLOAT, DT_FLOAT, std::abs,
-                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_FLOAT, DT_FLOAT, test::NearZeroAndExtremeInput<float>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST(Abs, DT_DOUBLE, DT_DOUBLE, std::abs,
-                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_DOUBLE, DT_DOUBLE, test::NearZeroAndExtremeInput<double>(),
+    std::abs, test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST2(Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::abs,
-                       test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES2(
+    Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST(Abs, DT_INT32, DT_INT32, std::abs,
-                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-GENERATE_DEFAULT_TEST(Abs, DT_INT64, DT_INT64, std::abs,
-                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Ceil`.
 

@@ -144,9 +144,6 @@ template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
-  if (op_name == "Abs") {
-    return NearZeroAndExtremeInput<T>();
-  }
   // Only generate values less than the bitwidth of the data type.
   if (op_name == "LeftShift" || op_name == "RightShift") {
     auto max_shift = sizeof(T) * 8 - 1;
@@ -164,9 +161,6 @@ template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
-  if (op_name == "Abs") {
-    return NearZeroAndExtremeInput<T>();
-  }
   if (op_name == "Log" || op_name == "Rsqrt") {
     return DefaultInputGreaterThanZero<T>();
   }
