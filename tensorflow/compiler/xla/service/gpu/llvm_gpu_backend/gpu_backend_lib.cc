@@ -857,11 +857,22 @@ static std::string GetFeatureStrFromGCNArchName(
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config) {
+#if TF_ROCM_VERSION < 30900 
   auto amdgpu_version = absl::get_if<std::pair<int, std::string>>(&gpu_version);
   int gcn_arch_value = amdgpu_version->first;
   std::string gcn_arch_name = amdgpu_version->second;
   std::string feature_str = GetFeatureStrFromGCNArchName(gcn_arch_name);
   return GetTargetMachine(target_triple, absl::StrCat("gfx", gcn_arch_value),
+                          hlo_module_config, feature_str);
+#elif TF_ROCM_VERSION >= 30900
+  string feature_str = "+code-object-v3";
+  // code-object-v3 is default, so no need to expliticitly specify it
+  // in the feature string. Also, starting with ROCm 4.0, this feature string
+  // is deprecated, and we get a warning to that effect. So removing that
+  // feature string
+  feature_str = "";
+#endif
+  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
                           hlo_module_config, feature_str);
 }
 

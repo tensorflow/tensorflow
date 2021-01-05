@@ -124,6 +124,8 @@ absl::Status MetalSpatialTensor::GetGPUResources(
   if (!tensor_desc) {
     return absl::InvalidArgumentError("Expected TensorDescriptor on input.");
   }
+  resources->ints.push_back(
+      {"slice_stride", tensor_desc->GetSliceStrideSize(shape_)});
   if (descriptor_.HasAxis(Axis::WIDTH)) {
     resources->ints.push_back({"width", Width()});
     resources->ints.push_back({"width_div2", Width() / 2});

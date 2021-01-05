@@ -33,3 +33,10 @@ def UnaryEinsumToEinsum : Pat<
 def RemoveRedundantDynamicReshape : Pat<
   (HLO_DynamicReshapeOp (HLO_DynamicReshapeOp $operand, $shape1), $shape2),
   (HLO_DynamicReshapeOp $operand, $shape2)>;
+
+// A dynamic broadcast of a dynamic reshape with the same shape operand
+// is a dynamic reshape.
+def RemoveRedundantDynamicBroadcast : Pat<
+  (HLO_DynamicBroadcastInDimOp
+    (HLO_DynamicReshapeOp $operand, $shape), $shape, $dims),
+  (HLO_DynamicReshapeOp $operand, $shape)>;

@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/space_to_depth.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
@@ -114,58 +115,6 @@ inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
           const int in_w = out_w / block_size;
           const int in_h = out_h / block_size;
           const int in_b = out_b;
-
-          const int input_index = Offset(input_shape, in_b, in_h, in_w, in_d);
-          const int output_index =
-              Offset(output_shape, out_b, out_h, out_w, out_d);
-
-          output_data[output_index] = input_data[input_index];
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int input_depth = input_shape.Dims(3);
-  const int input_width = input_shape.Dims(2);
-  const int input_height = input_shape.Dims(1);
-  const int input_batch = input_shape.Dims(0);
-
-  const int output_depth = output_shape.Dims(3);
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch = output_shape.Dims(0);
-
-  const int32 block_size = op_params.block_size;
-
-  TFLITE_DCHECK_EQ(input_width, output_width * block_size);
-  TFLITE_DCHECK_EQ(input_height, output_height * block_size);
-  TFLITE_DCHECK_EQ(input_depth * block_size * block_size, output_depth);
-  TFLITE_DCHECK_EQ(input_batch, output_batch);
-
-  for (int in_b = 0; in_b < input_batch; ++in_b) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        for (int in_d = 0; in_d < input_depth; ++in_d) {
-          const int out_d =
-              in_d + ((in_h % block_size) * block_size + in_w % block_size) *
-                         input_depth;
-          const int out_w = in_w / block_size;
-          const int out_h = in_h / block_size;
-          const int out_b = in_b;
 
           const int input_index = Offset(input_shape, in_b, in_h, in_w, in_d);
           const int output_index =
