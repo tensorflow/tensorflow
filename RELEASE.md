@@ -4,13 +4,13 @@
 
 * `tf.distribute` introduces experimental support for asynchronous training of models via the [`tf.distribute.experimental.ParameterServerStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/ParameterServerStrategy) API. Please see the [tutorial](https://www.tensorflow.org/tutorials/distribute/parameter_server_training) to learn more.
 
-* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras). 
+* [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).
 
-* Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below. 
+* Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy) which is a NumPy-compatible API for writing TF programs. See the [detailed guide](https://www.tensorflow.org/guide/tf_numpy) to learn more. Additional details below.
 
 * Adds Support for
-  [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/) on Ampere based GPUs. TensorFloat-32, or TF32 for short, is a math mode for NVIDIA Ampere based GPUs and is enabled by default. 
-  
+  [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/) on Ampere based GPUs. TensorFloat-32, or TF32 for short, is a math mode for NVIDIA Ampere based GPUs and is enabled by default.
+
 * A major refactoring of the internals of the Keras Functional API has been completed, that should improve the reliability, stability, and performance of constructing Functional models.
 
 * Keras mixed precision API [`tf.keras.mixed_precision`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision?version=nightly) is no longer experimental and allows the use of 16-bit floating point formats during training, improving performance by up to 3x on GPUs and 60% on TPUs. Please see below for additional details.
@@ -24,71 +24,71 @@
 ## Breaking Changes
 
 * TF Core:
-  * Certain float32 ops run in lower precsion on Ampere based GPUs, including  matmuls and convolutions, due to the use of [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/). Specifically, inputs to such ops are rounded from 23 bits of precision to 10
+  * Certain float32 ops run in lower precision on Ampere based GPUs, including matmuls and convolutions, due to the use of [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/). Specifically, inputs to such ops are rounded from 23 bits of precision to 10
   bits of precision. This is unlikely to cause issues in practice for deep learning models. In some cases, TensorFloat-32 is also used for complex64 ops.
-  TensorFloat-32 can be disabled by running `tf.config.experimental.enable_tensor_float_32_execution(False)`. 
+  TensorFloat-32 can be disabled by running `tf.config.experimental.enable_tensor_float_32_execution(False)`.
   * The byte layout for string tensors across the C-API has been updated to match TF Core/C++; i.e., a contiguous array of `tensorflow::tstring`/`TF_TString`s.
-  * C-API functions `TF_StringDecode`, `TF_StringEncode`, and `TF_StringEncodedSize` are no longer relevant and have been removed; see `core/platform/ctstring.h` for  string access/modification in C.
+  * C-API functions `TF_StringDecode`, `TF_StringEncode`, and `TF_StringEncodedSize` are no longer relevant and have been removed; see `core/platform/ctstring.h` for string access/modification in C.
   * `tensorflow.python`, `tensorflow.core` and `tensorflow.compiler` modules are now hidden. These modules are not part of TensorFlow public API.
   * `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type `tf.complex64` or `tf.complex128`, because the behavior of these ops is not well defined for complex types.
   * XLA:CPU and XLA:GPU devices are no longer registered by default. Use `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them, but this flag will eventually be removed in subsequent releases.
 
-* `tf.keras`:  
+* `tf.keras`:
   * The `steps_per_execution` argument in `model.compile()` is no longer experimental; if you were passing `experimental_steps_per_execution`, rename it to `steps_per_execution` in your code. This argument controls the number of batches to run during each `tf.function` call when calling `model.fit()`. Running multiple batches inside a single `tf.function` call can greatly improve performance on TPUs or small models with a large Python overhead.
   * A **major refactoring** of the internals of the Keras Functional API may affect code that
   is relying on certain internal details:
     * Code that uses `isinstance(x, tf.Tensor)` instead of `tf.is_tensor` when checking Keras symbolic inputs/outputs should switch to using `tf.is_tensor`.
-    * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as unique identifiers instead of using `tensor.ref()`, etc.) may break. 
+    * Code that is overly dependent on the exact names attached to symbolic tensors (e.g. assumes there will be ":0" at the end of the inputs, treats names as unique identifiers instead of using `tensor.ref()`, etc.) may break.
     * Code that uses full path for `get_concrete_function` to trace Keras symbolic inputs directly should switch to building matching `tf.TensorSpec`s directly and tracing the `TensorSpec` objects.
-    * Code that relies on the exact number and names of the op layers that TensorFlow operations  were converted into may have changed.
-    * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and  happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly  or being silently buggy.
-    * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to  return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
+    * Code that relies on the exact number and names of the op layers that TensorFlow operations were converted into may have changed.
+    * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly or being silently buggy.
+    * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
     * Code already susceptible to leaking tensors outside of graphs becomes slightly more likely to do so now.
     * Code that tries directly getting gradients with respect to symbolic Keras inputs/outputs. Use `GradientTape` on the actual Tensors passed to the already-constructed model instead.
     * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
-    * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold       true before TF 2.4 either, but is more likely to cause issues now.
+    * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues now.
     * Code that manually enters `keras.backend.get_graph()` before building a functional model is no longer needed.
-    * Start enforcing input shape assumptions when calling Functional API Keras models. This may potentially break some users, in case there is a mismatch             between the shape used when creating `Input` objects in a Functional model, and the shape of the data passed to that model. You can fix this mismatch by         either calling the model with correctly-shaped data, or by relaxing `Input` shape assumptions (note that you can pass shapes with `None` entries for axes
+    * Start enforcing input shape assumptions when calling Functional API Keras models. This may potentially break some users, in case there is a mismatch between the shape used when creating `Input` objects in a Functional model, and the shape of the data passed to that model. You can fix this mismatch by either calling the model with correctly-shaped data, or by relaxing `Input` shape assumptions (note that you can pass shapes with `None` entries for axes
       that are meant to be dynamic). You can also disable the input checking entirely by setting `model.input_spec = None`.
-  * Several changes have been made to `tf.keras.mixed_precision.experimental`. Note that it is now recommended to use the non-experimental          `tf.keras.mixed_precision` API.
+  * Several changes have been made to `tf.keras.mixed_precision.experimental`. Note that it is now recommended to use the non-experimental `tf.keras.mixed_precision` API.
    * `AutoCastVariable.dtype` now refers to the actual variable dtype, not the dtype it will be casted to.
    * When mixed precision is enabled, `tf.keras.layers.Embedding` now outputs a float16 or bfloat16 tensor instead of a float32 tensor.
-   * The property `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is now a tensor, not a `LossScale` object. This means to get a loss scale      of a `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale`instead of `opt.loss_scale()`.
+   * The property `tf.keras.mixed_precision.experimental.LossScaleOptimizer.loss_scale` is now a tensor, not a `LossScale` object. This means to get a loss scale of a `LossScaleOptimizer` as a tensor, you must now call `opt.loss_scale`instead of `opt.loss_scale()`.
    * The property `should_cast_variables` has been removed from `tf.keras.mixed_precision.experimental.Policy`
-   * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the `DynamicLossScale`'s        multiplier must be 2.
+   * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the `DynamicLossScale`'s multiplier must be 2.
    * When passing a `tf.mixed_precision.experimental.DynamicLossScale` to `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, the weights of
-     the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead of being reused. This means modifying the weights of the `DynamicLossScale` will no      longer affect the weights of the LossScaleOptimizer, and vice versa.
+     the `DynanmicLossScale` are copied into the `LossScaleOptimizer` instead of being reused. This means modifying the weights of the `DynamicLossScale` will no longer affect the weights of the LossScaleOptimizer, and vice versa.
    * The global policy can no longer be set to a non-floating point policy in `tf.keras.mixed_precision.experimental.set_policy`
-   * In `Layer.call`, `AutoCastVariable`s will no longer be casted within `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a thread local        variable is used to determine whether `AutoCastVariable`s are casted, and those two functions run with a different thread. Note this only applies if one of      these two functions is called within `Layer.call`; if one of those two functions calls `Layer.call`, `AutoCastVariable`s will still be casted.
+   * In `Layer.call`, `AutoCastVariable`s will no longer be casted within `MirroredStrategy.run` or `ReplicaContext.merge_call`. This is because a thread local variable is used to determine whether `AutoCastVariable`s are casted, and those two functions run with a different thread. Note this only applies if one of these two functions is called within `Layer.call`; if one of those two functions calls `Layer.call`, `AutoCastVariable`s will still be casted.
 
 * `tf.data`:
-  * `tf.data.experimental.service.DispatchServer` now takes a config tuple instead of individual arguments. Usages should be updated to      `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
-  * `tf.data.experimental.service.WorkerServer` now takes a config tuple instead of individual arguments. Usages should be updated to  `tf.data.experimental.service.WorkerServer(worker_config)`.
-  
+  * `tf.data.experimental.service.DispatchServer` now takes a config tuple instead of individual arguments. Usages should be updated to `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
+  * `tf.data.experimental.service.WorkerServer` now takes a config tuple instead of individual arguments. Usages should be updated to `tf.data.experimental.service.WorkerServer(worker_config)`.
+
 * `tf.distribute`:
   * Removes `tf.distribute.Strategy.experimental_make_numpy_dataset`. Please use `tf.data.Dataset.from_tensor_slices` instead.
-  * Renames `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`, `tf.distribute.StrategyExtended.batch_reduce_to`,      `tf.distribute.ReplicaContext.all_reduce` to `options`.
+  * Renames `experimental_hints` in `tf.distribute.StrategyExtended.reduce_to`, `tf.distribute.StrategyExtended.batch_reduce_to`, `tf.distribute.ReplicaContext.all_reduce` to `options`.
   * Renames `tf.distribute.experimental.CollectiveHints` to `tf.distribute.experimental.CommunicationOptions`.
   * Renames `tf.distribute.experimental.CollectiveCommunication` to `tf.distribute.experimental.CommunicationImplementation`.
-  * Renames `tf.distribute.Strategy.experimental_distribute_datasets_from_function` to `distribute_datasets_from_function` as it is no longer experimental. 
+  * Renames `tf.distribute.Strategy.experimental_distribute_datasets_from_function` to `distribute_datasets_from_function` as it is no longer experimental.
   * Removes `tf.distribute.Strategy.experimental_run_v2` method, which was deprecated in TF 2.2.
 
 * `tf.lite`:
   * `tf.quantization.quantize_and_dequantize_v2` has been introduced, which updates the gradient definition for quantization which is outside the range
-     to be 0. To simulate the V1 the behavior of `tf.quantization.quantize_and_dequantize(...)` use             `tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...)`.
+     to be 0. To simulate the V1 the behavior of `tf.quantization.quantize_and_dequantize(...)` use `tf.grad_pass_through(tf.quantization.quantize_and_dequantize_v2)(...)`.
 
 * Building TensorFlow:
   * Windows platform builds: TensorFlow on Windows under MSVC is now built with `--copt=/experimental:preprocessor --host_copt=/experimental:preprocessor` (see `.bazelrc` for more details). Builds including TensorFlow may fail with unexpected syntax errors if these flags are absent. See also [this thread on SIG Build](https://groups.google.com/a/tensorflow.org/g/build/c/LbAw8RILvTg/m/ttnuhYU2BgAJ).
 
 ## Known Caveats
   * `tf.keras.mixed_precision`
-    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the                 AttributeError "Tensor.op is meaningless when eager execution is enabled". See this [issue](https://github.com/tensorflow/tensorflow/issues/45536) for           details and a workaround.
+    * When using mixed precision, calling `RMSprop.apply_gradients` or `Nadam.apply_gradients` outside a `tf.function` does not work and will raise the AttributeError "Tensor.op is meaningless when eager execution is enabled". See this [issue](https://github.com/tensorflow/tensorflow/issues/45536) for details and a workaround.
 
 ## Bug Fixes and Other Changes
 
 ### TF Core:
   * Introduces experimental support for a new module named [`tf.experimental.numpy`](https://www.tensorflow.org/api_docs/python/tf/experimental/numpy), which
-    is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable       `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases. 
+    is a NumPy-compatible API for writing TF programs. This module provides class `ndarray`, which mimics the `ndarray` class in NumPy, and wraps an immutable `tf.Tensor` under the hood. A subset of NumPy functions (e.g. `numpy.add`) are provided. Their inter-operation with TF facilities is seamless in most cases.
     See [tensorflow/python/ops/numpy_ops/README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/ops/numpy_ops/README.md)
     for details of what operations are supported and what are the differences from NumPy.
   * `tf.types.experimental.TensorLike` is a new `Union` type that can be used as type annotation for variables representing a Tensor or a value
@@ -97,35 +97,35 @@
     tf.reshape truncating inputs such as from int64 to int32.
   * Adds `tf.sparse.map_values` to apply a function to the `.value`s of `SparseTensor` arguments.
   * The Python bitwise operators for `Tensor` (`__and__`, `__or__`, `__xor__` and `__invert__` now support non-`bool` arguments and apply
-    the corresponding bitwise ops. `bool` arguments continue to be supported and dispatch to logical ops. This brings them more in line with 
+    the corresponding bitwise ops. `bool` arguments continue to be supported and dispatch to logical ops. This brings them more in line with
     Python and NumPy behavior.
   * Adds `tf.SparseTensor.with_values`. This returns a new SparseTensor with the same sparsity pattern, but with new provided values. It is
     similar to the `with_values` function of `RaggedTensor`.
   * Adds `StatelessCase` op, and uses it if none of case branches has stateful ops.
   * Adds `tf.config.experimental.get_memory_usage` to return total memory usage of the device.
   * Adds gradients for `RaggedTensorToVariant` and `RaggedTensorFromVariant`.
-  * Improve shape inference of nested function calls by supporting constant folding across Arg nodes which makes more static values available to shape               inference functions.
+  * Improve shape inference of nested function calls by supporting constant folding across Arg nodes which makes more static values available to shape inference functions.
 * `tf.debugging`:
   * `tf.debugging.assert_shapes()` now works on `SparseTensor`s (Fixes [#36268](https://github.com/tensorflow/tensorflow/issues/36268)).
 * GPU
-  * Adds Support for [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/) on Ampere based GPUs. 
-    TensorFloat-32, or TF32 for short, is a math mode for NVIDIA Ampere based GPUs which causes certain float32 ops, such as matrix 
-    multiplications and convolutions, to run much faster on Ampere GPUs but with reduced precision. This reduced precision has not been found 
-    to effect convergence quality of deep learning models in practice. TensorFloat-32 is enabled by default, but can be disabled with                 `tf.config.experimental.enable_tensor_float_32_execution`.
+  * Adds Support for [TensorFloat-32](https://blogs.nvidia.com/blog/2020/05/14/tensorfloat-32-precision-format/) on Ampere based GPUs.
+    TensorFloat-32, or TF32 for short, is a math mode for NVIDIA Ampere based GPUs which causes certain float32 ops, such as matrix
+    multiplications and convolutions, to run much faster on Ampere GPUs but with reduced precision. This reduced precision has not been found
+    to effect convergence quality of deep learning models in practice. TensorFloat-32 is enabled by default, but can be disabled with `tf.config.experimental.enable_tensor_float_32_execution`.
 * `tf.math`:
   * Adds `tf.math.erfcinv`, the inverse to `tf.math.erfc`.
 * `tf.nn`:
   *   `tf.nn.max_pool2d` now supports explicit padding.
 * `tf.image`:
-  * Adds deterministic `tf.image.stateless_random_*` functions for each `tf.image.random_*` function. Added a new op `stateless_sample_distorted_bounding_box`       which is a deterministic version of `sample_distorted_bounding_box` op. Given the same seed, these stateless functions/ops produce the same results               independent of how many times the function is called, and independent of global seed settings.
-  * Adds deterministic `tf.image.resize` backprop CUDA kernels for `method=ResizeMethod.BILINEAR` (the default method). Enable by setting the environment             variable `TF_DETERMINISTIC_OPS` to `"true"` or `"1"`.
+  * Adds deterministic `tf.image.stateless_random_*` functions for each `tf.image.random_*` function. Added a new op `stateless_sample_distorted_bounding_box` which is a deterministic version of `sample_distorted_bounding_box` op. Given the same seed, these stateless functions/ops produce the same results independent of how many times the function is called, and independent of global seed settings.
+  * Adds deterministic `tf.image.resize` backprop CUDA kernels for `method=ResizeMethod.BILINEAR` (the default method). Enable by setting the environment variable `TF_DETERMINISTIC_OPS` to `"true"` or `"1"`.
 * `tf.print`:
   * Bug fix in `tf.print()` with `OrderedDict` where if an `OrderedDict` didn't have the keys sorted, the keys and values were not being printed
     in accordance with their correct mapping.
 * `tf.train.Checkpoint`:
-  * Now accepts a `root` argument in the initialization, which generates a checkpoint with a root object. This allows users to create a `Checkpoint` object that     is compatible with Keras `model.save_weights()` and `model.load_weights`. The checkpoint is also compatible with the checkpoint saved in the `variables/`         folder in the SavedModel.
+  * Now accepts a `root` argument in the initialization, which generates a checkpoint with a root object. This allows users to create a `Checkpoint` object that is compatible with Keras `model.save_weights()` and `model.load_weights`. The checkpoint is also compatible with the checkpoint saved in the `variables/` folder in the SavedModel.
   * When restoring, `save_path` can be a path to a SavedModel. The function will automatically find the checkpoint in the SavedModel.
-  
+
 ### `tf.data`:
   * Adds new `tf.data.experimental.service.register_dataset` and `tf.data.experimental.service.from_dataset_id` APIs to enable one
     process to register a dataset with the tf.data service, and another process to consume data from the dataset.
@@ -138,7 +138,7 @@
   * Adds support for a new "distributed_epoch" processing mode. This processing mode distributes a dataset across all tf.data workers,
     instead of having each worker process the full dataset. See [the tf.data service docs](https://www.tensorflow.org/api_docs/python/tf/data/experimental/service#understand_processing_mode) to learn more.
   * Adds optional `exclude_cols` parameter to CsvDataset. This parameter is the complement of `select_cols`; at most one of these should be specified.
-  * We have implemented an optimization which reorders data-discarding transformations such as `take` and `shard` to happen earlier in the dataset when it is           safe to do so. The optimization can be disabled via the `experimental_optimization.reorder_data_discarding_ops` dataset option.
+  * We have implemented an optimization which reorders data-discarding transformations such as `take` and `shard` to happen earlier in the dataset when it is safe to do so. The optimization can be disabled via the `experimental_optimization.reorder_data_discarding_ops` dataset option.
   * `tf.data.Options` were previously immutable and can now be overridden.
   * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors with a new `output_signature` argument, which allows `from_generator` to
     produce any type describable by a `tf.TypeSpec`.
@@ -149,8 +149,8 @@
     * Replaces the existing `tf.distribute.experimental.ParameterServerStrategy` symbol with a new class that is for parameter server training in TF2. Usage of
       the old symbol, usually with Estimator API, should be **replaced** with [`tf.compat.v1.distribute.experimental.ParameterServerStrategy`].
     * Added `tf.distribute.experimental.coordinator.*` namespace, including the main API `ClusterCoordinator` for coordinating the training cluster, the related data structure `RemoteValue` and `PerWorkerValue`.
-  * `MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on 
-     [Multi-worer training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).    
+  * `MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/MultiWorkerMirroredStrategy) is now a stable API and is no longer considered experimental. Some of the major improvements involve handling peer failure and many bug fixes. Please check out the detailed tutorial on
+     [Multi-worer training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras).
   * Adds `tf.distribute.Strategy.gather` and `tf.distribute.ReplicaContext.all_gather` APIs to support gathering dense distributed values.
   * Fixes various issues with saving a distributed model.
 
@@ -165,7 +165,7 @@
     * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be
       clearer and easier to understand.
   * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape` as an alternative to accepting a `callable` loss.
-  * Adds `beta` hyperparameter to [FTRL](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl) optimizer classes (Keras and others) to match [FTRL paper](https://research.google.com/pubs/archive/41159.pdf).  
+  * Adds `beta` hyperparameter to [FTRL](https://www.tensorflow.org/api_docs/python/tf/keras/optimizers/Ftrl) optimizer classes (Keras and others) to match [FTRL paper](https://research.google.com/pubs/archive/41159.pdf).
   * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for customization of how gradients are aggregated across devices, as well as `gradients_transformers` to allow for custom gradient transformations (such as gradient clipping).
   * Improvements to Keras preprocessing layers:
     * TextVectorization can now accept a vocabulary list or file as an init arg.
@@ -174,15 +174,15 @@
     True, the layer returns the attention scores as an additional output argument.
   * Adds `tf.metrics.log_cosh` and `tf.metrics.logcosh` API entrypoints with the same implementation as their `tf.losses` equivalent.
   * For Keras model, the individual call of `Model.evaluate` uses no cached data for evaluation, while `Model.fit` uses cached data when `validation_data` arg is provided for better performance.
-  * Adds a `save_traces` argument to `model.save`/ `tf.keras.models.save_model` which determines whether the SavedModel format stores the Keras model/layer call     functions. The traced functions allow Keras to revive custom models and layers without the original class definition, but if this isn't required the tracing     can be disabled with the added option.
+  * Adds a `save_traces` argument to `model.save`/ `tf.keras.models.save_model` which determines whether the SavedModel format stores the Keras model/layer call functions. The traced functions allow Keras to revive custom models and layers without the original class definition, but if this isn't required the tracing can be disabled with the added option.
   * The `tf.keras.mixed_precision` API is now non-experimental. The non-experimental API differs from the experimental API in several ways.
-    * `tf.keras.mixed_precision.Policy` no longer takes in a `tf.mixed_precision.experimental.LossScale` in the constructor, and no longer has a `LossScale`           associated with it. Instead, `Model.compile` will automatically wrap the optimizer with a `LossScaleOptimizer` using dynamic loss scaling if `Policy.name`       is "mixed_float16".
-    * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in different arguments. In particular, it no longer takes in a `LossScale`, and there is       no longer a `LossScale` associated with the `LossScaleOptimizer`. Instead, `LossScaleOptimizer` directly implements fixed or dynamic loss scaling. See the       documentation of [`tf.keras.mixed_precision.experimental.LossScaleOptimizer`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer?version=nightly) for details on the differences between the       experimental `LossScaleOptimizer` and the new non-experimental `LossScaleOptimizer`.
-    * `tf.mixed_precision.experimental.LossScale` and its subclasses are deprecated, as all of its functionality now exists within                      `tf.keras.mixed_precision.LossScaleOptimizer`
+    * `tf.keras.mixed_precision.Policy` no longer takes in a `tf.mixed_precision.experimental.LossScale` in the constructor, and no longer has a `LossScale` associated with it. Instead, `Model.compile` will automatically wrap the optimizer with a `LossScaleOptimizer` using dynamic loss scaling if `Policy.name` is `mixed_float16`.
+    * `tf.keras.mixed_precision.LossScaleOptimizer`'s constructor takes in different arguments. In particular, it no longer takes in a `LossScale`, and there is no longer a `LossScale` associated with the `LossScaleOptimizer`. Instead, `LossScaleOptimizer` directly implements fixed or dynamic loss scaling. See the documentation of [`tf.keras.mixed_precision.experimental.LossScaleOptimizer`](https://www.tensorflow.org/api_docs/python/tf/keras/mixed_precision/experimental/LossScaleOptimizer?version=nightly) for details on the differences between the experimental `LossScaleOptimizer` and the new non-experimental `LossScaleOptimizer`.
+    * `tf.mixed_precision.experimental.LossScale` and its subclasses are deprecated, as all of its functionality now exists within `tf.keras.mixed_precision.LossScaleOptimizer`
 
 ### `tf.lite`:
   * `TFLiteConverter`:
-    * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input         and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`). 
+    * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
   * NNAPI
     * Adds NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
     * Removes deprecated `Interpreter.setUseNNAPI(boolean)` Java API. Use `Interpreter.Options.setUseNNAPI` instead.
@@ -192,19 +192,19 @@
     * GPU acceleration now supports quantized models by default
   * `DynamicBuffer::AddJoinedString()` will now add a separator if the first string to be joined is empty.
   *  Adds support for cumulative sum (cumsum), both as builtin op and MLIR conversion.
-  
+
 ### `TensorRT`
   * Issues a warning when the `session_config` parameter for the TF1 converter is used or the `rewrite_config_template` field in the TF2
     converter parameter object is used.
-    
+
 ### TPU Enhancements:
   * Adds support for the `beta` parameter of the FTRL optimizer for TPU embeddings. Users of other TensorFlow platforms can implement equivalent
     behavior by adjusting the `l2` parameter.
 
 ### XLA Support:
-  * xla.experimental.compile is deprecated, use `tf.function(experimental_compile=True)` instead. 
+  * xla.experimental.compile is deprecated, use `tf.function(experimental_compile=True)` instead.
   * Adds `tf.function.experimental_get_compiler_ir` which returns compiler IR (currently 'hlo' and 'optimized_hlo') for given input for given function.
-  
+
 ### Security:
   * Fixes an undefined behavior causing a segfault in `tf.raw_ops.Switch`, ([CVE-2020-15190](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-15190))
   * Fixes three vulnerabilities in conversion to DLPack format
@@ -241,7 +241,7 @@
   * Fixes a lack of validation in `tf.raw_ops.DataFormatVecPermute` and `tf.raw_ops.DataFormatDimMap` which can cause uninitialized memory access, read outside bounds of arrays, data corruption and segmentation faults ([CVE-2020-26267](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26267))
   * Fixes a crash caused by writing to read only memory region ([CVE-2020-26268](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26268))
   * Fixes a heap out of bounds access in filesystem globbing implementation ([CVE-2020-26269](https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26269))
-    
+
 ### Other:
   * We have replaced uses of "whitelist" and "blacklist" with "allowlist" and "denylist" where possible. Please see [this list](https://developers.google.com/style/word-list#blacklist) for more context.
   * Adds `tf.config.experimental.mlir_bridge_rollout` which will help us rollout the new MLIR TPU bridge.
