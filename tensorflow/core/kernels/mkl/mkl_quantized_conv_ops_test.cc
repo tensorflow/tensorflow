@@ -154,9 +154,9 @@ class QuantizedConv2DTest : public OpsTestBase {
 
     const Tensor& output = *GetOutput(0);
     if (!NativeFormatEnabled()) {
-      const Tensor& output_mkl_metadata = *GetOutput(3);
+      const Tensor* output_mkl_metadata_ptr = GetOutput(3);
       Tensor output_quantized =
-          GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
+          GetTFFormatTensor<qint32>(DT_QINT32, output, output_mkl_metadata_ptr);
       test::ExpectTensorEqual<qint32>(expected, output_quantized);
     } else {
       test::ExpectTensorEqual<qint32>(expected, output);
@@ -258,10 +258,10 @@ TEST_F(QuantizedConv2DTest, Small) {
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* output_mkl_metadata =
+  const Tensor* output_mkl_metadata_ptr =
       NativeFormatEnabled() ? nullptr : GetOutput(3);
   Tensor output_float = QuantizedToFloatTFFormat<qint32>(
-      DT_QINT32, output, output_mkl_metadata, output_min, output_max);
+      DT_QINT32, output, output_mkl_metadata_ptr, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
@@ -362,10 +362,10 @@ TEST_F(QuantizedConv2DTest, SmallS8) {
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* output_mkl_metadata =
+  const Tensor* output_mkl_metadata_ptr =
       NativeFormatEnabled() ? nullptr : GetOutput(3);
   Tensor output_float = QuantizedToFloatTFFormat<qint32>(
-      DT_QINT32, output, output_mkl_metadata, output_min, output_max);
+      DT_QINT32, output, output_mkl_metadata_ptr, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 // Output -> qint32
@@ -419,9 +419,9 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& output_mkl_metadata = *GetOutput(3);
+    const Tensor* output_mkl_metadata_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, output_mkl_metadata_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -507,9 +507,9 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& output_mkl_metadata = *GetOutput(3);
+    const Tensor* output_mkl_metadata_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, output_mkl_metadata_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -563,9 +563,9 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& output_mkl_metadata = *GetOutput(3);
+    const Tensor* output_mkl_metadata_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, output_mkl_metadata_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);
@@ -622,9 +622,9 @@ TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
 
   const Tensor& output = *GetOutput(0);
   if (!NativeFormatEnabled()) {
-    const Tensor& output_mkl_metadata = *GetOutput(3);
+    const Tensor* output_mkl_metadata_ptr = GetOutput(3);
     Tensor output_quantized =
-        GetTFFormatTensor<qint32>(DT_QINT32, output, &output_mkl_metadata);
+        GetTFFormatTensor<qint32>(DT_QINT32, output, output_mkl_metadata_ptr);
     test::ExpectTensorEqual<qint32>(expected, output_quantized);
   } else {
     test::ExpectTensorEqual<qint32>(expected, output);

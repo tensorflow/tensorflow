@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/quantization_utils.h"
 
 namespace tensorflow {
-
 namespace {
 
 // Helper class for converting MKL tensors to TF tensors
@@ -53,12 +52,12 @@ class ConvMklToTF : public OpsTestBase {
 template <typename T>
 inline Tensor GetTFFormatTensor(DataType dtype,
                                 const Tensor& mkl_quantized_tensor,
-                                const Tensor* mkl_metadata_tensor) {
-  CHECK_NOTNULL(mkl_metadata_tensor);
+                                const Tensor* mkl_metadata_tensor_ptr) {
+  DCHECK(mkl_metadata_tensor_ptr);
   Tensor converted_tensor;
   ConvMklToTF conv_comp;
-  conv_comp.ConvertMKL2TF<T>(dtype, mkl_quantized_tensor, *mkl_metadata_tensor,
-                             converted_tensor);
+  conv_comp.ConvertMKL2TF<T>(dtype, mkl_quantized_tensor,
+                             *mkl_metadata_tensor_ptr, converted_tensor);
   return converted_tensor;
 }
 

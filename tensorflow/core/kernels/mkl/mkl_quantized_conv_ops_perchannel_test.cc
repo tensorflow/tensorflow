@@ -147,11 +147,11 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* output_mkl_metadata =
+  const Tensor* output_mkl_metadata_ptr =
       NativeFormatEnabled() ? nullptr : GetOutput(3);
 
   Tensor output_float = QuantizedToFloatTFFormat<qint32>(
-      DT_QINT32, output, output_mkl_metadata, output_min, output_max);
+      DT_QINT32, output, output_mkl_metadata_ptr, output_min, output_max);
 
   // Get the Expected Output tensor.
   // We're sliding the 3x3 filter across the 3x4 image, with accesses outside
