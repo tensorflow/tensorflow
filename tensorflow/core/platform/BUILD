@@ -981,17 +981,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "enable_tf2_utils",
-    srcs = ["enable_tf2_utils.cc"],
-    hdrs = ["enable_tf2_utils.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core/util:env_var",
-    ],
-    alwayslink = 1,
-)
-
 alias(
     name = "profile_utils_cpu_utils",
     actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
@@ -1000,12 +989,6 @@ alias(
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
-    compatible_with = get_compatible_with_portable(),
-)
-
-filegroup(
-    name = "enable_tf2_hdr",
-    srcs = ["enable_tf2_utils.h"],
     compatible_with = get_compatible_with_portable(),
 )
 
@@ -1061,20 +1044,6 @@ tf_cc_test(
         ":stacktrace",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "enable_tf2_utils_test",
-    size = "small",
-    srcs = [
-        "enable_tf2_utils_test.cc",
-    ],
-    deps = [
-        ":enable_tf2_utils",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core/util:env_var",
     ],
 )
 

@@ -2047,10 +2047,6 @@ class TensorFlowTestCase(googletest.TestCase):
     self._tempdir = None
     self._cached_session = None
     self._test_start_time = None
-    # This flag provides the ability to control whether the graph mode gets
-    # initialized for TF1 or not. Initializing for TF1, which is what was
-    # happening earlier, was preventing enablement of 'eager mode' in the test.
-    self._set_default_seed = True
 
   def setUp(self):
     super(TensorFlowTestCase, self).setUp()
@@ -2065,8 +2061,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    if self._set_default_seed:
-      random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
