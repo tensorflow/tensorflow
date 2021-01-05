@@ -1639,6 +1639,64 @@ TEST_F(QuantizeTransposeTest, VerifyTranspose) {
             transpose_output->quantization->zero_point[0]);
 }
 
+class QuantizeQatTest : public QuantizeModelTest {
+ protected:
+  QuantizeQatTest() {
+    input_model_ = ReadModel(internal::kQatModelWithFc);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeQatTest, VerifySingleQuantize) {
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, false,
+      TensorType_INT8, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto& subgraph = model_.subgraphs[0];
+  auto op = subgraph->operators[0].get();
+  ASSERT_EQ(GetBuiltinCode(model_.operator_codes[op->opcode_index].get()),
+            BuiltinOperator_QUANTIZE);
+  op = subgraph->operators[1].get();
+  ASSERT_EQ(GetBuiltinCode(model_.operator_codes[op->opcode_index].get()),
+            BuiltinOperator_RESHAPE);
+  op = subgraph->operators[2].get();
+  ASSERT_EQ(GetBuiltinCode(model_.operator_codes[op->opcode_index].get()),
+            BuiltinOperator_FULLY_CONNECTED);
+
+  ASSERT_EQ(op->inputs.size(), 3);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  auto qat_graph = readonly_model_->subgraphs()->Get(0);
+  // Verify FC input and weight is quantized.
+  ASSERT_EQ(qat_graph->tensors()->Get(op->inputs[0])->type(), TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+  ASSERT_EQ(qat_graph->tensors()->Get(op->inputs[1])->type(), TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->inputs[1]].get()->type, TensorType_INT8);
+
+  // Verify FC bias should be int32 quantized.
+  ASSERT_EQ(qat_graph->tensors()->Get(op->inputs[2])->type(), TensorType_INT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[2]].get()->type, TensorType_INT32);
+
+  // The output of FC should be quantized.
+  ASSERT_EQ(qat_graph->tensors()->Get(op->outputs[0])->type(), TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 4);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
+            BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[1].get()),
+            BuiltinOperator_RESHAPE);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[2].get()),
+            BuiltinOperator_FULLY_CONNECTED);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[3].get()),
+            BuiltinOperator_DEQUANTIZE);
+  EXPECT_EQ(model_.operator_codes[1]->version, 1);
+  EXPECT_EQ(model_.operator_codes[2]->version, 4);
+}
+
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

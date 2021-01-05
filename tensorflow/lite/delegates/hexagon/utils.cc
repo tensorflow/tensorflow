@@ -94,19 +94,22 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinSlice:
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
+    case kTfLiteBuiltinDepthToSpace:
     case kTfLiteBuiltinSplit:
     case kTfLiteBuiltinStridedSlice:
     case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
     case kTfLiteBuiltinTranspose:
-    case kTfLiteBuiltinTransposeConv:
       return registration->version <= 2;
+    case kTfLiteBuiltinSquaredDifference:
     case kTfLiteBuiltinRelu:
+    case kTfLiteBuiltinRsqrt:
       return registration->version == 2;
     case kTfLiteBuiltinConv2d:
     case kTfLiteBuiltinDepthwiseConv2d:
     case kTfLiteBuiltinResizeBilinear:
     case kTfLiteBuiltinResizeNearestNeighbor:
+    case kTfLiteBuiltinTransposeConv:
       return registration->version <= 3;
     case kTfLiteBuiltinFullyConnected:
       return registration->version <= 4;
@@ -244,11 +247,22 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
               pool_params->activation == kTfLiteActNone);
     }
     case kTfLiteBuiltinTransposeConv: {
-      if (!InputsWithCorrectTypes(node, context,
-                                  {{kTfLiteInt32},
-                                   {kTfLiteUInt8, kTfLiteInt8},
-                                   {kTfLiteUInt8, kTfLiteInt8}}))
+      if (NumInputs(node) == 3) {
+        if (!InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteInt32},
+                                     {kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteUInt8, kTfLiteInt8}}))
+          return false;
+      } else if (NumInputs(node) == 4) {
+        if (!InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteInt32},
+                                     {kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteUInt8, kTfLiteInt8},
+                                     {kTfLiteInt32}}))
+          return false;
+      } else {
         return false;
+      }
       const TfLiteTransposeConvParams* params =
           reinterpret_cast<const TfLiteTransposeConvParams*>(
               node->builtin_data);
@@ -424,6 +438,13 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           reinterpret_cast<const TfLiteStridedSliceParams*>(node->builtin_data);
       // Hexagon doesn't support ellipsis/new-axis masks.
       return (params->ellipsis_mask == 0 && params->new_axis_mask == 0);
+    }
+    case kTfLiteBuiltinSquaredDifference: {
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteInt8}, {kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinRsqrt: {
+      return InputsWithCorrectTypes(node, context, {{kTfLiteInt8}});
     }
     default:
       return false;

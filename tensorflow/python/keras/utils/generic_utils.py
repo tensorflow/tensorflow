@@ -70,7 +70,7 @@ class CustomObjectScope(object):
     layer = Dense.from_config(config)
   ```
 
-  Arguments:
+  Args:
       *args: Dictionary or dictionaries of `{name: object}` pairs.
   """
 
@@ -130,7 +130,7 @@ def register_keras_serializable(package='Custom', name=None):
   The object will be registered under the key 'package>name' where `name`,
   defaults to the object name if not passed.
 
-  Arguments:
+  Args:
     package: The package that this class belongs to.
     name: The name to serialize this class under in this package. If None, the
       class' name will be used.
@@ -402,7 +402,7 @@ def deserialize_keras_object(identifier,
 def func_dump(func):
   """Serializes a user defined function.
 
-  Arguments:
+  Args:
       func: the function to serialize.
 
   Returns:
@@ -425,7 +425,7 @@ def func_dump(func):
 def func_load(code, defaults=None, closure=None, globs=None):
   """Deserializes a user defined function.
 
-  Arguments:
+  Args:
       code: bytecode of the function.
       defaults: defaults of the function.
       closure: closure of the function.
@@ -442,7 +442,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
   def ensure_value_to_cell(value):
     """Ensures that a value is converted to a python cell object.
 
-    Arguments:
+    Args:
         value: Any value that needs to be casted to the cell type
 
     Returns:
@@ -474,7 +474,7 @@ def func_load(code, defaults=None, closure=None, globs=None):
 def has_arg(fn, name, accept_all=False):
   """Checks if a callable accepts a given keyword argument.
 
-  Arguments:
+  Args:
       fn: Callable to inspect.
       name: Check if `fn` can be called with `name` as a keyword argument.
       accept_all: What to return if there is no parameter called `name` but the
@@ -493,7 +493,7 @@ def has_arg(fn, name, accept_all=False):
 class Progbar(object):
   """Displays a progress bar.
 
-  Arguments:
+  Args:
       target: Total number of steps expected, None if unknown.
       width: Progress bar width on screen.
       verbose: Verbosity mode, 0 (silent), 1 (verbose), 2 (semi-verbose)
@@ -540,7 +540,7 @@ class Progbar(object):
   def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
 
-    Arguments:
+    Args:
         current: Index of current step.
         values: List of tuples: `(name, value_for_last_step)`. If `name` is in
           `stateful_metrics`, `value_for_last_step` will be displayed as-is.
@@ -681,7 +681,7 @@ class Progbar(object):
     (i.e. `current == 0`) then zero is given as an estimate. The duration
     estimate ignores the duration of the (assumed to be non-representative)
     first step for estimates when more steps are available (i.e. `current>1`).
-    Arguments:
+    Args:
       current: Index of current step.
       now: The current time.
     Returns: Estimate of the duration of a single step.
@@ -707,7 +707,7 @@ class Progbar(object):
 def make_batches(size, batch_size):
   """Returns a list of batch indices (tuples of indices).
 
-  Arguments:
+  Args:
       size: Integer, total size of the data to slice into batches.
       batch_size: Integer, batch size.
 
@@ -729,7 +729,7 @@ def slice_arrays(arrays, start=None, stop=None):
 
   Can also work on list/array of indices: `slice_arrays(x, indices)`
 
-  Arguments:
+  Args:
       arrays: Single array or list of arrays.
       start: can be an integer index (start index) or a list/array of indices
       stop: integer (stop index); should be None if `start` was a list.
@@ -771,7 +771,7 @@ def to_list(x):
   If a tensor is passed, we return
   a list of size 1 containing the tensor.
 
-  Arguments:
+  Args:
       x: target object to be normalized.
 
   Returns:

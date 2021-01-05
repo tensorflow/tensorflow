@@ -28,6 +28,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as variables_lib
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
@@ -500,3 +501,21 @@ def embedding_lookup(params,
   return embedding_ops.embedding_lookup(params.variables, ids,
                                         partition_strategy, name,
                                         validate_indices, max_norm)
+
+
+def _raise_when_load(_):
+  # We don't have serialization and deserialization mechanisms for
+  # `ShardedVariable` in 2.x style save/load yet.
+  raise ValueError('Loading `ShardedVariable` is not supported')
+
+
+revived_types.register_revived_type(
+    '_tf_distribute_sharded_variable',
+    lambda obj: isinstance(obj, ShardedVariable),
+    versions=[
+        revived_types.VersionedTypeRegistration(
+            object_factory=_raise_when_load,
+            version=0,
+            min_producer_version=0,
+            min_consumer_version=0)
+    ])

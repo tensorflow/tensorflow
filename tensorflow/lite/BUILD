@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
@@ -14,7 +14,10 @@ exports_files(glob([
     "testdata/*.tflite",
     "testdata/*.csv",
     "models/testdata/*",
-]))
+]) + [
+    "create_op_resolver.h",
+    "create_op_resolver_with_selected_ops.cc",
+])
 
 config_setting(
     name = "gemmlowp_profiling",
@@ -260,7 +263,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/delegates:status",
+        "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
@@ -347,7 +350,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/core/api:verifier",
-        "//tensorflow/lite/delegates:status",
+        "//tensorflow/lite/delegates:telemetry",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/profiling:platform_profiler",
@@ -707,6 +710,19 @@ cc_library(
     ],
 )
 
+# Defines CreateOpResolver with all builtin ops.
+cc_library(
+    name = "create_op_resolver_with_builtin_ops",
+    srcs = ["create_op_resolver_with_builtin_ops.cc"],
+    hdrs = ["create_op_resolver.h"],
+    copts = tflite_copts(),
+    deps = [
+        "//tensorflow/lite:op_resolver",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/shims:builtin_ops",
+    ],
+)
+
 cc_test(
     name = "util_test",
     size = "small",
@@ -745,9 +761,7 @@ cc_library(
         "//tensorflow:android": ["-llog"],
         "//conditions:default": [],
     }),
-    visibility = [
-        "//tensorflow/lite:__subpackages__",
-    ],
+    visibility = internal_visibility_allowlist(),
 )
 
 cc_library(

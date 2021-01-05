@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.platform import test
@@ -105,6 +106,51 @@ class UniqueTest(test.TestCase):
     self.assertEqual(len(tf_y), len(np.unique(x)))
     for i in range(len(x)):
       self.assertEqual(x[i], tf_y[tf_idx[i]])
+
+  @test_util.run_deprecated_v1
+  def testShapeInferenceV2(self):
+    """Test shape inference."""
+    x = np.arange(6).reshape(3, 2, 1)
+    _, idx = gen_array_ops.unique_v2(x, axis=[0])
+    self.assertEqual(idx.shape.as_list(), [3])
+    _, idx = gen_array_ops.unique_v2(x, axis=[1])
+    self.assertEqual(idx.shape.as_list(), [2])
+    _, idx = gen_array_ops.unique_v2(x, axis=[2])
+    self.assertEqual(idx.shape.as_list(), [1])
+    _, idx = gen_array_ops.unique_v2(x, axis=[-1])
+    self.assertEqual(idx.shape.as_list(), [1])
+    _, idx = gen_array_ops.unique_v2(x, axis=[-2])
+    self.assertEqual(idx.shape.as_list(), [2])
+    _, idx = gen_array_ops.unique_v2(x, axis=[-3])
+    self.assertEqual(idx.shape.as_list(), [3])
+    _, idx = gen_array_ops.unique_v2([0, 1, 2], axis=[])
+    self.assertEqual(idx.shape.as_list(), [3])
+
+    with self.assertRaisesRegexp(ValueError, "axis expects a 1D vector"):
+      gen_array_ops.unique_v2(x, axis=[[0]])
+
+    with self.assertRaisesRegexp(ValueError, "x expects a 1D vector"):
+      gen_array_ops.unique_v2(x, axis=[])
+
+    with self.assertRaisesRegexp(
+        ValueError, "axis does not support input tensors larger than"):
+      gen_array_ops.unique_v2(x, axis=[1, 2])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r"axis expects to be in the range \[-3, 3\)"):
+      gen_array_ops.unique_v2(x, axis=[3])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 r"axis expects to be in the range \[-3, 3\)"):
+      gen_array_ops.unique_v2(x, axis=[-4])
+
+    x_t = array_ops.placeholder(dtypes.int32, shape=None)
+    _, idx = gen_array_ops.unique_v2(x_t, axis=[0])
+    self.assertEqual(idx.shape.as_list(), [None])
+
+    axis_t = array_ops.placeholder(dtypes.int32, shape=None)
+    _, idx = gen_array_ops.unique_v2(x, axis=axis_t)
+    self.assertEqual(idx.shape.as_list(), [None])
 
 
 class UniqueWithCountsTest(test.TestCase):

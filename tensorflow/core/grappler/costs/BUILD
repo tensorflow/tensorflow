@@ -334,6 +334,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
     ] + tf_protos_grappler(),

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 
-#include <xtensa/tie/xt_hifi2.h>
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -26,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 
 namespace tflite {
 namespace {
@@ -54,6 +53,7 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
+#if defined(HIFIMINI)
 void FullyConnected(const FullyConnectedParams& params,
                     const RuntimeShape& input_shape, const int8_t* input_data,
                     const RuntimeShape& filter_shape, const int8_t* filter_data,
@@ -137,6 +137,7 @@ void FullyConnected(const FullyConnectedParams& params,
     }
   }
 }
+#endif
 
 TfLiteStatus CalculateOpData(TfLiteContext* context,
                              TfLiteFusedActivation activation,
@@ -147,8 +148,13 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
       context, input, filter, bias, output, &real_multiplier));
+#if defined(HIFIMINI)
   QuantizeMultiplierForInt24(real_multiplier, &data->output_multiplier,
                              &data->output_shift);
+#else
+  QuantizeMultiplier(real_multiplier, &data->output_multiplier,
+                     &data->output_shift);
+#endif
   return CalculateActivationRangeQuantized(context, activation, output,
                                            &data->output_activation_min,
                                            &data->output_activation_max);
@@ -206,6 +212,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   op_params.quantized_activation_min = data.output_activation_min;
   op_params.quantized_activation_max = data.output_activation_max;
 
+#if defined(HIFIMINI)
   FullyConnected(op_params, tflite::micro::GetTensorShape(input),
                  tflite::micro::GetTensorData<int8_t>(input),
                  tflite::micro::GetTensorShape(filter),
@@ -214,6 +221,18 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                  tflite::micro::GetTensorData<int32_t>(bias),
                  tflite::micro::GetTensorShape(output),
                  tflite::micro::GetTensorData<int8_t>(output));
+#else
+  reference_integer_ops::FullyConnected(
+      op_params, tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int8_t>(input),
+      tflite::micro::GetTensorShape(filter),
+      tflite::micro::GetTensorData<int8_t>(filter),
+      tflite::micro::GetTensorShape(bias),
+      tflite::micro::GetTensorData<int32_t>(bias),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
+#endif
+
   return kTfLiteOk;
 }
 

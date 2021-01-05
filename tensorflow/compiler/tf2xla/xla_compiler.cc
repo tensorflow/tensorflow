@@ -18,12 +18,15 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "tensorflow/compiler/mlir/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/rearrange_function_argument.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -56,11 +59,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/util/dump_graph.h"
-
-#ifndef LIBTPU_ON_GCE
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
-#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
-#endif
 
 namespace tensorflow {
 namespace {
@@ -551,7 +549,8 @@ static Status GetFunctionBody(const NameAttrList& function,
 }
 
 Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
-                                     const FunctionBody** fbody) {
+                                     const FunctionBody** fbody,
+                                     const ConfigProto** config_proto) {
   // The function may be in either the local_flib_runtime_ or flib_runtime_.
   // Look up the function in local first and if it is not found then look up the
   // function in flib_runtime_.
@@ -563,8 +562,14 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
         GetFunctionBody(function, flib_runtime_, fbody),
         "Local lookup failed with: ", status.error_message());
+    if (config_proto) {
+      *config_proto = flib_runtime_->config_proto();
+    }
     VLOG(4) << "Function " << function.name() << " in flib_runtime_";
   } else {
+    if (config_proto) {
+      *config_proto = local_flib_runtime_->config_proto();
+    }
     VLOG(4) << "Function " << function.name() << " in local_flib_runtime_";
   }
   return Status::OK();
@@ -728,7 +733,13 @@ Status XlaCompiler::CompileFunction(
   }
 
   const FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody));
+  const ConfigProto* config = nullptr;
+  TF_RETURN_IF_ERROR(FindFunctionBody(fn_name_attrs, &fbody, &config));
+
+  absl::optional<ConfigProto> config_proto;
+  if (config) {
+    config_proto = *config;
+  }
 
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       CheckSignature(fbody->arg_types, args),
@@ -789,16 +800,9 @@ Status XlaCompiler::CompileFunction(
   }
 
   VLOG(1) << "====================================================";
-#ifdef LIBTPU_ON_GCE
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
-    VLOG(1) << "MLIR is not supported in this environment.";
-  }
-  TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, result));
-#else
-  if (GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge ==
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED) {
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(*graph, config_proto);
+  if (policy == MlirBridgeRolloutPolicy::kEnabledByUser) {
     VLOG(1) << "Using MLIR bridge";
     GraphDebugInfo debug_info;
 
@@ -814,7 +818,6 @@ Status XlaCompiler::CompileFunction(
     TF_RETURN_IF_ERROR(
         CompileGraph(options, function_id, std::move(graph), args, result));
   }
-#endif
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -1295,7 +1298,7 @@ Status XlaCompiler::CompileGraph(
                                    options_.device_type, name));
 
   xla::XlaBuilder builder(name);
-  XlaContext* context = new XlaContext(this, &builder);
+  XlaContext* context = new XlaContext(this, &builder, graph.get());
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());

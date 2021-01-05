@@ -85,6 +85,8 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 def LHLO_BitcastConvertOp:
     LHLO_UnaryElementwiseOp<"bitcast_convert", LHLO_Buffer, [SameOperandsShape]>, BASE_HLO_BitcastConvertOp;
 
+def LHLO_CbrtOp: LHLO_UnaryElementwiseOp<"cbrt", LHLO_FpBuffer>, BASE_HLO_CbrtOp;
+
 def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil", LHLO_FpBuffer>, BASE_HLO_CeilOp;
 
 def LHLO_ClzOp: LHLO_UnaryElementwiseOp<"count_leading_zeros", LHLO_IntBuffer>, BASE_HLO_ClzOp;
@@ -415,7 +417,7 @@ def LHLO_ConvOp : LHLO_Op<"convolution", []>, BASE_HLO_ConvOp {
        Arg<LHLO_Buffer, "", [MemRead]>:$lhs,
        Arg<LHLO_Buffer, "", [MemRead]>:$rhs,
        Arg<LHLO_Buffer, "", [MemWrite]>:$output),
-    ConvolutionAttributes<LHLO_Dialect>.attributes);
+    ConvolutionAttributes.attributes);
 }
 
 def LHLO_CopyOp: LHLO_Op<"copy", [CopyOpInterface]>, BASE_HLO_CopyOp {
@@ -573,14 +575,14 @@ def LHLO_CholeskyOp: LHLO_Op<"cholesky", [SameOperandsElementType]>, BASE_HLO_Ch
   );
 }
 
-def LHLO_Infeed: LHLO_Op<"infeed", []>, BASE_HLO_InfeedOp {
+def LHLO_InfeedOp: LHLO_Op<"infeed", []>, BASE_HLO_InfeedOp {
   let arguments = (ins
-    Arg<LHLO_Buffer, "", [MemWrite]>:$output,
+    Arg<Variadic<LHLO_Buffer>, "", [MemWrite]>:$outputs,
     DefaultValuedAttr<StrAttr, "">:$config
   );
 }
 
-def LHLO_Outfeed: LHLO_Op<"outfeed", []> {
+def LHLO_OutfeedOp: LHLO_Op<"outfeed", []> {
   let arguments = (ins
     Arg<LHLO_Buffer, "", [MemRead]>:$operand,
     DefaultValuedAttr<StrAttr, "">:$config
@@ -654,7 +656,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilderDAG<(ins "ArrayRef<NamedAttribute>":$attributes)>
+     OpBuilderDAG<(ins CArg<"ArrayRef<NamedAttribute>", "{}">:$attributes)>
   ];
 
   let extraClassDeclaration = [{

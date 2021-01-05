@@ -2471,7 +2471,6 @@ cuda_py_test(
     name = "relu_op_test",
     size = "small",
     srcs = ["relu_op_test.py"],
-    tags = ["no_rocm"],
     xla_tags = [
         "no_cuda_asan",  # times out
     ],
@@ -3147,6 +3146,10 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -134,6 +134,12 @@ func @testRsqrt(tensor<? x f32>) -> tensor<? x f32> {
   return %0 : tensor<? x f32>
 }
 
+// CHECK-LABEL: testRsqrtQuant
+func @testRsqrtQuant(%arg0: tensor<1x80x1x!quant.uniform<i8:f32, 0.048358432948589325:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>> {
+  %0 = "tfl.rsqrt"(%arg0) : (tensor<1x80x1x!quant.uniform<i8:f32, 0.048358432948589325:-128>>) -> tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>>
+  return %0 : tensor<1x80x1x!quant.uniform<i8:f32, 0.0066055487841367722:-128>>
+}
+
 // CHECK-LABEL: testSin
 func @testSin(tensor<? x f32>) -> tensor<? x f32> {
 ^bb0(%arg0: tensor<? x f32>):
@@ -170,6 +176,14 @@ func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
   // expected-error @+1 {{tfl.square' op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
+}
+
+// -----
+
+// CHECK-LABEL: testSquaredDifferenceQuant
+func @testSquaredDifferenceQuant(%arg0: tensor<1x80x128x!quant.uniform<i8:f32, 0.089839041233062744:10>>, %arg1: tensor<1x80x128x!quant.uniform<i8:f32, 0.0019308560295030475:-6>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.60070550441741943:-128>> {
+  %0 = "tfl.squared_difference"(%arg0, %arg1) : (tensor<1x80x128x!quant.uniform<i8:f32, 0.089839041233062744:10>>, tensor<1x80x128x!quant.uniform<i8:f32, 0.0019308560295030475:-6>>) -> tensor<1x80x128x!quant.uniform<i8:f32, 0.60070550441741943:-128>>
+  return %0 : tensor<1x80x128x!quant.uniform<i8:f32, 0.60070550441741943:-128>>
 }
 
 // -----
@@ -343,7 +357,7 @@ func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x 
 
 func @testMulInvalidOperands(tensor<? x f32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x f32>, %arg1: tensor<? x i32>):
-  // expected-error @+1 {{failed to verify that operands have same element type}}
+  // expected-error @+1 {{failed to verify that binary op operands have same element type}}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<? x f32>, tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -352,7 +366,7 @@ func @testMulInvalidOperands(tensor<? x f32>, tensor<? x i32>) -> tensor<? x i32
 
 func @testMulInvalidQuantizedOperands(tensor<* x !quant.any<i16:f32>>, tensor<* x !quant.any<i8:f32>>) -> tensor<* x !quant.any<i16:f32>> {
 ^bb0(%arg0: tensor<* x !quant.any<i16:f32>>, %arg1: tensor<* x !quant.any<i8:f32>>):
-  // expected-error @+1 {{failed to verify that operands have same element type}}
+  // expected-error @+1 {{failed to verify that binary op operands have same element type}}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"}: (tensor<* x !quant.any<i16:f32>>, tensor<* x !quant.any<i8:f32>>) -> tensor<* x !quant.any<i16:f32>>
   return %0#0 : tensor<* x !quant.any<i16:f32>>
 }
@@ -398,7 +412,7 @@ func @testFloorDivF32(tensor<? x f32>, tensor<? x f32>) -> tensor<? x f32> {
 // -----
 
 func @testFloorDivF32(%arg0: tensor<2 x f32>, %arg1: tensor<2 x i32>) -> tensor<2 x f32> {
-  // expected-error @+1 {{failed to verify that operands have same element type}}
+  // expected-error @+1 {{failed to verify that binary op operands have same element type}}
   %0 = "tfl.floor_div"(%arg0, %arg1) : (tensor<2 x f32>, tensor<2 x i32>) -> tensor<2 x f32>
   return %0#0 : tensor<2 x f32>
 }
@@ -2422,17 +2436,19 @@ func @valid_unranked_inputs_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<*xi
 // -----
 
 // CHECK-LABEL: valid_one_dynamic_dim_on_reshape
-func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<1x?x4xi32>) -> tensor<1x3x4xi32> {
-  // CHECK: "tfl.reshape"(%arg0, %arg1)
-  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<1x?x4xi32>) -> tensor<1x3x4xi32>
+func @valid_one_dynamic_dim_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi32> {
+  %cst = constant dense<[1, -1, 4]> : tensor<3xi32>
+  // CHECK: "tfl.reshape"(%arg0, %cst)
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
 }
 
 // -----
 
-func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>, %arg1: tensor<?x?x4xi32>) -> tensor<1x3x4xi32> {
-  // expected-error @+1 {{its shape value, 'tensor<?x?x4xi32>', is invalid because it has more than one dynamic dimensions. You need to set up the unspecified size(s) to avoid this problem, for example, setting batch size in keras model or setting unspecified input size(s) with fixed ones.}}
-  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<3x4xi32>, tensor<?x?x4xi32>) -> tensor<1x3x4xi32>
+func @invalid_two_dynamic_dims_on_reshape(%arg0: tensor<3x4xi32>) -> tensor<1x3x4xi32> {
+  %cst = constant dense<[-1, -1, 4]> : tensor<3xi32>
+  // expected-error @+1 {{tfl.reshape' op requires 'shape' to have at most one dynamic dimension, but got multiple dynamic dimensions at indices 0 and 1. You need to set up the unspecified size(s) to avoid this problem, for example,setting batch size in keras model or setting unspecified input size(s) with fixed ones.}}
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<3x4xi32>, tensor<3xi32>) -> tensor<1x3x4xi32>
   return %0 : tensor<1x3x4xi32>
 }
 

@@ -636,7 +636,8 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheCuda(
   }
 
   auto selected_result = filtered_results.begin();
-  if (!RequireCudnnDeterminism()) {
+  if (!RequireCudnnDeterminism() &&
+      !hlo_module_config.debug_options().xla_gpu_deterministic_ops()) {
     selected_result = absl::c_min_element(
         filtered_results,
         [](const AutotuneResult& lhs, const AutotuneResult& rhs) {

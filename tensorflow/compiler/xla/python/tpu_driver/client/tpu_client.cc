@@ -37,8 +37,8 @@ namespace xla {
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::PjRtDevice(id, /*local_device_state=*/nullptr,
-                      /*device_kind=*/"Cloud TPU", host_id),
+    : xla::PjRtStreamExecutorDevice(id, /*local_device_state=*/nullptr,
+                                    /*device_kind=*/"Cloud TPU", host_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
 

@@ -18,7 +18,7 @@ set -e
 
 # Get the latest version of pip so it recognize manylinux2010
 wget https://bootstrap.pypa.io/get-pip.py
-python3 get-pip.py
+python3.6 get-pip.py
 python get-pip.py
 rm -f get-pip.py
 
@@ -134,7 +134,7 @@ pip3 install --upgrade termcolor
 pip2 install keras_preprocessing==1.1.0 --no-deps
 pip3 install keras_preprocessing==1.1.0 --no-deps
 pip2 install --upgrade h5py==2.8.0
-pip3 install --upgrade h5py==2.8.0
+pip3 install --upgrade h5py==3.1.0
 
 # Estimator
 pip2 install tf-estimator-nightly --no-deps

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -52,6 +53,8 @@ struct HostComputeMetadataSerializedProto {
 };
 
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
+
+typedef struct TpuProfiler TpuProfiler;
 
 typedef struct XLA_DeviceAssignment {
   const char* bytes;
@@ -103,6 +106,21 @@ TFTPU_CAPI_EXPORT void TpuCompile_XrtCompileAndBuild(
     TpuSerializedProto xrt_computation, const XLA_TpuMeshState* mesh_state,
     XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
+// Creates a new TPU profiler object.
+TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Create();
+
+TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Free(TpuProfiler* tpu_profiler);
+
+TFTPU_CAPI_EXPORT void TpuProfiler_Start(TpuProfiler* tpu_profiler,
+                                         TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuProfiler_Stop(TpuProfiler* tpu_profiler,
+                                        TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(
+    TpuProfiler* tpu_profiler, TF_Status* status,
+    tensorflow::profiler::XSpace* space);
+
 // Creates a new TPU mesh state object.
 TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
 
@@ -122,6 +140,7 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   SE_DeviceMemoryBase* arguments;
   size_t arguments_len;
   SE_DeviceMemoryBase* result;
+  bool has_cross_program_prefetch_addr;
   SE_DeviceMemoryBase* cross_program_prefetch_addr;
   int32_t rng_seed;
   XLA_DeviceAssignment* device_assignment;
@@ -395,6 +414,12 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Stop);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_CollectData);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_LoadProgramAndEnqueueToStream);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);

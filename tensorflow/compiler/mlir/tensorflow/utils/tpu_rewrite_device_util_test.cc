@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -650,10 +650,10 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailModelParallelism) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 5));
-  cluster.setAttr(kTopologyAttr, builder.getStringAttr(""));
-  cluster.setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 5));
+  cluster->setAttr(kTopologyAttr, builder.getStringAttr(""));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;
@@ -671,9 +671,9 @@ TEST(TPURewriteDeviceUtilTest, TestGetHostDeviceFailMissingTopology) {
   llvm::SmallVector<mlir::Type, 8> result_types;
   auto cluster = builder.create<mlir::tf_device::ClusterOp>(
       mlir::UnknownLoc::get(&context), result_types);
-  cluster.setAttr(kNumCoresPerReplicaAttr,
-                  builder.getIntegerAttr(builder.getIntegerType(64), 1));
-  cluster.setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
+  cluster->setAttr(kNumCoresPerReplicaAttr,
+                   builder.getIntegerAttr(builder.getIntegerType(64), 1));
+  cluster->setAttr(kDeviceAssignmentAttr, builder.getArrayAttr({}));
 
   mlir::TF::RuntimeDevices runtime_devices;
   std::string host_device;

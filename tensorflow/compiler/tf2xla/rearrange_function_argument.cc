@@ -366,7 +366,8 @@ Status MaybeRewriteWhileNode(
     string new_name =
         fld->UniqueFunctionName(absl::StrCat(attr_value.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef));
+    TF_RETURN_IF_ERROR(
+        fld->AddFunctionDef(new_fdef, fld->GetStackTraces(attr_value.name())));
 
     // Change node to use rewritten function.
     attr_value.set_name(new_name);
@@ -455,7 +456,8 @@ Status MaybeRewriteIfNode(
     string new_name =
         fld->UniqueFunctionName(absl::StrCat(f.name(), "_rearrange_"));
     TF_RETURN_IF_ERROR(GraphToFunctionDef(*fbody->graph, new_name, &new_fdef));
-    TF_RETURN_IF_ERROR(fld->AddFunctionDef(new_fdef));
+    TF_RETURN_IF_ERROR(
+        fld->AddFunctionDef(new_fdef, fld->GetStackTraces(f.name())));
 
     // Change node to use rewritten function.
     f.set_name(new_name);

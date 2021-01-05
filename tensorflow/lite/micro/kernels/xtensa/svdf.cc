@@ -13,8 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <math.h>
-#include <xtensa/tie/xt_hifi2.h>
+#include "tensorflow/lite/micro/kernels/svdf.h"
+
+#include <cmath>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -26,24 +27,10 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
+#include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
 
 namespace tflite {
 namespace {
-
-struct OpData {
-  int32_t effective_scale_1_a;
-  int32_t effective_scale_2_a;
-  // b versions of each scale are kept at int since the numbers are just the
-  // shift value - typically between [-32, 32].
-  int effective_scale_1_b;
-  int effective_scale_2_b;
-  int scratch_tensor_index;
-  int scratch_output_tensor_index;
-
-  // Cached tensor zero point values for quantized operations.
-  int input_zero_point;
-  int output_zero_point;
-};
 
 // Input tensors.
 constexpr int kInputTensor = 0;
@@ -56,6 +43,7 @@ constexpr int kInputActivationStateTensor = 4;
 // Output tensor.
 constexpr int kOutputTensor = 0;
 
+#if defined(HIFIMINI)
 /**
  * This version of SVDF is specific to TFLite Micro. It contains only a full
  * integer receipe with optimizations for the Xtensa HiFiMini platform.
@@ -255,6 +243,7 @@ void EvalIntegerSVDF(TfLiteContext* context, TfLiteNode* node,
     }
   }
 }
+#endif
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context != nullptr);
@@ -357,10 +346,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
 
+#if defined(HIFIMINI)
   QuantizeMultiplierForInt24(effective_scale_1, &data->effective_scale_1_a,
                              &data->effective_scale_1_b);
   QuantizeMultiplierForInt24(effective_scale_2, &data->effective_scale_2_a,
                              &data->effective_scale_2_b);
+#else
+  QuantizeMultiplier(effective_scale_1, &(data->effective_scale_1_a),
+                     &(data->effective_scale_1_b));
+  QuantizeMultiplier(effective_scale_2, &(data->effective_scale_2_a),
+                     &(data->effective_scale_2_b));
+#endif
 
   data->input_zero_point = input->params.zero_point;
   data->output_zero_point = output->params.zero_point;
@@ -399,8 +395,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   const OpData& data = *(static_cast<const OpData*>(node->user_data));
 
+#if defined(HIFIMINI)
   EvalIntegerSVDF(context, node, input, weights_feature, weights_time, bias,
                   params, activation_state, output, data);
+#else
+  EvalIntegerSvdfReference(context, node, input, weights_feature, weights_time,
+                           bias, params, activation_state, output, data);
+#endif
   return kTfLiteOk;
 }
 

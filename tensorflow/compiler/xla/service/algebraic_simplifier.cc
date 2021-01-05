@@ -4696,6 +4696,10 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
 Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* reduce_window) {
+  // TODO(b/73062247) Variadic reduce window is not yet supported in simplifier.
+  if (reduce_window->shape().IsTuple()) {
+    return Status::OK();
+  }
   if (ShapeUtil::IsZeroElementArray(reduce_window->operand(0)->shape())) {
     return ReplaceWithNewInstruction(
         reduce_window,

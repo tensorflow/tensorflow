@@ -946,6 +946,17 @@ AsyncOpKernel* IteratorGetNextOp::AsAsync() {
   return type_string() == "IteratorGetNextSync" ? nullptr : this;
 }
 
+void RecordElementSize(const std::vector<Tensor> element,
+                       profiler::TraceMe* traceme) {
+  traceme->AppendMetadata([&]() {
+    int64 element_size = 0;
+    for (const auto& component : element) {
+      element_size += component.TotalBytes();
+    }
+    return profiler::TraceMeEncode({{"element_size", element_size}});
+  });
+}
+
 Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   profiler::TraceMe traceme(
       [&] {
@@ -968,6 +979,7 @@ Status IteratorGetNextOp::DoCompute(OpKernelContext* ctx) {
   }
   TF_RETURN_IF_ERROR(VerifyTypesMatch(output_types_, components));
   TF_RETURN_IF_ERROR(VerifyShapesCompatible(output_shapes_, components));
+  RecordElementSize(components, &traceme);
   for (int i = 0; i < components.size(); ++i) {
     ctx->set_output(i, components[i]);
   }
@@ -995,6 +1007,7 @@ Status IteratorGetNextAsOptionalOp::DoCompute(OpKernelContext* ctx) {
   if (end_of_sequence) {
     return WriteOptionalNoneToOutput(ctx, 0);
   } else {
+    RecordElementSize(components, &traceme);
     for (int i = 0; i < components.size(); ++i) {
       if (components[i].dtype() != output_types_[i]) {
         return errors::InvalidArgument(

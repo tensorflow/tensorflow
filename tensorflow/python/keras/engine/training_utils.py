@@ -35,7 +35,7 @@ def slice_arrays(arrays, indices, contiguous=True):
   and we have to implement this workaround based on `concat`. This has a
   performance cost.
 
-  Arguments:
+  Args:
     arrays: Single array or list of arrays.
     indices: List of indices in the array that should be included in the output
       batch.
@@ -206,7 +206,7 @@ def get_input_shape_and_dtype(layer):
 def get_static_batch_size(layer):
   """Gets the static batch size of a Layer.
 
-  Arguments:
+  Args:
     layer: a `Layer` instance.
 
   Returns:

@@ -55,7 +55,7 @@ class PreprocessingLayer(Layer):
     # TODO(momernick): Add examples.
     """Fits the state of the preprocessing layer to the data being passed.
 
-    Arguments:
+    Args:
         data: The data to train on. It can be passed either as a tf.data
           Dataset, or as a numpy array.
         reset_state: Optional argument specifying whether to clear the state of
@@ -137,7 +137,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   def adapt(self, data, reset_state=True):
     """Fits the state of the preprocessing layer to the data being passed.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         or as a numpy array.
       reset_state: Optional argument specifying whether to clear the state of

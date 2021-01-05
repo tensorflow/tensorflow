@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_CONTEXT_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_CONTEXT_H_
 
+#if (defined(__i386) || defined(_M_IX86) || defined(__x86_64__) || \
+     defined(_M_X64))
+#define TFLITE_X86_PLATFORM
+#endif
+
 #include <memory>
 
 #include "public/gemmlowp.h"
@@ -51,6 +56,10 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
 
   bool HasAvxOrAbove();
+
+  // Gemmlowp on x86 is a deprecated path but some clients may still use
+  // this path based on link time dependencies.
+  bool PreferGemmlowpOnX86();
 
  private:
   // Copy the wrapper class for cpuinfo from Ruy.

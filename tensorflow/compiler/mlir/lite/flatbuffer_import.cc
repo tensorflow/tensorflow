@@ -50,14 +50,13 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -510,6 +509,12 @@ Operation* BuildVariableOp(const tflite::TensorT& tensor,
     return op.getOperation();
   }
   auto op = builder.create<tfl::ConstOp>(loc, value);
+  if (tensor.quantization && !tensor.quantization->min.empty()) {
+    if (auto stats_op =
+            ConvertMinMaxToStatsOp(tensor, builder, op.getResult())) {
+      return stats_op;
+    }
+  }
   return op.getOperation();
 }
 
@@ -712,6 +717,29 @@ StatusOr<Operation*> ConvertOp(
   if (op_name == "tfl.unidirectional_sequence_lstm") {
     TF_CHECK_OK(AddOpIntermediatesForLstm(op, intermediate_types, op_state, loc,
                                           builder));
+  }
+  if (op_name == "tfl.reshape") {
+    // Flattern reshape ops when more than one dimension shape operand is given.
+    mlir::DenseIntElementsAttr shape_attr;
+    if (matchPattern(op_state.operands[1], m_Constant(&shape_attr))) {
+      auto shape_ty =
+          op_state.operands[1].getType().dyn_cast<RankedTensorType>();
+      if (shape_ty != nullptr && shape_ty.hasRank() && shape_ty.getRank() > 1) {
+        llvm::SmallVector<mlir::Attribute, 4> shape;
+        int32_t dim_size = 0;
+        for (const auto& dim : llvm::enumerate(shape_attr.getIntValues())) {
+          const int64_t size = dim.value().getSExtValue();
+          shape.push_back(
+              builder.getI32IntegerAttr(static_cast<int32_t>(size)));
+          ++dim_size;
+        }
+        auto shape_type = RankedTensorType::get(
+            {static_cast<int32_t>(dim_size)}, builder.getIntegerType(32));
+        auto output_shape = mlir::DenseElementsAttr::get(shape_type, shape);
+        auto shape_op = builder.create<tfl::ConstOp>(loc, output_shape);
+        op_state.operands[1] = shape_op;
+      }
+    }
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
@@ -1007,7 +1035,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "outputs", func_outputs));
     }
-    func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   } else {
     func.setPrivate();
   }
@@ -1165,11 +1193,11 @@ OwningModuleRef tflite::FlatBufferToMlir(
   auto module = mlir::ModuleOp::create(base_loc);
   // We currently don't use this to make decisions, but we could
   // use it in exports or if there are breaking changes
-  module.setAttr("tfl.schema_version",
-                 builder.getI32IntegerAttr(model->version));
+  module->setAttr("tfl.schema_version",
+                  builder.getI32IntegerAttr(model->version));
   if (!model->description.empty()) {
-    module.setAttr("tfl.description",
-                   builder.getStringAttr(model->description));
+    module->setAttr("tfl.description",
+                    builder.getStringAttr(model->description));
   }
 
   for (auto e : llvm::enumerate(model->subgraphs)) {

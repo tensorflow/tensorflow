@@ -5,7 +5,7 @@ module attributes {
 } {
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f16
-func @transposeConv2D_3x3_f16(%input: tensor<1x28x28x64xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x28x28x64xf16> {
+func @transposeConv2D_3x3_f16(%input: tensor<1x28x28x64xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x26x26x64xf16> {
   // cuDNN prefers NCHW data format for spatial convolutions in f16 before
   // compute capability 7.0 (NVIDIA Tensor Cores).
 
@@ -17,9 +17,9 @@ func @transposeConv2D_3x3_f16(%input: tensor<1x28x28x64xf16>, %filter: tensor<3x
          padding = "VALID",
          strides = [1, 1, 1, 1]
        } : (tensor<1x28x28x64xf16>, tensor<3x3x64x64xf16>)
-        -> tensor<1x28x28x64xf16>
+        -> tensor<1x26x26x64xf16>
 
-  return %0 : tensor<1x28x28x64xf16>
+  return %0 : tensor<1x26x26x64xf16>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f16

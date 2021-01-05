@@ -121,7 +121,7 @@ class RandomFourierFeatures(base_layer.Layer):
       ...)
   ```
 
-  Arguments:
+  Args:
     output_dim: Positive integer, the dimension of the layer's output, i.e., the
       number of random features used to approximate the kernel.
     kernel_initializer: Determines the distribution of the parameters of the

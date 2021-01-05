@@ -111,6 +111,7 @@ cc_library(
         ":miopen",
         ":hipsparse",
         ":roctracer",
+        ":rocsolver",
     ],
 )
 
@@ -148,6 +149,12 @@ cc_library(
 cc_library(
     name = "roctracer",
     data = ["rocm/lib/%{roctracer_lib}"],
+)
+
+cc_library(
+    name = "rocsolver",
+    srcs = ["rocm/lib/%{rocsolver_lib}"],
+    data = ["rocm/lib/%{rocsolver_lib}"],
 )
 
 filegroup(

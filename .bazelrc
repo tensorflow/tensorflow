@@ -145,10 +145,6 @@ build:monolithic --define framework_shared_object=false
 # opts in to modular op registration support by default.
 build --define framework_shared_object=true
 
-# Flags for open source build, always set to be true.
-build --define open_source_build=true
-test --define open_source_build=true
-
 # For workaround https://github.com/bazelbuild/bazel/issues/8772 with Bazel >= 0.29.1
 build --java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain

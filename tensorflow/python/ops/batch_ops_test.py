@@ -25,12 +25,17 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.errors import InvalidArgumentError
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import gen_batch_ops
+from tensorflow.python.ops import gen_functional_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -50,7 +55,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that a single batched tensor executes together and only once."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       batched, index, _ = batch_ops.batch(
           [inp], num_batch_threads=1, max_batch_size=2,
@@ -92,7 +97,7 @@ class BatchOpsTest(test.TestCase):
     """Test that batching with padding up to an allowed batch size works."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[2])
       batched, index, _ = batch_ops.batch(
           [inp], num_batch_threads=1, max_batch_size=10,
@@ -124,7 +129,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that multiple batched tensors execute together."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp0 = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       inp1 = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       batched, _, _ = batch_ops.batch(
@@ -165,7 +170,7 @@ class BatchOpsTest(test.TestCase):
     """Tests illegally feeding tensors with different dim0 sizes."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp0 = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       inp1 = array_ops.placeholder(dtype=dtypes.int32, shape=[2])
       batched, index, _ = batch_ops.batch(
@@ -181,7 +186,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that batch and unbatch work together."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       batched, index, id_t = batch_ops.batch(
           [inp], num_batch_threads=1, max_batch_size=10,
@@ -207,7 +212,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that the batch_function decorator works."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       # TODO(apassos): Removing this line causes test flakiness! Ideally should
       # be investigated.
       default_inp = array_ops.placeholder_with_default(2, shape=[])  # pylint: disable=unused-variable
@@ -235,33 +240,62 @@ class BatchOpsTest(test.TestCase):
     """Tests that the batch_function decorator works."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
-      captured_inp0 = array_ops.placeholder_with_default(2, shape=[])
-      captured_inp1 = array_ops.placeholder_with_default(1, shape=[])
+    with self.cached_session(use_gpu=True) as sess:
+      captured_inp0 = array_ops.placeholder_with_default(2., shape=[])
+      captured_inp1 = resource_variable_ops.ResourceVariable(3.)
+      with ops.device("/cpu:0"):
+        captured_inp2 = resource_variable_ops.ResourceVariable(4.)
 
       @batch_ops.batch_function(1, 10, 100000)
       def computation(in_t):
-        return in_t + captured_inp0 - captured_inp1
+        return in_t + captured_inp0 + captured_inp1 + captured_inp2
 
-      inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
+      inp = array_ops.placeholder(dtype=dtypes.float32, shape=[1])
       result = computation(inp)
       thread_results = []
 
       def worker():
         thread_results.extend(sess.run([result], feed_dict={inp: [1]}))
 
+      sess.run(variables.global_variables_initializer())
       worker_thread = threading.Thread(target=worker)
       worker_thread.start()
       main_results = sess.run([result], feed_dict={inp: [2]})
       worker_thread.join()
-      self.assertEqual(thread_results[0], [2])
-      self.assertEqual(main_results[0], [3])
+      self.assertEqual(thread_results[0], [10])
+      self.assertEqual(main_results[0], [11])
+
+  @test_util.disable_xla("DeviceIndex returns sentinel value with XLA")
+  def testBatchDecoratedGpu(self):
+    if context.executing_eagerly():
+      return
+    with self.cached_session(use_gpu=True) as sess:
+
+      @batch_ops.batch_function(1, 10, 100000)
+      def computation(in_t):
+        # index is 0 on CPU and 1 on GPU
+        index = gen_functional_ops.DeviceIndex(device_names=["CPU", "GPU"])
+        return in_t + math_ops.cast(index, dtypes.float32)
+
+      inp = array_ops.placeholder(dtype=dtypes.float32, shape=[1])
+      result = computation(inp)
+      thread_results = []
+
+      def worker():
+        thread_results.extend(sess.run([result], feed_dict={inp: [10.]}))
+
+      worker_thread = threading.Thread(target=worker)
+      worker_thread.start()
+      main_results = sess.run([result], feed_dict={inp: [20.]})
+      worker_thread.join()
+      self.assertEqual(thread_results[0], [10 + test_util.is_gpu_available()])
+      self.assertEqual(main_results[0], [20 + test_util.is_gpu_available()])
 
   def testBatchFunctionOp(self):
     """Tests that the batch_function op works."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
 
       @function.Defun(dtypes.int32)
       def computation(in_t):
@@ -292,7 +326,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that batch_function op works with captured input."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       captured_inp0 = array_ops.placeholder_with_default(2, shape=[])
       captured_inp1 = array_ops.placeholder_with_default(1, shape=[])
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
@@ -328,7 +362,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that batch_function op works with error in the inputs."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
 
       @function.Defun(dtypes.int32, dtypes.int32)
@@ -345,8 +379,9 @@ class BatchOpsTest(test.TestCase):
           captured_tensors=computation.captured_inputs,
           Tout=[o.type for o in computation.definition.signature.output_arg])
 
-      with self.assertRaisesRegex(InvalidArgumentError,
-                                  ".*2 arguments.*but 1.*"):
+      with self.assertRaisesRegex(
+          InvalidArgumentError,
+          r"Function takes 2 argument\(s\) but 1 argument\(s\) were passed"):
         sess.run([result], feed_dict={inp: [2]})
 
   def testBatchFunctionOpWithLargeBatchSplitted(self):
@@ -354,7 +389,7 @@ class BatchOpsTest(test.TestCase):
     if context.executing_eagerly():
       return
 
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
 
       @function.Defun(dtypes.int32)
       def computation(in_t):
@@ -408,7 +443,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that the batch_function decorator works."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
 
       @batch_ops.batch_function(1, 10, 100000)
       def computation(in_t):
@@ -432,7 +467,7 @@ class BatchOpsTest(test.TestCase):
     """Tests that the unbatch timeout works."""
     if context.executing_eagerly():
       return
-    with self.cached_session() as sess:
+    with self.cached_session(use_gpu=True) as sess:
       inp = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
       batched, index, id_t = batch_ops.batch(
           [inp], num_batch_threads=1, max_batch_size=2,

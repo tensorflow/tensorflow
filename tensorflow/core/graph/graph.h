@@ -74,7 +74,7 @@ class NodeIter;         // Declared below
 enum class ConstructionContext {
   kNotTracked,     // Not tracked.
   kDirectSession,  // From `tensorflow::DirectSession`, TF1 session API.
-  kFunctionDef,    // From `FunctionDef`, @tf.function.
+  kEagerRuntime,   // Registered from TF2 eager runtime.
 };
 
 class Node {
@@ -240,9 +240,24 @@ class Node {
 
   std::shared_ptr<NodeProperties> properties() const { return props_; }
 
+  // Sets the stack trace for the node. Assumes that getting and setting the
+  // stack trace for a given node will not race.
+  void SetStackTrace(const std::shared_ptr<AbstractStackTrace>& stack_trace) {
+    stack_trace_ = stack_trace;
+  }
+
+  // Get the stack trace for when the node was instantiated.
+  const std::shared_ptr<AbstractStackTrace>& GetStackTrace() const {
+    return stack_trace_;
+  }
+
  private:
   friend class Graph;
   Node();
+
+  // Stack trace for the user code for node instantiation. Can be shared across
+  // multiple nodes (e.g. when inlining).
+  std::shared_ptr<AbstractStackTrace> stack_trace_;
 
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.

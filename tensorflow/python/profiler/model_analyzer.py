@@ -27,12 +27,12 @@ import six
 from google.protobuf import message
 from tensorflow.core.profiler import tfprof_options_pb2
 from tensorflow.core.profiler import tfprof_output_pb2
-from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.profiler import option_builder
 from tensorflow.python.profiler import tfprof_logger
+from tensorflow.python.util import _pywrap_tfprof as print_mdl
 from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_PROFILE_OPTIONS = 0

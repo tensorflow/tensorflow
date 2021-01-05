@@ -349,10 +349,14 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
             "quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
 
-// This is a quantization-aware version of TCresVTEtIsSameAsOp
-class TFL_TCopVTEtAreSameAt<int i, int j> : Or<[
+def TFL_SameFirstOperandAndFirstResultElementType :
+  PredOpTrait<"values and output must have same element type",
+              TFL_TCresVTEtIsSameAsOp<0, 0>>;
+
+// This is a quantization-aware version of TCopVTEtAreSameAt
+class TFL_TCopVTEtAreSameAt<int i, int j, int num=8> : Or<[
   TCopVTEtAreSameAt<[i, j]>,
-  TFL_TFOperandTypesWithSameBits<i, j, 8>,
+  TFL_TFOperandTypesWithSameBits<i, j, num>,
   And<[
     SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
       quant_QuantizedType.predicate>,
@@ -365,11 +369,8 @@ class TFL_TCopVTEtAreSameAt<int i, int j> : Or<[
 // TFL op common constraints.
 //===----------------------------------------------------------------------===//
 
-// This is a constraint for most of the binary ops, e.g., add, mul, div, etc.
-// Binary ops lhs & rhs should have the same value type, and is capable to
-// compare quantization types as well.
-def BinaryOpSameElementTypeConstraint :
-  PredOpTrait<"operands have same element type",
+class OperandsSameElementTypeConstraintBase<string op> :
+  PredOpTrait<op # " operands have same element type",
     Or<[
       TCopVTEtIsSameAs<0, 1>,
       // Two operands' values are both quantized and their type have the same
@@ -381,6 +382,18 @@ def BinaryOpSameElementTypeConstraint :
                   "getElementTypeOrSelf($_op.getOperand(0))) == "
               "quant::QuantizedType::castToStorageType("
                   "getElementTypeOrSelf($_op.getOperand(1)))">]>]>>;
+
+// This is a constraint for most of the binary ops, e.g., add, mul, div, etc.
+// Binary ops lhs & rhs should have the same value type, and is capable to
+// compare quantization types as well.
+def BinaryOpSameElementTypeConstraint :
+  OperandsSameElementTypeConstraintBase<"binary op">;
+
+// This is a constraint for most of the comparison ops, e.g., equal, not_equal,
+// greater, greater_equal, less, etc. Comparison ops lhs & rhs should have the
+// same value type, and is capable to compare quantization types as well.
+def ComparisonOpSameElementTypeConstraint :
+  OperandsSameElementTypeConstraintBase<"comparison op">;
 
 //===----------------------------------------------------------------------===//
 // TFL common builders.
@@ -579,7 +592,7 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     PredOpTrait<"input and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 2>>,
     AccumulatorUniformScale<3, 1, 2>,
-    AffineQuantizedOpInterface, AffineOpCoefficient<0, 2>,
+    AffineQuantizedOpInterface, AffineOpCoefficient<0, 1>,
     TFL_SparseOp]> {
   let summary = "Transpose convolution operator";
 
@@ -607,7 +620,6 @@ def TFL_TransposeConvOp: TFL_Op<"transpose_conv", [
     // AffineQuantizedOpInterface:
     int GetChannelDimIndex() { return 0; }
     int GetQuantizationDimIndex() { return 0; }
-    int GetAffineOperandIndex() { return 2; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
     std::vector<std::vector<int>> GetFloatBlockSize() { return {}; }
@@ -717,8 +729,7 @@ def TFL_CeilOp: TFL_Op<"ceil", [
 def TFL_ConcatenationOp : TFL_Op<"concatenation",
   [
     NoSideEffect,
-    PredOpTrait<"values and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_SameFirstOperandAndFirstResultElementType,
     SameOperandsAndResultsScale
   ]> {
   let summary = "Concatenation operator";
@@ -1097,7 +1108,7 @@ def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
 // Same type check of lhs and rhs is handled by the ResultsBroadcastableShape trait.
 def TFL_LessEqualOp : TFL_Op<"less_equal", [
     ResultsBroadcastableShape,
-    BinaryOpSameElementTypeConstraint,
+    ComparisonOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     NoSideEffect]> {
   let summary = "Less_equal operator";
@@ -1161,6 +1172,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     ResultsBroadcastableShape,
+    ComparisonOpSameElementTypeConstraint,
     NoSideEffect]> {
   let summary = "Greater_equal operator";
 
@@ -1352,7 +1364,7 @@ larger than 0.
 
 def TFL_NotEqualOp : TFL_Op<"not_equal", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    BinaryOpSameElementTypeConstraint,
+    ComparisonOpSameElementTypeConstraint,
     ResultsBroadcastableShape,
     Commutative,
     NoSideEffect,
@@ -1456,9 +1468,10 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
+    NoSideEffect,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
+    ComparisonOpSameElementTypeConstraint]> {
   let summary = "Equal operator";
 
   let description = [{
@@ -1665,7 +1678,7 @@ def TFL_FloorModOp : TFL_Op<"floor_mod", [
 
 def TFL_GreaterOp : TFL_Op<"greater", [
     ResultsBroadcastableShape,
-    BinaryOpSameElementTypeConstraint,
+    ComparisonOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     NoSideEffect]> {
   let summary = "Greater operator";
@@ -1764,7 +1777,7 @@ def TFL_LeakyReluOp: TFL_Op<"leaky_relu", [
 
 def TFL_LessOp : TFL_Op<"less", [
     ResultsBroadcastableShape,
-    BinaryOpSameElementTypeConstraint,
+    ComparisonOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     NoSideEffect]> {
   let summary = "Less operator";
@@ -2277,8 +2290,7 @@ def TFL_NegOp: TFL_Op<"neg", [
 }
 
 def TFL_PackOp : TFL_Op<"pack", [
-    PredOpTrait<"values and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_SameFirstOperandAndFirstResultElementType,
     NoSideEffect,
     SameOperandsAndResultsScale]> {
   let summary = "Packs a list of tensors along a dimension into one tensor";
@@ -2457,7 +2469,7 @@ def TFL_PReluOp : TFL_Op<"prelu", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     BinaryOpSameElementTypeConstraint,
     PredOpTrait<"input and output must have the same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
+      TFL_TCresVTEtIsSameAsOp<0, 0>>, AffineQuantizedOpInterface]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
@@ -2475,6 +2487,12 @@ def TFL_PReluOp : TFL_Op<"prelu", [
   let results = (outs TFL_TensorOf<[F32, QI8, QUI8, TFL_Quint8]>:$output);
 
   let verifier = [{ return Verify(*this); }];
+
+  let extraClassDeclaration = [{
+    // AffineQuantizedOpInterface:
+    int GetChannelDimIndex() { return 0; }
+    int GetQuantizationDimIndex() { return -1; }
+  }];
 }
 
 def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
@@ -2630,18 +2648,17 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
 }
 
 def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
-                                  SameOperandsAndResultType,
-                                  SameOperandsAndResultShape,
-                                  NoQuantizableResult]> {
+                                  TFL_SameFirstOperandAndFirstResultElementType,
+                                  SameOperandsAndResultShape]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
     Computes element-wise reverse square root of input
   }];
 
-  let arguments = (ins TFL_FpTensor:$x);
+  let arguments = (ins TFL_TensorOf<[F32, QI8, QI16]>:$x);
 
-  let results = (outs TFL_FpTensor:$y);
+  let results = (outs TFL_TensorOf<[F32, QI8, QI16]>:$y);
 
   let hasFolder = 1;
 }
@@ -2707,7 +2724,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 
     Args:
       tensor: A Tensor. Must be one of the following types:
-      uint8, int16, int32, int64, float32, bool Up to 8-D.
+      uint8, int8, int16, int32, int64, float32, bool Up to 8-D.
 
       axis: A Tensor. Must be one of the following types: int32, int64.
       with only 1 element which is the axis index.
@@ -2716,12 +2733,12 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 
   let arguments = (
     ins
-    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, TFL_Quint8, I1]>:$input,
+    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$input,
     TFL_I32Tensor:$axis
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, TFL_Quint8, I1]>:$output);
+    TFL_TensorOf<[F32, UI8, I16, I32, I64, QI16, QUI8, QI8, TFL_Quint8, I1]>:$output);
 }
 
 // Select has many instances in TF models where one or more of its operands
@@ -2919,11 +2936,10 @@ def TFL_SubOp : TFL_Op<"sub", [
   let hasOptions = 1;
 }
 
-// TODO(jpienaar): Expand the kernel implementation to support all types besides
-// I32 and F32.
 def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    SameOperandsAndResultElementType,
+    BinaryOpSameElementTypeConstraint,
+    TFL_SameFirstOperandAndFirstResultElementType,
     ResultsBroadcastableShape,
     NoSideEffect,
     NoQuantizableResult]> {
@@ -2934,10 +2950,10 @@ def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I32]>:$lhs,
-    TFL_TensorOf<[F32, I32]>:$rhs);
+    ins TFL_TensorOf<[F32, I32, QI8]>:$lhs,
+    TFL_TensorOf<[F32, I32, QI8]>:$rhs);
 
-  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QI8]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -3675,7 +3691,8 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
-  TCopVTEtAreSameAt<[9, 10, 11]>>;
+  And<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
+       TFL_TCopVTEtAreSameAt<9, 11, 16>]>>;
 
 def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
@@ -3981,6 +3998,7 @@ def BidiLstmMandatoryInputsConstraint : PredOpTrait<
                        30, 31, 32, 35, 36, 37, 38]>,
     Neg<TypeIsPred<"input", F32>>]>>;
 
+// TODO(b/172517537): support quantized types
 def BidiLstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
   TCopVTEtAreSameAt<[9, 10, 11, 26, 27, 28]>>;
@@ -4243,6 +4261,11 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
   let description = [{
     The NumericVerify op is a debugging op to verify the numericals of the two
     activations. It is a custom op in TFLite.
+    If log_if_failed is true, the NumericVerify op calculates statistics on
+    differences between float and quantized activations, output
+    logs, set differences to the output tensors, and throws an error if errors
+    above tolerance exist. If log_if_failed = false, then it doesn't care about
+    errors.
   }];
 
   let arguments = (ins
@@ -4250,10 +4273,11 @@ def TFL_NumericVerifyOp : Op<TFL_Dialect, "NumericVerify", [
     TFL_TensorOf<[F32]>:$ref,
 
     // Attributes
-    DefaultValuedAttr<F32Attr, "0.1">:$tolerance
+    DefaultValuedAttr<F32Attr, "0.1">:$tolerance,
+    DefaultValuedAttr<BoolAttr, "false">:$log_if_failed
   );
 
-  let results = (outs);
+  let results = (outs TFL_FpTensor:$output);
 }
 
 // SVDF op.

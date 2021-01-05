@@ -64,9 +64,9 @@ objc_library(
     visibility = ios_visibility_whitelist(),
     deps = [
         "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/delegates/coreml:coreml_delegate",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
-        "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
     ],
     alwayslink = 1,
 )

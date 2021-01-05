@@ -8,6 +8,7 @@ option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto";
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/types.proto";
+import "tensorflow/core/framework/resource_handle.proto";
 
 // Defines an operation. A NodeDef in a GraphDef specifies an Op by
 // using the "op" field which should match the name of a OpDef.
@@ -41,6 +42,9 @@ message OpDef {
     // If specified, attr must have type "list(type)", and none of
     // type, type_attr, and number_attr may be specified.
     string type_list_attr = 6;
+
+    // The handle data for resource inputs.
+    repeated ResourceHandleProto.DtypeAndShape handle_data = 7;
 
     // For inputs: if true, the inputs are required to be refs.
     //   By default, inputs can be either refs or non-refs.

@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -55,7 +54,8 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
             quant_specs.default_ranges.second.getValueOr(0.0),
             quant_specs.IsSignedInferenceType()));
   }
-  pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreateQuantizePass());
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateQuantizePass(quant_specs.verify_numeric));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager->addNestedPass<mlir::FuncOp>(

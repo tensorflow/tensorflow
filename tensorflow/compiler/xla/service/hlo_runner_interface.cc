@@ -87,4 +87,17 @@ StatusOr<Literal> HloRunnerInterface::Execute(
       /*profile=*/profile);
 }
 
+StatusOr<Literal> HloRunnerInterface::ExecuteWithExecutable(
+    std::unique_ptr<Executable> executable, absl::Span<const Literal> arguments,
+    ExecutionProfile* profile) {
+  // Construct a vector of plain pointers for the arguments.
+  std::vector<const Literal*> argument_pointers;
+  argument_pointers.reserve(arguments.size());
+  for (const auto& argument : arguments) {
+    argument_pointers.push_back(&argument);
+  }
+  return ExecuteWithExecutable(std::move(executable), argument_pointers,
+                               nullptr);
+}
+
 }  // namespace xla

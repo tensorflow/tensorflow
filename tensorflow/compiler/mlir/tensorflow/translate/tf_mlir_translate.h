@@ -22,8 +22,8 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {

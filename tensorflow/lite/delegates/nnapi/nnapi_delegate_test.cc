@@ -72,6 +72,10 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
     interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
   }
 
+  void MarkInputTensorDataStale(int index) {
+    interpreter_->tensor(index)->data_is_stale = true;
+  }
+
   TfLiteStatus AllocateTensors() { return interpreter_->AllocateTensors(); }
 
  protected:
@@ -391,7 +395,10 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
       !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
     GTEST_SKIP();
   }
+
   StatefulNnApiDelegate::Options options;
+  // Allow NNAPI CPU fallback path.
+  options.disallow_nnapi_cpu = false;
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
@@ -438,6 +445,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
   auto input1_handle = delegate->RegisterNnapiMemory(
       input1_memory, memory_callback, &memory_context);
   m.SetBufferHandle(m.input1(), input1_handle);
+  m.MarkInputTensorDataStale(m.input1());
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
@@ -449,6 +457,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
     auto input1_handle = delegate->RegisterNnapiMemory(
         input1_memory, memory_callback, &memory_context);
     m.SetBufferHandle(m.input1(), input1_handle);
+    m.MarkInputTensorDataStale(m.input1());
     m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
     m.Invoke();
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9 + i, 0.4, 1.0, 1.3}));
@@ -2056,7 +2065,13 @@ TEST(NNAPIDelegate, LSHProjectionDense1DInputs) {
 
   m.Invoke();
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  // Hash returns differently on machines with different endianness
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 1, 1, 1, 0));
+#else
   EXPECT_THAT(m.GetOutput(), ElementsAre(0, 0, 0, 1, 0, 0));
+#endif
 }
 
 TEST(NNAPIDelegate, LSHProjectionSparse1DInputs) {
@@ -2067,7 +2082,13 @@ TEST(NNAPIDelegate, LSHProjectionSparse1DInputs) {
 
   m.Invoke();
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  // Hash returns differently on machines with different endianness
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 3, 8 + 2));
+#else
   EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 1, 8 + 0));
+#endif
 }
 
 TEST(NNAPIDelegate, LSHProjectionSparse3DInputs) {
@@ -2080,7 +2101,13 @@ TEST(NNAPIDelegate, LSHProjectionSparse3DInputs) {
 
   m.Invoke();
 
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && \
+    __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  // Hash returns differently on machines with different endianness
+  EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 0, 4 + 3, 8 + 2));
+#else
   EXPECT_THAT(m.GetOutput(), ElementsAre(0 + 2, 4 + 1, 8 + 1));
+#endif
 }
 
 class BaseActivationsOpModel : public SingleOpModelWithNNAPI {
@@ -5314,6 +5341,69 @@ TEST(QuantizedPadV2OpTest, UInt8AdvancedDynamicValuedTest) {
 }
 TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
   AdvancedDynamicValuedTest<int8_t, TensorType_INT8>();
+}
+
+// A base class of Leaky ReLU op model. It provides the constructor for
+// FloatLeakyReluOpModel and QuantizedLeakyReluOpModel.
+class LeakyReluOpModel : public SingleOpModelWithNNAPI {
+ public:
+  LeakyReluOpModel(const TensorData& input, const float& alpha)
+      : input_type_(input.type) {
+    input_ = AddInput(input);
+    output_ = AddOutput({input.type, input.shape, input.min, input.max});
+
+    SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
+                 CreateLeakyReluOptions(builder_, alpha).Union());
+    BuildInterpreterWithNNAPI({GetShape(input_)});
+  }
+
+  void SetInput(std::initializer_list<float> data) {
+    SetData(input_, input_type_, data);
+  }
+
+  std::vector<float> GetOutput() {
+    std::vector<float> output;
+    GetData(output_, input_type_, &output);
+    return output;
+  }
+
+ protected:
+  int input_;
+  int output_;
+
+  const TensorType input_type_;
+};
+
+TEST(NNAPIDelegate, LeakyReluFloat) {
+  LeakyReluOpModel m({TensorType_FLOAT32, {2, 3}}, 0.5f);
+
+  m.SetInput({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 0.0f, 1.0f, 3.0f,    // Row 1
+                                 1.0f, -0.5f, -1.0f,  // Row 2
+
+                             }));
+}
+
+TEST(NNAPIDelegate, LeakyReluQuantized) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  LeakyReluOpModel m({TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, 0.5f);
+  m.SetInput({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     0.0f, 1.0f, 3.0f,    // Row 1
+                                     1.0f, -0.5f, -1.0f,  // Row 2
+                                 },
+                                 kQuantizedTolerance)));
 }
 
 }  // namespace

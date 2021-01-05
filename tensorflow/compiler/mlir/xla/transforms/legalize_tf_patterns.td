@@ -17,6 +17,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
+include "mlir/Dialect/Tensor/IR/TensorOps.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
 include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
@@ -101,7 +102,7 @@ foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 def LowerRightShiftSigned :
-  Pat<(TF_RightShiftOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+  Pat<(TF_RightShiftOp AnyTensor:$l, AnyTensor:$r),
       (HLOClient_BroadcastShiftRightArithmeticOp $l, $r,
        (BinBroadcastDimensions $l, $r)),
       [(SignedIntTensor $r)]>;
@@ -114,7 +115,7 @@ def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
 // Performs a substitution of FloorDiv, pseudo code below:
 //
 //  return floor(div(x, y))
-def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+def : Pat<(TF_FloorDivOp AnyTensor:$l, AnyTensor:$r),
           (HLO_FloorOp
            (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r))),
           [(IEEEFloatTensor $l)]>;
@@ -166,7 +167,7 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
 //   return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
 // Requires static shaped inputs to create constant splats and computation of
 // broadcast attributes.
-def : Pat<(TF_FloorModOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
       (HLO_SelectOp
        (HLOClient_BroadcastAndOp
         (HLOClient_BroadcastCompareOp
@@ -188,19 +189,22 @@ def : Pat<(TF_FloorModOp AnyRankedTensor:$l, AnyRankedTensor:$r),
        (HLOClient_BroadcastAddOp $r,
         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
+def : Pat<(TF_RiscAddOp $l, $r), (HLO_AddOp $l, $r)>;
+
 //===----------------------------------------------------------------------===//
 // Logical & bitwise binary op patterns.
 //===----------------------------------------------------------------------===//
 
 class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
-  : Pat<(FromOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+  : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r)),
         [(SignedIntTensor $l)]>;
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLOClient_BroadcastAndOp],
                          [TF_LogicalOrOp, HLOClient_BroadcastOrOp],
+                         [TF_BitwiseAndOp, HLOClient_BroadcastAndOp],
                          [TF_BitwiseOrOp, HLOClient_BroadcastOrOp],
-                         [TF_BitwiseAndOp, HLOClient_BroadcastAndOp]] in
+                         [TF_BitwiseXorOp, HLOClient_BroadcastXorOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -443,7 +447,7 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyStaticShapeTensor:$input, $num_lower,
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
-          (TensorCastOp (HLO_ConstOp $value)),
+          (Tensor_CastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
@@ -705,6 +709,13 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                 ),
                 (replaceWithValue $output)
               ]>;
+
+//===----------------------------------------------------------------------===//
+// XlaReplicaId op.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_XlaReplicaIdOp),
+          (TF_CastOp (HLO_ReplicaIdOp), /*truncate=*/ConstBoolAttrFalse)>;
 
 //===----------------------------------------------------------------------===//
 // XlaGather op.

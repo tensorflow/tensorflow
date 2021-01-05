@@ -91,9 +91,16 @@ LaunchDimensions CalculateLaunchDimensions(const Shape& shape,
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
   if (few_waves) {
-    threads_per_block = std::min(threads_per_block, int64{128});
-    block_count = gpu_device_info.core_count *
-                  (gpu_device_info.threads_per_core_limit / threads_per_block);
+    int64 capped_threads_per_block = std::min<int64>(threads_per_block, 128);
+    int64 capped_block_count =
+        gpu_device_info.core_count *
+        (gpu_device_info.threads_per_core_limit / capped_threads_per_block);
+    // Do not increase the number of blocks. This can happens for
+    // small num_elements.
+    if (capped_block_count < block_count) {
+      threads_per_block = capped_threads_per_block;
+      block_count = capped_block_count;
+    }
   }
   VLOG(2) << absl::StrFormat(
       "Initialized the block count to ceil(# of elements / threads per "

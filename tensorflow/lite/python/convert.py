@@ -126,7 +126,8 @@ class ConverterError(Exception):
 def mlir_quantize(input_data_str,
                   disable_per_channel=False,
                   fully_quantize=False,
-                  inference_type=_types_pb2.INT8):
+                  inference_type=_types_pb2.INT8,
+                  enable_numeric_verify=False):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -137,6 +138,8 @@ def mlir_quantize(input_data_str,
     fully_quantize: Bool indicating whether to fully quantize the model. Besides
       model body, the input/output will be quantized as well.
     inference_type: Data type for the activations. The default value is int8.
+    enable_numeric_verify: Experimental. Subject to change. Bool indicating
+      whether to add NumericVerify ops into the debug mode quantized model.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
@@ -145,7 +148,8 @@ def mlir_quantize(input_data_str,
   return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
                                                       disable_per_channel,
                                                       fully_quantize,
-                                                      inference_type)
+                                                      inference_type,
+                                                      enable_numeric_verify)
 
 
 def mlir_sparsify(input_data_str):

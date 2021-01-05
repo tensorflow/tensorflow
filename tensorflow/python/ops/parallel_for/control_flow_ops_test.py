@@ -70,6 +70,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
 from tensorflow.python.ops.parallel_for.test_util import PForTestCase
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -2157,6 +2158,27 @@ class CompositeTensorTest(PForTestCase, parameterized.TestCase):
     self.assertTrue(particles.mass.shape, [4, 1, 3])
     self.assertAllEqual(particles.velocity.shape, [4, 5, 3])
 
+  def test_vectorized_map_gathers_composite_tensors(self):
+    particles = Particle(mass=[1., 2., 3., 4., 5.],
+                         velocity=[1., 2., 3., 4., 5.])
+    self.assertAllEqual(
+        pfor_control_flow_ops.vectorized_map(
+            lambda x: x.mass * x.velocity, particles),
+        particles.mass * particles.velocity)
+
+  def test_vectorized_map_of_ragged_tensors(self):
+    # Vmap should be able to handle ragged Tensors as long as they're not
+    # *actually* ragged.
+    ragged = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_tensor.RaggedTensor.from_row_lengths(
+            values=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            row_lengths=[3, 3, 3, 3]),
+        uniform_row_length=2)  # Overall shape [2, 2, 3].
+    self.assertAllEqual(
+        pfor_control_flow_ops.vectorized_map(
+            lambda x: x.to_tensor(shape=[2, 3]), ragged),
+        ragged.to_tensor(shape=[2, 2, 3]))
+
 
 class ParsingTest(PForTestCase):
 
@@ -2320,8 +2342,6 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.rfft2d,),
       (fft_ops.rfft3d,),
   )
-  @test.disable_for_rocm(skip_message='Disable subtest on ROCm '
-                                      'due to rocfft issues')
   def test_rfft(self, op_func):
     for dtype in (dtypes.float32, dtypes.float64):
       x = random_ops.random_uniform([2, 3, 4, 3, 4], dtype=dtype)
@@ -2340,8 +2360,6 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.irfft2d,),
       (fft_ops.irfft3d,),
   )
-  @test.disable_for_rocm(skip_message='Disable subtest on ROCm '
-                                      'due to rocfft issues')
   def test_irfft(self, op_func):
     if config.list_physical_devices("GPU"):
       # TODO(b/149957923): The test is flaky

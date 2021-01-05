@@ -41,7 +41,7 @@ def call_replica_local_fn(fn, *args, **kwargs):
   This function correctly handles calling `fn` in a cross-replica
   context.
 
-  Arguments:
+  Args:
     fn: The function to call.
     *args: Positional arguments to the `fn`.
     **kwargs: Keyword argument to `fn`.

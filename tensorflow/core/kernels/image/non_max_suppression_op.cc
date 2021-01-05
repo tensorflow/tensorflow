@@ -192,14 +192,17 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
   }
 
   T scale = static_cast<T>(0.0);
-  if (soft_nms_sigma > static_cast<T>(0.0)) {
+  bool is_soft_nms = soft_nms_sigma > static_cast<T>(0.0);
+  if (is_soft_nms) {
     scale = static_cast<T>(-0.5) / soft_nms_sigma;
   }
 
-  auto suppress_weight = [similarity_threshold, scale](const T sim) {
+  auto suppress_weight = [similarity_threshold, scale,
+                          is_soft_nms](const T sim) {
     const T weight =
         static_cast<T>(std::exp(static_cast<float>(scale * sim * sim)));
-    return sim <= similarity_threshold ? weight : static_cast<T>(0.0);
+    return is_soft_nms || sim <= similarity_threshold ? weight
+                                                      : static_cast<T>(0.0);
   };
 
   std::vector<int> selected;
@@ -228,7 +231,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
       next_candidate.score *= suppress_weight(similarity);
 
       // First decide whether to perform hard suppression
-      if (similarity > static_cast<T>(similarity_threshold)) {
+      if (!is_soft_nms && similarity > static_cast<T>(similarity_threshold)) {
         should_hard_suppress = true;
         break;
       }
@@ -320,12 +323,6 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
     }
   }
 
-  // Copy class_boxes_data to a tensor
-  TensorShape boxesShape({num_boxes, 4});
-  Tensor boxes(DT_FLOAT, boxesShape);
-  std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
-              boxes.unaligned_flat<float>().data());
-
   // Do NMS, get the candidate indices of form vector<int>
   // Data structure for selection candidate in NMS.
   struct Candidate {
@@ -347,9 +344,10 @@ void DoNMSPerClass(int batch_idx, int class_idx, const float* boxes_data,
   Candidate next_candidate;
 
   std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
-  const Tensor const_boxes = boxes;
-  typename TTypes<float, 2>::ConstTensor boxes_data_t =
-      const_boxes.tensor<float, 2>();
+  // Move class_boxes_data to a tensor
+  Eigen::array<Eigen::DenseIndex, 2> boxesShape = {num_boxes, 4};
+  typename TTypes<float, 2>::ConstTensor boxes_data_t(class_boxes_data.data(),
+                                                      boxesShape);
   int candidate_idx = 0;
   float iou;
   while (selected.size() < size_per_class &&
