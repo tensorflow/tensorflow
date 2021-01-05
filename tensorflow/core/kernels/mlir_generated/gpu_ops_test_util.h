@@ -57,6 +57,7 @@ TensorShape DefaultInputShape();
 struct GpuOpsTestConfig {
   bool add_t = true;
   bool add_tout = false;
+  // Only used for gpu_unary_ops_test.
   bool expect_buffer_reuse = true;
   bool expect_strictly_equal = false;
   GpuOpsTestConfig ExpectStrictlyEqual() {
