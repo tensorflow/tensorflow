@@ -669,6 +669,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -758,6 +759,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
