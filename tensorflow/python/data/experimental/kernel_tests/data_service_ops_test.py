@@ -556,10 +556,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = dataset_ops.Dataset.zip((ds1, ds2))
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "but there is already an existing job"):
-
-      self.assertDatasetProduces(
-          ds, list(zip(range(num_elements), range(num_elements))),
-          assert_items_equal=True)
+      self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFromDatasetId(self):
