@@ -326,7 +326,7 @@ class GpuBinaryOpTest : public OpsTestBase {
                                                                             \
   TEST_F(GpuBinaryOpTest, op_name##OneScalar##test_name) {                  \
     TestOneScalar<T, BaselineT, OutT, BaselineOutT>(                        \
-        #op_name, /*scalar_input=*/test::DefaultScalarInput<T>(),           \
+        #op_name, /*scalar_input=*/test::DefaultInput<T>(#op_name).front(), \
         /*other_shape=*/test::DefaultInputShape(),                          \
         /*other_input=*/test::DefaultInput<T>(#op_name), baseline_callback, \
         config);                                                            \

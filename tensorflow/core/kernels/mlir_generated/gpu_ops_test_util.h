@@ -123,26 +123,6 @@ absl::InlinedVector<T, 10> DefaultInputGreaterOrEqualToZero() {
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
-T DefaultScalarInput() {
-  return static_cast<T>(3);
-}
-
-template <typename T, std::enable_if_t<
-                          llvm::is_one_of<T, Eigen::half, float, double>::value,
-                          bool> = true>
-T DefaultScalarInput() {
-  return static_cast<T>(2.0);
-}
-
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
-T DefaultScalarInput() {
-  return static_cast<T>(true);
-}
-
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
   // Only generate values less than the bitwidth of the data type.
   if (op_name == "LeftShift" || op_name == "RightShift") {
