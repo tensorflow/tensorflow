@@ -237,8 +237,8 @@ class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleHomeDirPatternsAsTensor(self):
 
-    original_home = os.environ['HOME']
-    original_userprofile = os.environ['USERPROFILE']
+    original_home = os.getenv('HOME')
+    original_userprofile = os.getenv('USERPROFILE')
     os.environ['HOME'] = self.tmp_dir
     os.environ['USERPROFILE'] = self.tmp_dir
 
