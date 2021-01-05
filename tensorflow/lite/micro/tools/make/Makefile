@@ -539,6 +539,10 @@ TARGETS_WITHOUT_MAKEFILES := \
 $(HOST_OS) \
 arduino
 
+# This specific string needs to be outputted for a test to be recognized as
+# having passed.
+TEST_PASS_STRING:='~~~ALL TESTS PASSED~~~'
+
 # ${TARGET}_makefile.inc can set this to true to allow it to defined a custom
 # implementation for `make test`. See bluepill_makefile as an example.
 TARGET_SPECIFIC_MAKE_TEST:=0
@@ -646,7 +650,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)
-	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
+	$(TEST_SCRIPT) $< $(TEST_PASS_STRING)
 
 # snease: Add %.bin rule here since BINDIR is now defined
 # These are microcontroller-specific rules for converting the ELF output
