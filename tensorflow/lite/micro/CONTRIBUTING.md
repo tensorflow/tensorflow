@@ -204,7 +204,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
 1.  Run all the tests for x86, and any other platform that you are modifying.
 
     ```
-    tensorflow/lite/micro/tools/make/tools/ci_build/test_x86.sh
+    tensorflow/lite/micro/tools/ci_build/test_x86.sh
     ```
 
     Please check the READMEs in the optimized kernel directories for specific
