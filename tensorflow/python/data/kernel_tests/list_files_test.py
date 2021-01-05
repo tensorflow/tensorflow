@@ -260,7 +260,8 @@ class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
         assert_items_equal=True)
 
     os.environ['HOME'] = original_home
-    os.environ['USERPROFILE'] = original_userprofile
+    if original_userprofile:
+      os.environ['USERPROFILE'] = original_userprofile
 
 
 if __name__ == '__main__':
