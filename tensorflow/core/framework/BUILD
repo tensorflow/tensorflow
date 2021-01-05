@@ -37,6 +37,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

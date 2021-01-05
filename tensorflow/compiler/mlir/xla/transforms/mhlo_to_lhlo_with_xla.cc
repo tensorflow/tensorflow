@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -60,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -67,6 +69,7 @@ using xla::BufferAllocation;
 using xla::BufferAssignment;
 using xla::HloComputation;
 using xla::HloCustomCallInstruction;
+using xla::HloInfeedInstruction;
 using xla::HloInstruction;
 using xla::HloModule;
 using xla::HloModuleProto;
@@ -216,18 +219,22 @@ Status LhloDialectEmitter::CreateOperands(
 }
 
 template <typename OpType>
+OpType LhloDialectEmitter::CreateOpWithoutAttrs(HloInstruction* instr,
+                                                ValueRange operands) {
+  Location loc = getLocation(instr);
+  NamedAttribute attrs[] = {{Identifier::get("name", builder_.getContext()),
+                             builder_.getStringAttr(instr->name())}};
+  return builder_.create<OpType>(loc, llvm::None, operands, attrs);
+}
+
+template <typename OpType>
 StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     HloInstruction* instr, size_t& num_arguments, size_t& num_results,
     absl::optional<xla::int64> num_operands) {
-  Location loc = getLocation(instr);
-  std::pair<Identifier, Attribute> attrs[] = {
-      {Identifier::get("name", builder_.getContext()),
-       builder_.getStringAttr(instr->name())},
-  };
   llvm::SmallVector<Value, 4> operands;
   TF_RETURN_IF_ERROR(CreateOperands(instr, operands, num_arguments, num_results,
                                     num_operands));
-  return builder_.create<OpType>(loc, llvm::None, operands, attrs);
+  return CreateOpWithoutAttrs<OpType>(instr, operands);
 }
 
 StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
@@ -273,6 +280,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return CreateOpWithoutAttrs<lmhlo::FloorOp>(instr);
     case HloOpcode::kImag:
       return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr);
+    case HloOpcode::kInfeed:
+      return EmitInfeedOp(instr);
     case HloOpcode::kIsFinite:
       return CreateOpWithoutAttrs<lmhlo::IsFiniteOp>(instr);
     case HloOpcode::kLog:
@@ -982,6 +991,19 @@ StatusOr<lmhlo::AllReduceOp> LhloDialectEmitter::EmitAllReduceOp(
   return all_reduce_op;
 }
 
+StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
+    HloInstruction* instr) {
+  HloInfeedInstruction* infeed = ::xla::Cast<HloInfeedInstruction>(instr);
+  // HLO Infeed instruction has a single operand of token type and a tuple
+  // with buffers and a token as its output. LMHLO Infeed operation does not
+  // need the token operand or result, so drop it.
+  SmallVector<Value, 2> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr, &operands, /*result_subset=*/{0}));
+  auto infeed_op = CreateOpWithoutAttrs<lmhlo::InfeedOp>(instr, operands);
+  infeed_op.configAttr(builder_.getStringAttr(infeed->infeed_config()));
+  return infeed_op;
+}
+
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
     const ::xla::HloInstruction* instr, const ::xla::Shape& current_shape,
     const ::xla::ShapeIndex& shape_index) {
@@ -1063,19 +1085,26 @@ Status LhloDialectEmitter::GetOrCreateViewImpl(
     }
     return Status::OK();
   }
-  TF_ASSIGN_OR_RETURN(
-      auto v, GetOrCreateArrayView(instr, current_shape, *current_shape_index));
-  values->push_back(v);
-  return Status::OK();
+  if (current_shape.IsArray()) {
+    TF_ASSIGN_OR_RETURN(auto v, GetOrCreateArrayView(instr, current_shape,
+                                                     *current_shape_index));
+    values->push_back(v);
+    return Status::OK();
+  }
+  return xla::InternalError("Unexpected shape kind for %s and shape index %s",
+                            instr->ToString(), current_shape_index->ToString());
 }
 
 // Returns a view for the result of an instruction.
 // We first get a view for the slice in the allocation, and then may need to
 // create another view to adjust the slice for the shape of the instruction.
-Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
-                                           SmallVectorImpl<Value>* values) {
-  ::xla::ShapeIndex shape_index;
-  return GetOrCreateViewImpl(instr, instr->shape(), &shape_index, values);
+Status LhloDialectEmitter::GetOrCreateView(
+    const HloInstruction* instr, SmallVectorImpl<Value>* values,
+    const xla::ShapeIndex& result_subset) {
+  ::xla::ShapeIndex shape_index = result_subset;
+  const Shape& sub_shape =
+      ::xla::ShapeUtil::GetSubshape(instr->shape(), shape_index);
+  return GetOrCreateViewImpl(instr, sub_shape, &shape_index, values);
 }
 
 Status LhloDialectEmitter::Initialize() {
