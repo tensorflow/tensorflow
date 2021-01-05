@@ -91,16 +91,15 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
       ::xla::HloInstruction* instr);
 
   // Create LHLO operation operands given an XLA HLO instruction. By default,
-  // all XLA HLO operands and results are converted to MLIR. If `num_operands`
-  // is specified, only the first `num_operand` operands of the instruction are
-  // converted to MLIR. The function returns the actual number of operands and
-  // results generated for MLIR in `num_arguments` and `num_results`.
-  // TODO(jurahul): Move all function outputs (operands, num_arguments, and
-  // num_results) to the end of the argument list.
-  ::xla::Status CreateOperands(
-      ::xla::HloInstruction* instr, SmallVectorImpl<Value>& operands,
-      size_t& num_arguments, size_t& num_results,
-      absl::optional<xla::int64> num_operands = absl::nullopt);
+  // all XLA HLO operands and results are converted to MLIR and appended to
+  // `operands`. If `num_operands` is specified, only the first `num_operand`
+  // operands of the instruction are converted to MLIR. The function returns the
+  // actual number of operands and results generated for MLIR in `num_arguments`
+  // and `num_results`.
+  ::xla::Status CreateOperands(::xla::HloInstruction* instr,
+                               absl::optional<xla::int64> num_operands,
+                               SmallVectorImpl<Value>& operands,
+                               size_t& num_arguments, size_t& num_results);
 
   template <typename OpType>
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(
