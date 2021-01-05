@@ -526,7 +526,7 @@ def set_cc_opt_flags(environ_cp):
   elif is_windows():
     default_cc_opt_flags = '/arch:AVX'
   else:
-    default_cc_opt_flags = '-march=native -Wno-sign-compare'
+    default_cc_opt_flags = '-Wno-sign-compare'  # TODO(mihaimaruseac): Was '-march=native -Wno-sign-compare'
   question = ('Please specify optimization flags to use during compilation when'
               ' bazel option "--config=opt" is specified [Default is %s]: '
              ) % default_cc_opt_flags
