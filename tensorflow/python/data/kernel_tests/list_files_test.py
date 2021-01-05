@@ -252,7 +252,7 @@ class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._touchTempHomeFiles(filenames)
     dir_name = self.tmp_home_dir.split("/")[-1]
     dataset = dataset_ops.Dataset.list_files(
-        [pat for pat in ['~/{}/*.pyc'.format(dir_name), '~/{}/*.py'.format(dir_name)]])
+        ['~/{}/*.pyc'.format(dir_name), '~/{}/*.py'.format(dir_name)])
     self.assertDatasetProduces(
         dataset,
         expected_output=[
