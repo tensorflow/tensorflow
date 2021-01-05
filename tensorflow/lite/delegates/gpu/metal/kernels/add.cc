@@ -51,7 +51,6 @@ std::string GetAddTableCodeFused(int src_count) {
 ComputeTaskDescriptor Add(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
-  desc.is_associative_op = true;
   desc.shader_source = GetAddTableCodeFused(definition.src_tensors.size() - 1);
 
   for (int i = 0; i < definition.src_tensors.size(); ++i) {

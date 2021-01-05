@@ -28,9 +28,9 @@ import sys
 
 from google.protobuf import text_format
 from tensorflow.core.framework import graph_pb2
-from tensorflow.python import _pywrap_kernel_registry
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging
+from tensorflow.python.util import _pywrap_kernel_registry
 
 # Usually, we use each graph node to induce registration of an op and
 # corresponding kernel; nodes without a corresponding kernel (perhaps due to

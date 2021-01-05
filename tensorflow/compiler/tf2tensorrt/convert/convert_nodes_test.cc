@@ -6607,83 +6607,26 @@ TEST_F(OpConverterTest, ConvertSpaceToDepth) {
 }
 
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
-// Get the NodeDef for ClipByValue.
-NodeDef GetClipByValueNodeDef(DataType dtype) {
+TEST_P(OpConverter_FP32_FP16_Test, ConvertClipByValue) {
   Scope s = Scope::NewRootScope();
-  auto t = ops::Placeholder(s.WithOpName("t"), dtype);
-  auto clip_value_min = ops::Placeholder(s.WithOpName("clip_value_min"), dtype);
-  auto clip_value_max = ops::Placeholder(s.WithOpName("clip_value_max"), dtype);
+  auto t = ops::Placeholder(s.WithOpName("t"), tf_type_);
+  auto clip_value_min =
+      ops::Placeholder(s.WithOpName("clip_value_min"), tf_type_);
+  auto clip_value_max =
+      ops::Placeholder(s.WithOpName("clip_value_max"), tf_type_);
   auto clip = ops::ClipByValue(s.WithOpName("my_clip"), t, clip_value_min,
                                clip_value_max);
-  return clip.operation.node()->def();
-}
+  const NodeDef& node_def = clip.operation.node()->def();
 
-template <DataType dtype>
-void TestConvertClipByValue(OpConverterTest* test) {
-  typedef typename EnumToDataType<dtype>::Type CType;
+  nvinfer1::DataType trt_type_;
+  TF_ASSERT_OK(TfTypeToTrtType(tf_type_, &trt_type_));
 
-  struct TestParams {
-    std::vector<int> dims;
-    std::vector<CType> input_value;
-    CType clip_value_min;
-    CType clip_value_max;
-    std::vector<CType> expected_output;
-  };
-
-  const std::vector<CType> common_input = InitTestVector<CType>(6);
-  std::vector<TestParams> params = {
-      {
-          /*dims=*/{1, 2, 3},
-          /*input_value=*/common_input,
-          /*clip_value_min=*/CType(2),
-          /*clip_value_max=*/CType(5),
-          /*expected_output=*/
-          {CType(2), CType(2), CType(2), CType(3), CType(4), CType(5)},
-      },
-      {
-          /*dims=*/{2, 1, 3},
-          /*input_value=*/common_input,
-          /*clip_value_min=*/CType(-1),
-          /*clip_value_max=*/CType(8),
-          /*expected_output=*/common_input,
-      },
-  };
-
-  for (int i = 0; i < params.size(); ++i) {
-    test->Reset();
-
-    NodeDef node_def = GetClipByValueNodeDef(dtype);
-    nvinfer1::DataType trt_type;
-    TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-    test->AddTestTensor("t", params[i].dims, 1, trt_type);
-    test->AddTestWeights<CType>("clip_value_min", {1},
-                                {params[i].clip_value_min});
-    test->AddTestWeights<CType>("clip_value_max", {1},
-                                {params[i].clip_value_max});
-    test->RunValidationAndConversion(node_def);
-
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(test->GetTensorOrWeights("my_clip", &output));
-    EXPECT_TRUE(output.is_tensor());
-    ExpectTrtDimsEqualsArray(params[i].dims, output.tensor()->getDimensions());
-
-    DataVec input_data{{"t", test->AsTensor<CType>(params[i].input_value)}};
-    DataVec output_data{{"my_clip", test->ConstructTensor<CType>(
-                                        params[i].expected_output.size())}};
-    TF_EXPECT_OK(test->BuildAndRun(input_data, &output_data));
-    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
-                ElementsAreArray(params[i].expected_output));
-  }
-}
-
-TEST_F(OpConverterTest, ConvertClipByValue) {
   {
     // Input is a weight, should fail.
     Reset();
-    NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
-    AddTestWeights<float>("t", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
-    AddTestWeights<float>("clip_value_min", {1}, {1});
-    AddTestWeights<float>("clip_value_max", {1}, {5});
+    AddTestWeights("t", {1, 2, 3}, {1, 2, 3, 4, 5, 6}, tf_type_);
+    AddTestWeights("clip_value_min", {1}, {1}, tf_type_);
+    AddTestWeights("clip_value_max", {1}, {5}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"t\" for ClipByValue must be a "
                                "tensor, at my_clip");
@@ -6691,10 +6634,9 @@ TEST_F(OpConverterTest, ConvertClipByValue) {
   {
     // Clip min is a tensor, should fail.
     Reset();
-    NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
     AddTestTensor("t", {1, 2, 3});
     AddTestTensor("clip_value_min", {1});
-    AddTestWeights<float>("clip_value_max", {1}, {1});
+    AddTestWeights("clip_value_max", {1}, {1}, tf_type_);
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"clip_value_min\" for ClipByValue "
                                "must be a constant, at my_clip");
@@ -6702,17 +6644,78 @@ TEST_F(OpConverterTest, ConvertClipByValue) {
   {
     // Clip max is a tensor, should fail.
     Reset();
-    NodeDef node_def = GetClipByValueNodeDef(DT_FLOAT);
     AddTestTensor("t", {1, 2, 3});
-    AddTestWeights<float>("clip_value_min", {1}, {1});
+    AddTestWeights("clip_value_min", {1}, {1}, tf_type_);
     AddTestTensor("clip_value_max", {1});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
                                "The input \"clip_value_max\" for ClipByValue "
                                "must be a constant, at my_clip");
   }
 
-  TestConvertClipByValue<DT_FLOAT>(this);
-  TestConvertClipByValue<DT_HALF>(this);
+  struct TestParams {
+    std::vector<int> dims;
+    int clip_value_min;
+    int clip_value_max;
+    std::vector<float> expected_output;
+  };
+
+  const std::vector<float> common_input = InitTestVector<float>(6);
+
+  std::vector<TestParams> params = {{
+                                        /*dims=*/{6},
+                                        /*clip_value_min=*/2,
+                                        /*clip_value_max=*/4,
+                                        /*expected_output=*/{2, 2, 2, 3, 4, 4},
+                                    },
+                                    {
+                                        /*dims=*/{1, 6},
+                                        /*clip_value_min=*/2,
+                                        /*clip_value_max=*/4,
+                                        /*expected_output=*/{2, 2, 2, 3, 4, 4},
+                                    },
+                                    {
+                                        /*dims=*/{1, 2, 3},
+                                        /*clip_value_min=*/2,
+                                        /*clip_value_max=*/4,
+                                        /*expected_output=*/{2, 2, 2, 3, 4, 4},
+                                    },
+                                    {
+                                        /*dims=*/{1, 2, 3, 1},
+                                        /*clip_value_min=*/2,
+                                        /*clip_value_max=*/4,
+                                        /*expected_output=*/{2, 2, 2, 3, 4, 4},
+                                    },
+                                    {
+                                        /*dims=*/{1, 1, 3, 1, 2},
+                                        /*clip_value_min=*/2,
+                                        /*clip_value_max=*/4,
+                                        /*expected_output=*/{2, 2, 2, 3, 4, 4},
+                                    },
+                                    {
+                                        /*dims=*/{1, 1, 3, 1, 2, 1},
+                                        /*clip_value_min=*/2,
+                                        /*clip_value_max=*/4,
+                                        /*expected_output=*/{2, 2, 2, 3, 4, 4},
+                                    },
+                                    {
+                                        /*dims=*/{2, 1, 3},
+                                        /*clip_value_min=*/-1,
+                                        /*clip_value_max=*/8,
+                                        /*expected_output=*/common_input,
+                                    }};
+
+  for (auto p : params) {
+    Reset();
+
+    AddTestTensor("t", p.dims, tf_type_, common_input);
+    AddTestWeights("clip_value_min", {1}, {p.clip_value_min}, tf_type_);
+    AddTestWeights("clip_value_max", {1}, {p.clip_value_max}, tf_type_);
+
+    TestOpConverter("my_clip", node_def, p.dims,
+                    /*expected_conversion_status=*/Status::OK(),
+                    /*expected_runtime_status=*/Status::OK(),
+                    /*matcher=*/ElementsAreArray(p.expected_output));
+  }
 }
 #endif  // IS_TRT_VERSION_GE(5, 1, 2, 0)
 

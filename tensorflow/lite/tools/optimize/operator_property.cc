@@ -882,6 +882,12 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
+    case BuiltinOperator_REVERSE_V2:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 3;
+      break;
     case BuiltinOperator_SHAPE:
       property.inputs = {{0, {}}};
       // Shape has no quantizable output.

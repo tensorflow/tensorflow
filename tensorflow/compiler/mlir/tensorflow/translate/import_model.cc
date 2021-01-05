@@ -190,8 +190,13 @@ Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
       restrict_functionalization_to_tpu_nodes
           ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
           : NodeFilter{};
-  return FunctionalizeControlFlow(graph, flib_def, node_filter,
-                                  /*include_functions=*/true);
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      FunctionalizeControlFlow(graph, flib_def, node_filter,
+                               /*include_functions=*/true),
+      "Failed to functionalize Control Flow V1 ops. Consider using Control "
+      "Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/tf/"
+      "compat/v1/enable_control_flow_v2.");
+  return Status::OK();
 }
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
@@ -435,6 +440,9 @@ class ImporterBase {
  protected:
   // Maps feed as TensorId to new Placeholder node name.
   absl::flat_hash_map<TensorId, absl::string_view> remapped_feeds_;
+
+  // All the TF ops encountered that aren't modelled in dialect.
+  llvm::DenseSet<mlir::Identifier> unmodelled_op_types_;
 };
 
 // Returns true if the node with given name has a non primary output that is
@@ -1449,9 +1457,9 @@ Status ImporterBase::Convert(
       all_equal = false;
     }
     if (!all_equal) {
-      function.setType(mlir::FunctionType::get(func_type.getInputs(),
-                                               graph.getResultTypes(),
-                                               function.getContext()));
+      function.setType(mlir::FunctionType::get(function.getContext(),
+                                               func_type.getInputs(),
+                                               graph.getResultTypes()));
     }
   }
 
@@ -1776,6 +1784,19 @@ mlir::Operation* ImporterBase::CreateOperation(
       set_segment_sizes_attr(output_ranges, node.op_def().output_arg(),
                              mlir::OpTrait::AttrSizedResultSegments<
                                  void>::getResultSegmentSizeAttr());
+    }
+  }
+
+  mlir::OperationName name = inner_op->getName();
+  if (!name.getAbstractOperation() &&
+      // Skip unmodelled ops that are handled differently.
+      (node_type_name != "_Arg" && node_type_name != "_Retval")) {
+    if (unmodelled_op_types_.insert(name.getIdentifier()).second) {
+      LOG(WARNING) << "Unmodelled op type `" << node.type_string() << "`"
+                   << (node.op_def().is_stateful()
+                           ? " is stateful but effects not modelled"
+                           : " is not stateful but will be treated as such "
+                             "conservatively");
     }
   }
 
@@ -2901,8 +2922,8 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
       }
       new_input_types.push_back(arg.getType());
     }
-    func.setType(mlir::FunctionType::get(
-        new_input_types, func.getType().getResults(), module.getContext()));
+    func.setType(mlir::FunctionType::get(module.getContext(), new_input_types,
+                                         func.getType().getResults()));
   }
 }
 

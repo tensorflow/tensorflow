@@ -231,17 +231,19 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &ndef_parsed_device))
       return ndef.device();
 
-    if (caller_parsed_device_.has_job) {
+    // Nodes with explicit device placements in the function body have those
+    // respected, but otherwise the function's placement provides a default.
+    if (caller_parsed_device_.has_job && !ndef_parsed_device.has_job) {
       ndef_parsed_device.has_job = caller_parsed_device_.has_job;
       ndef_parsed_device.job = caller_parsed_device_.job;
     }
 
-    if (caller_parsed_device_.has_replica) {
+    if (caller_parsed_device_.has_replica && !ndef_parsed_device.has_replica) {
       ndef_parsed_device.has_replica = caller_parsed_device_.has_replica;
       ndef_parsed_device.replica = caller_parsed_device_.replica;
     }
 
-    if (caller_parsed_device_.has_task) {
+    if (caller_parsed_device_.has_task && !ndef_parsed_device.has_task) {
       ndef_parsed_device.has_task = caller_parsed_device_.has_task;
       ndef_parsed_device.task = caller_parsed_device_.task;
     }

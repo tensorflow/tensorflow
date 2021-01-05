@@ -5,7 +5,7 @@ func @while(%arg0: tensor<i64>) -> tensor<i64> {
   //CHECK:   br ^bb1(%arg0 : tensor<i64>)
   //CHECK: ^bb1([[VAL0:%.+]]: tensor<i64>):
   //CHECK:   [[VAL1:%.+]] = "mhlo.compare"([[VAL0]], [[VAL0]])
-  //CHECK:   [[VAL2:%.+]] = extract_element [[VAL1]][] : tensor<i1>
+  //CHECK:   [[VAL2:%.+]] = tensor.extract [[VAL1]][] : tensor<i1>
   //CHECK:   cond_br [[VAL2]], ^bb2([[VAL0]] : tensor<i64>), ^bb3([[VAL0]] : tensor<i64>)
   //CHECK: ^bb2([[VAL3:%.+]]: tensor<i64>):
   //CHECK:   [[VAL4:%.+]] = mhlo.add [[VAL3]], [[VAL3]]
@@ -33,7 +33,7 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
   // CHECK:   [[VAL0:%.+]] = "mhlo.compare"(%arg0, [[C0]]) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %0 = "mhlo.compare"(%arg0, %cst) {comparison_direction = "LT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
 
-  // CHECK:   [[VAL1:%.+]] = extract_element [[VAL0]][] : tensor<i1>
+  // CHECK:   [[VAL1:%.+]] = tensor.extract [[VAL0]][] : tensor<i1>
   // CHECK:   cond_br [[VAL1]], ^bb1(%arg0 : tensor<f32>), ^bb2(%arg0 : tensor<f32>)
   %1 = "mhlo.if"(%0, %arg0, %arg0) ( {
 
@@ -63,7 +63,7 @@ func @while_with_multiple_blocks_in_body(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK:   br ^[[COND_ENTRY:.+]](%arg0 : tensor<i64>)
   // CHECK: ^[[COND_ENTRY]](%0: tensor<i64>):
   // CHECK:   %1 = "mhlo.compare"(%0, %0) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
-  // CHECK:   %2 = extract_element %1[] : tensor<i1>
+  // CHECK:   %2 = tensor.extract %1[] : tensor<i1>
   // CHECK:   cond_br %2, ^[[BODY_ENTRY:.+]](%0 : tensor<i64>), ^[[EXIT:.+]](%0 : tensor<i64>)
   // CHECK: ^[[BODY_ENTRY]](%3: tensor<i64>):
   // CHECK:   br ^[[BODY_SUCC:.+]](%3 : tensor<i64>)
@@ -95,7 +95,7 @@ func @while_with_multiple_blocks_in_cond(%arg0: tensor<i64>) -> tensor<i64> {
   // CHECK:   br ^[[COND_SUCC:.+]](%0 : tensor<i64>)
   // CHECK: ^[[COND_SUCC]](%1: tensor<i64>):
   // CHECK:   %2 = "mhlo.compare"(%1, %1) {comparison_direction = "LT"} : (tensor<i64>, tensor<i64>) -> tensor<i1>
-  // CHECK:   %3 = extract_element %2[] : tensor<i1>
+  // CHECK:   %3 = tensor.extract %2[] : tensor<i1>
   // CHECK:   cond_br %3, ^[[BODY_ENTRY:.+]](%0 : tensor<i64>), ^[[EXIT:.+]](%0 : tensor<i64>)
   // CHECK: ^[[BODY_ENTRY]](%4: tensor<i64>):
   // CHECK:   br ^[[COND_ENTRY]](%4 : tensor<i64>)
@@ -118,7 +118,7 @@ func @while_with_multiple_blocks_in_cond(%arg0: tensor<i64>) -> tensor<i64> {
 
 // CHECK-LABEL: func @conditional_with_multiple_blocks(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> tensor<f32> {
 func @conditional_with_multiple_blocks(%arg0: tensor<f32>, %arg1: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
-  // CHECK:   %0 = extract_element %arg2[] : tensor<i1>
+  // CHECK:   %0 = tensor.extract %arg2[] : tensor<i1>
   // CHECK:   cond_br %0, ^[[THEN_ENTRY:.+]](%arg0 : tensor<f32>), ^[[ELSE_ENTRY:.+]](%arg1 : tensor<f32>)
   // CHECK: ^[[THEN_ENTRY]](%1: tensor<f32>):
   // CHECK:   br ^[[THEN_SUCC:.+]](%1 : tensor<f32>)

@@ -33,71 +33,17 @@ limitations under the License.
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
+#endif
+
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #endif
 
 namespace xla {
 namespace gpu {
 
-namespace {
-void CheckBatchNormInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
-  // All input and output statistics variables must be F32. Also, the last
-  // operand for CudnnBatchNormForwardInference, CudnnBatchNormForwardTraining,
-  // and CudnnBatchNormBackward is the feature_index which must be S64.
-  // The allowed types for non-statistics variables are as follows:
-  // CudnnBatchNormForwardInference:
-  //            operand[0]: {half, float}
-  //                out[0]: {half, float}
-  // CudnnBatchNormForwardTraining:
-  //            operand[0]: {half, float}
-  //                out[0]: {half, float}
-  // CudnnBatchNormBackward:
-  //            operand[0]: {half, float}
-  //            operand[4]: {half, float}
-  //                out[0]: {half, float}
-  // Note non-statistics inputs and outputs mentioned above should be of the
-  // same type.
 
-  // Check Inputs.
-  int64 num_operands = hlo->operand_count();
-  PrimitiveType operand_primitive_type =
-      hlo->operand(0)->shape().element_type();
-  CHECK(operand_primitive_type == F16 || operand_primitive_type == F32)
-      << "Not yet implemented";
-
-  for (int i = 1; i < num_operands - 2; i++) {
-    if (hlo->custom_call_target() == kCudnnBatchNormBackwardCallTarget &&
-        i == 4) {
-      // The first operand to batchnorm grad is the input and the 4th operand is
-      // the grad_output, both of which can be Eigen::half.
-      CHECK_EQ(hlo->operand(i)->shape().element_type(), operand_primitive_type)
-          << "Invalid datatype";
-      continue;
-    }
-    CHECK_EQ(hlo->operand(i)->shape().element_type(), F32)
-        << "Not yet implemented";
-  }
-
-  // The last operand is the feature index which must be int64.
-  CHECK_EQ(hlo->operand(num_operands - 1)->shape().element_type(), S64)
-      << "Not yet implemented";
-
-  // Check Outputs.
-  if (hlo->shape().IsTuple()) {
-    CHECK_EQ(hlo->shape().tuple_shapes(0).element_type(),
-             operand_primitive_type)
-        << "Invalid datatype";
-
-    for (int j = 1; j < hlo->shape().tuple_shapes_size(); j++) {
-      CHECK_EQ(hlo->shape().tuple_shapes(j).element_type(), F32)
-          << "Not yet implemented";
-    }
-  } else {
-    CHECK_EQ(hlo->shape().element_type(), operand_primitive_type)
-        << "Invalid datatype";
-  }
-}
-}  // namespace
 std::unique_ptr<Thunk> ThunkEmitter::BuildFftThunk(const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
   return absl::make_unique<FftThunk>(
@@ -169,18 +115,6 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
       /*implements_whole_instruction=*/true);
 }
 
-std::unique_ptr<Thunk> ThunkEmitter::BuildInfeedThunk(
-    const HloInstruction* inst) {
-  CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
-
-  ShapeTree<BufferAllocation::Slice> slices(inst->shape());
-  slices.ForEachMutableElement(
-      [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
-        *slice = GetAllocationSlice(*inst, index);
-      });
-  return absl::make_unique<InfeedThunk>(context_->GetThunkInfo(inst), slices);
-}
-
 std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kOutfeed, inst->opcode());
@@ -202,179 +136,9 @@ Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   // A CustomCall on the GPU backend can either be a custom-call to a
   // user-supplied kernel, or a call into a library like cudnn.
 
-  // Lower custom-calls to cudnn batchnorm ops to specialized thunks.  It's part
-  // of the contract of these cudnn batchnorm calls that the epsilon and
-  // feature_index operands be constants.
-  if (custom_call->custom_call_target() ==
-      kCudnnBatchNormForwardInferenceCallTarget) {
-    const HloInstruction* epsilon = custom_call->operand(5);
-    CHECK(epsilon->IsConstant());
-    float epsilon_value = epsilon->literal().Get<float>({});
 
-    const HloInstruction* feature_index = custom_call->operand(6);
-    CHECK(feature_index->IsConstant());
-    int64 feature_index_value = feature_index->literal().Get<int64>({});
-
-    CHECK_EQ(custom_call->shape().tuple_shapes_size(), 3);
-    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape().tuple_shapes(0),
-                                           custom_call->operand(0)->shape()));
-    CheckBatchNormInputOutputPrimitivetypeAreValid(custom_call);
-    CudnnBatchNormConfig config = GetCudnnBatchNormConfig(
-        custom_call, epsilon_value, feature_index_value);
-    AddThunkToThunkSequence(
-        absl::make_unique<CudnnBatchNormForwardInferenceThunk>(
-            context_->GetThunkInfo(custom_call), std::move(config),
-            /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
-            /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
-            /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
-            /*mean=*/GetAllocationSlice(*custom_call->operand(3)),
-            /*variance=*/GetAllocationSlice(*custom_call->operand(4)),
-            /*output=*/GetAllocationSlice(*custom_call)));
-    return Status::OK();
-  }
-
-  if (custom_call->custom_call_target() ==
-      kCudnnBatchNormForwardTrainingCallTarget) {
-    const HloInstruction* epsilon = custom_call->operand(3);
-    CHECK(epsilon->IsConstant());
-    float epsilon_value = epsilon->literal().Get<float>({});
-
-    const HloInstruction* feature_index = custom_call->operand(4);
-    CHECK(feature_index->IsConstant());
-    int64 feature_index_value = feature_index->literal().Get<int64>({});
-
-    // BatchNormTraining returns a tuple of three elements: data, calculated
-    // mean, and calculated 1/sqrt(variance + epsilon).
-    auto output_data = GetAllocationSlice(*custom_call, {0});
-    auto output_mean = GetAllocationSlice(*custom_call, {1});
-    auto output_inv_stddev = GetAllocationSlice(*custom_call, {2});
-    CudnnBatchNormConfig config = GetCudnnBatchNormConfig(
-        custom_call, epsilon_value, feature_index_value);
-    AddThunkToThunkSequence(
-        absl::make_unique<CudnnBatchNormForwardTrainingThunk>(
-            context_->GetThunkInfo(custom_call), std::move(config),
-            /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
-            /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
-            /*offset=*/GetAllocationSlice(*custom_call->operand(2)),
-            /*output_data=*/output_data,
-            /*output_mean=*/output_mean,
-            /*output_inv_stddev=*/output_inv_stddev));
-    return Status::OK();
-  }
-
-  if (custom_call->custom_call_target() == kCudnnBatchNormBackwardCallTarget) {
-    const HloInstruction* epsilon = custom_call->operand(5);
-    CHECK(epsilon->IsConstant());
-    float epsilon_value = epsilon->literal().Get<float>({});
-
-    const HloInstruction* feature_index = custom_call->operand(6);
-    CHECK(feature_index->IsConstant());
-    int64 feature_index_value = feature_index->literal().Get<int64>({});
-
-    // BatchNormGrad returns a tuple of three elements: grad_data, grad_scale,
-    // grad_offset.
-    auto output_grad_data = GetAllocationSlice(*custom_call, {0});
-    auto output_grad_scale = GetAllocationSlice(*custom_call, {1});
-    auto output_grad_offset = GetAllocationSlice(*custom_call, {2});
-    CHECK_EQ(custom_call->shape().tuple_shapes_size(), 3);
-    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape().tuple_shapes(0),
-                                           custom_call->operand(0)->shape()));
-    CHECK(LayoutUtil::LayoutsInShapesEqual(custom_call->shape().tuple_shapes(0),
-                                           custom_call->operand(4)->shape()));
-    CheckBatchNormInputOutputPrimitivetypeAreValid(custom_call);
-
-    CudnnBatchNormConfig config = GetCudnnBatchNormConfig(
-        custom_call, epsilon_value, feature_index_value);
-    AddThunkToThunkSequence(absl::make_unique<CudnnBatchNormBackwardThunk>(
-        context_->GetThunkInfo(custom_call), std::move(config),
-        /*operand=*/GetAllocationSlice(*custom_call->operand(0)),
-        /*scale=*/GetAllocationSlice(*custom_call->operand(1)),
-        /*mean=*/GetAllocationSlice(*custom_call->operand(2)),
-        /*inv_stddev=*/GetAllocationSlice(*custom_call->operand(3)),
-        /*grad_output=*/GetAllocationSlice(*custom_call->operand(4)),
-        /*output_grad_data=*/output_grad_data,
-        /*output_grad_scale=*/output_grad_scale,
-        /*output_grad_offset=*/output_grad_offset));
-    return Status::OK();
-  }
-
-  if (IsCustomCallToDnnConvolution(*custom_call)) {
-    std::vector<BufferAllocation::Slice> operand_slices;
-    operand_slices.reserve(custom_call->operand_count());
-    for (const auto* operand : custom_call->operands()) {
-      operand_slices.push_back(GetAllocationSlice(*operand));
-    }
-    auto conv_result_slice = GetAllocationSlice(*custom_call, {0});
-    auto scratch_slice = GetAllocationSlice(*custom_call, {1});
-
-    // Assert that the tuple slice is not used by anyone directly. That is, all
-    // users of the tuple output are get-tuple-element. Also assert that the
-    // second element of the tuple (the scratch buffer) is not used by anyone.
-    for (const HloInstruction* user : custom_call->users()) {
-      TF_RET_CHECK(user->opcode() == HloOpcode::kGetTupleElement &&
-                   user->tuple_index() == 0);
-    }
-
-    TF_ASSIGN_OR_RETURN(
-        GpuConvConfig config,
-        GetGpuConvConfig(Cast<HloCustomCallInstruction>(custom_call)));
-    AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
-        context_->GetThunkInfo(custom_call), std::move(config),
-        std::move(operand_slices), conv_result_slice, scratch_slice));
-    return Status::OK();
-  }
-
-  if (IsCublasGemm(*custom_call)) {
-    AddThunkToThunkSequence(BuildGemmThunk(custom_call));
-    return Status::OK();
-  }
-
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-  if (custom_call->custom_call_target() == kCusolverCholeskyCallTarget) {
-    TF_ASSIGN_OR_RETURN(CholeskyOptions options,
-                        custom_call->backend_config<CholeskyOptions>());
-
-    const Shape& shape = custom_call->operand(0)->shape();
-    int ndim = shape.dimensions_size();
-    CHECK_GE(ndim, 2);
-    int64 n = shape.dimensions(ndim - 1);
-
-    const auto& dims = shape.dimensions();
-    int64 batch_size = std::accumulate(dims.begin(), dims.end() - 2, int64{1},
-                                       [](int64 a, int64 b) { return a * b; });
-
-    auto operand_buffer = GetAllocationSlice(*custom_call->operand(0));
-
-    auto a_buffer = GetAllocationSlice(*custom_call, {0});
-    auto workspace_buffer = GetAllocationSlice(*custom_call, {1});
-    auto info_buffer = GetAllocationSlice(*custom_call, {2});
-
-    std::vector<std::unique_ptr<Thunk>> thunks;
-
-    if (operand_buffer != a_buffer) {
-      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
-          context_->GetThunkInfo(custom_call),
-          /*source_address=*/operand_buffer,
-          /*destination_buffer=*/a_buffer,
-          /*mem_size=*/ShapeUtil::ByteSizeOf(shape)));
-    }
-
-    thunks.push_back(absl::make_unique<CholeskyThunk>(
-        context_->GetThunkInfo(custom_call), options, a_buffer,
-        workspace_buffer, info_buffer,
-        custom_call->operand(0)->shape().element_type(), batch_size, n));
-
-    // Elide the sequential thunk if there's no copy.
-    if (thunks.size() == 1) {
-      AddThunkToThunkSequence(std::move(thunks[0]));
-    } else {
-      AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
-          context_->GetThunkInfo(custom_call), std::move(thunks)));
-    }
-
-    return Status::OK();
-  }
-
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
   if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
           custom_call->custom_call_target(), std::string(platform_name()))) {
     auto get_slices_for_instr = [&](const HloInstruction* instr) {
@@ -463,11 +227,6 @@ Status ThunkEmitter::HandleTriangularSolve(HloInstruction* hlo) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         context_->GetThunkInfo(hlo), std::move(thunks)));
   }
-  return Status::OK();
-}
-
-Status ThunkEmitter::HandleInfeed(HloInstruction* infeed) {
-  AddThunkToThunkSequence(BuildInfeedThunk(infeed));
   return Status::OK();
 }
 

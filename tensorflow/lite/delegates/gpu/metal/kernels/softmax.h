@@ -27,13 +27,12 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-ComputeTaskDescriptor Softmax(const OperationDef& definition,
-                              int channels_count);
+ComputeTaskDescriptor Softmax(const OperationDef& definition);
 
 // Softmax for case when width = height = 1 and AXIS = CHANNELS
 // We have this case in MobilenetV1/V2.
 ComputeTaskDescriptor Softmax1x1(const OperationDef& definition,
-                                 const GpuInfo& gpu_info, int channels_count);
+                                 const GpuInfo& gpu_info);
 
 }  // namespace metal
 }  // namespace gpu

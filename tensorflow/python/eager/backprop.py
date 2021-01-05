@@ -28,7 +28,6 @@ import sys
 import six
 
 from tensorflow.python import pywrap_tfe
-from tensorflow.python import _pywrap_utils
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -49,6 +48,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
@@ -1007,6 +1007,7 @@ class GradientTape(object):
     Raises:
       RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called inside the context of the tape.
+      TypeError: If the target is a None object.
       ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
@@ -1027,6 +1028,11 @@ class GradientTape(object):
             "context if you actually want to trace the "
             "gradient in order to compute higher order "
             "derivatives.", 1)
+
+    if target is None:
+      raise TypeError("Target should be a list or nested structure"
+                      " of Tensors or Variables to be differentiated,"
+                      " but recieved %r" % (target))
 
     num_ndarrays = 0
     flat_targets = []

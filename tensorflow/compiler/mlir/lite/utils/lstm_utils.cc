@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -382,8 +383,8 @@ void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   auto input_types = fused_func_op_.getType().getInputs();
   auto output_type = mlir::RankedTensorType::get(
       output_shape, input_.getType().cast<RankedTensorType>().getElementType());
-  fused_func_op_.setType(mlir::FunctionType::get(input_types, output_type,
-                                                 fused_func_op_.getContext()));
+  fused_func_op_.setType(mlir::FunctionType::get(fused_func_op_.getContext(),
+                                                 input_types, output_type));
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
@@ -430,8 +431,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       func_output_shape,
       input_.getType().cast<RankedTensorType>().getElementType());
 
-  auto tensor_cast = builder_.create<mlir::TensorCastOp>(
-      fused_func_op_.getLoc(), lstm_.getResult(), func_result_type);
+  auto tensor_cast = builder_.create<mlir::tensor::CastOp>(
+      fused_func_op_.getLoc(), func_result_type, lstm_.getResult());
   builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
                                   tensor_cast.getResult());
   return success();
@@ -820,8 +821,8 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   }
 
   // Update function signatures.
-  func_op.setType(mlir::FunctionType::get(func_op.getType().getInputs(),
-                                          output_types, func_op.getContext()));
+  func_op.setType(mlir::FunctionType::get(
+      func_op.getContext(), func_op.getType().getInputs(), output_types));
 
   builder->create<mlir::ReturnOp>(func_op.getLoc(), outputs);
   return success();

@@ -49,8 +49,23 @@ struct MemcpyDetails {
 };
 
 struct MemAllocDetails {
-  // The amount of data requested for cudaMalloc events.
-  uint64 num_bytes;
+  // Size of memory to be written over in bytes.
+  size_t num_bytes;
+  // The CUpti_ActivityMemoryKind value for this activity event.
+  int8 kind;
+  // The virtual address of allocation. 0 if it is a free operation.
+  uint64 address;
+};
+
+using MemFreeDetails = MemAllocDetails;
+
+struct MemsetDetails {
+  // Size of memory to be written over in bytes.
+  size_t num_bytes;
+  // The CUpti_ActivityMemoryKind value for this activity event.
+  int8 kind;
+  // Whether or not the memset is asynchronous.
+  bool async;
 };
 
 struct KernelDetails {
@@ -86,6 +101,9 @@ inline std::string ToXStat(const KernelDetails& kernel_info,
       " occ_pct:", occupancy_pct);
 }
 
+// Gets the name of the CUpti_ActivityMemoryKind value.
+absl::string_view GetMemoryKindName(int8 kind);
+
 enum class CuptiTracerEventType {
   Unsupported = 0,
   Kernel = 1,
@@ -97,6 +115,8 @@ enum class CuptiTracerEventType {
   MemoryAlloc = 7,
   Overhead = 8,
   UnifiedMemory = 9,
+  MemoryFree = 10,
+  Memset = 11,
   Generic = 100,
 };
 
@@ -127,6 +147,7 @@ struct CuptiTracerEvent {
   // This points to strings in AnnotationMap, which should outlive the point
   // where serialization happens.
   absl::string_view annotation;
+  absl::string_view nvtx_range;
   uint64 start_time_ns = 0;
   uint64 end_time_ns = 0;
   uint32 device_id = 0;
@@ -135,9 +156,16 @@ struct CuptiTracerEvent {
   int64 context_id = kInvalidContextId;
   int64 stream_id = kInvalidStreamId;
   union {
-    MemcpyDetails memcpy_info;      // If type == Memcpy*
-    MemAllocDetails memalloc_info;  // If type == MemoryAlloc
-    KernelDetails kernel_info;      // If type == Kernel
+    // For Memcpy API and activities. `type` must be Memcpy*.
+    MemcpyDetails memcpy_info;
+    // Used for MemAlloc API. `type` must be MemoryAlloc.
+    MemAllocDetails memalloc_info;
+    // Used for kernel activities. `type` must be Kernel.
+    KernelDetails kernel_info;
+    // Used for MemFree activities. `type` must be MemoryFree.
+    MemFreeDetails memfree_info;
+    // Used for Memset API and activities. `type` must be Memset.
+    MemsetDetails memset_info;
   };
 };
 
@@ -156,11 +184,17 @@ struct CuptiTracerCollectorOptions {
 
 class AnnotationMap {
  public:
+  struct AnnotationInfo {
+    absl::string_view annotation;
+    absl::string_view nvtx_range;
+  };
+
   explicit AnnotationMap(uint64 max_size, uint32 num_gpus)
       : max_size_(max_size), per_device_map_(num_gpus) {}
   void Add(uint32 device_id, uint32 correlation_id,
-           const std::string& annotation);
-  absl::string_view LookUp(uint32 device_id, uint32 correlation_id);
+           const absl::string_view annotation,
+           const absl::string_view nvtx_range);
+  AnnotationInfo LookUp(uint32 device_id, uint32 correlation_id);
 
  private:
   struct PerDeviceAnnotationMap {
@@ -170,7 +204,8 @@ class AnnotationMap {
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
     absl::node_hash_set<std::string> annotations;
-    absl::flat_hash_map<uint32, absl::string_view> correlation_map;
+    absl::node_hash_set<std::string> nvtx_ranges;
+    absl::flat_hash_map<uint32, AnnotationInfo> correlation_map;
   };
   const uint64 max_size_;
   absl::FixedArray<PerDeviceAnnotationMap> per_device_map_;

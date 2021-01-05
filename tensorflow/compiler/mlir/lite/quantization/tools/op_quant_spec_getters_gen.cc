@@ -48,6 +48,16 @@ static bool OpQuantSpecWriter(raw_ostream &os, RecordKeeper &records) {
 
   OUT(0) << "static std::unique_ptr<quant::OpQuantSpec> "
             "GetOpQuantSpec(mlir::Operation *op) {\n";
+  // TODO(b/176258587): Move to OpTrait if this should be generalized.
+  // Add special handling for LSTM.
+  OUT(2) << "if (auto lstm_op = llvm::dyn_cast<TFL::LSTMOp>(op)) {\n";
+  OUT(4) << "return GetLstmOpQuantSpec<TFL::LSTMOp>(lstm_op);\n";
+  OUT(2) << "} else if (auto lstm_op = "
+            "llvm::dyn_cast<TFL::UnidirectionalSequenceLSTMOp>(op)) {\n";
+  OUT(4) << "return "
+            "GetLstmOpQuantSpec<TFL::UnidirectionalSequenceLSTMOp>(lstm_op);\n";
+  OUT(2) << "}\n";
+
   OUT(2) << "auto spec = absl::make_unique<quant::OpQuantSpec>();\n";
   llvm::SmallVector<llvm::StringRef, 3> matches;
   for (auto *def : defs) {

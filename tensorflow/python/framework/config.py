@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import _pywrap_tensor_float_32_execution
 from tensorflow.python.eager import context
+from tensorflow.python.util import _pywrap_tensor_float_32_execution
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 

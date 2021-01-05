@@ -212,7 +212,7 @@ LogicalResult ConvertToI32Attr(IntegerAttr attr, IntegerAttr* attr_i32) {
   }
 
   *attr_i32 = IntegerAttr::get(
-      IntegerType::get(/*width=*/32, attr.getContext()), value);
+      IntegerType::get(attr.getContext(), /*width=*/32), value);
   return success();
 }
 
@@ -466,12 +466,11 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
     attributes.push_back(
         rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
 
-    auto lstm_op = rewriter.create<TFL::UnidirectionalSequenceLSTMOp>(
+    Value lstm_result = rewriter.create<TFL::UnidirectionalSequenceLSTMOp>(
         op->getLoc(), result_types, inputs, attributes);
 
     // Rewire the output.
-    op->getResult(2).replaceAllUsesWith(lstm_op.getResult());
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(op, {nullptr, nullptr, lstm_result});
     return success();
   }
 };
@@ -525,12 +524,11 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
     attributes.push_back(
         rewriter.getNamedAttr("time_major", rewriter.getBoolAttr(true)));
 
-    auto rnn_op = rewriter.create<TFL::UnidirectionalSequenceRNNOp>(
+    Value rnn_result = rewriter.create<TFL::UnidirectionalSequenceRNNOp>(
         op->getLoc(), result_types, inputs, attributes);
 
     // Rewire the output.
-    op->getResult(1).replaceAllUsesWith(rnn_op.getResult());
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(op, {nullptr, rnn_result});
 
     return success();
   }

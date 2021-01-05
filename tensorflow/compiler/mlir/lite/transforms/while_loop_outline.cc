@@ -134,12 +134,12 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
                                  bool passthru_extra_args) {
     FunctionType type;
     if (passthru_extra_args) {
-      type = FunctionType::get(types, types, &getContext());
+      type = FunctionType::get(&getContext(), types, types);
     } else {
       SmallVector<Type, 4> result_types;
       auto operands = region.front().getTerminator()->getOperandTypes();
       result_types.append(operands.begin(), operands.end());
-      type = FunctionType::get(types, result_types, &getContext());
+      type = FunctionType::get(&getContext(), types, result_types);
     }
 
     auto outlined_func = builder.create<FuncOp>(while_op.getLoc(), name, type);

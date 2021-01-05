@@ -306,7 +306,12 @@ message DebugOptions {
   // threads. Setting to 0 (the default value) means no enforcement.
   int32 xla_gpu_force_compilation_parallelism = 147;
 
-  // Next id: 148
+  // Guarantees run-to-run determinism. At present, the HLO ops Scatter and
+  // SelectAndScatter do not have deterministic XLA:GPU implementations.
+  // Compilation errors out if these ops are encountered.
+  bool xla_gpu_deterministic_ops = 148;
+
+  // Next id: 149
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

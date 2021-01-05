@@ -2024,15 +2024,11 @@ bool HloInstruction::IdenticalInternal(
     return false;
   }
 
-  // Two AllReduces are Identical if they have the same channel_id.
-  // Their operands don't have to be Identical.
-  if (!IsCrossModuleAllReduce()) {
-    // Use an explicit loop rather than ContainerEquals, because copying
-    // around std::functions may be too expensive in some cases.
-    for (size_t i = 0; i < operands().size(); ++i) {
-      if (!eq_operands(operand(i), other.operand(i))) {
-        return false;
-      }
+  // Use an explicit loop rather than ContainerEquals, because copying around
+  // std::functions may be too expensive in some cases.
+  for (size_t i = 0; i < operands().size(); ++i) {
+    if (!eq_operands(operand(i), other.operand(i))) {
+      return false;
     }
   }
 
@@ -2542,7 +2538,7 @@ string PrintName(const string& name, bool print_ids) {
   if (print_ids) {
     return name;
   } else {
-    auto dot_position = name.find_first_of(".");
+    auto dot_position = name.find_first_of('.');
     return name.substr(0, dot_position);
   }
 }

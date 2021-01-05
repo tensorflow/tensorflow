@@ -3498,7 +3498,7 @@ def clone_metrics(metrics):
 def serialize(metric):
   """Serializes metric function or `Metric` instance.
 
-  Arguments:
+  Args:
     metric: A Keras `Metric` instance or a metric function.
 
   Returns:
@@ -3511,7 +3511,7 @@ def serialize(metric):
 def deserialize(config, custom_objects=None):
   """Deserializes a serialized metric class/function instance.
 
-  Arguments:
+  Args:
     config: Metric configuration.
     custom_objects: Optional dictionary mapping names (strings) to custom
       objects (classes and functions) to be considered during deserialization.
@@ -3549,7 +3549,7 @@ def get(identifier):
   >>> type(metric)
   <class '...tensorflow.python.keras.metrics.CategoricalCrossentropy'>
 
-  Arguments:
+  Args:
     identifier: A metric identifier. One of None or string name of a metric
       function/class or metric configuration dictionary or a metric function or
       a metric class instance
