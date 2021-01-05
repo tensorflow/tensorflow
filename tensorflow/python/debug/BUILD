@@ -776,9 +776,6 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/debug_v2_ops_test.py"],
     python_version = "PY3",
-    tags = [
-        "no_windows",  # b/142475891
-    ],
     deps = [
         ":debug_events_reader",
         ":debug_events_writer",
@@ -1119,7 +1116,6 @@ py_test(
     srcs = ["cli/debugger_cli_common_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",

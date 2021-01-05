@@ -81,10 +81,13 @@ class GpuCompiler : public LLVMCompiler {
 
   virtual GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) = 0;
 
+  // TODO(timshen): Replace `debug_module` with some portable debug information
+  // that accommodates both HLO and MLIR.
   virtual StatusOr<std::pair<std::string, std::vector<uint8>>>
-  CompileTargetBinary(const HloModule* hlo_module, llvm::Module* llvm_module,
-                      GpuVersion gpu_version, se::StreamExecutor* stream_exec,
-                      bool relocatable) = 0;
+  CompileTargetBinary(const HloModuleConfig& module_config,
+                      llvm::Module* llvm_module, GpuVersion gpu_version,
+                      se::StreamExecutor* stream_exec, bool relocatable,
+                      const HloModule* debug_module) = 0;
 
   Status PrepareHloModuleForIrEmitting(HloModule* hlo_module);
 
@@ -97,8 +100,10 @@ class GpuCompiler : public LLVMCompiler {
                      AotCompilationOptions const& options) override;
 
   StatusOr<std::pair<std::string, std::vector<uint8>>> CompileToTargetBinary(
-      const HloModule& module, std::unique_ptr<llvm::Module> llvm_module,
-      se::StreamExecutor* stream_exec, const CompileOptions& options);
+      const HloModuleConfig& module_config,
+      std::unique_ptr<llvm::Module> llvm_module,
+      se::StreamExecutor* stream_exec, const CompileOptions& options,
+      const HloModule* debug_module);
 
   se::Platform::Id PlatformId() const override { return platform_id_; }
 

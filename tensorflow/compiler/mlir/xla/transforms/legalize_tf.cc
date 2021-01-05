@@ -31,15 +31,16 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -144,7 +145,7 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
 static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
   RankedTensorType ty =
       RankedTensorType::get(static_cast<int64_t>(attr.size()),
-                            IntegerType::get(64, attr.getContext()));
+                            IntegerType::get(attr.getContext(), 64));
   return DenseIntElementsAttr::get(ty, attr.getValue());
 }
 
@@ -184,7 +185,7 @@ Type GetSumAccumulationType(Type input_type) {
   MLIRContext *ctx = input_type.getContext();
   if (input_type.isBF16() || input_type.isF16()) return FloatType::getF32(ctx);
   if (input_type.isSignlessInteger(8) || input_type.isSignlessInteger(16))
-    return IntegerType::get(32, ctx);
+    return IntegerType::get(ctx, 32);
   return input_type;
 }
 
@@ -828,7 +829,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
     }
   }
 
-  auto element_type = IntegerType::get(64, input.getContext());
+  auto element_type = IntegerType::get(input.getContext(), 64);
   return DenseIntElementsAttr::get(
       RankedTensorType::get({shape[0]}, element_type), values);
 }
@@ -837,7 +838,7 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
 // in TensorFlow PadV2 op.
 static DenseIntElementsAttr GetInteriorPadding(ElementsAttr tf_padding) {
   auto length = tf_padding.getType().getShape()[0];
-  auto element_type = IntegerType::get(64, tf_padding.getContext());
+  auto element_type = IntegerType::get(tf_padding.getContext(), 64);
   return DenseIntElementsAttr::get<int64_t>(
       RankedTensorType::get({length}, element_type), 0);
 }
@@ -1837,7 +1838,7 @@ class ConvertFusedBatchNormGradBase
       Type feature_type = RankedTensorType::get(
           {GetDimSize(act_type, feature_dim)}, kernel_type);
       Type result_type = TupleType::get(
-          {act.getType(), feature_type, feature_type}, rewriter.getContext());
+          rewriter.getContext(), {act.getType(), feature_type, feature_type});
 
       auto training_op = rewriter.create<BatchNormGradOp>(
           loc, result_type, act, scale, mean, var, grad, op.epsilon(),
@@ -1905,7 +1906,7 @@ class ConvertFusedBatchNormGradBase
               0.0));
       auto maybe_cast = [&](Value val, Type t) -> Value {
         if (val.getType() == t) return val;
-        return rewriter.create<TensorCastOp>(op.getLoc(), t, val);
+        return rewriter.create<tensor::CastOp>(op.getLoc(), t, val);
       };
       last_val[0] = maybe_cast(const_val, op.getResult(3).getType());
       last_val[1] = maybe_cast(const_val, op.getResult(4).getType());
@@ -1973,7 +1974,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
       // batch_mean, and batch_var.
       SmallVector<Type, 3> operand_types = {bn_train_input_type_tensor,
                                             mean_var_type, mean_var_type};
-      Type result_type = TupleType::get(operand_types, rewriter.getContext());
+      Type result_type = TupleType::get(rewriter.getContext(), operand_types);
 
       auto bn_train_op = rewriter.create<mhlo::BatchNormTrainingOp>(
           op.getLoc(), result_type, bn_train_input, op.scale(), op.offset(),
@@ -2063,7 +2064,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
         Value dummy_const = rewriter.create<ConstOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
-          dummy_const = rewriter.create<TensorCastOp>(
+          dummy_const = rewriter.create<tensor::CastOp>(
               op.getLoc(), reserve_space_3_type, dummy_const);
         rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
                                 /*batch_variance=*/corrected_variance,
@@ -2107,7 +2108,7 @@ class ConvertFusedBatchNormBase : public OpRewritePattern<FusedBatchNormOpT> {
         Value dummy_const = rewriter.create<ConstOp>(
             op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
         if (const_attr_type != reserve_space_3_type)
-          dummy_const = rewriter.create<TensorCastOp>(
+          dummy_const = rewriter.create<tensor::CastOp>(
               op.getLoc(), reserve_space_3_type, dummy_const);
         rewriter.replaceOp(op, {/*y=*/y_out,
                                 /*batch_mean=*/op.mean(),
@@ -4618,9 +4619,9 @@ class ConvertInfeedDequeueTupleOp
     // Emit infeed op.
     // The result type of infeed is a tuple(tuple(result types), token type).
     auto data_tuple_type =
-        mlir::TupleType::get(result_types, rewriter.getContext());
+        mlir::TupleType::get(rewriter.getContext(), result_types);
     auto data_and_token_type = mlir::TupleType::get(
-        {data_tuple_type, token.getType()}, rewriter.getContext());
+        rewriter.getContext(), {data_tuple_type, token.getType()});
 
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
@@ -5409,7 +5410,8 @@ class ConvertCumOp : public OpRewritePattern<OpT> {
     window_dims[axis] = input_shape[axis];
 
     SmallVector<int64_t, 8> paddings(rank * 2, 0);
-    paddings[axis * 2] = input_shape[axis] - 1;
+    paddings[axis * 2] =
+        std::max(input_shape[axis] - 1, static_cast<int64_t>(0));
     auto paddings_attr = DenseIntElementsAttr::get(
         RankedTensorType::get({rank, 2}, rewriter.getIntegerType(64)),
         paddings);
@@ -6182,9 +6184,9 @@ LogicalResult legalizeTF(
   }
   target.addLegalDialect<MhloDialect>();
   target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<tensor::TensorDialect>();
   target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();
-  target.addLegalOp<TensorCastOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as mhlo dialect also defines a ReturnOp.

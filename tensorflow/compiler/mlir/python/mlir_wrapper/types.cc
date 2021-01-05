@@ -33,7 +33,7 @@ void init_types(py::module& m) {
       .def("getF64", &mlir::FloatType::getF64);
 
   py::class_<mlir::IntegerType, mlir::Type>(m, "IntegerType")
-      .def("get", py::overload_cast<unsigned, mlir::MLIRContext*>(
+      .def("get", py::overload_cast<mlir::MLIRContext*, unsigned>(
                       &mlir::IntegerType::get));
 
   py::class_<mlir::UnrankedTensorType, mlir::Type>(m, "UnrankedTensorType")

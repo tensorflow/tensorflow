@@ -36,7 +36,7 @@ TfLiteStatus QuantizeModel(
     const std::unordered_set<std::string>& operator_names,
     bool disable_per_channel, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
-    tflite::ErrorReporter* error_reporter);
+    tflite::ErrorReporter* error_reporter, bool verify_numeric = false);
 }  // namespace lite
 }  // namespace mlir
 

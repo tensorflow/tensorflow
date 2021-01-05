@@ -461,6 +461,8 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
         "reference/fill.h",
         "reference/floor.h",
         "reference/fully_connected.h",
@@ -475,6 +477,7 @@ cc_library(
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
+        "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -491,16 +494,17 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ] + select({
         ":tf_lite_static_memory": [],
         "//conditions:default": [
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
-            "reference/integer_ops/transpose_conv.h",
             "reference/reference_ops.h",
             "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
@@ -508,6 +512,13 @@ cc_library(
     }),
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    # We are disabling parse_headers for the tf_lite_static_memory build to
+    # allow it to be consistent with the OSS bazel build. See b/175817116
+    # for more details.
+    features = select({
+        ":tf_lite_static_memory": ["-parse_headers"],
+        "//conditions:default": [],
+    }),
     deps = [
         ":common",
         ":compatibility",
@@ -555,6 +566,8 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
         "reference/fill.h",
         "reference/floor.h",
         "reference/fully_connected.h",
@@ -576,10 +589,12 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),
     deps = [

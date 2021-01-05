@@ -113,7 +113,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   Reference: [SipHash with salt](https://www.131002.net/siphash/siphash.pdf)
 
-  Arguments:
+  Args:
     num_bins: Number of hash bins.
     salt: A single unsigned integer or None.
       If passed, the hash function used will be SipHash64, with these values

@@ -28,6 +28,7 @@ from tensorflow.compiler.mlir.python.mlir_wrapper import filecheck_wrapper as fw
 from tensorflow.compiler.mlir.tfr.python import composite
 from tensorflow.compiler.mlir.tfr.python.tfr_gen import tfr_gen_from_module as tfr_gen
 from tensorflow.compiler.mlir.tfr.resources import gen_test_ops as test_ops
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_array_ops as array_ops
 from tensorflow.python.ops import gen_math_ops as math_ops
 from tensorflow.python.platform import test
@@ -129,8 +130,8 @@ def _tfr_control_flow_range_for(x):
 @composite.Composite('TestInputNOp')
 def _tfr_control_flow_tensor_list_size(ins):
   n = len(ins)
-  if n == 1:
-    return ins[0]
+  if n == 0:
+    return array_ops.Const(value=[[0, 1], [2, 3]], dtype=dtypes.int64)
   else:
     return math_ops.AddN(ins)
 
@@ -414,22 +415,8 @@ class TFRGenTensorTest(TFRGenTestBase):
       CHECK-NEXT: }
 
       CHECK-LABEL: tfr.func @tf__test_input_n_op(%ins: !tfr.tensor_list) -> (!tfr.tensor) {
-      CHECK-NEXT:   %[[len:.*]] = tfr.get_length %ins -> index
-      CHECK-NEXT:   %[[cst:.*]] = constant 1 : i64
-      CHECK-NEXT:   %[[casted:.*]] = index_cast %[[cst]] : i64 to index
-      CHECK-NEXT:   %[[eq:.*]] = cmpi "eq", %[[len]], %[[casted]] : index
-      CHECK-NEXT:   %[[if:.*]] = scf.if %[[eq]] -> (!tfr.tensor) {
-      CHECK-NEXT:     %{{.*}} = constant true
-      CHECK-NEXT:     %{{.*}} = constant 0 : index
-      CHECK-NEXT:     %[[elt:.*]] = tfr.get_element %ins[%cst_2] : (!tfr.tensor_list, index) -> !tfr.tensor
-      CHECK-NEXT:     scf.yield %[[elt]] : !tfr.tensor
-      CHECK-NEXT:   } else {
-      CHECK-NEXT:     %{{.*}} = constant true
-      CHECK-NEXT:     %[[AddN:.*]] = tfr.call @tf__add_n(%ins) : (!tfr.tensor_list) -> (!tfr.tensor)
-      CHECK-NEXT:     scf.yield %[[AddN]] : !tfr.tensor
-      CHECK-NEXT:   }
-      CHECK-NEXT:   tfr.return %[[if_stmt]] : !tfr.tensor
-      CHECK-NEXT:  }
+      CHECK: %[[attr:.*]] = tfr.constant i64 -> !tfr.attr loc("tfr_gen_test.py":134:57)
+      CHECK: %Const = tfr.call @tf__const(%{{.*}}, %[[attr]]) : (!tfr.attr, !tfr.attr) -> (!tfr.tensor)
     """
     self._check_code(mlir_code, mlir_code_exp)
 

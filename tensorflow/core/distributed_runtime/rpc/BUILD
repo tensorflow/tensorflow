@@ -538,6 +538,7 @@ tf_cuda_cc_test(
     srcs = ["grpc_session_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
+        "no_cuda_asan",  # b/176448181
         "no_oss",  # b/62956105: port conflicts.
     ],
     deps = [

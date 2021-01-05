@@ -612,6 +612,12 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
                                             ArrayRef<int64_t> s1_shape,
                                             SmallVectorImpl<int64_t> &r0,
                                             SmallVectorImpl<int64_t> &r1) {
+  r0.clear();
+  r1.clear();
+
+  // No broadcasting is required if both the shapes are equal.
+  if (s0_shape == s1_shape) return;
+
   for (int i = bcasted_shape.size(); i > 0; --i) {
     int idx = bcasted_shape.size() - i;
     int s0_idx = i > s0_shape.size() ? -1 : s0_shape.size() - i;
@@ -628,6 +634,12 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
       else
         r1.push_back(idx);
     } else if (s0_shape[s0_idx] == 1) {
+      // This op is used to compute the gradient dimensions requiring reduction
+      // to match the input dimensions. In case both the dimensions are one,
+      // reducing the dimension has no effect. We choose to reduce such
+      // dimensions to match the TensorFlow kernel behavior. However, note that
+      // the TF behavior in this case is inconsistent with the case with the
+      // same shapes.
       r0.push_back(idx);
       r1.push_back(idx);
     }
@@ -655,12 +667,14 @@ static LogicalResult Verify(BroadcastGradientArgsOp op) {
   GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
                                          r1);
 
-  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
-  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
-  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getShape()[0] != r0.size())
+  // Verify that output types are of rank one and matches the computed result
+  // shape.
+  auto r0_ty = op.r0().getType().dyn_cast<RankedTensorType>();
+  auto r1_ty = op.r1().getType().dyn_cast<RankedTensorType>();
+  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getDimSize(0) != r0.size())
     return op.emitOpError() << "requires dimension 0 size of 'r0' to be "
                             << r0.size() << " but got " << r0_ty.getShape()[0];
-  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getShape()[0] != r1.size())
+  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getDimSize(0) != r1.size())
     return op.emitOpError() << "requires dimension 0 size of 'r1' to be "
                             << r1.size() << " but got " << r1_ty.getShape()[0];
 
@@ -1296,7 +1310,7 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
   results.reserve(shapes.size());
   SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
   RankedTensorType offset_type =
-      RankedTensorType::get({num_dims}, IntegerType::get(32, getContext()));
+      RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
     cumulative_sum[concat_dim] += shape.getValue<int32_t>(concat_dim);

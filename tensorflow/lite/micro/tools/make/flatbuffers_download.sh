@@ -88,7 +88,13 @@ else
   FLATBUFFERS_MD5="aa9adc93eb9b33fa1a2a90969e48baee"
 
   wget ${FLATBUFFERS_URL} -O /tmp/${ZIP_PREFIX}.zip >&2
-  MD5=`md5sum /tmp/${ZIP_PREFIX}.zip | awk '{print $1}'`
+
+  if ! command -v md5sum &> /dev/null
+  then
+    MD5=`md5 -r /tmp/${ZIP_PREFIX}.zip | awk '{print $1}'`
+  else
+    MD5=`md5sum /tmp/${ZIP_PREFIX}.zip | awk '{print $1}'`
+  fi
 
   if [[ ${MD5} != ${FLATBUFFERS_MD5} ]]
   then

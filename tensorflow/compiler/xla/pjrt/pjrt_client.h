@@ -438,21 +438,21 @@ class PjRtExecutable {
   // by the client.
   virtual StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   Execute(absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
-          const ExecuteOptions& options) const = 0;
+          const ExecuteOptions& options) = 0;
 
   // Execute the assigned replica/partition on a given `device`. Requires
   // executable has a device_assignment, `device` is present in the
   // device_assignment and addressable by the client.
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) const = 0;
+      const ExecuteOptions& options) = 0;
 
   // Execute on a given `device`. Requires `device` to be addressable by client.
   // Requires executable has exactly 1 replica and 1 partition and no
   // device_assignment (thus portable).
   virtual StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options) const = 0;
+      const ExecuteOptions& options) = 0;
 
   // Asynchronously free resources after the last execution completes.
   virtual void Delete() = 0;

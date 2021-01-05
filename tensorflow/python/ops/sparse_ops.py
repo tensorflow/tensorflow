@@ -429,7 +429,9 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  
 
 
 sparse_concat_v2.__doc__ = sparse_concat.__doc__.replace(
-    "    concat_dim: The old (deprecated) name for axis.\n", "")
+    "    concat_dim: The old (deprecated) name for axis.\n",
+    "").replace("    expand_nonconcat_dims: alias for expand_nonconcat_dim\n",
+                "")
 
 
 @tf_export(v1=["sparse.add", "sparse_add"])

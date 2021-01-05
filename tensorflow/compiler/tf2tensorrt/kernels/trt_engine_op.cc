@@ -461,12 +461,12 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   lib->Run(opts, native_execution_func_handle_, inputs, outputs,
            [this, ctx, outputs, helper](const Status& s) {
              core::ScopedUnref sc(helper);
+             std::unique_ptr<std::vector<Tensor>> outputs_wrapper(outputs);
              OP_REQUIRES_OK_ASYNC(ctx, s, *helper);
              VLOG(1) << "Native Segment completed";
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
-             delete outputs;
            });
 }
 

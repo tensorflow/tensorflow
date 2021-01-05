@@ -387,7 +387,7 @@ def create_cluster_spec(has_chief=False,
   This util is useful when creating the `cluster_spec` arg for
   `tf.__internal__.distribute.multi_process_runner.run`.
 
-  Arguments:
+  Args:
     has_chief: Whether the generated cluster spec should contain "chief" task
       type.
     num_workers: Number of workers to use in the cluster spec.
@@ -699,7 +699,7 @@ class IndependentWorkerTestBase(test.TestCase):
     from `cluster_spec`, `task_type`, and `task_id`, and provide it to the new
     thread to be set as `TF_CONFIG` environment.
 
-    Arguments:
+    Args:
       task_fn: The function to run in the new thread.
       cluster_spec: The cluster spec.
       task_type: The task type.
@@ -810,7 +810,7 @@ class MultiWorkerMultiProcessTest(test.TestCase):
     In that case, this function only prints stderr from the first process of
     each type.
 
-    Arguments:
+    Args:
       processes: A dictionary from process type string -> list of processes.
       print_only_first: If true, only print output from first process of each
         type.

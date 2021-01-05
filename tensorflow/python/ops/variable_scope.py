@@ -2085,6 +2085,12 @@ class variable_scope(object):
   see the [Variable Scope How To](https://tensorflow.org/guide/variables), here
   we present only a few basic examples.
 
+  The Variable Scope works as expected when the Eager Execution is Disabled.
+
+  ```python
+  tf.compat.v1.disable_eager_execution()
+  ```
+
   Simple example of how to create a new variable:
 
   ```python

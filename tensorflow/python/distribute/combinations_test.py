@@ -97,6 +97,24 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     self.assertNotEqual(os.getenv("TF_CONFIG"), "")
 
 
+@combinations.generate(combinations.combine(num_workers=2))
+class ClusterCombinationTestEnvTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    # Note that test case fixtures are executed in both the main process and
+    # worker processes.
+    super().setUp()
+    if combinations.in_main_process():
+      combinations.env().tf_data_service_dispatcher = "localhost"
+
+  def testTfDataServiceDispatcher(self):
+    self.assertEqual(combinations.env().tf_data_service_dispatcher, "localhost")
+
+  def testUpdateEnvInWorker(self):
+    with self.assertRaises(ValueError):
+      combinations.env().tf_data_service_dispatcher = "localhost"
+
+
 # unittest.expectedFailure doesn't work with parameterized test methods, so we
 # have to decorate the class instead.
 @unittest.expectedFailure

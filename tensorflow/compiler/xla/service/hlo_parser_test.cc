@@ -439,6 +439,29 @@ ENTRY %R4UnitWindowScalar () -> f32[] {
 
 )"
 },
+// reduce window on scalar
+{
+"ReduceWindowVariadic",
+R"(HloModule reduce_window_variadic
+
+%add_F32.v3 (lhs1: f32[], lhs2: f32[], rhs1: f32[], rhs2: f32[]) -> (f32[], f32[]) {
+  %lhs1 = f32[] parameter(0)
+  %rhs1 = f32[] parameter(2)
+  %add1 = f32[] add(f32[] %lhs1, f32[] %rhs1)
+  %lhs2 = f32[] parameter(1)
+  %rhs2 = f32[] parameter(3)
+  %add2 = f32[] add(f32[] %lhs2, f32[] %rhs2)
+  ROOT %tuple1 = (f32[], f32[]) tuple(f32[] %add1, f32[] %add2)
+}
+
+ENTRY %R4UnitWindowScalar () -> (f32[], f32[]) {
+  %constant = f32[] constant(42)
+  %constant.1 = f32[] constant(1)
+  ROOT %reduce-window = (f32[], f32[]) reduce-window(f32[] %constant, f32[] %constant, f32[] %constant.1, f32[] %constant.1), to_apply=%add_F32.v3
+}
+
+)"
+},
 // convolution
 {
 "Convolution",

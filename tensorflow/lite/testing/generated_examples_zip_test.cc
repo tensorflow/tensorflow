@@ -255,7 +255,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   size_t pos = 0;
   int added = 0;
   while (true) {
-    size_t end_pos = manifest.find("\n", pos);
+    size_t end_pos = manifest.find('\n', pos);
     if (end_pos == string::npos) break;
     string filename = manifest.substr(pos, end_pos - pos);
     test_paths->push_back(dir + "/" + filename);
@@ -294,13 +294,13 @@ TEST_P(OpsTest, RunZipTests) {
   string test_path_and_label = GetParam();
   string test_path = test_path_and_label;
   string label = test_path_and_label;
-  size_t end_pos = test_path_and_label.find(" ");
+  size_t end_pos = test_path_and_label.find(' ');
   if (end_pos != string::npos) {
     test_path = test_path_and_label.substr(0, end_pos);
     label = test_path_and_label.substr(end_pos + 1);
   }
   string tflite_test_case = test_path + "_tests.txt";
-  string tflite_dir = test_path.substr(0, test_path.find_last_of("/"));
+  string tflite_dir = test_path.substr(0, test_path.find_last_of('/'));
   string test_name = label.substr(label.find_last_of('/'));
 
   std::ifstream tflite_stream(tflite_test_case);

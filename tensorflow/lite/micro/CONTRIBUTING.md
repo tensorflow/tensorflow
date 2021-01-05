@@ -18,8 +18,9 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
     *   [During the PR review](#during-the-pr-review)
     *   [Reviewer notes](#reviewer-notes)
     *   [Python notes](#python-notes)
+*   [Continuous Integration System](#continuous-integration-system)
 
-<!-- Added by: advaitjain, at: Mon 05 Oct 2020 02:38:02 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 15 Dec 2020 03:06:29 PM PST -->
 
 <!--te-->
 
@@ -203,7 +204,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
 1.  Run all the tests for x86, and any other platform that you are modifying.
 
     ```
-    tensorflow/lite/micro/tools/make/tools/ci_build/test_x86.sh
+    tensorflow/lite/micro/tools/ci_build/test_x86.sh
     ```
 
     Please check the READMEs in the optimized kernel directories for specific
@@ -305,3 +306,32 @@ that can be expanded and improved as necessary.
     ```
     yapf log_parser.py -i --style='{based_on_style: pep8, indent_width: 2}'
     ```
+
+    # Continuous Integration System
+
+    *   As a contributor, please make sure that the TfLite Micro build is green.
+        You can click on the details link to see what the errors are:
+
+    [![TfLite Micro Build](docs/images/tflm_continuous_integration_1.png)](https://storage.googleapis.com/tensorflow-kokoro-build-badges/tflite-micro.html)
+
+    *   Most of the tests that are run as part of the CI are with the
+        [micro/tools/ci_build/test_all.sh](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/tools/ci_build/test_all.sh)
+        script.
+
+        *   There are a few additional tests that use bazel that are not
+            captured by the `test_all.sh` script.
+
+    *   If an error is not reproducible on your development machine, you can
+        recreate the docker container that is used on the CI servers with the
+        following commands (run from the root of the tensorflow github repo):
+
+    ```
+    mkdir /tmp/tflm-docker
+    docker build -f tensorflow/tools/ci_build/Dockerfile.micro -t tflm /tmp/tflm-docker
+    docker run -v `pwd`:/tensorflow -it tflm bash
+    ```
+
+    The `docker run` command is mounting the tensorflow repository on your
+    machine to the docker containter. As a result, any changes made within the
+    docker container will also be reflected in the directory in the host
+    machine.

@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=3.1.0
+LATEST_BAZEL_VERSION=3.7.2
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -143,7 +143,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
   "${PIP_CMD}" install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
-  "${PIP_CMD}" install --user 'grpcio ~= 1.32.0'
+  "${PIP_CMD}" install --user 'grpcio ~= 1.34.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
   "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
@@ -205,7 +205,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install $USER_FLAG --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
   ${PIP_CMD} install $USER_FLAG --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
-  ${PIP_CMD} install $USER_FLAG 'grpcio ~= 1.32.0'
+  ${PIP_CMD} install $USER_FLAG 'grpcio ~= 1.34.0'
   ${PIP_CMD} install $USER_FLAG 'portpicker ~= 1.3.1'
   ${PIP_CMD} install $USER_FLAG 'scipy ~= 1.5.2'
 

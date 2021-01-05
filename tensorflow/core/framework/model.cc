@@ -1315,7 +1315,9 @@ Node::NodeVector Node::CollectNodes(
 void Node::CollectTunableParametersHelper(
     absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
     TF_SHARED_LOCKS_REQUIRED(mu_) {
-  if (!autotune_) {
+  // If autotune is turned off or there are no elements recorded, we don't
+  // collect the parameters on the node.
+  if (!autotune_ || num_elements_ <= 0) {
     return;
   }
   for (auto& pair : parameters_) {
@@ -1528,8 +1530,15 @@ void Model::OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
     tf_shared_lock lock(mu_);
     snapshot = output_->Snapshot();
   }
-  VLOG(2) << "Starting optimization of tunable parameters with GradientDescent";
+  VLOG(2) << "Starting optimization of tunable parameters with Gradient "
+             "Descent.";
   auto parameters = CollectTunableParameters(snapshot);
+  if (parameters.empty()) {
+    VLOG(2) << "The Gradient Descent optimization is terminated since no node "
+               "with tunable parameters has recorded elements.";
+    return;
+  }
+
   // The maps of "essential" parallelism parameters and buffer size parameters.
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
       parallelism_parameters, buffer_size_parameters;
@@ -1586,9 +1595,15 @@ void Model::OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
     tf_shared_lock lock(mu_);
     snapshot = output_->Snapshot();
   }
-  VLOG(2) << "Starting optimization of tunable parameters with HillClimb";
+  VLOG(2) << "Starting optimization of tunable parameters with Hill Climb.";
   const double processing_time = TotalProcessingTime(snapshot);
   auto parameters = CollectTunableParameters(snapshot);
+  if (parameters.empty()) {
+    VLOG(2) << "The Hill Climb optimization is terminated since no node with "
+               "tunable parameters has recorded elements.";
+    return;
+  }
+
   // Buffer size parameter will only be incremented if the output latency
   // improvement is greater than this constant.
   constexpr double kBufferSizeMinDelta = 1.0L;

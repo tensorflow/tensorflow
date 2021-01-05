@@ -808,7 +808,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
-        "no_rocm",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -828,7 +827,6 @@ distribute_py_test(
     shard_count = 7,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     xla_tags = [
         "no_cuda_asan",  # times out
@@ -897,11 +895,11 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

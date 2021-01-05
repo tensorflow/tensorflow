@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -165,7 +166,7 @@ void ReplaceAllUsesWithCast(Value old_val, Value new_val) {
   if (old_val.use_empty()) return;
   auto cast_op =
       OpBuilder(old_val.getDefiningOp())
-          .create<TensorCastOp>(old_val.getLoc(), old_val.getType(), new_val);
+          .create<tensor::CastOp>(old_val.getLoc(), old_val.getType(), new_val);
   old_val.replaceAllUsesWith(cast_op);
 }
 
@@ -460,10 +461,9 @@ LogicalResult HandleTensorArrayScatterV3Op(
 void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
-  func.setType(FunctionType::get(
-      arg_types,
-      llvm::to_vector<8>(func.front().getTerminator()->getOperandTypes()),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), arg_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Finds the accessed gradient sources for each tensor array argument.

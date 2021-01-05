@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TEST_UTIL_H_
 
+#import <Metal/Metal.h>
+
 #include <map>
 #include <vector>
 
@@ -23,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 
@@ -59,13 +60,47 @@ class SingleOpModel {
 absl::Status CompareVectors(const std::vector<float>& reference,
                             const std::vector<float>& output, float max_error);
 
-/// Helper function that compiles previously configured graph (with added
-/// tasks), initializes graph with specified inputs, invokes and fills specified
-/// outputs
-absl::Status RunGraph(const std::vector<NodeDescriptor>& nodes,
-                      id<MTLDevice> device,
-                      const std::map<ValueId, TensorFloat32>& inputs,
-                      std::map<ValueId, TensorFloat32>* outputs);
+class MetalExecutionEnvironment {
+ public:
+  MetalExecutionEnvironment();
+  ~MetalExecutionEnvironment() = default;
+
+  std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
+  std::vector<TensorStorageType> GetSupportedStorages() const;
+  // returns storage types that support zero clamping when reading OOB in HW
+  // (Height/Width) dimensions.
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
+      const;
+
+  const GpuInfo& GetGpuInfo() const { return gpu_info_; }
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorFloat32>& src_cpu,
+      std::unique_ptr<ComputeTaskDescriptor>&& operation,
+      const std::vector<BHWC>& dst_sizes,
+      const std::vector<TensorFloat32*>& dst_cpu);
+
+  absl::Status ExecuteGPUOperation(
+      const TensorFloat32& src_cpu,
+      std::unique_ptr<ComputeTaskDescriptor>&& operation, const BHWC& dst_size,
+      TensorFloat32* result) {
+    return ExecuteGPUOperation(std::vector<TensorFloat32>{src_cpu},
+                               std::move(operation), dst_size, result);
+  }
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorFloat32>& src_cpu,
+      std::unique_ptr<ComputeTaskDescriptor>&& operation, const BHWC& dst_size,
+      TensorFloat32* result) {
+    return ExecuteGPUOperation(
+        std::vector<TensorFloat32>{src_cpu}, std::move(operation),
+        std::vector<BHWC>{dst_size}, std::vector<TensorFloat32*>{result});
+  }
+
+ private:
+  id<MTLDevice> device_;
+  GpuInfo gpu_info_;
+};
 
 }  // namespace metal
 }  // namespace gpu

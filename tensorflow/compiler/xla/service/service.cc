@@ -671,19 +671,38 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
   // basically the same thing.
   ExecutionProfile profile;
   std::vector<GlobalDataHandle> outputs;
+  Status execution_status = Status::OK();
+
   if (executable_ptrs.size() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        auto output,
-        ExecuteAndRegisterResult(executable_ptrs[0], all_arguments[0],
-                                 execute_backend_.get(), device_handles[0],
-                                 computation_names[0], &profile));
-    outputs.push_back(std::move(output));
+    StatusOr<GlobalDataHandle> output_or_status = ExecuteAndRegisterResult(
+        executable_ptrs[0], all_arguments[0], execute_backend_.get(),
+        device_handles[0], computation_names[0], &profile);
+    if (output_or_status.ok()) {
+      outputs.push_back(std::move(output_or_status).ValueOrDie());
+    } else {
+      execution_status = output_or_status.status();
+    }
   } else {
-    TF_ASSIGN_OR_RETURN(
-        outputs, ExecuteParallelAndRegisterResult(
-                     executable_ptrs, all_arguments, execute_backend_.get(),
-                     device_handles, computation_names, &profile));
+    StatusOr<std::vector<GlobalDataHandle>> outputs_or_status =
+        ExecuteParallelAndRegisterResult(executable_ptrs, all_arguments,
+                                         execute_backend_.get(), device_handles,
+                                         computation_names, &profile);
+    if (outputs_or_status.ok()) {
+      outputs = std::move(outputs_or_status).ValueOrDie();
+    } else {
+      execution_status = outputs_or_status.status();
+    }
   }
+
+  if (!execution_status.ok()) {
+    // Execution failed so we don't have the results.  Dump the HLO snapshot
+    // with just the program arguments.
+    for (int i = 0, end = executable_ptrs.size(); i < end; i++) {
+      DumpHloSnapshotIfEnabled(executable_ptrs[i]->module(), snapshots[i]);
+    }
+  }
+
+  TF_RETURN_IF_ERROR(execution_status);
 
   for (const GlobalDataHandle& output : outputs) {
     ExecuteResponse response;

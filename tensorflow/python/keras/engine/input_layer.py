@@ -69,7 +69,7 @@ class InputLayer(base_layer.Layer):
             np.ones((10, 8)))
   ```
 
-  Arguments:
+  Args:
       input_shape: Shape tuple (not including the batch axis), or `TensorShape`
         instance (not including the batch axis).
       batch_size: Optional input batch size (integer or None).
@@ -224,7 +224,7 @@ def Input(  # pylint: disable=invalid-name
   it becomes possible to do:
   `model = Model(input=[a, b], output=c)`
 
-  Arguments:
+  Args:
       shape: A shape tuple (integers), not including the batch size.
           For instance, `shape=(32,)` indicates that the expected input
           will be batches of 32-dimensional vectors. Elements of this tuple

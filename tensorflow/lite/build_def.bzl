@@ -435,7 +435,7 @@ def generated_test_models_successful(conversion_mode):
 def generated_test_conversion_modes():
     """Returns a list of conversion modes."""
 
-    return ["toco-flex", "forward-compat", ""]
+    return ["toco-flex", "forward-compat", "", "mlir-quant"]
 
 def common_test_args_for_generated_models(conversion_mode, failing):
     """Returns test args for generated model tests.
@@ -635,6 +635,8 @@ def gen_zip_test(
         flags += " --ignore_converter_errors --run_with_flex"
     elif conversion_mode == "forward-compat":
         flags += " --make_forward_compat_test"
+    elif conversion_mode == "mlir-quant":
+        flags += " --mlir_quantizer"
     if test_name.startswith(merged_test_model_name() + "_"):
         flags += flags_for_merged_test_models(test_name, conversion_mode)
 
@@ -930,6 +932,7 @@ def tflite_custom_c_library(
         deps = [
             op_resolver_deps,
             "//tensorflow/lite/c:common",
+            "//tensorflow/lite/c:c_api_types",
             "//tensorflow/lite:builtin_ops",
             "//tensorflow/lite:framework",
             "//tensorflow/lite:version",
