@@ -111,11 +111,15 @@ class Subgraph {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantization quantization,
-      bool is_variable = false, const size_t rank_dims_signature = 0,
-      const int* dims_signature = nullptr) {
-    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable,
-                                        rank_dims_signature, dims_signature);
+      bool is_variable = false, const std::vector<int>& dims_signature = {}) {
+    if (dims_signature.empty()) {
+      return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
+                                          dims.data(), quantization,
+                                          is_variable);
+    }
+    return SetTensorParametersReadWrite(
+        tensor_index, type, name, dims.size(), dims.data(), quantization,
+        is_variable, dims_signature.size(), dims_signature.data());
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,

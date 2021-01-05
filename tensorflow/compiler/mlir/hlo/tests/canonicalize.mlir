@@ -1540,3 +1540,14 @@ func @identity_broadcast_in_dim_reshape(%arg0: tensor<128xf32>) -> tensor<128xf3
   return %1 : tensor<128xf32>
   // CHECK: return %arg0 : tensor<128xf32>
 }
+
+// CHECK-LABEL: @broadcast_of_reshape
+func @broadcast_of_reshape(%arg: tensor<?xf32>, %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape) {
+    broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+// CHECK: [[RESHAPE:%.*]] = "mhlo.dynamic_reshape"
+// CHECK: return [[RESHAPE]]

@@ -386,6 +386,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseSoftmax(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_SPACE_TO_DEPTH: {
+      return ParseSpaceToDepth(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_SPLIT: {
       return ParseSplit(op, error_reporter, allocator, builtin_data);
     }
@@ -592,16 +596,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
         params->ngram_size = skip_gram_params->ngram_size();
         params->max_skip_size = skip_gram_params->max_skip_size();
         params->include_all_ngrams = skip_gram_params->include_all_ngrams();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
-    case BuiltinOperator_SPACE_TO_DEPTH: {
-      auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_SpaceToDepthOptions()) {
-        params->block_size = schema_params->block_size();
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -1674,6 +1668,31 @@ TfLiteStatus ParseSoftmax(const Operator* op, ErrorReporter* error_reporter,
 
   if (schema_params != nullptr) {
     params->beta = schema_params->beta();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseSpaceToDepth(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteSpaceToDepthParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const auto* schema_params = op->builtin_options_as_SpaceToDepthOptions();
+  if (schema_params != nullptr) {
+    params->block_size = schema_params->block_size();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

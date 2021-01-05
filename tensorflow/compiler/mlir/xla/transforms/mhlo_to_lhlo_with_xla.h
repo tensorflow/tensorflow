@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace mlir {
 
@@ -79,6 +81,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
 
   ::xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(::xla::HloInstruction* instr);
 
+  ::xla::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::MapOp> EmitMapOp(::xla::HloInstruction* instr);
 
   ::xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(
@@ -87,10 +90,16 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::AllReduceOp> EmitAllReduceOp(
       ::xla::HloInstruction* instr);
 
-  ::xla::Status CreateOperands(
-      ::xla::HloInstruction* instr, SmallVectorImpl<Value>& operands,
-      size_t& num_arguments, size_t& num_results,
-      absl::optional<xla::int64> num_operands = absl::nullopt);
+  // Create LHLO operation operands given an XLA HLO instruction. By default,
+  // all XLA HLO operands and results are converted to MLIR and appended to
+  // `operands`. If `num_operands` is specified, only the first `num_operand`
+  // operands of the instruction are converted to MLIR. The function returns the
+  // actual number of operands and results generated for MLIR in `num_arguments`
+  // and `num_results`.
+  ::xla::Status CreateOperands(::xla::HloInstruction* instr,
+                               absl::optional<xla::int64> num_operands,
+                               SmallVectorImpl<Value>& operands,
+                               size_t& num_arguments, size_t& num_results);
 
   template <typename OpType>
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(
@@ -104,6 +113,10 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<OpType> CreateOpWithoutAttrs(
       ::xla::HloInstruction* instr, size_t& num_arguments, size_t& num_results,
       absl::optional<xla::int64> num_operands = absl::nullopt);
+
+  template <typename OpType>
+  OpType CreateOpWithoutAttrs(::xla::HloInstruction* instr,
+                              ValueRange operands);
 
   template <typename T>
   DenseIntElementsAttr GetI64DenseElementsAttr(const T& container) {
@@ -140,9 +153,14 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
                                          SmallVectorImpl<Value>* values);
 
   // Helper function to create view/tuple of views to a buffer for a given
-  // instruction result.
+  // instruction result. `result_subset` can be used to for instructions that
+  // have a tuple result and MLIR conversion needs to convert only one of the
+  // tuple elements. Note that if needed, this can be extended to take a list of
+  // ShapeIndex values in case we need finer control on what elements of the
+  // output tuple to be converted to MLIR.
   tensorflow::Status GetOrCreateView(const ::xla::HloInstruction* instr,
-                                     SmallVectorImpl<Value>* values);
+                                     SmallVectorImpl<Value>* values,
+                                     const xla::ShapeIndex& result_subset = {});
 
   ::xla::StatusOr<Value> GetOrCreateArrayView(
       const ::xla::HloInstruction* instr, const ::xla::Shape& current_shape,

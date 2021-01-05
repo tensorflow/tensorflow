@@ -763,6 +763,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/platform:_pywrap_tf2",
         ":_pywrap_utils",
         ":composite_tensor",
         ":config",
@@ -5266,7 +5267,10 @@ pywrap_tensorflow_macro(
          tf_additional_plugin_deps() +
          tf_additional_profiler_deps()) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tensor_float_32_utils"]),
+    ]) + if_static(extra_deps = [
+        "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core/platform:enable_tf2_utils",
+    ]),
 )
 
 # ** Targets for Windows build (start) **
@@ -6779,6 +6783,8 @@ py_test(
         ":client_testlib",
         ":framework_combinations",
         ":tf2",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 
