@@ -22,14 +22,14 @@ import numpy as np
 import random
 
 from tensorflow.python import tf2
-from tensorflow.python.client import session
-from tensorflow.python.compat import compat
-from tensorflow.python.framework import ops
+from tensorflow.python.client import session  # pylint: disable=unused-import
+from tensorflow.python.compat import compat  # pylint: disable=unused-import
+from tensorflow.python.framework import ops  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import benchmark
+from tensorflow.python.ops import variables  # pylint: disable=unused-import
+from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 def GetRandomNormalInput(shape, dtype):
@@ -52,7 +52,8 @@ class BatchGemmOpTest(test.TestCase):
     return np.matmul(x, y)
 
   # Compares TensorFlow BatchGemm with NumPy's matmul.
-  def _compare(self, x_in, y_in, transpose_a, transpose_b, alpha, beta, static_shape):
+  def _compare(self, x_in, y_in, transpose_a, transpose_b,
+               alpha, beta, static_shape):
     x_t_shape = x_in.shape[:-2] + (x_in.shape[-1], x_in.shape[-2])
     y_t_shape = y_in.shape[:-2] + (y_in.shape[-1], y_in.shape[-2])
     x = x_in if not transpose_a else x_in.reshape(x_t_shape)
@@ -67,18 +68,22 @@ class BatchGemmOpTest(test.TestCase):
       tol = 10 ** (-7)
     with self.cached_session(use_gpu=True) as sess:
       # Note: Testing with three dimensions only now
-      z_in = np.ones((x_in.shape[0], x_in.shape[1], y_in.shape[2])).astype(x.dtype)
+      z_in = np.ones((x_in.shape[0], x_in.shape[1],
+                      y_in.shape[2])).astype(x.dtype)
       if static_shape:
         z0 = math_ops.batch_gemm(
-            x, y, z_in, transpose_a=transpose_a, transpose_b=transpose_b, alpha=alpha, beta=beta)
+            x, y, z_in, transpose_a=transpose_a, transpose_b=transpose_b,
+            alpha=alpha, beta=beta)
         z0_val = self.evaluate(z0)
       else:
         x_ph = array_ops.placeholder(x.dtype)
         y_ph = array_ops.placeholder(y.dtype)
         z0 = math_ops.batch_gemm(
-            x, y, z_in, transpose_a=transpose_a, transpose_b=transpose_b, alpha=alpha, beta=beta)
+            x, y, z_in, transpose_a=transpose_a, transpose_b=transpose_b,
+            alpha=alpha, beta=beta)
         z0_val = sess.run(z0, feed_dict={x_ph: x, y_ph: y})
-      z1 = alpha * self._npBatchGemm(x, y, transpose_a, transpose_b) + beta * z_in
+      z1 = alpha * self._npBatchGemm(x, y, transpose_a,
+           transpose_b) + beta * z_in
       self.assertAllClose(z0_val, z1, rtol=tol, atol=tol)
 
   def _testNonEmpty(self, dtype, transpose_a, transpose_b, use_static_shape):
@@ -146,7 +151,8 @@ class BatchGemmGradientTest(test.TestCase):
     # Note: z is counted as a constant for batch_gemm operator therefore should
     # not be fed into the loss function as an independent variable
     def Loss(x, y):
-      return math_ops.reduce_sum(math_ops.batch_gemm(x, y, z, transpose_a, transpose_b, alpha, beta))
+      return math_ops.reduce_sum(math_ops.batch_gemm(x, y, z, transpose_a,
+             transpose_b, alpha, beta))
 
     with self.cached_session(use_gpu=True):
       ((x_jacob_t, y_jacob_t),

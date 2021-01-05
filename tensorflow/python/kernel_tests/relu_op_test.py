@@ -505,7 +505,8 @@ class GeluTest(test.TestCase):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")
     for t in [np.float16, np.float32, np.float64]:
-      self._testGelu(np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
+      self._testGelu(np.array([[-9, 7, -5, 3, -1],
+                               [1, -3, 5, -7, 9]]).astype(t))
 
   def testGradients(self):
     for t in [np.float16, np.float32, np.float64]:
@@ -519,7 +520,8 @@ class GeluTest(test.TestCase):
         with self.session(use_gpu=gpu):
           x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
           x = np.asarray(x_val, dtype=t, order="F")
-          e1, e2 = gradient_checker_v2.compute_gradient(approx_gelu, [x], delta=delta)
+          e1, e2 = gradient_checker_v2.compute_gradient(approx_gelu,
+                                                        [x], delta=delta)
           err = gradient_checker_v2.max_error(
               e1,e2)
           print(e1,e2)

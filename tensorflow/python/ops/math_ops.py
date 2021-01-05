@@ -3404,7 +3404,8 @@ def batch_gemm(a,
       b = ops.convert_to_tensor(b, name="b")
       c = ops.convert_to_tensor(c, name="c")
 
-    return gen_math_ops.batch_gemm(a, b, c, adj_x=transpose_a, adj_y=transpose_b, alpha=alpha, beta=beta, name=name)
+    return gen_math_ops.batch_gemm(a, b, c, adj_x=transpose_a,
+      adj_y=transpose_b, alpha=alpha, beta=beta, name=name)
 
 @tf_export("linalg.matvec")
 @dispatch.add_dispatch_support

@@ -161,9 +161,13 @@ class TimelineTest(test.TestCase):
     cpuname = 'mklcpu' if test_util.IsMklEnabled() else 'cpu'
     self.assertTrue(cpuname in maximums)
     if test.is_built_with_rocm():
-      cpu_max = maximums['gpu_host_bfc'] if 'gpu_host_bfc' in maximums else maximums[cpuname]
+      cpu_max = (
+        maximums['gpu_host_bfc'] if 'gpu_host_bfc' in maximums
+        else maximums[cpuname])
     else :
-      cpu_max = maximums['cuda_host_bfc'] if 'cuda_host_bfc' in maximums else maximums[cpuname]
+      cpu_max = (
+        maximums['cuda_host_bfc'] if 'cuda_host_bfc' in maximums
+        else maximums[cpuname])
       # At least num1 + num2, both float32s (4 bytes each)
     self.assertGreaterEqual(cpu_max.num_bytes, 8)
     self.assertGreater(cpu_max.timestamp, 0)

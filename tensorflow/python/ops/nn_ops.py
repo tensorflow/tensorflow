@@ -46,7 +46,7 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import device_context
 from tensorflow.python.platform import build_info
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import tf_logging as logging # pylint: disable=unused-import
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.compat import collections_abc
@@ -3505,7 +3505,7 @@ def leaky_relu(features, alpha=0.2, name=None):
 
 @tf_export("nn.gelu", v1=[])
 @dispatch.add_dispatch_support
-def gelu(features, approximate=False, name=None):
+def gelu(features, approximate=False, name=None): # pylint: disable=function-redefined
   """Compute the Gaussian Error Linear Unit (GELU) activation function.
 
   Gaussian error linear unit (GELU) computes
