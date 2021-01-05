@@ -161,7 +161,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     if isinstance(inputs, (tuple, list)):
       # If any of them is tensor or ndarray, then treat as list
       if any(
-          tensor_util.is_tensor(inp) or isinstance(inp, np.ndarray)
+          tensor_util.is_tf_type(inp) or isinstance(inp, np.ndarray)
           for inp in inputs):
         return [self._preprocess_single_input(inp) for inp in inputs]
     return self._preprocess_single_input(inputs)

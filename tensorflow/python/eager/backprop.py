@@ -678,7 +678,7 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
 
-  if tensor_util.is_tensor(shape):
+  if tensor_util.is_tf_type(shape):
     shape_key = shape.ref()
   else:
     shape_key = shape

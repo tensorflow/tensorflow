@@ -2292,7 +2292,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
     A transposed `Tensor`.
   """
   with ops.name_scope(name, "transpose", [a]) as name:
-    if not tensor_util.is_tensor(a):
+    if not tensor_util.is_tf_type(a):
       a = ops.convert_to_tensor(a, name="a")
 
     if conjugate and a.dtype.is_complex:
@@ -3058,7 +3058,7 @@ def zeros_like_v2(
 def zeros_like_impl(tensor, dtype, name, optimize=True):
   """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
-    if not tensor_util.is_tensor(tensor):
+    if not tensor_util.is_tf_type(tensor):
       tensor = ops.convert_to_tensor(tensor, name="tensor")
     tensor_shape = tensor.shape
     tensor_dtype = tensor.dtype
@@ -3506,7 +3506,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tensor(constant_values) and constant_values == 0:
+    if not tensor_util.is_tf_type(constant_values) and constant_values == 0:
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(

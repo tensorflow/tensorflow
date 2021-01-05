@@ -3713,7 +3713,7 @@ def get_value(x):
   Returns:
       A Numpy array.
   """
-  if not tensor_util.is_tensor(x):
+  if not tensor_util.is_tf_type(x):
     return x
   if context.executing_eagerly() or isinstance(x, ops.EagerTensor):
     return x.numpy()
@@ -4032,7 +4032,7 @@ class GraphExecutionFunction(object):
       if value is None:
         continue
 
-      if tensor_util.is_tensor(value):
+      if tensor_util.is_tf_type(value):
         # Case: feeding symbolic tensor.
         feed_symbols.append(tensor)
         symbol_vals.append(value)
@@ -4719,7 +4719,7 @@ def in_train_phase(x, alt, training=None):
     training = learning_phase()
 
   # TODO(b/138862903): Handle the case when training is tensor.
-  if not tensor_util.is_tensor(training):
+  if not tensor_util.is_tf_type(training):
     if training == 1 or training is True:
       if callable(x):
         return x()
@@ -6553,7 +6553,7 @@ def cast_variables_to_tensor(tensors):
 
 
 def _is_symbolic_tensor(x):
-  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
+  return tensor_util.is_tf_type(x) and not isinstance(x, ops.EagerTensor)
 
 
 def convert_inputs_if_ragged(inputs):
