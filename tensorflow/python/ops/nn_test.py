@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import math
 import os
-import sys  # pylint: disable=unused-import
 import time
 from absl.testing import parameterized
 import numpy as np
@@ -38,7 +37,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
-from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl

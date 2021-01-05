@@ -22,14 +22,9 @@ import numpy as np
 import random
 
 from tensorflow.python import tf2
-from tensorflow.python.client import session  # pylint: disable=unused-import
-from tensorflow.python.compat import compat  # pylint: disable=unused-import
-from tensorflow.python.framework import ops  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables  # pylint: disable=unused-import
-from tensorflow.python.platform import benchmark  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 def GetRandomNormalInput(shape, dtype):
