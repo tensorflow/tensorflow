@@ -106,10 +106,10 @@ TEST_F(QuantizedPoolingTest, SmallAveragePooling) {
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* mkl_shape_tensor =
+  const Tensor* mkl_shape_tensor_ptr =
       NativeFormatEnabled() ? nullptr : GetOutput(3);
   Tensor output_float = QuantizedToFloatTFFormat<quint8>(
-      DT_QUINT8, output, mkl_shape_tensor, output_min, output_max);
+      DT_QUINT8, output, mkl_shape_tensor_ptr, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
 
@@ -177,10 +177,10 @@ TEST_F(QuantizedPoolingTest, SmallMaxPooling) {
   const Tensor& output = *GetOutput(0);
   const float output_min = GetOutput(1)->flat<float>()(0);
   const float output_max = GetOutput(2)->flat<float>()(0);
-  const Tensor* mkl_shape_tensor =
+  const Tensor* mkl_shape_tensor_ptr =
       NativeFormatEnabled() ? nullptr : GetOutput(3);
   Tensor output_float = QuantizedToFloatTFFormat<quint8>(
-      DT_QUINT8, output, mkl_shape_tensor, output_min, output_max);
+      DT_QUINT8, output, mkl_shape_tensor_ptr, output_min, output_max);
   test::ExpectTensorNear<float>(expected_float, output_float, 0.2);
 }
 }  // namespace tensorflow
