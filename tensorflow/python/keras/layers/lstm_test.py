@@ -46,7 +46,8 @@ class LSTMLayerTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @test.disable_for_rocm(skip_message='Double type is yet not supported in ROCm')
+  @test.disable_for_rocm(skip_message='Double type is yet '
+                                      'not supported in ROCm')
   @testing_utils.run_v2_only
   def test_float64_LSTM(self):
     num_samples = 2

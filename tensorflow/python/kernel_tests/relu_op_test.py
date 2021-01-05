@@ -517,7 +517,8 @@ class GeluTest(test.TestCase):
         with self.session(use_gpu=gpu):
           x_val = [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]]
           x = np.asarray(x_val, dtype=t, order="F")
-          e1, e2 = gradient_checker_v2.compute_gradient(nn_ops.gelu, [x], delta=delta)
+          e1, e2 = gradient_checker_v2.compute_gradient(nn_ops.gelu,
+                                                        [x], delta=delta)
           err = gradient_checker_v2.max_error(
               e1,e2)
           print(e1,e2)

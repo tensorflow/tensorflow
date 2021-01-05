@@ -57,7 +57,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
+from tensorflow.python.platform import test     # pylint: disable=unused-import
 from tensorflow.python.training import momentum
 from tensorflow.python.util import nest
 
