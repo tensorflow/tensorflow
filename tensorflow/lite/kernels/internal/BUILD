@@ -592,6 +592,7 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_batch_nd.h",
         "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/string_comparisons.h",
