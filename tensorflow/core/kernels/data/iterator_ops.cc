@@ -116,10 +116,10 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
   IteratorContext::Params params(ctx);
   params.flr = captured_state->GetFLR();
   params.function_handle_cache = captured_state->GetFunctionHandleCache();
-  params.resource_mgr = &captured_state->GetResourceMgr();
+  params.resource_mgr = captured_state->GetResourceMgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = &captured_state->GetCancellationManager();
+  params.cancellation_manager = captured_state->GetCancellationManager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -204,10 +204,10 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   IteratorContext::Params params(ctx);
   params.flr = new_state->GetFLR();
   params.function_handle_cache = new_state->GetFunctionHandleCache();
-  params.resource_mgr = &new_state->GetResourceMgr();
+  params.resource_mgr = new_state->GetResourceMgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = &new_state->GetCancellationManager();
+  params.cancellation_manager = new_state->GetCancellationManager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -239,10 +239,10 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   IteratorContext::Params params(ctx);
   params.flr = new_state->GetFLR();
   params.function_handle_cache = new_state->GetFunctionHandleCache();
-  params.resource_mgr = &new_state->GetResourceMgr();
+  params.resource_mgr = new_state->GetResourceMgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = &new_state->GetCancellationManager();
+  params.cancellation_manager = new_state->GetCancellationManager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),

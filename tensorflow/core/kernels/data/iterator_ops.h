@@ -93,23 +93,23 @@ class IteratorResource : public ResourceBase {
       iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
     }
 
-    FunctionLibraryDefinition* GetFlibDef() { return flib_def; }
+    std::shared_ptr<FunctionLibraryDefinition> GetFlibDef() { return flib_def; }
 
     FunctionLibraryRuntime* GetFLR() { return flr; }
 
-    ProcessFunctionLibraryRuntime* GetPFLR() { return pflr; }
+    std::shared_ptr<ProcessFunctionLibraryRuntime> GetPFLR() { return pflr; }
 
-    FunctionHandleCache GetFunctionHandleCache() {
+    FunctionHandleCache* GetFunctionHandleCache() {
       return function_handle_cache.get();
     }
 
-    ResourceMgr GetResourceMgr() { return resource_mgr; }
+    ResourceMgr* GetResourceMgr() { return &resource_mgr; }
 
-    CancellationManager GetCancellationManager() {
-      return cancellation_manager;
+    CancellationManager* GetCancellationManager() {
+      return &cancellation_manager;
     }
 
-    DatasetBaseIterator* GetIterator() { return iterator; }
+    DatasetBaseIterator* GetIterator() { return iterator.get(); }
 
    private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
