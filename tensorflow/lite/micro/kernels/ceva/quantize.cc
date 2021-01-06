@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 
+#include "CEVA_TFLM_lib.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
@@ -21,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
-#include "CEVA_TFLM_lib.h"
 #ifdef MCPS_MEASUREMENT
 #include "mcps_macros.h"
 #endif
@@ -48,7 +48,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 #else
   return context->AllocatePersistentBuffer(context,
                                            sizeof(OpDataQuantizeReference));
-#endif 
+#endif
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -56,7 +56,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(CEVA_BX1) || defined(CEVA_SP500)
   OpData* data = static_cast<OpData*>(node->user_data);
 #else
-	auto* data = static_cast<OpDataQuantizeReference*>(node->user_data);
+  auto* data = static_cast<OpDataQuantizeReference*>(node->user_data);
 #endif
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
@@ -108,30 +108,34 @@ TfLiteStatus EvalCEVA(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type == kTfLiteFloat32) {
     switch (output->type) {
-      case kTfLiteInt8:
-	  {
+      case kTfLiteInt8: {
 #ifdef ORIGINAL_IMPLEMENTATION
-		  reference_ops::AffineQuantize(
-			  data->quantization_params, tflite::micro::GetTensorShape(input),
-			  tflite::micro::GetTensorData<float>(input),
-			  tflite::micro::GetTensorShape(output),
-			  tflite::micro::GetTensorData<int8_t>(output));
-#else // ORIGINAL_IMPLEMENTATION
-		  const float* input_data = tflite::micro::GetTensorData<float>(input);
-		  int8_t* output_data = tflite::micro::GetTensorData<int8_t>(output);
-		  const int flat_size = MatchingFlatSize(tflite::micro::GetTensorShape(input), tflite::micro::GetTensorShape(output));
+        reference_ops::AffineQuantize(
+            data->quantization_params, tflite::micro::GetTensorShape(input),
+            tflite::micro::GetTensorData<float>(input),
+            tflite::micro::GetTensorShape(output),
+            tflite::micro::GetTensorData<int8_t>(output));
+#else  // ORIGINAL_IMPLEMENTATION
+        const float* input_data = tflite::micro::GetTensorData<float>(input);
+        int8_t* output_data = tflite::micro::GetTensorData<int8_t>(output);
+        const int flat_size =
+            MatchingFlatSize(tflite::micro::GetTensorShape(input),
+                             tflite::micro::GetTensorShape(output));
 
 #ifdef MCPS_MEASUREMENT
-		  MCPS_START_ONE;
+        MCPS_START_ONE;
 #endif
-		  CEVA_TFLM_AffineQuantize_Int8(input_data, output_data, flat_size, data->quantization_params.scale, data->quantization_params.zero_point);
+        CEVA_TFLM_AffineQuantize_Int8(input_data, output_data, flat_size,
+                                      data->quantization_params.scale,
+                                      data->quantization_params.zero_point);
 #ifdef MCPS_MEASUREMENT
-		  MCPS_STOP_ONE("Test params:CEVA_TFLM_AffineQuantize_Int8 loop = %d", flat_size);
+        MCPS_STOP_ONE("Test params:CEVA_TFLM_AffineQuantize_Int8 loop = %d",
+                      flat_size);
 #endif
 
-#endif // ORIGINAL_IMPLEMENTATION
-		  break;
-	  }
+#endif  // ORIGINAL_IMPLEMENTATION
+        break;
+      }
       case kTfLiteUInt8:
         reference_ops::AffineQuantize(
             data->quantization_params, tflite::micro::GetTensorShape(input),
@@ -209,9 +213,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 #else
   return EvalQuantizeReference(context, node);
 #endif
-} 
+}
 
-}  // namespace quantize
+}  // namespace
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
@@ -227,13 +231,4 @@ TfLiteRegistration Register_QUANTIZE() {
           /*version=*/0};
 }
 
-
 }  // namespace tflite
-
-
-
-
-
-
-
-
