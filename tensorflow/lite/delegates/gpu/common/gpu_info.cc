@@ -412,6 +412,9 @@ bool GpuInfo::SupportsFP16() const {
 }
 
 bool GpuInfo::SupportsTextureArray() const {
+  if (!SupportsImages()) {
+    return false;
+  }
   if (IsApiOpenCl()) {
     return opencl_info.cl_version >= OpenClVersion::kCl1_2;
   }
@@ -419,6 +422,9 @@ bool GpuInfo::SupportsTextureArray() const {
 }
 
 bool GpuInfo::SupportsImageBuffer() const {
+  if (!SupportsImages()) {
+    return false;
+  }
   if (IsApiOpenCl()) {
     return opencl_info.cl_version >= OpenClVersion::kCl1_2;
   }
@@ -426,12 +432,22 @@ bool GpuInfo::SupportsImageBuffer() const {
 }
 
 bool GpuInfo::SupportsImage3D() const {
+  if (!SupportsImages()) {
+    return false;
+  }
   if (IsApiOpenCl()) {
     if (IsMali() && mali_info.IsMidgard()) {
       // On Mali T880 read_imageh doesn't compile with image3d_t
       return false;
     }
     return opencl_info.supports_image3d_writes;
+  }
+  return true;
+}
+
+bool GpuInfo::SupportsImages() const {
+  if (IsApiOpenCl()) {
+    return opencl_info.supports_images;
   }
   return true;
 }
