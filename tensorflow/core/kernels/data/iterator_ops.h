@@ -113,7 +113,7 @@ class IteratorResource : public ResourceBase {
 
    private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
-    FunctionLibraryRuntime* flr = nullptr;  // not owned.
+    FunctionLibraryRuntime* flr = nullptr;  // not owned
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
     std::unique_ptr<FunctionHandleCache> function_handle_cache;
     ResourceMgr resource_mgr;
