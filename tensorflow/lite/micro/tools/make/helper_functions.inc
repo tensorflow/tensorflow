@@ -174,7 +174,7 @@ endef
 
 define generate_ceva_bx1_project
 ifeq ($(TARGET), ceva)
-ifeq ($(TARGET_ARCH), bx1)
+ifeq ($(TARGET_ARCH), CEVA_BX1)
 
 $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
 	@mkdir -p $$(dir $$@)
@@ -196,6 +196,38 @@ $(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_bx1
 	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
 
 $(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_bx1/%.tpl
+	@cp $$< $$@
+
+$(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
+
+endif
+endif
+endef
+
+define generate_ceva_sp500_project
+ifeq ($(TARGET), ceva)
+ifeq ($(TARGET_ARCH), CEVA_SP500)
+
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/ceva_SP500/ceva_app_makefile.tpl
+	@mkdir -p $$(dir $$@)
+	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
+	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
+	sed -E 's#\%\{CXX\}\%#$(CXX_TOOL)#g' | \
+	sed -E 's#\%\{LD\}\%#$(LD_TOOL)#g' | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
+	sed -E 's#\%\{LD_FLAGS\}\%#$(6)#g' | \
+	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
+	sed -E 's#\%\{EXTRA_APP_SETTINGS\}\%#$(ARC_EXTRA_APP_SETTINGS)#g' | \
+	sed -E 's#\%\{EXTRA_APP_RULES\}\%#$(ARC_EXTRA_APP_RULES)#g' | \
+	sed -E 's#\%\{BIN_DEPEND\}\%#$(ARC_BIN_DEPEND)#g' | \
+	sed -E 's#\%\{BIN_RULE\}\%#$(ARC_BIN_RULE)#g' | \
+	sed -E 's#\%\{EXTRA_RM_TARGETS\}\%#$(ARC_EXTRA_RM_TARGETS)#g' | \
+	sed -E 's#\%\{APP_RUN_CMD\}\%#$(ARC_APP_RUN_CMD)#g' | \
+	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
+	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
+
+$(PRJDIR)$(3)/$(1)/%: tensorflow/lite/micro/tools/make/templates/ceva_SP500/%.tpl
 	@cp $$< $$@
 
 $(foreach var,$(CEVA_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
@@ -443,6 +475,7 @@ define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 $(call generate_arc_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_ceva_bx1_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_ceva_sp500_project,make,$(MAKE_PROJECT_FILES) $($(1)_MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_project,mbed,$(MBED_PROJECT_FILES) $($(1)_MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 $(call generate_project,keil,$(KEIL_PROJECT_FILES) $($(1)_KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(TARGET_TOOLCHAIN_ROOT),$(TARGET_TOOLCHAIN_PREFIX))
 ifeq (,$(findstring _benchmark,$(1)))
