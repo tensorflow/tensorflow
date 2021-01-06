@@ -76,13 +76,21 @@ TEST_F(MklLayoutPassTest, Basic) {
               "node { name: 'Z' op: 'Zeta'"                                \
               " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
-    EXPECT_EQ(                                                             \
-        DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);"         \
-        "DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT ");"  \
-        "Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"\
-        "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;" \
-        "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
+    if (!NativeFormatEnabled()) {                                            \
+      EXPECT_EQ(                                                             \
+          DoMklLayoutOptimizationPass(),                                     \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);"         \
+          "DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT ");"  \
+          "Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"\
+          "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;" \
+          "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
+    } else {                                                                 \
+      EXPECT_EQ(                                                             \
+          DoMklLayoutOptimizationPass(),                                     \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");"                       \
+          "E(_MklNativePadWithConv2D);Y(" #INPUT ");Z(Zeta)"                 \
+          "|A->E;B->E:2;D->E:1;E->Z;Y->Z:1");                                \
+    }                                                                        \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Positive);
 #undef REGISTER_TEST
@@ -133,14 +141,22 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Positive);
     const Edge* edge_1 = graph_.AddControlEdge(a1, e);                     \
     ASSERT_NE(edge, nullptr);                                              \
     ASSERT_NE(edge_1, nullptr);                                            \
-    EXPECT_EQ(                                                             \
-        DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"        \
-        "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);" \
-        "Y(" #INPUT ");Z(Zeta)|A->E;A1:control->E:control;A:control->"    \
-        "DMT/_0:control;A:control->DMT/_1:control;A:control->"           \
-        "DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"            \
-        "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
+    if (!NativeFormatEnabled()) {                                          \
+      EXPECT_EQ(                                                           \
+          DoMklLayoutOptimizationPass(),                                   \
+          "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"      \
+          "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);"\
+          "Y(" #INPUT ");Z(Zeta)|A->E;A1:control->E:control;A:control->"   \
+          "DMT/_0:control;A:control->DMT/_1:control;A:control->"           \
+          "DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"          \
+          "DMT/_2->E:5;E->Z;Y->Z:1");                                      \
+    } else {                                                               \
+      EXPECT_EQ(                                                           \
+          DoMklLayoutOptimizationPass(),                                   \
+          "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"      \
+          "E(_MklNativePadWithConv2D);Y(" #INPUT ");Z(Zeta)|A->E;"         \
+          "A1:control->E:control;B->E:2;D->E:1;E->Z;Y->Z:1");              \
+    }                                                                      \
   }
 REGISTER_TEST_ALL_TYPES(Input_ControlEdge_PadWithConv2D_Positive);
 #undef REGISTER_TEST
@@ -190,14 +206,22 @@ REGISTER_TEST_ALL_TYPES(Input_ControlEdge_PadWithConv2D_Positive);
     const Edge* edge_1 = graph_.AddControlEdge(e, a1);                     \
     ASSERT_NE(edge, nullptr);                                              \
     ASSERT_NE(edge_1, nullptr);                                            \
-    EXPECT_EQ(                                                             \
-        DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"        \
-        "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);"  \
-        "Y(" #INPUT ");Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->" \
-        "DMT/_1:control;A:control->DMT/_2:control;B->E:2;D->E:1;"          \
-        "DMT/_0->E:3;DMT/_1->E:4;DMT/_2->E:5;E->Z;E:control->A1:control;"  \
-        "Y->Z:1");                                                         \
+    if (!NativeFormatEnabled()) {                                            \
+      EXPECT_EQ(                                                             \
+          DoMklLayoutOptimizationPass(),                                     \
+          "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"        \
+          "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);"  \
+          "Y(" #INPUT ");Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->" \
+          "DMT/_1:control;A:control->DMT/_2:control;B->E:2;D->E:1;"          \
+          "DMT/_0->E:3;DMT/_1->E:4;DMT/_2->E:5;E->Z;E:control->A1:control;"  \
+          "Y->Z:1");                                                         \
+    } else {                                                                 \
+      EXPECT_EQ(                                                             \
+          DoMklLayoutOptimizationPass(),                                     \
+          "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"        \
+          "E(_MklNativePadWithConv2D);Y(" #INPUT ");Z(Zeta)|A->E;B->E:2;"    \
+          "D->E:1;E->Z;E:control->A1:control;Y->Z:1");                       \
+    }                                                                        \
   }
 REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithConv2D_Positive);
 #undef REGISTER_TEST
@@ -232,12 +256,18 @@ REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithConv2D_Positive);
               "node { name: 'Z' op: 'Zeta'"                                \
               " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT ");B(Int32Input);DMT/_0(Const);DMT/_1(Const);"   \
-              "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT ");Z(Zeta)|"  \
-              "A->E;A->E:1;A:control->DMT/_0:control;A:control->"          \
-              "DMT/_1:control;A:control->DMT/_2:control;B->E:2;DMT/_0->E:3;"\
-              "DMT/_1->E:4;DMT/_2->E:5;E->Z;Y->Z:1");                      \
+    if (!NativeFormatEnabled()) {                                          \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                \
+                "A(" #INPUT ");B(Int32Input);DMT/_0(Const);DMT/_1(Const);"    \
+                "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT ");Z(Zeta)|"   \
+                "A->E;A->E:1;A:control->DMT/_0:control;A:control->"           \
+                "DMT/_1:control;A:control->DMT/_2:control;B->E:2;DMT/_0->E:3;"\
+                "DMT/_1->E:4;DMT/_2->E:5;E->Z;Y->Z:1");                       \
+    } else {                                                                  \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                \
+                "A(" #INPUT ");B(Int32Input);E(_MklNativePadWithConv2D);"     \
+                "Y(" #INPUT ");Z(Zeta)|A->E;A->E:1;B->E:2;E->Z;Y->Z:1");      \
+    }                                                                         \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Common_Input);
 #undef REGISTER_TEST
@@ -271,11 +301,17 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Common_Input);
               " input: ['C', 'A'] }"                                       \
               "node { name: 'Z' op: '" #OUTPUT "'"                         \
               " input: ['C', 'E']}");                                      \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT ");B(Int32Input);C(Pad);DMT/_0(Const);"          \
-              "DMT/_1(Const);E(_MklConv2D);Z(" #OUTPUT ")|A->C;A->E:1;"    \
-              "B->C:1;C->E;C->Z;C:control->DMT/_0:control;C:control->"     \
-              "DMT/_1:control;DMT/_0->E:2;DMT/_1->E:3;E->Z:1");            \
+    if (!NativeFormatEnabled()) {                                          \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                             \
+                "A(" #INPUT ");B(Int32Input);C(Pad);DMT/_0(Const);"        \
+                "DMT/_1(Const);E(_MklConv2D);Z(" #OUTPUT ")|A->C;A->E:1;"  \
+                "B->C:1;C->E;C->Z;C:control->DMT/_0:control;C:control->"   \
+                "DMT/_1:control;DMT/_0->E:2;DMT/_1->E:3;E->Z:1");          \
+    } else {                                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                             \
+                "A(" #INPUT ");B(Int32Input);C(Pad);E(_MklNativeConv2D);"  \
+                "Z(" #OUTPUT ")|A->C;A->E:1;B->C:1;C->E;C->Z;E->Z:1");     \
+    }                                                                      \
   }
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_FLOAT, Float32Input,
               Float32Output2);
@@ -315,12 +351,19 @@ REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
               "node { name: 'Z' op: 'Zeta'"                                \
               " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");"          \
-              "DMT/_0(Const);DMT/_1(Const);E(_MklConv2D);Y(" #INPUT ");"   \
-              "Z(Zeta)|A->C;B->C:1;C->E;C:control->DMT/_0:control;"        \
-              "C:control->DMT/_1:control;D->E:1;DMT/_0->E:2;DMT/_1->E:3;"  \
-              "E->Z;Y->Z:1");                                              \
+    if (!NativeFormatEnabled()) {                                            \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+                "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");"          \
+                "DMT/_0(Const);DMT/_1(Const);E(_MklConv2D);Y(" #INPUT ");"   \
+                "Z(Zeta)|A->C;B->C:1;C->E;C:control->DMT/_0:control;"        \
+                "C:control->DMT/_1:control;D->E:1;DMT/_0->E:2;DMT/_1->E:3;"  \
+                "E->Z;Y->Z:1");                                              \
+    } else {                                                                 \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+                "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");"          \
+                "E(_MklNativeConv2D);Y(" #INPUT ");Z(Zeta)"                  \
+                "|A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");                     \
+    }                                                                        \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Negative);
 #undef REGISTER_TEST
@@ -376,12 +419,19 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Negative);
         "node { name: 'Relu' op: 'Relu'"                                       \
         " attr { key: 'T'                value { type: " #T "} }"              \
         " input: ['Transpose1'] }");                                           \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "Const0(Const);Const1(Const);Conv2D(_MklConv2D);DMT/_0(Const);"  \
-              "DMT/_1(Const);Input0(" #INPUT ");Input1(" #INPUT ");"           \
-              "Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/_0->Conv2D:2;" \
-              "DMT/_1->Conv2D:3;Input0->Conv2D;Input0:control->DMT/_0:control;"\
-              "Input0:control->DMT/_1:control;Input1->Conv2D:1");              \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+                "Const0(Const);Const1(Const);Conv2D(_MklConv2D);DMT/_0(Const);"  \
+                "DMT/_1(Const);Input0(" #INPUT ");Input1(" #INPUT ");"           \
+                "Relu(_MklRelu)|Conv2D->Relu;Conv2D:2->Relu:1;DMT/_0->Conv2D:2;" \
+                "DMT/_1->Conv2D:3;Input0->Conv2D;Input0:control->DMT/_0:control;"\
+                "Input0:control->DMT/_1:control;Input1->Conv2D:1");              \
+    } else {                                                                     \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+                "Const0(Const);Const1(Const);Conv2D(_MklNativeConv2D);"          \
+                "Input0(" #INPUT ");Input1(" #INPUT ");Relu(Relu)"               \
+                "|Conv2D->Relu;Input0->Conv2D;Input1->Conv2D:1");                \
+    }                                                                            \
 }
 REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv2DTranspose_Positive);
 #undef REGISTER_TEST
@@ -439,16 +489,26 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv2DTranspose_Positive);
         "node { name: 'Relu' op: 'Relu'"                                       \
         " attr { key: 'T'                       value { type: " #T "}}"        \
         " input: ['Transpose1'] }");                                           \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "Const0(Const);Const1(Const);Conv2D(_MklConv2D);DMT/_0(Const);"  \
-              "DMT/_1(Const);DMT/_2(Const);Input0(" #INPUT ");Input1(" #INPUT  \
-              ");Relu(_MklRelu);Transpose0(_MklTranspose);"                    \
-              "Transpose1(_MklTranspose)|Const0->Transpose0:1;"                \
-              "Const1->Transpose1:1;Conv2D->Transpose1;DMT/_0->Conv2D:2;"      \
-              "DMT/_1->Conv2D:3;DMT/_2->Relu:1;Input0->Transpose0;"            \
-              "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/"   \
-              "_0:control;Transpose0:control->DMT/_1:control;Transpose1->Relu;"\
-              "Transpose1:control->DMT/_2:control");                           \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+                "Const0(Const);Const1(Const);Conv2D(_MklConv2D);DMT/_0(Const);"  \
+                "DMT/_1(Const);DMT/_2(Const);Input0(" #INPUT ");Input1(" #INPUT  \
+                ");Relu(_MklRelu);Transpose0(_MklTranspose);"                    \
+                "Transpose1(_MklTranspose)|Const0->Transpose0:1;"                \
+                "Const1->Transpose1:1;Conv2D->Transpose1;DMT/_0->Conv2D:2;"      \
+                "DMT/_1->Conv2D:3;DMT/_2->Relu:1;Input0->Transpose0;"            \
+                "Input1->Conv2D:1;Transpose0->Conv2D;Transpose0:control->DMT/"   \
+                "_0:control;Transpose0:control->DMT/_1:control;Transpose1->Relu;"\
+                "Transpose1:control->DMT/_2:control");                           \
+    } else {                                                                     \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+                "Const0(Const);Const1(Const);Conv2D(_MklNativeConv2D);"          \
+                "Input0(" #INPUT ");Input1(" #INPUT ");Relu(Relu);"              \
+                "Transpose0(_MklTranspose);Transpose1(_MklTranspose)"            \
+                "|Const0->Transpose0:1;Const1->Transpose1:1;Conv2D->Transpose1;" \
+                "Input0->Transpose0;Input1->Conv2D:1;Transpose0->Conv2D;"        \
+                "Transpose1->Relu");                                             \
+    }                                                                            \
 }
 REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv2DTranspose_Negative);
 #undef REGISTER_TEST
@@ -506,13 +566,20 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv2DTranspose_Negative);
         "node { name: 'Relu' op: 'Relu'"                                      \
         " attr { key: 'T'                value { type: " #T " } }"            \
         " input: ['Transpose1'] }");                                          \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);" \
-              "DMT/_1(Const);Input0(" #INPUT ");Input1(" #INPUT ");"          \
-              "Relu(_MklRelu)|Conv3D->Relu;Conv3D:2->Relu:1;"                 \
-              "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;Input0->Conv3D;"             \
-              "Input0:control->DMT/_0:control;"                               \
-              "Input0:control->DMT/_1:control;Input1->Conv3D:1");             \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);" \
+                "DMT/_1(Const);Input0(" #INPUT ");Input1(" #INPUT ");"          \
+                "Relu(_MklRelu)|Conv3D->Relu;Conv3D:2->Relu:1;"                 \
+                "DMT/_0->Conv3D:2;DMT/_1->Conv3D:3;Input0->Conv3D;"             \
+                "Input0:control->DMT/_0:control;"                               \
+                "Input0:control->DMT/_1:control;Input1->Conv3D:1");             \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "Const0(Const);Const1(Const);Conv3D(_MklNativeConv3D);"         \
+                "Input0(" #INPUT ");Input1(" #INPUT ");Relu(Relu)"              \
+                "|Conv3D->Relu;Input0->Conv3D;Input1->Conv3D:1");               \
+    }                                                                           \
 }
 REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv3DTranspose_Positive);
 #undef REGISTER_TEST
@@ -569,16 +636,26 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv3DTranspose_Positive);
         "node { name: 'Relu' op: 'Relu'"                                      \
         " attr { key: 'T'                value { type: " #T " } }"            \
         " input: ['Transpose1'] }");                                          \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);" \
-              "DMT/_1(Const);DMT/_2(Const);Input0(" #INPUT ");"               \
-              "Input1(" #INPUT ");Relu(_MklRelu);Transpose0(_MklTranspose);"  \
-              "Transpose1(_MklTranspose)|Const0->Transpose0:1;Const1->"       \
-              "Transpose1:1;Conv3D->Transpose1;DMT/_0->Conv3D:2;"             \
-              "DMT/_1->Conv3D:3;DMT/_2->Relu:1;Input0->Transpose0;Input1->"   \
-              "Conv3D:1;Transpose0->Conv3D;Transpose0:control->"              \
-              "DMT/_0:control;Transpose0:control->DMT/_1:control;"            \
-              "Transpose1->Relu;Transpose1:control->DMT/_2:control");         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "Const0(Const);Const1(Const);Conv3D(_MklConv3D);DMT/_0(Const);" \
+                "DMT/_1(Const);DMT/_2(Const);Input0(" #INPUT ");"               \
+                "Input1(" #INPUT ");Relu(_MklRelu);Transpose0(_MklTranspose);"  \
+                "Transpose1(_MklTranspose)|Const0->Transpose0:1;Const1->"       \
+                "Transpose1:1;Conv3D->Transpose1;DMT/_0->Conv3D:2;"             \
+                "DMT/_1->Conv3D:3;DMT/_2->Relu:1;Input0->Transpose0;Input1->"   \
+                "Conv3D:1;Transpose0->Conv3D;Transpose0:control->"              \
+                "DMT/_0:control;Transpose0:control->DMT/_1:control;"            \
+                "Transpose1->Relu;Transpose1:control->DMT/_2:control");         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "Const0(Const);Const1(Const);Conv3D(_MklNativeConv3D);"         \
+                "Input0(" #INPUT ");Input1(" #INPUT ");Relu(Relu);"             \
+                "Transpose0(_MklTranspose);Transpose1(_MklTranspose)"           \
+                "|Const0->Transpose0:1;Const1->Transpose1:1;"                   \
+                "Conv3D->Transpose1;Input0->Transpose0;Input1->Conv3D:1;"       \
+                "Transpose0->Conv3D;Transpose1->Relu");                         \
+    }                                                                           \
 }
 REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv3DTranspose_Negative);
 #undef REGISTER_TEST
@@ -633,11 +710,18 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeConv3DTranspose_Negative);
         "node { name: 'Relu' op: 'Relu'"                                      \
         " attr { key: 'T'                       value { type: " #T " }}"      \
         " input: ['Transpose1'] }");                                          \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-            "Const0(Const);Const1(Const);DMT/_0(Const);Input0(" #INPUT ");"   \
-            "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)|DMT/_0->MaxPool3D:1;"    \
-            "Input0->MaxPool3D;Input0:control->DMT/_0:control;"               \
-            "MaxPool3D->Relu;MaxPool3D:2->Relu:1");                           \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "Const0(Const);Const1(Const);DMT/_0(Const);Input0(" #INPUT ");"   \
+              "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)|DMT/_0->MaxPool3D:1;"    \
+              "Input0->MaxPool3D;Input0:control->DMT/_0:control;"               \
+              "MaxPool3D->Relu;MaxPool3D:2->Relu:1");                           \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "Const0(Const);Const1(Const);Input0(" #INPUT ");"                 \
+              "MaxPool3D(_MklNativeMaxPool3D);Relu(Relu)"                       \
+              "|Input0->MaxPool3D;MaxPool3D->Relu");                            \
+    }                                                                           \
 }
 REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeMaxPool3DTranspose_Positive);
 #undef REGISTER_TEST
@@ -692,14 +776,23 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeMaxPool3DTranspose_Positive);
         "node { name: 'Relu' op: 'Relu'"                                      \
         " attr { key: 'T'                       value { type: " #T " }}"      \
         " input: ['Transpose1'] }");                                          \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-      "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(" #INPUT\
-      ");MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);Transpose0(_MklTranspose);"  \
-      "Transpose1(_MklTranspose)|Const0->Transpose0:1;"                       \
-      "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;DMT/_1->Relu:1;Input0->"      \
-      "Transpose0;MaxPool3D->Transpose1;Transpose0->MaxPool3D;Transpose0:"    \
-      "control->DMT/_0:control;Transpose1->Relu;Transpose1:control->"         \
-      "DMT/_1:control");                                                      \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+        "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(" #INPUT\
+        ");MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);Transpose0(_MklTranspose);"  \
+        "Transpose1(_MklTranspose)|Const0->Transpose0:1;"                       \
+        "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;DMT/_1->Relu:1;Input0->"      \
+        "Transpose0;MaxPool3D->Transpose1;Transpose0->MaxPool3D;Transpose0:"    \
+        "control->DMT/_0:control;Transpose1->Relu;Transpose1:control->"         \
+        "DMT/_1:control");                                                      \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+        "Const0(Const);Const1(Const);Input0(" #INPUT ");"                       \
+        "MaxPool3D(_MklNativeMaxPool3D);Relu(Relu);Transpose0(_MklTranspose);"  \
+        "Transpose1(_MklTranspose)|Const0->Transpose0:1;Const1->Transpose1:1;"  \
+        "Input0->Transpose0;MaxPool3D->Transpose1;Transpose0->MaxPool3D;"       \
+        "Transpose1->Relu");                                                    \
+    }                                                                           \
 }
 REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeMaxPool3DTranspose_Negative);
 #undef REGISTER_TEST
@@ -727,11 +820,17 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_TransposeMaxPool3DTranspose_Negative);
               "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T \
               " } }"                                                          \
               " input: ['B', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(Zeta);"            \
-              "DMT/_0(Const);DMT/_1(Const)|A->C;A:control->DMT/_0:control;"   \
-              "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"     \
-              "DMT/_1->C:3");                                                 \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(Zeta);"            \
+                "DMT/_0(Const);DMT/_1(Const)|A->C;A:control->DMT/_0:control;"   \
+                "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"     \
+                "DMT/_1->C:3");                                                 \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(_MklNativeConv2D);"              \
+                "D(Zeta)|A->C;B->C:1;B->D;C->D:1");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2D_Basic);
 #undef REGISTER_TEST
@@ -753,11 +852,18 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2D_Basic);
               "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T \
               " } }"                                                          \
               " input: ['B', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(_MklDepthwiseConv2dNative);"     \
-              "D(Zeta);DMT/_0(Const);DMT/_1(Const)|A->C;A:control->"          \
-              "DMT/_0:control;A:control->DMT/_1:control;B->C:1;B->D;C->D:1;"  \
-              "DMT/_0->C:2;DMT/_1->C:3");                                     \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(_MklDepthwiseConv2dNative);"     \
+                "D(Zeta);DMT/_0(Const);DMT/_1(Const)|A->C;A:control->"          \
+                "DMT/_0:control;A:control->DMT/_1:control;B->C:1;B->D;C->D:1;"  \
+                "DMT/_0->C:2;DMT/_1->C:3");                                     \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");"                                  \
+                "C(_MklNativeDepthwiseConv2dNative);"                           \
+                "D(Zeta)|A->C;B->C:1;B->D;C->D:1");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2dNative_Basic);
 #undef REGISTER_TEST
@@ -791,12 +897,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2dNative_Basic);
               "node { name: 'E' op: 'Zeta' "                                  \
               " attr { key: 'T' value { type: " #T "} }"                      \
               " input: ['C', 'D'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(_MklConv2D);"      \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->C;A->D;"  \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
-              "A:control->DMT/_2:control;B->C:1;C->D:1;C->E;"                 \
-              "C:2->D:3;D->E:1;DMT/_0->C:2;DMT/_1->C:3;DMT/_2->D:2");         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(_MklConv2D);"      \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->C;A->D;"  \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+                "A:control->DMT/_2:control;B->C:1;C->D:1;C->E;"                 \
+                "C:2->D:3;D->E:1;DMT/_0->C:2;DMT/_1->C:3;DMT/_2->D:2");         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(_MklNativeConv2D);"              \
+                "D(_MklNativeConv2D);E(Zeta)|A->C;A->D;"                        \
+                "B->C:1;C->D:1;C->E;D->E:1");                                   \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2D_Positive1);
 #undef REGISTER_TEST
@@ -869,12 +982,18 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_MinFirst) {
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
       " input: ['D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Const);C(Const);D(_MklQuantizeV2);DMT/_0(Const);DMT/"
-            "_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D;A:control->DMT/_0:control;A:control->DMT/"
-            "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
-            "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(Input);B(Const);C(Const);D(_MklQuantizeV2);DMT/_0(Const);DMT/"
+              "_1(Const);DMT/_2(Const);E(Zeta)|"
+              "A->D;A:control->DMT/_0:control;A:control->DMT/"
+              "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
+              "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+  } else {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(Input);B(Const);C(Const);D(_MklNativeQuantizeV2);E(Zeta)"
+              "|A->D;B->D:1;C->D:2;D->E");
+  }
 }
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_NarrowRange_True) {
@@ -975,12 +1094,18 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Positive) {
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
       " input: ['D'] }");
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Const);C(Const);D(_MklQuantizeV2);DMT/_0(Const);DMT/"
-            "_1(Const);DMT/_2(Const);E(Zeta)|"
-            "A->D;A:control->DMT/_0:control;A:control->DMT/"
-            "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
-            "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(Input);B(Const);C(Const);D(_MklQuantizeV2);DMT/_0(Const);DMT/"
+              "_1(Const);DMT/_2(Const);E(Zeta)|"
+              "A->D;A:control->DMT/_0:control;A:control->DMT/"
+              "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
+              "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+  } else {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(Input);B(Const);C(Const);D(_MklNativeQuantizeV2);E(Zeta)"
+              "|A->D;B->D:1;C->D:2;D->E");
+  }
 }
 
 TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Const_Input) {
@@ -1042,12 +1167,19 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Non_SCALED_Mode) {
         "node { name: 'E' op: 'Zeta'"                                          \
         "attr { key: 'T' value { type: " #T " } }"                             \
         " input: ['D', 'C'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);"  \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"        \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"           \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"           \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);"  \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"        \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"           \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"           \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+    } else {                                                                     \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
+                "D(_MklNativeFusedConv2D);E(Zeta)"                               \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                              \
+    }                                                                            \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive1);
 #undef REGISTER_TEST
@@ -1074,12 +1206,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive1);
               "node { name: 'E' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
               " input: ['D', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+                "D(_MklNativeFusedConv2D);E(Zeta)"                              \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive2);
 #undef REGISTER_TEST
@@ -1107,12 +1246,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive2);
               "node { name: 'E' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
               " input: ['D', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+                "D(_MklNativeFusedConv2D);E(Zeta)"                              \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive3);
 #undef REGISTER_TEST
@@ -1140,12 +1286,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive3);
               "node { name: 'E' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
               " input: ['D', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+                "D(_MklNativeFusedConv2D);E(Zeta)"                              \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive4);
 #undef REGISTER_TEST
@@ -1173,12 +1326,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive4);
               "node { name: 'E' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
               " input: ['D', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+                "D(_MklNativeFusedConv2D);E(Zeta)"                              \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive5);
 #undef REGISTER_TEST
@@ -1207,13 +1367,20 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive5);
               "node { name: 'F' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
               " input: ['E', 'D'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"      \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"      \
-              "E(_MklFusedConv2D);F(Zeta)|A->E;A:control->DMT/_0:control;"    \
-              "A:control->DMT/_1:control;A:control->DMT/_2:control;"          \
-              "A:control->DMT/_3:control;B->E:1;C->E:2;D->E:3;D->F:1;"        \
-              "DMT/_0->E:4;DMT/_1->E:5;DMT/_2->E:6;DMT/_3->E:7;E->F");        \
+    if (!NativeFormatEnabled()) {                                             \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"    \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"    \
+                "E(_MklFusedConv2D);F(Zeta)|A->E;A:control->DMT/_0:control;"  \
+                "A:control->DMT/_1:control;A:control->DMT/_2:control;"        \
+                "A:control->DMT/_3:control;B->E:1;C->E:2;D->E:3;D->F:1;"      \
+                "DMT/_0->E:4;DMT/_1->E:5;DMT/_2->E:6;DMT/_3->E:7;E->F");      \
+    } else {                                                                  \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                  \
+                "D(" #INPUT ");E(_MklNativeFusedConv2D);F(Zeta)"              \
+                "|A->E;B->E:1;C->E:2;D->E:3;D->F:1;E->F");                    \
+    }                                                                         \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive6);
 #undef REGISTER_TEST
@@ -1243,13 +1410,20 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive6);
         "node { name: 'F' op: 'Zeta'"                                          \
         "attr { key: 'T' value { type: " #T " } }"                             \
         " input: ['E', 'D'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"       \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"       \
-              "E(_MklFusedConv2D);F(Zeta)|A->E;A:control->DMT/_0:control;"     \
-              "A:control->DMT/_1:control;A:control->DMT/_2:control;"           \
-              "A:control->DMT/_3:control;B->E:1;C->E:2;D->E:3;D->F:1;"         \
-              "DMT/_0->E:4;DMT/_1->E:5;DMT/_2->E:6;DMT/_3->E:7;E->F");         \
+    if (!NativeFormatEnabled()) {                                              \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"     \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"     \
+                "E(_MklFusedConv2D);F(Zeta)|A->E;A:control->DMT/_0:control;"   \
+                "A:control->DMT/_1:control;A:control->DMT/_2:control;"         \
+                "A:control->DMT/_3:control;B->E:1;C->E:2;D->E:3;D->F:1;"       \
+                "DMT/_0->E:4;DMT/_1->E:5;DMT/_2->E:6;DMT/_3->E:7;E->F");       \
+    } else {                                                                   \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                   \
+                "D(" #INPUT ");E(_MklNativeFusedConv2D);F(Zeta)"               \
+                "|A->E;B->E:1;C->E:2;D->E:3;D->F:1;E->F");                     \
+    }                                                                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive7);
 #undef REGISTER_TEST
@@ -1277,12 +1451,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive7);
               "node { name: 'E' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T " } }"                      \
               " input: ['D', 'C'] }");                                        \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    if (!NativeFormatEnabled()) {                                               \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedConv2D);" \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+    } else {                                                                    \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+                "D(_MklNativeFusedConv2D);E(Zeta)"                              \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                             \
+    }                                                                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive8);
 #undef REGISTER_TEST
@@ -1310,13 +1491,20 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive8);
         "node { name: 'E' op: 'Zeta'"                                          \
         "attr { key: 'T' value { type: " #T " } }"                             \
         " input: ['D', 'C'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
-              "D(_MklFusedDepthwiseConv2dNative);"                             \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"        \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"           \
-              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"           \
-              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+    if (!NativeFormatEnabled()) {                                              \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                   \
+                "D(_MklFusedDepthwiseConv2dNative);"                           \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"      \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"         \
+                "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"         \
+                "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                        \
+    } else {                                                                   \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+                "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                   \
+                "D(_MklNativeFusedDepthwiseConv2dNative);E(Zeta)"              \
+                "|A->D;B->D:1;C->D:2;C->E:1;D->E");                            \
+    }                                                                          \
   }
 
 // BiasAdd fusion
@@ -1480,12 +1668,19 @@ REGISTER_TEST(NodeRewrite_FusedDepthwiseConv2dNative_Negative2,
       "node { name: 'Z' op: 'Zeta'"                                            \
       " attr {key: 'T'                 value { type: " #T " } }"               \
       " input: ['D', 'C']}");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedMatMul);"    \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Z(Zeta)"                \
-            "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"       \
-            "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;DMT/_0->D:3;" \
-            "DMT/_1->D:4;DMT/_2->D:5");                                        \
+  if (!NativeFormatEnabled()) {                                                  \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedMatMul);"    \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Z(Zeta)"                \
+              "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"       \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;DMT/_0->D:3;" \
+              "DMT/_1->D:4;DMT/_2->D:5");                                        \
+  } else {                                                                       \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                       \
+              "D(_MklNativeFusedMatMul);Z(Zeta)"                                 \
+              "|A->D;B->D:1;C->D:2;C->Z:1;D->Z");                                \
+  }                                                                              \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Positive)
 #undef REGISTER_TEST
@@ -1535,12 +1730,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Negative);
       "node { name: 'Z' op: 'Zeta'"                                            \
       " attr {key: 'T'                 value { type: " #T " } }"               \
       " input: ['D', 'C']}");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedMatMul);"    \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Z(Zeta)"                \
-            "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"       \
-            "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;"             \
-            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                            \
+  if (!NativeFormatEnabled()) {                                                \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklFusedMatMul);"  \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);Z(Zeta)"              \
+              "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"     \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;"           \
+              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+  } else {                                                                     \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
+              "D(_MklNativeFusedMatMul);Z(Zeta)|A->D;B->D:1;C->D:2;C->Z:1;"    \
+              "D->Z");                                                         \
+  }                                                                            \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_LeakyRelu_Positive);
 #undef REGISTER_TEST
@@ -1579,13 +1781,21 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_LeakyRelu_Positive);
         "node { name: 'G' op: 'Zeta'"                                          \
         " attr { key: 'T' value { type: " #T " } }"                            \
         " input: ['F', 'E'] }");                                               \
-    EXPECT_EQ(                                                                 \
-        DoMklLayoutOptimizationPass(),                                         \
-        "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);DMT/_1(Const);"\
-        "DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");F(_MklPadWithFusedConv2D);" \
-        "G(Zeta)|A->F;A:control->DMT/_0:control;A:control->DMT/_1:control;"    \
-        "A:control->DMT/_2:control;A:control->DMT/_3:control;B->F:3;D->F:1;"   \
-        "DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/_3->F:7;E->F:2;E->G:1;F->G"); \
+    if (!NativeFormatEnabled()) {                                                 \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);DMT/_1(Const);"\
+          "DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");F(_MklPadWithFusedConv2D);"  \
+          "G(Zeta)|A->F;A:control->DMT/_0:control;A:control->DMT/_1:control;"     \
+          "A:control->DMT/_2:control;A:control->DMT/_3:control;B->F:3;D->F:1;"    \
+          "DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/_3->F:7;E->F:2;E->G:1;F->G");  \
+    } else {                                                                      \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");E(" #INPUT ");"              \
+          "F(_MklNativePadWithFusedConv2D);G(Zeta)"                               \
+          "|A->F;B->F:3;D->F:1;E->F:2;E->G:1;F->G");                              \
+    }                                                                             \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Positive1);
 #undef REGISTER_TEST
@@ -1624,14 +1834,22 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Positive1);
               "node { name: 'G' op: 'Zeta'"                                   \
               "attr { key: 'T' value { type: " #T "} }"                       \
               " input: ['F', 'E'] }");                                        \
-    EXPECT_EQ(                                                                \
-        DoMklLayoutOptimizationPass(),                                        \
-        "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);DMT/_1(Const);"\
-        "DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");F(_MklPadWithFusedConv2D);"\
-        "G(Zeta)|A->F;A:control->DMT/_0:control;A:control->DMT/_1:control;"   \
-        "A:control->DMT/_2:control;A:control->DMT/_3:control;B->F:3;"         \
-        "D->F:1;DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/"                     \
-        "_3->F:7;E->F:2;E->G:1;F->G");                                        \
+    if (!NativeFormatEnabled()) {                                                 \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);DMT/_1(Const);"\
+          "DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");F(_MklPadWithFusedConv2D);"  \
+          "G(Zeta)|A->F;A:control->DMT/_0:control;A:control->DMT/_1:control;"     \
+          "A:control->DMT/_2:control;A:control->DMT/_3:control;B->F:3;"           \
+          "D->F:1;DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/"                       \
+          "_3->F:7;E->F:2;E->G:1;F->G");                                          \
+    } else {                                                                      \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");E(" #INPUT ");"              \
+          "F(_MklNativePadWithFusedConv2D);G(Zeta)"                               \
+          "|A->F;B->F:3;D->F:1;E->F:2;E->G:1;F->G");                              \
+    }                                                                             \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Positive2);
 #undef REGISTER_TEST
@@ -1710,13 +1928,21 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Negative1);
         "node { name: 'G' op: 'Zeta'"                                          \
         " attr { key: 'T' value { type: " #T " } }"                            \
         " input: ['F', 'E'] }");                                               \
-    EXPECT_EQ(                                                                 \
-        DoMklLayoutOptimizationPass(),                                         \
-        "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");DMT/_0(Const);DMT/"  \
-        "_1(Const);DMT/_2(Const);E(" #INPUT ");F(_MklFusedConv2D);G(Zeta)|A->C;"\
-        "B->C:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"     \
-        "C:control->DMT/_2:control;D->F:1;DMT/_0->F:3;DMT/_1->F:4;DMT/"        \
-        "_2->F:5;E->F:2;E->G:1;F->G");                                         \
+    if (!NativeFormatEnabled()) {                                                 \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");DMT/_0(Const);DMT/"   \
+          "_1(Const);DMT/_2(Const);E(" #INPUT ");F(_MklFusedConv2D);G(Zeta)|A->C;"\
+          "B->C:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"      \
+          "C:control->DMT/_2:control;D->F:1;DMT/_0->F:3;DMT/_1->F:4;DMT/"         \
+          "_2->F:5;E->F:2;E->G:1;F->G");                                          \
+    } else {                                                                      \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");"                     \
+          "E(" #INPUT ");F(_MklNativeFusedConv2D);G(Zeta)"                        \
+          "|A->C;B->C:1;C->F;D->F:1;E->F:2;E->G:1;F->G");                         \
+    }                                                                             \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Negative2);
 #undef REGISTER_TEST
@@ -1754,13 +1980,21 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Negative2);
               "node { name: 'G' op: 'Zeta'"                                   \
               " attr { key: 'T' value { type: " #T " } }"                     \
               " input: ['F', 'E'] }");                                        \
-    EXPECT_EQ(                                                                \
-        DoMklLayoutOptimizationPass(),                                        \
-        "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");DMT/_0(Const);DMT/" \
-        "_1(Const);DMT/_2(Const);E(" #INPUT ");F(_MklFusedConv2D);G(Zeta)|"   \
-        "A->C;B->C:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"\
-        "C:control->DMT/_2:control;D->F:1;DMT/_0->F:3;DMT/_1->F:4;DMT/"       \
-        "_2->F:5;E->F:2;E->G:1;F->G");                                        \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(                                                                 \
+          DoMklLayoutOptimizationPass(),                                         \
+          "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");DMT/_0(Const);DMT/"  \
+          "_1(Const);DMT/_2(Const);E(" #INPUT ");F(_MklFusedConv2D);G(Zeta)|"    \
+          "A->C;B->C:1;C->F;C:control->DMT/_0:control;C:control->DMT/_1:control;"\
+          "C:control->DMT/_2:control;D->F:1;DMT/_0->F:3;DMT/_1->F:4;DMT/"        \
+          "_2->F:5;E->F:2;E->G:1;F->G");                                         \
+    } else {                                                                     \
+      EXPECT_EQ(                                                                 \
+          DoMklLayoutOptimizationPass(),                                         \
+          "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");"                    \
+          "E(" #INPUT ");F(_MklNativeFusedConv2D);G(Zeta)"                       \
+          "|A->C;B->C:1;C->F;D->F:1;E->F:2;E->G:1;F->G");                        \
+    }                                                                            \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Negative3);
 #undef REGISTER_TEST
@@ -1816,14 +2050,21 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithFusedConv2D_Negative3);
     const Edge* edge_1 = graph_.AddControlEdge(x, f);                          \
     ASSERT_NE(edge, nullptr);                                                  \
     ASSERT_NE(edge_1, nullptr);                                                \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);"       \
-              "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");"       \
-              "F(_MklPadWithFusedConv2D);G(Zeta);X(" #INPUT ")|A->F;A:control->"\
-              "DMT/_0:control;A:control->DMT/_1:control;A:control->"           \
-              "DMT/_2:control;A:control->DMT/_3:control;B->F:3;D->F:1;"        \
-              "DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/_3->F:7;E->F:2;E->G:1;" \
-              "F->G;X:control->F:control");                                    \
+    if (!NativeFormatEnabled()) {                                                  \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+                "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);"         \
+                "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");"         \
+                "F(_MklPadWithFusedConv2D);G(Zeta);X(" #INPUT ")|A->F;A:control->" \
+                "DMT/_0:control;A:control->DMT/_1:control;A:control->"             \
+                "DMT/_2:control;A:control->DMT/_3:control;B->F:3;D->F:1;"          \
+                "DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/_3->F:7;E->F:2;E->G:1;"   \
+                "F->G;X:control->F:control");                                      \
+    } else {                                                                       \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+                "A(" #INPUT ");B(Int32Input);D(" #INPUT ");E(" #INPUT ");"         \
+                "F(_MklNativePadWithFusedConv2D);G(Zeta);X(" #INPUT ")"            \
+                "|A->F;B->F:3;D->F:1;E->F:2;E->G:1;F->G;X:control->F:control");    \
+    }                                                                              \
   }
 REGISTER_TEST_ALL_TYPES(Input_ControlEdge_PadWithFusedConv2D_Positive);
 #undef REGISTER_TEST
@@ -1878,14 +2119,22 @@ REGISTER_TEST_ALL_TYPES(Input_ControlEdge_PadWithFusedConv2D_Positive);
     const Edge* edge_1 = graph_.AddControlEdge(f, x);                          \
     ASSERT_NE(edge, nullptr);                                                  \
     ASSERT_NE(edge_1, nullptr);                                                \
-    EXPECT_EQ(                                                                 \
-        DoMklLayoutOptimizationPass(),                                         \
-        "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);DMT/_1(Const);"\
-        "DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");F(_MklPadWithFusedConv2D);" \
-        "G(Zeta);X(" #INPUT ")|A->F;A:control->DMT/_0:control;A:control->DMT/" \
-        "_1:control;A:control->DMT/_2:control;A:control->DMT/_3:control;B->F:3;"\
-        "D->F:1;DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/_3->F:7;E->F:2;E->G:1;"\
-        "F->G;F:control->X:control");                                          \
+    if (!NativeFormatEnabled()) {                                                 \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);DMT/_1(Const);"\
+          "DMT/_2(Const);DMT/_3(Const);E(" #INPUT ");F(_MklPadWithFusedConv2D);"  \
+          "G(Zeta);X(" #INPUT ")|A->F;A:control->DMT/_0:control;A:control->DMT/"  \
+          "_1:control;A:control->DMT/_2:control;A:control->DMT/_3:control;B->F:3;"\
+          "D->F:1;DMT/_0->F:4;DMT/_1->F:5;DMT/_2->F:6;DMT/_3->F:7;E->F:2;E->G:1;" \
+          "F->G;F:control->X:control");                                           \
+    } else {                                                                      \
+      EXPECT_EQ(                                                                  \
+          DoMklLayoutOptimizationPass(),                                          \
+          "A(" #INPUT ");B(Int32Input);D(" #INPUT ");E(" #INPUT ");"              \
+          "F(_MklNativePadWithFusedConv2D);G(Zeta);X(" #INPUT ")"                 \
+          "|A->F;B->F:3;D->F:1;E->F:2;E->G:1;F->G;F:control->X:control");         \
+    }                                                                             \
   }
 REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithFusedConv2D_Positive);
 #undef REGISTER_TEST
@@ -1923,13 +2172,21 @@ REGISTER_TEST_ALL_TYPES(Output_ControlEdge_PadWithFusedConv2D_Positive);
         " input: ['C', 'A', 'E']}"                                             \
         "node { name: 'G' op: '" #OUTPUT "'"                                   \
         " input: ['C', 'F']}");                                                \
-    EXPECT_EQ(                                                                 \
-        DoMklLayoutOptimizationPass(),                                         \
-        "A(" #INPUT ");B(Int32Input);C(Pad);DMT/_0(Const);DMT/_1(Const);DMT/"  \
-        "_2(Const);E(" #INPUT ");F(_MklFusedConv2D);G(" #OUTPUT                \
-        ")|A->C;A->F:1;B->C:1;C->F;C->G;C:control->DMT/_0:control;"            \
-        "C:control->DMT/_1:control;C:control->DMT/_2:control;DMT/_0->F:3;"     \
-        "DMT/_1->F:4;DMT/_2->F:5;E->F:2;F->G:1");                              \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(                                                                 \
+          DoMklLayoutOptimizationPass(),                                         \
+          "A(" #INPUT ");B(Int32Input);C(Pad);DMT/_0(Const);DMT/_1(Const);DMT/"  \
+          "_2(Const);E(" #INPUT ");F(_MklFusedConv2D);G(" #OUTPUT                \
+          ")|A->C;A->F:1;B->C:1;C->F;C->G;C:control->DMT/_0:control;"            \
+          "C:control->DMT/_1:control;C:control->DMT/_2:control;DMT/_0->F:3;"     \
+          "DMT/_1->F:4;DMT/_2->F:5;E->F:2;F->G:1");                              \
+    } else {                                                                     \
+      EXPECT_EQ(                                                                 \
+          DoMklLayoutOptimizationPass(),                                         \
+          "A(" #INPUT ");B(Int32Input);C(Pad);E(" #INPUT ");"                    \
+          "F(_MklNativeFusedConv2D);G(" #OUTPUT ")"                              \
+          "|A->C;A->F:1;B->C:1;C->F;C->G;E->F:2;F->G:1");                        \
+    }                                                                            \
   }
 REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_FLOAT,
               Float32Input, Float32Output2);
@@ -1956,12 +2213,19 @@ REGISTER_TEST(NodeMerge_PadWithFusedConv2D_Common_InOutput, DT_BFLOAT16,
       " input: ['A', 'B', 'C']}"                                                     \
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'D'] }");                                                       \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
-            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_MklConv2DBackpropFilter);" \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                     \
-            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"         \
-            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"            \
-            "DMT/_1->D:4;DMT/_2->D:5");                                              \
+  if (!NativeFormatEnabled()) {                                                            \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                               \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_MklConv2DBackpropFilter);"     \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                         \
+              "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"             \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"                \
+              "DMT/_1->D:4;DMT/_2->D:5");                                                  \
+  } else {                                                                                 \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                               \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                                 \
+              "D(_MklNativeConv2DBackpropFilter);E(Zeta)|A->D;A->E;"                       \
+              "B->D:1;C->D:2;D->E:1");                                                     \
+  }                                                                                        \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2DGradFilter_Positive);
 #undef REGISTER_TEST
@@ -1982,12 +2246,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2DGradFilter_Positive);
       " input: ['B', 'A', 'C']}"                                                    \
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"        \
       " input: ['A', 'D'] }");                                                      \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                          \
-            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_MklConv2DBackpropInput);" \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                    \
-            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"                           \
-            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"           \
-            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+  if (!NativeFormatEnabled()) {                                                       \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                          \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_MklConv2DBackpropInput);" \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                    \
+              "A->D:1;A->E;B->D;B:control->DMT/_0:control;"                           \
+              "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"           \
+              "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+  } else {                                                                            \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                          \
+            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                              \
+            "D(_MklNativeConv2DBackpropInput);"                                       \
+            "E(Zeta)|A->D:1;A->E;B->D;C->D:2;D->E:1");                                \
+  }                                                                                   \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2DGradInput_Positive);
 #undef REGISTER_TEST
@@ -2007,13 +2278,20 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Conv2DGradInput_Positive);
       " input: ['A', 'B', 'C']}"                                                \
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'D'] }");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
-            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_"                     \
-            "MklDepthwiseConv2dNativeBackpropFilter);"                          \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                \
-            "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"    \
-            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"       \
-            "DMT/_1->D:4;DMT/_2->D:5");                                         \
+  if (!NativeFormatEnabled()) {                                                 \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_"                     \
+              "MklDepthwiseConv2dNativeBackpropFilter);"                          \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                \
+              "A->D;A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"    \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;D->E:1;DMT/_0->D:3;"       \
+              "DMT/_1->D:4;DMT/_2->D:5");                                         \
+  } else {                                                                        \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                        \
+              "D(_MklNativeDepthwiseConv2dNativeBackpropFilter);E(Zeta)"          \
+              "|A->D;A->E;B->D:1;C->D:2;D->E:1");                                 \
+  }                                                                               \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2dNativeGradFilter_Positive);
 #undef REGISTER_TEST
@@ -2033,13 +2311,20 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2dNativeGradFilter_Positive);
       " input: ['B', 'A', 'C']}"                                                \
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'D'] }");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
-            "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_"                     \
-            "MklDepthwiseConv2dNativeBackpropInput);"                           \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"                \
-            "A->D:1;A->E;B->D;B:control->DMT/_0:control;"                       \
-            "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"       \
-            "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                      \
+  if (!NativeFormatEnabled()) {                                                 \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");D(_"                   \
+              "MklDepthwiseConv2dNativeBackpropInput);"                         \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"              \
+              "A->D:1;A->E;B->D;B:control->DMT/_0:control;"                     \
+              "B:control->DMT/_1:control;B:control->DMT/_2:control;C->D:2;"     \
+              "D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                    \
+  } else {                                                                      \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                      \
+              "D(_MklNativeDepthwiseConv2dNativeBackpropInput);E(Zeta)"         \
+              "|A->D:1;A->E;B->D;C->D:2;D->E:1");                               \
+  }                                                                             \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_DepthwiseConv2DGradInput_Positive);
 #undef REGISTER_TEST
@@ -2141,12 +2426,20 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_BiasAddGrad_Positive2);
       " input: ['A', 'B:0', 'B:1']}"                                         \
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['C', 'D'] }");                                               \
-  EXPECT_EQ(                                                                 \
-      DoMklLayoutOptimizationPass(),                                         \
-      "A(Const);B(" #INPUT "List);C(" #INPUT ");D(_MklConcat);DMT/_0(Const);"\
-      "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;A:control->DMT/_0:control;"  \
-      "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;"          \
-      "B:1->D:2;C->E;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");           \
+  if (!NativeFormatEnabled()) {                                                \
+    EXPECT_EQ(                                                                 \
+        DoMklLayoutOptimizationPass(),                                         \
+        "A(Const);B(" #INPUT "List);C(" #INPUT ");D(_MklConcat);DMT/_0(Const);"\
+        "DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;A:control->DMT/_0:control;"  \
+        "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;"          \
+        "B:1->D:2;C->E;D->E:1;DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");           \
+  } else {                                                                     \
+    /* Concat op is currently not supported in native format mode */           \
+    EXPECT_EQ(                                                                 \
+        DoMklLayoutOptimizationPass(),                                         \
+        "A(Const);B(" #INPUT "List);C(" #INPUT ");D(Concat);E(Zeta)"           \
+        "|A->D;B->D:1;B:1->D:2;C->E;D->E:1");                                  \
+  }                                                                            \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Basic);
 #undef REGISTER_TEST
@@ -2186,16 +2479,25 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Basic);
       " input: ['G', 'E', 'F']}"                                                \
       "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'H'] }");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
-            "DMT/_0(Const);DMT/_1(Const);"                                      \
-            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"          \
-            "F(_MklConv2D);G(Const);H(_MklConcat);I(Zeta)|A->E;A->I;"           \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"              \
-            "B->E:1;C->F;C:control->DMT/_2:control;C:control->DMT/_3:control;"  \
-            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"           \
-            "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"                 \
-            "G:control->DMT/_4:control;H->I:1");                                \
+  if (!NativeFormatEnabled()) {                                                   \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+              "DMT/_0(Const);DMT/_1(Const);"                                      \
+              "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"          \
+              "F(_MklConv2D);G(Const);H(_MklConcat);I(Zeta)|A->E;A->I;"           \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"              \
+              "B->E:1;C->F;C:control->DMT/_2:control;C:control->DMT/_3:control;"  \
+              "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"           \
+              "DMT/_4->H:3;E->H:1;E:2->H:4;F->H:2;F:2->H:5;G->H;"                 \
+              "G:control->DMT/_4:control;H->I:1");                                \
+  } else {                                                                        \
+    /* Concat op is currently not supported in native format mode */              \
+    EXPECT_EQ(                                                                    \
+        DoMklLayoutOptimizationPass(),                                            \
+        "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"                \
+        "E(_MklNativeConv2D);F(_MklNativeConv2D);G(Const);H(Concat);I(Zeta)"      \
+        "|A->E;A->I;B->E:1;C->F;D->F:1;E->H:1;F->H:2;G->H;H->I:1");               \
+  }                                                                               \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_Mkl);
 #undef REGISTER_TEST
@@ -2229,14 +2531,22 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_Mkl);
       " input: ['G', 'E', 'F']}"                                                \
       "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'H'] }");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
-            "DMT/_0(Const);DMT/_1(Const);"                                      \
-            "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"       \
-            "H(_MklConcat);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"        \
-            "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"         \
-            "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:2->H:4;F->H:2;"       \
-            "G->H;G:control->DMT/_2:control;G:control->DMT/_3:control;H->I:1"); \
+  if (!NativeFormatEnabled()) {                                                   \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+              "DMT/_0(Const);DMT/_1(Const);"                                      \
+              "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"       \
+              "H(_MklConcat);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"        \
+              "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"         \
+              "DMT/_1->E:3;DMT/_2->H:3;DMT/_3->H:5;E->H:1;E:2->H:4;F->H:2;"       \
+              "G->H;G:control->DMT/_2:control;G:control->DMT/_3:control;H->I:1"); \
+  } else {                                                                        \
+    /* Concat op is currently not supported in native format mode */              \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+              "E(_MklNativeConv2D);F(Zeta);G(Const);H(Concat);I(Zeta)"            \
+              "|A->E;A->I;B->E:1;C->F;D->F:1;E->H:1;F->H:2;G->H;H->I:1");         \
+  }                                                                               \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_MixedMkl);
 #undef REGISTER_TEST
@@ -2260,12 +2570,19 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Concat_Input_MixedMkl);
       " input: ['B:0', 'B:1', 'A']}"                                         \
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['C', 'D'] }");                                               \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(Const);B(" #INPUT "List);C(" #INPUT ");D(_MklConcatV2);"      \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D:2;B->D;" \
-            "B:1->D:1;B:control->DMT/_0:control;B:control->DMT/_1:control;"  \
-            "B:control->DMT/_2:control;C->E;D->E:1;DMT/_0->D:3;"             \
-            "DMT/_1->D:4;DMT/_2->D:5");                                      \
+  if (!NativeFormatEnabled()) {                                                \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(Const);B(" #INPUT "List);C(" #INPUT ");D(_MklConcatV2);"      \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D:2;B->D;" \
+              "B:1->D:1;B:control->DMT/_0:control;B:control->DMT/_1:control;"  \
+              "B:control->DMT/_2:control;C->E;D->E:1;DMT/_0->D:3;"             \
+              "DMT/_1->D:4;DMT/_2->D:5");                                      \
+  } else {                                                                     \
+    /* ConcatV2 op is currently not supported in native format mode */         \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(Const);B(" #INPUT "List);C(" #INPUT ");D(ConcatV2);"          \
+              "E(Zeta)|A->D:2;B->D;B:1->D:1;C->E;D->E:1");                     \
+  }                                                                            \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Basic);
 #undef REGISTER_TEST
@@ -2306,16 +2623,24 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Basic);
       " input: ['E', 'F', 'G']}"                                                \
       "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'H'] }");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
-            "DMT/_0(Const);DMT/_1(Const);"                                      \
-            "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"          \
-            "F(_MklConv2D);G(Const);H(_MklConcatV2);I(Zeta)|A->E;A->I;"         \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;B->E:1;C->F;"  \
-            "C:control->DMT/_2:control;C:control->DMT/_3:control;"              \
-            "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"           \
-            "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"       \
-            "F:2->H:4;G->H:2;H->I:1");                                          \
+  if (!NativeFormatEnabled()) {                                                 \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+              "DMT/_0(Const);DMT/_1(Const);"                                      \
+              "DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(_MklConv2D);"          \
+              "F(_MklConv2D);G(Const);H(_MklConcatV2);I(Zeta)|A->E;A->I;"         \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;B->E:1;C->F;"  \
+              "C:control->DMT/_2:control;C:control->DMT/_3:control;"              \
+              "D->F:1;DMT/_0->E:2;DMT/_1->E:3;DMT/_2->F:2;DMT/_3->F:3;"           \
+              "DMT/_4->H:5;E->H;E:2->H:3;E:control->DMT/_4:control;F->H:1;"       \
+              "F:2->H:4;G->H:2;H->I:1");                                          \
+  } else {                                                                        \
+    /* ConcatV2 op is currently not supported in native format mode */            \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
+              "E(_MklNativeConv2D);F(_MklNativeConv2D);G(Const);H(ConcatV2);"     \
+              "I(Zeta)|A->E;A->I;B->E:1;C->F;D->F:1;E->H;F->H:1;G->H:2;H->I:1");  \
+  }                                                                               \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Input_Mkl);
 #undef REGISTER_TEST
@@ -2350,15 +2675,23 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Input_Mkl);
       " input: ['E', 'F', 'G']}"                                                \
       "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'H'] }");                                                  \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"          \
-            "DMT/_0(Const);DMT/_1(Const);"                                      \
-            "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"       \
-            "H(_MklConcatV2);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"      \
-            "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"         \
-            "DMT/_1->E:3;DMT/_2->H:4;DMT/_3->H:5;E->H;E:2->H:3;"                \
-            "E:control->DMT/_2:control;E:control->DMT/_3:control;F->H:1;"       \
-            "G->H:2;H->I:1");                                                   \
+  if (!NativeFormatEnabled()) {                                                 \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"        \
+              "DMT/_0(Const);DMT/_1(Const);"                                    \
+              "DMT/_2(Const);DMT/_3(Const);E(_MklConv2D);F(Zeta);G(Const);"     \
+              "H(_MklConcatV2);I(Zeta)|A->E;A->I;A:control->DMT/_0:control;"    \
+              "A:control->DMT/_1:control;B->E:1;C->F;D->F:1;DMT/_0->E:2;"       \
+              "DMT/_1->E:3;DMT/_2->H:4;DMT/_3->H:5;E->H;E:2->H:3;"              \
+              "E:control->DMT/_2:control;E:control->DMT/_3:control;F->H:1;"     \
+              "G->H:2;H->I:1");                                                 \
+  } else {                                                                      \
+    /* ConcatV2 op is currently not supported in native format mode */          \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"        \
+              "E(_MklNativeConv2D);F(Zeta);G(Const);H(ConcatV2);I(Zeta)"        \
+              "|A->E;A->I;B->E:1;C->F;D->F:1;E->H;F->H:1;G->H:2;H->I:1");       \
+  }                                                                             \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Input_MixedMkl);
 #undef REGISTER_TEST
@@ -2372,9 +2705,15 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_ConcatV2_Input_MixedMkl);
       " input: ['A'] }"                                                      \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['A', 'B'] }");                                               \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(" #INPUT ");B(_MklRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;"     \
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
+  if (!NativeFormatEnabled()) {                                              \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(_MklRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;"   \
+              "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");               \
+  } else {                                                                   \
+    /* Relu op is currently not supported in native format mode */           \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(Relu);C(Zeta)|A->B;A->C;B->C:1");             \
+  }                                                                          \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu_Positive);
 #undef REGISTER_TEST
@@ -2389,10 +2728,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu_Positive);
       " input: ['A', 'B'] }"                                                     \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"     \
       " input: ['A', 'C'] }");                                                   \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
-            "A(" #INPUT ");B(" #INPUT ");C(_MklReluGrad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                 \
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");  \
+  if (!NativeFormatEnabled()) {                                                    \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklReluGrad);D(Zeta);DMT/_0(Const);" \
+              "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                 \
+              "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");  \
+  } else {                                                                         \
+    /* ReluGrad op is currently not supported in native format mode */             \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+              "A(" #INPUT ");B(" #INPUT ");C(ReluGrad);D(Zeta)"                    \
+              "|A->C;A->D;B->C:1;C->D:1");                                         \
+  }                                                                                \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_ReluGrad_Positive);
 #undef REGISTER_TEST
@@ -2409,11 +2755,18 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_ReluGrad_Positive);
       " input: ['A', 'B'] }"                                                   \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"   \
       " input: ['A', 'C'] }");                                                 \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
-            "A(" #INPUT ");B(_MklRelu);C(_MklReluGrad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"          \
-            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"    \
-            "DMT/_1->C:2");                                                    \
+  if (!NativeFormatEnabled()) {                                                   \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(_MklRelu);C(_MklReluGrad);D(Zeta);DMT/_0(Const);"  \
+              "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"           \
+              "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"     \
+              "DMT/_1->C:2");                                                     \
+  } else {                                                                        \
+    /* Relu and ReluGrad ops are currently not supported in native format mode */ \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                      \
+              "A(" #INPUT ");B(Relu);C(ReluGrad);D(Zeta)"                         \
+              "|A->B;A->C;A->D;B->C:1;C->D:1");                                   \
+  }                                                                               \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_ReluReluGrad_Positive);
 #undef REGISTER_TEST
@@ -2427,9 +2780,15 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_ReluReluGrad_Positive);
       " input: ['A'] }"                                                      \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['A', 'B'] }");                                               \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(" #INPUT ");B(_MklRelu6);C(Zeta);DMT/_0(Const)|A->B;A->C;"    \
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
+  if (!NativeFormatEnabled()) {                                              \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(_MklRelu6);C(Zeta);DMT/_0(Const)|A->B;A->C;"  \
+              "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");               \
+  } else {                                                                   \
+    /* Relu6 op is currently not supported in native format mode */          \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(Relu6);C(Zeta)|A->B;A->C;B->C:1");            \
+  }                                                                          \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6_Positive);
 #undef REGISTER_TEST
@@ -2444,10 +2803,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6_Positive);
       " input: ['A', 'B'] }"                                                      \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"      \
       " input: ['A', 'C'] }");                                                    \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                        \
-            "A(" #INPUT ");B(" #INPUT ");C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                  \
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");   \
+  if (!NativeFormatEnabled()) {                                                     \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                        \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);" \
+              "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                  \
+              "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");   \
+  } else {                                                                          \
+    /* Relu6Grad op is currently not supported in native format mode */             \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                        \
+              "A(" #INPUT ");B(" #INPUT ");C(Relu6Grad);D(Zeta)"                    \
+              "|A->C;A->D;B->C:1;C->D:1");                                          \
+  }                                                                                 \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6Grad_Positive);
 #undef REGISTER_TEST
@@ -2464,11 +2830,18 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6Grad_Positive);
       " input: ['A', 'B'] }"                                                     \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"     \
       " input: ['A', 'C'] }");                                                   \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
-            "A(" #INPUT ");B(_MklRelu6);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"            \
-            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"      \
-            "DMT/_1->C:2");                                                      \
+  if (!NativeFormatEnabled()) {                                                     \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                        \
+              "A(" #INPUT ");B(_MklRelu6);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);"  \
+              "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"             \
+              "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"       \
+              "DMT/_1->C:2");                                                       \
+  } else {                                                                          \
+    /* Relu6 and Relu6Grad ops are currently not supported in native format mode */ \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                        \
+              "A(" #INPUT ");B(Relu6);C(Relu6Grad);D(Zeta)"                         \
+              "|A->B;A->C;A->D;B->C:1;C->D:1");                                     \
+  }                                                                                 \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6Relu6Grad_Positive);
 #undef REGISTER_TEST
@@ -2483,9 +2856,15 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Relu6Relu6Grad_Positive);
       " input: ['A'] }"                                                       \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"  \
       " input: ['A', 'B'] }");                                                \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
-            "A(" #INPUT ");B(_MklLeakyRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;" \
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                  \
+  if (!NativeFormatEnabled()) {                                               \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(_MklLeakyRelu);C(Zeta);DMT/_0(Const)|A->B;A->C;" \
+              "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                  \
+  } else {                                                                      \
+    /* LeakyRelu op is currently not supported in native format mode */         \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(LeakyRelu);C(Zeta)|A->B;A->C;B->C:1");           \
+  }                                                                             \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyRelu_Positive);
 #undef REGISTER_TEST
@@ -2517,10 +2896,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyRelu_Negative);
       " input: ['A', 'B'] }"                                                          \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"          \
       " input: ['A', 'C'] }");                                                        \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                            \
-            "A(" #INPUT ");B(" #INPUT ");C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                      \
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");       \
+  if (!NativeFormatEnabled()) {                                                         \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                            \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);" \
+              "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                      \
+              "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");       \
+  } else {                                                                              \
+    /* LeakyReluGrad op is currently not supported in native format mode */             \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                            \
+              "A(" #INPUT ");B(" #INPUT ");C(LeakyReluGrad);D(Zeta)"                    \
+              "|A->C;A->D;B->C:1;C->D:1");                                              \
+  }                                                                                     \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Positive);
 #undef REGISTER_TEST
@@ -2557,17 +2943,24 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluGrad_Negative);
       " input: ['A', 'B'] }"                                                       \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"       \
       " input: ['A', 'C'] }");                                                     \
-  EXPECT_EQ(                                                                       \
-      DoMklLayoutOptimizationPass(),                                               \
-      "A(" #INPUT ");B(_MklLeakyRelu);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);" \
-      "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"                    \
-      "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"              \
-      "DMT/_1->C:2");                                                              \
+  if (!NativeFormatEnabled()) {                                                      \
+    EXPECT_EQ(                                                                       \
+        DoMklLayoutOptimizationPass(),                                               \
+        "A(" #INPUT ");B(_MklLeakyRelu);C(_MklLeakyReluGrad);D(Zeta);DMT/_0(Const);" \
+        "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"                    \
+        "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"              \
+        "DMT/_1->C:2");                                                              \
+  } else {                                                                           \
+    /* LeakyRelu and LeakyReluGrad ops are currently not supported in native */      \
+    /* format mode */                                                                \
+    EXPECT_EQ(                                                                       \
+        DoMklLayoutOptimizationPass(),                                               \
+        "A(" #INPUT ");B(LeakyRelu);C(LeakyReluGrad);D(Zeta)"                        \
+        "|A->B;A->C;A->D;B->C:1;C->D:1");                                            \
+  }                                                                                  \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
 #undef REGISTER_TEST
-
-#ifdef ENABLE_MKLDNN_V1
 
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
@@ -2579,9 +2972,15 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_LeakyReluLeakyReluGrad_Positive);
       " input: ['A'] }"                                                      \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['A', 'B'] }");                                               \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(" #INPUT ");B(_MklTanh);C(Zeta);DMT/_0(Const)|A->B;A->C;"     \
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
+  if (!NativeFormatEnabled()) {                                              \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(_MklTanh);C(Zeta);DMT/_0(Const)|A->B;A->C;"   \
+              "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");               \
+  } else {                                                                   \
+    /* Tanh op is currently not supported in native format mode */           \
+     EXPECT_EQ(DoMklLayoutOptimizationPass(),                                \
+              "A(" #INPUT ");B(Tanh);C(Zeta)|A->B;A->C;B->C:1");             \
+  }                                                                          \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Tanh_Positive);
 #undef REGISTER_TEST
@@ -2597,10 +2996,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Tanh_Positive);
       " input: ['A', 'B'] }"                                                     \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"     \
       " input: ['A', 'C'] }");                                                   \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
-            "A(" #INPUT ");B(" #INPUT ");C(_MklTanhGrad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                 \
-            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");  \
+  if (!NativeFormatEnabled()) {                                                    \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklTanhGrad);D(Zeta);DMT/_0(Const);" \
+              "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"                 \
+              "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");  \
+  } else {                                                                         \
+    /* TanhGrad op is currently not supported in native format mode */             \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                       \
+              "A(" #INPUT ");B(" #INPUT ");C(TanhGrad);D(Zeta)"                    \
+              "|A->C;A->D;B->C:1;C->D:1");                                         \
+  }                                                                                \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhGrad_Positive);
 #undef REGISTER_TEST
@@ -2618,15 +3024,22 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhGrad_Positive);
       " input: ['B', 'A'] }"                                                   \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"   \
       " input: ['A', 'C'] }");                                                 \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(" #INPUT ");B(_MklTanh);C(_MklTanhGrad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const)|A->B;A->C:1;A->D;A:control->DMT/_0:control;"        \
-            "B->C;B:1->C:2;B:control->DMT/_1:control;C->D:1;DMT/_0->B:1;"      \
-            "DMT/_1->C:3");                                                    \
+  if (!NativeFormatEnabled()) {                                                  \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+              "A(" #INPUT ");B(_MklTanh);C(_MklTanhGrad);D(Zeta);DMT/_0(Const);" \
+              "DMT/_1(Const)|A->B;A->C:1;A->D;A:control->DMT/_0:control;"        \
+              "B->C;B:1->C:2;B:control->DMT/_1:control;C->D:1;DMT/_0->B:1;"      \
+              "DMT/_1->C:3");                                                    \
+  } else {                                                                       \
+    /* Tanh and TanhGrad ops are currently not supported in native */            \
+    /* format mode */                                                            \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                     \
+              "A(" #INPUT ");B(Tanh);C(TanhGrad);D(Zeta)"                      \
+              "|A->B;A->C:1;A->D;B->C;C->D:1");                                  \
+  }                                                                              \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhTanhGrad_Positive);
 #undef REGISTER_TEST
-#endif  // ENABLE_MKLDNN_V1
 
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
@@ -2642,9 +3055,14 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_TanhTanhGrad_Positive);
       " input: ['A'] }"                                                      \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['A', 'B'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
-            "A(" #INPUT ");B(_MklAvgPool);C(Zeta);DMT/_0(Const)|A->B;A->C;"  \
-            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
+    if (!NativeFormatEnabled()) {                                              \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(_MklAvgPool);C(Zeta);DMT/_0(Const)|A->B;A->C;"  \
+              "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");                 \
+    } else {                                                                   \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+              "A(" #INPUT ");B(_MklNativeAvgPool);C(Zeta)|A->B;A->C;B->C:1");  \
+    }                                                                          \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_AvgPool_Positive);
 #undef REGISTER_TEST
@@ -2664,11 +3082,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_AvgPool_Positive);
       " input: ['A', 'B'] }"                                                 \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['B', 'C'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
-            "A(Int32Input);B(" #INPUT ");C(_MklAvgPoolGrad);D(Zeta);"        \
-            "DMT/_0(Const);DMT/_1(Const)|A->C;A:control->DMT/_0:control;"    \
-            "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"      \
-            "DMT/_1->C:3");                                                  \
+    if (!NativeFormatEnabled()) {                                            \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+              "A(Int32Input);B(" #INPUT ");C(_MklAvgPoolGrad);D(Zeta);"      \
+              "DMT/_0(Const);DMT/_1(Const)|A->C;A:control->DMT/_0:control;"  \
+              "A:control->DMT/_1:control;B->C:1;B->D;C->D:1;DMT/_0->C:2;"    \
+              "DMT/_1->C:3");                                                \
+    } else {                                                                 \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+              "A(Int32Input);B(" #INPUT ");C(_MklNativeAvgPoolGrad);"        \
+              "D(Zeta)|A->C;B->C:1;B->D;C->D:1");                            \
+    }                                                                        \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_AvgPoolGrad_Positive);
 #undef REGISTER_TEST
@@ -2695,11 +3119,17 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_AvgPoolGrad_Positive);
       " input: ['I', 'B'] }"                                                         \
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'C'] }");                                                       \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
-            "A(" #INPUT ");B(_MklAvgPool);C(_MklAvgPoolGrad);D(Zeta);DMT/_0(Const);" \
-            "DMT/_1(Const);I(Int32Input)|A->B;A->D;A:control->DMT/_0:control;"       \
-            "B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;DMT/_1->C:2;I->C;"                   \
-            "I:control->DMT/_1:control");                                            \
+    if (!NativeFormatEnabled()) {                                                      \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(_MklAvgPool);C(_MklAvgPoolGrad);D(Zeta);DMT/_0(Const);" \
+              "DMT/_1(Const);I(Int32Input)|A->B;A->D;A:control->DMT/_0:control;"       \
+              "B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;DMT/_1->C:2;I->C;"                   \
+              "I:control->DMT/_1:control");                                            \
+    } else {                                                                           \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(_MklNativeAvgPool);C(_MklNativeAvgPoolGrad);D(Zeta);"   \
+              "I(Int32Input)|A->B;A->D;B->C:1;C->D:1;I->C");                           \
+    }                                                                                  \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_AvgPoolAvgPoolGrad_Positive);
 #undef REGISTER_TEST
@@ -2721,15 +3151,22 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_AvgPoolAvgPoolGrad_Positive);
       " input: ['A', 'B', 'C', 'D', 'E'] }"                                          \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'F'] }");                                                       \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"               \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
-            "E(" #INPUT ");F(_MklFusedBatchNormGrad);G(Zeta)|A->F;A->G;"             \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
-            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
-            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
-            "E->F:4;F->G:1");                                                        \
+    if (!NativeFormatEnabled()) {                                                      \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"               \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
+              "E(" #INPUT ");F(_MklFusedBatchNormGrad);G(Zeta)|A->F;A->G;"             \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
+              "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
+              "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
+              "E->F:4;F->G:1");                                                        \
+    } else {                                                                           \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"               \
+              "E(" #INPUT ");F(_MklNativeFusedBatchNormGrad);G(Zeta)"                  \
+              "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                        \
+    }                                                                                  \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGrad_Positive);
 #undef REGISTER_TEST
@@ -2752,15 +3189,22 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGrad_Positive);
       " input: ['A', 'B', 'C', 'D', 'E'] }"                                          \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'F'] }");                                                       \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
-            "A(" #INPUT ");B(" #INPUT ");C(Float32Input);D(Float32Input);"           \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
-            "E(Float32Input);F(_MklFusedBatchNormGradV2);G(Zeta)|A->F;A->G;"         \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
-            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
-            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
-            "E->F:4;F->G:1");                                                        \
+    if (!NativeFormatEnabled()) {                                                      \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(" #INPUT ");C(Float32Input);D(Float32Input);"           \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
+              "E(Float32Input);F(_MklFusedBatchNormGradV2);G(Zeta)|A->F;A->G;"         \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
+              "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
+              "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
+              "E->F:4;F->G:1");                                                        \
+    } else {                                                                           \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(" #INPUT ");C(Float32Input);D(Float32Input);"           \
+              "E(Float32Input);F(_MklNativeFusedBatchNormGradV2);G(Zeta)"              \
+              "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                        \
+    }                                                                                  \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV2_Positive);
 #undef REGISTER_TEST
@@ -2807,15 +3251,22 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormGradV2_Negative) {
       " input: ['A', 'B', 'C', 'D', 'E'] }"                                          \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'F'] }");                                                       \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
-            "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");DMT/_0(Const);" \
-            "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(" #INPUT ");" \
-            "F(_MklFusedBatchNorm);G(Zeta)|A->F;A->G;"                               \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
-            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
-            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
-            "E->F:4;F->G:1");                                                        \
+    if (!NativeFormatEnabled()) {                                                      \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");DMT/_0(Const);" \
+              "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);E(" #INPUT ");" \
+              "F(_MklFusedBatchNorm);G(Zeta)|A->F;A->G;"                               \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
+              "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
+              "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
+              "E->F:4;F->G:1");                                                        \
+    } else {                                                                           \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                         \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(" #INPUT ");"               \
+              "E(" #INPUT ");F(_MklNativeFusedBatchNorm);G(Zeta)"                      \
+              "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                        \
+    }                                                                                  \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNorm_Positive);
 #undef REGISTER_TEST
@@ -2838,15 +3289,22 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNorm_Positive);
       " input: ['A', 'B', 'C', 'D', 'E'] }"                                          \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'F'] }");                                                       \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
-            "A(" #INPUT ");B(Float32Input);C(Float32Input);D(Float32Input);"         \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
-            "E(Float32Input);F(_MklFusedBatchNormV2);G(Zeta)|A->F;A->G;"             \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
-            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
-            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
-            "E->F:4;F->G:1");                                                        \
+  if (!NativeFormatEnabled()) {                                                        \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
+              "A(" #INPUT ");B(Float32Input);C(Float32Input);D(Float32Input);"         \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
+              "E(Float32Input);F(_MklFusedBatchNormV2);G(Zeta)|A->F;A->G;"             \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
+              "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
+              "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
+              "E->F:4;F->G:1");                                                        \
+  } else {                                                                             \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
+              "A(" #INPUT ");B(Float32Input);C(Float32Input);D(Float32Input);"         \
+              "E(Float32Input);F(_MklNativeFusedBatchNormV2);G(Zeta)"                  \
+              "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                        \
+  }                                                                                    \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV2_Positive);
 #undef REGISTER_TEST
@@ -2894,15 +3352,22 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedBatchNormV2_Negative) {
       " input: ['A', 'B', 'C', 'D', 'E'] }"                                          \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"         \
       " input: ['A', 'F'] }");                                                       \
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
-            "A(" #INPUT ");B(Float32Input);C(Float32Input);D(Float32Input);"         \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
-            "E(Float32Input);F(_MklFusedBatchNormV3);G(Zeta)|A->F;A->G;"             \
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
-            "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
-            "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
-            "E->F:4;F->G:1");                                                        \
+  if (!NativeFormatEnabled()) {                                                        \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
+              "A(" #INPUT ");B(Float32Input);C(Float32Input);D(Float32Input);"         \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);" \
+              "E(Float32Input);F(_MklFusedBatchNormV3);G(Zeta)|A->F;A->G;"             \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"                   \
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"                   \
+              "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"                        \
+              "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;"           \
+              "E->F:4;F->G:1");                                                        \
+  } else {                                                                             \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                           \
+              "A(" #INPUT ");B(Float32Input);C(Float32Input);D(Float32Input);"         \
+              "E(Float32Input);F(_MklNativeFusedBatchNormV3);G(Zeta)"                  \
+              "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");                        \
+  }                                                                                    \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormV3_Positive);
 #undef REGISTER_TEST
@@ -2993,7 +3458,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_2);
 #undef DATA_FORMAT
 #undef REGISTER_TEST
 
-#ifdef ENABLE_MKLDNN_V1
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
@@ -3013,16 +3477,23 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormGradV3_5D_Negative_2);
               "node { name: 'G' op: 'Zeta'"                                  \
               " attr { key: 'T' value { type: " #T " } }"                    \
               " input: ['A', 'F'] }");                                       \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
-              "A(" #INPUT ");B(Input);C(Input);D(Input);"                    \
-              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"     \
-              "DMT/_4(Const);E(Input);"                                      \
-              "F(_MklFusedBatchNormEx);G(Zeta)|A->F;A->G;"                   \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"         \
-              "A:control->DMT/_2:control;A:control->DMT/_3:control;"         \
-              "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"              \
-              "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;" \
-              "E->F:4;F->G:1");                                              \
+    if (!NativeFormatEnabled()) {                                              \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+                "A(" #INPUT ");B(Input);C(Input);D(Input);"                    \
+                "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"     \
+                "DMT/_4(Const);E(Input);"                                      \
+                "F(_MklFusedBatchNormEx);G(Zeta)|A->F;A->G;"                   \
+                "A:control->DMT/_0:control;A:control->DMT/_1:control;"         \
+                "A:control->DMT/_2:control;A:control->DMT/_3:control;"         \
+                "A:control->DMT/_4:control;B->F:1;C->F:2;D->F:3;"              \
+                "DMT/_0->F:5;DMT/_1->F:6;DMT/_2->F:7;DMT/_3->F:8;DMT/_4->F:9;" \
+                "E->F:4;F->G:1");                                              \
+    } else {                                                                   \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
+                "A(" #INPUT ");B(Input);C(Input);D(Input);E(Input);"           \
+                "F(_MklNativeFusedBatchNormEx);G(Zeta)"                        \
+                "|A->F;A->G;B->F:1;C->F:2;D->F:3;E->F:4;F->G:1");              \
+    }                                                                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Positive);
 #undef REGISTER_TEST
@@ -3083,7 +3554,6 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative1);
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedBatchNormEx_Negative2);
 #undef REGISTER_TEST
-#endif  // ENABLE_MKLDNN_V1
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
   InitGraph(
@@ -3104,17 +3574,26 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
       " input: ['A', 'B', 'C', 'D', 'E', 'F'] }"
       "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: DT_QINT32 } }"
       " input: ['G', 'H'] }");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "A(QuantizedUnsignedInt8Input);B(QuantizedSignedInt8Input);C(Input);"
-      "D(Input);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"
-      "DMT/_4(Const);DMT/_5(Const);E(Input);F(Input);"
-      "G(QuantizedSignedInt32Input);H(_MklQuantizedDepthwiseConv2D);I(Zeta)"
-      "|A->H;A:control->DMT/_0:control;A:control->DMT/_1:control;"
-      "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-      "A:control->DMT/_4:control;A:control->DMT/_5:control;B->H:1;C->H:2;"
-      "D->H:3;DMT/_0->H:6;DMT/_1->H:7;DMT/_2->H:8;DMT/_3->H:9;DMT/_4->H:10;"
-      "DMT/_5->H:11;E->H:4;F->H:5;G->I;H->I:1");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(
+        DoMklLayoutOptimizationPass(),
+        "A(QuantizedUnsignedInt8Input);B(QuantizedSignedInt8Input);C(Input);"
+        "D(Input);DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"
+        "DMT/_4(Const);DMT/_5(Const);E(Input);F(Input);"
+        "G(QuantizedSignedInt32Input);H(_MklQuantizedDepthwiseConv2D);I(Zeta)"
+        "|A->H;A:control->DMT/_0:control;A:control->DMT/_1:control;"
+        "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+        "A:control->DMT/_4:control;A:control->DMT/_5:control;B->H:1;C->H:2;"
+        "D->H:3;DMT/_0->H:6;DMT/_1->H:7;DMT/_2->H:8;DMT/_3->H:9;DMT/_4->H:10;"
+        "DMT/_5->H:11;E->H:4;F->H:5;G->I;H->I:1");
+  } else {
+    EXPECT_EQ(
+        DoMklLayoutOptimizationPass(),
+        "A(QuantizedUnsignedInt8Input);B(QuantizedSignedInt8Input);C(Input);"
+        "D(Input);E(Input);F(Input);G(QuantizedSignedInt32Input);"
+        "H(QuantizedDepthwiseConv2D);I(Zeta)|A->H;B->H:1;C->H:2;D->H:3;E->H:4;"
+        "F->H:5;G->I;H->I:1");
+  }
 }
 
 /////////////////////////////////////////////////////////////////////
@@ -3144,15 +3623,23 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedDepthwiseConv2D_Positive) {
       " input: ['C', 'D', 'E'] }"                                               \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['A', 'C'] }");                                                  \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
-            "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(Int32Input);"          \
-            "DMT/_0(Const);DMT/_1(Const);"                                      \
-            "E(Int32Input);F(_MklSlice);G(Zeta);M(_MklInput);N(_MklInput)|"     \
-            "A->C;A->G;B->C:1;C->F;C->G:1;C:2->F:3;"                            \
-            "C:control->DMT/_0:control;C:control->DMT/"                         \
-            "_1:control;"                                                       \
-            "D->F:1;DMT/_0->F:4;DMT/_1->F:5;"                                   \
-            "E->F:2;M->C:2;N->C:3");                                            \
+    if (!NativeFormatEnabled()) {                                                 \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(Int32Input);"          \
+              "DMT/_0(Const);DMT/_1(Const);"                                      \
+              "E(Int32Input);F(_MklSlice);G(Zeta);M(_MklInput);N(_MklInput)|"     \
+              "A->C;A->G;B->C:1;C->F;C->G:1;C:2->F:3;"                            \
+              "C:control->DMT/_0:control;C:control->DMT/"                         \
+              "_1:control;"                                                       \
+              "D->F:1;DMT/_0->F:4;DMT/_1->F:5;"                                   \
+              "E->F:2;M->C:2;N->C:3");                                            \
+    } else {                                                                      \
+      /* Slice op is currently not supported in native format mode */             \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(Int32Input);"          \
+              "E(Int32Input);F(Slice);G(Zeta);M(_MklInput);N(_MklInput)"          \
+              "|A->C;A->G;B->C:1;C->F;C->G:1;D->F:1;E->F:2;M->C:2;N->C:3");       \
+    }                                                                             \
 }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_Ctxbased_Slice_Positive);
 #undef REGISTER_TEST
@@ -3219,15 +3706,26 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_Ctxbased_Slice_Negative);
       "node { name: 'H' op: '" #INPUT "'}"                                   \
       "node { name: 'I' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['H', 'G'] }");                                               \
-    EXPECT_EQ(                                                               \
-      DoMklLayoutOptimizationPass(),                                         \
-      "A(" #INPUT ");B(_MklLRN);C(_MklMaxPool);D(" #INPUT ");DMT/_0(Const);" \
-      "DMT/_1(Const);DMT/_2(Const);E(_MklMaxPoolGrad);F(" #INPUT ");"        \
-      "G(_MklLRNGrad);H(" #INPUT ");I(Zeta)|A->B;A:control->DMT/_0:control;" \
-      "B->C;B->E;B->G:2;B:1->G:3;B:2->C:1;B:2->E:4;B:2->G:6;B:3->G:7;"       \
-      "B:control->DMT/_1:control;C->E:1;C:1->E:3;C:2->E:5;C:3->E:7;D->E:2;"  \
-      "DMT/_0->B:1;DMT/_1->E:6;DMT/_2->G:5;E->G;E:1->G:4;"                   \
-      "E:control->DMT/_2:control;F->G:1;G->I:1;H->I");                       \
+    if (!NativeFormatEnabled()) {                                              \
+      EXPECT_EQ(                                                               \
+        DoMklLayoutOptimizationPass(),                                         \
+        "A(" #INPUT ");B(_MklLRN);C(_MklMaxPool);D(" #INPUT ");DMT/_0(Const);" \
+        "DMT/_1(Const);DMT/_2(Const);E(_MklMaxPoolGrad);F(" #INPUT ");"        \
+        "G(_MklLRNGrad);H(" #INPUT ");I(Zeta)|A->B;A:control->DMT/_0:control;" \
+        "B->C;B->E;B->G:2;B:1->G:3;B:2->C:1;B:2->E:4;B:2->G:6;B:3->G:7;"       \
+        "B:control->DMT/_1:control;C->E:1;C:1->E:3;C:2->E:5;C:3->E:7;D->E:2;"  \
+        "DMT/_0->B:1;DMT/_1->E:6;DMT/_2->G:5;E->G;E:1->G:4;"                   \
+        "E:control->DMT/_2:control;F->G:1;G->I:1;H->I");                       \
+    } else {                                                                   \
+      /* LRN and LRNGrad ops are currently not supported in native */          \
+      /* format mode */                                                        \
+      EXPECT_EQ(                                                               \
+        DoMklLayoutOptimizationPass(),                                         \
+        "A(" #INPUT ");B(LRN);C(_MklNativeMaxPool);D(" #INPUT ");"             \
+        "E(_MklNativeMaxPoolGrad);F(" #INPUT ");G(LRNGrad);H(" #INPUT ");"     \
+        "I(Zeta)|A->B;B->C;B->E;B->G:2;C->E:1;C:1->E:3;D->E:2;E->G;F->G:1;"    \
+        "G->I:1;H->I");                                                        \
+    }                                                                          \
 }
 REGISTER_TEST_FLOAT32(MaxPoolLRN_Positive);
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
@@ -3256,12 +3754,21 @@ REGISTER_TEST_FLOAT32(MaxPoolLRN_Positive);
       " input: ['C', 'D', 'B'] }"                                               \
       "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"    \
       " input: ['C', 'E'] }");                                                  \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
-            "A(" #INPUT ");B(_MklLRN);C(" #INPUT ");D(" #INPUT ");"             \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklLRNGrad);F(Zeta)|" \
-            "A->B;A:control->DMT/_0:control;B->E:2;B:1->E:3;B:2->E:6;B:3->E:7;" \
-            "C->E;C->F;C:control->DMT/_1:control;C:control->DMT/_2:control;"    \
-            "D->E:1;DMT/_0->B:1;DMT/_1->E:4;DMT/_2->E:5;E->F:1");               \
+    if (!NativeFormatEnabled()) {                                                 \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                    \
+              "A(" #INPUT ");B(_MklLRN);C(" #INPUT ");D(" #INPUT ");"             \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklLRNGrad);F(Zeta)|" \
+              "A->B;A:control->DMT/_0:control;B->E:2;B:1->E:3;B:2->E:6;B:3->E:7;" \
+              "C->E;C->F;C:control->DMT/_1:control;C:control->DMT/_2:control;"    \
+              "D->E:1;DMT/_0->B:1;DMT/_1->E:4;DMT/_2->E:5;E->F:1");               \
+    } else {                                                                      \
+      /* LRN and LRNGrad ops are currently not supported in native */             \
+      /* format mode */                                                           \
+      EXPECT_EQ(                                                                  \
+        DoMklLayoutOptimizationPass(),                                            \
+        "A(" #INPUT ");B(LRN);C(" #INPUT ");D(" #INPUT ");E(LRNGrad);"            \
+        "F(Zeta)|A->B;B->E:2;C->E;C->F;D->E:1;E->F:1");                           \
+    }                                                                             \
 }
 REGISTER_TEST_FLOAT32(LRN_Positive);
 #undef REGISTER_TEST
@@ -3280,9 +3787,15 @@ REGISTER_TEST_FLOAT32(LRN_Positive);
       " input: ['A'] }"                                                      \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['A', 'B'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
-            "A(" #INPUT ");B(_MklLRN);C(Zeta);DMT/_0(Const)|"                \
-            "A->B;A->C;A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");       \
+    if (!NativeFormatEnabled()) {                                            \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+              "A(" #INPUT ");B(_MklLRN);C(Zeta);DMT/_0(Const)|"              \
+              "A->B;A->C;A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");     \
+    } else {                                                                 \
+      /* LRN op is currently not supported in native format mode */          \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+              "A(" #INPUT ");B(LRN);C(Zeta)|A->B;A->C;B->C:1");              \
+    }                                                                        \
 }
 REGISTER_TEST_FLOAT32(LRN_Negative1);
 #undef REGISTER_TEST
@@ -3341,13 +3854,22 @@ REGISTER_TEST_ALL_TYPES(LRN_Negative2);
       " input: ['C', 'B', 'D'] }"                                              \
       "node { name: 'G' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"   \
       " input: ['E', 'F'] }");                                                 \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(" #INPUT ");B(_MklLRN);C(" #INPUT ");D(" #INPUT ");"            \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklLRNGrad);"        \
-            "F(LRNGrad);G(Zeta)|A->B;A:control->DMT/_0:control;B->E:2;B->F:1;" \
-            "B:1->E:3;B:2->E:6;B:3->E:7;C->E;C->F;C:control->DMT/_1:control;"  \
-            "C:control->DMT/_2:control;D->E:1;D->F:2;DMT/_0->B:1;"             \
-            "DMT/_1->E:4;DMT/_2->E:5;E->G;F->G:1");                            \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(_MklLRN);C(" #INPUT ");D(" #INPUT ");"            \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklLRNGrad);"        \
+              "F(LRNGrad);G(Zeta)|A->B;A:control->DMT/_0:control;B->E:2;B->F:1;" \
+              "B:1->E:3;B:2->E:6;B:3->E:7;C->E;C->F;C:control->DMT/_1:control;"  \
+              "C:control->DMT/_2:control;D->E:1;D->F:2;DMT/_0->B:1;"             \
+              "DMT/_1->E:4;DMT/_2->E:5;E->G;F->G:1");                            \
+    } else {                                                                     \
+      /* LRN and LRNGrad ops are currently not supported in native */            \
+      /* format mode */                                                          \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT");B(LRN);C(" #INPUT ");D(" #INPUT ");"                 \
+              "E(LRNGrad);F(LRNGrad);G(Zeta)"                                    \
+              "|A->B;B->E:2;B->F:1;C->E;C->F;D->E:1;D->F:2;E->G;F->G:1");        \
+    }                                                                            \
 }
 REGISTER_TEST_FLOAT32(LRN_Negative3);
 #undef REGISTER_TEST
@@ -3375,13 +3897,20 @@ REGISTER_TEST_FLOAT32(LRN_Negative3);
       " input: ['C', 'B', 'D'] }"                                              \
       "node { name: 'F' op: 'Zeta' attr { key: 'T' value { type: " #T " } }"   \
       " input: ['C', 'E'] }");                                                 \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-            "A(" #INPUT ");B(_MklMaxPool);C(" #INPUT ");D(" #INPUT ");"        \
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklMaxPoolGrad);"    \
-            "F(Zeta)|A->B;A:control->DMT/_0:control;B->E:1;B:1->E:3;B:2->E:5;" \
-            "B:3->E:7;C->E;C->F;C:control->DMT/_1:control;"                    \
-            "C:control->DMT/_2:control;D->E:2;DMT/_0->B:1;DMT/_1->E:4;"        \
-            "DMT/_2->E:6;E->F:1");                                             \
+    if (!NativeFormatEnabled()) {                                                \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(_MklMaxPool);C(" #INPUT ");D(" #INPUT ");"        \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklMaxPoolGrad);"    \
+              "F(Zeta)|A->B;A:control->DMT/_0:control;B->E:1;B:1->E:3;B:2->E:5;" \
+              "B:3->E:7;C->E;C->F;C:control->DMT/_1:control;"                    \
+              "C:control->DMT/_2:control;D->E:2;DMT/_0->B:1;DMT/_1->E:4;"        \
+              "DMT/_2->E:6;E->F:1");                                             \
+    } else {                                                                     \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(_MklNativeMaxPool);C(" #INPUT ");"                \
+              "D(" #INPUT ");E(_MklNativeMaxPoolGrad);F(Zeta)"                   \
+              "|A->B;B->E:1;B:1->E:3;C->E;C->F;D->E:2;E->F:1");                  \
+    }                                                                            \
 }
 REGISTER_TEST_ALL_TYPES(NodeWorkspace_MaxPool_Positive);
 #undef REGISTER_TEST
@@ -3402,9 +3931,15 @@ REGISTER_TEST_ALL_TYPES(NodeWorkspace_MaxPool_Positive);
       " input: ['A'] }"                                                      \
       "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: " #T " } }" \
       " input: ['A', 'B'] }");                                               \
-    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                 \
-            "A(" #INPUT ");B(_MklMaxPool);C(Zeta);DMT/_0(Const)|"            \
-            "A->B;A->C;A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");       \
+    if (!NativeFormatEnabled()) {                                            \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+              "A(" #INPUT ");B(_MklMaxPool);C(Zeta);DMT/_0(Const)|"          \
+              "A->B;A->C;A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");     \
+    } else {                                                                 \
+      EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
+              "A(" #INPUT ");B(_MklNativeMaxPool);C(Zeta)"                   \
+              "|A->B;A->C;B->C:1");                                          \
+    }                                                                        \
 }
 REGISTER_TEST_ALL_TYPES(NodeWorkspace_MaxPool_Negative1);
 #undef REGISTER_TEST
@@ -3984,11 +4519,17 @@ TEST_F(MklLayoutPassTest, PositiveRewriteAdd) {
       "node { name: 'N' op: 'Add'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['M', 'B']}");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAdd)"
-      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
-      "M:1->N:2;M:control->DMT/_1:control");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(
+        DoMklLayoutOptimizationPass(),
+        "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAdd)"
+        "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+        "M:1->N:2;M:control->DMT/_1:control");
+  } else {
+    // Relu and Add ops are currently not supported in native format mode
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(Input);B(Input);M(Relu);N(Add)|A->M;B->N:1;M->N");
+  }
 }
 
 TEST_F(MklLayoutPassTest, NegativeRewriteAdd) {
@@ -4012,11 +4553,17 @@ TEST_F(MklLayoutPassTest, PositiveRewriteAddV2) {
       "node { name: 'N' op: 'AddV2'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['M', 'B']}");
-  EXPECT_EQ(
-      DoMklLayoutOptimizationPass(),
-      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAddV2)"
-      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
-      "M:1->N:2;M:control->DMT/_1:control");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(
+        DoMklLayoutOptimizationPass(),
+        "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAddV2)"
+        "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+        "M:1->N:2;M:control->DMT/_1:control");
+  } else {
+    // Relu and AddV2 ops are currently not supported in native format mode
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(Input);B(Input);M(Relu);N(AddV2)|A->M;B->N:1;M->N");
+  }
 }
 
 TEST_F(MklLayoutPassTest, NegativeRewriteAddV2) {
@@ -4089,8 +4636,10 @@ TEST_F(MklLayoutPassTest, Conv2D_FilterCaching_Positive) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                          "_MklConv2D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeConv2D" : "_MklConv2D";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Conv2D op where filter is NOT a constant.
@@ -4108,8 +4657,10 @@ TEST_F(MklLayoutPassTest, Conv2D_FilterCaching_Negative) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                           "_MklConv2D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeConv2D" : "_MklConv2D";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Conv2D + BiasAdd fusion where filter is a constant.
@@ -4138,8 +4689,10 @@ TEST_F(MklLayoutPassTest, Conv2DWithBias_FilterCaching_Positive) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklConv2DWithBias"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeConv2DWithBias" : "_MklConv2DWithBias";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Conv2D + BiasAdd fusion where filter is NOT a constant.
@@ -4164,8 +4717,10 @@ TEST_F(MklLayoutPassTest, Conv2DWithBias_FilterCaching_Negative) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklConv2DWithBias"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeConv2DWithBias" : "_MklConv2DWithBias";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Conv3D op where filter is a constant.
@@ -4189,8 +4744,10 @@ TEST_F(MklLayoutPassTest, Conv3D_FilterCaching_Positive) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                          "_MklConv3D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeConv3D" : "_MklConv3D";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Conv3D op where filter is NOT a constant.
@@ -4210,8 +4767,10 @@ TEST_F(MklLayoutPassTest, Conv3D_FilterCaching_Negative) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                           "_MklConv3D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeConv3D" : "_MklConv3D";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Pad + Conv2D fusion where filter is a constant.
@@ -4241,8 +4800,10 @@ TEST_F(MklLayoutPassTest, PadWithConv2D_FilterCaching_Positive) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                          "_MklPadWithConv2D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativePadWithConv2D" : "_MklPadWithConv2D";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Pad + Conv2D fusion where filter is NOT a constant.
@@ -4268,8 +4829,10 @@ TEST_F(MklLayoutPassTest, PadWithConv2D_FilterCaching_Negative) {
       "node { name: 'Z' op: 'Zeta'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklPadWithConv2D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativePadWithConv2D" : "_MklPadWithConv2D";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // _FusedConv2D + BiasAdd fusion where filter is a constant.
@@ -4295,8 +4858,10 @@ TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Positive) {
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['D', 'C'] }");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                          "_MklFusedConv2D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeFusedConv2D" : "_MklFusedConv2D";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // _FusedDepthwiseConv2dNative + BiasAdd fusion where filter is a constant.
@@ -4323,8 +4888,11 @@ TEST_F(MklLayoutPassTest,
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['D', 'C'] }");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklFusedDepthwiseConv2dNative"));
+  const string op_name = NativeFormatEnabled()
+                             ? "_MklNativeFusedDepthwiseConv2dNative"
+                             : "_MklFusedDepthwiseConv2dNative";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // _FusedConv2D + BiasAdd fusion where filter is NOT a constant.
@@ -4346,8 +4914,10 @@ TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Negative) {
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['D', 'C'] }");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const",
-                                                           "_MklFusedConv2D"));
+  const string op_name =
+      NativeFormatEnabled() ? "_MklNativeFusedConv2D" : "_MklFusedConv2D";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // _FusedDepthwiseConv2dNative + BiasAdd fusion where filter is NOT a constant.
@@ -4370,8 +4940,11 @@ TEST_F(MklLayoutPassTest,
       " input: ['A', 'B', 'C']}"
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['D', 'C'] }");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklFusedDepthwiseConv2dNative"));
+  const string op_name = NativeFormatEnabled()
+                             ? "_MklNativeFusedDepthwiseConv2dNative"
+                             : "_MklFusedDepthwiseConv2dNative";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 // Depthwise Conv2D op where filter is a constant.
 TEST_F(MklLayoutPassTest, DepthwiseConv2dNative_FilterCaching_Positive) {
@@ -4391,8 +4964,11 @@ TEST_F(MklLayoutPassTest, DepthwiseConv2dNative_FilterCaching_Positive) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklDepthwiseConv2dNative"));
+  const string op_name = NativeFormatEnabled()
+                             ? "_MklNativeDepthwiseConv2dNative"
+                             : "_MklDepthwiseConv2dNative";
+  EXPECT_TRUE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Depthwise Conv2D op where filter is NOT a constant.
@@ -4409,8 +4985,11 @@ TEST_F(MklLayoutPassTest, DepthwiseConv2dNative_FilterCaching_Negative) {
       " input: ['A', 'B']}"
       "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['B', 'C'] }");
-  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
-      "is_filter_const", "_MklDepthwiseConv2dNative"));
+  const string op_name = NativeFormatEnabled()
+                             ? "_MklNativeDepthwiseConv2dNative"
+                             : "_MklDepthwiseConv2dNative";
+  EXPECT_FALSE(
+      DoMklLayoutOptimizationPassGetAttrVal<bool>("is_filter_const", op_name));
 }
 
 // Fused QuantizedMatMulWithBias Op Rewrite test
@@ -4433,19 +5012,26 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedMatMulWithBias_Positive) {
       " input: ['A', 'B', 'C', 'D', 'E', 'F', 'G']}"
       "node { name: 'J' op: 'Zeta' attr { key: 'T' value { type: DT_QINT32 } }"
       " input: ['I', 'H'] }");
-
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(QUInt8Input);B(QInt8Input);C(QInt32Input);D(Input);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"
-            "DMT/_4(Const);DMT/_5(Const);DMT/_6(Const);E(Input);F(Input);"
-            "G(Input);H(QInt32Input);I(_MklQuantizedMatMulWithBias);"
-            "J(Zeta)|A->I;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "A:control->DMT/_4:control;A:control->DMT/_5:control;"
-            "A:control->DMT/_6:control;B->I:1;C->I:2;D->I:3;DMT/_0->I:7;"
-            "DMT/_1->I:8;DMT/_2->I:9;DMT/_3->I:10;DMT/_4->I:11;DMT/_5->I:12;"
-            "DMT/_6->I:13;E->I:4;F->I:5;G->I:6;H->J:1;I->J");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(QUInt8Input);B(QInt8Input);C(QInt32Input);D(Input);"
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"
+              "DMT/_4(Const);DMT/_5(Const);DMT/_6(Const);E(Input);F(Input);"
+              "G(Input);H(QInt32Input);I(_MklQuantizedMatMulWithBias);"
+              "J(Zeta)|A->I;"
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+              "A:control->DMT/_4:control;A:control->DMT/_5:control;"
+              "A:control->DMT/_6:control;B->I:1;C->I:2;D->I:3;DMT/_0->I:7;"
+              "DMT/_1->I:8;DMT/_2->I:9;DMT/_3->I:10;DMT/_4->I:11;DMT/_5->I:12;"
+              "DMT/_6->I:13;E->I:4;F->I:5;G->I:6;H->J:1;I->J");
+  } else {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(QUInt8Input);B(QInt8Input);C(QInt32Input);D(Input);E(Input);"
+              "F(Input);G(Input);H(QInt32Input);I(QuantizedMatMulWithBias);"
+              "J(Zeta)|A->I;B->I:1;C->I:2;D->I:3;E->I:4;F->I:5;G->I:6;H->J:1;"
+              "I->J");
+  }
 }
 
 // Rewrite test for QuantizedMatMulWithBias Op with unsupported input
@@ -4496,19 +5082,26 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizedMatMulWithBiasAndRelu_Positive) {
       " input: ['A', 'B', 'C', 'D', 'E', 'F', 'G']}"
       "node { name: 'J' op: 'Zeta' attr { key: 'T' value { type: DT_QINT32 } }"
       " input: ['I', 'H'] }");
-
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(QUInt8Input);B(QInt8Input);C(Input);D(Input);"
-            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"
-            "DMT/_4(Const);DMT/_5(Const);DMT/_6(Const);E(Input);F(Input);"
-            "G(Input);H(QInt32Input);I(_MklQuantizedMatMulWithBiasAndRelu);"
-            "J(Zeta)|A->I;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "A:control->DMT/_4:control;A:control->DMT/_5:control;"
-            "A:control->DMT/_6:control;B->I:1;C->I:2;D->I:3;DMT/_0->I:7;"
-            "DMT/_1->I:8;DMT/_2->I:9;DMT/_3->I:10;DMT/_4->I:11;DMT/_5->I:12;"
-            "DMT/_6->I:13;E->I:4;F->I:5;G->I:6;H->J:1;I->J");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(QUInt8Input);B(QInt8Input);C(Input);D(Input);"
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);"
+              "DMT/_4(Const);DMT/_5(Const);DMT/_6(Const);E(Input);F(Input);"
+              "G(Input);H(QInt32Input);I(_MklQuantizedMatMulWithBiasAndRelu);"
+              "J(Zeta)|A->I;"
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+              "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+              "A:control->DMT/_4:control;A:control->DMT/_5:control;"
+              "A:control->DMT/_6:control;B->I:1;C->I:2;D->I:3;DMT/_0->I:7;"
+              "DMT/_1->I:8;DMT/_2->I:9;DMT/_3->I:10;DMT/_4->I:11;DMT/_5->I:12;"
+              "DMT/_6->I:13;E->I:4;F->I:5;G->I:6;H->J:1;I->J");
+  } else {
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),
+              "A(QUInt8Input);B(QInt8Input);C(Input);D(Input);E(Input);"
+              "F(Input);G(Input);H(QInt32Input);"
+              "I(QuantizedMatMulWithBiasAndRelu);J(Zeta)|A->I;B->I:1;C->I:2;"
+              "D->I:3;E->I:4;F->I:5;G->I:6;H->J:1;I->J");
+  }
 }
 
 // Rewrite test for QuantizedMatMulWithBiasAndRelu Op with unsupported input
@@ -4563,22 +5156,31 @@ TEST_F(MklLayoutPassTest,
       " input: ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']}"
       "node { name: 'L' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
       " input: ['K', 'J'] }");
-
-  EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(QUInt8Input);B(QInt8Input);C(QInt32Input);"
-            "D(Input);DMT/_0(Const);"
-            "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);"
-            "DMT/_5(Const);DMT/_6(Const);DMT/_7(Const);DMT/_8(Const);E(Input);"
-            "F(Input);G(Input);H(Input);I(Input);J(QUInt8Input);"
-            "K(_MklQuantizedMatMulWithBiasAndReluAndRequantize);L(Zeta)|A->K;"
-            "A:control->DMT/_0:control;A:control->DMT/_1:control;"
-            "A:control->DMT/_2:control;A:control->DMT/_3:control;"
-            "A:control->DMT/_4:control;A:control->DMT/_5:control;"
-            "A:control->DMT/_6:control;A:control->DMT/_7:control;"
-            "A:control->DMT/_8:control;B->K:1;C->K:2;D->K:3;DMT/_0->K:9;"
-            "DMT/_1->K:10;DMT/_2->K:11;DMT/_3->K:12;DMT/_4->K:13;DMT/_5->K:14;"
-            "DMT/_6->K:15;DMT/_7->K:16;DMT/_8->K:17;E->K:4;F->K:5;G->K:6;"
-            "H->K:7;I->K:8;J->L:1;K->L");
+  if (!NativeFormatEnabled()) {
+    EXPECT_EQ(
+        DoMklLayoutOptimizationPass(),
+        "A(QUInt8Input);B(QInt8Input);C(QInt32Input);"
+        "D(Input);DMT/_0(Const);"
+        "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);DMT/_4(Const);"
+        "DMT/_5(Const);DMT/_6(Const);DMT/_7(Const);DMT/_8(Const);E(Input);"
+        "F(Input);G(Input);H(Input);I(Input);J(QUInt8Input);"
+        "K(_MklQuantizedMatMulWithBiasAndReluAndRequantize);L(Zeta)|A->K;"
+        "A:control->DMT/_0:control;A:control->DMT/_1:control;"
+        "A:control->DMT/_2:control;A:control->DMT/_3:control;"
+        "A:control->DMT/_4:control;A:control->DMT/_5:control;"
+        "A:control->DMT/_6:control;A:control->DMT/_7:control;"
+        "A:control->DMT/_8:control;B->K:1;C->K:2;D->K:3;DMT/_0->K:9;"
+        "DMT/_1->K:10;DMT/_2->K:11;DMT/_3->K:12;DMT/_4->K:13;DMT/_5->K:14;"
+        "DMT/_6->K:15;DMT/_7->K:16;DMT/_8->K:17;E->K:4;F->K:5;G->K:6;"
+        "H->K:7;I->K:8;J->L:1;K->L");
+  } else {
+    EXPECT_EQ(
+        DoMklLayoutOptimizationPass(),
+        "A(QUInt8Input);B(QInt8Input);C(QInt32Input);D(Input);E(Input);"
+        "F(Input);G(Input);H(Input);I(Input);J(QUInt8Input);"
+        "K(QuantizedMatMulWithBiasAndReluAndRequantize);L(Zeta)|A->K;B->K:1;"
+        "C->K:2;D->K:3;E->K:4;F->K:5;G->K:6;H->K:7;I->K:8;J->L:1;K->L");
+  }
 }
 
 // Rewrite test for QuantizedMatMulWithBiasAndRelu Op with unsupported input
@@ -4664,8 +5266,8 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
 
   bool first = true;
   while (iters > 0) {
-    Graph* graph = new Graph(OpRegistry::Global());
-    InitGraph(s, graph);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    InitGraph(s, graph.get());
     int N = graph->num_node_ids();
     if (first) {
       testing::SetLabel(strings::StrCat("Per graph node.  Nodes: ", N));
@@ -4673,13 +5275,12 @@ static void BM_MklLayoutRewritePass(int iters, int op_nodes) {
     }
     {
       testing::StartTiming();
-      std::unique_ptr<Graph> ug(graph);
+      std::unique_ptr<Graph> ug(graph.get());
       RunMklLayoutRewritePass(&ug);
       testing::StopTiming();
     }
     iters -= N;  // Our benchmark units are individual graph nodes,
                  // not whole graphs
-    // delete graph;
   }
 }
 BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);

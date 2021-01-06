@@ -305,6 +305,7 @@ tensorflow/lite/micro/kernels/strided_slice_test.cc \
 tensorflow/lite/micro/kernels/sub_test.cc \
 tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
+tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
 tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
 tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
@@ -318,6 +319,7 @@ tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
+tensorflow/lite/micro/kernels/conv_test_common.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
@@ -354,6 +356,7 @@ tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
 tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
+tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc
 
 MICROLITE_TEST_HDRS := \
@@ -418,6 +421,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/mean.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
@@ -436,6 +440,7 @@ tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/tanh.h \
+tensorflow/lite/kernels/internal/reference/transpose_conv.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
 tensorflow/lite/kernels/internal/min.h \

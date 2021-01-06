@@ -335,12 +335,12 @@ def keras_layer_tracepoint(layer, checkpoint_name):
   """
   try:
     outputs = layer.output
-    if tensor_util.is_tensor(outputs):
+    if tensor_util.is_tf_type(outputs):
       trace_tensor(outputs, '%s' % (checkpoint_name))
     else:
       idx = 0
       for output_tensor in outputs:
-        if tensor_util.is_tensor(outputs):
+        if tensor_util.is_tf_type(outputs):
           trace_tensor(output_tensor, '%s_%d' % (checkpoint_name, idx))
         idx += 1
   except AttributeError:

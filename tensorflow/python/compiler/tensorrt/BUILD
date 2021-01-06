@@ -36,7 +36,10 @@ py_library(
 
 py_library(
     name = "trt_convert_py",
-    srcs = ["trt_convert.py"],
+    srcs = [
+        "trt_convert.py",
+        "utils.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",

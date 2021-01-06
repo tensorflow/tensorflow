@@ -589,8 +589,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
     # and distributed_mode.
     self.assertEqual(self._worker_context["None"][0], (_strip_protocol(
         _bytes_to_str(self._workers[0].target)), 3, True, True))
-    self.assertEqual(self._worker_context[EVALUATOR][0],
-                     ("fake_evaluator", 3, True, False))
+    self.assertEqual(self._worker_context[EVALUATOR][0], ("", 3, True, False))
 
 
 class DistributeCoordinatorTestIndependentWorkerMode(
@@ -755,19 +754,15 @@ class DistributeCoordinatorTestIndependentWorkerMode(
     # and distributed_mode.
     self.assertEqual(self._worker_context["None"][0],
                      (_bytes_to_str(cluster_spec[WORKER][0]), 3, True, True))
-    self.assertEqual(self._worker_context[EVALUATOR][0],
-                     (cluster_spec[EVALUATOR][0], 3, True, False))
+    self.assertEqual(self._worker_context[EVALUATOR][0], ("", 3, True, False))
 
     # Make sure each worker runs a std server.
-    self.assertEqual(len(self._std_servers), 2)
+    self.assertEqual(len(self._std_servers), 1)
     self.assertTrue(WORKER in self._std_servers)
-    self.assertTrue(EVALUATOR in self._std_servers)
     self.assertEqual(len(self._std_servers[WORKER]), 3)
-    self.assertEqual(len(self._std_servers[EVALUATOR]), 1)
     self.assertFalse(self._std_servers[WORKER][0].joined)
     self.assertTrue(self._std_servers[WORKER][1].joined)
     self.assertTrue(self._std_servers[WORKER][2].joined)
-    self.assertFalse(self._std_servers[EVALUATOR][0].joined)
 
   def testRunStdServerInGoogleEnvironment(self):
     cluster_spec = {"worker": ["fake_worker"], "ps": ["localhost:0"]}

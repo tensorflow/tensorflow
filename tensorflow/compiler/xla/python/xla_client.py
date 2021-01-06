@@ -48,6 +48,9 @@ import numpy as np
 ops = _xla.ops
 profiler = _xla.profiler
 
+# Just an internal arbitrary increasing number to help with backward-compatible
+# changes.
+_version = 1
 
 xla_platform_names = {
     'cpu': 'Host',

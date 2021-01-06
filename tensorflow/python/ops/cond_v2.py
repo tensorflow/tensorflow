@@ -76,7 +76,7 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # graphs. Propagate that behavior here.
     add_control_dependencies = ops.get_default_graph()._add_control_dependencies
     pred = ops.convert_to_tensor(pred)
-    if (tensor_util.is_tensor(pred) and
+    if (tensor_util.is_tf_type(pred) and
         (pred.shape.dims is None or pred.shape.dims)):
       pred = array_ops.squeeze_v2(pred)
 

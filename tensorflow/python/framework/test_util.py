@@ -2555,7 +2555,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def _GetNdArray(self, a):
     # If a is tensor-like then convert it to ndarray
-    if tensor_util.is_tensor(a):
+    if tensor_util.is_tf_type(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:

@@ -248,7 +248,7 @@ class LossFunctionWrapper(Loss):
     Returns:
       Loss values per sample.
     """
-    if tensor_util.is_tensor(y_pred) and tensor_util.is_tensor(y_true):
+    if tensor_util.is_tf_type(y_pred) and tensor_util.is_tf_type(y_true):
       y_pred, y_true = losses_utils.squeeze_or_expand_dimensions(y_pred, y_true)
     ag_fn = autograph.tf_convert(self.fn, ag_ctx.control_status_ctx())
     return ag_fn(y_true, y_pred, **self._fn_kwargs)

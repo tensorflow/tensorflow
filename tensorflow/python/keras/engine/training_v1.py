@@ -1446,7 +1446,7 @@ class Model(training_lib.Model):
         for name in self.output_names:
           tmp_target_tensors.append(target_tensors.get(name, None))
         target_tensors = tmp_target_tensors
-      elif tensor_util.is_tensor(target_tensors):
+      elif tensor_util.is_tf_type(target_tensors):
         target_tensors = [target_tensors]
       else:
         raise TypeError('Expected `target_tensors` to be a list or tuple or '
@@ -2548,8 +2548,8 @@ class Model(training_lib.Model):
         all_inputs.append(target)
     # Type check that all inputs are *either* value *or* symbolic.
     # TODO(fchollet): this check could be removed in Eager mode?
-    if any(tensor_util.is_tensor(v) for v in all_inputs):
-      if not all(tensor_util.is_tensor(v) for v in all_inputs):
+    if any(tensor_util.is_tf_type(v) for v in all_inputs):
+      if not all(tensor_util.is_tf_type(v) for v in all_inputs):
         raise ValueError('Do not pass inputs that mix Numpy arrays and '
                          'TensorFlow tensors. '
                          'You passed: x=' + str(orig_inputs) +
@@ -2634,7 +2634,7 @@ class Model(training_lib.Model):
       raise ValueError('Model inputs are already set.')
 
     if self.__class__.__name__ == 'Sequential' and not self.built:
-      if tensor_util.is_tensor(inputs):
+      if tensor_util.is_tf_type(inputs):
         input_shape = (None,) + tuple(inputs.shape.as_list()[1:])
       elif isinstance(inputs, tensor_shape.TensorShape):
         input_shape = (None,) + tuple(inputs.as_list()[1:])
@@ -3142,7 +3142,7 @@ class _TrainingTarget(object):
 
 
 def _is_symbolic_tensor(x):
-  return tensor_util.is_tensor(x)
+  return tensor_util.is_tf_type(x)
 
 
 def _convert_scipy_sparse_tensor(value, expected_input):

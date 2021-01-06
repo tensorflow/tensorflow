@@ -543,6 +543,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/optimize:operator_property",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

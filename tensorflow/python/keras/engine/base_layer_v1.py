@@ -735,7 +735,7 @@ class Layer(base_layer.Layer):
       if self._expects_training_arg and training_value is not None:
         # Force the training_value to be bool type which matches to the contract
         # for layer/model call args.
-        if tensor_util.is_tensor(training_value):
+        if tensor_util.is_tf_type(training_value):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
@@ -1035,7 +1035,7 @@ class Layer(base_layer.Layer):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
@@ -1051,7 +1051,7 @@ class Layer(base_layer.Layer):
         continue
       if loss is None:
         continue
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       # TF Functions should take the eager path.

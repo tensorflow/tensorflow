@@ -55,8 +55,7 @@ static void InitGraph(const string& s, Graph* graph,
   GraphDef graph_def;
 
   auto parser = protobuf::TextFormat::Parser();
-  //  parser.AllowRelaxedWhitespace(true);
-  CHECK(parser.MergeFromString(s, &graph_def)) << s;
+  EXPECT_TRUE(parser.MergeFromString(s, &graph_def)) << s;
   GraphConstructorOptions opts;
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, graph));
 
@@ -68,7 +67,6 @@ static void InitGraph(const string& s, Graph* graph,
 class MklLayoutPassTest : public ::testing::Test {
  public:
   MklLayoutPassTest() : graph_(OpRegistry::Global()) {}
-
   Node* FindNode(const string& name) {
     for (Node* node : graph_.nodes()) {
       if (node->name() == name) return node;

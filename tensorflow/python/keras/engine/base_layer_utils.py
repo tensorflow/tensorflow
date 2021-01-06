@@ -706,7 +706,7 @@ def mark_as_return(outputs, acd):
 
   def _mark_as_return(tensor):
     """Marks `tensor` as the return value for automatic control deps."""
-    if not tensor_util.is_tensor(tensor):
+    if not tensor_util.is_tf_type(tensor):
       return tensor
 
     # pylint: disable=protected-access

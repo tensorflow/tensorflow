@@ -318,6 +318,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device() == nullptr ? "" : lib->device()->name();
     opts.is_multi_device_function = true;
+    const ConfigProto* config = lib->config_proto();
+    if (config) {
+      opts.config_proto = *config;
+    }
 
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
