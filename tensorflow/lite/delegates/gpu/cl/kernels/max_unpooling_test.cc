@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/max_unpooling.h"
 
 #include <vector>
 

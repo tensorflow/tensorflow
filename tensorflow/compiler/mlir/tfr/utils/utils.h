@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_UTILS_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_IR_TFR_UTILS_UTILS_H_
 
-#include <string>
-
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tfr/ir/tfr_ops.h"
 
 namespace mlir {
 namespace TFR {
@@ -35,6 +38,25 @@ std::string GetComposeFuncName(StringRef tf_op_name);
 //   tf__pack -> tf.Pack
 //   tf__concat_v2 => tf.ConcatV2
 std::string GetTFOpName(StringRef compose_func_name);
+
+// Validate the attributes of 'src' is either contained in the registered
+// attribute sets or in the allowed list.
+LogicalResult ValidateAttrs(Operation* src, const StringSet<>& registered);
+
+// Copies all the allowed attributes in 'src' to 'dst'. The copy failed if the
+// 'dst' has the attribute. Return a failure if there are any attributes are not
+// allowed and also unregistered.
+LogicalResult CopyAllowedUnregisteredAttrs(Operation* src, CallOp dst,
+                                           const StringSet<>& registered);
+
+// Copies all the allowed attributes in 'src' to 'dst'. FlatSymbolRefAttr is
+// excluded.
+LogicalResult CopyNonSymbolRefAttrs(CallOp src, Operation* dst);
+
+// Propagates all the attributes in 'src' to the operations between 'begin' and
+// 'end'. Operation 'end' is excluded.
+void PropagateAttrsToOperations(CallOp src, Block::iterator begin,
+                                Block::iterator end);
 
 }  // namespace TFR
 }  // namespace mlir

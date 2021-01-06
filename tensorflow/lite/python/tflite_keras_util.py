@@ -115,7 +115,7 @@ def _create_pseudo_names(tensors, prefix):
   `[x, y]` becomes:
   `['output_1', 'output_2']`
 
-  Arguments:
+  Args:
     tensors: `Model`'s outputs or inputs.
     prefix: 'output_' for outputs, 'input_' for inputs.
 

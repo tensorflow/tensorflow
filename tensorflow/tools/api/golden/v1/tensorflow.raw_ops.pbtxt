@@ -753,8 +753,16 @@ tf_module {
     argspec: "args=[\'T\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
+    name: "CollectiveBcastRecvV2"
+    argspec: "args=[\'group_size\', \'group_key\', \'instance_key\', \'shape\', \'T\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
     name: "CollectiveBcastSend"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
+  }
+  member_method {
+    name: "CollectiveBcastSendV2"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'communication_hint\', \'timeout_seconds\', \'name\'], varargs=None, keywords=None, defaults=[\'auto\', \'0\', \'None\'], "
   }
   member_method {
     name: "CollectiveGather"
@@ -2159,6 +2167,14 @@ tf_module {
   member_method {
     name: "LoadTPUEmbeddingFTRLParametersGradAccumDebug"
     argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "LoadTPUEmbeddingFrequencyEstimatorParameters"
+    argspec: "args=[\'parameters\', \'last_hit_step\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "LoadTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'last_hit_step\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "LoadTPUEmbeddingMDLAdagradLightParameters"
@@ -3749,6 +3765,14 @@ tf_module {
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "RetrieveTPUEmbeddingFrequencyEstimatorParameters"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingFrequencyEstimatorParametersGradAccumDebug"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
     name: "RetrieveTPUEmbeddingMDLAdagradLightParameters"
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
@@ -4567,6 +4591,14 @@ tf_module {
   member_method {
     name: "StatelessRandomGammaV2"
     argspec: "args=[\'shape\', \'seed\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGetAlg"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessRandomGetKeyCounter"
+    argspec: "args=[\'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "StatelessRandomGetKeyCounterAlg"

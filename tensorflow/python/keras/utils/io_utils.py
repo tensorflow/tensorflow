@@ -69,7 +69,7 @@ def path_to_string(path):
 def ask_to_proceed_with_overwrite(filepath):
   """Produces a prompt asking about overwriting a file.
 
-  Arguments:
+  Args:
       filepath: the path to the file to be overwritten.
 
   Returns:

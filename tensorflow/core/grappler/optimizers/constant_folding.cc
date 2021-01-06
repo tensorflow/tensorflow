@@ -59,8 +59,8 @@ namespace tensorflow {
 namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
-// We only fold/materialize constants smaller than 10 MiB.
-const int64 kMaxConstantSize = 10 * 1024 * 1024;
+// We only fold/materialize constants smaller than 100kB.
+const int64 kMaxConstantSize = 100 * 1024;
 
 namespace {
 template <typename T>

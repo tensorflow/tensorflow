@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
@@ -52,6 +53,8 @@ struct HostComputeMetadataSerializedProto {
 };
 
 typedef struct XLA_TpuMeshState XLA_TpuMeshState;
+
+typedef struct TpuProfiler TpuProfiler;
 
 typedef struct XLA_DeviceAssignment {
   const char* bytes;
@@ -93,6 +96,31 @@ TFTPU_CAPI_EXPORT void TpuCompile_CompileAndBuild(
     TpuSerializedProto compilation_request, const XLA_TpuMeshState* mesh_state,
     XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
 
+// Compiles a HLO IR and returns `count` number of TPU programs ready for
+// execution. The API allocates the `XLA_TpuProgram*[]` array `tpu_programs` and
+// creates `XLA_TpuProgram` object(s) using the `TpuProgram_New` API. The caller
+// is responsible to deallocate both the `XLA_TpuProgram*[]` array and the
+// `XLA_TpuProgram` object(s) using `TpuProgram_FreeArray` and `TpuProgram_Free`
+// API respectively.
+TFTPU_CAPI_EXPORT void TpuCompile_XrtCompileAndBuild(
+    TpuSerializedProto xrt_computation, const XLA_TpuMeshState* mesh_state,
+    XLA_TpuProgram** tpu_programs[], size_t* count, TF_Status* status);
+
+// Creates a new TPU profiler object.
+TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Create();
+
+TFTPU_CAPI_EXPORT TpuProfiler* TpuProfiler_Free(TpuProfiler* tpu_profiler);
+
+TFTPU_CAPI_EXPORT void TpuProfiler_Start(TpuProfiler* tpu_profiler,
+                                         TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuProfiler_Stop(TpuProfiler* tpu_profiler,
+                                        TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuProfiler_CollectData(
+    TpuProfiler* tpu_profiler, TF_Status* status,
+    tensorflow::profiler::XSpace* space);
+
 // Creates a new TPU mesh state object.
 TFTPU_CAPI_EXPORT XLA_TpuMeshState* TpuMeshState_Create();
 
@@ -112,6 +140,7 @@ typedef struct TpuExecutable_LoadProgramAndEnqueueToStream_Params {
   SE_DeviceMemoryBase* arguments;
   size_t arguments_len;
   SE_DeviceMemoryBase* result;
+  bool has_cross_program_prefetch_addr;
   SE_DeviceMemoryBase* cross_program_prefetch_addr;
   int32_t rng_seed;
   XLA_DeviceAssignment* device_assignment;
@@ -230,14 +259,42 @@ TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpuMemoryLimit(int64_t* memory_limit,
                                                           TF_Status* status);
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_RemoteCompilationCacheSizeInBytes(
     int64_t* cache_size_in_bytes);
+
+typedef struct TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t tpu_host_config_size;
+  const char* tpu_host_config;
+
+  size_t* server_address_output_size;  // out
+  char** server_address_output;        // out
+  TF_Status* status;                   // out
+} TpuConfigurationApi_CompilationCacheServerAddressFromConfig_Params;
+
+#define TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params_SIZE \
+  (sizeof(                                                                   \
+      struct TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params))
+
 TFTPU_CAPI_EXPORT
 void TpuConfigurationApi_CompilationCacheServerAddressFromConfig(
-    size_t tpu_host_config_size, const char* tpu_host_config,
-    size_t* server_address_output_size, char** server_address_output,
-    TF_Status* status);
+    TpuConfigurationApi_CompilationCacheServerAddrFromConfig_Params* params);
+
+typedef struct TpuConfigurationApi_GetServerAddressAndPort_Params {
+  int32_t struct_size;
+  void* priv;
+
+  size_t* server_address_output_size;  // out
+  char** server_address_output;        // out
+  int* port_output;                    // out
+  TF_Status* status;                   // out
+} TpuConfigurationApi_GetServerAddressAndPort_Params;
+
+#define TpuConfigurationApi_GetServerAddressAndPort_Params_SIZE \
+  (sizeof(struct TpuConfigurationApi_GetServerAddressAndPort_Params))
+
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_GetServerAddressAndPort(
-    size_t* server_address_output_size, char** server_address_output,
-    int* port_output, TF_Status* status);
+    TpuConfigurationApi_GetServerAddressAndPort_Params* params);
 
 // Creates a new TPU program.
 TFTPU_CAPI_EXPORT XLA_TpuProgram* TpuProgram_New();
@@ -352,10 +409,17 @@ void TpuNodeContext_Initialize(int device_ordinal, TF_Status* status);
 
 struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CompileAndBuild);
+  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_XrtCompileAndBuild);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuMeshState_MeshCommonState);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Create);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Start);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_Stop);
+  TFTPU_ADD_FN_IN_STRUCT(TpuProfiler_CollectData);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_LoadProgramAndEnqueueToStream);
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_HostShapeToDeviceShape);

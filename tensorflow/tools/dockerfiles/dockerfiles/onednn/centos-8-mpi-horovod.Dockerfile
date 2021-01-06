@@ -1,4 +1,4 @@
-# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,8 +88,10 @@ ARG HOROVOD_WITH_TENSORFLOW=1
 ARG HOROVOD_VERSION=
 
 RUN yum update -y && yum install -y \
+    cmake \
     gcc \
     gcc-c++ \
+    make \
     python36-devel && \
     yum clean all
 

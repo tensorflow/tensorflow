@@ -374,6 +374,31 @@ cc_library(
 )
 
 cc_library(
+    name = "task_runner",
+    srcs = ["task_runner.cc"],
+    hdrs = ["task_runner.h"],
+    deps = [
+        ":common_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/data:standalone",
+    ],
+)
+
+tf_cc_test(
+    name = "task_runner_test",
+    srcs = ["task_runner_test.cc"],
+    deps = [
+        ":task_runner",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/data:standalone",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "test_cluster",
     testonly = True,
     srcs = ["test_cluster.cc"],
@@ -393,7 +418,7 @@ cc_library(
     hdrs = [
         "test_util.h",
     ],
-    data = glob(["testdata/*.pbtxt"]),
+    data = ["//tensorflow/core/data/service/testdata"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -465,6 +490,7 @@ cc_library(
         ":dispatcher_proto_cc",
         ":grpc_util",
         ":split_provider",
+        ":task_runner",
         ":utils",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",
@@ -478,6 +504,7 @@ cc_library(
         "//tensorflow/core/data:dataset_proto_cc",
         "//tensorflow/core/data:standalone",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
     ],

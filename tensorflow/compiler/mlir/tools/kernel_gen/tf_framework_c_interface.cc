@@ -41,8 +41,9 @@ extern "C" void* _mlir_ciface_tf_alloc(void* op_kernel_ctx, size_t num_elements,
                                        int32_t output_index,
                                        int32_t num_candidates,
                                        int32_t* candidate_input_indices) {
+  static constexpr int kAmbiguousOutputIndex = -1;
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
-  if (output_index != -1) {
+  if (output_index != kAmbiguousOutputIndex) {
     // Create a 1D shape, because the shapes don't have to match exactly for
     // input forwarding. Only the number of elements must be the same.
     tensorflow::TensorShape output_shape;
@@ -75,7 +76,7 @@ extern "C" void _mlir_ciface_tf_dealloc(void* op_kernel_ctx, void* ptr) {
 extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
                                              int32_t error_code, char* msg) {
   Optional<ErrorCode> symbol = symbolizeErrorCode(error_code);
-  if (symbol.hasValue()) {
+  if (!symbol.hasValue()) {
     LOG(ERROR) << "No valid conversion from integer value = " << error_code
                << "to ErrorCode attribute";
     return;

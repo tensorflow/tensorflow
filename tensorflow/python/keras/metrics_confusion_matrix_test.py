@@ -1142,6 +1142,8 @@ class AUCTest(test.TestCase, parameterized.TestCase):
   def setup(self):
     self.num_thresholds = 3
     self.y_pred = constant_op.constant([0, 0.5, 0.3, 0.9], dtype=dtypes.float32)
+    epsilon = 1e-12
+    self.y_pred_logits = -math_ops.log(1.0 / (self.y_pred + epsilon) - 1.0)
     self.y_true = constant_op.constant([0, 0, 1, 1])
     self.sample_weight = [1, 2, 3, 4]
 
@@ -1255,6 +1257,20 @@ class AUCTest(test.TestCase, parameterized.TestCase):
     auc_obj = metrics.AUC(num_thresholds=self.num_thresholds)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true, self.y_pred)
+
+    # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
+    # recall = [2/2, 1/(1+1), 0] = [1, 0.5, 0]
+    # fp_rate = [2/2, 0, 0] = [1, 0, 0]
+    # heights = [(1 + 0.5)/2, (0.5 + 0)/2] = [0.75, 0.25]
+    # widths = [(1 - 0), (0 - 0)] = [1, 0]
+    expected_result = (0.75 * 1 + 0.25 * 0)
+    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+
+  def test_unweighted_from_logits(self):
+    self.setup()
+    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, from_logits=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    result = auc_obj(self.y_true, self.y_pred_logits)
 
     # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
     # recall = [2/2, 1/(1+1), 0] = [1, 0.5, 0]
@@ -1418,6 +1434,10 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
     self.y_pred = constant_op.constant(
         np.array([[0, 0.5, 0.3, 0.9], [0.1, 0.2, 0.3, 0.4]]).T,
         dtype=dtypes.float32)
+
+    epsilon = 1e-12
+    self.y_pred_logits = -math_ops.log(1.0 / (self.y_pred + epsilon) - 1.0)
+
     self.y_true_good = constant_op.constant(
         np.array([[0, 0, 1, 1], [0, 0, 1, 1]]).T)
     self.y_true_bad = constant_op.constant(
@@ -1503,6 +1523,21 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
       expected_result = (0.875 + 1.0) / 2.0
       self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
+  def test_unweighted_from_logits(self):
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(
+          num_thresholds=self.num_thresholds,
+          multi_label=True,
+          from_logits=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(self.y_true_good, self.y_pred_logits)
+
+      # tpr = [[1, 1, 0.5, 0.5, 0], [1, 1, 0, 0, 0]]
+      # fpr = [[1, 0.5, 0, 0, 0], [1, 0, 0, 0, 0]]
+      expected_result = (0.875 + 1.0) / 2.0
+      self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+
   def test_sample_weight_flat(self):
     self.setup()
     auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=False)
@@ -1561,6 +1596,23 @@ class MultiAUCTest(test.TestCase, parameterized.TestCase):
     auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=False)
     self.evaluate(variables.variables_initializer(auc_obj.variables))
     result = auc_obj(self.y_true_good, self.y_pred)
+
+    # tp = [4, 4, 1, 1, 0]
+    # fp = [4, 1, 0, 0, 0]
+    # fn = [0, 0, 3, 3, 4]
+    # tn = [0, 3, 4, 4, 4]
+
+    # tpr = [1, 1, 0.25, 0.25, 0]
+    # fpr = [1, 0.25, 0, 0, 0]
+    expected_result = 1.0 - (3.0 / 32.0)
+    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+
+  def test_unweighted_flat_from_logits(self):
+    self.setup()
+    auc_obj = metrics.AUC(
+        num_thresholds=self.num_thresholds, multi_label=False, from_logits=True)
+    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    result = auc_obj(self.y_true_good, self.y_pred_logits)
 
     # tp = [4, 4, 1, 1, 0]
     # fp = [4, 1, 0, 0, 0]

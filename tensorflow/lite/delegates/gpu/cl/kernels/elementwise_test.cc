@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/elementwise.h"
 
 #include <vector>
 
@@ -388,7 +388,7 @@ TEST_F(OpenCLOperationTest, Square) {
 TEST_F(OpenCLOperationTest, Tanh) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 1, 2);
-  src_tensor.data = {1.0f, 2.0f, 3.0f, 4.0f};
+  src_tensor.data = {-50.0f, -0.1f, 0.1f, 50.0f};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -407,8 +407,8 @@ TEST_F(OpenCLOperationTest, Tanh) {
           BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(
           dst_tensor.data,
-          Pointwise(FloatNear(eps), {std::tanh(1.0f), std::tanh(2.0f),
-                                     std::tanh(3.0f), std::tanh(4.0f)}));
+          Pointwise(FloatNear(eps), {std::tanh(-50.0f), std::tanh(-0.1f),
+                                     std::tanh(0.1f), std::tanh(50.0f)}));
     }
   }
 }

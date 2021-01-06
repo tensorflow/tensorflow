@@ -110,7 +110,7 @@ class OpsSet(enum.Enum):
     "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
 
   def __str__(self):
-    return self.value
+    return str(self.value)
 
   @staticmethod
   def get_options():
@@ -126,7 +126,8 @@ class ConverterError(Exception):
 def mlir_quantize(input_data_str,
                   disable_per_channel=False,
                   fully_quantize=False,
-                  inference_type=_types_pb2.INT8):
+                  inference_type=_types_pb2.INT8,
+                  enable_numeric_verify=False):
   """Quantize `input_data_str` with calibration results.
 
   Args:
@@ -137,6 +138,8 @@ def mlir_quantize(input_data_str,
     fully_quantize: Bool indicating whether to fully quantize the model. Besides
       model body, the input/output will be quantized as well.
     inference_type: Data type for the activations. The default value is int8.
+    enable_numeric_verify: Experimental. Subject to change. Bool indicating
+      whether to add NumericVerify ops into the debug mode quantized model.
 
   Returns:
     Quantized model in serialized form (e.g. a TFLITE model) with floating-point
@@ -145,7 +148,8 @@ def mlir_quantize(input_data_str,
   return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
                                                       disable_per_channel,
                                                       fully_quantize,
-                                                      inference_type)
+                                                      inference_type,
+                                                      enable_numeric_verify)
 
 
 def mlir_sparsify(input_data_str):
@@ -317,6 +321,7 @@ def build_toco_flags(inference_type=dtypes.float32,
                      dump_graphviz_video=False,
                      target_ops=None,
                      conversion_summary_dir=None,
+                     select_user_tf_ops=None,
                      **_):
   """Build the TOCO flags object from params."""
   toco = _toco_flags_pb2.TocoFlags()
@@ -333,6 +338,8 @@ def build_toco_flags(inference_type=dtypes.float32,
   toco.allow_custom_ops = allow_custom_ops
   if custom_opdefs:
     toco.custom_opdefs.extend(custom_opdefs)
+  if select_user_tf_ops:
+    toco.select_user_tf_ops.extend(select_user_tf_ops)
   toco.post_training_quantize = post_training_quantize
   toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
@@ -376,7 +383,8 @@ def build_toco_convert_protos(input_tensors,
                               saved_model_dir=None,
                               saved_model_version=0,
                               saved_model_tags=None,
-                              saved_model_exported_names=None):
+                              saved_model_exported_names=None,
+                              select_user_tf_ops=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -386,22 +394,22 @@ def build_toco_convert_protos(input_tensors,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8, tf.int8}`.  (default tf.float32)
-    inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays in the case of quantization. Must be
-      `{tf.float32, tf.uint8, tf.int8}`. (default `inference_type`)
-    input_format: Type of data to read Currently must be
-      `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
-    input_shapes: Input array shape. It needs to be a list of the same length as
-      `input_tensors`, or None. (default None)
-    output_format: Output file format. Currently must be `{TFLITE,
-      GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: List of tuples of floats representing the mean and
-      standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_input_type` is `QUANTIZED_UINT8` or `INT8`.
-      real_input_value = (quantized_input_value - mean_value) / std_dev_value.
-      (default None)
+    inference_type: Data type of numeric arrays, excluding the input layer.
+      (default tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
+    inference_input_type: Data type of the numeric arrays in the input layer. If
+      `inference_input_type` is in {tf.int8, tf.uint8}, then
+      `quantized_input_stats` must be provided. (default is the value assigned
+      to `inference_type`, must be in {tf.float32, tf.int8, tf.uint8})
+    input_format: Type of data to read.
+      (default TENSORFLOW_GRAPHDEF, must be in {TENSORFLOW_GRAPHDEF})
+    input_shapes: Input array shape. (default None, must be None or a list of
+      the same length as `input_tensors`.)
+    output_format: Output file format. (default TFLITE, must be in
+    {TFLITE, GRAPHVIZ_DOT})
+    quantized_input_stats: Map of input tensor names to a tuple of floats
+      representing the mean and standard deviation of the training data.
+      (e.g., {"foo" : (0., 1.)}). Required if `inference_input_type` is tf.int8
+        or tf.uint8. (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
@@ -454,6 +462,9 @@ def build_toco_convert_protos(input_tensors,
     saved_model_exported_names: Names to be exported (default: export all) when
       the saved model import path is on. This value will be set only when the
       SavedModel import path will be used.
+    select_user_tf_ops: List of user's defined TensorFlow ops need to be
+      supported in the TensorFlow Lite runtime. These ops will be supported as
+      select TensorFlow ops.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -472,7 +483,7 @@ def build_toco_convert_protos(input_tensors,
                           allow_custom_ops, custom_opdefs,
                           post_training_quantize, quantize_to_float16,
                           dump_graphviz_dir, dump_graphviz_video, target_ops,
-                          conversion_summary_dir)
+                          conversion_summary_dir, select_user_tf_ops)
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
@@ -502,6 +513,9 @@ def build_toco_convert_protos(input_tensors,
         else:
           dims.append(int(dim))
       input_array.shape.dims.extend(dims)
+      input_array.shape.unknown_rank = False
+    else:
+      input_array.shape.unknown_rank = True
 
   for output_tensor in output_tensors:
     if saved_model_dir:
@@ -560,8 +574,10 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     if _requires_input_stats(toco_flags):
       if (("quantized_input_stats" not in kwargs) or
           (not kwargs["quantized_input_stats"])):
-        raise ValueError("std_dev and mean must be defined when inference_type "
-                         "or inference_input_type is QUANTIZED_UINT8 or INT8.")
+        raise ValueError(
+            "The `quantized_input_stats` flag must be defined when either "
+            "`inference_type` flag or `inference_input_type` flag is set to "
+            "tf.int8 or tf.uint8.")
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name
@@ -647,7 +663,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Typically this function is used to convert from TensorFlow GraphDef to TFLite.
   Conversion can be customized by providing arguments that are forwarded to
   `build_toco_convert_protos` (see documentation for details). This function has
-  been deprecated. Please use `lite.TFLiteConverter` instead.
+  been deprecated. Please use `tf.lite.TFLiteConverter` instead.
 
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),

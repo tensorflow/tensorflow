@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 
-#include <fstream>
 #include <memory>
 #include <sstream>
 #include <unordered_set>
@@ -296,33 +295,6 @@ TfLiteStatus RemoveOutputTensor(ModelT* model,
   return kTfLiteOk;
 }
 
-void WriteFile(const std::string& out_file, const uint8_t* bytes,
-               size_t num_bytes) {
-  std::fstream stream(out_file, std::ios::binary | std::ios::out);
-  for (size_t i = 0; i < num_bytes; i++) {
-    stream << bytes[i];
-  }
-  TFLITE_DCHECK(!stream.bad() && !stream.fail());
-}
-
-std::unique_ptr<flatbuffers::FlatBufferBuilder> FinishModel(
-    const tflite::ModelT* model) {
-  std::unique_ptr<flatbuffers::FlatBufferBuilder> builder(
-      new flatbuffers::FlatBufferBuilder());
-  auto packed_model = tflite::Model::Pack(*builder, model);
-  tflite::FinishModelBuffer(*builder, packed_model);
-  return builder;
-}
-
-std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
-    const string& model_filepath) {
-  auto fb_model =
-      tflite::FlatBufferModel::BuildFromFile(model_filepath.c_str());
-  auto tflite_model = fb_model->GetModel();
-  auto copied_model = absl::make_unique<tflite::ModelT>();
-  tflite_model->UnPackTo(copied_model.get(), nullptr);
-  return copied_model;
-}
 
 int GetOriginalNumberOfTensors(const TensorType& input_type,
                                const TensorType& output_type, ModelT* model,
@@ -400,9 +372,9 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
   }
 
   // Create model.
-  auto tflite_model = CreateMutableModelFromFile(input_file);
+  auto tflite_model = utils::CreateMutableModelFromFile(input_file);
 
-  auto model_builder = FinishModel(tflite_model.get());
+  auto model_builder = utils::FinishModel(tflite_model.get());
 
   auto fixed_point_model_builder =
       absl::make_unique<flatbuffers::FlatBufferBuilder>();
@@ -412,7 +384,7 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
                                      output_type);
   TFLITE_DCHECK_EQ(status, kTfLiteOk);
 
-  WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
+  utils::WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
 
   return kTfLiteOk;
 }

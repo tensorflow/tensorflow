@@ -98,6 +98,7 @@ tf_cc_test(
 # Public support libraries ----------------------------------------------------<
 cc_library(
     name = "image",
+    visibility = ["//visibility:public"],
     deps = [
         ":adjust_contrast_op",
         ":adjust_hue_op",

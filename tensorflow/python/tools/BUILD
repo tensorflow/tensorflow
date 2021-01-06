@@ -274,8 +274,8 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:_pywrap_kernel_registry",
         "//tensorflow/python:platform",
+        "//tensorflow/python/util:_pywrap_kernel_registry",
     ],
 )
 
@@ -399,8 +399,8 @@ genrule(
     cmd = (
         "$(location :make_aot_compile_models) --out_dir $(@D)"
     ),
-    exec_tools = [":make_aot_compile_models"],
     tags = ["no_rocm"],
+    tools = [":make_aot_compile_models"],
 )
 
 filegroup(
@@ -444,7 +444,6 @@ saved_model_compile_aot(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
 )
 
 saved_model_compile_aot(
@@ -455,7 +454,6 @@ saved_model_compile_aot(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
 )
 
 saved_model_compile_aot(
@@ -466,7 +464,6 @@ saved_model_compile_aot(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
     variables_to_feed = "variable_x",
 )
 
@@ -503,7 +500,6 @@ tf_cc_test(
     srcs = if_xla_available([
         "aot_compiled_test.cc",
     ]),
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([

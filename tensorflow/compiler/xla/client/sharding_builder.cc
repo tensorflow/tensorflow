@@ -24,6 +24,12 @@ OpSharding Replicate() {
   return result;
 }
 
+OpSharding Manual() {
+  OpSharding result;
+  result.set_type(OpSharding::MANUAL);
+  return result;
+}
+
 OpSharding AssignDevice(int device) {
   OpSharding result;
   result.set_type(OpSharding::MAXIMAL);

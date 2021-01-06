@@ -52,8 +52,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, axis >= 0);
   TF_LITE_ENSURE(context, axis < t0->dims->size);
 
-  // TODO(ahentz): These are limitations of our implementation that could be
-  // removed with a bit of effort.
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
@@ -123,7 +121,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // TODO(ahentz): Creating 'all_inputs' below is not very efficient. We should
 // allocate and populate these during Prepare().
-// TODO(ycling): Activation function parameter is ignored. For now we dont have
+// TODO(ycling): Activation function parameter is ignored. For now we don't have
 // a model with a Concatenation with fused activation function.
 #define TF_LITE_CONCATENATION(scalar)                                         \
   {                                                                           \

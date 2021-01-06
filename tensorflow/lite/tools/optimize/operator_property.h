@@ -110,7 +110,8 @@ struct OperatorProperty {
 
   // Use same min of min and max of max for each group.
   // Incompatible with restrict_same_input_output_scale and restricted_value.
-  // TODO(jianlijianli): make it compatible with other restrictions when there
+  // Currently it only supports scale pair of {input_index, output_index}.
+  // TODO(b/174534943): make it compatible with other restrictions when there
   // is a use case.
   std::vector<std::vector<int>> restrict_scale = {};
 
@@ -125,8 +126,23 @@ struct OperatorProperty {
   bool quantize_input_as_activations = false;
 };
 
+// The op as well as it variants.
+// TODO(b/174283888): extend it to support ops that has multiple variants.
+struct OpVariant {
+  BuiltinOperator op_code;
+  bool use_layer_norm = false;
+  bool use_projection = false;
+  bool use_peephole = false;
+  // An attribute to indicate if quantization is supported for this Op.
+  // This attribute is equivalent to the "quantizable" attribute in
+  // "OperatorProperty". It added here since OpVariants peeks inside the Op and
+  // determines its quantization related properties.
+  bool is_quantizable = true;
+};
+
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                                      int op_index);
+OperatorProperty GetOperatorProperty(OpVariant op_variant);
 
 }  // namespace operator_property
 }  // namespace optimize

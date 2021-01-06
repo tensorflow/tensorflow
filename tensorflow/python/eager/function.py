@@ -33,7 +33,6 @@ from six.moves import map
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import _pywrap_utils
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import backprop
@@ -67,6 +66,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import save_context
+from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader

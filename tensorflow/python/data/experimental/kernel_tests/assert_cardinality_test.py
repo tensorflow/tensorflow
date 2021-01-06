@@ -55,6 +55,16 @@ class AssertCardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
               "elements but contained only 1 element.") +
           combinations.combine(
               num_elements=10,
+              asserted_cardinality=cardinality.INFINITE,
+              expected_error="Input dataset was expected to contain an "
+              "infinite number of elements but contained only 10 elements.") +
+          combinations.combine(
+              num_elements=1,
+              asserted_cardinality=cardinality.INFINITE,
+              expected_error="Input dataset was expected to contain an "
+              "infinite number of elements but contained only 1 element.") +
+          combinations.combine(
+              num_elements=10,
               asserted_cardinality=5,
               expected_error="Input dataset was expected to contain 5 "
               "elements but contained at least 6 elements.") +

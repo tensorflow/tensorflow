@@ -22,11 +22,9 @@ from __future__ import print_function
 import abc
 import collections
 import functools
-import getpass
 import os
 import re
 import threading
-import time
 
 import six
 
@@ -128,7 +126,13 @@ def record_if(condition):
 
   The provided value can be a python boolean, a scalar boolean Tensor, or
   or a callable providing such a value; if a callable is passed it will be
-  invoked on-demand to determine whether summary writing will occur.
+  invoked on-demand to determine whether summary writing will occur.  Note that
+  when calling record_if() in an eager mode context, if you intend to provide a
+  varying condition like `step % 100 == 0`, you must wrap this in a
+  callable to avoid immediate eager evaluation of the condition.  In particular,
+  using a callable is the only way to have your condition evaluated as part of
+  the traced body of an @tf.function that is invoked from within the
+  `record_if()` context.
 
   Args:
     condition: can be True, False, a bool Tensor, or a callable providing such.
@@ -451,7 +455,7 @@ def initialize(
   if graph is not None:
     data = _serialize_graph(graph)
     x = array_ops.placeholder(dtypes.string)
-    session.run(_graph(x, 0), feed_dict={x: data})
+    session.run(graph_v1(x, 0), feed_dict={x: data})
 
 
 @tf_export("summary.create_file_writer", v1=[])
@@ -561,58 +565,6 @@ def create_file_writer(logdir,
             max_queue=max_queue,
             flush_millis=flush_millis,
             filename_suffix=filename_suffix))
-
-
-def create_db_writer(db_uri,
-                     experiment_name=None,
-                     run_name=None,
-                     user_name=None,
-                     name=None):
-  """Creates a summary database writer in the current context.
-
-  This can be used to write tensors from the execution graph directly
-  to a database. Only SQLite is supported right now. This function
-  will create the schema if it doesn't exist. Entries in the Users,
-  Experiments, and Runs tables will be created automatically if they
-  don't already exist.
-
-  Args:
-    db_uri: For example "file:/tmp/foo.sqlite".
-    experiment_name: Defaults to YYYY-MM-DD in local time if None.
-      Empty string means the Run will not be associated with an
-      Experiment. Can't contain ASCII control characters or <>. Case
-      sensitive.
-    run_name: Defaults to HH:MM:SS in local time if None. Empty string
-      means a Tag will not be associated with any Run. Can't contain
-      ASCII control characters or <>. Case sensitive.
-    user_name: Defaults to system username if None. Empty means the
-      Experiment will not be associated with a User. Must be valid as
-      both a DNS label and Linux username.
-    name: Shared name for this SummaryWriter resource stored to default
-      `tf.Graph`.
-
-  Returns:
-    A `tf.summary.SummaryWriter` instance.
-  """
-  with ops.device("cpu:0"):
-    if experiment_name is None:
-      experiment_name = time.strftime("%Y-%m-%d", time.localtime(time.time()))
-    if run_name is None:
-      run_name = time.strftime("%H:%M:%S", time.localtime(time.time()))
-    if user_name is None:
-      user_name = getpass.getuser()
-    experiment_name = _cleanse_string(
-        "experiment_name", _EXPERIMENT_NAME_PATTERNS, experiment_name)
-    run_name = _cleanse_string("run_name", _RUN_NAME_PATTERNS, run_name)
-    user_name = _cleanse_string("user_name", _USER_NAME_PATTERNS, user_name)
-    return ResourceSummaryWriter(
-        shared_name=name,
-        init_op_fn=functools.partial(
-            gen_summary_ops.create_summary_db_writer,
-            db_uri=db_uri,
-            experiment_name=experiment_name,
-            run_name=run_name,
-            user_name=user_name))
 
 
 @tf_export("summary.create_noop_writer", v1=[])
@@ -966,8 +918,7 @@ def audio(name, tensor, sample_rate, max_outputs, family=None, step=None):
   return summary_writer_function(name, tensor, function, family=family)
 
 
-# TODO(b/171925996): rename this to `graph_v1` after changing all callsites.
-def graph(param, step=None, name=None):
+def graph_v1(param, step=None, name=None):
   """Writes a TensorFlow graph to the summary interface.
 
   The graph summary is, strictly speaking, not a summary. Conditions
@@ -1012,13 +963,8 @@ def graph(param, step=None, name=None):
         writer._resource, _choose_step(step), tensor, name=name)  # pylint: disable=protected-access
 
 
-_graph = graph  # for functions with a graph parameter
-
-
-# TODO(b/171925996): rename this to `graph` for consistency when graph_v1 is
-# renamed.
 @tf_export("summary.graph", v1=[])
-def graph_v2(graph_data):
+def graph(graph_data):
   """Writes a TensorFlow graph summary.
 
   Write an instance of `tf.Graph` or `tf.compat.v1.GraphDef` as summary only
@@ -1172,7 +1118,7 @@ def _check_create_file_writer_args(inside_function, **kwargs):
     ValueError: if the arguments are graph tensors.
   """
   for arg_name, arg in kwargs.items():
-    if not isinstance(arg, ops.EagerTensor) and tensor_util.is_tensor(arg):
+    if not isinstance(arg, ops.EagerTensor) and tensor_util.is_tf_type(arg):
       if inside_function:
         raise ValueError(
             "Invalid graph Tensor argument \"%s=%s\" to create_file_writer() "
@@ -1391,4 +1337,7 @@ def trace_off():
     context.context().disable_run_metadata()
 
   if profiler:
-    _profiler.stop()
+    try:
+      _profiler.stop()
+    except _profiler.ProfilerNotRunningError:
+      pass

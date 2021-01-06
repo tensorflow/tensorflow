@@ -27,12 +27,11 @@ limitations under the License.
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
@@ -151,7 +150,7 @@ StatusOr<FunctionDef> TFRDecomposeContext::ExpandNode(const NodeDef& node_def,
   mlir::Location loc = mlir::UnknownLoc::get(context);
   mlir::ModuleOp module = mlir::ModuleOp::create(loc);
   mlir::FunctionType func_type =
-      mlir::FunctionType::get(input_tys, output_tys, context);
+      mlir::FunctionType::get(context, input_tys, output_tys);
   llvm::StringRef func_name_str(func_name.data(), func_name.size());
   auto func = mlir::FuncOp::create(loc, func_name_str, func_type, {});
   module.push_back(func);

@@ -167,7 +167,6 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
 
   // For max pooling, need to return workspace for backward computing.
   if (bwdParams.alg_kind == mkldnn::algorithm::pooling_max) {
-    auto ws_pd = context_.fwd_pd.get()->workspace_desc().data;
     context_.ws_mem.reset(
         new memory(context_.fwd_pd.get()->workspace_desc(), cpu_engine_));
     context_.net_args.push_back(

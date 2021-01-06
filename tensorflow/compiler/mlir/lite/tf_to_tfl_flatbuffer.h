@@ -20,8 +20,8 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -63,6 +63,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
 Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
     bool emit_select_tf_ops, bool emit_custom_ops,
+    const std::unordered_set<std::string>& select_user_tf_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs,
     const std::unordered_set<std::string>& saved_model_tags,
     std::string* result, mlir::PassManager* pass_manager);

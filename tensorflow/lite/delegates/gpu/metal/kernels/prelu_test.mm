@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
@@ -40,10 +39,10 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
-@interface SoftmaxTest : XCTestCase
+@interface PReLUTest : XCTestCase
 @end
 
-@implementation SoftmaxTest
+@implementation PReLUTest
 - (void)setUp {
   [super setUp];
 }

@@ -266,10 +266,10 @@ ENTRY %TupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f
 R"(HloModule ShardedTupleCreate_module
 
 ENTRY %ShardedTupleCreate.v4 (v1: f32[], v2: f32[3], v3: f32[2,3]) -> (f32[], f32[3], f32[2,3]) {
-  %v1 = f32[] parameter(0)
+  %v1 = f32[] parameter(0), sharding={manual}
   %v2 = f32[3]{0} parameter(1)
   %v3 = f32[2,3]{1,0} parameter(2)
-  ROOT %tuple = (f32[], f32[3]{0}, f32[2,3]{1,0}) tuple(f32[] %v1, f32[3]{0} %v2, f32[2,3]{1,0} %v3), sharding={{replicated}, {maximal device=0}, {replicated}}
+  ROOT %tuple = (f32[], f32[3]{0}, f32[2,3]{1,0}) tuple(f32[] %v1, f32[3]{0} %v2, f32[2,3]{1,0} %v3), sharding={{manual}, {maximal device=0}, {replicated}}
 }
 
 )"
@@ -435,6 +435,29 @@ ENTRY %R4UnitWindowScalar () -> f32[] {
   %constant = f32[] constant(42)
   %constant.1 = f32[] constant(1)
   ROOT %reduce-window = f32[] reduce-window(f32[] %constant, f32[] %constant.1), to_apply=%add_F32.v3
+}
+
+)"
+},
+// reduce window on scalar
+{
+"ReduceWindowVariadic",
+R"(HloModule reduce_window_variadic
+
+%add_F32.v3 (lhs1: f32[], lhs2: f32[], rhs1: f32[], rhs2: f32[]) -> (f32[], f32[]) {
+  %lhs1 = f32[] parameter(0)
+  %rhs1 = f32[] parameter(2)
+  %add1 = f32[] add(f32[] %lhs1, f32[] %rhs1)
+  %lhs2 = f32[] parameter(1)
+  %rhs2 = f32[] parameter(3)
+  %add2 = f32[] add(f32[] %lhs2, f32[] %rhs2)
+  ROOT %tuple1 = (f32[], f32[]) tuple(f32[] %add1, f32[] %add2)
+}
+
+ENTRY %R4UnitWindowScalar () -> (f32[], f32[]) {
+  %constant = f32[] constant(42)
+  %constant.1 = f32[] constant(1)
+  ROOT %reduce-window = (f32[], f32[]) reduce-window(f32[] %constant, f32[] %constant, f32[] %constant.1, f32[] %constant.1), to_apply=%add_F32.v3
 }
 
 )"

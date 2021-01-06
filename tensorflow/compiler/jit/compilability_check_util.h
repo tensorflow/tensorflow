@@ -62,6 +62,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrame {
     std::string name;
     std::string function_name;
+    std::shared_ptr<AbstractStackTrace> stack_trace;
   };
 
   // Contains information about uncompilable node inside a function body.
@@ -128,6 +129,9 @@ class RecursiveCompilabilityChecker {
     // Require the function to be always compilable, regardless whether some
     // control flow branches might be dead for a given input.
     bool require_always_compilable = false;
+
+    // Whether string constants are compilable.
+    bool allow_string_consts = true;
   };
 
   RecursiveCompilabilityChecker(OperationFilter op_filter,
@@ -193,6 +197,7 @@ class RecursiveCompilabilityChecker {
   struct StackFrameView {
     absl::string_view name;
     absl::string_view function_name;
+    std::shared_ptr<AbstractStackTrace> stack_trace;
   };
 
   bool IsCompilableNode(

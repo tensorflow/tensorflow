@@ -121,6 +121,10 @@ class HloExecutionProfile {
   // may not be available for some instructions in which case zero is returned.
   uint64 GetCyclesTakenBy(const HloInstruction& hlo) const;
 
+  // Returns how many cycles this HLO took to execute.  Profiling information
+  // may not be available for some instructions in which case zero is returned.
+  uint64 GetCyclesTakenBy(size_t index) const;
+
   // Return the number of cycles this computation took to execute.
   uint64 total_cycles_executed(const HloComputation& computation) const {
     return profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(

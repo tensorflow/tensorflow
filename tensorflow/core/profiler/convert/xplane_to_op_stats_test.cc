@@ -87,7 +87,7 @@ TEST(ConvertXPlaneToOpStats, RunEnvironment) {
   OpStats op_stats = ConvertXSpaceToOpStats(space, OpStatsOptions());
   const RunEnvironment& run_env = op_stats.run_environment();
 
-  EXPECT_EQ("GPU", run_env.device_type());
+  EXPECT_EQ("Nvidia GPU", run_env.device_type());
   EXPECT_EQ(1, run_env.host_count());
   EXPECT_EQ(1, run_env.task_count());
   EXPECT_EQ(2, run_env.device_core_count());

@@ -316,7 +316,6 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        ":legacy_types",
         ":legacy_reference_base",
         ":cppmath",
         "//third_party/eigen3",
@@ -352,10 +351,8 @@ cc_library(
     deps = [
         ":common",
         ":optimized_base",
-        ":tensor",
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
@@ -388,11 +385,14 @@ cc_library(
     hdrs = ["quantization_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
         ":types",
-        "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
@@ -461,7 +461,11 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
+        "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
         "reference/integer_ops/add.h",
@@ -474,6 +478,7 @@ cc_library(
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
+        "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -490,16 +495,17 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ] + select({
         ":tf_lite_static_memory": [],
         "//conditions:default": [
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
-            "reference/integer_ops/transpose_conv.h",
             "reference/reference_ops.h",
             "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
@@ -507,6 +513,14 @@ cc_library(
     }),
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -554,7 +568,11 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
+        "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
         "reference/l2normalization.h",
@@ -574,12 +592,22 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -665,8 +693,6 @@ cc_library(
         ":common",
         ":compatibility",
         ":cppmath",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "@gemmlowp",
     ],
 )
@@ -688,7 +714,6 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
@@ -897,7 +922,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -914,7 +938,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -1008,10 +1031,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1025,10 +1046,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )

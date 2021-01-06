@@ -70,7 +70,7 @@ if '--project_name' in sys.argv:
 # For packages that don't have yet a stable release, we pin using `~= 0.x` which
 # means we accept any `0.y` version (y >= x) but not the first major release. We
 # will need additional testing for that.
-# NOTE: This assumes that all packages follow SemVer. If a packages follows a
+# NOTE: This assumes that all packages follow SemVer. If a package follows a
 # different versioning scheme (e.g., PVP), we use different bound specifier and
 # comment the versioning scheme.
 # NOTE: Please add test only packages to `TEST_PACKAGES` below.
@@ -79,19 +79,19 @@ REQUIRED_PACKAGES = [
     'astunparse ~= 1.6.3',
     'flatbuffers ~= 1.12.0',
     'google_pasta ~= 0.2',
-    'h5py ~= 2.10.0',
+    'h5py ~= 3.1.0',
     'keras_preprocessing ~= 1.1.2',
     'numpy ~= 1.19.2',
     'opt_einsum ~= 3.3.0',
-    'protobuf ~= 3.13.0',
+    'protobuf >= 3.9.2',
     'six ~= 1.15.0',
     'termcolor ~= 1.1.0',
     'typing_extensions ~= 3.7.4',
     'wheel ~= 0.35',
     'wrapt ~= 1.12.1',
-    # These packages needs to be pinned exactly as newer versions are
+    # These packages need to be pinned exactly as newer versions are
     # incompatible with the rest of the ecosystem
-    'gast == 0.3.3',
+    'gast == 0.4.0',
     # TensorFlow ecosystem packages that TF exposes API for
     # These need to be in sync with the existing TF version
     # They are updated during the release process
@@ -101,7 +101,7 @@ REQUIRED_PACKAGES = [
 ]
 
 
-# For nightly packages, instead of dependening on tensorboard and
+# For nightly packages, instead of depending on tensorboard and
 # tensorflow_estimator, we depend on their nightly equivalent.
 # When updating these, make sure to also update the release versions above.
 # NOTE: the nightly versions are one version ahead of the release ones!
@@ -111,14 +111,14 @@ if 'tf_nightly' in project_name:
     if 'tensorboard' in pkg:
       REQUIRED_PACKAGES[i] = 'tb-nightly ~= 2.5.0.a'
     elif 'tensorflow_estimator' in pkg:
-      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.4.0.dev'
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly ~= 2.5.0.dev'
 
 
 # grpcio does not build correctly on big-endian machines due to lack of
 # BoringSSL support.
 # See https://github.com/tensorflow/tensorflow/issues/17882.
 if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio ~= 1.32.0')
+  REQUIRED_PACKAGES.append('grpcio ~= 1.34.0')
 
 
 # Packages which are only needed for testing code.
@@ -127,6 +127,8 @@ if sys.byteorder == 'little':
 TEST_PACKAGES = [
     'portpicker ~= 1.3.1',
     'scipy ~= 1.5.2',
+    'tblib ~= 1.7.0',
+    'dill ~= 0.3.2',
 ]
 
 
@@ -135,7 +137,7 @@ if project_name.endswith('-gpu'):
   project_name_no_gpu = project_name[:-len('-gpu')]
   _GPU_PACKAGE_NOTE = 'Note that %s package by default supports both CPU and '\
       'GPU. %s has the same content and exists solely for backward '\
-      'compatiblity. Please migrate to %s for GPU support.'\
+      'compatibility. Please migrate to %s for GPU support.'\
       % (project_name_no_gpu, project_name, project_name_no_gpu)
   DOCLINES.append(_GPU_PACKAGE_NOTE)
 

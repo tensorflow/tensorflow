@@ -26,10 +26,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/attribute_importer.h"
@@ -78,6 +78,30 @@ bool DotIsDefault(const HloInstruction* instruction) {
   default_dimension_numbers.add_rhs_contracting_dimensions(0);
   return xla::protobuf_util::ProtobufEquals(dnums, default_dimension_numbers);
 }
+
+// Returns an MLIR Location generated from HLO Instruction. Uses instruction
+// metadata if present or instruction name.
+mlir::Location GenerateInstructionLocation(HloInstruction* instruction,
+                                           mlir::OpBuilder* func_builder) {
+  const std::string& op_name = instruction->metadata().op_name();
+  if (op_name.empty()) {
+    return mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
+                              func_builder->getContext());
+  }
+
+  mlir::Location op_name_loc = mlir::NameLoc::get(
+      func_builder->getIdentifier(op_name), func_builder->getContext());
+  const std::string& source_file = instruction->metadata().source_file();
+  if (source_file.empty()) {
+    return op_name_loc;
+  }
+
+  return mlir::FusedLoc::get(
+      {op_name_loc, mlir::FileLineColLoc::get(
+                        source_file, instruction->metadata().source_line(), 0,
+                        func_builder->getContext())},
+      func_builder->getContext());
+}
 }  // namespace
 
 Status HloFunctionImporter::ImportAsFunc(
@@ -103,7 +127,7 @@ StatusOr<mlir::FuncOp> HloFunctionImporter::ImportAsFunc(
   llvm::SmallVector<Type, 4> args, rets;
   TF_RETURN_IF_ERROR(GetMlirTypes(computation.parameter_instructions(), &args));
   TF_RETURN_IF_ERROR(GetMlirTypes({computation.root_instruction()}, &rets));
-  auto func_type = mlir::FunctionType::get(args, rets, context_);
+  auto func_type = mlir::FunctionType::get(context_, args, rets);
 
   string computation_name =
       computation.parent()->entry_computation() == &computation
@@ -204,9 +228,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   TF_ASSIGN_OR_RETURN(auto operands, GetOperands(instruction));
   TF_ASSIGN_OR_RETURN(auto result_type, ConvertShapeToType<RankedTensorType>(
                                             instruction->shape(), *builder_));
-  mlir::Location loc =
-      mlir::NameLoc::get(func_builder->getIdentifier(instruction->name()),
-                         func_builder->getContext());
+  mlir::Location loc = GenerateInstructionLocation(instruction, func_builder);
 
   llvm::SmallVector<NamedAttribute, 10> attributes;
   switch (instruction->opcode()) {
@@ -515,7 +537,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
-      attributes.push_back(ConvertReplicaGroups(all_reduce->replica_groups()));
+      attributes.push_back(
+          ConvertReplicaGroups(all_reduce->replica_groups(), *builder_));
       attributes.push_back(ConvertChannelHandle(all_reduce->channel_id()));
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
           loc, result_type, operands, attributes);
@@ -910,7 +933,7 @@ mlir::NamedAttribute HloFunctionImporter::ConvertSourceTargetPairs(
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
-    const std::vector<ReplicaGroup>& replica_groups) {
+    const std::vector<ReplicaGroup>& replica_groups, mlir::Builder builder) {
   int64_t num_groups = replica_groups.size();
   int64_t group_size =
       num_groups == 0 ? 0 : replica_groups[0].replica_ids_size();
@@ -922,9 +945,9 @@ mlir::NamedAttribute HloFunctionImporter::ConvertReplicaGroups(
       attr[flat_index++] = group.replica_ids(i);
   }
   auto type = mlir::RankedTensorType::get({num_groups, group_size},
-                                          builder_->getIntegerType(64));
-  return builder_->getNamedAttr("replica_groups",
-                                DenseIntElementsAttr::get(type, attr));
+                                          builder.getIntegerType(64));
+  return builder.getNamedAttr("replica_groups",
+                              DenseIntElementsAttr::get(type, attr));
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertChannelHandle(

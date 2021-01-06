@@ -28,8 +28,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
@@ -281,7 +281,7 @@ Value CreateRecvOp(OpBuilder& builder, int64_t& channel_id, Location loc,
       /*type=*/builder.getI64IntegerAttr(3), builder.getContext());
   auto result_type = result.getType();
   auto recv_result_type =
-      TupleType::get({result_type, token.getType()}, builder.getContext());
+      TupleType::get(builder.getContext(), {result_type, token.getType()});
   auto recv =
       builder.create<RecvOp>(loc, recv_result_type, token, channel_handle,
                              /*is_host_transfer=*/builder.getBoolAttr(true));
@@ -712,8 +712,8 @@ void UpdateFunctionType(OpBuilder& builder, FuncOp func, Block& func_body) {
   auto new_argument_types = llvm::to_vector<4>(func_body.getArgumentTypes());
   auto new_result_types =
       llvm::to_vector<4>(func_body.getTerminator()->getOperandTypes());
-  func.setType(FunctionType::get(new_argument_types, new_result_types,
-                                 builder.getContext()));
+  func.setType(FunctionType::get(builder.getContext(), new_argument_types,
+                                 new_result_types));
 }
 
 // Replaces a function terminator `return` with another `return` that has an

@@ -27,9 +27,9 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
@@ -78,24 +79,8 @@ constexpr char kBadArrayElementMsg[] =
 constexpr char kBadArrayAttrLengthMsg[] =
     "bad '{0}' attribute, expected array attribute of size {1}, got size {2}";
 
-// Rewrites `tf_device.cluster_func` operations assigned to TPU into actual TPU
-// jit-compile runtime ops.
-//
-// For example:
-//   %1 = "tf_device.cluster_func"(%0) {_tpu_replicate = "cluster", func =
-//         @tpu_func}
-//   %2 = "tf.SomeOp"(%1)
-//
-// Would become following ops (unimportant attributes, types are omitted):
-//    %1 = "tf.Shape"(%0)
-//    %2:2 = "tf._TPUCompileMlir"(%1) {module = "<Serialized @tpu_func>"}
-//    "tf.TPUCompileSucceededAssert"(%2#0)
-//    %3 = "tf.TPUExecute"(%0, %2#1)
-//    %4 = "tf.SomeOp"(%3)
-
 namespace {
-struct TPURewritePass
-    : public PassWrapper<TPURewritePass, OperationPass<ModuleOp>> {
+struct TPURewritePass : public TF::TPURewritePassBase<TPURewritePass> {
   void runOnOperation() override;
 };
 
@@ -106,15 +91,15 @@ std::string CreateMissingAttributeMsg(llvm::StringRef attribute) {
 
 LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
                                           std::string* serialized_func_module) {
-  ModuleOp module = entry_func.getParentOfType<ModuleOp>();
+  ModuleOp module = entry_func->getParentOfType<ModuleOp>();
   SymbolTable entry_module_table(module);
   llvm::SmallVector<FuncOp, 4> referenced({entry_func});
 
   // Create a new module to hold func and all referenced functions.
   OwningModuleRef module_for_func =
       ModuleOp::create(mlir::UnknownLoc::get(entry_func.getContext()));
-  auto parent_module = entry_func.getParentOfType<ModuleOp>();
-  auto versions_attr = parent_module.getAttr(kVersionsAttr);
+  auto parent_module = entry_func->getParentOfType<ModuleOp>();
+  auto versions_attr = parent_module->getAttr(kVersionsAttr);
   if (!versions_attr)
     return parent_module.emitError(CreateMissingAttributeMsg(kVersionsAttr));
 
@@ -165,7 +150,7 @@ LogicalResult SetMetadataProtoStepMarkerLocation(
     tf_device::ClusterFuncOp op,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   auto step_marker_location =
-      op.getAttrOfType<StringAttr>(kStepMarkerLocationAttr);
+      op->getAttrOfType<StringAttr>(kStepMarkerLocationAttr);
   if (!step_marker_location)
     return op.emitOpError(CreateMissingAttributeMsg(kStepMarkerLocationAttr));
 
@@ -190,7 +175,7 @@ LogicalResult SetMetadataProtoStepMarkerLocation(
 LogicalResult SetMetadataProtoPaddingMap(
     tf_device::ClusterFuncOp op,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
-  auto padding_map = op.getAttrOfType<ArrayAttr>(kPaddingMapAttr);
+  auto padding_map = op->getAttrOfType<ArrayAttr>(kPaddingMapAttr);
   if (!padding_map)
     return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
 
@@ -234,7 +219,7 @@ LogicalResult SetMetadataProtoArgs(
     tf_device::ClusterFuncOp op,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   auto input_shardings =
-      op.getAttrOfType<ArrayAttr>(tensorflow::kInputShardingAttr);
+      op->getAttrOfType<ArrayAttr>(tensorflow::kInputShardingAttr);
   if (!input_shardings)
     return op.emitOpError(
         CreateMissingAttributeMsg(tensorflow::kInputShardingAttr));
@@ -289,7 +274,7 @@ LogicalResult SetMetadataProtoRetvals(
     tf_device::ClusterFuncOp op,
     tensorflow::tpu::TPUCompileMetadataProto* metadata) {
   auto output_shardings =
-      op.getAttrOfType<ArrayAttr>(tensorflow::kOutputShardingAttr);
+      op->getAttrOfType<ArrayAttr>(tensorflow::kOutputShardingAttr);
   if (!output_shardings)
     return op.emitOpError(
         CreateMissingAttributeMsg(tensorflow::kOutputShardingAttr));
@@ -329,7 +314,7 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
-  auto use_spmd_attr = op.getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
+  auto use_spmd_attr = op->getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
   if (!use_spmd_attr)
     return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
   metadata->set_use_spmd_for_xla_partitioning(use_spmd_attr.getValue());
@@ -400,7 +385,7 @@ Operation* BuildCompileOp(
   }
 
   FlatSymbolRefAttr func_attr = cluster_func.funcAttr();
-  FuncOp func = cluster_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
+  FuncOp func = cluster_func->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       func_attr.getValue());
 
   std::string txt_module;
@@ -457,7 +442,7 @@ void AssignDevicesToReplicate(
         tensorflow::kTPUReplicatedHost, builder->getStrArrayAttr(hosts)));
   }
 
-  replicate.setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
+  replicate->setAttr(kDevicesAttr, builder->getDictionaryAttr(device_attrs));
 }
 
 // Creates a `tf.TPUExecute` op that executes TPU program.
@@ -578,75 +563,17 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
   WrapOpInLaunch(builder, compile_op->getLoc(), assert_op, compilation_device);
 }
 
-// Rewrites a `tf_device.cluster_func` operation into a set of TPU Runtime
-// Operations that jit-compiles and executes function in
-// `tf_device.cluster_func` on TPU. Device assignment is determined from
-// available devices in `devices`. If it is not possible to rewrite the
-// operation or device assignment fails, a failure will be returned.
-//
-// For example, a non replicated `tf_device.cluster_func`:
-//
-// func @main(%arg0: tensor<i1>) {
-//   %0 = "tf_device.cluster_func"(%arg0)
-//          {_tpu_replicate = "cluster0", device = "", func = @_func} :
-//          (tensor<i1>) -> tensor<i1>
-//   return
-// }
-//
-// will be rewritten as:
-//
-// func @main(%arg0: tensor<i1>) {
-//   %0 = "tf.Shape"(%arg0) : (tensor<i1>) -> tensor<?xi32>
-//   %1:2 = "tf._TPUCompileMlir"(%0) {device = "/CPU:0"} :
-//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
-//   %2 = "tf.TPUExecute"(%arg0, %1#0) {device = "/TPU:0"} :
-//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
-//   return
-// }
-//
-// and a replicated `tf_device.cluster_func`:
-//
-// func @main(%arg0: tensor<i1>, %arg1: tensor<i1>) {
-//   %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>)
-//                              {n = 2 : i32} {
-//     %1 = "tf_device.cluster_func"(%ri)
-//            {_tpu_replicate = "cluster0", device = "", func = @_func} :
-//            (tensor<i1>) -> tensor<i1>
-//     tf_device.return %1 : tensor<i1>
-//   }
-//   return
-// }
-//
-// will be rewritten as:
-//
-// func @main(%arg0: tensor<i1>, %arg1: tensor<i1>) {
-//   %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<i1>)
-//                              {n = 2 : i32, devices = ["/TPU:0", "/TPU:1"]} {
-//     %1 = "tf.Shape"(%ri) : (tensor<i1>) -> tensor<?xi32>
-//     %2:2 = "tf._TPUCompileMlir"(%1) {device = "/CPU:0"} :
-//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
-//     %3 = "tf.TPUExecute"(%ri, %2#0) :
-//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
-//     tf_device.return %3 : tensor<i1>
-//   }
-//   return
-// }
 LogicalResult Rewrite(
     tf_device::ClusterFuncOp cluster_func,
     llvm::ArrayRef<tensorflow::DeviceNameUtils::ParsedName> devices,
     OpBuilder* builder) {
-  // Skip non-tpu device cluster_func.
-  auto replicate_attr =
-      cluster_func.getAttrOfType<StringAttr>("_tpu_replicate");
-  if (!replicate_attr) return success();
-
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
-      cluster_func.getParentOfType<tf_device::ReplicateOp>();
+      cluster_func->getParentOfType<tf_device::ReplicateOp>();
   if (replicate) num_replicas = replicate.n();
 
-  auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
+  auto num_cores_per_replica_attr = cluster_func->getAttrOfType<IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);
   if (!num_cores_per_replica_attr)
     return cluster_func.emitOpError(
@@ -655,12 +582,12 @@ LogicalResult Rewrite(
   int num_cores_per_replica = num_cores_per_replica_attr.getInt();
 
   auto topology_attr =
-      cluster_func.getAttrOfType<StringAttr>(tensorflow::kTopologyAttr);
+      cluster_func->getAttrOfType<StringAttr>(tensorflow::kTopologyAttr);
   if (!topology_attr)
     return cluster_func.emitOpError(
         CreateMissingAttributeMsg(tensorflow::kTopologyAttr));
 
-  auto device_assignment_attr = cluster_func.getAttrOfType<mlir::ArrayAttr>(
+  auto device_assignment_attr = cluster_func->getAttrOfType<mlir::ArrayAttr>(
       tensorflow::kDeviceAssignmentAttr);
   if (!device_assignment_attr)
     return cluster_func.emitOpError(
@@ -692,11 +619,11 @@ LogicalResult Rewrite(
 
   // Create the TPUCompileMlir and TPUCompileSucceededAssert outside of
   // parallel_execute region if it exists.
-  if (llvm::isa<tf_device::ParallelExecuteOp>(cluster_func.getParentOp())) {
+  if (llvm::isa<tf_device::ParallelExecuteOp>(cluster_func->getParentOp())) {
     // Currently, outside compilation and model parallelism are not supported
     // together.
     assert(num_cores_per_replica == 1);
-    builder->setInsertionPoint(cluster_func.getParentOp());
+    builder->setInsertionPoint(cluster_func->getParentOp());
   }
 
   Operation* compile_op = BuildCompileOp(
@@ -711,7 +638,7 @@ LogicalResult Rewrite(
   // and _XlaRecvAtHostOp and _XlaSendFromHostOp are used, update to a more
   // structured lowering.
   if (auto parallel_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
-          cluster_func.getParentOp())) {
+          cluster_func->getParentOp())) {
     parallel_op.walk([&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
       key_op.replaceAllUsesWith(compile_op->getResult(1));
       key_op.erase();
@@ -752,27 +679,53 @@ LogicalResult Rewrite(
     // ops, the number of return values of parallel_execute op exceeds that of
     // cluster_func op. As so, each return value of parallel_execute op must be
     // mapped with corresponding return value usages of cluster_func.
-    tensorflow::RemapOutputsFromLogicalDevices(cluster_func.getLoc(),
-                                               output_shardings, cluster_func,
-                                               execute_op, builder);
-  } else {
-    llvm::SmallVector<Value, 4> execute_inputs(cluster_func.getOperands());
-    execute_inputs.emplace_back(compile_op->getResult(1));
-
-    TF::TPUExecuteOp execute_op;
-    result = BuildExecuteOp(
-        /*core_id=*/0, output_shardings, execute_inputs, cluster_func, builder,
-        &execute_op);
-    if (failed(result)) return failure();
-
-    tf_device::LaunchOp launch_op = AssignDevicesToReplicatedExecute(
-        tpu_device_assignment.tpu_devices, execute_op, builder);
-    cluster_func.replaceAllUsesWith(launch_op);
+    return tensorflow::RemapOutputsFromLogicalDevices(
+        cluster_func.getLoc(), output_shardings, cluster_func, execute_op,
+        builder);
   }
 
-  cluster_func.erase();
+  llvm::SmallVector<Value, 4> execute_inputs(cluster_func.getOperands());
+  execute_inputs.emplace_back(compile_op->getResult(1));
 
+  TF::TPUExecuteOp execute_op;
+  result = BuildExecuteOp(
+      /*core_id=*/0, output_shardings, execute_inputs, cluster_func, builder,
+      &execute_op);
+  if (failed(result)) return failure();
+
+  tf_device::LaunchOp launch_op = AssignDevicesToReplicatedExecute(
+      tpu_device_assignment.tpu_devices, execute_op, builder);
+  cluster_func.replaceAllUsesWith(launch_op);
   return success();
+}
+
+// Erase rewritten ClusterFuncOp(s). If TPUPartitionedInputOp /
+// TPUPartitionedOutputOp are present, they must be removed alongwith the
+// ClusterFuncOp(s).
+void EraseClusterFuncs(
+    llvm::MutableArrayRef<tf_device::ClusterFuncOp> to_be_erased) {
+  for (auto cluster : to_be_erased) {
+    for (auto result : cluster.results()) {
+      for (Operation* user : llvm::make_early_inc_range(result.getUsers())) {
+        if (llvm::isa<TF::TPUPartitionedOutputOp>(user)) {
+          assert(user->use_empty());
+          user->erase();
+        }
+      }
+    }
+
+    for (auto operand : cluster.operands()) {
+      Operation* def = operand.getDefiningOp();
+      if (operand.hasOneUse() &&
+          llvm::isa_and_nonnull<TF::TPUPartitionedInputOp>(def)) {
+        operand.dropAllUses();
+        def->erase();
+      }
+    }
+
+    assert(cluster->use_empty());
+    cluster->erase();
+  }
 }
 
 void TPURewritePass::runOnOperation() {
@@ -780,15 +733,23 @@ void TPURewritePass::runOnOperation() {
   if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
     return signalPassFailure();
 
+  llvm::SmallVector<tf_device::ClusterFuncOp> to_be_erased;
   OpBuilder builder(&getContext());
   auto result = getOperation().walk([&](tf_device::ClusterFuncOp op) {
+    // Skip non-tpu device cluster_func.
+    auto replicate_attr = op->getAttrOfType<StringAttr>("_tpu_replicate");
+    if (!replicate_attr) return WalkResult::advance();
+
     if (failed(Rewrite(op, devices.device_names(), &builder)))
       return WalkResult::interrupt();
 
+    to_be_erased.push_back(op);
     return WalkResult::advance();
   });
 
   if (result.wasInterrupted()) return signalPassFailure();
+
+  EraseClusterFuncs(to_be_erased);
 
   // Eliminate TPUCompilationResultOp now that the rewrite is complete.
   getOperation().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
@@ -801,10 +762,6 @@ void TPURewritePass::runOnOperation() {
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
-
-static PassRegistration<TPURewritePass> pass(
-    "tf-tpu-rewrite",
-    "Rewriting `tf_device.cluster_func` on TPUs into TPU runtime ops");
 
 }  // namespace TFTPU
 }  // namespace mlir

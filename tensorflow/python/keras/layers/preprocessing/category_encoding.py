@@ -65,17 +65,30 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   Examples:
 
+  **Multi-hot encoding data if you know in advance the number of tokens**
+
+  In this case, you can pass the `max_tokens` argument to the constructor.
+
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
-  ...           max_tokens=4, output_mode="count")
+  ...           max_tokens=4, output_mode="binary")
   >>> layer([[0, 1], [0, 0], [1, 2], [3, 1]])
   <tf.Tensor: shape=(4, 4), dtype=float32, numpy=
     array([[1., 1., 0., 0.],
-           [2., 0., 0., 0.],
+           [1., 0., 0., 0.],
            [0., 1., 1., 0.],
            [0., 1., 0., 1.]], dtype=float32)>
 
+  **Multi-hot encoding data where the number of tokens is unknown**
 
-  Examples with weighted inputs:
+  In this case, you should `adapt()` the layer on a sample dataset.
+
+  ```python
+  layer = CategoryEncoding(output_mode="binary")
+  layer.adapt(sample_dataset)  # Indexes the vocabulary of the data
+  outputs = layer(inputs)
+  ```
+
+  **Using weighted inputs in `count` mode**
 
   >>> layer = tf.keras.layers.experimental.preprocessing.CategoryEncoding(
   ...           max_tokens=4, output_mode="count")
@@ -87,7 +100,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
            [0. , 0.2, 0.3, 0. ],
            [0. , 0.2, 0. , 0.4]])>
 
-  Arguments:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary.
     output_mode: Specification for the output of the layer.
@@ -135,12 +148,12 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     base_preprocessing_layer.keras_kpl_gauge.get_cell(
         "CategoryEncoding").set(True)
 
-    self._max_tokens = max_tokens
-    self._output_mode = output_mode
-    self._sparse = sparse
+    self.max_tokens = max_tokens
+    self.output_mode = output_mode
+    self.sparse = sparse
     self._called = False
 
-    if self._output_mode == TFIDF:
+    if self.output_mode == TFIDF:
       # The TF-IDF weight may have a (None,) tensorshape. This creates
       # a 1D variable with arbitrary shape, which we can assign any weight to
       # so long as it has 1 dimension. In order to properly initialize this
@@ -163,12 +176,12 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
-    return tensor_shape.TensorShape([input_shape[0], self._max_tokens])
+    return tensor_shape.TensorShape([input_shape[0], self.max_tokens])
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = K.floatx() if self._output_mode == TFIDF else dtypes.int64
-    if self._sparse:
+    output_dtype = K.floatx() if self.output_mode == TFIDF else dtypes.int64
+    if self.sparse:
       return sparse_tensor.SparseTensorSpec(
           shape=output_shape, dtype=output_dtype)
     else:
@@ -180,7 +193,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     Overrides the default adapt method to apply relevant preprocessing to the
     inputs before passing to the combiner.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         or as a numpy array.
       reset_state: Optional argument specifying whether to clear the state of
@@ -199,19 +212,19 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     if not self.built:
       raise RuntimeError("_set_state_variables() must be called after build().")
     if _NUM_ELEMENTS_NAME in updates:
-      if self._max_tokens is None:
+      if self.max_tokens is None:
         self.set_num_elements(updates[_NUM_ELEMENTS_NAME])
-      elif self._max_tokens != updates[_NUM_ELEMENTS_NAME]:
+      elif self.max_tokens != updates[_NUM_ELEMENTS_NAME]:
         raise RuntimeError("Cannot update states if you construct the layer "
-                           "with `max_tokens`={}".format(self._max_tokens))
-    if self._output_mode == TFIDF:
+                           "with `max_tokens`={}".format(self.max_tokens))
+    if self.output_mode == TFIDF:
       self.set_tfidf_data(updates[_IDF_NAME])
 
   def get_config(self):
     config = {
-        "max_tokens": self._max_tokens,
-        "output_mode": self._output_mode,
-        "sparse": self._sparse,
+        "max_tokens": self.max_tokens,
+        "output_mode": self.output_mode,
+        "sparse": self.sparse,
     }
     base_config = super(CategoryEncoding, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -235,7 +248,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       return sparse_tensor.SparseTensor(indices, values, shape)
 
   def set_num_elements(self, num_elements):
-    if self._max_tokens is not None:
+    if self.max_tokens is not None:
       raise RuntimeError(
           "In order to dynamically set the number of elements, the "
           "layer's 'max_tokens' arg must be set to None.")
@@ -244,23 +257,23 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     if self._called:
       raise RuntimeError("num_elements cannot be changed after the layer is "
                          "called.")
-    self._max_tokens = num_elements
+    self.max_tokens = num_elements
 
   def set_tfidf_data(self, tfidf_data):
     tfidf_data = self._convert_to_ndarray(tfidf_data)
-    if self._output_mode != TFIDF:
+    if self.output_mode != TFIDF:
       raise RuntimeError(
           "In order to set TF-IDF data, the output mode must be 'tf-idf'.")
     if tfidf_data.ndim != 1:
       raise ValueError("TF-IDF data must be a 1-index array.")
-    if self._max_tokens is not None:
+    if self.max_tokens is not None:
       input_data_length = tfidf_data.shape[0]
-      if input_data_length > self._max_tokens:
+      if input_data_length > self.max_tokens:
         raise ValueError("The array provided has %d elements. This layer is "
                          "configured to only allow %d elements." %
-                         (input_data_length, self._max_tokens))
-      if input_data_length < self._max_tokens:
-        tfidf_data = np.resize(tfidf_data, (self._max_tokens,))
+                         (input_data_length, self.max_tokens))
+      if input_data_length < self.max_tokens:
+        tfidf_data = np.resize(tfidf_data, (self.max_tokens,))
     K.set_value(self.tf_idf_weights, tfidf_data)
 
   def call(self, inputs, count_weights=None):
@@ -269,23 +282,23 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     if inputs.shape.rank == 1:
       inputs = array_ops.expand_dims(inputs, 1)
 
-    if count_weights is not None and self._output_mode != COUNT:
+    if count_weights is not None and self.output_mode != COUNT:
       raise ValueError("count_weights is not used in `output_mode='tf-idf'`, "
                        "or `output_mode='binary'`. Please pass a single input.")
     self._called = True
-    if self._max_tokens is None:
+    if self.max_tokens is None:
       raise RuntimeError(
           "If you construct a `CategoryEncoding` layer with "
           "`max_tokens=None`, you need to call `adapt()` "
           "on it before using it")
     else:
-      out_depth = self._max_tokens
+      out_depth = self.max_tokens
 
-    if self._output_mode == TFIDF:
+    if self.output_mode == TFIDF:
       # If the input is a sparse tensor, we densify it with the default value of
       # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
       # positions from the output encoding.
-      if self._sparse:
+      if self.sparse:
         raise ValueError("`sparse=True` with `output_mode=tfidf` "
                          "is not supported.")
       if isinstance(inputs, sparse_tensor.SparseTensor):
@@ -296,7 +309,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       tf_idf_data.set_shape(tensor_shape.TensorShape((None, out_depth)))
       return tf_idf_data
 
-    binary_output = (self._output_mode == BINARY)
+    binary_output = (self.output_mode == BINARY)
     if isinstance(inputs, sparse_tensor.SparseTensor):
       max_value = math_ops.reduce_max(inputs.values)
       min_value = math_ops.reduce_min(inputs.values)
@@ -304,39 +317,17 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       max_value = math_ops.reduce_max(inputs)
       min_value = math_ops.reduce_min(inputs)
     condition = math_ops.logical_and(
-        math_ops.greater_equal(
+        math_ops.greater(
             math_ops.cast(out_depth, max_value.dtype), max_value),
         math_ops.greater_equal(
             min_value, math_ops.cast(0, min_value.dtype)))
     control_flow_ops.Assert(
         condition, ["Input values must be in the range 0 <= values < max_tokens"
                     " with max_tokens={}".format(out_depth)])
-    if self._sparse:
-      result = bincount_ops.sparse_bincount(
-          inputs,
-          weights=count_weights,
-          minlength=out_depth,
-          maxlength=out_depth,
-          axis=-1,
-          binary_output=binary_output)
-      result = math_ops.cast(result, K.floatx())
-      batch_size = array_ops.shape(result)[0]
-      result = sparse_tensor.SparseTensor(
-          indices=result.indices,
-          values=result.values,
-          dense_shape=[batch_size, out_depth])
-      return result
+    if self.sparse:
+      return sparse_bincount(inputs, out_depth, binary_output, count_weights)
     else:
-      result = bincount_ops.bincount(
-          inputs,
-          weights=count_weights,
-          minlength=out_depth,
-          maxlength=out_depth,
-          dtype=K.floatx(),
-          axis=-1,
-          binary_output=binary_output)
-      result.set_shape(tensor_shape.TensorShape((None, out_depth)))
-      return result
+      return dense_bincount(inputs, out_depth, binary_output, count_weights)
 
 
 class _CategoryEncodingAccumulator(
@@ -361,7 +352,7 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
   DOC_ID_IDX = 1
 
   def __init__(self, max_tokens=None, compute_idf=False):
-    self._max_tokens = max_tokens
+    self.max_tokens = max_tokens
     self._compute_idf = compute_idf
 
   def compute(self, values, accumulator=None):
@@ -377,7 +368,7 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
         element = [element]
       current_doc_id = accumulator.data[self.DOC_ID_IDX]
       for value in element:
-        if self._max_tokens is None:
+        if self.max_tokens is None:
           current_max_value = accumulator.data[self.MAX_VALUE_IDX]
           if value > current_max_value:
             accumulator.data[self.MAX_VALUE_IDX] = value
@@ -400,7 +391,7 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
     for accumulator in accumulators[1:]:
       base_accumulator.data[self.DOC_ID_IDX] += accumulator.data[
           self.DOC_ID_IDX]
-      if self._max_tokens is None:
+      if self.max_tokens is None:
         base_accumulator.data[self.MAX_VALUE_IDX] = max(
             base_accumulator.data[self.MAX_VALUE_IDX],
             accumulator.data[self.MAX_VALUE_IDX])
@@ -446,9 +437,9 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
     if data[self.MAX_VALUE_IDX] is not None:
       max_element = data[self.MAX_VALUE_IDX] + 1
     else:
-      max_element = self._max_tokens
+      max_element = self.max_tokens
     output_dict = {}
-    if self._max_tokens is None:
+    if self.max_tokens is None:
       output_dict[_NUM_ELEMENTS_NAME] = max_element
 
     if self._compute_idf:
@@ -508,8 +499,40 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
       per_doc_count_dict = collections.defaultdict(create_default_dict)
     else:
       per_doc_count_dict = None
-    if self._max_tokens is None:
+    if self.max_tokens is None:
       data = [0, 0]
     else:
       data = [None, 0]
     return _CategoryEncodingAccumulator(data, per_doc_count_dict)
+
+
+def sparse_bincount(inputs, out_depth, binary_output, count_weights=None):
+  """Apply binary or count encoding to an input and return a sparse tensor."""
+  result = bincount_ops.sparse_bincount(
+      inputs,
+      weights=count_weights,
+      minlength=out_depth,
+      maxlength=out_depth,
+      axis=-1,
+      binary_output=binary_output)
+  result = math_ops.cast(result, K.floatx())
+  batch_size = array_ops.shape(result)[0]
+  result = sparse_tensor.SparseTensor(
+      indices=result.indices,
+      values=result.values,
+      dense_shape=[batch_size, out_depth])
+  return result
+
+
+def dense_bincount(inputs, out_depth, binary_output, count_weights=None):
+  """Apply binary or count encoding to an input."""
+  result = bincount_ops.bincount(
+      inputs,
+      weights=count_weights,
+      minlength=out_depth,
+      maxlength=out_depth,
+      dtype=K.floatx(),
+      axis=-1,
+      binary_output=binary_output)
+  result.set_shape(tensor_shape.TensorShape((None, out_depth)))
+  return result

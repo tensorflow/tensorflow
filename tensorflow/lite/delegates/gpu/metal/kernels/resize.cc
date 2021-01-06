@@ -32,59 +32,56 @@ namespace gpu {
 namespace metal {
 
 std::string GetResizeBilinearCode(const Resize2DAttributes& attr) {
-  std::string code = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    $0
-    kernel void ComputeFunction(
-                                $1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= size.z || int(gid.y) >= size.w) {
-        return;
-      })";
-  if (attr.half_pixel_centers) {
-    code += "const float2 tex_coord = (float2(gid.xy) + 0.5f) * scale - 0.5f;";
-  } else {
-    code += "const float2 tex_coord = float2(gid.xy) * scale;";
+  std::string c = R"(
+#include <metal_stdlib>
+using namespace metal;
+$0
+kernel void ComputeFunction(
+                            $1
+                            uint3 gid[[thread_position_in_grid]]) {
+  if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
+    return;
   }
-  code += R"(
-      const float2 tex_coord_floor = floor(tex_coord);
-      const int2 itex_coord_floor = int2(tex_coord_floor);
-      const int2 borders = size.xy - int2(1, 1);
-      int4 st;
-      st.xy = max(itex_coord_floor, int2(0, 0));
-      st.zw = min(itex_coord_floor + int2(1, 1), borders);
-      const float2 t = tex_coord - tex_coord_floor; // interpolating factors
-      const int src_index0 = (gid.z * size.y + st.y) * size.x + st.x;
-      const int src_index1 = (gid.z * size.y + st.y) * size.x + st.z;
-      const int src_index2 = (gid.z * size.y + st.w) * size.x + st.x;
-      const int src_index3 = (gid.z * size.y + st.w) * size.x + st.z;
-      FLT4 tex11 = src_buffer[src_index0];
-      FLT4 tex21 = src_buffer[src_index1];
-      FLT4 tex12 = src_buffer[src_index2];
-      FLT4 tex22 = src_buffer[src_index3];
-      // bilinear interpolation
-      FLT4 value = mix(mix(tex11, tex21, static_cast<FLT>(t.x)),
-                       mix(tex12, tex22, static_cast<FLT>(t.x)), static_cast<FLT>(t.y));
-      const int linear_index = (gid.z * size.w + gid.y) * size.z + gid.x;
-      $2
-      output_buffer[linear_index] = value;
-    }
-  )";
-  return code;
+)";
+  if (attr.half_pixel_centers) {
+    c += "  float2 tex_coord = (float2(gid.xy) + 0.5f) * scale - 0.5f;";
+  } else {
+    c += "  float2 tex_coord = float2(gid.xy) * scale;";
+  }
+  c += R"(
+  float2 tex_coord_floor = floor(tex_coord);
+  int2 itex_coord_floor = int2(tex_coord_floor);
+  int2 borders = int2(args.src_tensor.Width() - 1, args.src_tensor.Height() - 1);
+  int4 st;
+  st.xy = max(itex_coord_floor, int2(0, 0));
+  st.zw = min(itex_coord_floor + int2(1, 1), borders);
+  float2 t = tex_coord - tex_coord_floor; // interpolating factors
+  FLT4 tex11 = args.src_tensor.Read(st.x, st.y, gid.z);
+  FLT4 tex21 = args.src_tensor.Read(st.z, st.y, gid.z);
+  FLT4 tex12 = args.src_tensor.Read(st.x, st.w, gid.z);
+  FLT4 tex22 = args.src_tensor.Read(st.z, st.w, gid.z);
+  // bilinear interpolation
+  FLT4 value = mix(mix(tex11, tex21, static_cast<FLT>(t.x)),
+                   mix(tex12, tex22, static_cast<FLT>(t.x)), static_cast<FLT>(t.y));
+  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
+  $2
+  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
+}
+)";
+  return c;
 }
 
 std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
-  std::string code = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    $0
-    kernel void ComputeFunction(
-                                $1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= size.z || int(gid.y) >= size.w) {
-        return;
-      }
+  std::string c = R"(
+#include <metal_stdlib>
+using namespace metal;
+$0
+kernel void ComputeFunction(
+                            $1
+                            uint3 gid[[thread_position_in_grid]]) {
+  if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
+    return;
+  }
 )";
   std::string fxc;
   std::string fyc;
@@ -99,89 +96,64 @@ std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
     fxc += " + 0.5f";
     fyc += " + 0.5f";
   }
-  code += "  int2 coord;\n";
-  code += "  coord.x = static_cast<int>(" + fxc + ");\n";
-  code += "  coord.y = static_cast<int>(" + fyc + ");\n";
-  code += "  coord.x = max(0, coord.x);\n";
-  code += "  coord.y = max(0, coord.y);\n";
-  code += "  coord.x = min(coord.x, size.x - 1);\n";
-  code += "  coord.y = min(coord.y, size.y - 1);\n";
-  code += R"(
-      const int src_index = (gid.z * size.y + coord.y) * size.x + coord.x;
-      FLT4 value = src_buffer[src_index];
-      const int linear_index = (gid.z * size.w + gid.y) * size.z + gid.x;
-      $2
-      output_buffer[linear_index] = value;
-    }
-  )";
-  return code;
+  c += "  int2 coord;\n";
+  c += "  coord.x = static_cast<int>(" + fxc + ");\n";
+  c += "  coord.y = static_cast<int>(" + fyc + ");\n";
+  c += "  coord.x = max(0, coord.x);\n";
+  c += "  coord.y = max(0, coord.y);\n";
+  c += "  coord.x = min(coord.x, args.src_tensor.Width() - 1);\n";
+  c += "  coord.y = min(coord.y, args.src_tensor.Height() - 1);\n";
+  c += R"(
+  FLT4 value = args.src_tensor.Read(coord.x, coord.y, gid.z);
+  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
+  $2
+  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
+}
+)";
+  return c;
 }
 
-std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
-                                             ValueId output_id,
-                                             const Resize2DAttributes& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = false;
+ComputeTaskDescriptor Resize(const OperationDef& definition,
+                             const Resize2DAttributes& attr) {
+  ComputeTaskDescriptor desc(definition);
+  desc.tensors_as_args = true;
   switch (attr.type) {
     case SamplingType::BILINEAR:
-      desc->shader_source = GetResizeBilinearCode(attr);
+      desc.shader_source = GetResizeBilinearCode(attr);
       break;
     case SamplingType::NEAREST:
-      desc->shader_source = GetResizeNearestCode(attr);
+      desc.shader_source = GetResizeNearestCode(attr);
       break;
     default:
       // Unknown sampling type
       return {};
   }
 
-  desc->input_buffers = {
-      {input_id, "device FLT4* const src_buffer"},
-  };
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->output_buffer = {
-      output_id, "device FLT4* output_buffer",
-      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
-        return CalculateOutputShape(buffers.find(input_id)->second, attr);
-      }};
-
-  desc->uniform_buffers = {
-      {"constant int4& size",
-       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_id)->second;
-         const auto& output_dimension = buffers.find(output_id)->second;
-         std::vector<int> sizes = {
-             dimension.w,
-             dimension.h,
-             output_dimension.w,
-             output_dimension.h,
-         };
-         return GetByteBuffer(sizes);
-       }},
+  desc.uniform_buffers = {
       {"constant float2& scale",
-       [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
-         const auto& input_dimensions = buffers.find(input_id)->second;
-         const auto& output_dimensions = buffers.find(output_id)->second;
+       [attr](const std::vector<BHWC>& src_shapes,
+              const std::vector<BHWC>& dst_shapes) {
          std::vector<float> sizes = {
-             CalculateResizeScale(input_dimensions.w, output_dimensions.w,
-                                  attr),
-             CalculateResizeScale(input_dimensions.h, output_dimensions.h,
-                                  attr),
+             CalculateResizeScale(src_shapes[0].w, dst_shapes[0].w, attr),
+             CalculateResizeScale(src_shapes[0].h, dst_shapes[0].h, attr),
          };
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
-    const uint3 groups_size{16, 16, 1};
-    const auto& dst_dim = buffers.find(output_id)->second;
-    int groups_x = DivideRoundUp(dst_dim.w, groups_size.x);
-    int groups_y = DivideRoundUp(dst_dim.h, groups_size.y);
-    const int dst_layers = DivideRoundUp(dst_dim.c, 4);
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
+    const uint3 groups_size{8, 8, 1};
+    const int dst_layers = DivideRoundUp(dst_shapes[0].c, 4);
+    int groups_x = DivideRoundUp(dst_shapes[0].w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_shapes[0].h, groups_size.y);
     int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
-  return {desc};
+  return desc;
 }
 
 }  // namespace metal

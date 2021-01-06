@@ -95,6 +95,7 @@ cc_library(
     hdrs = ["executable_build_options.h"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -234,6 +235,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

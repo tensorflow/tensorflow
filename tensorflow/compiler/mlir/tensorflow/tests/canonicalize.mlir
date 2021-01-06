@@ -16,6 +16,20 @@ func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
   return
 }
 
+// CHECK-LABEL: testBatchMatMulToV2
+func @testBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<2x5x7xf32>) -> tensor<2x3x7xf32> {
+  // CHECK: tf.BatchMatMulV2
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3x5xf32>, tensor<2x5x7xf32>) -> tensor<2x3x7xf32>
+  return %0: tensor<2x3x7xf32>
+}
+
+// CHECK-LABEL: testDynamicBatchMatMulToV2
+func @testDynamicBatchMatMulToV2(%arg0: tensor<2x3x5xf32>, %arg1: tensor<?x5x7xf32>) -> tensor<2x3x7xf32> {
+  // CHECK: tf.BatchMatMul
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3x5xf32>, tensor<?x5x7xf32>) -> tensor<2x3x7xf32>
+  return %0: tensor<2x3x7xf32>
+}
+
 // CHECK-LABEL: testBatchMatMulToMatMul
 func @testBatchMatMulToMatMul(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32>) -> tensor<2x2xf32> {
   %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
@@ -890,6 +904,20 @@ func @testRankOfRankedTensor(%arg0 : tensor<4x3x2xf32>) -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: testRankOfRankedTensorUnrankedOutput
+func @testRankOfRankedTensorUnrankedOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<*xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// CHECK-LABEL: testRankOfRankedTensorDynamicShapeOutput
+func @testRankOfRankedTensorDynamicShapeOutput(%arg0 : tensor<4x3x2xf32>) -> tensor<?xi32> {
+  // Regression test to make sure we don't crash in this case.
+  %0 = "tf.Rank"(%arg0) : (tensor<4x3x2xf32>) -> tensor<?xi32>
+  return %0 : tensor<?xi32>
+}
+
 // CHECK-LABEL: @foldFill
 func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   %0 = "tf.Const"() {value = dense<[3, 2, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
@@ -1279,4 +1307,50 @@ func @testSumFoldBypass(%arg0: tensor<4x?xf16>, %arg1: tensor<*xi64>) -> tensor<
     // CHECK: return %arg0
   %0 = "tf.Sum"(%arg0, %arg1) { keep_dims = false }: (tensor<4x?xf16>, tensor<*xi64>) -> tensor<4x?xf16>
   return %0 : tensor<4x?xf16>
+}
+
+// CHECK-LABEL: @testMatrixSetDiag
+func @testMatrixSetDiag(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>) -> tensor<3x3xi64> {
+  %0 = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi64>, tensor<3xi64>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+
+  // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV3"(%arg0, %arg1, %[[ZERO]])
+  // CHECK-SAME: {align = "RIGHT_LEFT"}
+  // CHECK-SAME: (tensor<3x3xi64>, tensor<3xi64>, tensor<i32>) -> tensor<3x3xi64>
+}
+
+// CHECK-LABEL: @testMatrixSetDiagV2
+func @testMatrixSetDiagV2(%arg0: tensor<3x3xi64>, %arg1: tensor<3xi64>, %arg2: tensor<i32>) -> tensor<3x3xi64> {
+  %0 = "tf.MatrixSetDiagV2"(%arg0, %arg1, %arg2) : (tensor<3x3xi64>, tensor<3xi64>, tensor<i32>) -> tensor<3x3xi64>
+  return %0 : tensor<3x3xi64>
+
+  // CHECK: %[[RES:.*]] = "tf.MatrixSetDiagV3"(%arg0, %arg1, %arg2)
+  // CHECK-SAME: {align = "LEFT_LEFT"}
+}
+
+// CHECK-LABEL: @testVariableToVariableV2
+func @testVariableToVariableV2() {
+  // CHECK-NOT: "tf.Variable"
+
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  // CHECK: "tf.VariableV2"
+  %1 = "tf.Variable"() {container = "", dtype = i32, shared_name = "var", shape = #tf.shape<>} : () -> tensor<!tf.int32ref>
+  %2 = "tf.Assign"(%1, %0) : (tensor<!tf.int32ref>, tensor<i32>) -> (tensor<!tf.int32ref>)
+
+  return
+}
+
+// CHECK-LABEL: testUnpackAndCwiseUnary
+func @testUnpackAndCwiseUnary(%arg0: tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>) {
+
+  // CHECK: %[[NEG:.*]] = "tf.Neg"(%arg0)
+  // CHECK: %[[UNPACK:.*]]:2 = "tf.Unpack"(%[[NEG]])
+  %unpacked:2 = "tf.Unpack"(%arg0) {axis = 1 : i64, device = ""}
+                : (tensor<?x2xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  %0 = "tf.Neg"(%unpacked#0): (tensor<?xf32>) -> tensor<?xf32>
+  %1 = "tf.Neg"(%unpacked#1): (tensor<?xf32>) -> tensor<?xf32>
+
+  // CHECK: return %[[UNPACK]]#0, %[[UNPACK]]#1
+  return %0, %1 : tensor<?xf32>, tensor<?xf32>
 }

@@ -232,11 +232,7 @@ REGISTER_OP("_FusedBatchNormEx")
     .Output("reserve_space_1: U")
     .Output("reserve_space_2: U")
     .Output("reserve_space_3: U")
-#ifdef ENABLE_MKLDNN_V1
     .Attr("T: {half, float, bfloat16}")
-#else
-    .Attr("T: {half, float}")
-#endif
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("exponential_avg_factor: float = 1.0")
@@ -632,10 +628,10 @@ REGISTER_OP("_FusedDepthwiseConv2dNative")
     // Attributes for the LeakyRelu ----------------------------------------- //
     .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
-
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 // --------------------------------------------------------------------------
+
 REGISTER_OP("Conv3D")
     .Input("input: T")
     .Input("filter: T")
@@ -1656,11 +1652,11 @@ REGISTER_OP("_MklDepthwiseConv2dNative")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShapeWithExplicitPadding);
 
 REGISTER_OP("_MklConv2D")
     .Input("input: T")
@@ -1675,11 +1671,11 @@ REGISTER_OP("_MklConv2D")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 MKL version of Conv2D operator. Uses MKL DNN APIs to perform 2D convolution.
 
@@ -1716,10 +1712,11 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 Dummy node that enables fusing Conv2D and BiasAdd operator for MKL. This node
 does not perform anything. It is just created as an intermediate output of
@@ -1744,10 +1741,11 @@ REGISTER_OP("_MklConv2DWithBias")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 MKL version of Conv2D and BiasAdd operator. Uses MKL DNN APIs to perform
 2D convolution and add Bias to the output of convolution.
@@ -1764,7 +1762,6 @@ REGISTER_OP("__MklDummyPadWithConv2D")
     .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")

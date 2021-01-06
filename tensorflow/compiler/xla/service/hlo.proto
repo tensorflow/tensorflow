@@ -588,6 +588,7 @@ message HloPassMetadata {
   // set as the ids of all the modules in the module group. Empty otherwise.
   repeated int64 module_group_module_ids = 7;
 
+  // Timestamp before and after the pass is run. Note they may be equal.
   int64 start_timestamp_usec = 8;
   int64 end_timestamp_usec = 9;
 }

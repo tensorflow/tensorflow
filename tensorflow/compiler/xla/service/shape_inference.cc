@@ -214,6 +214,37 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        output_is_dynamic);
 }
 
+StatusOr<PrimitiveType> MaybeUpcast(
+    PrimitiveType from_type,
+    absl::optional<PrimitiveType> preferred_element_type) {
+  if (!preferred_element_type.has_value() ||
+      *preferred_element_type == from_type) {
+    return from_type;
+  }
+  if (primitive_util::IsIntegralType(from_type) !=
+      primitive_util::IsIntegralType(*preferred_element_type)) {
+    return InvalidArgument(
+        "`preferred_element_type` and the original type must both be integral "
+        "or both be floating point.");
+  }
+  if (!primitive_util::IsSignedIntegralType(from_type) !=
+      !primitive_util::IsSignedIntegralType(*preferred_element_type)) {
+    return InvalidArgument(
+        "`preferred_element_type` must have the same signedness as the "
+        "original type.");
+  }
+  if (primitive_util::BitWidth(*preferred_element_type) <
+      primitive_util::BitWidth(from_type)) {
+    if (primitive_util::IsFloatingPointType(from_type)) {
+      return from_type;
+    }
+    return InvalidArgument(
+        "`preferred_element_type` must not be narrower than the original "
+        "type.");
+  }
+  return *preferred_element_type;
+}
+
 }  // namespace
 
 /* static */ StatusOr<Shape> ShapeInference::InferUnaryOpShape(
@@ -622,7 +653,8 @@ Status ValidateDotDimensionNumbers(
 
 /* static */ StatusOr<Shape> ShapeInference::InferDotOpShape(
     const Shape& lhs, const Shape& rhs,
-    const DotDimensionNumbers& dimension_numbers) {
+    const DotDimensionNumbers& dimension_numbers,
+    absl::optional<PrimitiveType> preferred_element_type) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of dot"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of dot"));
 
@@ -700,8 +732,11 @@ Status ValidateDotDimensionNumbers(
       is_dynamic.push_back(rhs.is_dynamic_dimension(i));
     }
   }
-  Shape result = ShapeUtil::MakeShape(
-      ShapeUtil::HigherPrecisionElementType(lhs, rhs), dimensions, is_dynamic);
+  TF_ASSIGN_OR_RETURN(
+      PrimitiveType type,
+      MaybeUpcast(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
+                  preferred_element_type));
+  Shape result = ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred dot shape: " << ShapeUtil::HumanString(result);
@@ -1586,7 +1621,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 /* static */ StatusOr<Shape> ShapeInference::InferConvolveShape(
     const Shape& lhs, const Shape& rhs, int64 feature_group_count,
     int64 batch_group_count, const Window& window,
-    const ConvolutionDimensionNumbers& dnums) {
+    const ConvolutionDimensionNumbers& dnums,
+    absl::optional<PrimitiveType> preferred_element_type) {
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -1833,8 +1869,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
     }
   }
-  return ShapeUtil::MakeShape(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
-                              dimensions, is_dynamic);
+  TF_ASSIGN_OR_RETURN(
+      PrimitiveType type,
+      MaybeUpcast(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
+                  preferred_element_type));
+  return ShapeUtil::MakeShape(type, dimensions, is_dynamic);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferFftShape(

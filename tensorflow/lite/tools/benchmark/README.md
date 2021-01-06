@@ -34,6 +34,12 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `run_frequency`: `float` (default=-1.0) \
+    The frequency of running a benchmark run as the number of prorated runs per
+    second. If the targeted rate per second cannot be reached, the benchmark
+    would start the next run immediately, trying its best to catch up. If set,
+    this will override the `run_delay` parameter. A non-positive value means
+    there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `profiling_output_csv_file`: `str` (default="") \
@@ -75,7 +81,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
     Note this requires Android 10+.
-*   `disable_nnapi_cpu`: `bool` (default=false)
+*   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
 #### Hexagon delegate

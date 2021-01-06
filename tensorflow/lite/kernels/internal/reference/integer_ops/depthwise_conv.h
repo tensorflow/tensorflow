@@ -95,7 +95,7 @@ inline void DepthwiseConvPerChannel(
                   // long as the filter size (filter_y * filter_x * in_channel)
                   // does not exceed 2^16, which is the case in all the models
                   // we have seen so far.
-                  // TODO(jianlijianli): Add a check to make sure the
+                  // TODO(b/174275578): Add a check to make sure the
                   // accumulator depth is smaller than 2^16.
                   acc += filter_val * (input_val + input_offset);
                 }

@@ -1313,6 +1313,7 @@ def _check_dtypes(value, dtype):
 
 
 @tf_export("TensorArraySpec")
+@type_spec.register("tf.TensorArraySpec")
 class TensorArraySpec(type_spec.TypeSpec):
   """Type specification for a `tf.TensorArray`."""
 

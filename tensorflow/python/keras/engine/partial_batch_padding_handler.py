@@ -44,7 +44,7 @@ class PartialBatchPaddingHandler(object):
 
     def _find_any_tensor(batch_features):
       tensors = [
-          x for x in nest.flatten(batch_features) if tensor_util.is_tensor(x)
+          x for x in nest.flatten(batch_features) if tensor_util.is_tf_type(x)
       ]
       if not tensors:
         raise ValueError('Cannot find any Tensor in features dict.')

@@ -26,8 +26,6 @@ message GraphDef {
   // compatible, this field is entirely ignored.
   int32 version = 3 [deprecated = true];
 
-  // EXPERIMENTAL. DO NOT USE OR DEPEND ON THIS YET.
-  //
   // "library" provides user-defined functions.
   //
   // Naming:

@@ -89,7 +89,7 @@ def reduce_non_distributed_value(
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
   # TODO:(b/138823479): handle the tensor value properly.
-  if not tensor_util.is_tensor(value) and value == 0:
+  if not tensor_util.is_tf_type(value) and value == 0:
     return 0
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.
@@ -990,11 +990,6 @@ class CollectiveAllReduce(CrossDeviceOps):
   all workers and then put results on the right destinations.
   """
 
-  # Whether to only use NCCL for batched all-reduce when NCCL is requested. This
-  # is because of the lack of mechanism to order NCCL operations
-  # deterministically.
-  _limited_nccl = True
-
   def __init__(self, devices, group_size, collective_keys=None):
     """Initializes the object.
 
@@ -1034,12 +1029,18 @@ class CollectiveAllReduce(CrossDeviceOps):
     # function building, the executors are not used.
     self._executors = []
     self._launchers = []
+    # Whether to only use NCCL for batched all-reduce when NCCL is requested.
+    # This is because of the lack of mechanism to order NCCL operations
+    # deterministically.
+    self._limited_nccl = False
     for device in self._devices:
       executor = executor_lib.new_executor(enable_async=True)
       self._executors.append(executor)
       launcher = cross_device_utils.CollectiveReplicaLauncher(
           group_key, group_size, self._collective_keys, device, executor)
       self._launchers.append(launcher)
+      if not launcher.can_order_nccl():
+        self._limited_nccl = True
 
     super(CollectiveAllReduce, self).__init__()
 

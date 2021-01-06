@@ -45,6 +45,56 @@ int3 GetWorkGroupsCount(int grid_dimension, const int3& grid_size,
   }
   return work_groups_count;
 }
+
+std::string GetCommonOpenCLDefines(CalculationsPrecision precision) {
+  std::string result;
+
+  result += "#define GLOBAL_ID_0 get_global_id(0)\n";
+  result += "#define GLOBAL_ID_1 get_global_id(1)\n";
+  result += "#define GLOBAL_ID_2 get_global_id(2)\n";
+  result += "#define MAIN_FUNCTION __kernel void main_function\n";
+  switch (precision) {
+    case CalculationsPrecision::F32:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#define ACCUM_FLT4 float4\n";
+      result += "#define FLT float\n";
+      result += "#define FLT2 float2\n";
+      result += "#define FLT3 float3\n";
+      result += "#define FLT4 float4\n";
+      result += "#define TO_FLT4 convert_float4\n";
+      result += "#define TO_ACCUM_TYPE convert_float4\n";
+      result += "#define TO_ACCUM_FLT convert_float\n";
+      result += "#define INIT_FLT4(value) (float4)(value)\n";
+      break;
+    case CalculationsPrecision::F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      result += "#define ACCUM_FLT4 half4\n";
+      result += "#define FLT half\n";
+      result += "#define FLT2 half2\n";
+      result += "#define FLT3 half3\n";
+      result += "#define FLT4 half4\n";
+      result += "#define TO_FLT4 convert_half4\n";
+      result += "#define TO_ACCUM_TYPE convert_half4\n";
+      result += "#define TO_ACCUM_FLT convert_half\n";
+      result += "#define INIT_FLT4(value) (half4)(value)\n";
+      break;
+    case CalculationsPrecision::F32_F16:
+      result += "#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable\n";
+      result += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      result += "#define ACCUM_FLT4 float4\n";
+      result += "#define FLT half\n";
+      result += "#define FLT2 half2\n";
+      result += "#define FLT3 half3\n";
+      result += "#define FLT4 half4\n";
+      result += "#define TO_FLT4 convert_half4\n";
+      result += "#define TO_ACCUM_TYPE convert_float4\n";
+      result += "#define TO_ACCUM_FLT convert_float\n";
+      result += "#define INIT_FLT4(value) (half4)(value)\n";
+      break;
+  }
+  return result;
+}
 }  // namespace
 
 ClOperation::ClOperation(ClOperation&& operation)
@@ -94,6 +144,9 @@ absl::Status ClOperation::UpdateParams() {
 
 absl::Status ClOperation::Compile(const CreationContext& creation_context) {
   operation_->AssembleCode(creation_context.GetGpuInfo());
+  operation_->code_ =
+      GetCommonOpenCLDefines(operation_->definition_.precision) +
+      operation_->code_;
   RETURN_IF_ERROR(cl_args_.Init(
       creation_context.GetGpuInfo(),
       {{operation_->dst_tensors_names_[0], operation_->elementwise_code_}},
@@ -114,10 +167,11 @@ absl::Status ClOperation::CompileDeserialized(
       *creation_context.context, *creation_context.device, &kernel_);
 }
 
-absl::Status ClOperation::Tune(const TuningParameters& params) {
+absl::Status ClOperation::Tune(TuningType tuning_type, const GpuInfo& gpu_info,
+                               ProfilingCommandQueue* profiling_queue) {
   std::vector<int3> possible_work_groups;
-  operation_->GetPossibleKernelWorkGroups(params.tuning_type, *params.info,
-                                          kernel_.info_, &possible_work_groups);
+  operation_->GetPossibleKernelWorkGroups(tuning_type, gpu_info, kernel_.info_,
+                                          &possible_work_groups);
   if (possible_work_groups.empty()) {
     return absl::NotFoundError(
         "Can not found work_group size to launch kernel");
@@ -137,8 +191,8 @@ absl::Status ClOperation::Tune(const TuningParameters& params) {
     }
     RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     int best_work_group_index;
-    RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
-        kernel_, *params.info, work_groups_count, possible_work_groups,
+    RETURN_IF_ERROR(profiling_queue->GetBestWorkGroupIndex(
+        kernel_, gpu_info, work_groups_count, possible_work_groups,
         &best_work_group_index));
     operation_->work_group_size_ = possible_work_groups[best_work_group_index];
     operation_->work_groups_count_ = GetWorkGroupsCount(

@@ -871,30 +871,34 @@ class StrategyBase(object):
     explicitly (i.e. calling those either inside or outside the scope is OK).
 
     * Anything that creates variables that should be distributed variables
-      must be in `strategy.scope`. This can be either by directly putting it in
-      scope, or relying on another API like `strategy.run` or `model.fit` to
-      enter it for you. Any variable that is created outside scope will not be
-      distributed and may have performance implications. Common things that
-      create variables in TF: models, optimizers, metrics. These should always
-      be created inside the scope. Another source of variable creation can be
-      a checkpoint restore - when variables are created lazily. Note that any
-      variable created inside a strategy captures the strategy information. So
-      reading and writing to these variables outside the `strategy.scope` can
-      also work seamlessly, without the user having to enter the scope.
+      must be called in a `strategy.scope`. This can be accomplished either by
+      directly calling the variable creating function within the scope context,
+      or by relying on another API like `strategy.run` or `keras.Model.fit` to
+      automatically enter it for you. Any variable that is created outside scope
+      will not be distributed and may have performance implications. Some common
+      objects that create variables in TF are Models, Optimizers, Metrics. Such
+      objects should always be initiliazized in the scope, and any functions
+      that may lazily create variables (e.g., `Model.__call__()`, tracing a
+      `tf.function`, etc.) should similarly be called within scope. Another
+      source of variable creation can be a checkpoint restore - when variables
+      are created lazily. Note that any variable created inside a strategy
+      captures the strategy information. So reading and writing to these
+      variables outside the `strategy.scope` can also work seamlessly, without
+      the user having to enter the scope.
     * Some strategy APIs (such as `strategy.run` and `strategy.reduce`) which
-      require to be in a strategy's scope, enter the scope for you
-      automatically, which means when using those APIs you don't need to
-      enter the scope yourself.
-    * When a `tf.keras.Model` is created inside a `strategy.scope`, we capture
-      this information. When high level training frameworks methods such as
-      `model.compile`, `model.fit` etc are then called
-      on this model, we automatically enter the scope, as well as use this
-      strategy to distribute the training etc. See
-      detailed example in [distributed keras tutorial](https://www.tensorflow.org/tutorials/distribute/keras).
-      Note that simply calling the `model(..)` is not impacted - only high
-      level training framework APIs are. `model.compile`, `model.fit`,
-      `model.evaluate`, `model.predict` and `model.save` can all be called
-      inside or outside the scope.
+      require to be in a strategy's scope, enter the scope automatically, which
+      means when using those APIs you don't need to explicitly enter the scope
+      yourself.
+    * When a `tf.keras.Model` is created inside a `strategy.scope`, the Model
+      object captures the scope information. When high level training framework
+      methods such as `model.compile`, `model.fit`, etc. are then called, the
+      captured scope will be automatically entered, and the associated strategy
+      will be used to distribute the training etc. See a detailed example in
+      [distributed keras tutorial](https://www.tensorflow.org/tutorials/distribute/keras).
+      WARNING: Simply calling `model(..)` does not automatically enter the
+      captured scope -- only high level training framework APIs support this
+      behavior: `model.compile`, `model.fit`, `model.evaluate`, `model.predict`
+      and `model.save` can all be called inside or outside the scope.
     * The following can be either inside or outside the scope:
         * Creating the input datasets
         * Defining `tf.function`s that represent your training step
@@ -2874,7 +2878,7 @@ class ReplicaContextBase(object):
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     if not (replica_id_in_sync_group is None or
-            tensor_util.is_tensor(replica_id_in_sync_group) or
+            tensor_util.is_tf_type(replica_id_in_sync_group) or
             isinstance(replica_id_in_sync_group, int)):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
@@ -2977,7 +2981,7 @@ class ReplicaContextBase(object):
     # error. Making the tensor at call time to ensure it is the same graph where
     # it's used. However to be compatible with tpu.replicate(),
     # self._replica_id_in_sync_group can also be a Tensor.
-    if tensor_util.is_tensor(self._replica_id_in_sync_group):
+    if tensor_util.is_tf_type(self._replica_id_in_sync_group):
       return self._replica_id_in_sync_group
     return constant_op.constant(
         self._replica_id_in_sync_group,

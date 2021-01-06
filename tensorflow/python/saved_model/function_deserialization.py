@@ -195,6 +195,10 @@ class RestoredFunction(def_function.Function):
     self.concrete_functions = concrete_functions
     self._function_spec = function_spec
 
+    # Prevent RestoredFunction from spamming users with frequent tracing
+    # warnings.
+    self._omit_frequent_tracing_warning = True
+
   def _list_all_concrete_functions_for_serialization(self):
     return self.concrete_functions
 

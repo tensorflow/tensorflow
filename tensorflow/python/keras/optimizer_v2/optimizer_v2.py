@@ -296,8 +296,11 @@ class OptimizerV2(trackable.Trackable):
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - `_resource_apply_dense` (update variable given gradient tensor is dense)
-    - `_resource_apply_sparse` (update variable given gradient tensor is sparse)
+    - `_resource_apply_dense` (update variable given gradient tensor is a dense
+      `tf.Tensor`)
+    - `_resource_apply_sparse` (update variable given gradient tensor is a
+      sparse `tf.IndexedSlices`. The most common way for this to happen
+      is if you are taking the gradient through a `tf.gather`.)
     - `_create_slots`
       (if your optimizer algorithm requires additional variables)
     - `get_config`
@@ -735,7 +738,7 @@ class OptimizerV2(trackable.Trackable):
 
     Should be used only in legacy v1 graph mode.
 
-    Arguments:
+    Args:
       loss: Loss tensor.
       params: List of variables.
 
@@ -855,8 +858,22 @@ class OptimizerV2(trackable.Trackable):
     """A list of names for this optimizer's slots."""
     return self._slot_names
 
-  def add_slot(self, var, slot_name, initializer="zeros"):
-    """Add a new slot variable for `var`."""
+  def add_slot(self, var, slot_name, initializer="zeros", shape=None):
+    """Add a new slot variable for `var`.
+
+    A slot variable is an additional variable associated with `var` to train.
+    It is allocated and managed by optimizers, e.g. `Adam`.
+
+    Args:
+      var: a `Variable` object.
+      slot_name: name of the slot variable.
+      initializer: initializer of the slot variable
+      shape: (Optional) shape of the slot variable. If not set, it will default
+      to the shape of `var`.
+
+    Returns:
+      A slot variable.
+    """
     if slot_name not in self._slot_names:
       self._slot_names.append(slot_name)
     var_key = _var_key(var)
@@ -865,26 +882,34 @@ class OptimizerV2(trackable.Trackable):
     if weight is None:
       if isinstance(initializer, six.string_types) or callable(initializer):
         initializer = initializers.get(initializer)
+        if isinstance(
+            initializer,
+            trackable.CheckpointInitialValueCallable) or (shape is not None):
+          slot_shape = shape
+        else:
+          slot_shape = var.shape
         initial_value = functools.partial(
-            initializer, shape=var.shape, dtype=var.dtype)
+            initializer, shape=slot_shape, dtype=var.dtype)
       else:
         initial_value = initializer
-      strategy = distribute_ctx.get_strategy()
-      if not strategy.extended.variable_created_in_scope(var):
-        raise ValueError(
-            "Trying to create optimizer slot variable under the scope for "
-            "tf.distribute.Strategy ({}), which is different from the scope "
-            "used for the original variable ({}). Make sure the slot "
-            "variables are created under the same strategy scope. This may "
-            "happen if you're restoring from a checkpoint outside the scope"
-            .format(strategy, var))
 
-      with strategy.extended.colocate_vars_with(var):
-        weight = tf_variables.Variable(
-            name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-            dtype=var.dtype,
-            trainable=False,
-            initial_value=initial_value)
+      with self._distribution_strategy_scope():
+        strategy = distribute_ctx.get_strategy()
+        if not strategy.extended.variable_created_in_scope(var):
+          raise ValueError(
+              "Trying to create optimizer slot variable under the scope for "
+              "tf.distribute.Strategy ({}), which is different from the scope "
+              "used for the original variable ({}). Make sure the slot "
+              "variables are created under the same strategy scope. This may "
+              "happen if you're restoring from a checkpoint outside the scope"
+              .format(strategy, var))
+
+        with strategy.extended.colocate_vars_with(var):
+          weight = tf_variables.Variable(
+              name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
+              dtype=var.dtype,
+              trainable=False,
+              initial_value=initial_value)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(
@@ -979,7 +1004,7 @@ class OptimizerV2(trackable.Trackable):
       lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
-      decay_t = self._get_hyper("decay", var_dtype)
+      decay_t = math_ops.cast(self._initial_decay, var_dtype)
       lr_t = lr_t / (1. + decay_t * local_step)
     return lr_t
 
@@ -1012,7 +1037,7 @@ class OptimizerV2(trackable.Trackable):
     capable of instantiating the same optimizer from the config
     dictionary.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
         custom_objects: A Python dictionary mapping names to additional Python
           objects used to create this optimizer, such as a function used for a
@@ -1036,7 +1061,7 @@ class OptimizerV2(trackable.Trackable):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if tensor_util.is_tensor(value):
+    if tensor_util.is_tf_type(value):
       return backend.get_value(value)
     return value
 
@@ -1106,7 +1131,7 @@ class OptimizerV2(trackable.Trackable):
     >>> opt.iterations
     <tf.Variable 'RMSprop/iter:0' shape=() dtype=int64, numpy=10>
 
-    Arguments:
+    Args:
         weights: weight values as a list of numpy arrays.
     """
     params = self.weights
@@ -1344,9 +1369,16 @@ class OptimizerV2(trackable.Trackable):
         # a slot variable if not for this case). Deferring is mostly harmless
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
-        and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
+        #
+        # One notable case is with distribution strategy, which uses variable
+        # creator scope but always desires the `variable` and the slot to use
+        # the same scope, thus we can safely eagerly create/restore slot
+        # variables.
+        and (not ops.get_default_graph()._variable_creator_stack or  # pylint: disable=protected-access
+             self._distribution_strategy)):
       initializer = trackable.CheckpointInitialValueCallable(
           checkpoint_position=slot_variable_position)
+      # Shape is unknown until we read the checkpoint value.
       slot_variable = self.add_slot(
           var=variable,
           initializer=initializer,

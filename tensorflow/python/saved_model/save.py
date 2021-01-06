@@ -358,7 +358,7 @@ class _SaveableView(object):
              "\n".join(concrete_function.graph.saving_errors)).format(
                  name=concrete_function.name))
       for capture in concrete_function.captured_inputs:
-        if (tensor_util.is_tensor(capture) and
+        if (tensor_util.is_tf_type(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
             capture not in self.captured_tensor_node_ids):
           if hasattr(capture, "_cached_variable"):
@@ -781,8 +781,9 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
   elif resource_variable_ops.is_resource_variable(obj):
     proto.variable.SetInParent()
     if not obj.name.endswith(":0"):
-      raise ValueError("Cowardly refusing to save variable %s because of"
-                       " unexpected suffix which won't be restored.")
+      raise ValueError("Cowardly refusing to save variable {} because of"
+                       " unexpected suffix which won't be restored.".format(
+                           obj.name))
     proto.variable.name = meta_graph._op_name(obj.name)  # pylint: disable=protected-access
     proto.variable.trainable = obj.trainable
     proto.variable.dtype = obj.dtype.as_datatype_enum

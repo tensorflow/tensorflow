@@ -172,7 +172,7 @@ class _NonAtrousConvolution(object):
   `__call__` are compatible with `input_shape` and filter_shape passed to the
   constructor.
 
-  Arguments:
+  Args:
     input_shape: static input shape, i.e. input.shape.
     filter_shape: static filter shape, i.e. filter.shape.
     padding: see _non_atrous_convolution.
@@ -1067,10 +1067,10 @@ def convolution_internal(
       estimated from `filters.shape`.
   """
   if (not isinstance(filters, variables_lib.Variable) and
-      not tensor_util.is_tensor(filters)):
+      not tensor_util.is_tf_type(filters)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       filters = ops.convert_to_tensor(filters, name='filters')
-  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tensor(input)):
+  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tf_type(input)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       input = ops.convert_to_tensor(input, name="input")
 
@@ -3280,7 +3280,7 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if tensor_util.is_tensor(output_shape):
+    if tensor_util.is_tf_type(output_shape):
       n = output_shape.shape[0] - 2
     elif isinstance(output_shape, collections_abc.Sized):
       n = len(output_shape) - 2
@@ -5157,7 +5157,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       return x
 
     is_executing_eagerly = context.executing_eagerly()
-    if not tensor_util.is_tensor(rate):
+    if not tensor_util.is_tf_type(rate):
       if is_rate_number:
         keep_prob = 1 - rate
         scale = 1 / keep_prob
@@ -5203,12 +5203,36 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
   and outputs their values and indices as vectors.  Thus `values[j]` is the
   `j`-th largest entry in `input`, and its index is `indices[j]`.
 
+  >>> result = tf.math.top_k([1, 2, 98, 1, 1, 99, 3, 1, 3, 96, 4, 1],
+  ...                         k=3)
+  >>> result.values.numpy()
+  array([99, 98, 96], dtype=int32)
+  >>> result.indices.numpy()
+  array([5, 2, 9], dtype=int32)
+
   For matrices (resp. higher rank input), computes the top `k` entries in each
   row (resp. vector along the last dimension).  Thus,
 
-      values.shape = indices.shape = input.shape[:-1] + [k]
+  >>> input = tf.random.normal(shape=(3,4,5,6))
+  >>> k = 2
+  >>> values, indices  = tf.math.top_k(input, k=k)
+  >>> values.shape.as_list()
+  [3, 4, 5, 2]
+  >>>
+  >>> values.shape == indices.shape == input.shape[:-1] + [k]
+  True
+
+  The indices can be used to `gather` from a tensor who's shape matches `input`.
+
+  >>> gathered_values = tf.gather(input, indices, batch_dims=-1)
+  >>> assert tf.reduce_all(gathered_values == values)
 
   If two elements are equal, the lower-index element appears first.
+
+  >>> result = tf.math.top_k([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+  ...                        k=3)
+  >>> result.indices.numpy()
+  array([0, 1, 3], dtype=int32)
 
   Args:
     input: 1-D or higher `Tensor` with last dimension at least `k`.
@@ -5219,6 +5243,7 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     name: Optional name for the operation.
 
   Returns:
+    A tuple with two named fields:
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """

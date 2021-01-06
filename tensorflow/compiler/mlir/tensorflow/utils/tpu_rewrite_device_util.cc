@@ -489,13 +489,13 @@ std::string GetDeviceAliasForLogicalCore(int core_index) {
 mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device) {
-  auto replicate = cluster.getParentOfType<mlir::tf_device::ReplicateOp>();
+  auto replicate = cluster->getParentOfType<mlir::tf_device::ReplicateOp>();
   if (replicate) {
     *host_device = tensorflow::kTPUReplicatedHost;
     return mlir::success();
   }
 
-  auto num_cores_per_replica_attr = cluster.getAttrOfType<mlir::IntegerAttr>(
+  auto num_cores_per_replica_attr = cluster->getAttrOfType<mlir::IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);
   if (!num_cores_per_replica_attr)
     return cluster.emitOpError(
@@ -506,12 +506,12 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
         "outside compilation is not supported with model parallelism.");
 
   auto topology_attr =
-      cluster.getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
+      cluster->getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
   if (!topology_attr)
     return cluster.emitOpError("cluster op missing `topology` attribute");
 
-  auto device_assignment_attr =
-      cluster.getAttrOfType<mlir::ArrayAttr>(tensorflow::kDeviceAssignmentAttr);
+  auto device_assignment_attr = cluster->getAttrOfType<mlir::ArrayAttr>(
+      tensorflow::kDeviceAssignmentAttr);
   if (!device_assignment_attr)
     return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
                                              tensorflow::kDeviceAssignmentAttr)

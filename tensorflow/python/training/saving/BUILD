@@ -16,7 +16,7 @@ py_library(
     name = "checkpoint_options",
     srcs = ["checkpoint_options.py"],
     deps = [
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -40,6 +40,7 @@ cuda_py_test(
         "functional_saver_test.py",
     ],
     tags = [
+        "no_tfrt",  # TODO(b/171765113)
         "no_windows",  # TODO(b/171350346)
     ],
     deps = [

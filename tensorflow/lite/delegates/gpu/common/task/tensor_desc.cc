@@ -94,6 +94,7 @@ TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
 
 GPUResources TensorDescriptor::GetGPUResources() const {
   GPUResources resources;
+  resources.ints.push_back("slice_stride");
   if (HasAxis(Axis::WIDTH)) {
     resources.ints.push_back("width");
     resources.ints.push_back("width_div2");
@@ -175,7 +176,7 @@ absl::Status TensorDescriptor::PerformSelector(
     *result = "slices";
     return absl::OkStatus();
   } else if (selector == "SliceStride") {
-    *result = GetSliceStride();
+    *result = "slice_stride";
     return absl::OkStatus();
   } else if (selector == "Channels") {
     *result = "channels";
@@ -402,7 +403,7 @@ absl::Status TensorDescriptor::PerformGetPtrWithSliceOffsetSelector(
         "GetPtrWithSliceOffset require one argument(slice coordinate), but ",
         args.size(), " was passed"));
   }
-  *result = absl::StrCat("buffer + ", args[0], " * ", GetSliceStride());
+  *result = absl::StrCat("buffer + ", args[0], " * slice_stride");
   return absl::OkStatus();
 }
 
@@ -644,6 +645,35 @@ bool TensorDescriptor::HasAxis(Axis axis) const {
   return false;
 }
 
+int TensorDescriptor::GetWidthSize(BHWDC shape) const {
+  int width = shape.w;
+  auto it1 = state_vars_.find("ElementsX2");
+  if (it1 != state_vars_.end() && it1->second == "true") {
+    width /= 2;
+  }
+  auto it2 = state_vars_.find("ElementsX4");
+  if (it2 != state_vars_.end() && it2->second == "true") {
+    width /= 4;
+  }
+  auto it = state_vars_.find("BatchedWidth");
+  if (it != state_vars_.end() && it->second == "true") {
+    width *= shape.b;
+  }
+  return width;
+}
+
+int TensorDescriptor::GetSliceStrideSize(BHWDC shape) const {
+  if (IsBatchedWidth()) {
+    return GetWidthSize(shape) * shape.h;
+  } else {
+    if (HasAxis(Axis::BATCH)) {
+      return GetWidthSize(shape) * shape.h * shape.b;
+    } else {
+      return GetWidthSize(shape) * shape.h;
+    }
+  }
+}
+
 void TensorDescriptor::SetAddressMode(AddressMode mode) {
   if (mode == AddressMode::kZero) {
     state_vars_["TextureMode"] = "ZERO";
@@ -719,18 +749,6 @@ std::string TensorDescriptor::GetWidth() const {
   }
 }
 
-std::string TensorDescriptor::GetSliceStride() const {
-  if (IsBatchedWidth()) {
-    return GetWidth() + " * height";
-  } else {
-    if (HasAxis(Axis::BATCH)) {
-      return GetWidth() + " * height * batch";
-    } else {
-      return GetWidth() + " * height";
-    }
-  }
-}
-
 AddressMode TensorDescriptor::AddressModeFromState() const {
   auto it = state_vars_.find("TextureMode");
   if (it != state_vars_.end()) {
@@ -745,18 +763,24 @@ AddressMode TensorDescriptor::AddressModeFromState() const {
 }
 
 void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<BHWC, DataType::FLOAT32>& src) {
+  shape = BHWDC(src.shape.b, src.shape.h, src.shape.w, 1, src.shape.c);
+  UploadData(src.data.data());
+}
+
+void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
   shape = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
-  UploadData(absl::MakeConstSpan(src.data));
+  UploadData(src.data.data());
 }
 
 void TensorDescriptor::UploadData(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
   shape = BHWDC(1, 1, 1, 1, src.shape.v);
-  UploadData(absl::MakeConstSpan(src.data));
+  UploadData(src.data.data());
 }
 
-void TensorDescriptor::UploadData(absl::Span<const float> src) {
+void TensorDescriptor::UploadData(const float* src) {
   int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
                              ? shape.c
                              : AlignByN(shape.c, 4);
@@ -764,10 +788,10 @@ void TensorDescriptor::UploadData(absl::Span<const float> src) {
   data.resize(elements_count * SizeOf(data_type));
   if (data_type == DataType::FLOAT32) {
     float* gpu_data = reinterpret_cast<float*>(data.data());
-    DataFromBHWDC(src, shape, *this, absl::MakeSpan(gpu_data, elements_count));
+    DataFromBHWDC(src, shape, *this, gpu_data);
   } else {
     half* gpu_data = reinterpret_cast<half*>(data.data());
-    DataFromBHWDC(src, shape, *this, absl::MakeSpan(gpu_data, elements_count));
+    DataFromBHWDC(src, shape, *this, gpu_data);
   }
 }
 
@@ -842,8 +866,8 @@ int GetChannelsAlignment(const TensorDescriptor& desc, const BHWDC& shape) {
 }  // namespace
 
 template <typename T>
-void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
-                   const TensorDescriptor& desc, absl::Span<T> dst) {
+void DataFromBHWDC(const float* src, const BHWDC& shape,
+                   const TensorDescriptor& desc, T* dst) {
   const int channels_alignment = GetChannelsAlignment(desc, shape);
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
@@ -870,18 +894,14 @@ void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
   }
 }
 
-template void DataFromBHWDC<float>(absl::Span<const float> src,
-                                   const BHWDC& shape,
-                                   const TensorDescriptor& desc,
-                                   absl::Span<float> dst);
-template void DataFromBHWDC<half>(absl::Span<const float> src,
-                                  const BHWDC& shape,
-                                  const TensorDescriptor& desc,
-                                  absl::Span<half> dst);
+template void DataFromBHWDC<float>(const float* src, const BHWDC& shape,
+                                   const TensorDescriptor& desc, float* dst);
+template void DataFromBHWDC<half>(const float* src, const BHWDC& shape,
+                                  const TensorDescriptor& desc, half* dst);
 
 template <typename T>
-void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
-                 const TensorDescriptor& desc, absl::Span<float> dst) {
+void DataToBHWDC(const T* src, const BHWDC& shape, const TensorDescriptor& desc,
+                 float* dst) {
   const int channels_alignment = GetChannelsAlignment(desc, shape);
   const int slices = DivideRoundUp(shape.c, 4);
   for (int b = 0; b < shape.b; ++b) {
@@ -904,13 +924,10 @@ void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
   }
 }
 
-template void DataToBHWDC<float>(absl::Span<const float> src,
-                                 const BHWDC& shape,
-                                 const TensorDescriptor& desc,
-                                 absl::Span<float> dst);
-template void DataToBHWDC<half>(absl::Span<const half> src, const BHWDC& shape,
-                                const TensorDescriptor& desc,
-                                absl::Span<float> dst);
+template void DataToBHWDC<float>(const float* src, const BHWDC& shape,
+                                 const TensorDescriptor& desc, float* dst);
+template void DataToBHWDC<half>(const half* src, const BHWDC& shape,
+                                const TensorDescriptor& desc, float* dst);
 
 }  // namespace gpu
 }  // namespace tflite

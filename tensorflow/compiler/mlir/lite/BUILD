@@ -25,6 +25,7 @@ package_group(
     packages = [
         "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//third_party/iree/...",
     ],
 )
 
@@ -35,9 +36,9 @@ filegroup(
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:SideEffectTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
-        "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
 )
 
@@ -238,6 +239,7 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
+        "//third_party/eigen3",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
@@ -292,6 +294,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TensorDialect",
     ],
 )
 
@@ -352,6 +355,25 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "perception_ops_utils",
+    srcs = [
+        "utils/perception_ops_utils.cc",
+    ],
+    hdrs = [
+        "utils/perception_ops_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/lite/c:common",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "stateful_ops_utils",
     srcs = [
         "utils/stateful_ops_utils.cc",
@@ -380,6 +402,23 @@ tf_cc_test(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "perception_ops_utils_test",
+    size = "small",
+    srcs = ["utils/perception_ops_utils_test.cc"],
+    deps = [
+        ":perception_ops_utils",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -412,6 +451,7 @@ cc_library(
         ":constant_utils",
         ":lstm_utils",
         ":nms_utils",
+        ":perception_ops_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tftext_utils",
@@ -428,6 +468,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
+        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/xla:status",
@@ -465,6 +506,7 @@ cc_library(
         ":validators",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:verification_utils",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -488,6 +530,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/passes.h",
+        "transforms/prepare_quantize_lstm.h",
     ],
     deps = [
         "convert_type",
@@ -496,7 +539,11 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/lite/quantization/lite:tfl_to_std",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize:operator_property",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
@@ -665,6 +712,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:export_tf_dialect_op",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
@@ -702,6 +750,7 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",

@@ -84,9 +84,7 @@ TfLiteDelegate* CreateDummyDelegateFromOptions(char** options_keys,
 }  // namespace tools
 }  // namespace tflite
 
-#ifdef __cplusplus
 extern "C" {
-#endif  // __cplusplus
 
 // Defines two symbols that need to be exported to use the TFLite external
 // delegate. See tensorflow/lite/delegates/external for details.
@@ -101,6 +99,4 @@ TFL_CAPI_EXPORT void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate) {
   TfLiteDummyDelegateDelete(delegate);
 }
 
-#ifdef __cplusplus
-}
-#endif  // __cplusplus
+}  // extern "C"

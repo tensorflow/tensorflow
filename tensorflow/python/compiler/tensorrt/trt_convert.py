@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compiler.tensorrt import utils as trt_utils
 from tensorflow.python.eager import context
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import convert_to_constants
@@ -117,16 +118,12 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
 class TrtConversionParams(
     collections.namedtuple("TrtConversionParams", [
-        "rewriter_config_template", "max_workspace_size_bytes",
-        "precision_mode", "minimum_segment_size", "is_dynamic_op",
-        "maximum_cached_engines", "use_calibration", "max_batch_size",
-        "allow_build_at_runtime"
+        "max_workspace_size_bytes", "precision_mode", "minimum_segment_size",
+        "maximum_cached_engines", "use_calibration", "allow_build_at_runtime"
     ])):
   """Parameters that are used for TF-TRT conversion.
 
   Fields:
-    rewriter_config_template: a template RewriterConfig proto used to create a
-      TRT-enabled RewriterConfig. If None, it will use a default one.
     max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
       engine can use at execution time. This corresponds to the
       'workspaceSize' parameter of nvinfer1::IBuilder::setMaxWorkspaceSize().
@@ -134,11 +131,6 @@ class TrtConversionParams(
       TrtPrecisionMode.supported_precision_modes().
     minimum_segment_size: the minimum number of nodes required for a subgraph
       to be replaced by TRTEngineOp.
-    is_dynamic_op: whether to generate dynamic TRT ops which will build the
-      TRT network and engine at run time. i.e. Since TensorRT version < 6.0
-      does not support dynamic dimensions other than the batch dimension, when
-      the TensorFlow graph has a non-batch dimension of dynamic size, we would
-      need to enable this option. This option should be set to True in TF 2.0.
     maximum_cached_engines: max number of cached TRT engines for dynamic TRT
       ops. Created TRT engines for a dynamic dimension are cached. This is the
       maximum number of engines that can be cached. If the number of cached
@@ -154,31 +146,23 @@ class TrtConversionParams(
       will occur. Please note that accuracy may be negatively affected if
       there is a mismatch between which tensors TRT quantizes and which
       tensors were trained with fake quantization.
-    max_batch_size: max size for the input batch. This parameter is only
-      effective when use_implicit_batch is true.
     allow_build_at_runtime: whether to build TensorRT engines during runtime.
       If no TensorRT engine can be found in cache that can handle the given
       inputs during runtime, then a new TensorRT engine is built at runtime if
-      allow_build_at_runtime=True, and otherwise native TF is used. This
-      argument is only effective if is_dynamic_op=True.
+      allow_build_at_runtime=True, and otherwise native TF is used.
   """
 
   def __new__(cls,
-              rewriter_config_template=None,
               max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
               precision_mode=TrtPrecisionMode.FP32,
               minimum_segment_size=3,
-              is_dynamic_op=True,
               maximum_cached_engines=1,
               use_calibration=True,
-              max_batch_size=1,
               allow_build_at_runtime=True):
     return super(TrtConversionParams,
-                 cls).__new__(cls, rewriter_config_template,
-                              max_workspace_size_bytes, precision_mode,
-                              minimum_segment_size, is_dynamic_op,
-                              maximum_cached_engines, use_calibration,
-                              max_batch_size, allow_build_at_runtime)
+                 cls).__new__(cls, max_workspace_size_bytes, precision_mode,
+                              minimum_segment_size, maximum_cached_engines,
+                              use_calibration, allow_build_at_runtime)
 
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
@@ -203,51 +187,6 @@ def _check_conversion_params(conversion_params, is_v2=False):
         ("precision mode '{}' is not supported."
          "It should be one of {}").format(conversion_params.precision_mode,
                                           supported_precision_modes))
-  if is_v2:
-    # Static mode (building TRT engine without executing the op) is deprecated
-    # in TF 2.0. See TrtGraphConverterV2 for more details.
-    if not conversion_params.is_dynamic_op:
-      raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
-                       "please set it to True instead.")
-
-  if conversion_params.rewriter_config_template:
-    rewriter_cfg = conversion_params.rewriter_config_template
-    trt_optimizer = None
-    for optimizer in rewriter_cfg.custom_optimizers:
-      if optimizer.name == "TensorRTOptimizer":
-        if trt_optimizer:
-          raise ValueError(
-              "Found more than one TensorRTOptimizer in "
-              "rewriter_config_template while only one is allowed.")
-        trt_optimizer = optimizer
-    # If rewriter_config_template is set, it should include TensorRTOptimizer.
-    # It is possible to remove this requirement if needed.
-    if not trt_optimizer:
-      raise ValueError(
-          "Found no TensorRTOptimizer in rewriter_config_template.")
-    if not trt_optimizer.parameter_map:
-      raise ValueError("Found no parameter_map in TensorRTOptimizer.")
-    if ("precision_mode" in trt_optimizer.parameter_map.keys() and
-        trt_optimizer.parameter_map["precision_mode"].s not in map(
-            _to_bytes, supported_precision_modes)):
-      raise ValueError(("precision_mode '{}' is not supported. "
-                        "It should be one of {}").format(
-                            trt_optimizer.parameter_map["precision_mode"],
-                            supported_precision_modes))
-    if is_v2:
-      # Static mode (building TRT engine without executing the op) is not
-      # supported in TF 2.0. See TrtGraphConverterV2 for more details.
-      if ("is_dynamic_op" in trt_optimizer.parameter_map.keys() and
-          not trt_optimizer.parameter_map["is_dynamic_op"]):
-        raise ValueError("Option is_dynamic_op=False is not supported "
-                         "in TF 2.0, please set it to True instead.")
-  if (conversion_params.allow_build_at_runtime and
-      not conversion_params.is_dynamic_op):
-    tf_logging.warn(
-        ("Building TensorRT engines at runtime is not supported "
-         "if is_dynamic_op=False, therefore assuming "
-         "allow_build_at_runtime=False. If building TensorRT engines "
-         "at runtime is desired, set is_dynamic_op=True."))
 
 
 def _check_trt_version_compatibility():
@@ -290,15 +229,21 @@ def _check_trt_version_compatibility():
         " minor/patch upgrades are backward compatible")
 
 
-def get_tensorrt_rewriter_config(conversion_params,
-                                 is_v2=False,
-                                 disable_non_trt_optimizers=False):
+def _get_tensorrt_rewriter_config(conversion_params,
+                                  is_dynamic_op=None,
+                                  max_batch_size=None,
+                                  is_v2=False,
+                                  disable_non_trt_optimizers=False,
+                                  use_implicit_batch=True):
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
     conversion_params: a TrtConversionParams instance.
+    is_dynamic_op: whether to use dynamic engines.
+    max_batch_size: maximum batch size for static engines.
     is_v2: whether we're getting a RewriterConfig for TF 2.0.
     disable_non_trt_optimizers: Turn off all default Grappler optimizers.
+    use_implicit_batch: Whether to use implicit batch or explicit batch.
 
   Returns:
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -307,68 +252,72 @@ def get_tensorrt_rewriter_config(conversion_params,
     TypeError: if any of the parameters are of unexpected type.
     ValueError: if any of the parameters are of unexpected value.
   """
-  if conversion_params.rewriter_config_template is not None and not isinstance(
-      conversion_params.rewriter_config_template,
-      rewriter_config_pb2.RewriterConfig):
-    raise TypeError(
-        "rewriter_config_template should be a RewriterConfig proto.")
   _check_conversion_params(conversion_params, is_v2=is_v2)
+  if is_v2 and is_dynamic_op is not None and not is_dynamic_op:
+    raise ValueError("is_dynamic_op is either None or True for TF2")
+  if not is_v2 and is_dynamic_op is None:
+    raise ValueError("is_dynamic_op can't be None for TF1")
 
+  if (is_dynamic_op is None or is_dynamic_op) and max_batch_size is not None:
+    raise ValueError("max_batch_size has to be None for TF2"
+                     " or when is_dynamic_op == True in TF1")
+  if is_dynamic_op is not None and not is_dynamic_op and not isinstance(
+      max_batch_size, int):
+    raise ValueError(
+        "max_batch_size has to be an integer for is_dynamic_op==False in TF1")
   rewriter_config_with_trt = rewriter_config_pb2.RewriterConfig()
 
-  if conversion_params.rewriter_config_template is None:
-    if not disable_non_trt_optimizers:
-      # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
-      # need to run constant folding again.
-      rewriter_config_with_trt.optimizers.extend(
-          ["constfold", "layout", "constfold"])
-    rewriter_config_with_trt.meta_optimizer_iterations = (
-        rewriter_config_pb2.RewriterConfig.ONE)
-    optimizer = rewriter_config_with_trt.custom_optimizers.add()
+  if not disable_non_trt_optimizers:
+    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+    # need to run constant folding again.
+    rewriter_config_with_trt.optimizers.extend(
+        ["constfold", "layout", "constfold"])
+
+  rewriter_config_with_trt.meta_optimizer_iterations = (
+      rewriter_config_pb2.RewriterConfig.ONE)
+  optimizer = rewriter_config_with_trt.custom_optimizers.add()
+
+  if not disable_non_trt_optimizers:
     # Add a constfold optimizer to cleanup the unused Const nodes.
     rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
 
-    optimizer.name = "TensorRTOptimizer"
-    optimizer.parameter_map[
-        "minimum_segment_size"].i = conversion_params.minimum_segment_size
-    optimizer.parameter_map["max_workspace_size_bytes"].i = (
-        conversion_params.max_workspace_size_bytes)
-    optimizer.parameter_map["precision_mode"].s = _to_bytes(
-        conversion_params.precision_mode)
-    optimizer.parameter_map[
-        "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
-    optimizer.parameter_map[
-        "use_calibration"].b = conversion_params.use_calibration
-    optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
-    optimizer.parameter_map[
-        "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
-    optimizer.parameter_map[
-        "max_batch_size"].i = conversion_params.max_batch_size
-  else:
-    rewriter_config_with_trt.CopyFrom(
-        conversion_params.rewriter_config_template)
+  optimizer.name = "TensorRTOptimizer"
+  optimizer.parameter_map[
+      "minimum_segment_size"].i = conversion_params.minimum_segment_size
+  optimizer.parameter_map["max_workspace_size_bytes"].i = (
+      conversion_params.max_workspace_size_bytes)
+  optimizer.parameter_map["precision_mode"].s = _to_bytes(
+      conversion_params.precision_mode)
+  optimizer.parameter_map[
+      "maximum_cached_engines"].i = conversion_params.maximum_cached_engines
+  optimizer.parameter_map[
+      "use_calibration"].b = conversion_params.use_calibration
+  optimizer.parameter_map["is_dynamic_op"].b = is_dynamic_op
+  optimizer.parameter_map[
+      "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
+  if max_batch_size is not None:
+    optimizer.parameter_map["max_batch_size"].i = max_batch_size
+  optimizer.parameter_map["use_implicit_batch"].b = use_implicit_batch
 
-  # Disabling optimizers should happen after CopyFrom the template
+  # Disabling optimizers should happen after defining the TF-TRT grappler pass
   # otherwise the template can overwrite the disablement.
   if disable_non_trt_optimizers:
-    off = rewriter_config_pb2.RewriterConfig.OFF
-    rewriter_config_with_trt.layout_optimizer = off
-    rewriter_config_with_trt.constant_folding = off
-    rewriter_config_with_trt.shape_optimization = off
-    rewriter_config_with_trt.remapping = off
-    rewriter_config_with_trt.arithmetic_optimization = off
-    rewriter_config_with_trt.dependency_optimization = off
-    rewriter_config_with_trt.loop_optimization = off
-    rewriter_config_with_trt.function_optimization = off
-    rewriter_config_with_trt.debug_stripper = off
-    rewriter_config_with_trt.disable_model_pruning = True
-    rewriter_config_with_trt.scoped_allocator_optimization = off
-    rewriter_config_with_trt.memory_optimization = (
-        rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
-    rewriter_config_with_trt.pin_to_host_optimization = off
-    rewriter_config_with_trt.auto_parallel.enable = False
+    trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+        rewriter_config_with_trt)
 
   return rewriter_config_with_trt
+
+
+@deprecation.deprecated(
+    None, "You shouldn't need a rewriter_config with the current TF-TRT APIs.")
+def get_tensorrt_rewriter_config(conversion_params,
+                                 is_dynamic_op=None,
+                                 max_batch_size=None,
+                                 is_v2=False,
+                                 disable_non_trt_optimizers=False):
+  return _get_tensorrt_rewriter_config(conversion_params, is_dynamic_op,
+                                       max_batch_size, is_v2,
+                                       disable_non_trt_optimizers)
 
 
 # Remove all scope prefixes in the node name. In TF 2.0, the same concrete
@@ -382,17 +331,6 @@ def get_tensorrt_rewriter_config(conversion_params,
 # name when optimizing a different function graph. Fix this.
 def _get_canonical_engine_name(name):
   return name.split("/")[-1]
-
-
-def is_explicit_batch_mode_enabled(rewriter_config):
-  """Checks whether explicit batch is enabled by the rewriter config."""
-  if rewriter_config is None:
-    return False
-  for optimizer in rewriter_config.custom_optimizers:
-    if optimizer.name == "TensorRTOptimizer":
-      if "use_implicit_batch" in optimizer.parameter_map:
-        return not optimizer.parameter_map["use_implicit_batch"].b
-  return False
 
 
 class TrtGraphConverter(object):
@@ -427,15 +365,12 @@ class TrtGraphConverter(object):
   ```
   """
 
-  @deprecation.deprecated_args(None, "Remove the use of this argument",
-                               "session_config")
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
                input_saved_model_signature_key=None,
                input_graph_def=None,
                nodes_denylist=None,
-               session_config=None,
                max_batch_size=1,
                max_workspace_size_bytes=DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
                precision_mode=TrtPrecisionMode.FP32,
@@ -443,7 +378,7 @@ class TrtGraphConverter(object):
                is_dynamic_op=False,
                maximum_cached_engines=1,
                use_calibration=True):
-    """Initialize the converter.
+    """Initializes the converter.
 
     Args:
       input_saved_model_dir: the directory to load the SavedModel which contains
@@ -454,11 +389,7 @@ class TrtGraphConverter(object):
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
-      nodes_denylist: list of node names to prevent the converter from
-        touching.
-      session_config: the ConfigProto used to create a Session. It's also used
-        as a template to create a TRT-enabled ConfigProto for conversion. If not
-        specified, a default ConfigProto will be used.
+      nodes_denylist: list of node names to prevent the converter from touching.
       max_batch_size: max size for the input batch.
       max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
         engine can use at execution time. This corresponds to the
@@ -510,7 +441,6 @@ class TrtGraphConverter(object):
     self._input_saved_model_signature_key = (
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
-    self._session_config = session_config or config_pb2.ConfigProto()
 
     # For calibration usage.
     self._calibration_graph = None
@@ -523,33 +453,39 @@ class TrtGraphConverter(object):
           "dynamic TRT ops only. Disregarding is_dynamic_op parameter.")
       is_dynamic_op = True
 
-    # TODO(laigd):
-    # - Verify in int8 mode that maximum_cached_engines is set properly.
-    # - If it fails to build the int8 engine it should return error.
-    rewriter_config_template = None
-    if (session_config and session_config.HasField("graph_options") and
-        session_config.graph_options.HasField("rewrite_options")):
-      rewriter_config_template = session_config.graph_options.rewrite_options
+    self._is_dynamic_op = is_dynamic_op
+    if is_dynamic_op:
+      self._max_batch_size = None
+      if max_batch_size is not None:
+        tf_logging.warn("When is_dynamic_op==True max_batch_size should be "
+                        "None")
+    else:
+      if not isinstance(max_batch_size, int):
+        raise ValueError("When is_dynamic_op==False max_batch_size should be "
+                         "an integer")
+      self._max_batch_size = max_batch_size
 
     self._conversion_params = TrtConversionParams(
-        rewriter_config_template=rewriter_config_template,
         max_workspace_size_bytes=max_workspace_size_bytes,
         precision_mode=precision_mode,
         minimum_segment_size=minimum_segment_size,
-        is_dynamic_op=is_dynamic_op,
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
-        max_batch_size=max_batch_size,
         allow_build_at_runtime=True)
     _check_conversion_params(self._conversion_params)
+
+    self._test_only_disable_non_trt_optimizers = False
 
   def _run_conversion(self):
     """Run Grappler's OptimizeGraph() tool to convert the graph."""
     # Create custom ConfigProto for Grappler.
     grappler_session_config = config_pb2.ConfigProto()
-    grappler_session_config.CopyFrom(self._session_config)
-    custom_rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params)
+    custom_rewriter_config = _get_tensorrt_rewriter_config(
+        conversion_params=self._conversion_params,
+        is_dynamic_op=self._is_dynamic_op,
+        max_batch_size=self._max_batch_size,
+        disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
+        use_implicit_batch=True)
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
         custom_rewriter_config)
 
@@ -596,7 +532,7 @@ class TrtGraphConverter(object):
   def _convert_saved_model(self):
     """Convert the input SavedModel."""
     graph = ops.Graph()
-    with session.Session(graph=graph, config=self._session_config) as sess:
+    with session.Session(graph=graph) as sess:
       input_meta_graph_def = loader.load(sess, self._input_saved_model_tags,
                                          self._input_saved_model_dir)
       input_signature_def = input_meta_graph_def.signature_def[
@@ -706,9 +642,22 @@ class TrtGraphConverter(object):
           return_elements=fetch_names,
           name="")
 
+    calibrate_rewriter_cfg = rewriter_config_pb2.RewriterConfig()
+    if self._test_only_disable_non_trt_optimizers:
+      trt_utils.disable_non_trt_optimizers_in_rewriter_config(
+          calibrate_rewriter_cfg)
+
+    # Set allow_soft_placement=True to run the graph for calibration so that
+    # OPs supported by TensorRT but don't have a GPU implementation are allowed
+    # to execute on CPU.
+    calibrate_config = config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        graph_options=config_pb2.GraphOptions(
+            rewrite_options=calibrate_rewriter_cfg))
+
     with session.Session(
         graph=self._calibration_graph,
-        config=self._session_config) as calibration_sess:
+        config=calibrate_config) as calibration_sess:
       for _ in range(num_runs):
         calibration_sess.run(
             fetches, feed_dict=feed_dict_fn() if feed_dict_fn else None)
@@ -823,7 +772,7 @@ class TrtGraphConverter(object):
           self._collections_to_keep(
               self._grappler_meta_graph_def.collection_def))
       # We don't use any specific converter here.
-      with session.Session(config=self._session_config) as sess:
+      with session.Session() as sess:
         saved_model_builder.add_meta_graph_and_variables(
             sess,
             self._input_saved_model_tags,
@@ -883,11 +832,6 @@ class TrtGraphConverterV2(object):
   """An offline converter for TF-TRT transformation for TF 2.0 SavedModels.
 
   Currently this is not available on Windows platform.
-
-  Note that in V2, is_dynamic_op=False is not supported, meaning TRT engines
-  will be built only when the corresponding TRTEngineOp is executed. But we
-  still provide a way to avoid the cost of building TRT engines during inference
-  (see more below).
 
   There are several ways to run the conversion:
 
@@ -997,8 +941,6 @@ class TrtGraphConverterV2(object):
     assert context.executing_eagerly()
     if conversion_params is None:
       conversion_params = TrtConversionParams()
-    elif conversion_params.rewriter_config_template is not None:
-      tf_logging.warn("the rewrite_config_template field will be deprecated.")
 
     _check_trt_version_compatibility()
     _check_conversion_params(conversion_params, is_v2=True)
@@ -1010,21 +952,20 @@ class TrtGraphConverterV2(object):
     self._input_saved_model_signature_key = (
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
-    self._rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params, is_v2=True)
 
     self._need_calibration = (
         conversion_params.precision_mode == TrtPrecisionMode.INT8 and
         conversion_params.use_calibration)
-    if (self._need_calibration and not conversion_params.is_dynamic_op):
-      raise ValueError("INT8 precision mode with calibration is not supported "
-                       "with static TensorRT ops. Set is_dynamic_op to True.")
 
-    # rewriter_config is already validated
-    self._need_trt_profiles = is_explicit_batch_mode_enabled(
-        self._rewriter_config)
     self._converted = False
     self._build_called_once = False
+
+    # Fields to support TF-TRT testing and shouldn't be used for other purpose.
+    self._test_only_disable_non_trt_optimizers = False
+    self._test_only_use_implicit_batch = True
+
+  def _need_trt_profiles(self):
+    return not self._test_only_use_implicit_batch
 
   def _run_conversion(self, meta_graph_def):
     """Run Grappler's OptimizeGraph() tool to convert the graph.
@@ -1036,8 +977,14 @@ class TrtGraphConverterV2(object):
       The optimized GraphDef.
     """
     grappler_session_config = config_pb2.ConfigProto()
+    custom_rewriter_config = _get_tensorrt_rewriter_config(
+        conversion_params=self._conversion_params,
+        is_dynamic_op=True,
+        max_batch_size=None,
+        disable_non_trt_optimizers=self._test_only_disable_non_trt_optimizers,
+        use_implicit_batch=self._test_only_use_implicit_batch)
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
-        self._rewriter_config)
+        custom_rewriter_config)
     return tf_optimizer.OptimizeGraph(
         grappler_session_config, meta_graph_def, graph_id=b"tf_graph")
 
@@ -1167,7 +1114,7 @@ class TrtGraphConverterV2(object):
     def _set_profile_generation_mode(value, node):
       node.attr["_profile_generation_mode"].b = value
 
-    if self._need_trt_profiles:
+    if self._need_trt_profiles():
       # Enable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, True))
@@ -1187,7 +1134,7 @@ class TrtGraphConverterV2(object):
         first_input = inp
       func(*map(ops.convert_to_tensor, inp))
 
-    if self._need_trt_profiles:
+    if self._need_trt_profiles():
       # Disable profile generation.
       self._for_each_trt_node(self._converted_graph_def,
                               partial(_set_profile_generation_mode, False))
@@ -1208,7 +1155,7 @@ class TrtGraphConverterV2(object):
     """
     assert self._converted
 
-    if self._need_trt_profiles and not self._build_called_once:
+    if self._need_trt_profiles() and not self._build_called_once:
       raise NotImplementedError(
           "build() is not called . Explicit batch mode "
           "(use_implicit_batch=False) requires generating TensorRT optimization"
@@ -1295,8 +1242,7 @@ def create_inference_graph(
     input_saved_model_dir=None,
     input_saved_model_tags=None,
     input_saved_model_signature_key=None,
-    output_saved_model_dir=None,
-    session_config=None):
+    output_saved_model_dir=None):
   """Python wrapper for the TRT transformation.
 
   Args:
@@ -1327,9 +1273,6 @@ def create_inference_graph(
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when
       input_saved_model_dir is specified and input_graph_def is None.
-    session_config: the ConfigProto used to create a Session. It's also used as
-      a template to create a TRT-enabled ConfigProto for conversion. If not
-      specified, a default ConfigProto will be used.
 
   Returns:
     A GraphDef transformed from input_graph_def (or the SavedModel graph def
@@ -1359,7 +1302,6 @@ def create_inference_graph(
       input_saved_model_signature_key=input_saved_model_signature_key,
       input_graph_def=input_graph_def,
       nodes_denylist=outputs,
-      session_config=session_config,
       max_batch_size=max_batch_size,
       max_workspace_size_bytes=max_workspace_size_bytes,
       precision_mode=precision_mode,

@@ -19,9 +19,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_ATTRIBUTES_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string>
 
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
@@ -51,7 +51,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 // Given a Function, returns a MLIR module containing the graph, expressed with
 // tf_executor dialect.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ConvertFunctionToMlir(
-    mlir::StringRef name, const FunctionLibraryDefinition& flib_def,
+    const FunctionBody* fbody, const FunctionLibraryDefinition& flib_def,
     mlir::MLIRContext* context);
 
 // Given a SavedModel, returns a MLIR module containing the functions, expressed

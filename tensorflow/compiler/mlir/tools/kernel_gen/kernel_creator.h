@@ -26,22 +26,21 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
 
-// Converts TF code to LLVM/NVVM. If `gpu_binary_only` is true, then the
-// conversion stops after gpu_binary blob is generated. If `gpu_binary_only` is
-// false, lowers the host side to LLVM Dialect.
+// Converts TF code to LLVM/NVVM. Lowers the host side to LLVM Dialect.
 xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
-    mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
+    mlir::MLIRContext& context, llvm::StringRef tf_code,
     llvm::ArrayRef<std::string> architectures = {"sm_75"},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
     llvm::ArrayRef<uint32_t> unroll_factors = {},
-    bool embed_memref_prints = false, bool generate_fatbin = true);
+    bool embed_memref_prints = false, bool generate_fatbin = true,
+    bool print_ptx = false, bool enable_ftz = false);
 
 // Extracts gpu_binary from the converted module.
 xla::StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module);

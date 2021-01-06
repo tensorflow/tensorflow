@@ -318,4 +318,5 @@ def make_floor_mod_tests(options):
 
 @register_make_test_function()
 def make_squared_difference_tests(options):
-  make_binary_op_tests(options, tf.math.squared_difference)
+  make_binary_op_tests(options, tf.math.squared_difference,
+                       allow_fully_quantize=True)

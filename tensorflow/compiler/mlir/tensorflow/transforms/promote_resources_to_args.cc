@@ -58,8 +58,8 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -180,8 +180,8 @@ mlir::LogicalResult PromoteVarHandlesToArguments(
   }
 
   if (!var_handle_shared_names->empty())
-    function.setType(FunctionType::get(func_arg_types, func_type.getResults(),
-                                       function.getContext()));
+    function.setType(FunctionType::get(function.getContext(), func_arg_types,
+                                       func_type.getResults()));
 
   return success();
 }

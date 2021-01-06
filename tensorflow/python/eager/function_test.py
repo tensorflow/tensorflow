@@ -2804,6 +2804,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         # Grappler fallback to use the CPU impl even called with GPU function.
         self.assertEqual(y_value, 3.0)
 
+  @test_util.disable_tfrt('b/174712583: TFRT doesn\'t support behavior '
+                          'equivalent to implementation_selector for function')
   def testSwapImplementationInEager(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
@@ -3157,6 +3159,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify_same_flat(nested_input)
 
+  @test_util.disable_tfrt('b/173429686')
   def testExecutorType(self):
     @function.defun
     def add_five(x):

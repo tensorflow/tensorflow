@@ -64,16 +64,16 @@ cc_library(
         "//tensorflow/core/platform:types",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/util:abstract_stack_trace",
-        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
         "//tensorflow/python:numpy_lib",
         "//tensorflow/python:py_exception_registry",
-        "//tensorflow/python:py_seq_tensor",
-        "//tensorflow/python:py_util",
-        "//tensorflow/python:safe_ptr",
-        "//tensorflow/python:safe_pyobject_ptr",
-        "//tensorflow/python:stack_trace",
+        "//tensorflow/python/lib/core:py_seq_tensor",
+        "//tensorflow/python/lib/core:py_util",
+        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//tensorflow/python/util:cpp_python_util",
+        "//tensorflow/python/util:stack_trace",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -232,10 +232,10 @@ tf_python_pybind_extension(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:custom_device_testutil",
-        "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
-        "//tensorflow/python:safe_ptr",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_ptr",
+        "//tensorflow/python/util:cpp_python_util",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -375,6 +375,7 @@ cuda_py_test(
     srcs = ["backprop_test.py"],
     python_version = "PY3",
     tags = [
+        "no_cuda_asan",  # b/173825938
         "no_windows",  #TODO(b/139745667)
         "notsan",  #TODO(b/139745667)
     ],
@@ -1021,6 +1022,7 @@ cuda_py_test(
     shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
+        "notap",  # b/175813762
         "optonly",  # times out
     ],
     deps = [
@@ -1046,6 +1048,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
     ],
     deps = [
         "//tensorflow/python:array_ops",
@@ -1066,6 +1069,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "no_tfrt",  # TODO(b/171765113)
         "notsan",  # TODO(b/170783249)
     ],
     deps = [

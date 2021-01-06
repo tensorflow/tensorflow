@@ -272,11 +272,12 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   5
 
   Args:
-    input: A `Tensor`.
+    input: A `Tensor`, a `Variable`, a `CompositeTensor` or anything that can be
+    converted to a tensor using `tf.convert_to_tensor`.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `input`.
+    A `Tensor` or CompositeTensor. Has the same type and contents as `input`.
   """
   if isinstance(input, composite_tensor.CompositeTensor):
     return nest.map_structure(identity, input, expand_composites=True)
@@ -1220,30 +1221,27 @@ def strided_slice(input_,
 
   parent_name = name
 
-  if not (var is None and isinstance(op, ops.EagerTensor)):
-
+  if var is not None:
     def assign(val, name=None):
       """Closure that holds all the arguments to create an assignment."""
 
-      if var is None:
-        raise ValueError("Sliced assignment is only supported for variables")
-      else:
-        if name is None:
-          name = parent_name + "_assign"
+      if name is None:
+        name = parent_name + "_assign"
 
-        return var._strided_slice_assign(
-            begin=begin,
-            end=end,
-            strides=strides,
-            value=val,
-            name=name,
-            begin_mask=begin_mask,
-            end_mask=end_mask,
-            ellipsis_mask=ellipsis_mask,
-            new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
+      return var._strided_slice_assign(
+          begin=begin,
+          end=end,
+          strides=strides,
+          value=val,
+          name=name,
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          ellipsis_mask=ellipsis_mask,
+          new_axis_mask=new_axis_mask,
+          shrink_axis_mask=shrink_axis_mask)
 
     op.assign = assign
+
   return op
 
 
@@ -1548,21 +1546,100 @@ ops.register_tensor_conversion_function((list, tuple),
 def unstack(value, num=None, axis=0, name="unstack"):
   """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
-  Unpacks `num` tensors from `value` by chipping it along the `axis` dimension.
-  If `num` is not specified (the default), it is inferred from `value`'s shape.
-  If `value.shape[axis]` is not known, `ValueError` is raised.
+  Unpacks tensors from `value` by chipping it along the `axis` dimension.
 
-  For example, given a tensor of shape `(A, B, C, D)`;
+  >>> x = tf.reshape(tf.range(12), (3,4))
+  >>>
+  >>> p, q, r = tf.unstack(x)
+  >>> p.shape.as_list()
+  [4]
 
-  If `axis == 0` then the i'th tensor in `output` is the slice
-    `value[i, :, :, :]` and each tensor in `output` will have shape `(B, C, D)`.
-    (Note that the dimension unpacked along is gone, unlike `split`).
-
-  If `axis == 1` then the i'th tensor in `output` is the slice
-    `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
-  Etc.
+  >>> i, j, k, l = tf.unstack(x, axis=1)
+  >>> i.shape.as_list()
+  [3]
 
   This is the opposite of stack.
+
+  >>> x = tf.stack([i, j, k, l], axis=1)
+
+  More generally if you have a tensor of shape `(A, B, C, D)`:
+
+  >>> A, B, C, D = [2, 3, 4, 5]
+  >>> t = tf.random.normal(shape=[A, B, C, D])
+
+  The number of tensor returned is equal to the length of the target `axis`:
+
+  >>> axis = 2
+  >>> items = tf.unstack(t, axis=axis)
+  >>> len(items) == t.shape[axis]
+  True
+
+  The shape of each result tensor is equal to the shape of the input tensor,
+  with the target `axis` removed.
+
+  >>> items[0].shape.as_list()  # [A, B, D]
+  [2, 3, 5]
+
+  The value of each tensor `items[i]` is equal to the slice of `input` across
+  `axis` at index `i`:
+
+  >>> for i in range(len(items)):
+  ...   slice = t[:,:,i,:]
+  ...   assert tf.reduce_all(slice == items[i])
+
+  #### Python iterable unpacking
+
+  With eager execution you _can_ unstack the 0th axis of a tensor using python's
+  iterable unpacking:
+
+  >>> t = tf.constant([1,2,3])
+  >>> a,b,c = t
+
+  `unstack` is still necessary because Iterable unpacking doesn't work in
+  a `@tf.function`: Symbolic tensors are not iterable.
+
+  You need to use `tf.unstack` here:
+
+  >>> @tf.function
+  ... def bad(t):
+  ...   a,b,c = t
+  ...   return a
+  >>>
+  >>> bad(t)
+  Traceback (most recent call last):
+  ...
+  OperatorNotAllowedInGraphError: ...
+
+  >>> @tf.function
+  ... def good(t):
+  ...   a,b,c = tf.unstack(t)
+  ...   return a
+  >>>
+  >>> good(t).numpy()
+  1
+
+  #### Unknown shapes
+
+  Eager tensors have concrete values, so their shape is always known.
+  Inside a `tf.function` the symbolic tensors may have unknown shapes.
+  If the length of `axis` is unknown `tf.unstack` will fail because it cannot
+  handle an unknown number of tensors:
+
+  >>> @tf.function(input_signature=[tf.TensorSpec([None], tf.float32)])
+  ... def bad(t):
+  ...   tensors = tf.unstack(t)
+  ...   return tensors[0]
+  >>>
+  >>> bad(tf.constant([1,2,3]))
+  Traceback (most recent call last):
+  ...
+  ValueError: Cannot infer num from shape (None,)
+
+  If you know the `axis` length you can pass it as the `num` argument. But this
+  must be a constant value.
+
+  If you actually need a variable number of tensors in a single `tf.function`
+  trace, you will need to use exlicit loops and a `tf.TensorArray` instead.
 
   Args:
     value: A rank `R > 0` `Tensor` to be unstacked.
@@ -1576,8 +1653,9 @@ def unstack(value, num=None, axis=0, name="unstack"):
     The list of `Tensor` objects unstacked from `value`.
 
   Raises:
+    ValueError: If `axis` is out of the range `[-R, R)`.
     ValueError: If `num` is unspecified and cannot be inferred.
-    ValueError: If `axis` is out of the range [-R, R).
+    InvalidArgumentError: If `num` does not match the shape of `value`.
   """
   if num is None:
     value = ops.convert_to_tensor(value)
@@ -2214,7 +2292,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
     A transposed `Tensor`.
   """
   with ops.name_scope(name, "transpose", [a]) as name:
-    if not tensor_util.is_tensor(a):
+    if not tensor_util.is_tf_type(a):
       a = ops.convert_to_tensor(a, name="a")
 
     if conjugate and a.dtype.is_complex:
@@ -2980,7 +3058,7 @@ def zeros_like_v2(
 def zeros_like_impl(tensor, dtype, name, optimize=True):
   """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
-    if not tensor_util.is_tensor(tensor):
+    if not tensor_util.is_tf_type(tensor):
       tensor = ops.convert_to_tensor(tensor, name="tensor")
     tensor_shape = tensor.shape
     tensor_dtype = tensor.dtype
@@ -3428,7 +3506,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   if mode == "CONSTANT":
     # TODO(rjryan): Once the forward compatibility period (3 weeks) have passed
     # remove the "Pad" fallback here.
-    if not tensor_util.is_tensor(constant_values) and constant_values == 0:
+    if not tensor_util.is_tf_type(constant_values) and constant_values == 0:
       result = gen_array_ops.pad(tensor, paddings, name=name)
     else:
       result = gen_array_ops.pad_v2(
@@ -4678,6 +4756,7 @@ def reverse_sequence(input,
 
 
 @tf_export("reverse_sequence", v1=[])
+@dispatch.add_dispatch_support
 def reverse_sequence_v2(input,
                         seq_lengths,
                         seq_axis=None,
@@ -4894,6 +4973,11 @@ def gather(params,
   >>> tf.gather(params, indices, axis=1, batch_dims=1).shape.as_list()
   [3, 2]
 
+  This comes up naturally if you need to use the indices of an operation like
+  `tf.argsort`, or `tf.math.top_k` where the last dimension of the indices
+  indexes into the last dimension of input, at the corresponding location.
+  In this case you can use `tf.gather(values, indices, batch_dims=-1)`.
+
   See also:
 
   * `tf.Tensor.__getitem__`: The direct tensor index operation (`t[]`), handles
@@ -4905,7 +4989,7 @@ def gather(params,
     or columns)
   * `tf.boolean_mask`, `tf.where`: Binary indexing.
   * `tf.slice` and `tf.strided_slice`: For lower level access to the
-    implementation of `__getitem__`'s python-slice handling (`t[1:-1:2])
+    implementation of `__getitem__`'s python-slice handling (`t[1:-1:2]`)
 
   Args:
     params: The `Tensor` from which to gather values. Must be at least rank
@@ -5935,26 +6019,46 @@ def searchsorted(sorted_sequence,
                  side="left",
                  out_type=dtypes.int32,
                  name=None):
-  """Searches input tensor for values on the innermost dimension.
+  """Searches for where a value would go in a sorted sequence.
 
-  A 2-D example:
+  This is not a method for checking containment (like python `in`).
 
-  ```
-    sorted_sequence = [[0, 3, 9, 9, 10],
-                       [1, 2, 3, 4, 5]]
-    values = [[2, 4, 9],
-              [0, 2, 6]]
+  The typical use case for this operation is "binning", "bucketing", or
+  "discretizing". The `values` are assigned to bucket-indices based on the
+  **edges** listed in `sorted_sequence`. This operation
+  returns the bucket-index for each value.
 
-    result = searchsorted(sorted_sequence, values, side="left")
+  >>> edges = [-1, 3.3, 9.1, 10.0]
+  >>> values = [0.0, 4.1, 12.0]
+  >>> tf.searchsorted(edges, values).numpy()
+  array([1, 2, 4], dtype=int32)
 
-    result == [[1, 2, 2],
-               [0, 1, 5]]
+  The `side` argument controls which index is returned if a value lands exactly
+  on an edge:
 
-    result = searchsorted(sorted_sequence, values, side="right")
+  >>> seq = [0, 3, 9, 10, 10]
+  >>> values = [0, 4, 10]
+  >>> tf.searchsorted(seq, values).numpy()
+  array([0, 2, 3], dtype=int32)
+  >>> tf.searchsorted(seq, values, side="right").numpy()
+  array([1, 2, 5], dtype=int32)
 
-    result == [[1, 2, 4],
-               [0, 2, 5]]
-  ```
+  The `axis` is not settable for this operation. It always operates on the
+  innermost dimension (`axis=-1`). The operation will accept any number of
+  outer dimensions. Here it is applied to the rows of a matrix:
+
+  >>> sorted_sequence = [[0., 3., 8., 9., 10.],
+  ...                    [1., 2., 3., 4., 5.]]
+  >>> values = [[9.8, 2.1, 4.3],
+  ...           [0.1, 6.6, 4.5, ]]
+  >>> tf.searchsorted(sorted_sequence, values).numpy()
+  array([[4, 1, 2],
+         [0, 5, 4]], dtype=int32)
+
+  Note: This operation assumes that `sorted_sequence` **is sorted** along the
+  innermost axis, maybe using `tf.sort(..., axis=-1)`. **If the sequence is not
+  sorted no error is raised** and the content of the returned tensor is not well
+  defined.
 
   Args:
     sorted_sequence: N-D `Tensor` containing a sorted sequence.

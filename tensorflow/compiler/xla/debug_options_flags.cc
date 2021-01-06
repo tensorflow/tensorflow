@@ -540,7 +540,12 @@ static void AllocateFlags() {
       "xla_gpu_force_conv_nchw",
       bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
       flag_values->xla_gpu_force_conv_nchw(),
-      "For cuDNN convolutions, always NCHW layouts."));
+      "For cuDNN convolutions, always use NCHW layouts."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_conv_nhwc",
+      bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nhwc),
+      flag_values->xla_gpu_force_conv_nhwc(),
+      "For cuDNN convolutions, always use NHWC layouts."));
   flag_objects->push_back(tensorflow::Flag(
       "xla_gpu_algorithm_denylist_path",
       string_setter_for(&DebugOptions::set_xla_gpu_algorithm_denylist_path),
@@ -588,6 +593,18 @@ static void AllocateFlags() {
       "fragmentation. The constraint is soft, so it works with tensors "
       "larger than the given constraint size. -1 corresponds to no "
       "constraints."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_force_compilation_parallelism",
+      int32_setter_for(
+          &DebugOptions::set_xla_gpu_force_compilation_parallelism),
+      flag_values->xla_gpu_force_compilation_parallelism(),
+      "Overrides normal multi-threaded compilation settting to use this many "
+      "threads. Setting to 0 (the default value) means no enforcement."));
+  flag_objects->push_back(tensorflow::Flag(
+      "xla_gpu_deterministic_ops",
+      bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_ops),
+      flag_values->xla_gpu_deterministic_ops(),
+      "Guarantees run-to-run determinism on GPU."));
 
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

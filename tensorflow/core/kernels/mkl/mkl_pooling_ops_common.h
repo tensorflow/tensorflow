@@ -465,7 +465,9 @@ class MklPoolingOpBase : public OpKernel {
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
     // attribute value.
-    context->GetAttr("workspace_enabled", &this->workspace_enabled_);
+    auto status =
+        context->GetAttr("workspace_enabled", &this->workspace_enabled_);
+    (void)status;
   }
   void Compute(OpKernelContext* context) override = 0;
 
