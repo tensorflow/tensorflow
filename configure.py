@@ -526,7 +526,12 @@ def set_cc_opt_flags(environ_cp):
   elif is_windows():
     default_cc_opt_flags = '/arch:AVX'
   else:
-    default_cc_opt_flags = '-Wno-sign-compare'  # TODO(mihaimaruseac): Was '-march=native -Wno-sign-compare'
+    # On all other platforms, no longer use `-march=native` as this can result
+    # in instructions that are too modern being generated. Users that want
+    # maximum performance should compile TF in their environment and can pass
+    # `-march=native` there.
+    # See https://github.com/tensorflow/tensorflow/issues/45744 and duplicates
+    default_cc_opt_flags = '-Wno-sign-compare'
   question = ('Please specify optimization flags to use during compilation when'
               ' bazel option "--config=opt" is specified [Default is %s]: '
              ) % default_cc_opt_flags
@@ -534,10 +539,6 @@ def set_cc_opt_flags(environ_cp):
                                                  question, default_cc_opt_flags)
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
-  # It should be safe on the same build host.
-  # TODO(mihaimaruseac): we removed `-march=native` above
-  #if not is_ppc64le() and not is_windows():
-  #  write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
 
 
