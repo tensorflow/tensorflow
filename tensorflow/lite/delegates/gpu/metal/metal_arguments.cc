@@ -143,6 +143,14 @@ absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
   RETURN_IF_ERROR(SetObjectsResources(*args));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
+  std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
+  ResolveArgsPass(code);
+  *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
+  return absl::OkStatus();
+}
+
+std::string MetalArguments::ScalarArgumentsToStructWithScalarFields(
+    Arguments* args, std::string* code) {
   std::string struct_desc = "struct uniforms_buffer {\n";
   int pos = 0;
   for (auto& fvalue : args->float_values_) {
@@ -191,9 +199,67 @@ absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
   } else {
     struct_desc = "";
   }
-  ResolveArgsPass(code);
-  *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
-  return absl::OkStatus();
+  return struct_desc;
+}
+
+std::string MetalArguments::ScalarArgumentsToStructWithVec4Fields(
+    Arguments* args, std::string* code) {
+  std::string struct_desc = "struct uniforms_buffer {\n";
+  int pos = 0;
+  std::string channels[4] = {".x", ".y", ".z", ".w"};
+  for (auto& fvalue : args->float_values_) {
+    auto& new_val = float_values_[fvalue.first];
+    new_val.value = fvalue.second.value;
+    new_val.active = fvalue.second.active;
+    if (fvalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      if (pos % 4 == 0) {
+        struct_desc += "  float4 cmp_float4_" + std::to_string(pos / 4) + ";\n";
+      }
+      std::string new_name =
+          "U.cmp_float4_" + std::to_string(pos / 4) + channels[pos % 4];
+      ReplaceAllWords(kArgsPrefix + fvalue.first, new_name, code);
+      pos++;
+    }
+  }
+  pos = AlignByN(pos, 4);
+  for (auto& ivalue : args->int_values_) {
+    auto& new_val = int_values_[ivalue.first];
+    new_val.value = ivalue.second.value;
+    new_val.active = ivalue.second.active;
+    if (ivalue.second.active) {
+      new_val.bytes_offset = pos * 4;
+      if (pos % 4 == 0) {
+        struct_desc += "  int4 cmp_int4_" + std::to_string(pos / 4) + ";\n";
+      }
+      std::string new_name =
+          "U.cmp_int4_" + std::to_string(pos / 4) + channels[pos % 4];
+      ReplaceAllWords(kArgsPrefix + ivalue.first, new_name, code);
+      pos++;
+    }
+  }
+  if (pos != 0) {
+    int aligned_pos = AlignByN(pos, 4);
+    struct_desc += "};";
+    const_data_.resize(aligned_pos * 4);
+    for (auto& it : float_values_) {
+      if (it.second.active) {
+        float* ptr =
+            reinterpret_cast<float*>(&const_data_[it.second.bytes_offset]);
+        *ptr = it.second.value;
+      }
+    }
+    for (auto& it : int_values_) {
+      if (it.second.active) {
+        int32_t* ptr =
+            reinterpret_cast<int32_t*>(&const_data_[it.second.bytes_offset]);
+        *ptr = it.second.value;
+      }
+    }
+  } else {
+    struct_desc = "";
+  }
+  return struct_desc;
 }
 
 absl::Status MetalArguments::SetInt(const std::string& name, int value) {
