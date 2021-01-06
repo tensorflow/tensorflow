@@ -25,7 +25,7 @@ kilobytes of Flash.
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
 -   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
--   [Deploy to CEVA-BX1](#deploy-to-ceva-bx1)
+-   [Deploy to CEVA BX1/SP500](#deploy-to-ceva-bx1)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
@@ -684,17 +684,27 @@ application output in the serial terminal and lighting LED.
 ## Deploy to CEVA-BX1
 
 The following instructions will help you build and deploy the sample to the
-[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
+[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/) or [CEVA-SP500](https://www.ceva-dsp.com/product/ceva-senspro/)
 
 1.  Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
-2.  Download and install CEVA-BX Toolbox v18.0.2 and run
-3.  Set the TARGET_TOOLCHAIN_ROOT variable in
+2.  For BX1:
+2.1. Download and install CEVA-BX Toolbox v18.0.2
+2.2.  Set the TARGET_TOOLCHAIN_ROOT variable in
     /tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
     To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
     /home/myuser/work/CEVA-ToolBox/V18/BX
-4.  Generate the Makefile for the project: /tensorflow$ make -f
-    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=bx1
+2.3.  Generate the Makefile for the project: /tensorflow$ make -f
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=CEVA_BX1
     generate_micro_speech_make_project
+3. For SensPro (SP500):
+3.1. Download and install CEVA-SP Toolbox v20
+3.2. Set the TARGET_TOOLCHAIN_ROOT variable in
+    /tensorflow/lite/micro/tools/make/templates/ceva_SP500/ceva_app_makefile.tpl
+    To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
+    /home/myuser/work/CEVA-ToolBox/V20/SensPro
+3.3. Generate the Makefile for the project: /tensorflow$ make -f
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=CEVA_SP500
+    generate_micro_speech_make_project 	
 5.  Build the project:
     /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
 6.  This should build the project and create a file called micro_speech.elf.
