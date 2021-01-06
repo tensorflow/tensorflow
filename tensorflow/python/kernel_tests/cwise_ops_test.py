@@ -26,7 +26,6 @@ import sys
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat # pylint: disable=unused-import
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -36,13 +35,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
-from tensorflow.python.ops import gradients_impl # pylint: disable=unused-import
 from tensorflow.python.ops import init_ops_v2
-from tensorflow.python.ops import logging_ops # pylint: disable=unused-import
-from tensorflow.python.ops import math_ops, map_fn # pylint: disable=unused-import
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import variable_scope, variables, control_flow_ops # pylint: disable=unused-import
-from tensorflow.python.platform import tf_logging # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.eager import def_function
 
