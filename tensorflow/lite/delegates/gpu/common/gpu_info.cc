@@ -55,7 +55,7 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
       {"640", AdrenoGpu::kAdreno640},
       {"630", AdrenoGpu::kAdreno630},
       {"620", AdrenoGpu::kAdreno620},
-      {"616", AdrenoGpu::kAdreno618},
+      {"618", AdrenoGpu::kAdreno618},
       {"616", AdrenoGpu::kAdreno616},
       {"615", AdrenoGpu::kAdreno615},
       {"612", AdrenoGpu::kAdreno612},
@@ -205,7 +205,8 @@ int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
   if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 128 * 144 * 16;
-    } else if (adreno_gpu == AdrenoGpu::kAdreno650) {
+    } else if (adreno_gpu == AdrenoGpu::kAdreno650 ||
+               adreno_gpu == AdrenoGpu::kAdreno620) {
       return 128 * 64 * 16;
     } else {
       return 128 * 96 * 16;
