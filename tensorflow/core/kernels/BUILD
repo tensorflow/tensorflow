@@ -6010,6 +6010,7 @@ filegroup(
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
         "cwise_op_atan.cc",
+        "cwise_op_atan2.cc",
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
