@@ -151,6 +151,9 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
     }
   }
 
+  info.opencl_info.supports_images =
+      GetDeviceInfo<cl_bool>(id, CL_DEVICE_IMAGE_SUPPORT);
+
   cl_device_fp_config f32_config =
       GetDeviceInfo<cl_device_fp_config>(id, CL_DEVICE_SINGLE_FP_CONFIG);
   info.opencl_info.supports_fp32_rtn = f32_config & CL_FP_ROUND_TO_NEAREST;

@@ -1354,10 +1354,12 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtStreamExecutorBuffer::CopyToDevice(
   // Copying across PjRtClients involves a copy through the host.
   if (dst_device->client() != client_) {
     TF_ASSIGN_OR_RETURN(std::shared_ptr<Literal> literal, ToLiteral());
+    // Avoid use-after-free on `literal` due to unsequenced move and use.
+    Literal* literal_pointer = literal.get();
     return dst_device->client()->BufferFromHostBuffer(
-        literal->untyped_data(), literal->shape(),
-        PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy, nullptr,
-        dst_device);
+        literal_pointer->untyped_data(), literal_pointer->shape(),
+        PjRtStreamExecutorClient::HostBufferSemantics::kZeroCopy,
+        std::move(literal), dst_device);
   }
 
   TF_ASSIGN_OR_RETURN(

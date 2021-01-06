@@ -63,7 +63,7 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
   LogicalResult matchAndRewrite(
       AllocOp alloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto func = alloc.getParentOfType<FuncOp>();
+    auto func = alloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -76,7 +76,7 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
     if (!alloc.symbolOperands().empty()) {
       return failure();
     }
-    auto reuse_input_candidates = alloc.getAttrOfType<ArrayAttr>(
+    auto reuse_input_candidates = alloc->getAttrOfType<ArrayAttr>(
         TFAllocOp::kReuseInputCandidatesAttrName);
     auto reuse_output_index =
         alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
@@ -96,7 +96,7 @@ class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
   LogicalResult matchAndRewrite(
       DeallocOp dealloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    FuncOp func = dealloc.getParentOfType<FuncOp>();
+    auto func = dealloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -125,7 +125,7 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
   LogicalResult matchAndRewrite(
       AssertOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    FuncOp func = op.getParentOfType<FuncOp>();
+    auto func = op->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -134,8 +134,7 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
       return failure();
     }
     Location loc = op.getLoc();
-    AssertOp::Adaptor transformed(operands,
-                                  op.getOperation()->getAttrDictionary());
+    AssertOp::Adaptor transformed(operands, op->getAttrDictionary());
 
     // Split the block to insert CondBr.
     OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();

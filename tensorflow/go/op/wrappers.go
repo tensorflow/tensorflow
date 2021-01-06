@@ -7737,9 +7737,13 @@ func ResourceAccumulatorApplyGradient(scope *Scope, handle tf.Output, local_step
 // Arguments:
 //	input: A `Tensor` of type T.
 //	padding_value: A scalar `Tensor` of type T.
-//	padding_low: the padding to apply at the start of each input dimensions
-//	padding_high: the padding to apply at the end of each input dimension.
-//	padding_interior: the padding to apply between each input element.
+//	padding_low: the padding to apply at the start of each input dimensions. Must
+// be a compile-time constant 1D tensor of length equal to rank of input.
+//	padding_high: the padding to apply at the end of each input dimension. Must
+// be a compile-time constant 1D tensor of length equal to rank of input.
+//	padding_interior: the padding to apply between each input element. Must
+// be a compile-time constant 1D tensor of length equal to rank of input,
+// containing only non-negative values.
 //
 // Returns A `Tensor` of type T.
 func XlaPad(scope *Scope, input tf.Output, padding_value tf.Output, padding_low tf.Output, padding_high tf.Output, padding_interior tf.Output) (output tf.Output) {

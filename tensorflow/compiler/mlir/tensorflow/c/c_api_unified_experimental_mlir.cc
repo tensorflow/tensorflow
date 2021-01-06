@@ -668,7 +668,7 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
 
   auto arg_types = body.getArgumentTypes();
   auto result_types = body.getTerminator()->getOperandTypes();
-  func_.setType(FunctionType::get(arg_types, result_types, func_.getContext()));
+  func_.setType(FunctionType::get(func_.getContext(), arg_types, result_types));
   *f = new MlirFunction(std::move(context_), std::move(module_), func_);
   return Status::OK();
 }

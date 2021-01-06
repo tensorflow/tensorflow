@@ -291,6 +291,7 @@ filegroup(
     name = "mkl_util_hdrs",
     srcs = [
         "mkl_threadpool.h",
+        "mkl_types.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -782,7 +783,6 @@ tf_cc_test(
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_windows"],  # b/150411480
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

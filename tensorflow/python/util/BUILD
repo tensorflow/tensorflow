@@ -73,6 +73,7 @@ tf_python_pybind_extension(
     hdrs = ["util.h"],
     module_name = "_pywrap_utils",
     deps = [
+        "//tensorflow/core/platform:platform_port",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -319,7 +320,6 @@ tf_py_test(
     name = "tf_stack_test",
     srcs = ["tf_stack_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],  # TODO(b/175726972)
     deps = [
         ":tf_export",
         ":tf_stack",

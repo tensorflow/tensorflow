@@ -34,201 +34,154 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetMaxPoolingCode(const HW& kernel_size) {
+std::string GetMaxPoolingCode() {
   std::string shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    constant int window_w = $0;
-    constant int window_h = $1;
-    struct uniforms {
-      int4 src_size;
-      int4 dst_size;
-      int2 stride;
-      int2 offset;
-    };
-
-    $$0
-    kernel void ComputeFunction(
-                                $$1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (static_cast<int>(gid.x) >= params.dst_size.x ||
-          static_cast<int>(gid.y) >= params.dst_size.y ||
-          static_cast<int>(gid.z) >= params.dst_size.z) {
-        return;
-      }
-
-      FLT4 maximum = FLT4(-10000.0);
-      for (int a = 0; a < window_h; ++a) {
-        for (int b = 0; b < window_w; ++b) {
-          const int2 coords = int2(gid.xy) * params.stride - params.offset + int2(b, a);
-          bool outside = coords.x < 0 || coords.y < 0 || coords.x >= params.src_size.x ||
-            coords.y >= params.src_size.y;
-          const int buffer_index = (gid.z * params.src_size.y + coords.y) *
-            params.src_size.x + coords.x;
-          FLT4 src_color = outside ? FLT4(-10000.0) : src_tensor[buffer_index];
-          maximum = max(maximum, src_color);
-        }
-      }
-      const int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x +
-        int(gid.x);
-      FLT4 value = maximum;
-      $$2
-      dst_tensor[linear_index] = value;
-    }
-  )";
-  return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
-}
-
-std::string GetMaxPoolingIndicesCode(const HW& kernel_size) {
-  std::string shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    constant int window_w = $0;
-    constant int window_h = $1;
-    struct uniforms {
-      int4 src_size;
-      int4 dst_size;
-      int2 stride;
-      int2 offset;
-    };
-
-    $$0
-    kernel void ComputeFunction(
-                                $$1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (static_cast<int>(gid.x) >= params.dst_size.x ||
-          static_cast<int>(gid.y) >= params.dst_size.y ||
-          static_cast<int>(gid.z) >= params.dst_size.z) {
-        return;
-      }
-
-      FLT4 maximum = FLT4(-10000.0);
-      ushort4 indexes = ushort4(0);
-      ushort index_counter = 0;
-      for (int a = 0; a < window_h; ++a) {
-        for (int b = 0; b < window_w; ++b) {
-          const int2 coords = int2(gid.xy) * params.stride - params.offset + int2(b, a);
-          bool outside = coords.x < 0 || coords.y < 0 || coords.x >= params.src_size.x ||
-            coords.y >= params.src_size.y;
-          const int buffer_index = (gid.z * params.src_size.y + coords.y) *
-            params.src_size.x + coords.x;
-          FLT4 src_color = outside ? FLT4(-10000.0) : src_tensor[buffer_index];
-          if (src_color.x > maximum.x) {
-            indexes.x = index_counter;
-            maximum.x = src_color.x;
-          }
-          if (src_color.y > maximum.y) {
-            indexes.y = index_counter;
-            maximum.y = src_color.y;
-          }
-          if (src_color.z > maximum.z) {
-            indexes.z = index_counter;
-            maximum.z = src_color.z;
-          }
-          if (src_color.w > maximum.w) {
-            indexes.w = index_counter;
-            maximum.w = src_color.w;
-          }
-          index_counter++;
-        }
-      }
-      const int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x +
-        int(gid.x);
-      FLT4 value = static_cast<FLT4>(indexes);
-      $$2
-      dst_tensor[linear_index] = value;
-    }
-  )";
-  return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
-}
-
-std::string GetAveragePoolingCode(const HW& kernel_size) {
-  std::string shader_source = R"(
-  #include <metal_stdlib>
-  using namespace metal;
-  constant int window_w = $0;
-  constant int window_h = $1;
-  struct uniforms {
-    int4 src_size;
-    int4 dst_size;
-    int2 stride;
-    int2 offset;
-  };
-  $$0
-  kernel void ComputeFunction(
-                              $$1
-                              uint tid[[thread_index_in_threadgroup]],
-                              uint3 gid[[thread_position_in_grid]]) {
-    if (static_cast<int>(gid.x) >= params.dst_size.x ||
-        static_cast<int>(gid.y) >= params.dst_size.y ||
-        static_cast<int>(gid.z) >= params.dst_size.z) {
-      return;
-    }
-
-    float4 sum = float4(0.0f);
-    float window_size = 0.0f;
-    for (int a = 0; a < window_h; ++a) {
-      for (int b = 0; b < window_w; ++b) {
-        const int2 coords = int2(gid.xy) * params.stride - params.offset + int2(b, a);
-        bool outside = coords.x < 0 || coords.y < 0 || coords.x >= params.src_size.x ||
-          coords.y >= params.src_size.y;
-        const int buffer_index = (gid.z * params.src_size.y + coords.y) *
-          params.src_size.x + coords.x;
-        const float4 src_color = outside ? float4(0.0f) : float4(src_tensor[buffer_index]);
-        window_size += outside ? 0.0f : 1.0f;
-        sum += src_color;
-      }
-    }
-    const int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * params.dst_size.x +
-      int(gid.x);
-    // If window_size==0, window covered nothing. This situation is a sign of
-    // incorrectly constructed operation. NaNs are expected as output.
-    FLT4 value = FLT4(sum / window_size);
-    $$2
-    dst_tensor[linear_index] = value;
+#include <metal_stdlib>
+using namespace metal;
+$0
+kernel void ComputeFunction(
+                            $1
+                            uint3 gid[[thread_position_in_grid]]) {
+  if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
+      static_cast<int>(gid.y) >= args.dst_tensor.Height() ||
+      static_cast<int>(gid.z) >= args.dst_tensor.Slices()) {
+    return;
   }
+
+  FLT4 maximum = FLT4(-10000.0);
+  for (int ky = 0; ky < args.kernel_size_y; ++ky) {
+    for (int kx = 0; kx < args.kernel_size_x; ++kx) {
+      int c_x = int(gid.x) * args.stride_x - args.offset_x + kx;
+      int c_y = int(gid.y) * args.stride_y - args.offset_y + ky;
+      bool outside = c_x < 0 || c_y < 0 || c_x >= args.src_tensor.Width() ||
+        c_y >= args.src_tensor.Height();
+      FLT4 src_color = outside ? FLT4(-10000.0) : args.src_tensor.Read(c_x, c_y, gid.z);
+      maximum = max(maximum, src_color);
+    }
+  }
+  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
+  FLT4 value = maximum;
+  $2
+  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
+}
+  )";
+  return shader_source;
+}
+
+std::string GetMaxPoolingIndicesCode() {
+  std::string shader_source = R"(
+#include <metal_stdlib>
+using namespace metal;
+$0
+kernel void ComputeFunction(
+                            $1
+                            uint3 gid[[thread_position_in_grid]]) {
+  if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
+      static_cast<int>(gid.y) >= args.dst_tensor.Height() ||
+      static_cast<int>(gid.z) >= args.dst_tensor.Slices()) {
+    return;
+  }
+
+  FLT4 maximum = FLT4(-10000.0);
+  ushort4 indexes = ushort4(0);
+  ushort index_counter = 0;
+  for (int ky = 0; ky < args.kernel_size_y; ++ky) {
+    for (int kx = 0; kx < args.kernel_size_x; ++kx) {
+      int c_x = int(gid.x) * args.stride_x - args.offset_x + kx;
+      int c_y = int(gid.y) * args.stride_y - args.offset_y + ky;
+      bool outside = c_x < 0 || c_y < 0 || c_x >= args.src_tensor.Width() ||
+        c_y >= args.src_tensor.Height();
+      FLT4 src_color = outside ? FLT4(-10000.0) : args.src_tensor.Read(c_x, c_y, gid.z);
+      if (src_color.x > maximum.x) {
+        indexes.x = index_counter;
+        maximum.x = src_color.x;
+      }
+      if (src_color.y > maximum.y) {
+        indexes.y = index_counter;
+        maximum.y = src_color.y;
+      }
+      if (src_color.z > maximum.z) {
+        indexes.z = index_counter;
+        maximum.z = src_color.z;
+      }
+      if (src_color.w > maximum.w) {
+        indexes.w = index_counter;
+        maximum.w = src_color.w;
+      }
+      index_counter++;
+    }
+  }
+  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
+  FLT4 value = static_cast<FLT4>(indexes);
+  $2
+  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
+}
+  )";
+  return shader_source;
+}
+
+std::string GetAveragePoolingCode() {
+  std::string shader_source = R"(
+#include <metal_stdlib>
+using namespace metal;
+$0
+kernel void ComputeFunction(
+                            $1
+                            uint tid[[thread_index_in_threadgroup]],
+                            uint3 gid[[thread_position_in_grid]]) {
+  if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
+      static_cast<int>(gid.y) >= args.dst_tensor.Height() ||
+      static_cast<int>(gid.z) >= args.dst_tensor.Slices()) {
+    return;
+  }
+
+  float4 sum = float4(0.0f);
+  float window_size = 0.0f;
+  for (int ky = 0; ky < args.kernel_size_y; ++ky) {
+    for (int kx = 0; kx < args.kernel_size_x; ++kx) {
+      int c_x = int(gid.x) * args.stride_x - args.offset_x + kx;
+      int c_y = int(gid.y) * args.stride_y - args.offset_y + ky;
+      bool outside = c_x < 0 || c_y < 0 || c_x >= args.src_tensor.Width() ||
+        c_y >= args.src_tensor.Height();
+      float4 src_color = outside ? float4(0.0f) : float4(args.src_tensor.Read(c_x, c_y, gid.z));
+      window_size += outside ? 0.0f : 1.0f;
+      sum += src_color;
+    }
+  }
+  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
+  // If window_size==0, window covered nothing. This situation is a sign of
+  // incorrectly constructed operation. NaNs are expected as output.
+  FLT4 value = FLT4(sum / window_size);
+  $2
+  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
+}
 )";
-  return absl::Substitute(shader_source, kernel_size.w, kernel_size.h);
+  return shader_source;
 }
 
 }  // namespace
 
 ComputeTaskDescriptor Pooling(const OperationDef& definition,
-                              const Pooling2DAttributes& params,
+                              const Pooling2DAttributes& attr,
                               bool generate_indices) {
   ComputeTaskDescriptor desc(definition);
-  if (params.type == PoolingType::MAX) {
-    desc.shader_source = generate_indices
-                             ? GetMaxPoolingIndicesCode(params.kernel)
-                             : GetMaxPoolingCode(params.kernel);
-  } else if (params.type == PoolingType::AVERAGE) {
-    desc.shader_source = GetAveragePoolingCode(params.kernel);
+  desc.tensors_as_args = true;
+  if (attr.type == PoolingType::MAX) {
+    desc.shader_source =
+        generate_indices ? GetMaxPoolingIndicesCode() : GetMaxPoolingCode();
+  } else if (attr.type == PoolingType::AVERAGE) {
+    desc.shader_source = GetAveragePoolingCode();
   }
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [params](const std::vector<BHWC>& src_shapes,
-                const std::vector<BHWC>& dst_shapes) {
-         std::vector<int> uniform_params = {
-             src_shapes[0].w,
-             src_shapes[0].h,
-             DivideRoundUp(src_shapes[0].c, 4),
-             src_shapes[0].w * src_shapes[0].h,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             dst_shapes[0].w * dst_shapes[0].h,
-             params.strides.w,
-             params.strides.h,
-             params.padding.prepended.w,
-             params.padding.prepended.h,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  desc.args.AddInt("kernel_size_x", attr.kernel.w);
+  desc.args.AddInt("kernel_size_y", attr.kernel.h);
+  desc.args.AddInt("stride_x", attr.strides.w);
+  desc.args.AddInt("stride_y", attr.strides.h);
+  desc.args.AddInt("offset_x", attr.padding.prepended.w);
+  desc.args.AddInt("offset_y", attr.padding.prepended.h);
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {

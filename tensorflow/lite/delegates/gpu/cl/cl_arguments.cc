@@ -223,7 +223,9 @@ absl::Status CLArguments::Init(
   RenameArgumentsInCode(code);
   ResolveArgsPass(code);
   *code = absl::Substitute(*code, GetListOfArgs());
-  *code = GetDefaultSamplers(gpu_info) + *code;
+  if (gpu_info.SupportsImages()) {
+    *code = GetDefaultSamplers(gpu_info) + *code;
+  }
   return absl::OkStatus();
 }
 

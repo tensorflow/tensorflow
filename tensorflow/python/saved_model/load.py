@@ -388,7 +388,7 @@ class Loader(object):
         return obj.handle
       elif isinstance(obj, tracking.Asset):
         return obj.asset_path
-      elif tensor_util.is_tensor(obj):
+      elif tensor_util.is_tf_type(obj):
         return obj
       elif isinstance(obj, tracking.CapturableResource):
         # Note: this executes restored functions in the CapturableResource.

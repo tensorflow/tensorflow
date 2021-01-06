@@ -177,7 +177,8 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         "This error means that a shape or dimension argument could not be "
         "evaluated at compile time, usually because the value of the argument "
         "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.");
+        "stateful operation such as a random number generator.",
+        StackTrace());
   }
 
   Tensor temp(constant->dtype());
@@ -703,6 +704,20 @@ XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}
 void XlaOpKernel::Compute(OpKernelContext* context) {
   XlaOpKernelContext xla_context(context);
   Compile(&xla_context);
+}
+
+std::string XlaOpKernelContext::StackTrace() const {
+  if (const AbstractStackTrace* stack_trace =
+          xla_context()->StackTraceForNodeName(op_kernel().name())) {
+    AbstractStackTrace::TracePrintingOptions opts;
+    opts.show_line_contents = true;
+    opts.filter_common_prefix = true;
+    opts.drop_internal_frames = true;
+    return absl::StrCat("\nStack trace for op definition: \n",
+                        stack_trace->ToString(opts), "\n");
+  } else {
+    return "";
+  }
 }
 
 }  // namespace tensorflow

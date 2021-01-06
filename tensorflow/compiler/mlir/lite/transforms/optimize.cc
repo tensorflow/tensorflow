@@ -243,7 +243,7 @@ DenseElementsAttr GetShape(Value output_val) {
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
-          mlir::IntegerType::get(32, output_val.getContext())),
+          mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::makeArrayRef(shape));
 }
 

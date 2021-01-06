@@ -16,10 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 
 #include <Availability.h>
+
 #include <string>
 #include <tuple>
 
-#include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
+#include "absl/strings/match.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -34,10 +36,33 @@ namespace metal {
 absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                                             const NodeDescriptor& desc,
                                             CalculationsPrecision precision) {
-  size_t offset = desc.task->src_tensors_names.size() +
-                  desc.task->uniform_buffers.size() +
-                  desc.task->immutable_buffers.size() + 1;
-  RETURN_IF_ERROR(metal_args_.Init(device, offset, &desc.task->args,
+  std::string args_declarations;
+  int bind_index = 0;
+  for (const auto& dst_name : desc.task->dst_tensors_names) {
+    args_declarations += "device FLT4* " + dst_name + "[[buffer(" +
+                         std::to_string(bind_index) + ")]],\n";
+    bind_index++;
+  }
+  for (const auto& src_name : desc.task->src_tensors_names) {
+    args_declarations += "device FLT4* " + src_name + "[[buffer(" +
+                         std::to_string(bind_index) + ")]],\n";
+    bind_index++;
+  }
+  for (const auto& buffer : desc.task->immutable_buffers) {
+    args_declarations += buffer.declaration + "[[buffer(" +
+                         std::to_string(bind_index) + ")]],\n";
+    bind_index++;
+  }
+
+  for (const auto& buffer : desc.task->uniform_buffers) {
+    args_declarations += buffer.declaration + "[[buffer(" +
+                         std::to_string(bind_index) + ")]],\n";
+    bind_index++;
+  }
+  desc.task->shader_source = absl::Substitute(desc.task->shader_source, "$0",
+                                              args_declarations + "$1", "");
+
+  RETURN_IF_ERROR(metal_args_.Init(device, bind_index, &desc.task->args,
                                    &desc.task->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language
@@ -114,6 +139,9 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
   }
   resize_function_ = desc.task->resize_function;
   program_ = program;
+  src_tensors_names_ = desc.task->src_tensors_names;
+  dst_tensors_names_ = desc.task->dst_tensors_names;
+  tensors_as_args_ = desc.task->tensors_as_args;
   return absl::OkStatus();
 }
 
@@ -228,10 +256,23 @@ std::vector<ValueId> ComputeTask::GetInputIds() const {
 
 void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
   input_buffers_[index].metal_handle = tensor.GetBufferHandle();
+  if (tensors_as_args_ &&
+      absl::StrContains(src_tensors_names_[index], "_buffer")) {
+    auto name = src_tensors_names_[index];
+    // extracting tensor_name from "tensor_name_buffer";
+    name = name.substr(0, name.size() - 7);
+    auto status = metal_args_.SetObjectRef(name, tensor);
+  }
 }
 
 void ComputeTask::SetDstTensor(const MetalSpatialTensor& tensor, int index) {
   output_buffers_[index].metal_handle = tensor.GetBufferHandle();
+  if (tensors_as_args_) {
+    auto name = dst_tensors_names_[index];
+    // extracting tensor_name from "tensor_name_buffer";
+    name = name.substr(0, name.size() - 7);
+    auto status = metal_args_.SetObjectRef(name, tensor);
+  }
 }
 
 void ComputeTask::SetDescription(const std::string& description) {

@@ -994,7 +994,7 @@ class ClusterCoordinator(object):
           "currently.")
     self._strategy = strategy
     self._strategy.extended._used_with_coordinator = True
-    self.cluster = Cluster(strategy)
+    self._cluster = Cluster(strategy)
 
   @property
   def strategy(self):
@@ -1067,7 +1067,7 @@ class ClusterCoordinator(object):
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():
-      return self.cluster.schedule(fn, args=args, kwargs=kwargs)
+      return self._cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -1088,7 +1088,7 @@ class ClusterCoordinator(object):
         previously scheduled function since the last time an error was thrown or
         since the beginning of the program.
     """
-    self.cluster.join()
+    self._cluster.join()
 
   def done(self):
     """Returns whether all the scheduled functions have finished execution.
@@ -1106,7 +1106,7 @@ class ClusterCoordinator(object):
         previously scheduled function since the last time an error was thrown or
         since the beginning of the program.
     """
-    return self.cluster.done()
+    return self._cluster.done()
 
   def create_per_worker_dataset(self, dataset_fn):
     """Create dataset on workers by calling `dataset_fn` on worker devices.
@@ -1168,7 +1168,7 @@ class ClusterCoordinator(object):
       iterators (that are on the workers).
     """
     input_workers = input_lib.InputWorkers([
-        (w.device_name, [w.device_name]) for w in self.cluster.workers
+        (w.device_name, [w.device_name]) for w in self._cluster.workers
     ])
 
     return _PerWorkerDistributedDataset(dataset_fn, input_workers, self)
@@ -1191,7 +1191,7 @@ class ClusterCoordinator(object):
       objects.
     """
     results = []
-    for w in self.cluster.workers:
+    for w in self._cluster.workers:
       results.append(w._create_resource(fn, args=args, kwargs=kwargs))  # pylint: disable=protected-access
     return PerWorkerValues(tuple(results))
 

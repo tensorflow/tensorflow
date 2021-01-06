@@ -52,7 +52,7 @@ def load_data(path='imdb.npz',
   As a convention, "0" does not stand for a specific word, but instead is used
   to encode any unknown word.
 
-  Arguments:
+  Args:
       path: where to cache the data (relative to `~/.keras/dataset`).
       num_words: integer or None. Words are
           ranked by how often they occur (in the training set) and only
@@ -166,7 +166,7 @@ def load_data(path='imdb.npz',
 def get_word_index(path='imdb_word_index.json'):
   """Retrieves a dict mapping words to their index in the IMDB dataset.
 
-  Arguments:
+  Args:
       path: where to cache the data (relative to `~/.keras/dataset`).
 
   Returns:

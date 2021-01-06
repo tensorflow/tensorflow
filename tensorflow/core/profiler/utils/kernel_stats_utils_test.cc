@@ -94,6 +94,40 @@ TEST(KernelStatsUtilsTest, KernelDetailsXStatParser) {
   EXPECT_EQ(kernel.grid_dim()[2], 1);
 }
 
+TEST(KernelStatsUtilsTest, KernelDetailsTokenizer) {
+  KernelReport kernel;
+
+  // Test odd token count (3): { "odd", "grid", "3,2,1" }
+  absl::string_view kernel_details_0 = "odd grid:3,2,1";
+  ParseKernelLaunchParams(kernel_details_0, &kernel);
+  EXPECT_EQ(kernel.grid_dim()[0], 3);
+  EXPECT_EQ(kernel.grid_dim()[1], 2);
+  EXPECT_EQ(kernel.grid_dim()[2], 1);
+
+  // Test odd token count (3): { "block", "6,5,4", "odd" }
+  absl::string_view kernel_details_1 = "block:6,5,4 odd ";
+  ParseKernelLaunchParams(kernel_details_1, &kernel);
+  EXPECT_EQ(kernel.block_dim()[0], 6);
+  EXPECT_EQ(kernel.block_dim()[1], 5);
+  EXPECT_EQ(kernel.block_dim()[2], 4);
+
+  // Test odd token count (3): { "block", "1,2,3", "odd", "grid", "4,5,6" }
+  absl::string_view kernel_details_2 = "block:1,2,3 odd grid:4,5,6";
+  ParseKernelLaunchParams(kernel_details_2, &kernel);
+  EXPECT_EQ(kernel.block_dim()[0], 1);
+  EXPECT_EQ(kernel.block_dim()[1], 2);
+  EXPECT_EQ(kernel.block_dim()[2], 3);
+  EXPECT_EQ(kernel.grid_dim()[0], 4);
+  EXPECT_EQ(kernel.grid_dim()[1], 5);
+  EXPECT_EQ(kernel.grid_dim()[2], 6);
+
+  // Test even token count (4): { "static_shared", "7", "dynamic_shared", "8" }
+  absl::string_view kernel_details_3 = "static_shared:7 dynamic_shared:8";
+  ParseKernelLaunchParams(kernel_details_3, &kernel);
+  EXPECT_EQ(kernel.static_shmem_bytes(), 7);
+  EXPECT_EQ(kernel.dynamic_shmem_bytes(), 8);
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

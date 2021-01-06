@@ -196,16 +196,21 @@ class BatchFunctionKernel : public AsyncOpKernel {
               kMinInflightBatchesLimit, kInitialInflightBatchesLimit,
               kBatchesToAverageOver});
 
-      // Use a shared shared pool across all models if adaptive shared batch
-      // scheduler is used.
+      // One scheduler instance contains a couple of queue instances,
+      // `batcher_queue_` is the key to find queue for this batch-op in the
+      // graph.
+      // Use `shared_name_` and name() as prefix for `batcher_queue_`.
+      // Note name() is unique per session (from session metadata).
+      batcher_queue_ = name() + "/" + shared_name_ + batcher_queue_;
+
       // `shared_name_` and `container_` is used to look up an instantiated
       // scheduler instance in `ComputeAsync`.
+      //
+      // Rewrite `container_` and `shared_name_` to a pre-defined constant so
+      // that a shared shared pool across all models if adaptive shared batch
+      // scheduler is used.
       container_ = "__adapative_container";
       shared_name_ = "__adaptive_global_shared_thread_pool";
-      // Use name to prevent collisions by default.
-      if (batcher_queue_.empty()) {
-        batcher_queue_ = name();
-      }
     }
 
     if (shared_name_.empty()) {
@@ -313,6 +318,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device() == nullptr ? "" : lib->device()->name();
     opts.is_multi_device_function = true;
+    const ConfigProto* config = lib->config_proto();
+    if (config) {
+      opts.config_proto = *config;
+    }
 
     Device* cpu_device;
     TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));

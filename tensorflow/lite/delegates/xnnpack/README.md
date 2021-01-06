@@ -63,6 +63,27 @@ bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
   //tensorflow/lite/java:tensorflow-lite
 ```
 
+Note that in this case `Interpreter::SetNumThreads` invocation does not take
+effect on number of threads used by XNNPACK engine. In order to specify number
+of threads available for XNNPACK engine you should manually pass the value when
+constructing the interpreter. The snippet below illustrates this assuming you
+are using `InterpreterBuilder` to construct the interpreter:
+
+```c++
+// Load model
+tflite::Model* model;
+...
+
+// Construct the interprepter
+tflite::ops::builtin::BuiltinOpResolver resolver;
+std::unique_ptr<tflite::Interpreter> interpreter;
+
+TfLiteStatus res = tflite::InterpreterBuilder(model, resolver, num_threads);
+```
+
+**XNNPACK engine used by TensorFlow Lite interpreter uses a single thread for
+inference by default.**
+
 ### Enable XNNPACK via additional dependency
 
 Another way to enable XNNPACK is to build and link the

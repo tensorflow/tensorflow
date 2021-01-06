@@ -123,7 +123,8 @@ def _get_type_from_proto(arg_def=None, attr_def=None):
 def _get_type_info_from_proto(arg_def=None, attr_def=None):
   attr_type = _get_type_from_proto(arg_def, attr_def)
   if not arg_def:
-    return '{}{{tfr.name="{}"}}'.format(attr_type, attr_def.name)
+    return '{}{{tfr.name="{}",tfr.type="{}"}}'.format(
+        attr_type, attr_def.name, attr_def.type)
   else:
     attr_names = []
     if arg_def.number_attr:

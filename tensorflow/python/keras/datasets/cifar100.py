@@ -37,7 +37,7 @@ def load_data(label_mode='fine'):
   grouped into 20 coarse-grained classes. See more info at the
   [CIFAR homepage](https://www.cs.toronto.edu/~kriz/cifar.html).
 
-  Arguments:
+  Args:
       label_mode: one of "fine", "coarse". If it is "fine" the category labels
       are the fine-grained labels, if it is "coarse" the output labels are the
       coarse-grained superclasses.

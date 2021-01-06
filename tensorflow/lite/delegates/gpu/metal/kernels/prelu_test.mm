@@ -39,10 +39,10 @@ using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
 
-@interface SoftmaxTest : XCTestCase
+@interface PReLUTest : XCTestCase
 @end
 
-@implementation SoftmaxTest
+@implementation PReLUTest
 - (void)setUp {
   [super setUp];
 }

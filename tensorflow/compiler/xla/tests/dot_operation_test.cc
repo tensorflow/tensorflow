@@ -1210,7 +1210,7 @@ XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
           .ValueOrDie(),
       &builder);
   auto config = std::get<2>(GetParam());
-  if (config.find(",") == config.npos) {
+  if (config.find(',') == config.npos) {
     Einsum(x, config);
   } else {
     Einsum(x, y, config);

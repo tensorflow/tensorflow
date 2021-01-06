@@ -46,8 +46,6 @@ ComputeTaskDescriptor ReLU(const OperationDef& definition,
     desc.shader_source =
         parameters + "  return FLT4(max(value, " + min_func + "));\n}";
   }
-  desc.AddSrcTensor("", definition.src_tensors[0]);
-  desc.AddDstTensor("", definition.dst_tensors[0]);
   desc.uniform_buffers = {
       {"constant float2&",
        [attr](const std::vector<BHWC>& src_shapes,

@@ -75,7 +75,7 @@ TfLiteStatus GetSortedFileNames(
     while ((ent = readdir(dir)) != nullptr) {
       if (ent->d_type == DT_DIR) continue;
       std::string filename(std::string(ent->d_name));
-      size_t lastdot = filename.find_last_of(".");
+      size_t lastdot = filename.find_last_of('.');
       std::string ext = lastdot != std::string::npos ? filename.substr(lastdot)
                                                      : std::string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);

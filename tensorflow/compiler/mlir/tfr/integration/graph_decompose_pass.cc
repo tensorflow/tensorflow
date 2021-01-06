@@ -38,8 +38,8 @@ bool GraphDecomposePass::IsEnabled(const ConfigProto& config_proto,
 Status GraphDecomposePass::Run(const ConfigProto& config_proto,
                                mlir::ModuleOp module, const Graph& graph) {
   if (!IsEnabled(config_proto, graph)) {
-    LOG_FIRST_N(INFO, 1) << "Skipping Graph Decomposition Pass, decompositin "
-                            "library was not found";
+    LOG_FIRST_N(INFO, 1) << "Skipping Graph Decomposition Pass, decomposition"
+                            " library was not found";
     return Status::OK();
   }
 

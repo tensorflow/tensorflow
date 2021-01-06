@@ -33,7 +33,7 @@ set +e
 # The pigweed scripts only work from a git repository and the Tensorflow CI
 # infrastructure does not always guarantee that. As an ugly workaround, we
 # create our own git repo when running on the CI servers.
-pushd tensorflow/lite/micro/
+pushd tensorflow/lite/
 if [[ ${1} == "PRESUBMIT" ]]; then
   git init .
   git config user.email "tflm@google.com"
@@ -43,29 +43,22 @@ if [[ ${1} == "PRESUBMIT" ]]; then
 fi
 
 # Check for license with the necessary exclusions.
-tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
-  . \
+micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
+  kernels/internal/reference/ \
+  micro/ \
   -p copyright_notice \
+  -e kernels/internal/reference/integer_ops/ \
+  -e kernels/internal/reference/reference_ops.h \
+  -e tools/make/downloads \
   -e tools/make/targets/ecm3531 \
   -e BUILD\
   -e leon_commands \
-  -e Makefile \
   -e "\.bzl" \
-  -e "\.cmd" \
-  -e "\.conf" \
-  -e "\.defaults" \
   -e "\.h5" \
   -e "\.ipynb" \
   -e "\.inc" \
-  -e "\.lcf" \
-  -e "\.ld" \
-  -e "\.lds" \
   -e "\.patch" \
-  -e "\.projbuild" \
   -e "\.properties" \
-  -e "\.resc" \
-  -e "\.resource" \
-  -e "\.robot" \
   -e "\.txt" \
   -e "\.tpl" \
   --output-directory /tmp
@@ -76,8 +69,11 @@ LICENSE_CHECK_RESULT=$?
 # Python files (with yapf as the formatter) because that needs additional setup.
 # We are also ignoring the markdown files to allow for a more gradual rollout of
 # this presubmit check.
-tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
-  . \
+micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
+  kernels/internal/reference/ \
+  micro/ \
+  -e kernels/internal/reference/integer_ops/ \
+  -e kernels/internal/reference/reference_ops.h \
   -e "\.inc" \
   -e "\.md" \
   -e "\.py"
@@ -86,7 +82,7 @@ CLANG_FORMAT_RESULT=$?
 
 popd
 if [[ ${1} == "PRESUBMIT" ]]; then
-  rm -rf tensorflow/lite/micro/.git
+  rm -rf tensorflow/lite/.git
 fi
 
 # Re-enable exit on error now that we are done with the temporary git repo.

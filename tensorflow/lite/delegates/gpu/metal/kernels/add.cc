@@ -41,8 +41,8 @@ std::string GetAddTableCodeFused(int src_count) {
   code += ") {\n";
   for (int i = 0; i < src_count; ++i) {
     code += "  value += src_buf" + std::to_string(i) + "[linear_index];\n";
-    code += "  return value;\n";
   }
+  code += "  return value;\n";
   code += "}\n";
   return code;
 }
@@ -51,13 +51,12 @@ std::string GetAddTableCodeFused(int src_count) {
 ComputeTaskDescriptor Add(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
-  desc.is_associative_op = true;
   desc.shader_source = GetAddTableCodeFused(definition.src_tensors.size() - 1);
 
-  for (int i = 0; i < definition.src_tensors.size(); ++i) {
-    desc.AddSrcTensor("", definition.src_tensors[i]);
+  for (int i = 1; i < definition.src_tensors.size(); ++i) {
+    desc.AddSrcTensor("src_tensor_" + std::to_string(i),
+                      definition.src_tensors[i]);
   }
-  desc.AddDstTensor("", definition.dst_tensors[0]);
 
   return desc;
 }

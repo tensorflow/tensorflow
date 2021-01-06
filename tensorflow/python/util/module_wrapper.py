@@ -19,12 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import inspect
 import types
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util import tf_stack
 from tensorflow.tools.compatibility import all_renames_v2
 
 
@@ -41,11 +41,12 @@ def _call_location():
   # We want to get stack frame 3 frames up from current frame,
   # i.e. above __getattr__, _tfmw_add_deprecation_warning,
   # and _call_location calls.
-  stack = tf_stack.extract_stack(limit=4)
-  if not stack:  # should never happen as we're in a function
-    return 'UNKNOWN'
-  frame = stack[0]
-  return '{}:{}'.format(frame.filename, frame.lineno)
+  frame = inspect.currentframe()
+  for _ in range(4):
+    parent = frame.f_back
+    if parent is None:
+      break
+  return '{}:{}'.format(frame.f_code.co_filename, frame.f_lineno)
 
 
 def contains_deprecation_decorator(decorators):

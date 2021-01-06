@@ -102,6 +102,24 @@ Status GpuTracer::DoStart() {
       CUPTI_DRIVER_TRACE_CBID_cuMemcpy3DAsync_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoA_v2,
       CUPTI_DRIVER_TRACE_CBID_cuMemcpyHtoAAsync_v2,
+      // MemAlloc
+      CUPTI_DRIVER_TRACE_CBID_cuMemAlloc_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemAllocPitch_v2,
+      // MemFree
+      CUPTI_DRIVER_TRACE_CBID_cuMemFree_v2,
+      // Memset
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32_v2,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD32Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D8Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D16Async,
+      CUPTI_DRIVER_TRACE_CBID_cuMemsetD2D32Async,
       // GENERIC
       CUPTI_DRIVER_TRACE_CBID_cuStreamSynchronize,
   };
@@ -122,6 +140,8 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
+  options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMORY);
+  options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMSET);
 
 // CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000

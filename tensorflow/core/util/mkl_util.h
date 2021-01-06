@@ -194,8 +194,7 @@ inline std::ostream& operator<<(std::ostream& os,
   return os;
 }
 
-inline std::ostream& operator<<(std::ostream& os,
-                                const MklTensorFormat& format) {
+inline void operator<<(std::ostream& os, const MklTensorFormat& format) {
   if (format == MklTensorFormat::FORMAT_NHWC) {
     os << "FORMAT_NHWC";
   } else if (format == MklTensorFormat::FORMAT_NCHW) {
@@ -247,7 +246,7 @@ inline mkldnn::stream* CreateStream(OpKernelContext* ctx,
 
 class MklDnnShape {
  private:
-  typedef struct {
+  struct MklShapeData {
     // Flag to indicate if the tensor is an MKL tensor or not
     bool is_mkl_tensor_ = false;
     // Number of dimensions in Tensorflow format
@@ -259,7 +258,7 @@ class MklDnnShape {
     mkldnn_memory_desc_t mkl_md_;
     /// TF dimension corresponding to this MKL dimension
     mkldnn_dims_t map_;
-  } MklShapeData;
+  };
   MklShapeData data_;
 
   typedef std::remove_extent<mkldnn_dims_t>::type mkldnn_dim_t;
@@ -1924,7 +1923,6 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     FactoryKeyCreator key_creator;
     auto const& from_desc = from->get_desc().data;
     auto const& to_desc = to->get_desc().data;
-    const int kIdxFirstStride = 0;
     memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
     memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
     auto from_strides = from_desc.format_desc.blocking.strides;

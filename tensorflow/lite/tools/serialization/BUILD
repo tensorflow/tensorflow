@@ -36,6 +36,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
         "//tensorflow/lite/schema:schema_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

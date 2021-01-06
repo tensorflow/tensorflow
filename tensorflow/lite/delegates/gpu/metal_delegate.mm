@@ -39,10 +39,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/metal/api.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
-#include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -432,14 +430,10 @@ class Delegate {
       }
     }
 
-    // TODO(impjdi): Merge these.
-    CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, gpu_info, precision, &compiled_model));
-    CompiledModel optimized_model;
-    RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
-
-    RETURN_IF_ERROR(inference_context_.CompileModelWithDevice(metal_device_, optimized_model,
-                                                              input_ids, output_ids, precision));
+    InferenceContext::CreateInferenceInfo create_info;
+    create_info.precision = precision;
+    create_info.storage_type = TensorStorageType::BUFFER;
+    RETURN_IF_ERROR(inference_context_.InitFromGraph(create_info, graph, metal_device_));
     return absl::OkStatus();
   }
 

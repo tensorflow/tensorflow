@@ -48,36 +48,77 @@ absl::InlinedVector<T, 10> RepeatInputToMatchShape(
   return result;
 }
 
-/// Helper functions to get default input values.
+/// Helper functions to get default input shapes.
 
 TensorShape DefaultInputShape();
+
+/// Helper functions to configure tests.
+
+struct GpuOpsTestConfig {
+  bool add_t = true;
+  bool add_tout = false;
+  // Only used for gpu_unary_ops_test.
+  bool expect_buffer_reuse = true;
+  bool expect_strictly_equal = false;
+  GpuOpsTestConfig ExpectStrictlyEqual() {
+    GpuOpsTestConfig config = *this;
+    config.expect_strictly_equal = true;
+    return config;
+  }
+  GpuOpsTestConfig NoBufferReuse() {
+    GpuOpsTestConfig config = *this;
+    config.expect_buffer_reuse = false;
+    return config;
+  }
+  GpuOpsTestConfig AddTout() {
+    GpuOpsTestConfig config = *this;
+    config.add_tout = true;
+    return config;
+  }
+  GpuOpsTestConfig NoT() {
+    GpuOpsTestConfig config = *this;
+    config.add_t = false;
+    return config;
+  }
+};
+
+/// Helper functions to get more specific input data.
+
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
+  return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
+                                   -0.1, -0.0, 0.0, 0.1,
+                                   std::numeric_limits<float>::infinity()});
+}
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
-T DefaultScalarInput() {
-  return static_cast<T>(3);
+absl::InlinedVector<T, 10> NearZeroAndExtremeInput() {
+  return InputAsVector<T, T>({std::numeric_limits<T>::min(),
+                              std::numeric_limits<T>::min() + 1, -1, 0, 1,
+                              std::numeric_limits<T>::max()});
 }
 
 template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
-T DefaultScalarInput() {
-  return static_cast<T>(2.0);
+absl::InlinedVector<T, 10> DefaultInputGreaterThanZero() {
+  return test::InputAsVector<T, double>({18.0, 9.0, 1e-6, 1.0, 0.1, 1e-6, 0.1,
+                                         0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
-T DefaultScalarInput() {
-  return static_cast<T>(true);
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> DefaultInputGreaterOrEqualToZero() {
+  return test::InputAsVector<T, double>({18.0, 9.0, 1e-6, 0.0, 0.1, 1e-6, 0.1,
+                                         0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
-template <typename T>
-absl::InlinedVector<T, 10> InfZeroInput() {
-  return InputAsVector<T, double>({-std::numeric_limits<double>::infinity(),
-                                   -0.1, -0.0, 0.0, 0.1,
-                                   std::numeric_limits<float>::infinity()});
-}
+/// Helper functions to get default input data.
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
@@ -90,6 +131,9 @@ absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
     for (auto i = 0; i < max_shift; ++i) v.push_back(i);
     return v;
   }
+  if (op_name == "Div") {
+    return InputAsVector<T, int>({-18, -9, 9, 18});
+  }
   return InputAsVector<T, int>({-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
 }
 
@@ -97,15 +141,34 @@ template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+  if (op_name == "Div" || op_name == "FloorDiv") {
+    return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.1, 0.1, 1e-6, 0.1,
+                                     0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
+  }
   return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
                                    0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
 
 template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
+          std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
+                                           std::complex<double>>::value,
+                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+  using ElementType = typename T::value_type;
+  auto input = test::DefaultInput<ElementType>(op_name);
+  absl::InlinedVector<T, 10> complex_input;
+  for (ElementType value : input) {
+    complex_input.emplace_back(value, -value);
+  }
+  return complex_input;
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
+absl::InlinedVector<T, 10> DefaultInput(absl::string_view /*op_name*/) {
   return InputAsVector<T, bool>({true, false, true, true, false});
 }
+
 }  // namespace test
 }  // namespace tensorflow
 

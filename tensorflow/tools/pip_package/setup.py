@@ -118,7 +118,7 @@ if 'tf_nightly' in project_name:
 # BoringSSL support.
 # See https://github.com/tensorflow/tensorflow/issues/17882.
 if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio ~= 1.32.0')
+  REQUIRED_PACKAGES.append('grpcio ~= 1.34.0')
 
 
 # Packages which are only needed for testing code.
@@ -127,6 +127,8 @@ if sys.byteorder == 'little':
 TEST_PACKAGES = [
     'portpicker ~= 1.3.1',
     'scipy ~= 1.5.2',
+    'tblib ~= 1.7.0',
+    'dill ~= 0.3.2',
 ]
 
 

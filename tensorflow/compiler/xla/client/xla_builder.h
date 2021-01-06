@@ -731,7 +731,8 @@ class XlaBuilder {
       XlaOp operand, int64 all_gather_dimension, int64 shard_count,
       absl::Span<const ReplicaGroup> replica_groups = {},
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
-      const absl::optional<Layout>& layout = absl::nullopt);
+      const absl::optional<Layout>& layout = absl::nullopt,
+      const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
   XlaOp AllReduce(
       XlaOp operand, const XlaComputation& computation,
@@ -1286,7 +1287,8 @@ class XlaBuilder {
                          int64 shard_count,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const absl::optional<ChannelHandle>& channel_id,
-                         const absl::optional<Layout>& layout);
+                         const absl::optional<Layout>& layout,
+                         const absl::optional<bool> use_global_device_ids);
   friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                          absl::Span<const ReplicaGroup> replica_groups,
                          const absl::optional<ChannelHandle>& channel_id,
@@ -2161,10 +2163,12 @@ XlaOp ReduceWindowWithGeneralPadding(
 XlaOp CrossReplicaSum(XlaOp operand,
                       absl::Span<const ReplicaGroup> replica_groups = {});
 
-XlaOp AllGather(XlaOp operand, int64 all_gather_dimension, int64 shard_count,
-                absl::Span<const ReplicaGroup> replica_groups = {},
-                const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
-                const absl::optional<Layout>& layout = absl::nullopt);
+XlaOp AllGather(
+    XlaOp operand, int64 all_gather_dimension, int64 shard_count,
+    absl::Span<const ReplicaGroup> replica_groups = {},
+    const absl::optional<ChannelHandle>& channel_id = absl::nullopt,
+    const absl::optional<Layout>& layout = absl::nullopt,
+    const absl::optional<bool> use_global_device_ids = absl::nullopt);
 
 // Enqueues an operation that do an AllReduce of the operand cross cores. Here
 // AllReduce means doing a reduction on the input operand cross cores and then
