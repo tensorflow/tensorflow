@@ -872,6 +872,7 @@ objc_library(
         "elementwise_test.mm",
         "fully_connected_test.mm",
         "max_unpooling_test.mm",
+        "mean_test.mm",
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",
