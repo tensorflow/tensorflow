@@ -1165,17 +1165,6 @@ inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                     output_data, flat_size);
 }
 
-template <typename SrcT, typename DstT>
-inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
-                 const RuntimeShape& output_shape, DstT* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = static_cast<DstT>(input_data[offset]);
-  }
-}
-
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
