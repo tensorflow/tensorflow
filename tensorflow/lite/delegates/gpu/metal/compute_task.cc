@@ -39,12 +39,12 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
   std::string args_declarations;
   int bind_index = 0;
   for (const auto& dst_name : desc.task->dst_tensors_names) {
-    args_declarations += "device FLT4* " + dst_name + "[[buffer(" +
+    args_declarations += "device FLT4* " + dst_name + "_buffer[[buffer(" +
                          std::to_string(bind_index) + ")]],\n";
     bind_index++;
   }
   for (const auto& src_name : desc.task->src_tensors_names) {
-    args_declarations += "device FLT4* " + src_name + "[[buffer(" +
+    args_declarations += "device FLT4* " + src_name + "_buffer[[buffer(" +
                          std::to_string(bind_index) + ")]],\n";
     bind_index++;
   }
@@ -141,7 +141,6 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
   program_ = program;
   src_tensors_names_ = desc.task->src_tensors_names;
   dst_tensors_names_ = desc.task->dst_tensors_names;
-  tensors_as_args_ = desc.task->tensors_as_args;
   return absl::OkStatus();
 }
 
@@ -256,22 +255,12 @@ std::vector<ValueId> ComputeTask::GetInputIds() const {
 
 void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
   input_buffers_[index].metal_handle = tensor.GetBufferHandle();
-  if (absl::StrContains(src_tensors_names_[index], "_buffer")) {
-    auto name = src_tensors_names_[index];
-    // extracting tensor_name from "tensor_name_buffer";
-    name = name.substr(0, name.size() - 7);
-    auto status = metal_args_.SetObjectRef(name, tensor);
-  }
+  auto status = metal_args_.SetObjectRef(src_tensors_names_[index], tensor);
 }
 
 void ComputeTask::SetDstTensor(const MetalSpatialTensor& tensor, int index) {
   output_buffers_[index].metal_handle = tensor.GetBufferHandle();
-  if (absl::StrContains(dst_tensors_names_[index], "_buffer")) {
-    auto name = dst_tensors_names_[index];
-    // extracting tensor_name from "tensor_name_buffer";
-    name = name.substr(0, name.size() - 7);
-    auto status = metal_args_.SetObjectRef(name, tensor);
-  }
+  auto status = metal_args_.SetObjectRef(dst_tensors_names_[index], tensor);
 }
 
 void ComputeTask::SetDescription(const std::string& description) {

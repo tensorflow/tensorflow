@@ -990,7 +990,6 @@ ComputeTaskDescriptor ConvolutionGeneric(const OperationDef& definition,
       GetConvParams(gpu_info, attr, definition.precision, dst_shape);
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GenerateConvolution(params);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -1091,7 +1090,6 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
   }
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GenerateConvolution(params);
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);

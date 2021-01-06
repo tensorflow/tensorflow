@@ -107,7 +107,6 @@ ComputeTaskDescriptor Mean(const OperationDef& definition,
   const int3 work_group_size = int3(16, 16, 1);
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   std::string code = GetMeanCode(work_group_size);
   desc.shader_source = code;
 

@@ -163,7 +163,6 @@ ComputeTaskDescriptor ConcatZ(const OperationDef& definition,
     channels.push_back(shape.c);
   }
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetConcatChannelsCode(definition, channels);
 
   for (int i = 0; i < definition.src_tensors.size(); ++i) {
@@ -288,7 +287,6 @@ ComputeTaskDescriptor ConcatX(const OperationDef& definition,
                               const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetConcatKernelCode(definition, attr);
 
   for (int i = 0; i < input_shapes.size(); ++i) {
@@ -313,7 +311,6 @@ ComputeTaskDescriptor ConcatY(const OperationDef& definition,
                               const ConcatAttributes& attr,
                               const std::vector<BHWC>& input_shapes) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetConcatKernelCode(definition, attr);
 
   for (int i = 0; i < input_shapes.size(); ++i) {

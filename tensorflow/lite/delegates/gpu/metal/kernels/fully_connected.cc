@@ -118,7 +118,6 @@ ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
                                      const FullyConnectedAttributes& attr,
                                      const GpuInfo& gpu_info) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
                                              attr.weights.shape.o);
 

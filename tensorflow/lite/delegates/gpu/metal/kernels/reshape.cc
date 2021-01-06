@@ -101,7 +101,6 @@ kernel void ComputeFunction(
 
 ComputeTaskDescriptor Reshape(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetReshapeCode();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
@@ -123,7 +122,6 @@ ComputeTaskDescriptor Reshape(const OperationDef& definition) {
 
 ComputeTaskDescriptor Reshapex4(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetReshapex4Code();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

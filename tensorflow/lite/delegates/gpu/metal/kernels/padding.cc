@@ -129,7 +129,6 @@ std::string GetPaddingCode(const PadAttributes& attr) {
 ComputeTaskDescriptor Padding(const OperationDef& definition,
                               const PadAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetPaddingCode(attr);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

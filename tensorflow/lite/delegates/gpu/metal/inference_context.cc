@@ -426,7 +426,6 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
                                ValueId output_id,
                                const OperationDef& definition) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->tensors_as_args = true;
   desc->shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -469,11 +468,7 @@ absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst,
   dst->description += " linked : " + src->description;
   for (int i = 0; i < src->task->src_tensors_names.size(); ++i) {
     std::string tensor_name = src->task->src_tensors_names[i];
-    dst->task->src_tensors_names.push_back(tensor_name + link_name + "_buffer");
-    auto desc_new = absl::make_unique<TensorDescriptor>(
-        src->task->definition.src_tensors[i + 1]);
-    src->task->args.AddObjectRef(tensor_name, AccessType::READ,
-                                 std::move(desc_new));
+    dst->task->src_tensors_names.push_back(tensor_name + link_name);
     dst->task->definition.src_tensors.push_back(
         src->task->definition.src_tensors[i + 1]);
     dst->src_tensors_ids.push_back(src->src_tensors_ids[i + 1]);

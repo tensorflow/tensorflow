@@ -418,7 +418,6 @@ ComputeTaskDescriptor ConvolutionTransposed(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
 
   const int src_local_size_x =
       (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
@@ -550,7 +549,6 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
                                               dst_ch_aligned);
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
 
   bool recommended_2x = false;
   if (gpu_info.IsApple()) {

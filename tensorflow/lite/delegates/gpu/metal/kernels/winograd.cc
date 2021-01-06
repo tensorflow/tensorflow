@@ -458,7 +458,6 @@ kernel void ComputeFunction($1
 ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
                                       const Winograd4x4To36Attributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelWinograd4x4To36();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
@@ -505,7 +504,6 @@ ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
 ComputeTaskDescriptor Winograd4x4To36TileX6(
     const OperationDef& definition, const Winograd4x4To36Attributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelWinograd4x4To36TileX6();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
@@ -564,7 +562,6 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
 ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
                                       const Winograd36To4x4Attributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelWinograd36To4x4();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
@@ -594,7 +591,6 @@ ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
 ComputeTaskDescriptor Winograd36To4x4Tile4x1(
     const OperationDef& definition, const Winograd36To4x4Attributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelWinograd36To4x4Tile4x1();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

@@ -460,7 +460,6 @@ kernel void ComputeFunction(
 }
 )";
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = shader_source;
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -512,7 +511,6 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -561,7 +559,6 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride2(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);

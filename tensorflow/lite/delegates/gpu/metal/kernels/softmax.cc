@@ -134,7 +134,6 @@ kernel void ComputeFunction($1
 
 ComputeTaskDescriptor Softmax(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -205,7 +204,6 @@ kernel void ComputeFunction(
 ComputeTaskDescriptor Softmax1x1(const OperationDef& definition,
                                  const GpuInfo& gpu_info) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetSoftmax1x1Code(gpu_info);
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

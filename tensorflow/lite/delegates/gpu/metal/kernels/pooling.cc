@@ -164,7 +164,6 @@ ComputeTaskDescriptor Pooling(const OperationDef& definition,
                               const Pooling2DAttributes& attr,
                               bool generate_indices) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   if (attr.type == PoolingType::MAX) {
     desc.shader_source =
         generate_indices ? GetMaxPoolingIndicesCode() : GetMaxPoolingCode();

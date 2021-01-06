@@ -33,7 +33,6 @@ namespace metal {
 ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
                                    const SpaceToDepthAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;

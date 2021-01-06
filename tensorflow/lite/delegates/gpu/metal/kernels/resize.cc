@@ -115,7 +115,6 @@ kernel void ComputeFunction(
 ComputeTaskDescriptor Resize(const OperationDef& definition,
                              const Resize2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   switch (attr.type) {
     case SamplingType::BILINEAR:
       desc.shader_source = GetResizeBilinearCode(attr);

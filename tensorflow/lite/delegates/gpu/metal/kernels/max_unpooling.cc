@@ -78,7 +78,6 @@ kernel void ComputeFunction(
 ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
                                    const MaxUnpooling2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetMaxUnpoolingCode();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
