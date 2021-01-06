@@ -35,24 +35,15 @@ ComputeTaskDescriptor ReLU(const OperationDef& definition,
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
   const std::string min_func =
-      attr.alpha == 0 ? "FLT4(0.0f)" : "min(value * params.x, 0.0f)";
-  const std::string parameters =
-      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, float2 params) "
-      "{\n";
+      attr.alpha == 0 ? "FLT4(0.0f)" : "min(value * args.alpha, 0.0f)";
   if (attr.clip != 0.0) {
-    desc.shader_source = parameters + "  return FLT4(clamp(value, " + min_func +
-                         ", FLT4(params.y)));\n}";
-  } else {
     desc.shader_source =
-        parameters + "  return FLT4(max(value, " + min_func + "));\n}";
+        "value = FLT4(clamp(value, " + min_func + ", FLT4(args.clip)));";
+  } else {
+    desc.shader_source = "value = FLT4(max(value, " + min_func + "));";
   }
-  desc.uniform_buffers = {
-      {"constant float2&",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         return GetByteBuffer(std::vector<float>{attr.alpha, attr.clip});
-       }},
-  };
+  desc.args.AddFloat("alpha", attr.alpha);
+  desc.args.AddFloat("clip", attr.clip);
   return desc;
 }
 

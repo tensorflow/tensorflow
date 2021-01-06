@@ -17,9 +17,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/substitute.h"
-#include "tensorflow/lite/delegates/gpu/metal/buffer.h"
-#include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
+#include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/metal/buffer.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -128,6 +129,14 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
     return absl::OkStatus();
   }
 
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc);
+  if (tensor_desc) {
+    MetalSpatialTensor gpu_tensor;
+    RETURN_IF_ERROR(gpu_tensor.CreateFromDescriptor(*tensor_desc, device));
+    *result = absl::make_unique<MetalSpatialTensor>(std::move(gpu_tensor));
+    return absl::OkStatus();
+  }
+
   return absl::InvalidArgumentError("Unknown GPU descriptor.");
 }
 }  // namespace
@@ -140,10 +149,10 @@ absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
   RETURN_IF_ERROR(AllocateObjects(*args, device));
   RETURN_IF_ERROR(AddObjectArgs(args));
   RETURN_IF_ERROR(ResolveSelectorsPass(*args, {}, code));
-  RETURN_IF_ERROR(SetObjectsResources(*args));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
   std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
+  RETURN_IF_ERROR(SetObjectsResources(*args));
   ResolveArgsPass(code);
   *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
   return absl::OkStatus();

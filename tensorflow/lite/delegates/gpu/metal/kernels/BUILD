@@ -876,6 +876,7 @@ objc_library(
         "padding_test.mm",
         "pooling_test.mm",
         "prelu_test.mm",
+        "quantize_and_dequantize_test.mm",
         "relu_test.mm",
         "reshape_test.mm",
         "resize_test.mm",
@@ -897,6 +898,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
+        "//tensorflow/lite/kernels/internal:quantization_util",
     ],
 )
 

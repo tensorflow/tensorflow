@@ -256,8 +256,7 @@ std::vector<ValueId> ComputeTask::GetInputIds() const {
 
 void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
   input_buffers_[index].metal_handle = tensor.GetBufferHandle();
-  if (tensors_as_args_ &&
-      absl::StrContains(src_tensors_names_[index], "_buffer")) {
+  if (absl::StrContains(src_tensors_names_[index], "_buffer")) {
     auto name = src_tensors_names_[index];
     // extracting tensor_name from "tensor_name_buffer";
     name = name.substr(0, name.size() - 7);
@@ -267,7 +266,7 @@ void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
 
 void ComputeTask::SetDstTensor(const MetalSpatialTensor& tensor, int index) {
   output_buffers_[index].metal_handle = tensor.GetBufferHandle();
-  if (tensors_as_args_) {
+  if (absl::StrContains(dst_tensors_names_[index], "_buffer")) {
     auto name = dst_tensors_names_[index];
     // extracting tensor_name from "tensor_name_buffer";
     name = name.substr(0, name.size() - 7);

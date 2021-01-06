@@ -426,38 +426,29 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
                                ValueId output_id,
                                const OperationDef& definition) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->is_linkable = false;
+  desc->tensors_as_args = true;
   desc->shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
     $0
     kernel void ComputeFunction($1
                                 uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
+      if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
         return;
       }
-      const int linear_index = (gid.z * size.y + gid.y) * size.x + gid.x;
-      FLT4 value = src_tensor[linear_index];
+      FLT4 value = args.src_tensor.Read(gid.x, gid.y, gid.z);
+      args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
       $2
-      dst_tensor[linear_index] = value;
+      args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
     }
   )";
 
   desc->AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc->AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc->uniform_buffers = {
-      {"constant int2& size",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         return GetByteBuffer(
-             std::vector<int>{src_shapes[0].w, src_shapes[0].h});
-       }},
-  };
-
   desc->resize_function = [](const std::vector<BHWC>& src_shapes,
                              const std::vector<BHWC>& dst_shapes) {
-    uint3 groups_size{16, 16, 1};
+    uint3 groups_size{8, 8, 1};
     uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
                        DivideRoundUp(dst_shapes[0].h, groups_size.y),
                        DivideRoundUp(dst_shapes[0].c, 4)};
@@ -472,60 +463,47 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
   return node_desc;
 }
 
-void MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst,
-                std::string link_name) {
-  std::string call_arguments;
+absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst,
+                        std::string link_name) {
   dst->dst_tensors_ids[0] = src->dst_tensors_ids[0];
   dst->description += " linked : " + src->description;
   for (int i = 0; i < src->task->src_tensors_names.size(); ++i) {
-    std::string tensor_name = src->task->src_tensors_names[i] + link_name;
-    call_arguments += ", " + tensor_name;
-    dst->task->src_tensors_names.push_back(tensor_name);
-    // dst->task->AddSrcTensor(tensor_name,
-    //                         src->task->definition.src_tensors[i + 1]);
+    std::string tensor_name = src->task->src_tensors_names[i];
+    dst->task->src_tensors_names.push_back(tensor_name + link_name + "_buffer");
+    auto desc_new = absl::make_unique<TensorDescriptor>(
+        src->task->definition.src_tensors[i + 1]);
+    src->task->args.AddObjectRef(tensor_name, AccessType::READ,
+                                 std::move(desc_new));
+    dst->task->definition.src_tensors.push_back(
+        src->task->definition.src_tensors[i + 1]);
     dst->src_tensors_ids.push_back(src->src_tensors_ids[i + 1]);
   }
 
-  for (int i = 0; i < src->task->immutable_buffers.size(); ++i) {
-    auto buffer = src->task->immutable_buffers[i];
-    const std::string buffer_name = "ibuffer" + std::to_string(i) + link_name;
-    buffer.declaration += " " + buffer_name;
-    call_arguments += ", " + buffer_name;
-    dst->task->immutable_buffers.push_back(buffer);
-  }
+  std::string code = src->task->shader_source;
+  src->task->args.RenameArgs(link_name, &code);
 
-  for (int i = 0; i < src->task->uniform_buffers.size(); ++i) {
-    auto buffer = src->task->uniform_buffers[i];
-    const std::string buffer_name = "ubuffer" + std::to_string(i) + link_name;
-    buffer.declaration += " " + buffer_name;
-    call_arguments += ", " + buffer_name;
-    dst->task->uniform_buffers.push_back(buffer);
-  }
+  RETURN_IF_ERROR(dst->task->args.Merge(std::move(src->task->args), link_name));
 
-  std::string function_code =
-      absl::Substitute(src->task->shader_source, link_name) + "\n";
-  std::string call_code =
-      absl::Substitute("value = linkable$0(value, linear_index, gid$1);\n",
-                       link_name, call_arguments);
+  dst->task->shader_source = absl::Substitute(dst->task->shader_source, "$0",
+                                              "$1", "{\n" + code + "\n}\n$2");
 
-  dst->task->shader_source = absl::Substitute(
-      dst->task->shader_source, function_code + "$0", "$1", call_code + "$2");
+  return absl::OkStatus();
 }
 
-NodeDescriptor FuseChain(const FusionSequence& chain) {
-  NodeDescriptor node_desc;
+absl::Status FuseChain(const FusionSequence& chain, NodeDescriptor* node_desc) {
   if (chain.front().task->is_linkable) {
-    node_desc = NonLinkableStub(
+    *node_desc = NonLinkableStub(
         chain.front().id, chain.front().src_tensors_ids[0],
         chain.front().dst_tensors_ids[0], chain.front().task->definition);
-    MergeNodes(&chain.front(), &node_desc, "_link0");
+    RETURN_IF_ERROR(MergeNodes(&chain.front(), node_desc, "_link0"));
   } else {
-    node_desc = chain.front();
+    *node_desc = chain.front();
   }
   for (int j = 1; j < chain.size(); ++j) {
-    MergeNodes(&chain[j], &node_desc, "_link" + std::to_string(j));
+    RETURN_IF_ERROR(
+        MergeNodes(&chain[j], node_desc, "_link" + std::to_string(j)));
   }
-  return node_desc;
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -697,8 +675,11 @@ absl::Status InferenceContext::ValidateOptimizeModel(
         std::to_string(info.missing_output_buffer_ids.size());
     return absl::InternalError(message);
   }
-  for (const auto& chain : sorted_chains)
-    output_model->nodes.push_back(FuseChain(chain));
+  for (const auto& chain : sorted_chains) {
+    NodeDescriptor fused_node;
+    RETURN_IF_ERROR(FuseChain(chain, &fused_node));
+    output_model->nodes.push_back(std::move(fused_node));
+  }
   output_model->tensor_shapes = input_model.tensor_shapes;
   return absl::OkStatus();
 }

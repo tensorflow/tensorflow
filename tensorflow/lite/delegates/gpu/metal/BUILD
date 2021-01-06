@@ -188,6 +188,7 @@ objc_library(
     deps = [
         ":buffer",
         ":gpu_object",
+        ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:arguments",

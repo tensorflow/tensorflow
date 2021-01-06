@@ -31,31 +31,16 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace metal {
-namespace {
-
-std::string GetAddTableCodeFused(int src_count) {
-  std::string code = "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid";
-  for (int i = 0; i < src_count; ++i) {
-    code += ", device FLT4* const src_buf" + std::to_string(i);
-  }
-  code += ") {\n";
-  for (int i = 0; i < src_count; ++i) {
-    code += "  value += src_buf" + std::to_string(i) + "[linear_index];\n";
-  }
-  code += "  return value;\n";
-  code += "}\n";
-  return code;
-}
-}  // namespace
 
 ComputeTaskDescriptor Add(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.is_linkable = true;
-  desc.shader_source = GetAddTableCodeFused(definition.src_tensors.size() - 1);
 
   for (int i = 1; i < definition.src_tensors.size(); ++i) {
-    desc.AddSrcTensor("src_tensor_" + std::to_string(i),
-                      definition.src_tensors[i]);
+    const std::string tensor_name = "src_tensor_" + std::to_string(i);
+    desc.AddSrcTensor(tensor_name, definition.src_tensors[i]);
+    desc.shader_source +=
+        "  value += args." + tensor_name + ".Read(gid.x, gid.y, gid.z);\n";
   }
 
   return desc;
