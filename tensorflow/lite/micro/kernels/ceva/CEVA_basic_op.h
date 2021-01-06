@@ -1,98 +1,7 @@
-/*************************************************************************************\
-* Copyright (C) CEVA(R) Inc. All rights reserved *
-* *
-* This information embodies materials and concepts, which are proprietary and *
-* confidential to CEVA Inc., and is made available solely pursuant to the terms
-*
-* of a written license agreement, or NDA, or another written agreement, as *
-* applicable ("CEVA Agreement"), with CEVA Inc. or any of its subsidiaries
-("CEVA").  *
-* *
-* This information can be used only with the written permission from CEVA, in *
-* accordance with the terms and conditions stipulated in the CEVA Agreement,
-under    *
-* which the information has been supplied and solely as expressly permitted for
-*
-* the purpose specified in the CEVA Agreement. *
-* *
-* This information is made available exclusively to licensees or parties that
-have    *
-* received express written authorization from CEVA to download or receive the *
-* information and have agreed to the terms and conditions of the CEVA Agreement.
-*
-* *
-* IF YOU HAVE NOT RECEIVED SUCH EXPRESS AUTHORIZATION AND AGREED TO THE CEVA *
-* AGREEMENT, YOU MAY NOT DOWNLOAD, INSTALL OR USE THIS INFORMATION. *
-* *
-* The information contained in this document is subject to change without notice
-*
-* and does not represent a commitment on any part of CEVA. Unless specifically *
-* agreed otherwise in the CEVA Agreement, CEVA make no warranty of any kind with
-*
-* regard to this material, including, but not limited to implied warranties of *
-* merchantability and fitness for a particular purpose whether arising out of
-law,    *
-* custom, conduct or otherwise. *
-* *
-* While the information contained herein is assumed to be accurate, CEVA assumes
-no   *
-* responsibility for any errors or omissions contained herein, and assumes no *
-* liability for special, direct, indirect or consequential damage, losses,
-costs,     *
-* charges, claims, demands, fees or expenses, of any nature or kind, which are *
-* incurred in connection with the furnishing, performance or use of this
-material.    *
-* *
-* This document contains proprietary information, which is protected by U.S. and
-*
-* international copyright laws. All rights reserved. No part of this document
-may     *
-* be reproduced, photocopied, or translated into another language without the
-prior   *
-* written consent of CEVA. *
-\*************************************************************************************/
-/*
-  ===========================================================================
-   File: BASOP32.H                                       v.2.1 - March 2006
-  ===========================================================================
 
-            ITU-T STL  BASIC OPERATORS
 
-            GLOBAL FUNCTION PROTOTYPES
-
-   History:
-   26.Jan.00   v1.0     Incorporated to the STL from updated G.723.1/G.729
-                        basic operator library (based on basic_op.h) and
-                        G.723.1's basop.h.
-   05.Jul.00    v1.1    Added 32-bit shiftless mult/mac/msub operators
-
-   03 Nov 04   v2.0     Incorporation of new 32-bit / 40-bit / control
-                        operators for the ITU-T Standard Tool Library as
-                        described in Geneva, 20-30 January 2004 WP 3/16 Q10/16
-                        TD 11 document and subsequent discussions on the
-                        wp3audio@yahoogroups.com email reflector.
-                        norm_s()      weight reduced from 15 to 1.
-                        norm_l()      weight reduced from 30 to 1.
-                        L_abs()       weight reduced from  2 to 1.
-                        L_add()       weight reduced from  2 to 1.
-                        L_negate()    weight reduced from  2 to 1.
-                        L_shl()       weight reduced from  2 to 1.
-                        L_shr()       weight reduced from  2 to 1.
-                        L_sub()       weight reduced from  2 to 1.
-                        mac_r()       weight reduced from  2 to 1.
-                        msu_r()       weight reduced from  2 to 1.
-                        mult_r()      weight reduced from  2 to 1.
-                        L_deposit_h() weight reduced from  2 to 1.
-                        L_deposit_l() weight reduced from  2 to 1.
-   15 Nov 04   v2.0     L_mls() weight of 5.
-                                                div_l() weight of 32.
-                                                i_mult() weight of 3.
-
-  ============================================================================
-*/
-
-#ifndef _CEVA_G729AB_BASIC_OP_H
-#define _CEVA_G729AB_BASIC_OP_H
+#ifndef _CEVA_BASIC_OP_H
+#define _CEVA_BASIC_OP_H
 typedef int I32;
 typedef short I16;
 // typedef int		I32;
@@ -608,4 +517,4 @@ static I32 L_shl(I32 L_var1, I16 var2) {
 #endif
 
 //////////////////////////////////////////////////////////////////////
-#endif /* ifndef _CEVA_G729AB_BASIC_OP_H */
+#endif /* ifndef _CEVA_BASIC_OP_H */
