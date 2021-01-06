@@ -41,7 +41,7 @@ class Irfft2dOpModel : public SingleOpModel {
   Irfft2dOpModel(const TensorData& input, const TensorData& fft_lengths) {
     input_ = AddInput(input);
     fft_lengths_ = AddInput(fft_lengths);
-    TensorType output_type = TensorType_COMPLEX64;
+    TensorType output_type = TensorType_FLOAT32;
     output_ = AddOutput({output_type, {}});
 
     const std::vector<uint8_t> custom_option;
@@ -52,9 +52,7 @@ class Irfft2dOpModel : public SingleOpModel {
   int input() { return input_; }
   int fft_lengths() { return fft_lengths_; }
 
-  std::vector<complex<float>> GetOutput() {
-    return ExtractVector<complex<float>>(output_);
-  }
+  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  private:

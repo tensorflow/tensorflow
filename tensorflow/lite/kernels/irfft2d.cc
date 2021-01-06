@@ -173,7 +173,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   TF_LITE_ENSURE(context, NumDimensions(input) >= 2);
-  if (input->type != kTfLiteFloat32) {
+  if (input->type != kTfLiteComplex64) {
     context->ReportError(context,
                          "Type '%s' for input is not supported by irfft2.",
                          TfLiteTypeGetName(input->type));
@@ -202,7 +202,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  output->type = kTfLiteComplex64;
+  output->type = kTfLiteFloat32;
 
   // Exit early if fft_length is a non-const tensor. Set output tensor and
   // temporary tensors to dynamic, so that their tensor sizes can be determined
@@ -301,17 +301,18 @@ void Irfft2dImpl(int fft_height, int fft_width, double** fft_input_output,
                 int* fft_integer_working_area_data,
                 double* fft_double_working_area_data) {
   ruy::profiler::ScopeLabel label("Irfft2dImpl");
+  Irfft2dReorder(fft_height, fft_width, fft_input_output);
 
   // Working data areas for the FFT routines.
   double* fft_dynamic_working_area = nullptr;
-  const int kForwardFft = 1;
-  rdft2d(fft_height, fft_width, kForwardFft, fft_input_output,
+  const int kBackwardFft = -1;
+  rdft2d(fft_height, fft_width, kBackwardFft, fft_input_output,
          fft_dynamic_working_area, fft_integer_working_area_data,
          fft_double_working_area_data);
-  Irfft2dReorder(fft_height, fft_width, fft_input_output);
 }
 
-void PrepareInputBuffer(const float* input_data, int input_height,
+// TODO: I'm not sure we're zero padding correctly
+void PrepareInputBuffer(const complex<float>* input_data, int input_height,
                         int input_width, int fft_height, int fft_width,
                         double** fft_input_output) {
   int valid_input_height = std::min(input_height, fft_height);
@@ -319,7 +320,9 @@ void PrepareInputBuffer(const float* input_data, int input_height,
   for (int i = 0; i < valid_input_height; ++i) {
     int in_pos = i * input_width;
     for (int j = 0; j < valid_input_width; ++j) {
-      fft_input_output[i][j] = input_data[in_pos++];
+      // C++0x guarantees that real and imag in complex are always adjacent,
+      // as such the following cast is guaranteed to work as desired.
+      fft_input_output[i][j] = reinterpret_cast<const double*>(input_data)[in_pos++];
     }
     // Zero-pad the rest of the input buffer
     for (int j = valid_input_width; j < fft_width + 2; ++j) {
@@ -335,13 +338,13 @@ void PrepareInputBuffer(const float* input_data, int input_height,
   }
 }
 
-void PrepareOutputBuffer(complex<float>* output_data, int fft_height,
+void PrepareOutputBuffer(float* output_data, int fft_height,
                          int fft_width, double** fft_input_output) {
   int cnt = 0;
   for (int i = 0; i < fft_height; ++i) {
     for (int j = 0; j < fft_width / 2 + 1; ++j) {
-      output_data[cnt++] = complex<float>(fft_input_output[i][j * 2],
-                                          fft_input_output[i][j * 2 + 1]);
+      // Discard the imaginary part and only store the real part
+      output_data[cnt++] = fft_input_output[i][j * 2];
     }
   }
 }
@@ -349,7 +352,7 @@ void PrepareOutputBuffer(complex<float>* output_data, int fft_height,
 TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  const float* input_data = GetTensorData<float>(input);
+  const complex<float>* input_data = GetTensorData<complex<float>>(input);
   const TfLiteTensor* fft_length;
   TF_LITE_ENSURE_OK(context,
                     GetInputSafe(context, node, kFftLengthTensor, &fft_length));
@@ -357,7 +360,7 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output;
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
-  complex<float>* output_data = GetTensorData<complex<float>>(output);
+  float* output_data = GetTensorData<float>(output);
 
   int fft_height, fft_width;
   fft_height = fft_length_data[0];
@@ -375,6 +378,8 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
 
   int input_height = input_dims_data[input_dims_count - 2];
   int input_width = input_dims_data[input_dims_count - 1];
+  // TODO: we probably need to swap input and output slice size here.
+  // Or at least redefine output_slice_size.
   int input_slice_size = input_height * input_width;
   int output_slice_size = fft_height * (fft_width / 2 + 1);
 
@@ -434,7 +439,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
-  if (output->type != kTfLiteComplex64) {
+  if (output->type != kTfLiteFloat32) {
     context->ReportError(context,
                          "Type '%s' for output is not supported by irfft2.",
                          TfLiteTypeGetName(output->type));
@@ -450,6 +455,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     const RuntimeShape output_shape = GetTensorShape(output);
     TF_LITE_ENSURE_EQ(context, num_dims_output, NumDimensions(input));
     TF_LITE_ENSURE(context, num_dims_output >= 2);
+    // TODO: the output_shape likely is different
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 2),
                       fft_length_data[0]);
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 1),
