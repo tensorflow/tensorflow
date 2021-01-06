@@ -3691,8 +3691,12 @@ def LstmMandatoryInputsConstraint : PredOpTrait<
 
 def LstmOptionalPeepholeWeightConstraint : PredOpTrait<
   "the optional peephole weights should all be specified or none",
-  And<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
-       TFL_TCopVTEtAreSameAt<9, 11, 16>]>>;
+  // Ignore input 9 (cell_to_input_weights) for LSTM with CIFG.
+  And<[
+    TFL_TCopVTEtAreSameAt<10, 11, 16>,
+    Or<[TFL_TCopVTEtAreSameAt<9, 10, 16>,
+        And<[TypeIsPred<"input_to_input_weights", NoneType>,
+             TypeIsPred<"cell_to_input_weights", NoneType>]>]>]>>;
 
 def LstmProjectionWeightBiasConstraint : PredOpTrait<
   "either projection weight must be specified or both projection weight and "
@@ -3702,13 +3706,25 @@ def LstmProjectionWeightBiasConstraint : PredOpTrait<
            TypeIsPred<"projection_bias", NoneType>]>,
       Neg<TypeIsPred<"projection_weights", NoneType>>]>>;
 
-// TODO(b/137798843): Need to add two additional constraints for both LSTM and
+def LstmCifgInputConstraint : PredOpTrait<
+  "the cifg inputs should all be specified or none",
+   // If LSTM has combined input/forget gate, input 1, 5, 9, 12, 20 are all none
+   // or 1, 5, 12 should not be none. Inputs 9 and 20 depend on LSTM's variants.
+   Or<[
+     And<[TypeIsPred<"input_to_input_weights", NoneType>,
+          TypeIsPred<"recurrent_to_input_weights", NoneType>,
+          TypeIsPred<"cell_to_input_weights", NoneType>,
+          TypeIsPred<"input_gate_bias", NoneType>,
+          TypeIsPred<"input_layer_norm_coefficients", NoneType>]>,
+     Neg<Or<[
+       TypeIsPred<"input_to_input_weights", NoneType>,
+       TypeIsPred<"recurrent_to_input_weights", NoneType>,
+       TypeIsPred<"input_gate_bias", NoneType>]>>]>>;
+
+
+// TODO(b/137798843): Need to add an additional constraint for both LSTM and
 // UnidirectionalSequenceLstm
-// For coupling of input and forget gates (cifg): if cifg is true,
-// tensor {1, 5, 9, 12, 20} are null; if cifg is
-// false, tensors {1, 5, 12} are not null; tensor {9} is not null if
-// additionally peephole = true; tensor {20} is not null if additionally layer
-// norm = true. For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
+// For layer norm: if layer norm is false, tensor {20, 21, 22, 23}
 // are null; if layer norm is true, tensors {21, 22, 23} are not null; tensor
 // {20} is not null if additionally cifg = false.
 
@@ -3759,6 +3775,7 @@ def TFL_LSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
+           LstmCifgInputConstraint,
            LstmResultConstraint,
            TFL_OperandHasRank<2, 2>,           // input_to_forget_weights
            TFL_OperandHasRank<3, 2>,           // input_to_cell_weights
@@ -3883,6 +3900,7 @@ def TFL_UnidirectionalSequenceLSTMOp :
           [LstmMandatoryInputsConstraint,
            LstmOptionalPeepholeWeightConstraint,
            LstmProjectionWeightBiasConstraint,
+           LstmCifgInputConstraint,
            LstmResultConstraint,
            TFL_OperandHasRankAtLeast<0, 2>,    // input
            TFL_OperandIsNoneOrHasRank<1, 2>,   // input_to_input_weights
