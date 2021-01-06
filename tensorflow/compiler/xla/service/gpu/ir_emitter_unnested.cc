@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -3168,7 +3169,22 @@ Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
-  return ThunkEmitter(this).HandleInfeed(xla_infeed);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(xla_infeed));
+
+  auto infeed_op = mlir::dyn_cast<mlir::lmhlo::InfeedOp>(input.op);
+
+  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  dest_slices.reserve(infeed_op.outputs().size());
+
+  for (mlir::Value output : infeed_op.outputs()) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(output));
+    const Shape& shape = TypeToShape(output.getType());
+    dest_slices.push_back(InfeedThunk::ShapedSlice{slice, shape});
+  }
+
+  AddThunkToThunkSequence(
+      absl::make_unique<InfeedThunk>(input.thunk_info, std::move(dest_slices)));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {

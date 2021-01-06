@@ -51,6 +51,24 @@ class MetalArguments : public ArgumentsBinder {
   void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const;
 
  private:
+  // creates structure with layout:
+  // struct uniforms_buffer {
+  //   int val_0;
+  //   int val_1;
+  //   float val_2;
+  //   int dummy;  // for alignment
+  // };
+  std::string ScalarArgumentsToStructWithScalarFields(Arguments* args,
+                                                      std::string* code);
+
+  // creates structure with layout:
+  // struct uniforms_buffer {
+  //   int4 val_0_val_1_dummy_dummy;
+  //   float4 val_2_dummy_dummy_dummy;
+  // };
+  std::string ScalarArgumentsToStructWithVec4Fields(Arguments* args,
+                                                    std::string* code);
+
   absl::Status AllocateObjects(const Arguments& args, id<MTLDevice> device);
   absl::Status AddObjectArgs(Arguments* args);
 

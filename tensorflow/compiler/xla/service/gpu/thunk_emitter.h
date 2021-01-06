@@ -46,7 +46,6 @@ class ThunkEmitter {
   Status HandleCustomCall(HloInstruction* custom_call);
   Status HandleFft(HloInstruction* fft);
   Status HandleTriangularSolve(HloInstruction* hlo);
-  Status HandleInfeed(HloInstruction* xla_infeed);
   Status HandleOutfeed(HloInstruction* outfeed);
 
  private:

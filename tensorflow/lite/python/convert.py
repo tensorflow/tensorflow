@@ -110,7 +110,7 @@ class OpsSet(enum.Enum):
     "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
 
   def __str__(self):
-    return self.value
+    return str(self.value)
 
   @staticmethod
   def get_options():
@@ -394,22 +394,22 @@ def build_toco_convert_protos(input_tensors,
     input_tensors: List of input tensors. Type and shape are computed using
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
-    inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8, tf.int8}`.  (default tf.float32)
-    inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays in the case of quantization. Must be
-      `{tf.float32, tf.uint8, tf.int8}`. (default `inference_type`)
-    input_format: Type of data to read Currently must be
-      `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
-    input_shapes: Input array shape. It needs to be a list of the same length as
-      `input_tensors`, or None. (default None)
-    output_format: Output file format. Currently must be `{TFLITE,
-      GRAPHVIZ_DOT}`. (default TFLITE)
-    quantized_input_stats: List of tuples of floats representing the mean and
-      standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_input_type` is `QUANTIZED_UINT8` or `INT8`.
-      real_input_value = (quantized_input_value - mean_value) / std_dev_value.
-      (default None)
+    inference_type: Data type of numeric arrays, excluding the input layer.
+      (default tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
+    inference_input_type: Data type of the numeric arrays in the input layer. If
+      `inference_input_type` is in {tf.int8, tf.uint8}, then
+      `quantized_input_stats` must be provided. (default is the value assigned
+      to `inference_type`, must be in {tf.float32, tf.int8, tf.uint8})
+    input_format: Type of data to read.
+      (default TENSORFLOW_GRAPHDEF, must be in {TENSORFLOW_GRAPHDEF})
+    input_shapes: Input array shape. (default None, must be None or a list of
+      the same length as `input_tensors`.)
+    output_format: Output file format. (default TFLITE, must be in
+    {TFLITE, GRAPHVIZ_DOT})
+    quantized_input_stats: Map of input tensor names to a tuple of floats
+      representing the mean and standard deviation of the training data.
+      (e.g., {"foo" : (0., 1.)}). Required if `inference_input_type` is tf.int8
+        or tf.uint8. (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
       for all arrays without a specified range. Intended for experimenting with
       quantization via "dummy quantization". (default None)
@@ -574,8 +574,10 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     if _requires_input_stats(toco_flags):
       if (("quantized_input_stats" not in kwargs) or
           (not kwargs["quantized_input_stats"])):
-        raise ValueError("std_dev and mean must be defined when inference_type "
-                         "or inference_input_type is QUANTIZED_UINT8 or INT8.")
+        raise ValueError(
+            "The `quantized_input_stats` flag must be defined when either "
+            "`inference_type` flag or `inference_input_type` flag is set to "
+            "tf.int8 or tf.uint8.")
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name
@@ -661,7 +663,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Typically this function is used to convert from TensorFlow GraphDef to TFLite.
   Conversion can be customized by providing arguments that are forwarded to
   `build_toco_convert_protos` (see documentation for details). This function has
-  been deprecated. Please use `lite.TFLiteConverter` instead.
+  been deprecated. Please use `tf.lite.TFLiteConverter` instead.
 
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),

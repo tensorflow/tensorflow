@@ -178,7 +178,7 @@ def update_regroup(extended, updates, group):
     # If values is just ops, the grouping is enough. Everything in values
     # should have the same type, since we expect every replica to be performing
     # the same computation.
-    if not all(tensor_util.is_tensor(v) for v in values):
+    if not all(tensor_util.is_tf_type(v) for v in values):
       return g
 
     # Otherwise we need tensors with the same values as `values`, but
