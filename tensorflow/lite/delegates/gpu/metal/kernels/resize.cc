@@ -63,7 +63,6 @@ kernel void ComputeFunction(
   // bilinear interpolation
   FLT4 value = mix(mix(tex11, tex21, static_cast<FLT>(t.x)),
                    mix(tex12, tex22, static_cast<FLT>(t.x)), static_cast<FLT>(t.y));
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
   $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }

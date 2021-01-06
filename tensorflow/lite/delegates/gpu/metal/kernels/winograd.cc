@@ -317,7 +317,6 @@ kernel void ComputeFunction($1
     FLT4 t1 = I[y][3] + I[y][4];
     if (tile_x < args.dst_tensor.Width()) {
       FLT4 value = I[y][0] + t0 + t1 + bias_val;
-      args.dst_tensor.GetAddress(linear_index, tile_x, tile_y + y, global_ids.z);
       uint3 gid = uint3(tile_x, tile_y + y, global_ids.z);
       $2
       args.dst_tensor.Write(value, tile_x, tile_y + y, global_ids.z);
@@ -326,21 +325,18 @@ kernel void ComputeFunction($1
     FLT4 t3 = I[y][3] - I[y][4];
     if (tile_x + 1 < args.dst_tensor.Width()) {
       FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
-      args.dst_tensor.GetAddress(linear_index, tile_x + 1, tile_y + y, global_ids.z);
       uint3 gid = uint3(tile_x + 1, tile_y + y, global_ids.z);
       $2
       args.dst_tensor.Write(value, tile_x + 1, tile_y + y, global_ids.z);
     }
     if (tile_x + 2 < args.dst_tensor.Width()) {
       FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
-      args.dst_tensor.GetAddress(linear_index, tile_x + 2, tile_y + y, global_ids.z);
       uint3 gid = uint3(tile_x + 2, tile_y + y, global_ids.z);
       $2
       args.dst_tensor.Write(value, tile_x + 2, tile_y + y, global_ids.z);
     }
     if (tile_x + 3 < args.dst_tensor.Width()) {
       FLT4 value = t2 * At[19] + t3 * At[21] + I[y][5] + bias_val;
-      args.dst_tensor.GetAddress(linear_index, tile_x + 3, tile_y + y, global_ids.z);
       uint3 gid = uint3(tile_x + 3, tile_y + y, global_ids.z);
       $2
       args.dst_tensor.Write(value, tile_x + 3, tile_y + y, global_ids.z);
@@ -430,7 +426,6 @@ kernel void ComputeFunction($1
   if (tile_x < args.dst_tensor.Width()) {
     FLT4 value = I0 + t0 + t1 + bias_val;
     uint3 gid = uint3(tile_x, tile_y, global_ids.z);
-    args.dst_tensor.GetAddress(linear_index, tile_x, tile_y, global_ids.z);
     $2;
     args.dst_tensor.Write(value, tile_x, tile_y, global_ids.z);
   }
@@ -439,21 +434,18 @@ kernel void ComputeFunction($1
   if (tile_x + 1 < args.dst_tensor.Width()) {
     FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
     uint3 gid = uint3(tile_x + 1, tile_y, global_ids.z);
-    args.dst_tensor.GetAddress(linear_index, tile_x + 1, tile_y, global_ids.z);
     $2;
     args.dst_tensor.Write(value, tile_x + 1, tile_y, global_ids.z);
   }
   if (tile_x + 2 < args.dst_tensor.Width()) {
     FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
     uint3 gid = uint3(tile_x + 2, tile_y, global_ids.z);
-    args.dst_tensor.GetAddress(linear_index, tile_x + 2, tile_y, global_ids.z);
     $2;
     args.dst_tensor.Write(value, tile_x + 2, tile_y, global_ids.z);
   }
   if (tile_x + 3 < args.dst_tensor.Width()) {
     FLT4 value = t2 * At[19] + t3 * At[21] + I5 + bias_val;
     uint3 gid = uint3(tile_x + 3, tile_y, global_ids.z);
-    args.dst_tensor.GetAddress(linear_index, tile_x + 3, tile_y, global_ids.z);
     $2;
     args.dst_tensor.Write(value, tile_x + 3, tile_y, global_ids.z);
   }

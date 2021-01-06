@@ -159,28 +159,24 @@ kernel void ComputeFunction(
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
 
   if (y0_in && x0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y, gid_z);
     FLT4 value = FLT4(r0);
     uint3 gid = uint3(gid_x, gid_y, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in && x0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y + 1, gid_z);
     FLT4 value = FLT4(l0);
     uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
   if (y0_in && x1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x + 1, gid_y, gid_z);
     FLT4 value = FLT4(t0);
     uint3 gid = uint3(gid_x + 1, gid_y, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y, gid_z);
   }
   if (y1_in && x1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x + 1, gid_y + 1, gid_z);
     FLT4 value = FLT4(b0);
     uint3 gid = uint3(gid_x + 1, gid_y + 1, gid_z);
     $2
@@ -333,14 +329,12 @@ kernel void ComputeFunction(
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
 
   if (y0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y, gid_z);
     FLT4 value = FLT4(r0);
     uint3 gid = uint3(gid_x, gid_y, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y + 1, gid_z);
     FLT4 value = FLT4(l0);
     uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
     $2
@@ -460,7 +454,6 @@ kernel void ComputeFunction(
     }
   }
   FLT4 res = FLT4(sum0) + args.biases.Read(dst_z);
-  args.dst_tensor.GetAddress(linear_index, dst_x, dst_y, dst_z);
   FLT4 value = res;
   $2
   args.dst_tensor.Write(value, dst_x, dst_y, dst_z);

@@ -85,15 +85,10 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
         c += "    FLT4 result0 = " + t_name + ".Read(" + coords + ", i);\n";
         c += "    FLT4 result1 = " + t_name + ".Read(" + coords + ", i + 1);\n";
         c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(S));\n";
-        c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
-             ", S);\n";
         c += "    $2\n";
         c += "    FLT4 value = result0;\n";
         c += "    args.dst_tensor.Write(value, " + coords + ", S);\n";
         c += "    gid = uint3(ugid.x, ugid.y, uint(S + 1));\n";
-        c += "    args.dst_tensor.GetAddress(linear_index2, " + coords +
-             ", S);\n";
-        c += "    linear_index = linear_index2;\n";
         c += "    $2\n";
         c += "    value = result1;\n";
         c += "    args.dst_tensor.Write(value, " + coords + ", S + 1);\n";
@@ -103,8 +98,6 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
         c += "  for (int i = 0; i < " + t_name + ".Slices(); ++i) {\n";
         c += "    FLT4 result = " + t_name + ".Read(" + coords + ", i);\n";
         c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(S));\n";
-        c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
-             ", S);\n";
         c += "    $2\n";
         c += "    FLT4 value = result;\n";
         c += "    args.dst_tensor.Write(value, " + coords + ", S);\n";
@@ -135,8 +128,6 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
             c += "  {\n";
             c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(" +
                  std::to_string(z) + "));\n";
-            c += "    args.dst_tensor.GetAddress(linear_index, " + coords +
-                 ", " + std::to_string(z) + ");\n";
             c += "    $2\n";
             c += "  }\n";
             c += "  args.dst_tensor.Write(value, " + coords + ", " +
@@ -151,8 +142,6 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
       c += "  {\n";
       c += "    uint3 gid = uint3(ugid.x, ugid.y, uint(" + std::to_string(z) +
            "));\n";
-      c += "    args.dst_tensor.GetAddress(linear_index, " + coords + ", " +
-           std::to_string(z) + ");\n";
       c += "    $2\n";
       c += "  }\n";
       c += "  args.dst_tensor.Write(value, " + coords + ", " +
@@ -287,7 +276,6 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   }
   c += "  {\n";
   c += "    uint3 gid = uint3(ugid.x, ugid.y, ugid.z);\n";
-  c += "    args.dst_tensor.GetAddress(linear_index, " + dst_coord + ");\n";
   c += "    $2\n";
   c += "  }\n";
   c += "  args.dst_tensor.Write(value, " + dst_coord + ");\n";

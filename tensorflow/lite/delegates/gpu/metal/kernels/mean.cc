@@ -90,7 +90,6 @@ std::string GetMeanCode(const int3& work_group_size) {
   }
   c += "  FLT4 value = FLT4(sum * params.inv_multipliers.y);\n";
   c += R"(
-  const int linear_index = static_cast<int>(gid.z);
   $2
   args.dst_tensor.Write(value, 0, 0, gid.z);
 }

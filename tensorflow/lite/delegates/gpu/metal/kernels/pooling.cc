@@ -59,7 +59,6 @@ kernel void ComputeFunction(
       maximum = max(maximum, src_color);
     }
   }
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
   FLT4 value = maximum;
   $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);

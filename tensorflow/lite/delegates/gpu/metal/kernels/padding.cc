@@ -119,7 +119,6 @@ std::string GetPaddingCode(const PadAttributes& attr) {
     }
     code += "  }\n";
   }
-  code += "  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);\n";
   code += "  $2\n";
   code += "  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);\n";
   code += "}\n";

@@ -141,7 +141,6 @@ kernel void ComputeFunction($1
     }
   }
   c += "  FLT4 value = result;\n";
-  c += "  args.dst_tensor.GetAddress(linear_index, X, Y, Z);\n";
   c += "  $2\n";
   c += "  args.dst_tensor.Write(value, X, Y, Z);\n";
   c += "}\n";
