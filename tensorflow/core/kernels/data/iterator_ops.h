@@ -73,8 +73,8 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
-  // TODO(aaudibert): convert to a class for better encapsulation.
-  struct State {
+  class State {
+   public:
     State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
           FunctionLibraryRuntime* flr,
@@ -93,6 +93,25 @@ class IteratorResource : public ResourceBase {
       iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
     }
 
+    FunctionLibraryDefinition* GetFlibDef() { return flib_def; }
+
+    FunctionLibraryRuntime* GetFLR() { return flr; }
+
+    ProcessFunctionLibraryRuntime* GetPFLR() { return pflr; }
+
+    FunctionHandleCache GetFunctionHandleCache() {
+      return function_handle_cache.get();
+    }
+
+    ResourceMgr GetResourceMgr() { return resource_mgr; }
+
+    CancellationManager GetCancellationManager() {
+      return cancellation_manager;
+    }
+
+    DatasetBaseIterator* GetIterator() { return iterator; }
+
+   private:
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
     FunctionLibraryRuntime* flr = nullptr;  // not owned.
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
