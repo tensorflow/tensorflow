@@ -129,14 +129,6 @@ AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                       rocdl_dir_));
   }
 
-  if (debug_module) {
-    llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module, /*optimized=*/false);
-  }
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
-  }
-
   return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));
 }
 

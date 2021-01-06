@@ -661,8 +661,8 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
   const auto compile_single_module =
       [this, stream_exec, &module_config, debug_module](
-          llvm::Module* llvm_module,
-          bool relocatable) -> StatusOr<BackendCompileResult> {
+          llvm::Module* llvm_module, bool relocatable,
+          absl::optional<int> shard_number) -> StatusOr<BackendCompileResult> {
     {
       XLA_SCOPED_LOGGING_TIMER(
           "GpuCompiler::RunBackend - Running LLVM verifier");
@@ -682,8 +682,55 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
                   : ".");
     }
     GpuVersion gpu_version = GetGpuVersion(stream_exec);
-    return CompileTargetBinary(module_config, llvm_module, gpu_version,
-                               stream_exec, relocatable, debug_module);
+    StatusOr<std::pair<std::string, std::vector<uint8>>> result =
+        CompileTargetBinary(module_config, llvm_module, gpu_version,
+                            stream_exec, relocatable, debug_module);
+
+    if (!result.ok()) {
+      return result;
+    }
+
+    if (DumpingEnabledForHloModule(*debug_module)) {
+      if (debug_module) {
+        if (shard_number.has_value()) {
+          llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module,
+                                   /*optimized=*/true,
+                                   std::to_string(*shard_number));
+        } else {
+          llvm_ir::DumpIrIfEnabled(*debug_module, *llvm_module,
+                                   /*optimized=*/true);
+        }
+      } else {
+        LOG(ERROR)
+            << "Dumping is not implemented since the file name cannot be "
+               "inferred. Please implement (potentially MLIR) module -> "
+               "filename heuristic.";
+      }
+    }
+
+    if (user_post_optimization_hook_) {
+      user_post_optimization_hook_(*llvm_module);
+    }
+
+    // Write PTX to IR dump directory, if IR dumping was requested.
+    if (DumpingEnabledForHloModule(*debug_module)) {
+      absl::string_view ptx = result->first;
+      if (debug_module) {
+        if (shard_number.has_value()) {
+          DumpToFileInDirOrStdout(*debug_module, "",
+                                  std::to_string(*shard_number) + ".ptx", ptx);
+        } else {
+          DumpToFileInDirOrStdout(*debug_module, "", "ptx", ptx);
+        }
+      } else {
+        LOG(ERROR)
+            << "Dumping is not implemented since the file name cannot be "
+               "inferred. Please implement (potentially MLIR) module -> "
+               "filename heuristic.";
+      }
+    }
+
+    return result;
   };
 
   tensorflow::thread::ThreadPool* thread_pool = options.thread_pool;
@@ -698,13 +745,15 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
   }
 
   if (!thread_pool) {
-    return compile_single_module(llvm_module.get(), /*relocatable=*/false);
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                                 /*shard_number=*/absl::nullopt);
   }
 
   // Test whether LinkModules is supported.
   if (this->LinkModules(stream_exec, {}).status().code() ==
       tensorflow::error::Code::UNIMPLEMENTED) {
-    return compile_single_module(llvm_module.get(), /*relocatable=*/false);
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                                 /*shard_number=*/absl::nullopt);
   }
 
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
@@ -756,8 +805,8 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
         new_llvm_module = llvm::parseAssemblyString(ir, err, context);
       }
 
-      compile_results[i] =
-          compile_single_module(new_llvm_module.get(), /*relocatable=*/true);
+      compile_results[i] = compile_single_module(
+          new_llvm_module.get(), /*relocatable=*/true, /*shard_number=*/i);
       counter.DecrementCount();
     });
   }
