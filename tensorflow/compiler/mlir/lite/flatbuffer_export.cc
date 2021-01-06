@@ -221,7 +221,7 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   inst->getName().print(os);
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
-  if (!inst->getMutableAttrDict().getAttrs().empty()) {
+  if (!inst->getAttrDictionary().empty()) {
     os << " {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
@@ -944,7 +944,22 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   float tolerance = op.tolerance().convertToFloat();
-  return BuildCustomOperator(tolerance, "NumericVerify", op, operands, results);
+  bool log_if_failed = op.log_if_failed();
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  fbb->Map([&]() {
+    fbb->Float("tolerance", tolerance);
+    fbb->Bool("log_if_failed", log_if_failed);
+  });
+  fbb->Finish();
+  auto f = std::unique_ptr<flexbuffers::Builder>(fbb.release());
+  auto custom_option = f->GetBuffer();
+  auto opcode_index =
+      GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
@@ -1408,6 +1423,17 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     for (auto val : inst.getResults()) {
       std::string name = UniqueName(val);
+      // For "tfl.numeric_verify" op, the name is used to find out the original
+      // activation tensor rather than its own unique name in the visualization
+      // or debugging tools.
+      auto builtin_code = GetBuiltinOpCode(&inst);
+      if (!builtin_code && dyn_cast<mlir::TFL::NumericVerifyOp>(&inst)) {
+        // The first operand is the quantized activation, the target of this
+        // NumericVerify op.
+        auto quantized_op_val = inst.getOperands().front();
+        name = "NumericVerify/" + UniqueName(quantized_op_val) + ":" +
+               std::to_string(tensor_index_map[quantized_op_val]);
+      }
       if (!build_tensor_and_buffer(val, name)) return llvm::None;
     }
 
@@ -1521,11 +1547,13 @@ llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
 // Helper method that return list of string for all the StringAttr in the
 // Attribute identified by 'attr_name'.
 std::vector<std::string> GetStringsFromDictionaryAttr(
-    const llvm::SmallVector<mlir::MutableDictionaryAttr, 4>& dict_attrs,
+    const llvm::SmallVector<mlir::DictionaryAttr, 4>& dict_attrs,
     const std::string& attr_name) {
   std::vector<std::string> result;
   for (const auto& arg_attr : dict_attrs) {
-    auto attrs = arg_attr.getAttrs();
+    if (!arg_attr) continue;
+
+    auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
       if (attr.first.str() == attr_name) {
         auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
@@ -1545,7 +1573,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   // Fetch inputs and outputs from the signature.
-  llvm::SmallVector<mlir::MutableDictionaryAttr, 4> arg_attrs, res_attrs;
+  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
   main_op.getAllArgAttrs(arg_attrs);
   main_op.getAllResultAttrs(res_attrs);
   std::vector<std::string> sig_def_inputs =

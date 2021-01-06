@@ -77,7 +77,7 @@ def model_to_dot(model,
                  subgraph=False):
   """Convert a Keras model to dot format.
 
-  Arguments:
+  Args:
     model: A Keras model instance.
     show_shapes: whether to display shape information.
     show_dtype: whether to display layer dtypes.
@@ -304,7 +304,7 @@ def plot_model(model,
   tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
   ```
 
-  Arguments:
+  Args:
     model: A Keras model instance
     to_file: File name of the plot image.
     show_shapes: whether to display shape information.

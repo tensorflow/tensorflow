@@ -4620,6 +4620,45 @@ func KmeansPlusPlusInitialization(scope *Scope, points tf.Output, num_to_sample 
 	return op.Output(0)
 }
 
+// CollectiveBcastRecvV2Attr is an optional argument to CollectiveBcastRecvV2.
+type CollectiveBcastRecvV2Attr func(optionalAttr)
+
+// CollectiveBcastRecvV2CommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveBcastRecvV2CommunicationHint(value string) CollectiveBcastRecvV2Attr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// CollectiveBcastRecvV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveBcastRecvV2TimeoutSeconds(value float32) CollectiveBcastRecvV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// Receives a tensor value broadcast from another device.
+func CollectiveBcastRecvV2(scope *Scope, group_size tf.Output, group_key tf.Output, instance_key tf.Output, shape tf.Output, T tf.DataType, optional ...CollectiveBcastRecvV2Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"T": T}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveBcastRecvV2",
+		Input: []tf.Input{
+			group_size, group_key, instance_key, shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // AbortAttr is an optional argument to Abort.
 type AbortAttr func(optionalAttr)
 
@@ -7698,9 +7737,13 @@ func ResourceAccumulatorApplyGradient(scope *Scope, handle tf.Output, local_step
 // Arguments:
 //	input: A `Tensor` of type T.
 //	padding_value: A scalar `Tensor` of type T.
-//	padding_low: the padding to apply at the start of each input dimensions
-//	padding_high: the padding to apply at the end of each input dimension.
-//	padding_interior: the padding to apply between each input element.
+//	padding_low: the padding to apply at the start of each input dimensions. Must
+// be a compile-time constant 1D tensor of length equal to rank of input.
+//	padding_high: the padding to apply at the end of each input dimension. Must
+// be a compile-time constant 1D tensor of length equal to rank of input.
+//	padding_interior: the padding to apply between each input element. Must
+// be a compile-time constant 1D tensor of length equal to rank of input,
+// containing only non-negative values.
 //
 // Returns A `Tensor` of type T.
 func XlaPad(scope *Scope, input tf.Output, padding_value tf.Output, padding_low tf.Output, padding_high tf.Output, padding_interior tf.Output) (output tf.Output) {
@@ -49358,6 +49401,45 @@ func LoadTPUEmbeddingRMSPropParameters(scope *Scope, parameters tf.Output, ms tf
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// CollectiveBcastSendV2Attr is an optional argument to CollectiveBcastSendV2.
+type CollectiveBcastSendV2Attr func(optionalAttr)
+
+// CollectiveBcastSendV2CommunicationHint sets the optional communication_hint attribute to value.
+// If not specified, defaults to "auto"
+func CollectiveBcastSendV2CommunicationHint(value string) CollectiveBcastSendV2Attr {
+	return func(m optionalAttr) {
+		m["communication_hint"] = value
+	}
+}
+
+// CollectiveBcastSendV2TimeoutSeconds sets the optional timeout_seconds attribute to value.
+// If not specified, defaults to 0
+func CollectiveBcastSendV2TimeoutSeconds(value float32) CollectiveBcastSendV2Attr {
+	return func(m optionalAttr) {
+		m["timeout_seconds"] = value
+	}
+}
+
+// Broadcasts a tensor value to one or more other devices.
+func CollectiveBcastSendV2(scope *Scope, input tf.Output, group_size tf.Output, group_key tf.Output, instance_key tf.Output, optional ...CollectiveBcastSendV2Attr) (data tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CollectiveBcastSendV2",
+		Input: []tf.Input{
+			input, group_size, group_key, instance_key,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // InfeedEnqueueTupleAttr is an optional argument to InfeedEnqueueTuple.

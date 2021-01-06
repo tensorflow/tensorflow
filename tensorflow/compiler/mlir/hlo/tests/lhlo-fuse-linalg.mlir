@@ -375,7 +375,7 @@ func @branching_result(%arg0: memref<?xf32>, %arg1: memref<?xindex>, %arg2: inde
 
 // -----
 
-// Confirm that tiling information is passed through tensor_load, tensor_cast
+// Confirm that tiling information is passed through tensor_load, tensor.cast
 // and memref_to_tensor  operations.
 func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
     -> memref<?xf32> {
@@ -390,7 +390,7 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
     linalg.yield %13 : f32
   }
   %2 = tensor_load %1 : memref<32xf32>
-  %3 = tensor_cast %2 : tensor<32xf32> to tensor<?xf32>
+  %3 = tensor.cast %2 : tensor<32xf32> to tensor<?xf32>
   %4 = tensor_to_memref %3 : memref<?xf32>
   return %4 : memref<?xf32>
 }
@@ -403,7 +403,7 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //       CHECK:      linalg.generic
 //       CHECK:        absf
 //       CHECK:  tensor_load
-//       CHECK:  tensor_cast
+//       CHECK:  tensor.cast
 //       CHECK:  tensor_to_memref
 
 // TILED-LABEL: func @tensor_ops
@@ -414,7 +414,7 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //       TILED:      linalg.generic
 //       TILED:        absf
 //       TILED:  tensor_load
-//       TILED:  tensor_cast
+//       TILED:  tensor.cast
 //       TILED:  tensor_to_memref
 
 
@@ -425,5 +425,5 @@ func @tensor_ops(%arg0: memref<32xf32>, %arg1: memref<32xindex>)
 //       PLOOP:      linalg.generic
 //       PLOOP:        absf
 //       PLOOP:  tensor_load
-//       PLOOP:  tensor_cast
+//       PLOOP:  tensor.cast
 //       PLOOP:  tensor_to_memref

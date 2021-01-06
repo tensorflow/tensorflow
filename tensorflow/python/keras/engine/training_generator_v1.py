@@ -60,7 +60,7 @@ def model_iteration(model,
                     **kwargs):
   """Loop function for arrays of data with modes TRAIN/TEST/PREDICT.
 
-  Arguments:
+  Args:
       model: Keras Model instance.
       data: Either a tuple of NumPy/Tensor inputs (i.e. `(x,)` or `(x, y)` or
         `(x, y, sample_weights)`) or a generator or
@@ -370,7 +370,7 @@ def _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
                         mode, kwargs):
   """Raises errors if arguments are invalid.
 
-  Arguments:
+  Args:
     is_sequence: Boolean, whether data is a `keras.utils.data_utils.Sequence`
       instance.
     is_dataset: Boolean, whether data is a dataset instance.
@@ -429,7 +429,7 @@ def convert_to_generator_like(data,
                               shuffle=False):
   """Make a generator out of NumPy or EagerTensor inputs.
 
-  Arguments:
+  Args:
     data: Either a generator or `keras.utils.data_utils.Sequence` object or
       `Dataset`, `Iterator`, or a {1,2,3}-tuple of NumPy arrays or EagerTensors.
       If a tuple, the elements represent `(x, y, sample_weights)` and may be

@@ -212,7 +212,7 @@ LogicalResult ConvertToI32Attr(IntegerAttr attr, IntegerAttr* attr_i32) {
   }
 
   *attr_i32 = IntegerAttr::get(
-      IntegerType::get(/*width=*/32, attr.getContext()), value);
+      IntegerType::get(attr.getContext(), /*width=*/32), value);
   return success();
 }
 

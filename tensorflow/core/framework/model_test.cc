@@ -33,10 +33,11 @@ TEST_P(AsyncInterleaveManyTest, Model) {
   std::shared_ptr<Node> async_interleave_many =
       model::MakeAsyncInterleaveManyNode(
           {0, "async_interleave_many", nullptr},
-          {model::MakeParameter(
-              "parallelism",
-              std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-              parallelism)});
+          {model::MakeParameter("parallelism",
+                                std::make_shared<SharedState>(
+                                    /*value=*/parallelism, nullptr, nullptr),
+                                /*min=*/1,
+                                /*max=*/8)});
   std::shared_ptr<Node> meta_source =
       model::MakeSourceNode({1, "meta_source", async_interleave_many});
   async_interleave_many->add_input(meta_source);
@@ -114,10 +115,11 @@ TEST_P(AsyncKnownRatioTest, Model) {
   const int64 num_inputs_per_output = std::get<2>(GetParam());
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {0, "async_known_many", nullptr}, num_inputs_per_output,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(/*value=*/parallelism,
+                                                          nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/16)});
   std::shared_ptr<Node> source1 =
       model::MakeSourceNode({1, "source1", async_known_many});
   async_known_many->add_input(source1);
@@ -390,9 +392,10 @@ TEST(UnknownTest, Model) {
 TEST(BufferedBytesTest, Node) {
   std::shared_ptr<Node> node = model::MakeAsyncInterleaveManyNode(
       {-1, "TestNode", nullptr},
-      {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(3, nullptr, nullptr),
-                            1, 7)});
+      {model::MakeParameter(
+          "parallelism",
+          std::make_shared<SharedState>(/*value=*/3, nullptr, nullptr),
+          /*min=*/1, /*max=*/7)});
   EXPECT_EQ(node->id(), -1);
   EXPECT_EQ(node->name(), "TestNode");
   EXPECT_EQ(node->output(), nullptr);
@@ -507,6 +510,79 @@ TEST(TestManyElements, Model) {
             0);
 }
 
+TEST(CollectAutotuneParametersWithElementsTest, Model) {
+  std::shared_ptr<Node> unknown =
+      model::MakeUnknownNode({0, "unknown", nullptr});
+  std::shared_ptr<Node> async_known_ratio = model::MakeAsyncKnownRatioNode(
+      {1, "source", unknown}, 2,
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
+  async_known_ratio->record_element();
+  unknown->add_input(async_known_ratio);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  unknown->CollectTunableParameters(&parameters);
+
+  EXPECT_FALSE(parameters.contains(unknown->long_name()));
+  EXPECT_TRUE(parameters.contains(async_known_ratio->long_name()));
+  EXPECT_EQ(parameters.size(), 1);
+}
+
+TEST(DontCollectNonAutotuneParametersTest, Model) {
+  std::shared_ptr<Node> unknown =
+      model::MakeUnknownNode({0, "unknown", nullptr});
+  std::shared_ptr<Node> async_known_ratio = model::MakeAsyncKnownRatioNode(
+      {1, "source", unknown}, 2,
+      {model::MakeParameter(
+          "parallelism",
+          std::make_shared<SharedState>(/*value=*/3, nullptr, nullptr),
+          /*min=*/1, /*max=*/5)});
+  async_known_ratio->record_element();
+  unknown->add_input(async_known_ratio);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  unknown->CollectTunableParameters(&parameters);
+
+  EXPECT_EQ(parameters.size(), 0);
+}
+
+TEST(DontCollectAutotuneDisabledParametersTest, Model) {
+  std::shared_ptr<Node> unknown =
+      model::MakeUnknownNode({0, "unknown", nullptr});
+  std::shared_ptr<Node> async_known_ratio = model::MakeAsyncKnownRatioNode(
+      {1, "source", unknown}, 2,
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
+  async_known_ratio->record_element();
+  async_known_ratio->set_autotune(false);
+  unknown->add_input(async_known_ratio);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  unknown->CollectTunableParameters(&parameters);
+
+  EXPECT_EQ(parameters.size(), 0);
+}
+
+TEST(DontCollectParametersWithoutElementsTest, Model) {
+  std::shared_ptr<Node> unknown =
+      model::MakeUnknownNode({0, "unknown", nullptr});
+  std::shared_ptr<Node> async_known_ratio = model::MakeAsyncKnownRatioNode(
+      {1, "source", unknown}, 2,
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
+  unknown->add_input(async_known_ratio);
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  unknown->CollectTunableParameters(&parameters);
+
+  EXPECT_EQ(parameters.size(), 0);
+}
+
 // Precision for comparison of the gradient and a relative output time change.
 constexpr double kComparisonPrecision = 1e-1;
 
@@ -514,15 +590,15 @@ constexpr double kComparisonPrecision = 1e-1;
 constexpr double kParameterStep = 1e-5;
 
 TEST(AsyncInterleaveManyGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
   const double input_time = 100;
   std::shared_ptr<Node> async_interleave_many =
       model::MakeAsyncInterleaveManyNode(
           {0, "async_interleave_many", nullptr},
           {model::MakeParameter(
               "parallelism",
-              std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-              parallelism)});
+              std::make_shared<SharedState>(/*value=*/model::kAutotune, nullptr,
+                                            nullptr),
+              /*min=*/1, /*max=*/5)});
   std::shared_ptr<Node> meta_source =
       model::MakeSourceNode({1, "meta_source", async_interleave_many});
   async_interleave_many->add_input(meta_source);
@@ -531,10 +607,11 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
   });
   std::shared_ptr<Node> source1 = model::MakeAsyncInterleaveManyNode(
       {2, "async_interleave_many", async_interleave_many},
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/7)});
   async_interleave_many->add_input(source1);
   auto cleanup1 = gtl::MakeCleanup([async_interleave_many, source1]() {
     async_interleave_many->remove_input(source1);
@@ -547,14 +624,15 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
   });
   absl::flat_hash_map<string, double> input_times;
   input_times[kModelInputTimeKey] = input_time;
-  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
-  async_interleave_many->CollectTunableParameters(&parameters);
   async_interleave_many->record_element();
   async_interleave_many->add_processing_time(100);
   source1->record_element();
   source1->add_processing_time(100);
   source2->record_element();
   source2->add_processing_time(300);
+
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  async_interleave_many->CollectTunableParameters(&parameters);
   parameters[async_interleave_many->long_name()]->value = 1;
   parameters[source1->long_name()]->value = 1;
 
@@ -582,21 +660,22 @@ class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
 
 TEST_P(AsyncKnownRatioGradientTest, Model) {
   const string parameter_name = GetParam();
-  const int64 parameter_value = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {0, "async_known_many", nullptr}, num_inputs_per_output,
-      {model::MakeParameter(
-          parameter_name,
-          std::make_shared<SharedState>(parameter_value, nullptr, nullptr), 1,
-          parameter_value)});
+      {model::MakeParameter(parameter_name,
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
   std::shared_ptr<Node> source1 = model::MakeAsyncKnownRatioNode(
       {1, "source1", async_known_many}, num_inputs_per_output,
-      {model::MakeParameter(
-          parameter_name,
-          std::make_shared<SharedState>(parameter_value, nullptr, nullptr), 1,
-          parameter_value)});
+      {model::MakeParameter(parameter_name,
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/7)});
   async_known_many->add_input(source1);
   std::shared_ptr<Node> source2 =
       model::MakeSourceNode({2, "source2", async_known_many});
@@ -636,17 +715,17 @@ INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioGradientTest,
                          ::testing::Values("parallelism", "buffer_size"));
 
 TEST(InterleaveManyGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> interleave_many =
       model::MakeInterleaveManyNode({0, "interleave_many", nullptr});
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {1, "async_known_many", interleave_many}, num_inputs_per_output,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
   std::shared_ptr<Node> source1 =
       model::MakeSourceNode({2, "source1", interleave_many});
   interleave_many->record_element();
@@ -670,17 +749,17 @@ TEST(InterleaveManyGradientTest, Model) {
 }
 
 TEST(KnownRatioGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> known_many = model::MakeKnownRatioNode(
       {0, "known_many", nullptr}, num_inputs_per_output);
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {1, "async_known_many", known_many}, num_inputs_per_output,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
   known_many->record_element();
   known_many->add_processing_time(100);
   known_many->add_input(async_known_many);
@@ -701,17 +780,17 @@ TEST(KnownRatioGradientTest, Model) {
 }
 
 TEST(UnknownRatioGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> unknown_many =
       model::MakeUnknownRatioNode({0, "unknown_many", nullptr});
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {1, "async_known_many", unknown_many}, num_inputs_per_output,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
   unknown_many->record_element();
   unknown_many->add_processing_time(100);
   unknown_many->add_input(async_known_many);
@@ -732,17 +811,17 @@ TEST(UnknownRatioGradientTest, Model) {
 }
 
 TEST(UnknownGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> unknown =
       model::MakeUnknownNode({0, "unknown", nullptr});
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {1, "async_known_many", unknown}, num_inputs_per_output,
-      {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+      {model::MakeParameter("parallelism",
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, nullptr, nullptr),
+                            /*min=*/1,
+                            /*max=*/5)});
   unknown->record_element();
   unknown->add_processing_time(100);
   unknown->add_input(async_known_many);
@@ -904,9 +983,11 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
   std::shared_ptr<Node> node1 = model::MakeAsyncKnownRatioNode(
       {1, "1", nullptr}, 2,
       {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(-1, mutex1, cv1), 1,
-                            5)});
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, mutex1, cv1),
+                            /*min=*/1, /*max=*/5)});
   node1->record_buffer_event(1, 1);
+  node1->record_element();
 
   std::shared_ptr<mutex> mutex2 = std::make_shared<mutex>();
   std::shared_ptr<condition_variable> cv2 =
@@ -914,9 +995,11 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
   std::shared_ptr<Node> node2 = model::MakeAsyncKnownRatioNode(
       {2, "2", node1}, 5,
       {model::MakeParameter("buffer_size",
-                            std::make_shared<SharedState>(-1, mutex2, cv2), 0,
-                            6)});
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, mutex2, cv2),
+                            /*min=*/0, /*max=*/6)});
   node2->record_buffer_event(1, 1);
+  node2->record_element();
 
   std::shared_ptr<mutex> mutex3 = std::make_shared<mutex>();
   std::shared_ptr<condition_variable> cv3 =
@@ -924,13 +1007,15 @@ TEST_P(OptimizeZeroRamBudgetTest, Model) {
   std::shared_ptr<Node> node3 = model::MakeAsyncInterleaveManyNode(
       {3, "3", node2},
       {model::MakeParameter("parallelism",
-                            std::make_shared<SharedState>(-1, mutex3, cv3), 1,
-                            7)});
+                            std::make_shared<SharedState>(
+                                /*value=*/model::kAutotune, mutex3, cv3),
+                            /*min=*/1, /*max=*/7)});
   node3->record_buffer_event(1, 1);
+  node3->record_element();
 
-  EXPECT_EQ(node1->parameter_value("parallelism"), -1);
-  EXPECT_EQ(node2->parameter_value("buffer_size"), -1);
-  EXPECT_EQ(node3->parameter_value("parallelism"), -1);
+  EXPECT_EQ(node1->parameter_value("parallelism"), model::kAutotune);
+  EXPECT_EQ(node2->parameter_value("buffer_size"), model::kAutotune);
+  EXPECT_EQ(node3->parameter_value("parallelism"), model::kAutotune);
 
   model::Model model;
   model.AddNode([&node1](model::Node::Args args) { return node1; }, "1",

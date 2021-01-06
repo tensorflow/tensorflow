@@ -174,6 +174,19 @@ Status BatchResourceBase::RegisterInput(
       batcher_queue_options_.max_enqueued_batches, GetModelName(context));
   RecordBatchParamAllowedBatchSizes(allowed_batch_sizes_str_,
                                     GetModelName(context));
+
+  // Degenerate case where the input is empty. Just return an empty tensor.
+  if (tensors[0].shape().dim_size(0) == 0) {
+    for (int i = 0; i < context->num_outputs(); i++) {
+      Tensor* empty_output;
+      AllocatorAttributes cpu_alloc;
+      cpu_alloc.set_on_host(true);
+      TF_RETURN_IF_ERROR(context->allocate_output(i, TensorShape({0}),
+                                                  &empty_output, cpu_alloc));
+    }
+    done_callback();
+    return Status::OK();
+  }
   OpInputList captured_tensors;
   const auto captured_status =
       context->input_list("captured_tensors", &captured_tensors);
@@ -702,8 +715,15 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
       ProcessFuncBatch(std::move(batch));
     }
   };
-  TF_RETURN_IF_ERROR(batcher_->AddQueue(batcher_queue_options_,
-                                        process_batch_callback, &new_queue));
+  if (batcher_) {
+    TF_RETURN_IF_ERROR(batcher_->AddQueue(batcher_queue_options_,
+                                          process_batch_callback, &new_queue));
+  } else if (adaptive_batcher_) {
+    TF_RETURN_IF_ERROR(adaptive_batcher_->AddQueue(
+        adaptive_batcher_queue_options_, process_batch_callback, &new_queue));
+  } else {
+    return errors::Internal("No batcher defined.");
+  }
   *queue = new_queue.get();
   batcher_queues_[queue_name] = std::move(new_queue);
   return Status::OK();

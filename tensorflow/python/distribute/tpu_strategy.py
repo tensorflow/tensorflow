@@ -1087,7 +1087,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _reduce_to(self, reduce_op, value, destinations, options):
     if (isinstance(value, values.DistributedValues) or
-        tensor_util.is_tensor(value)
+        tensor_util.is_tf_type(value)
        ) and tpu_values.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
@@ -1341,7 +1341,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
-          if tensor_util.is_tensor(input_tensor):
+          if tensor_util.is_tf_type(input_tensor):
             rank = input_tensor.shape.rank
           else:
             rank = np.ndim(input_tensor)

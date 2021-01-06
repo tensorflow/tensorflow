@@ -56,8 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
-#include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
-#include "tensorflow/compiler/xla/service/mlir_gpu/passes.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -145,7 +143,7 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Fuse the inner-most loops.
   pm.addNestedPass<mlir::FuncOp>(
-      xla::mlir_gpu::createFuseInnerParallelLoopsPass());
+      mlir::kernel_gen::transforms::CreateFuseInnerParallelLoopsPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
@@ -157,7 +155,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Greedily map the remaining loop to GPU hardware dimensions.
-  pm.addNestedPass<::mlir::FuncOp>(xla::mlir_gpu::createMapParallelLoopsPass());
+  pm.addNestedPass<::mlir::FuncOp>(
+      mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());
 
   // Now lower the shape computations, bufferize all remaining ops and insert
   // deallocs.
@@ -228,6 +227,33 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   return Status::OK();
 }
 
+Status LowerKernelBodiesToLowLevelIr(mlir::ModuleOp module) {
+#if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
+  return InternalError(
+      "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
+      " Did you specify either --config=rocm or --config=cuda ?");
+#endif
+  mlir::PassManager pm(module.getContext());
+  // We cannot verify as the signature of the kernel is rewritten.
+  // pm.enableVerifier(false);
+  tensorflow::applyTensorflowAndCLOptions(pm);
+  auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
+  kernelPm.addPass(::mlir::createLowerToCFGPass());
+#if TENSORFLOW_USE_ROCM
+  kernelPm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToRocdlPass());
+#elif GOOGLE_CUDA
+  kernelPm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToNvvmPass());
+#endif
+  // Remove all location information to prevent a debug build.
+  pm.addPass(::mlir::createStripDebugInfoPass());
+
+  if (failed(pm.run(module))) {
+    return InternalError("Lowering to low-level device IR failed.");
+  }
+
+  return Status::OK();
+}
+
 Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
@@ -245,7 +271,8 @@ Status AmendKernelLLVMIRWithStaticKnowledge(mlir::ModuleOp module) {
 Status GenerateDeviceCode(mlir::ModuleOp module,
                           llvm::StringRef gpu_binary_attr_name,
                           llvm::ArrayRef<std::string> architectures,
-                          bool generate_fatbin, bool print_ptx) {
+                          bool generate_fatbin, bool print_ptx,
+                          bool enable_ftz) {
   mlir::PassManager pm(module.getContext());
   applyTensorflowAndCLOptions(pm);
 
@@ -253,7 +280,8 @@ Status GenerateDeviceCode(mlir::ModuleOp module,
   // Remove debug information to ensure we do not create debug PTX.
   kernel_pm.addPass(mlir::createStripDebugInfoPass());
   kernel_pm.addPass(mlir::kernel_gen::transforms::CreateGpuKernelToBlobPass(
-      gpu_binary_attr_name, architectures, generate_fatbin, print_ptx));
+      gpu_binary_attr_name, architectures, generate_fatbin, print_ptx,
+      enable_ftz));
 
   return failed(pm.run(module))
              ? InternalError("Generating device code failed.")
@@ -281,28 +309,18 @@ StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
     llvm::ArrayRef<std::string> architectures,
     llvm::ArrayRef<uint32_t> tile_sizes,
     llvm::ArrayRef<uint32_t> unroll_factors, bool embed_memref_prints,
-    bool generate_fatbin, bool print_ptx) {
+    bool generate_fatbin, bool print_ptx, bool enable_ftz) {
   auto& registry = context.getDialectRegistry();
   mlir::RegisterAllTensorFlowDialects(registry);
   registry.insert<mlir::chlo::HloClientDialect, mlir::mhlo::MhloDialect>();
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
   TF_RETURN_IF_ERROR(LowerTFtoGPU(module.get(), tile_sizes, unroll_factors,
                                   embed_memref_prints));
-#if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
-  return InternalError(
-      "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
-      " Did you specify either --config=rocm or --config=cuda ?");
-#endif
-
-#if TENSORFLOW_USE_ROCM
-  TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToROCDL(module.get()));
-#elif GOOGLE_CUDA
-  TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
-#endif
+  TF_RETURN_IF_ERROR(LowerKernelBodiesToLowLevelIr(module.get()));
   TF_RETURN_IF_ERROR(AmendKernelLLVMIRWithStaticKnowledge(module.get()));
   TF_RETURN_IF_ERROR(GenerateDeviceCode(module.get(), kGpuBinaryAttrName,
                                         architectures, generate_fatbin,
-                                        print_ptx));
+                                        print_ptx, enable_ftz));
   TF_RETURN_IF_ERROR(LowerHostSideToFinalForm(module.get()));
   return module;
 }
@@ -313,7 +331,7 @@ StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module) {
     return InternalError("There should be exactly one GPU Module");
   }
   mlir::gpu::GPUModuleOp gpu_mod = *gpu_modules.begin();
-  auto blob = gpu_mod.getAttrOfType<mlir::StringAttr>(kGpuBinaryAttrName);
+  auto blob = gpu_mod->getAttrOfType<mlir::StringAttr>(kGpuBinaryAttrName);
   if (blob == nullptr) {
     return InternalError("No binary blob found in the module");
   }

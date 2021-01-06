@@ -263,7 +263,6 @@ class MklQuantizeV2Op : public OpKernel {
                     "MIN_FIRST mode for now."));
 
     auto cpu_engine = engine(engine::kind::cpu, 0);
-    const Tensor& input = ctx->input(0);
     const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
 

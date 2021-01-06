@@ -3,8 +3,8 @@
 load(
     "//tensorflow/core/kernels/mlir_generated:build_defs.bzl",
     "gen_kernel_library",
+    "if_mlir_experimental_kernels_enabled",
     "if_mlir_generated_gpu_kernels_enabled",
-    "if_mlir_unranked_kernels_enabled",
 )
 load(
     "//tensorflow:tensorflow.bzl",
@@ -31,7 +31,7 @@ config_setting(
 )
 
 config_setting(
-    name = "mlir_use_unranked_kernels",
+    name = "mlir_experimental_kernels_enabled",
     define_values = {"enable_unranked_kernels": "1"},
 )
 
@@ -70,7 +70,7 @@ filegroup(
     name = "unary_kernel_srcs",
     srcs = [
         ":enabled_unary_kernel_srcs",
-    ] + if_mlir_unranked_kernels_enabled(
+    ] + if_mlir_experimental_kernels_enabled(
         if_true = [":experimental_unary_kernel_srcs"],
     ),
     compatible_with = get_compatible_with_cloud(),
@@ -134,7 +134,9 @@ tf_kernel_library(
         "gpu_op_bitwise_and.cc",
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
+        "gpu_op_div.cc",
         "gpu_op_equal.cc",
+        "gpu_op_floor_div.cc",
         "gpu_op_greater.cc",
         "gpu_op_greater_equal.cc",
         "gpu_op_left_shift.cc",
@@ -145,6 +147,7 @@ tf_kernel_library(
         "gpu_op_mul.cc",
         "gpu_op_not_equal.cc",
         "gpu_op_right_shift.cc",
+        "gpu_op_sub.cc",
     ],
     tags = [
         "manual",
@@ -154,7 +157,9 @@ tf_kernel_library(
         ":bitwise_and_kernels",
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
+        ":div_kernels",
         ":equal_kernels",
+        ":floor_div_kernels",
         ":gpu_ops_base",
         ":greater_equal_kernels",
         ":greater_kernels",
@@ -168,6 +173,7 @@ tf_kernel_library(
         ":mul_kernels",
         ":not_equal_kernels",
         ":right_shift_kernels",
+        ":sub_kernels",
         "//third_party/eigen3",
     ],
 )
@@ -182,7 +188,7 @@ tf_kernel_library(
     # but we want to avoid building them if they are not needed.
     deps = if_cuda_or_rocm([
         ":cwise_unary_op",
-    ]) + if_mlir_unranked_kernels_enabled(
+    ]) + if_mlir_experimental_kernels_enabled(
         [
             ":cwise_binary_op",
         ],
@@ -197,6 +203,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # TODO(b/171341759): re-enable.
     ],
     deps = [
+        ":gpu_ops_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
@@ -219,6 +226,7 @@ tf_cuda_cc_test(
         "no_cuda_asan",  # b/173033461
     ],
     deps = [
+        ":gpu_ops_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:tensorflow",
@@ -233,6 +241,25 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "gpu_ops_test_util",
+    testonly = 1,
+    srcs = [
+        "gpu_ops_test_util.cc",
+        "gpu_ops_test_util.h",
+    ],
+    hdrs = [
+        "gpu_ops_test_util.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:tensorflow",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -343,13 +370,44 @@ gen_kernel_library(
     unroll_factors = "4",
 )
 
+[
+    gen_kernel_library(
+        name = name,
+        tile_size = "256,1,1",
+        types = [
+            "f16",
+            "f32",
+            "f64",
+            "i64",
+        ],
+        # TODO(b/174543802): Enable once fusion heuristics is better.
+        # unroll_factors = "4",
+    )
+    for name in [
+        "add_v2",
+        "sub",
+    ]
+]
+
 gen_kernel_library(
-    name = "add_v2",
+    name = "complex",
+    tile_size = "256,1,1",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/174543802): Enable once fusion heuristics is better.
+    # unroll_factors = "2",
+)
+
+gen_kernel_library(
+    name = "div",
     tile_size = "256,1,1",
     types = [
         "f16",
         "f32",
         "f64",
+        "i16",
         "i64",
     ],
     # TODO(b/174543802): Enable once fusion heuristics is better.
@@ -504,6 +562,20 @@ gen_kernel_library(
         "neg",
     ]
 ]
+
+gen_kernel_library(
+    name = "floor_div",
+    tile_size = "256",
+    # TODO(172804967): Enable for integer types also once unsigned integers are
+    # supported.
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
+)
 
 # Kernels that support all floating-point types.
 [

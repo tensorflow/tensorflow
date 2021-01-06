@@ -40,7 +40,7 @@ class StringLookup(index_lookup.IndexLookup):
   vocabulary size, the most frequent terms will be used to create the
   vocabulary (and the terms that don't make the cut will be treated as OOV).
 
-  Arguments:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask tokens, so the effective number of tokens is

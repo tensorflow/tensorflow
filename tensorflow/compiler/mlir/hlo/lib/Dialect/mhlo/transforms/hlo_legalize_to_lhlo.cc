@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/Dialect/StandardOps/Transforms/FuncConversions.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -62,7 +63,7 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
     if (shape_element.value() != ShapedType::kDynamicSize) continue;
     Value index = rewriter->create<ConstantIndexOp>(loc, shape_element.index());
     Value alloc_operand =
-        rewriter->create<ExtractElementOp>(loc, shape_operand, index);
+        rewriter->create<tensor::ExtractOp>(loc, shape_operand, index);
     if (!alloc_operand.getType().isIndex()) {
       alloc_operand = rewriter->create<IndexCastOp>(loc, alloc_operand,
                                                     rewriter->getIndexType());
@@ -184,8 +185,8 @@ struct HloToLhloCustomCallOpConverter
     // for args and outputs.
     const int32_t segments[2] = {static_cast<int32_t>(operands.size()),
                                  static_cast<int32_t>(op->getNumResults())};
-    lhloOp.setAttr(lhloOp.getOperandSegmentSizeAttr(),
-                   rewriter.getI32VectorAttr(segments));
+    lhloOp->setAttr(lhloOp.getOperandSegmentSizeAttr(),
+                    rewriter.getI32VectorAttr(segments));
 
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
     return success();
@@ -219,6 +220,7 @@ struct HloToLhloDynamicReshapeConverter
   }
 };
 
+// TODO(b/175670649) Fix this to no longer access original tensor operands.
 class HloToLhloDynamicBroadcastInDimOpConverter
     : public BaseOpConversion<mhlo::DynamicBroadcastInDimOp> {
  public:
@@ -292,7 +294,7 @@ class HloToLhloDynamicBroadcastInDimOpConverter
     for (int i = 0; i < result_rank; ++i) {
       Value i_val = b->create<ConstantIndexOp>(loc, i);
       Value result_dim_size =
-          b->create<ExtractElementOp>(loc, op.output_dimensions(), i_val);
+          b->create<tensor::ExtractOp>(loc, op.output_dimensions(), i_val);
       if (!result_dim_size.getType().isIndex()) {
         result_dim_size =
             b->create<IndexCastOp>(loc, result_dim_size, b->getIndexType());
@@ -461,19 +463,8 @@ struct HloToLhloReturnOpConverter : public BaseOpConversion<mhlo::ReturnOp> {
   }
 };
 
-class HloToLhloTensorLoadOpConverter
-    : public BaseOpConversion<mlir::TensorLoadOp> {
- public:
-  using BaseOpConversion<mlir::TensorLoadOp>::BaseOpConversion;
-  LogicalResult matchAndRewrite(
-      mlir::TensorLoadOp op, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    rewriter.replaceOp(op, operands);
-    return success();
-  }
-};
-
-class HloToLhloTensorStoreOpConverter
+// TODO(b/175789537) Remove this pattern.
+class HloToLhloTensorStoreOpLegacyConverter
     : public BaseOpConversion<mlir::TensorStoreOp> {
  public:
   using BaseOpConversion<mlir::TensorStoreOp>::BaseOpConversion;
@@ -567,9 +558,14 @@ struct HloLegalizeToLhlo
     ConversionTarget target(context);
     target.addLegalDialect<lmhlo::LmhloDialect>();
     target.addLegalDialect<StandardOpsDialect>();
-    target.addIllegalOp<mlir::TensorLoadOp>();
-    target.addIllegalOp<mlir::TensorStoreOp>();
+    target.addLegalDialect<tensor::TensorDialect>();
     target.addIllegalDialect<mhlo::MhloDialect>();
+    // Declare tensor_load and tensor_store illegal.
+    target.addIllegalOp<mlir::TensorLoadOp, mlir::TensorStoreOp>();
+    // tensor_to_memref is illegal if it has uses.
+    // TODO(b/175670649) Make tensor_to_memref illegal.
+    target.addDynamicallyLegalOp<mlir::TensorToMemrefOp>(
+        [](auto op) { return op->use_empty(); });
 
     BufferizeTypeConverter converter;
     auto isMemRefType = [](Type type) { return type.isa<BaseMemRefType>(); };
@@ -594,9 +590,15 @@ struct HloLegalizeToLhlo
     populateCallOpTypeConversionPattern(patterns, &context, converter);
     populateBranchOpInterfaceAndReturnOpTypeConversionPattern(
         patterns, &context, converter);
+    populateEliminateBufferizeMaterializationsPatterns(&context, converter,
+                                                       patterns);
 
     populateShapeStructuralTypeConversionsAndLegality(&context, converter,
                                                       patterns, target);
+
+    // TODO(b/175789537) Remove this pattern.
+    patterns.insert<HloToLhloTensorStoreOpLegacyConverter>(&context);
+
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns))))
       signalPassFailure();
@@ -648,6 +650,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::NegOp>,
       HloToLhloOpConverter<mhlo::NotOp>,
       HloToLhloOpConverter<mhlo::OrOp>,
+      HloToLhloOpConverter<mhlo::PowOp>,
       HloToLhloOpConverter<mhlo::RealOp>,
       HloToLhloOpConverter<mhlo::RemOp>,
       HloToLhloOpConverter<mhlo::RsqrtOp>,
@@ -665,9 +668,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloOpConverter<mhlo::XorOp>,
       HloToLhloReduceOpConverter,
-      HloToLhloReturnOpConverter,
-      HloToLhloTensorLoadOpConverter,
-      HloToLhloTensorStoreOpConverter
+      HloToLhloReturnOpConverter
   >(*converter, context);
   // clang-format on
 }

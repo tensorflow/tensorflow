@@ -104,11 +104,16 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       if (!stats) return failure();
 
       for (auto it = stats.begin(), e = stats.end(); it != e; ++it) {
-        double min = FloatAttr::getValueAsDouble(*it++);
-        double max = FloatAttr::getValueAsDouble(*it);
-        TensorRangeSanityCheck(op, min, max);
-        mins.push_back(min);
-        maxs.push_back(max);
+        double rmin = FloatAttr::getValueAsDouble(*it++);
+        double rmax = FloatAttr::getValueAsDouble(*it);
+        // The default nudging implementation of mlir quant library might cause
+        // clamping during inference if the calibration range isn't wide enough.
+        // So here we adjust the range to include 0.0.
+        rmin = std::min(rmin, 0.0);
+        rmax = std::max(rmax, 0.0);
+        TensorRangeSanityCheck(op, rmin, rmax);
+        mins.push_back(rmin);
+        maxs.push_back(rmax);
       }
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
@@ -116,6 +121,11 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+      // The default nudging implementation of mlir quant library might cause
+      // clamping during inference if the calibration range isn't wide enough.
+      // So here we adjust the range to include 0.0.
+      rmin = std::min(rmin, 0.0);
+      rmax = std::max(rmax, 0.0);
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quant::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
@@ -175,12 +185,14 @@ struct QuantizationPattern : public RewritePattern {
   using BaseType = QuantizationPattern<ConcretTy, Q, DQ, VERIFIER>;
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
-                               float error_tolerance, bool single_layer_verify)
+                               float error_tolerance, bool single_layer_verify,
+                               bool log_if_failed = false)
       // Set the score to a large number so it is always preferred.
       : RewritePattern(DQ::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
-        single_layer_verify(single_layer_verify) {}
+        single_layer_verify(single_layer_verify),
+        log_if_failed(log_if_failed) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
@@ -312,10 +324,11 @@ struct QuantizationPattern : public RewritePattern {
           }
           rewriter.setInsertionPointAfter(new_op);
           FloatAttr tolerance = rewriter.getF32FloatAttr(error_tolerance);
+          BoolAttr log = rewriter.getBoolAttr(log_if_failed);
           // Verify the quantized value by sending the result to the verifier.
-          rewriter.create<VERIFIER>(quantized_op->getLoc(),
-                                    new_op->getResult(i),
-                                    quantized_op->getResult(i), tolerance);
+          rewriter.create<VERIFIER>(
+              quantized_op->getLoc(), new_op->getResult(i).getType(),
+              new_op->getResult(i), quantized_op->getResult(i), tolerance, log);
 
           if (single_layer_verify) continue;
 
@@ -341,6 +354,7 @@ struct QuantizationPattern : public RewritePattern {
   bool enable_verify;
   float error_tolerance;
   bool single_layer_verify;
+  bool log_if_failed;
 };
 
 // Converts quantize ops with unsigned quantized types to these with signed

@@ -2473,52 +2473,6 @@ ENTRY TestComputation {
               op::While(op::Copy(op::Parameter())));
 }
 
-TEST_F(CopyInsertionTest, NestedWhileAndConditional) {
-  const string& hlo_string = R"(
-HloModule TestModule
-
-on_true
- {
-  v1 = f32[2] parameter(0)
-  ROOT v2 = f32[2] add(v1,v1)
-}
-
-on_false
- {
-  v1 = f32[2] parameter(0)
-  ROOT v2 = f32[2] multiply(v1,v1)
-}
-
-cond.outer {
-  param.1 = (pred[], f32[2]) parameter(0)
-  ROOT param.cond.outer = pred[] get-tuple-element(param.1), index=0
-}
-
-body.outer {
-  param.1 = (pred[], f32[2]) parameter(0)
-  pred.1 = pred[] get-tuple-element(param.1), index=0
-  arg_tuple.11 = f32[2] get-tuple-element(param.1), index=1
-  if = f32[2] conditional(pred.1, arg_tuple.11, arg_tuple.11), true_computation=on_true, false_computation=on_false
-  ROOT res = (pred[], f32[2]) tuple(pred.1,if)
-}
-
-ENTRY TestComputation {
-  entry_param.1 = pred[] parameter(0)
-  float_param = f32[2] parameter(1)
-  entry_param = (pred[], f32[2]) tuple(entry_param.1, float_param)
-  ROOT while = (pred[], f32[2]) while(entry_param), condition=cond.outer, body=body.outer
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_string));
-  InsertCopies(module.get());
-  VLOG(2) << module->ToString() << "\n";
-
-  // There should only be a single copy inserted, and it's in the entry
-  // computation.
-  EXPECT_EQ(CountCopies(*module), 2);
-}
-
 TEST_F(CopyInsertionTest, FixpointComputationRequired) {
   const string& hlo_string = R"(
 HloModule Module

@@ -231,7 +231,6 @@ cc_library(
     visibility = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:__subpackages__",
         "//tensorflow/compiler/xla/service/gpu:__subpackages__",
-        "//tensorflow/compiler/xla/service/mlir_gpu:__subpackages__",
         "//tensorflow/core/kernels:__subpackages__",
         "//tensorflow/stream_executor:__subpackages__",
     ],
@@ -252,7 +251,7 @@ cc_library(
         "//tensorflow/stream_executor/cuda:cuda_driver",
         "//tensorflow/stream_executor/cuda:ptxas_wrapper",
         "//tensorflow/stream_executor/cuda:fatbinary_wrapper",
-    ]),
+    ]) + ["@com_google_absl//absl/container:flat_hash_set"],
 )
 
 cc_library(

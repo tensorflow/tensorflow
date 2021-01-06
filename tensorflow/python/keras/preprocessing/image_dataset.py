@@ -67,13 +67,14 @@ def image_dataset_from_directory(directory,
   Supported image formats: jpeg, png, bmp, gif.
   Animated gifs are truncated to the first frame.
 
-  Arguments:
+  Args:
     directory: Directory where the data is located.
         If `labels` is "inferred", it should contain
         subdirectories, each containing images for a class.
         Otherwise, the directory structure is ignored.
     labels: Either "inferred"
         (labels are generated from the directory structure),
+        None (no labels),
         or a list/tuple of integer labels of the same size as the number of
         image files found in the directory. Labels should be sorted according
         to the alphanumeric order of the image file paths
@@ -139,7 +140,7 @@ def image_dataset_from_directory(directory,
     - if `color_mode` is `rgba`,
       there are 4 channel in the image tensors.
   """
-  if labels != 'inferred':
+  if labels not in ('inferred', None):
     if not isinstance(labels, (list, tuple)):
       raise ValueError(
           '`labels` argument should be a list/tuple of integer labels, of '
@@ -156,6 +157,9 @@ def image_dataset_from_directory(directory,
     raise ValueError(
         '`label_mode` argument must be one of "int", "categorical", "binary", '
         'or None. Received: %s' % (label_mode,))
+  if labels is None or label_mode is None:
+    labels = None
+    label_mode = None
   if color_mode == 'rgb':
     num_channels = 3
   elif color_mode == 'rgba':
@@ -188,6 +192,8 @@ def image_dataset_from_directory(directory,
 
   image_paths, labels = dataset_utils.get_training_or_validation_split(
       image_paths, labels, validation_split, subset)
+  if not image_paths:
+    raise ValueError('No images found.')
 
   dataset = paths_and_labels_to_dataset(
       image_paths=image_paths,

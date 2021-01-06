@@ -387,7 +387,7 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Input("grads: T")
     .Input("size: int32")
     .Output("output: T")
-    .Attr("T: {uint8, int8, int32, half, float, double}")
+    .Attr("T: {uint8, int8, int32, half, float, double, bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {

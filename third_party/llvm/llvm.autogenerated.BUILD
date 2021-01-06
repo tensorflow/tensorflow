@@ -1001,6 +1001,7 @@ cc_library(
         ":IPO",
         ":MC",
         ":MIRParser",
+        ":Passes",
         ":Scalar",
         ":SelectionDAG",
         ":Support",

@@ -162,7 +162,6 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -273,6 +272,7 @@ py_library(
         ":device_util",
         ":distribute_lib",
         ":reduce_util",
+        ":sharded_variable",
         ":shared_variable_creator",
         ":tpu_values",
         ":values",
@@ -1119,6 +1119,7 @@ tf_py_test(
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
@@ -1659,6 +1660,11 @@ py_test(
     srcs = ["multi_process_runner_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],  # b/175904958
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
