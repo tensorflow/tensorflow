@@ -1369,7 +1369,9 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
   int64 params_size_in_bytes = static_cast<int64>(params_size);
 
   FilterDescriptor filter_desc = CreateFilterDescriptor();
-  int filter_dims[] = {static_cast<int>(params_size_in_bytes), 1, 1};
+  int64 filter_dim0 =
+      params_size_in_bytes / CudnnDataTypeToByteSize(data_type);
+  int filter_dims[] = {static_cast<int>(filter_dim0), 1, 1};
   RETURN_IF_CUDNN_ERROR(cudnnSetFilterNdDescriptor(
       /*filterDesc=*/filter_desc.get(), /*dataType=*/data_type,
       /*format=*/CUDNN_TENSOR_NCHW,
