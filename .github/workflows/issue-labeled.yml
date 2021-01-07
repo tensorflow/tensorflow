@@ -1,0 +1,19 @@
+name: Issue Labeled
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  issue-labeled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: awaiting response
+        if: github.event.label.name == 'stat:awaiting response'
+        uses: actions-cool/issues-helper@v1.8
+        with:
+          actions: 'create-comment'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.issue.number }}
+          body: |
+            Hello @${{ github.event.issue.user.login }}. Can you please share colab link or simple standalone code with supporting files(model.h5) to reproduce the issue in our environment. It helps us in debugging faster. Thanks!
