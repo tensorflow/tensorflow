@@ -43,7 +43,6 @@ filegroup(
     name = "java_resources",
     srcs = [":version-info"],
     visibility = [
-        "//tensorflow/contrib/android:__pkg__",
         "//tensorflow/java:__pkg__",
     ],
 )
