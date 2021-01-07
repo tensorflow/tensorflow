@@ -330,8 +330,8 @@ class _NormalizingCombiner(base_preprocessing_layer.Combiner):
     """Convert an accumulator into a dict of output values."""
     return {
         _COUNT_NAME: accumulator[self.COUNT_IDX],
-        _MEAN_NAME: accumulator[1],
-        _VARIANCE_NAME: accumulator[2]
+        _MEAN_NAME: accumulator[self.MEAN_IDX],
+        _VARIANCE_NAME: accumulator[self.VAR_IDX]
     }
 
   def restore(self, output):
@@ -354,8 +354,8 @@ class _NormalizingCombiner(base_preprocessing_layer.Combiner):
     """Serialize an accumulator for a remote call."""
     output_dict = {
         _COUNT_NAME: accumulator[self.COUNT_IDX].tolist(),
-        _MEAN_NAME: accumulator[1].tolist(),
-        _VARIANCE_NAME: accumulator[2].tolist()
+        _MEAN_NAME: accumulator[self.MEAN_IDX].tolist(),
+        _VARIANCE_NAME: accumulator[self.VAR_IDX].tolist()
     }
     return compat.as_bytes(json.dumps(output_dict))
 
