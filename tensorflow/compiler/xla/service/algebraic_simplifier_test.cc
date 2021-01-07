@@ -3054,6 +3054,54 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
       ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
 }
 
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeToMixedRadix) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {21}), 0));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {7, 3});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Add(
+                  m::Iota(),
+                  m::Multiply(m::Iota(), m::Broadcast(m::ConstantScalar())))));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
+TEST_F(AlgebraicSimplifierTest, IotaAndReshapeToMixedRadixExtraDims) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+  auto iota = builder.AddInstruction(
+      HloInstruction::CreateIota(ShapeUtil::MakeShape(F32, {42, 24, 15}), 1));
+  Shape result_shape = ShapeUtil::MakeShape(F32, {3, 14, 4, 3, 2, 5, 3});
+  builder.AddInstruction(HloInstruction::CreateReshape(result_shape, iota));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Reshape(m::Iota())));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+
+  EXPECT_THAT(
+      computation->root_instruction(),
+      GmockMatch(m::Add(
+          m::Add(m::Iota(),
+                 m::Multiply(m::Iota(), m::Broadcast(m::ConstantScalar()))),
+          m::Multiply(m::Iota(), m::Broadcast(m::ConstantScalar())))));
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), result_shape));
+}
 TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
