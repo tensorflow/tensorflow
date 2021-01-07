@@ -63,15 +63,15 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
 
   MLIRContext *context_ = &this->getTypeConverter()->getContext();
 
-  LLVM::LLVMType llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
-  LLVM::LLVMType llvm_pointer_type_ =
+  Type llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
+  Type llvm_pointer_type_ =
       LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(context_, 8));
-  LLVM::LLVMType llvm_pointer_pointer_type_ =
+  Type llvm_pointer_pointer_type_ =
       LLVM::LLVMPointerType::get(llvm_pointer_type_);
-  LLVM::LLVMType llvm_int8_type_ = LLVM::LLVMIntegerType::get(context_, 8);
-  LLVM::LLVMType llvm_int32_type_ = LLVM::LLVMIntegerType::get(context_, 32);
-  LLVM::LLVMType llvm_int64_type_ = LLVM::LLVMIntegerType::get(context_, 64);
-  LLVM::LLVMType llvm_intptr_type_ = LLVM::LLVMIntegerType::get(
+  Type llvm_int8_type_ = LLVM::LLVMIntegerType::get(context_, 8);
+  Type llvm_int32_type_ = LLVM::LLVMIntegerType::get(context_, 32);
+  Type llvm_int64_type_ = LLVM::LLVMIntegerType::get(context_, 64);
+  Type llvm_intptr_type_ = LLVM::LLVMIntegerType::get(
       context_, this->getTypeConverter()->getPointerBitwidth(0));
 
   llvm::SmallString<32> gpu_binary_annotation_;
@@ -99,10 +99,9 @@ Value ConvertLaunchFuncOpToTfRuntimeCallPattern::generateParamsArray(
       loc, launch_op.getOperands().take_back(num_kernel_operands),
       operands.take_back(num_kernel_operands), builder);
   auto num_arguments = arguments.size();
-  SmallVector<LLVM::LLVMType, 4> argument_types;
+  SmallVector<Type, 4> argument_types;
   argument_types.reserve(num_arguments);
-  for (auto argument : arguments)
-    argument_types.push_back(argument.getType().cast<LLVM::LLVMType>());
+  for (auto argument : arguments) argument_types.push_back(argument.getType());
   auto struct_type = LLVM::LLVMStructType::getNewIdentified(
       context_, StringRef(), argument_types);
   auto one = builder.create<LLVM::ConstantOp>(loc, llvm_int32_type_,
