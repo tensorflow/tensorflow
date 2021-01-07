@@ -88,6 +88,9 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit);
 std::string LmhloToMhloOpName(llvm::StringRef op_name,
                               mlir::MLIRContext* context);
 
+// Return true if Attr has values [0, 1, ...].
+bool IsSequenceStartingWith0(DenseIntElementsAttr attr);
+
 }  // namespace hlo
 }  // namespace mlir
 

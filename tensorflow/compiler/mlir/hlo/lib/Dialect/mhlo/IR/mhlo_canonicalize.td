@@ -38,5 +38,6 @@ def RemoveRedundantDynamicReshape : Pat<
 // is a dynamic reshape.
 def RemoveRedundantDynamicBroadcast : Pat<
   (HLO_DynamicBroadcastInDimOp
-    (HLO_DynamicReshapeOp $operand, $shape), $shape, $dims),
+    (HLO_DynamicReshapeOp $operand, $shape),
+     $shape, IdentityBroadcastDims:$dims),
   (HLO_DynamicReshapeOp $operand, $shape)>;
