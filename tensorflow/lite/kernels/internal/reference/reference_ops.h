@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/floor_mod.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/gather.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
@@ -1172,43 +1173,6 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     output_data[offset] = static_cast<DstT>(input_data[offset]);
-  }
-}
-
-template <typename T, typename CoordsT = int32>
-inline void Gather(const tflite::GatherParams& op_params,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const CoordsT* coords_data,
-                   const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("Gather");
-  int axis = op_params.axis;
-  if (axis < 0) {
-    axis += input_shape.DimensionsCount();
-  }
-  TFLITE_DCHECK_GE(axis, 0);
-  TFLITE_DCHECK_LT(axis, input_shape.DimensionsCount());
-  const int axis_size = input_shape.Dims(axis);
-  const int coords_count = coords_shape.FlatSize();
-
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= input_shape.Dims(i);
-  }
-
-  int inner_size = 1;
-  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
-    inner_size *= input_shape.Dims(i);
-  }
-
-  for (int outer = 0; outer < outer_size; ++outer) {
-    for (int i = 0; i < coords_count; ++i) {
-      TFLITE_DCHECK_GE(coords_data[i], 0);
-      TFLITE_DCHECK_LT(coords_data[i], axis_size);
-      std::memcpy(
-          output_data + (outer * coords_count + i) * inner_size,
-          input_data + (outer * axis_size + coords_data[i]) * inner_size,
-          sizeof(T) * inner_size);
-    }
   }
 }
 
