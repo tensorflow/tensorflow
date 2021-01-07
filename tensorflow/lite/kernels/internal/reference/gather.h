@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_GATHER_H_
 
 #include <cstring>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
