@@ -1107,21 +1107,6 @@ def run_in_async_and_sync_mode(f):
   return decorator
 
 
-def eager_lazy_remote_copy_on_and_off(f):
-  """Execute the test method w/o lazy tensor copy for function remote inputs."""
-
-  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
-  @functools.wraps(f)
-  def decorator(self, lazily_remote_copy, *args, **kwargs):
-    if lazily_remote_copy:
-      context.context().lazy_remote_inputs_copy = True
-    else:
-      context.context().lazy_remote_inputs_copy = False
-    f(self, *args, **kwargs)
-
-  return decorator
-
-
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
