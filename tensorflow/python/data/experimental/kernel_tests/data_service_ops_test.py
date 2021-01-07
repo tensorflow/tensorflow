@@ -685,8 +685,10 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, [i + 1 for i in numbers], assert_items_equal=True)
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testParallelZippedDistributedDatasets(self):
+  @combinations.generate(test_base.eager_only_combinations(),
+                         combinations.combine(processing_mode=[
+                             "parallel_epochs", "distributed_epoch"]))
+  def testDistributeZippedDistributedDatasets(self, processing_mode):
 
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
@@ -695,14 +697,16 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     size_repeats = 5
     numbers = [1 * i for i in range(num_sizes)] * size_repeats
     ds1 = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds1 = self.make_distributed_dataset(ds1, cluster_1)
+    ds1 = self.make_distributed_dataset(
+        ds1, cluster_1, processing_mode=processing_mode)
 
     ds2 = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds2 = self.make_distributed_dataset(ds2, cluster_2)
+    ds2 = self.make_distributed_dataset(
+        ds2, cluster_2, processing_mode=processing_mode)
 
     ds3 = dataset_ops.Dataset.zip((ds1, ds2))
     ds3 = self.make_distributed_dataset(
-        ds3, cluster_3, processing_mode="parallel_epochs")
+        ds3, cluster_3, processing_mode=processing_mode)
 
     self.assertDatasetProduces(
         ds3, list(zip(numbers, numbers)), assert_items_equal=True)
