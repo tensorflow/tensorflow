@@ -663,8 +663,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = self.make_distributed_dataset(
         ds, cluster_2, processing_mode="distributed_epoch")
 
-    with self.assertRaisesRegex(errors.UnimplementedError,
-                                "Cannot create a split provider for dataset of type DataServiceDataset"):
+    error_regex = "Cannot create a split provider for dataset of type DataServiceDataset"  # pylint: disable=line-too-long
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -682,7 +682,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = self.make_distributed_dataset(
         ds, cluster_2, processing_mode="parallel_epochs")
 
-    self.assertDatasetProduces(ds, [i + 1 for i in numbers], assert_items_equal=True)
+    self.assertDatasetProduces(
+        ds, [i + 1 for i in numbers], assert_items_equal=True)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testTwoLevelDistribute(self):
