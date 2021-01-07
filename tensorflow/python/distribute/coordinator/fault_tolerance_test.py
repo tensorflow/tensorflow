@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gc
 import os
 import threading
 import time
@@ -47,6 +48,7 @@ from tensorflow.python.training import server_lib
 
 _RPC_ERROR_FROM_WORKER = "GRPC error information from remote target /job:worker"
 _RPC_ERROR_FROM_PS = "GRPC error information from remote target /job:ps"
+_WORKER_PREEMPTION_THREAD_NAME = "WorkerPreemptionHandler"
 
 
 class Model(object):
@@ -151,6 +153,25 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     restart_thread = threading.Thread(target=_restart_fn)
     restart_thread.start()
     return restart_thread
+
+  def _ensure_threads_closed(self):
+    """Ensure worker and preemption threads are closed."""
+    # Wait for threads to close.
+    self.cluster_coord = None
+    gc.collect()
+    time.sleep(1)
+
+    # Verify thread names.
+    running_threads = set()
+    for thread in threading.enumerate():
+      logging.info("Running thread name:%s", thread.name)
+      if thread.name is not None:
+        running_threads.add(thread.name)
+    # TODO(xingliu): Verify worker threads are closed.
+    self.assertNotIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+
+  def testClusterCoordinatorDestroyed(self):
+    self._ensure_threads_closed()
 
   def testWorkerPreemptionBetweenFunctions(self):
     model = Model(self.cluster_coord)
@@ -346,6 +367,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
       if isinstance(e, errors.AbortedError):
         self.assertIn("RecvTensor expects a different device incarnation",
                       str(e))
+      self._ensure_threads_closed()
 
   def testTwoWorkersPreempted(self):
     if self.num_workers < 2:
