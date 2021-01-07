@@ -685,9 +685,10 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertDatasetProduces(
         ds, [i + 1 for i in numbers], assert_items_equal=True)
 
-  @combinations.generate(test_base.eager_only_combinations(),
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
                          combinations.combine(processing_mode=[
-                             "parallel_epochs", "distributed_epoch"]))
+                             "parallel_epochs", "distributed_epoch"])))
   def testDistributeZippedDistributedDatasets(self, processing_mode):
 
     cluster_1 = self.create_cluster(num_workers=1)
