@@ -21,10 +21,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* Resize(const char* algorithm, int batches, int width,
-                     int height) {
+static Graph* Resize(const char* algorithm, int batches, int width, int height,
+                     int channels) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor in(DT_FLOAT, TensorShape({batches, width, height, 3}));
+  Tensor in(DT_FLOAT, TensorShape({batches, width, height, channels}));
   in.flat<float>().setRandom();
 
   Tensor out_size(DT_INT32, TensorShape({2}));
@@ -41,22 +41,24 @@ static Graph* Resize(const char* algorithm, int batches, int width,
   return g;
 }
 
-#define BM_ResizeDev(DEVICE, ALGORITHM, B, W, H)                  \
-  static void BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H( \
-      ::testing::benchmark::State& state) {                       \
-    test::Benchmark(#DEVICE, Resize(#ALGORITHM, B, W, H),         \
-                    /*old_benchmark_api*/ false)                  \
-        .Run(state);                                              \
-    state.SetItemsProcessed(state.iterations() * B * W * H * 3);  \
-  }                                                               \
-  BENCHMARK(BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H)
+#define BM_ResizeDev(DEVICE, ALGORITHM, B, W, H, C)                     \
+  static void BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H##_##C( \
+      ::testing::benchmark::State& state) {                             \
+    test::Benchmark(#DEVICE, Resize(#ALGORITHM, B, W, H, C),            \
+                    /*old_benchmark_api*/ false)                        \
+        .Run(state);                                                    \
+    state.SetItemsProcessed(state.iterations() * B * W * H * C);        \
+  }                                                                     \
+  BENCHMARK(BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H##_##C)
 
-BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499);
-BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499);
+BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 1);
+BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 3);
+BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 1);
+BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 3);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-BM_ResizeDev(gpu, ResizeNearestNeighbor, 10, 499, 499);
-BM_ResizeDev(gpu, ResizeBilinear, 10, 499, 499);
+BM_ResizeDev(gpu, ResizeNearestNeighbor, 10, 499, 499, 3);
+BM_ResizeDev(gpu, ResizeBilinear, 10, 499, 499, 3);
 #endif
 
 }  // namespace tensorflow
