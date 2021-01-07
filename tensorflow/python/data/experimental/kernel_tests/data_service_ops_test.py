@@ -649,6 +649,38 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeParallelToDistributed(self):
+
+    cluster_1 = self.create_cluster(num_workers=1)
+    cluster_2 = self.create_cluster(num_workers=1)
+    num_sizes = 10
+    size_repeats = 5
+    numbers = [1 * i for i in range(num_sizes)] * size_repeats
+    ds = dataset_ops.Dataset.from_tensor_slices(numbers)
+    ds = self.make_distributed_dataset(ds, cluster_1, processing_mode="parallel_epochs")
+    ds = ds.map(lambda x: x + 1)
+    ds = self.make_distributed_dataset(ds, cluster_2, processing_mode="distributed_epoch")
+
+    with self.assertRaisesRegex(errors.UnimplementedError,
+                                "Cannot create a split provider for dataset of type DataServiceDataset"):
+      self.getDatasetOutput(ds)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDistributeDistributedToParallel(self):
+
+    cluster_1 = self.create_cluster(num_workers=1)
+    cluster_2 = self.create_cluster(num_workers=1)
+    num_sizes = 10
+    size_repeats = 5
+    numbers = [1 * i for i in range(num_sizes)] * size_repeats
+    ds = dataset_ops.Dataset.from_tensor_slices(numbers)
+    ds = self.make_distributed_dataset(ds, cluster_1, processing_mode="distributed_epoch")
+    ds = ds.map(lambda x: x + 1)
+    ds = self.make_distributed_dataset(ds, cluster_2, processing_mode="parallel_epochs")
+
+    self.assertDatasetProduces(ds, [i + 1 for i in numbers], assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3
     cluster_1 = self.create_cluster(num_workers=cluster_1_size)
@@ -679,6 +711,24 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       for _ in range(1, cluster_1_size):
         self.assertAllEqual(next(it).numpy(), element)
     self.assertEmpty(list(it))
+
+  # @combinations.generate(test_base.eager_only_combinations())
+  # def testCyclicDistribute(self):
+
+  #   cluster_1 = self.create_cluster(num_workers=1)
+  #   cluster_2 = self.create_cluster(num_workers=1)
+  #   num_sizes = 10
+  #   size_repeats = 5
+  #   numbers = [1 * i for i in range(num_sizes)] * size_repeats
+  #   ds = dataset_ops.Dataset.from_tensors(numbers)
+  #   ds = self.make_distributed_dataset(ds, cluster_1, processing_mode="parallel_epochs")
+  #   ds = ds.map(lambda x: x + 1)
+  #   ds = self.make_distributed_dataset(ds, cluster_2, processing_mode="parallel_epochs")
+  #   ds = ds.map(lambda x: x - 1)
+  #   ds = self.make_distributed_dataset(
+  #       ds, cluster_1, processing_mode="parallel_epochs", job_name="temp_jobname")
+
+  #   self.assertDatasetProduces(ds, numbers, assert_items_equal=True)
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations()))
