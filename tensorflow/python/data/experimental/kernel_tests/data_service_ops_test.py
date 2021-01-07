@@ -700,7 +700,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds2 = dataset_ops.Dataset.from_tensor_slices(numbers)
     ds2 = self.make_distributed_dataset(ds2, cluster_2)
 
-    ds3 = tf.data.Dataset.zip((ds1, ds2))
+    ds3 = dataset_ops.Dataset.zip((ds1, ds2))
     ds3 = self.make_distributed_dataset(
         ds3, cluster_3, processing_mode="parallel_epochs")
 
