@@ -93,14 +93,14 @@ void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
   memcpy(&danalytical[0], TF_TensorData(analytical_tensor),
          TF_TensorByteSize(analytical_tensor));
 
-  int64_t current_index_manual = 0;
   for (int64_t j = 0; j < num_elem_analytical; j++) {
-    if (abs_error == 0)
-      ASSERT_EQ(manuals[current_index_manual], danalytical[j]);
-    else
-      ASSERT_NEAR(manuals[current_index_manual], danalytical[j], abs_error);
-    ++current_index_manual;
+    if (abs_error == 0) {
+      ASSERT_EQ(manuals[j], danalytical[j]);
+    } else {
+      ASSERT_NEAR(manuals[j], danalytical[j], abs_error);
+    }
   }
+
   TF_DeleteTensor(analytical_tensor);
   delete[] danalytical;
 }
