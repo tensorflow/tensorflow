@@ -4198,6 +4198,31 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "mlir-spirv-cpu-runner",
+    srcs = ["tools/mlir-spirv-cpu-runner/mlir-spirv-cpu-runner.cpp"],
+    deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":ExecutionEngineUtils",
+        ":GPUDialect",
+        ":GPUToSPIRV",
+        ":GPUTransforms",
+        ":IR",
+        ":LLVMDialect",
+        ":MlirJitRunner",
+        ":Pass",
+        ":SPIRVConversion",
+        ":SPIRVDialect",
+        ":SPIRVToLLVM",
+        ":SPIRVTransforms",
+        ":StandardToLLVM",
+        ":TargetLLVMIR",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Linker",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 cc_library(
     name = "TableGen",
     srcs = glob(["lib/TableGen/*.cpp"]),
