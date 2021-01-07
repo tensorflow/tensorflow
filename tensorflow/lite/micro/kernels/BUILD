@@ -47,7 +47,9 @@ cc_library(
 
 cc_library(
     name = "fully_connected",
-    srcs = select({
+    srcs = [
+        "fully_connected_common.cc",
+    ] + select({
         "//conditions:default": [
             "fully_connected.cc",
         ],

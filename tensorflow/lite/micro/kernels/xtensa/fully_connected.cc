@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa/fixedpoint_utils.h"
 #include "tensorflow/lite/micro/kernels/xtensa/xtensa.h"
@@ -121,7 +121,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
                              TfLiteType data_type, const TfLiteTensor* input,
                              const TfLiteTensor* filter,
                              const TfLiteTensor* bias, TfLiteTensor* output,
-                             OpDataFullyConnectedReference* data) {
+                             OpDataFullyConnected* data) {
   double real_multiplier = 0.0;
   TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
       context, input, filter, bias, output, &real_multiplier));
@@ -141,11 +141,17 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
                                            &data->output_activation_max);
 }
 
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context,
+                                           sizeof(OpDataFullyConnected));
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   TFLITE_DCHECK(node->builtin_data != nullptr);
 
-  auto* data = static_cast<OpDataFullyConnectedReference*>(node->user_data);
+  auto* data = static_cast<OpDataFullyConnected*>(node->user_data);
   const auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
 
@@ -168,7 +174,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
-                               const OpDataFullyConnectedReference& data,
+                               const OpDataFullyConnected& data,
                                const TfLiteEvalTensor* input,
                                const TfLiteEvalTensor* filter,
                                const TfLiteEvalTensor* bias,
@@ -176,12 +182,13 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   // TODO(b/154032858): Investigate removing extra copies (i.e.
   // data.ToQuantizedParams), and also passing by value.
   //
-  // TODO(b/155656675): Consider passing OpDataFullyConnectedReference by value
+  // TODO(b/155656675): Consider passing OpDataFullyConnected by value
   // once it is also passed to the FullyConnected function. Until it is copied
   // to a local op_param variable, we do not get any latency improvements from
   // passing by value.
 #if defined(HIFIMINI)
-  FullyConnected(data.ToQuantizedParams(), tflite::micro::GetTensorShape(input),
+  FullyConnected(FullyConnectedParamsQuantized(data),
+                 tflite::micro::GetTensorShape(input),
                  tflite::micro::GetTensorData<int8_t>(input),
                  tflite::micro::GetTensorShape(filter),
                  tflite::micro::GetTensorData<int8_t>(filter),
@@ -191,7 +198,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                  tflite::micro::GetTensorData<int8_t>(output));
 #else
   reference_integer_ops::FullyConnected(
-      data.ToQuantizedParams(), tflite::micro::GetTensorShape(input),
+      FullyConnectedParamsQuantized(data), tflite::micro::GetTensorShape(input),
       tflite::micro::GetTensorData<int8_t>(input),
       tflite::micro::GetTensorShape(filter),
       tflite::micro::GetTensorData<int8_t>(filter),
@@ -207,7 +214,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   const auto& data =
-      *(static_cast<const OpDataFullyConnectedReference*>(node->user_data));
+      *(static_cast<const OpDataFullyConnected*>(node->user_data));
 
   const TfLiteEvalTensor* input =
       tflite::micro::GetEvalInput(context, node, kFullyConnectedInputTensor);
@@ -227,7 +234,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace
 
 TfLiteRegistration Register_FULLY_CONNECTED() {
-  return {/*init=*/InitFullyConnectedReference,
+  return {/*init=*/Init,
           /*free=*/nullptr,
           /*prepare=*/Prepare,
           /*invoke=*/Eval,

@@ -25,35 +25,38 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
-namespace {
-#if !defined(XTENSA)
-FullyConnectedParams ToFloatParams(TfLiteFusedActivation activation) {
-  FullyConnectedParams op_params;
-  CalculateActivationRange(activation, &op_params.float_activation_min,
-                           &op_params.float_activation_max);
-  return op_params;
-}
-#endif  // !defined(XTENSA)
-}  // namespace
 
 const int kFullyConnectedInputTensor = 0;
 const int kFullyConnectedWeightsTensor = 1;
 const int kFullyConnectedBiasTensor = 2;
 const int kFullyConnectedOutputTensor = 0;
 
-void* InitFullyConnectedReference(TfLiteContext* context, const char* buffer,
-                                  size_t length) {
-  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  return context->AllocatePersistentBuffer(
-      context, sizeof(OpDataFullyConnectedReference));
+FullyConnectedParams FullyConnectedParamsQuantized(
+    const OpDataFullyConnected& op_data) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -op_data.input_zero_point;
+  op_params.weights_offset = -op_data.filter_zero_point;
+  op_params.output_offset = op_data.output_zero_point;
+  op_params.output_multiplier = op_data.output_multiplier;
+  op_params.output_shift = op_data.output_shift;
+  op_params.quantized_activation_min = op_data.output_activation_min;
+  op_params.quantized_activation_max = op_data.output_activation_max;
+  return op_params;
 }
 
-#if !defined(XTENSA)
-TfLiteStatus CalculateOpDataFullyConnectedReference(
+FullyConnectedParams FullyConnectedParamsFloat(
+    TfLiteFusedActivation activation) {
+  FullyConnectedParams op_params;
+  CalculateActivationRange(activation, &op_params.float_activation_min,
+                           &op_params.float_activation_max);
+  return op_params;
+}
+
+TfLiteStatus CalculateOpDataFullyConnected(
     TfLiteContext* context, TfLiteFusedActivation activation,
     TfLiteType data_type, const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output,
-    OpDataFullyConnectedReference* data) {
+    OpDataFullyConnected* data) {
   if (data_type != kTfLiteFloat32) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
@@ -71,71 +74,5 @@ TfLiteStatus CalculateOpDataFullyConnectedReference(
   }
   return kTfLiteOk;
 }
-
-TfLiteStatus EvalFloatFullyConnectedReference(
-    TfLiteContext* context, TfLiteNode* node, TfLiteFusedActivation activation,
-    const TfLiteEvalTensor* input, const TfLiteEvalTensor* filter,
-    const TfLiteEvalTensor* bias, TfLiteEvalTensor* output) {
-  tflite::reference_ops::FullyConnected(
-      ToFloatParams(activation), tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<float>(input),
-      tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<float>(filter),
-      tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<float>(bias),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<float>(output));
-  return kTfLiteOk;
-}
-
-TfLiteStatus EvalQuantizedInt8FullyConnectedReference(
-    TfLiteContext* context, TfLiteNode* node,
-    const OpDataFullyConnectedReference& data, const TfLiteEvalTensor* input,
-    const TfLiteEvalTensor* filter, const TfLiteEvalTensor* bias,
-    TfLiteEvalTensor* output) {
-  reference_integer_ops::FullyConnected(
-      data.ToQuantizedParams(), tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<int8_t>(input),
-      tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<int8_t>(filter),
-      tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<int32_t>(bias),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<int8_t>(output));
-  return kTfLiteOk;
-}
-
-TfLiteStatus EvalQuantizedFullyConnectedReference(
-    TfLiteContext* context, TfLiteNode* node,
-    const OpDataFullyConnectedReference& data, const TfLiteEvalTensor* input,
-    const TfLiteEvalTensor* filter, const TfLiteEvalTensor* bias,
-    TfLiteEvalTensor* output) {
-#define TF_LITE_FULLY_CONNECTED(output_data_type)                     \
-  reference_ops::FullyConnected(                                      \
-      data.ToQuantizedParams(), tflite::micro::GetTensorShape(input), \
-      tflite::micro::GetTensorData<uint8_t>(input),                   \
-      tflite::micro::GetTensorShape(filter),                          \
-      tflite::micro::GetTensorData<uint8_t>(filter),                  \
-      tflite::micro::GetTensorShape(bias),                            \
-      tflite::micro::GetTensorData<int32_t>(bias),                    \
-      tflite::micro::GetTensorShape(output),                          \
-      tflite::micro::GetTensorData<output_data_type>(output))
-  switch (output->type) {
-    case kTfLiteUInt8:
-      TF_LITE_FULLY_CONNECTED(uint8_t);
-      break;
-    case kTfLiteInt16:
-      TF_LITE_FULLY_CONNECTED(int16_t);
-      break;
-    default:
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
-                         TfLiteTypeGetName(output->type), output->type);
-      return kTfLiteError;
-  }
-
-  return kTfLiteOk;
-}
-
-#endif  // !defined(XTENSA)
 
 }  // namespace tflite

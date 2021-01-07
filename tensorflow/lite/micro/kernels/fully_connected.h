@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tflite {
 
-struct OpDataFullyConnectedReference {
+struct OpDataFullyConnected {
   // The scaling factor from input to output (aka the 'real multiplier') can
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
@@ -38,20 +38,6 @@ struct OpDataFullyConnectedReference {
   int32_t input_zero_point;
   int32_t filter_zero_point;
   int32_t output_zero_point;
-
-  // Returns a FullyConnectedParams struct with all the parameters needed for a
-  // quantized fully connected computation.
-  FullyConnectedParams ToQuantizedParams() const {
-    FullyConnectedParams op_params;
-    op_params.input_offset = -input_zero_point;
-    op_params.weights_offset = -filter_zero_point;
-    op_params.output_offset = output_zero_point;
-    op_params.output_multiplier = output_multiplier;
-    op_params.output_shift = output_shift;
-    op_params.quantized_activation_min = output_activation_min;
-    op_params.quantized_activation_max = output_activation_max;
-    return op_params;
-  }
 };
 
 extern const int kFullyConnectedInputTensor;
@@ -59,31 +45,20 @@ extern const int kFullyConnectedWeightsTensor;
 extern const int kFullyConnectedBiasTensor;
 extern const int kFullyConnectedOutputTensor;
 
-TfLiteStatus CalculateOpDataFullyConnectedReference(
+// Returns a FullyConnectedParams struct with all the parameters needed for a
+// float computation.
+FullyConnectedParams FullyConnectedParamsFloat(
+    TfLiteFusedActivation activation);
+
+// Returns a FullyConnectedParams struct with all the parameters needed for a
+// quantized computation.
+FullyConnectedParams FullyConnectedParamsQuantized(
+    const OpDataFullyConnected& op_data);
+
+TfLiteStatus CalculateOpDataFullyConnected(
     TfLiteContext* context, TfLiteFusedActivation activation,
     TfLiteType data_type, const TfLiteTensor* input, const TfLiteTensor* filter,
-    const TfLiteTensor* bias, TfLiteTensor* output,
-    OpDataFullyConnectedReference* data);
-
-void* InitFullyConnectedReference(TfLiteContext* context, const char* buffer,
-                                  size_t length);
-
-TfLiteStatus EvalFloatFullyConnectedReference(
-    TfLiteContext* context, TfLiteNode* node, TfLiteFusedActivation activation,
-    const TfLiteEvalTensor* input, const TfLiteEvalTensor* filter,
-    const TfLiteEvalTensor* bias, TfLiteEvalTensor* output);
-
-TfLiteStatus EvalQuantizedInt8FullyConnectedReference(
-    TfLiteContext* context, TfLiteNode* node,
-    const OpDataFullyConnectedReference& data, const TfLiteEvalTensor* input,
-    const TfLiteEvalTensor* filter, const TfLiteEvalTensor* bias,
-    TfLiteEvalTensor* output);
-
-TfLiteStatus EvalQuantizedFullyConnectedReference(
-    TfLiteContext* context, TfLiteNode* node,
-    const OpDataFullyConnectedReference& data, const TfLiteEvalTensor* input,
-    const TfLiteEvalTensor* filter, const TfLiteEvalTensor* bias,
-    TfLiteEvalTensor* output);
+    const TfLiteTensor* bias, TfLiteTensor* output, OpDataFullyConnected* data);
 
 // This is the most generic TfLiteRegistration. The actual supported types may
 // still be target dependent. The only requirement is that every implementation
