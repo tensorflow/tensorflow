@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
@@ -104,6 +105,30 @@ LogicalResult GetLstmProperty(
       !op.forget_layer_norm_coefficients().getType().template isa<NoneType>();
 
   *op_property = operator_property::GetOperatorProperty(*lstm_variant);
+
+  // TODO(b/176258587) move this to operator_property.cc if this is needed in
+  // other components, too.
+  bool use_cifg =
+      op.input_to_input_weights().getType().template isa<NoneType>();
+  if (use_cifg) {
+    const absl::flat_hash_set<int> cifg_non_inputs = {1, 5, 9, 12, 20};
+    const int cifg_non_intermediate = 0;
+    op_property->inputs.erase(
+        std::remove_if(
+            op_property->inputs.begin(), op_property->inputs.end(),
+            [&](std::pair<int, operator_property::TensorProperty> input) {
+              return cifg_non_inputs.find(input.first) != cifg_non_inputs.end();
+            }),
+        op_property->inputs.end());
+    op_property->intermediates.erase(
+        std::remove_if(op_property->intermediates.begin(),
+                       op_property->intermediates.end(),
+                       [&](std::pair<int, operator_property::TensorProperty>
+                               intermediate) {
+                         return intermediate.first == cifg_non_intermediate;
+                       }),
+        op_property->intermediates.end());
+  }
   return success();
 }
 

@@ -265,13 +265,14 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
 }
 
 // Returns whether the module could use any device bitcode library functions.
-// This function may have false positives -- the module might not use libdevice
-// on NVPTX or ROCm-Device-Libs on AMDGPU even if this function returns true.
 bool CouldNeedDeviceBitcode(const llvm::Module& module) {
   for (const llvm::Function& function : module.functions()) {
-    // This is a conservative approximation -- not all such functions are in
-    // libdevice or ROCm-Device-Libs.
-    if (!function.isIntrinsic() && function.isDeclaration()) {
+    // The list of prefixes should be in sync with library functions used in
+    // target_util.cc.
+    if (!function.isIntrinsic() && function.isDeclaration() &&
+        (function.getName().startswith("__nv_") ||
+         function.getName().startswith("__ocml_") ||
+         function.getName().startswith("__ockl_"))) {
       return true;
     }
   }

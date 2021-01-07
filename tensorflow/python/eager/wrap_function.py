@@ -306,7 +306,7 @@ class WrappedFunction(function.ConcreteFunction):
       elif isinstance(fetch, meta_graph_pb2.TensorInfo):
         tensor_infos.append(fetch)
         decoded = _get_element_from_tensor_info(fetch, self._func_graph)
-        if (tensor_util.is_tensor(decoded) or
+        if (tensor_util.is_tf_type(decoded) or
             isinstance(decoded, composite_tensor.CompositeTensor)):
           tensor_fetches.append(decoded)
         else:
@@ -349,7 +349,7 @@ class WrappedFunction(function.ConcreteFunction):
     for ti in tensor_infos:
       if ti.WhichOneof("encoding") == "name":  # Dense tensors only
         t = pruned_graph.as_graph_element(ti.name)
-        if tensor_util.is_tensor(t):
+        if tensor_util.is_tf_type(t):
           t.set_shape(tensor_shape.TensorShape(ti.tensor_shape))
     # pylint: disable=protected-access
     for f in self.graph._functions.values():

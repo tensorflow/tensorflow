@@ -140,7 +140,7 @@ inline int StopForAxis(const tflite::StridedSliceParams& params,
   // start_for_axis + 1 to generate a length 1 slice, since start_for_axis has
   // already been adjusted for negative indices.
   if (shrink_axis) {
-    stop = start_for_axis + 1;
+    return start_for_axis + 1;
   }
 
   // end_mask override

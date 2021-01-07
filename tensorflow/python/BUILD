@@ -763,7 +763,6 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
-        "//tensorflow/python/platform:_pywrap_tf2",
         ":_pywrap_utils",
         ":composite_tensor",
         ":config",
@@ -6772,6 +6771,10 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/platform:_pywrap_tf2",
+        "//tensorflow/python/util:tf_export",
+    ],
 )
 
 py_test(

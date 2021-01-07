@@ -61,6 +61,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "AssignAdd",
           "AssignSub",
           "Atan",
+          "Atan2",
           "AudioSpectrogram",
           "AvgPool",
           "AvgPool3D",

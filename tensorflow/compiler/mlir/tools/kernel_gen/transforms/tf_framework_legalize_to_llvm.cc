@@ -31,7 +31,6 @@ namespace tf_framework {
 namespace {
 
 using LLVM::LLVMFuncOp;
-using LLVM::LLVMType;
 
 static constexpr StringRef kCInterfaceAlloc = "_mlir_ciface_tf_alloc";
 static constexpr StringRef kCInterfaceDealloc = "_mlir_ciface_tf_dealloc";
@@ -62,7 +61,7 @@ class ConvertToLLVMCallOpPattern : public ConvertOpToLLVMPattern<OpTy> {
 
  protected:
   virtual StringRef GetFuncName() const = 0;
-  virtual LLVMType GetFuncType() const = 0;
+  virtual Type GetFuncType() const = 0;
 };
 
 class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
@@ -92,8 +91,7 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
         getSizeInBytes(loc, memref_type.getElementType(), rewriter);
 
     // Convert `output_index` or set it to -1 if the attribute is missing.
-    LLVM::LLVMType llvmInt32Type =
-        LLVM::LLVMIntegerType::get(rewriter.getContext(), 32);
+    Type llvmInt32Type = LLVM::LLVMIntegerType::get(rewriter.getContext(), 32);
     Value output_index = rewriter.create<LLVM::ConstantOp>(
         loc, llvmInt32Type,
         rewriter.getI32IntegerAttr(tf_alloc_op.output_index().hasValue()
@@ -127,11 +125,11 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
  protected:
   StringRef GetFuncName() const override { return kCInterfaceAlloc; }
 
-  LLVMType GetFuncType() const override {
-    LLVMType llvm_i32_type =
+  Type GetFuncType() const override {
+    Type llvm_i32_type =
         LLVM::LLVMIntegerType::get(getDialect().getContext(), 32);
-    LLVMType llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
-    LLVMType llvm_void_ptr_type = getVoidPtrType();
+    Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
+    Type llvm_void_ptr_type = getVoidPtrType();
     return LLVM::LLVMFunctionType::get(
         llvm_void_ptr_type,
         llvm::makeArrayRef(
@@ -181,9 +179,9 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
   std::pair<Value, Value> ConvertI32ArrayAttrToStackAllocatedArray(
       Location loc, llvm::Optional<ArrayAttr> attr,
       ConversionPatternRewriter *rewriter) const {
-    LLVMType llvm_i32_type =
+    Type llvm_i32_type =
         LLVM::LLVMIntegerType::get(getDialect().getContext(), 32);
-    LLVMType llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
+    Type llvm_i32_ptr_type = LLVM::LLVMPointerType::get(llvm_i32_type);
 
     // If the attribute is missing or empty, set the element count to 0 and
     // return NULL.
@@ -240,7 +238,7 @@ class TFDeallocOpConverter : public ConvertToLLVMCallOpPattern<TFDeallocOp> {
 
  protected:
   StringRef GetFuncName() const override { return kCInterfaceDealloc; }
-  LLVMType GetFuncType() const override {
+  Type GetFuncType() const override {
     return LLVM::LLVMFunctionType::get(getVoidType(),
                                        {getVoidPtrType(), getVoidPtrType()});
   }
@@ -276,7 +274,7 @@ class ReportErrorOpConverter
 
  protected:
   StringRef GetFuncName() const override { return kCInterfaceReportError; }
-  LLVMType GetFuncType() const override {
+  Type GetFuncType() const override {
     MLIRContext *ctx = &getTypeConverter()->getContext();
     auto i8_ptr_type =
         LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8));
@@ -344,8 +342,7 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
 
     Location loc = op->getLoc();
     auto result_type = null_memref_op.getType().cast<UnrankedMemRefType>();
-    LLVMType llvm_result_type =
-        typeConverter->convertType(result_type).cast<LLVMType>();
+    Type llvm_result_type = typeConverter->convertType(result_type);
 
     auto desc =
         UnrankedMemRefDescriptor::undef(rewriter, loc, llvm_result_type);
@@ -364,9 +361,8 @@ class NullMemRefOpConverter : public ConvertOpToLLVMPattern<NullMemRefOp> {
     // Populate underlying ranked descriptor.
     unsigned address_space = result_type.getMemorySpace();
     Type elem_type = result_type.getElementType();
-    LLVM::LLVMType llvm_elem_type =
-        typeConverter->convertType(elem_type).cast<LLVMType>();
-    LLVM::LLVMType elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
+    Type llvm_elem_type = typeConverter->convertType(elem_type);
+    Type elem_ptr_ptr_type = LLVM::LLVMPointerType::get(
         LLVM::LLVMPointerType::get(llvm_elem_type, address_space));
 
     auto nullPtr = rewriter.create<LLVM::NullOp>(

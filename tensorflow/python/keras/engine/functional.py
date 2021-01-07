@@ -27,6 +27,7 @@ import warnings
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
@@ -643,8 +644,11 @@ class Functional(training_lib.Model):
       # Dtype casting.
       tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
     elif tf_utils.is_extension_type(tensor):
-      # Dtype casting.
-      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+      # Dtype casting (If the extension type has a non-variant dtype and
+      # supports being cast)
+      ref_input_dtype = getattr(ref_input, 'dtype', None)
+      if ref_input_dtype is not None and ref_input_dtype != dtypes.variant:
+        tensor = math_ops.cast(tensor, dtype=ref_input_dtype)
 
     return tensor
 

@@ -33,7 +33,6 @@ namespace metal {
 ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
                                    const SpaceToDepthAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -51,7 +50,6 @@ kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
     uint src_c = dst_c % args.src_tensor.Channels();
     value[i] = args.src_tensor.Read(src_x, src_y, src_c / 4)[src_c % 4];
   }
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
   $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 })";

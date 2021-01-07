@@ -63,7 +63,6 @@ kernel void ComputeFunction(
     }
   }
 
-  args.dst_tensor.GetAddress(linear_index, igid.x, igid.y, igid.z);
   $2
   args.dst_tensor.Write(value, igid.x, igid.y, igid.z);
 })";
@@ -92,7 +91,6 @@ kernel void ComputeFunction(
   int src_z = t0 - src_x * args.src_tensor.Slices();  // t0 % args.src_tensor.Slices();
 
   FLT4 value = args.src_tensor.Read(src_x, src_y, src_z);
-  args.dst_tensor.GetAddress(linear_index, X, Y, Z);
   $2
   args.dst_tensor.Write(value, X, Y, Z);
 })";
@@ -103,7 +101,6 @@ kernel void ComputeFunction(
 
 ComputeTaskDescriptor Reshape(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetReshapeCode();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
@@ -125,7 +122,6 @@ ComputeTaskDescriptor Reshape(const OperationDef& definition) {
 
 ComputeTaskDescriptor Reshapex4(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetReshapex4Code();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

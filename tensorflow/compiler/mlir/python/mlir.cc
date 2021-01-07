@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/mlir/python/mlir.h"
+
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
@@ -44,7 +46,7 @@ namespace {
 // empty.
 std::string RunPassPipelineOnModule(mlir::ModuleOp module,
                                     const std::string &pass_pipeline,
-                                    TF_Status *status) {
+                                    bool show_debug_info, TF_Status *status) {
   if (!pass_pipeline.empty()) {
     mlir::PassManager pm(module.getContext());
     std::string error;
@@ -61,14 +63,14 @@ std::string RunPassPipelineOnModule(mlir::ModuleOp module,
       return "// error";
     }
   }
-  return MlirModuleToString(module);
+  return MlirModuleToString(module, show_debug_info);
 }
 
 }  // anonymous namespace
 
 std::string ImportGraphDef(const std::string &proto,
                            const std::string &pass_pipeline,
-                           TF_Status *status) {
+                           bool show_debug_info, TF_Status *status) {
   GraphDef graphdef;
   auto s = tensorflow::LoadProtoFromBuffer(proto, &graphdef);
   if (!s.ok()) {
@@ -84,13 +86,14 @@ std::string ImportGraphDef(const std::string &proto,
     return "// error";
   }
 
-  return RunPassPipelineOnModule(module->get(), pass_pipeline, status);
+  return RunPassPipelineOnModule(module->get(), pass_pipeline, show_debug_info,
+                                 status);
 }
 
 std::string ImportFunction(const std::string &functiondef_proto,
                            const std::string &functiondef_library_proto,
                            const std::string &pass_pipeline,
-                           TF_Status *status) {
+                           bool show_debug_info, TF_Status *status) {
   FunctionDef functiondef;
   auto s = tensorflow::LoadProtoFromBuffer(functiondef_proto, &functiondef);
   if (!s.ok()) {
@@ -105,14 +108,15 @@ std::string ImportFunction(const std::string &functiondef_proto,
     return "// error";
   }
 
+  const std::string &function_name = functiondef.signature().name();
+
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), fdef_lib);
-  s = flib_def.AddFunctionDef(functiondef);
+  s = flib_def.AddFunctionDef(functiondef,
+                              flib_def.GetStackTraces(function_name));
   if (!s.ok()) {
     Set_TF_Status_from_Status(status, s);
     return "// error";
   }
-
-  const std::string &function_name = functiondef.signature().name();
 
   const tensorflow::FunctionDef *fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
@@ -136,7 +140,8 @@ std::string ImportFunction(const std::string &functiondef_proto,
     return "// error";
   }
 
-  return RunPassPipelineOnModule(module->get(), pass_pipeline, status);
+  return RunPassPipelineOnModule(module->get(), pass_pipeline, show_debug_info,
+                                 status);
 }
 
 std::string ExperimentalConvertSavedModelToMlir(
