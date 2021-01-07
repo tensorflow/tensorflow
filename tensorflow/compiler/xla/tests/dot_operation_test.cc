@@ -1614,6 +1614,23 @@ ENTRY MatrixVectorComplex {
   EXPECT_TRUE(RunAndCompare(std::move(hlo_module), ErrorSpec{4e-3, 4e-3}));
 }
 
+XLA_TEST_F(DotOperationTextTest, MatrixVectorBF16) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MatrixVectorBF16
+
+ENTRY MatrixVectorBF16 {
+  p0 = bf16[128] parameter(0)
+  p1 = bf16[128,256] parameter(1)
+  p2 = bf16[256] parameter(2)
+  dot = bf16[256] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT add = bf16[256] add(dot, p2)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
 // Regression test for b/138155357, where we were incorrectly creating a dot-add
 // fusion where the dot had a batch dimension.  This isn't supported on the CPU
 // backend.
