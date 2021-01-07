@@ -684,6 +684,7 @@ tf_py_test(
     size = "medium",
     srcs = ["merge_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
