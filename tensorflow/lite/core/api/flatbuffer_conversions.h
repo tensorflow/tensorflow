@@ -126,6 +126,10 @@ TfLiteStatus ParseFloorDiv(const Operator* op, ErrorReporter* error_reporter,
                            BuiltinDataAllocator* allocator,
                            void** builtin_data);
 
+TfLiteStatus ParseFloorMod(const Operator* op, ErrorReporter* error_reporter,
+                           BuiltinDataAllocator* allocator,
+                           void** builtin_data);
+
 TfLiteStatus ParseFullyConnected(const Operator* op,
                                  ErrorReporter* error_reporter,
                                  BuiltinDataAllocator* allocator,
