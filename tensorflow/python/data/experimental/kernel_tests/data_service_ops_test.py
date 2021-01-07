@@ -686,6 +686,28 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds, [i + 1 for i in numbers], assert_items_equal=True)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testParallelZippedDistributedDatasets(self):
+
+    cluster_1 = self.create_cluster(num_workers=1)
+    cluster_2 = self.create_cluster(num_workers=1)
+    cluster_3 = self.create_cluster(num_workers=1)
+    num_sizes = 10
+    size_repeats = 5
+    numbers = [1 * i for i in range(num_sizes)] * size_repeats
+    ds1 = dataset_ops.Dataset.from_tensor_slices(numbers)
+    ds1 = self.make_distributed_dataset(ds1, cluster_1)
+
+    ds2 = dataset_ops.Dataset.from_tensor_slices(numbers)
+    ds2 = self.make_distributed_dataset(ds2, cluster_2)
+
+    ds3 = tf.data.Dataset.zip((ds1, ds2))
+    ds3 = self.make_distributed_dataset(
+        ds3, cluster_3, processing_mode="parallel_epochs")
+
+    self.assertDatasetProduces(
+        ds3, list(zip(numbers, numbers)), assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testTwoLevelDistribute(self):
     cluster_1_size = 3
     cluster_1 = self.create_cluster(num_workers=cluster_1_size)
