@@ -868,24 +868,22 @@ StatusOr<mlir::GetGlobalMemrefOp> LhloDialectEmitter::EmitConstant(
         TypeAttr::get(memref_type), initial_value, true);
     SymbolTable(module_).insert(global_var);
     global_var.getOperation()->moveBefore(&module_.front());
+
+    // For operations that do not fold this constant value in their codegen, we
+    // still need to materialize it into a buffer. Since buffer allocation is
+    // already done, annotate the global_memref with the information to get to
+    // the allocated buffer slice for this constant if need be.
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
+                        assignment_.GetUniqueTopLevelSlice(instr));
+    global_var->setAttr("lmhlo.alloc", builder_.getIndexAttr(slice.index()));
+    TF_RET_CHECK(slice.offset() == 0)
+        << "Each constant should have its own allocation from BufferAssignment";
+    TF_RET_CHECK(slice.allocation()->size() == slice.size())
+        << "Each constant should have its own allocation from BufferAssignment";
   }
 
   auto get_global_memref =
       builder_.create<GetGlobalMemrefOp>(loc, memref_type, constant_name);
-
-  // For operations that do not fold this constant value in their codegen, we
-  // still need to materialize it into a buffer. Since buffer allocation is
-  // already done, annotate the get_global_memref with the information to get to
-  // the allocated buffer slice for this constant if need be.
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      assignment_.GetUniqueTopLevelSlice(instr));
-  get_global_memref->setAttr("lmhlo.alloc",
-                             builder_.getIndexAttr(slice.index()));
-  get_global_memref->setAttr("lmhlo.slice_offset",
-                             builder_.getI64IntegerAttr(slice.offset()));
-  get_global_memref->setAttr("lmhlo.slice_size",
-                             builder_.getI64IntegerAttr(slice.size()));
 
   // Update the cache to remember this value.
   auto& cached_value = slices_[std::make_pair(instr, ::xla::ShapeIndex())];
