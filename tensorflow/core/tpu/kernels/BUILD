@@ -13,7 +13,6 @@ load("//tensorflow:tensorflow.bzl", "tf_kernel_library")  # buildifier: disable=
 
 package(
     default_visibility = [
-        "//tensorflow/compiler/xrt/kernels:__subpackages__",
         "//tensorflow/core/tpu:__subpackages__",
         "//tensorflow/stream_executor/tpu:__subpackages__",
     ],
