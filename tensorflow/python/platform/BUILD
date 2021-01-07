@@ -8,6 +8,9 @@ load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additiona
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 visibility = [
@@ -228,5 +231,18 @@ tf_py_test(
     deps = [
         ":client_testlib",
         ":platform",
+    ],
+)
+
+pybind_extension(
+    name = "_pywrap_tf2",
+    srcs = ["enable_tf2.cc"],
+    hdrs = ["//tensorflow/core/platform:enable_tf2_hdr"],
+    module_name = "_pywrap_tf2",
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:enable_tf2_utils",
+        "@pybind11",
     ],
 )

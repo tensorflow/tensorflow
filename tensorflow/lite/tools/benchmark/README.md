@@ -81,7 +81,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
     Note this requires Android 10+.
-*   `disable_nnapi_cpu`: `bool` (default=false)
+*   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
 #### Hexagon delegate

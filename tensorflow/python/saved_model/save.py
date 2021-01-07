@@ -358,7 +358,7 @@ class _SaveableView(object):
              "\n".join(concrete_function.graph.saving_errors)).format(
                  name=concrete_function.name))
       for capture in concrete_function.captured_inputs:
-        if (tensor_util.is_tensor(capture) and
+        if (tensor_util.is_tf_type(capture) and
             capture.dtype not in _UNCOPIABLE_DTYPES and
             capture not in self.captured_tensor_node_ids):
           if hasattr(capture, "_cached_variable"):

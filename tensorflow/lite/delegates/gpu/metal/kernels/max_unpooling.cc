@@ -67,7 +67,6 @@ kernel void ComputeFunction(
   value.z = t_index == indexes.z ? src_color.z : 0.0;
   value.w = t_index == indexes.w ? src_color.w : 0.0;
 
-  args.dst_tensor.GetAddress(linear_index, X, Y, gid.z);
   $2
   args.dst_tensor.Write(value, X, Y, gid.z);
 }
@@ -79,7 +78,6 @@ kernel void ComputeFunction(
 ComputeTaskDescriptor MaxUnpooling(const OperationDef& definition,
                                    const MaxUnpooling2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetMaxUnpoolingCode();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

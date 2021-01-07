@@ -76,36 +76,6 @@ func @read_only_unpartitioned_resource(%arg0: tensor<!tf.resource<tensor<i32>>>)
   return
 }
 
-// CHECK-LABEL: func @invalid_sharding_read_only_resource
-// CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf.resource<tensor<i32>>>, [[ARG1:%.+]]: tensor<!tf.resource<tensor<i32>>>)
-func @invalid_sharding_read_only_resource(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
-  // CHECK:      "tf.TPUPartitionedInput"([[ARG0]], [[ARG1]])
-  %0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
-  %2 = "tf_device.cluster_func"(%1) {func = @computation} : (tensor<i32>) -> tensor<i32>
-  // "\08\01\1A\01\01\22\01\00" = Maximal(0) sharding.
-  // CHECK:      "tf.TPUPartitionedInput"([[ARG0]], [[ARG1]])
-  %3 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "\08\01\1A\01\01\22\01\00", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-  %4 = "tf.ReadVariableOp"(%3) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
-  %5 = "tf_device.cluster_func"(%4) {func = @computation} : (tensor<i32>) -> tensor<i32>
-  return
-}
-
-// CHECK-LABEL: func @invalid_sharding_write_only_resource
-// CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf.resource<tensor<i32>>>, [[ARG1:%.+]]: tensor<!tf.resource<tensor<i32>>>, {{%.+}}: tensor<i32>)
-func @invalid_sharding_write_only_resource(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>, %arg2: tensor<i32>) {
-  // CHECK:      "tf.TPUPartitionedInput"([[ARG0]], [[ARG1]])
-  %0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-  %1 = "tf_device.cluster_func"(%arg2) {func = @computation} : (tensor<i32>) -> tensor<i32>
-  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
-  // "\08\01\1A\01\01\22\01\00" = Maximal(0) sharding.
-  // CHECK:      "tf.TPUPartitionedInput"([[ARG0]], [[ARG1]])
-  %2 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "\08\01\1A\01\01\22\01\00", partition_dim = -1 : i64} : (tensor<!tf.resource<tensor<i32>>>, tensor<!tf.resource<tensor<i32>>>) -> tensor<!tf.resource<tensor<i32>>>
-  %3 = "tf_device.cluster_func"(%arg2) {func = @computation} : (tensor<i32>) -> tensor<i32>
-  "tf.AssignVariableOp"(%2, %3) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
-  return
-}
-
 // CHECK-LABEL: func @resource_read_multiple_users
 // CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf.resource<tensor<i32>>>, [[ARG1:%.+]]: tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
 func @resource_read_multiple_users(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) -> tensor<i32> {
@@ -132,4 +102,16 @@ func @non_resource_read_input_write_output(%arg0: tensor<i32>) -> tensor<i32> {
   %0 = "tf_device.cluster_func"(%arg0) {func = @computation} : (tensor<i32>) -> tensor<i32>
   // CHECK-NOT:  tf.TPUPartitionedOutput
   return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @resource_missing_subtype
+// CHECK-SAME: ([[ARG0:%.+]]: tensor<!tf.resource>, [[ARG1:%.+]]: tensor<!tf.resource>)
+func @resource_missing_subtype(%arg0: tensor<!tf.resource>, %arg1: tensor<!tf.resource>) {
+  // CHECK:      "tf.TPUPartitionedInput"([[ARG0]], [[ARG1]])
+  %0 = "tf.TPUPartitionedInput"(%arg0, %arg1) {N = 2 : i64, _XlaSharding = "", partition_dim = -1 : i64} : (tensor<!tf.resource>, tensor<!tf.resource>) -> tensor<!tf.resource>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<!tf.resource>) -> tensor<i32>
+  %2 = "tf_device.cluster_func"(%1) {func = @computation, use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
+  // CHECK-NOT:  tf.TPUPartitionedOutput
+  "tf.AssignVariableOp"(%0, %2) : (tensor<!tf.resource>, tensor<i32>) -> ()
+  return
 }

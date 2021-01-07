@@ -105,14 +105,15 @@ GpuVersion AMDGPUCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
+AMDGPUCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                     llvm::Module* llvm_module,
                                     GpuVersion gpu_version,
                                     se::StreamExecutor* stream_exec,
-                                    bool relocatable) {
+                                    bool relocatable,
+                                    const HloModule* debug_module) {
   if (rocdl_dir_.empty()) {
     // Compute rocdl_dir_ just once and cache it in this member.
-    rocdl_dir_ = GetROCDLDir(module->config());
+    rocdl_dir_ = GetROCDLDir(module_config);
   }
 
   if (relocatable) {
@@ -123,15 +124,9 @@ AMDGPUCompiler::CompileTargetBinary(const HloModule* module,
   {
     XLA_SCOPED_LOGGING_TIMER(
         "AMDGPUCompiler::CompileTargetBinary - CompileToHsaco");
-    TF_ASSIGN_OR_RETURN(hsaco,
-                        amdgpu::CompileToHsaco(llvm_module, gpu_version,
-                                               module->config(), rocdl_dir_));
-  }
-
-  llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/false);
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
+    TF_ASSIGN_OR_RETURN(
+        hsaco, amdgpu::CompileToHsaco(llvm_module, gpu_version, module_config,
+                                      rocdl_dir_));
   }
 
   return std::pair<std::string, std::vector<uint8>>("", std::move(hsaco));

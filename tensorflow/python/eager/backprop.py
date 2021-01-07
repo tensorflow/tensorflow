@@ -678,7 +678,7 @@ def _zeros(shape, dtype):
 
   device = ctx.device_name
 
-  if tensor_util.is_tensor(shape):
+  if tensor_util.is_tf_type(shape):
     shape_key = shape.ref()
   else:
     shape_key = shape
@@ -1007,6 +1007,7 @@ class GradientTape(object):
     Raises:
       RuntimeError: If called on a used, non-persistent tape.
       RuntimeError: If called inside the context of the tape.
+      TypeError: If the target is a None object.
       ValueError: If the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
@@ -1027,6 +1028,11 @@ class GradientTape(object):
             "context if you actually want to trace the "
             "gradient in order to compute higher order "
             "derivatives.", 1)
+
+    if target is None:
+      raise TypeError("Target should be a list or nested structure"
+                      " of Tensors or Variables to be differentiated,"
+                      " but recieved %r" % (target))
 
     num_ndarrays = 0
     flat_targets = []

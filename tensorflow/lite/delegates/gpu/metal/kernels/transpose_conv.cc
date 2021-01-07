@@ -103,7 +103,6 @@ std::string GetDeconvolution(const ConvolutionTransposedAttributes& attr) {
 
       for (short l = 0; l < dst_depth; ++l) {
         FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
-        args.dst_tensor.GetAddress(linear_index, ugid.x, ugid.y, l);
         uint3 gid = uint3(ugid.x, ugid.y, uint(l));
         $$2
         args.dst_tensor.Write(value, ugid.x, ugid.y, l);
@@ -226,7 +225,6 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
 
       for (short l = 0; l < dst_depth; ++l) {
         FLT4 value = FLT4(out[l * 4], out[l * 4 + 1], out[l * 4 + 2], out[l * 4 + 3]) + args.biases.Read(l);
-        args.dst_tensor.GetAddress(linear_index, ugid.x, ugid.y, l);
         uint3 gid = uint3(ugid.x, ugid.y, uint(l));
         $$2
         args.dst_tensor.Write(value, ugid.x, ugid.y, l);
@@ -402,8 +400,6 @@ kernel void ComputeFunction(
           c += "  if (" + x_check + " && " + y_check + ") {\n";
           c += "    FLT4 value = FLT4(" + R + ") + bias_val;\n";
           std::string dst_coords = dst_x + ", " + dst_y + ", Z";
-          c += "    args.dst_tensor.GetAddress(linear_index, " + dst_coords +
-               ");\n";
           c += "    uint3 gid = uint3(" + dst_coords + ");\n";
           c += "    $2\n";
           c += "    args.dst_tensor.Write(value, " + dst_coords + ");\n";
@@ -422,7 +418,6 @@ ComputeTaskDescriptor ConvolutionTransposed(
     const OperationDef& definition,
     const ConvolutionTransposedAttributes& params, const GpuInfo& gpu_info) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
 
   const int src_local_size_x =
       (kThreadGroupWidth + params.weights.shape.w) / params.stride.w;
@@ -554,7 +549,6 @@ ComputeTaskDescriptor ConvolutionTransposed4x4(
                                               dst_ch_aligned);
 
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
 
   bool recommended_2x = false;
   if (gpu_info.IsApple()) {

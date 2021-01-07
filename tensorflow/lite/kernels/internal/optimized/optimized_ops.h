@@ -104,7 +104,6 @@ using reference_ops::Round;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
-using reference_ops::StridedSlice;
 using reference_ops::Sub16;
 
 // TODO(b/80247582) Remove this constant.
@@ -5447,6 +5446,106 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& output_shape, TfLiteTensor* output) {
   SequentialTensorWriter<T> writer(input, output);
   return Slice(op_params, input_shape, output_shape, &writer);
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const RuntimeShape& unextended_output_shape,
+                         SequentialTensorWriter<T>* writer) {
+  using strided_slice::LoopCondition;
+  using strided_slice::StartForAxis;
+  using strided_slice::StopForAxis;
+
+  // We only have an optimized implementation for the case where the inner-most
+  // stride == 1. For all other cases, fall back to the reference impl.
+  if ((op_params.strides_count <= 0) ||
+      (op_params.strides[op_params.strides_count - 1] != 1)) {
+    reference_ops::StridedSlice(op_params, unextended_input_shape,
+                                unextended_output_shape, writer);
+    return;
+  }
+
+  ruy::profiler::ScopeLabel label("StridedSliceInnerStrideOne");
+
+  // Note that the output_shape is not used herein.
+  tflite::StridedSliceParams params_copy = op_params;
+
+  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 5);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 5);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(5, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(5, unextended_output_shape);
+
+  // Reverse and pad to 5 dimensions because that is what the runtime code
+  // requires (ie. all shapes must be 5D and are given backwards).
+  strided_slice::StridedSlicePadIndices(&params_copy, 5);
+  TFLITE_DCHECK_EQ(params_copy.strides[4], 1);
+
+  const int start_0 = StartForAxis(params_copy, input_shape, 0);
+  const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
+  const int start_1 = StartForAxis(params_copy, input_shape, 1);
+  const int stop_1 = StopForAxis(params_copy, input_shape, 1, start_1);
+  const int start_2 = StartForAxis(params_copy, input_shape, 2);
+  const int stop_2 = StopForAxis(params_copy, input_shape, 2, start_2);
+  const int start_3 = StartForAxis(params_copy, input_shape, 3);
+  const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
+  const int start_4 = StartForAxis(params_copy, input_shape, 4);
+  const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
+
+  for (int offset_0 = start_0 * input_shape.Dims(1),
+           end_0 = stop_0 * input_shape.Dims(1),
+           step_0 = params_copy.strides[0] * input_shape.Dims(1);
+       !LoopCondition(offset_0, end_0, params_copy.strides[0]);
+       offset_0 += step_0) {
+    for (int offset_1 = (offset_0 + start_1) * input_shape.Dims(2),
+             end_1 = (offset_0 + stop_1) * input_shape.Dims(2),
+             step_1 = params_copy.strides[1] * input_shape.Dims(2);
+         !LoopCondition(offset_1, end_1, params_copy.strides[1]);
+         offset_1 += step_1) {
+      for (int offset_2 = (offset_1 + start_2) * input_shape.Dims(3),
+               end_2 = (offset_1 + stop_2) * input_shape.Dims(3),
+               step_2 = params_copy.strides[2] * input_shape.Dims(3);
+           !LoopCondition(offset_2, end_2, params_copy.strides[2]);
+           offset_2 += step_2) {
+        for (int offset_3 = (offset_2 + start_3) * input_shape.Dims(4),
+                 end_3 = (offset_2 + stop_3) * input_shape.Dims(4),
+                 step_3 = params_copy.strides[3] * input_shape.Dims(4);
+             !LoopCondition(offset_3, end_3, params_copy.strides[3]);
+             offset_3 += step_3) {
+          // Note: We've already validated that the inner-most stride is 1, so
+          // we can safely write the full inner sequence.
+          const int len = stop_4 - start_4;
+          if (len > 0) {
+            writer->WriteN(offset_3 + start_4, len);
+          }
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const T* input_data,
+                         const RuntimeShape& unextended_output_shape,
+                         T* output_data) {
+  SequentialTensorWriter<T> writer(input_data, output_data);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
+}
+
+template <typename T>
+inline void StridedSlice(const tflite::StridedSliceParams& op_params,
+                         const RuntimeShape& unextended_input_shape,
+                         const TfLiteTensor* input,
+                         const RuntimeShape& unextended_output_shape,
+                         TfLiteTensor* output) {
+  SequentialTensorWriter<T> writer(input, output);
+  StridedSlice<T>(op_params, unextended_input_shape, unextended_output_shape,
+                  &writer);
 }
 
 template <typename T>

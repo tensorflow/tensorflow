@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/add_n.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/exp.h"
 #include "tensorflow/lite/kernels/internal/reference/fill.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
+#include "tensorflow/lite/kernels/internal/reference/floor_mod.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
@@ -61,10 +63,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/space_to_depth.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/sub.h"
 #include "tensorflow/lite/kernels/internal/reference/tanh.h"
+#include "tensorflow/lite/kernels/internal/reference/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -113,58 +117,6 @@ inline void DepthToSpace(const tflite::DepthToSpaceParams& op_params,
           const int in_w = out_w / block_size;
           const int in_h = out_h / block_size;
           const int in_b = out_b;
-
-          const int input_index = Offset(input_shape, in_b, in_h, in_w, in_d);
-          const int output_index =
-              Offset(output_shape, out_b, out_h, out_w, out_d);
-
-          output_data[output_index] = input_data[input_index];
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  const int input_depth = input_shape.Dims(3);
-  const int input_width = input_shape.Dims(2);
-  const int input_height = input_shape.Dims(1);
-  const int input_batch = input_shape.Dims(0);
-
-  const int output_depth = output_shape.Dims(3);
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch = output_shape.Dims(0);
-
-  const int32 block_size = op_params.block_size;
-
-  TFLITE_DCHECK_EQ(input_width, output_width * block_size);
-  TFLITE_DCHECK_EQ(input_height, output_height * block_size);
-  TFLITE_DCHECK_EQ(input_depth * block_size * block_size, output_depth);
-  TFLITE_DCHECK_EQ(input_batch, output_batch);
-
-  for (int in_b = 0; in_b < input_batch; ++in_b) {
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        for (int in_d = 0; in_d < input_depth; ++in_d) {
-          const int out_d =
-              in_d + ((in_h % block_size) * block_size + in_w % block_size) *
-                         input_depth;
-          const int out_w = in_w / block_size;
-          const int out_h = in_h / block_size;
-          const int out_b = in_b;
 
           const int input_index = Offset(input_shape, in_b, in_h, in_w, in_d);
           const int output_index =
@@ -299,22 +251,6 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
     output_data[i] = static_cast<T>(clamped_output);
-  }
-}
-
-// T is expected to be either float or int.
-template <typename T>
-inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
-                 T* const* input_data, T* output_data) {
-  // All inputs and output should have the same shape, this is checked during
-  // Prepare stage.
-  const size_t size = input_shape.FlatSize();
-  for (int i = 0; i < size; ++i) {
-    T x = 0;
-    for (int j = 0; j < num_inputs; ++j) {
-      x += input_data[j][i];
-    }
-    output_data[i] = x;
   }
 }
 
@@ -1224,22 +1160,6 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   }
 }
 
-template <typename T>
-T FloorMod(T input1, T input2) {
-  struct FloatMod {
-    float operator()(const float lhs, const float rhs) const {
-      return std::fmod(lhs, rhs);
-    }
-  };
-  using ModFunc = typename std::conditional<std::is_integral<T>::value,
-                                            std::modulus<T>, FloatMod>::type;
-  ModFunc mod_func;
-  T trunc_mod = mod_func(input1, input2);
-  return (trunc_mod != 0) && ((input2 < 0) != (trunc_mod < 0))
-             ? (trunc_mod + input2)
-             : trunc_mod;
-}
-
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
@@ -1919,195 +1839,6 @@ void Transpose(const TransposeParams& params,
                                 unextended_output_shape,
                                 reinterpret_cast<int64_t*>(output_data));
       break;
-  }
-}
-
-inline void TransposeConv(
-    const ConvParams& params, const RuntimeShape& input_shape,
-    const float* input_data, const RuntimeShape& filter_shape,
-    const float* filter_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
-    float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const int pad_width = params.padding_values.width;
-  const int pad_height = params.padding_values.height;
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  (void)im2col_data;   // only used in optimized code.
-  (void)im2col_shape;  // only used in optimized code.
-
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
-  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int filter_height = filter_shape.Dims(1);
-  const int filter_width = filter_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  if (bias_data) {
-    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-  }
-
-  // Although transpose convolution simplifies to convolution with transposed
-  // weights for strides of 1, non-unitary striding complicates matters. To
-  // keep this reference implementation as clear as possible, we use a
-  // "scatter" access pattern, where we loop through all the input elements,
-  // computing their influence on the output, rather than looping through the
-  // output elements in the typical "gather" access pattern of a conv. We
-  // therefore must initialize the output array to zero.
-  const int num_elements = output_shape.FlatSize();
-  for (int i = 0; i < num_elements; i++) {
-    output_data[i] = 0.0f;
-  }
-
-  // Loop through input elements one at a time.
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int in_y = 0; in_y < input_height; ++in_y) {
-      for (int in_x = 0; in_x < input_width; ++in_x) {
-        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-          // Loop through the output elements it will influence
-          const int out_x_origin = (in_x * stride_width) - pad_width;
-          const int out_y_origin = (in_y * stride_height) - pad_height;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < output_depth;
-                   ++out_channel) {
-                // Compute output element location
-                const int out_x = out_x_origin + filter_x;
-                const int out_y = out_y_origin + filter_y;
-                // We cannot accumulate out of bounds
-                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
-                    (out_y < output_height)) {
-                  float input_value = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
-                  float filter_value =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  output_data[Offset(output_shape, batch, out_y, out_x,
-                                     out_channel)] +=
-                      input_value * filter_value;
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  if (bias_data) {
-    for (int batch = 0; batch < batches; ++batch) {
-      for (int out_y = 0; out_y < output_height; ++out_y) {
-        for (int out_x = 0; out_x < output_width; ++out_x) {
-          for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-            output_data[Offset(output_shape, batch, out_y, out_x,
-                               out_channel)] += bias_data[out_channel];
-          }
-        }
-      }
-    }
-  }
-}
-
-inline void TransposeConv(
-    const ConvParams& params, const RuntimeShape& input_shape,
-    const uint8* input_data, const RuntimeShape& filter_shape,
-    const uint8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data, const RuntimeShape& im2col_shape, uint8* im2col_data,
-    int32* scratch_buffer) {
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const int pad_width = params.padding_values.width;
-  const int pad_height = params.padding_values.height;
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-  (void)im2col_data;   // only used in optimized code.
-  (void)im2col_shape;  // only used in optimized code.
-
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
-  const int output_depth = MatchingDim(filter_shape, 0, output_shape, 3);
-  const int input_height = input_shape.Dims(1);
-  const int input_width = input_shape.Dims(2);
-  const int filter_height = filter_shape.Dims(1);
-  const int filter_width = filter_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  const int32 input_offset = params.input_offset;
-  const int32 filter_offset = params.weights_offset;
-  const int32 output_offset = params.output_offset;
-  const int32 output_multiplier = params.output_multiplier;
-  const int output_shift = params.output_shift;
-  const int32 output_activation_min = params.quantized_activation_min;
-  const int32 output_activation_max = params.quantized_activation_max;
-  TFLITE_DCHECK_LE(output_activation_min, output_activation_max);
-  if (bias_data) {
-    TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
-  }
-
-  const int num_elements = output_shape.FlatSize();
-  // We need to initialize scratch_buffer to all 0s, as we apply the same
-  // 'scatter' based trick as in float version.
-  memset(scratch_buffer, 0, num_elements * sizeof(int32));
-
-  // Loop through input elements one at a time.
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int in_y = 0; in_y < input_height; ++in_y) {
-      for (int in_x = 0; in_x < input_width; ++in_x) {
-        for (int in_channel = 0; in_channel < input_depth; ++in_channel) {
-          // Loop through the output elements it will influence.
-          const int out_x_origin = (in_x * stride_width) - pad_width;
-          const int out_y_origin = (in_y * stride_height) - pad_height;
-          for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              for (int out_channel = 0; out_channel < output_depth;
-                   ++out_channel) {
-                // Compute output element location.
-                const int out_x = out_x_origin + filter_x;
-                const int out_y = out_y_origin + filter_y;
-                // We cannot accumulate out of bounds.
-                if ((out_x >= 0) && (out_x < output_width) && (out_y >= 0) &&
-                    (out_y < output_height)) {
-                  uint8 input_value = input_data[Offset(
-                      input_shape, batch, in_y, in_x, in_channel)];
-                  uint8 filter_value =
-                      filter_data[Offset(filter_shape, out_channel, filter_y,
-                                         filter_x, in_channel)];
-                  scratch_buffer[Offset(output_shape, batch, out_y, out_x,
-                                        out_channel)] +=
-                      (input_value + input_offset) *
-                      (filter_value + filter_offset);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-          int32 acc = scratch_buffer[Offset(output_shape, batch, out_y, out_x,
-                                            out_channel)];
-          if (bias_data) {
-            acc += bias_data[out_channel];
-          }
-          int32 scaled_acc = MultiplyByQuantizedMultiplier(
-              acc, output_multiplier, output_shift);
-          scaled_acc += output_offset;
-          scaled_acc = std::max(scaled_acc, output_activation_min);
-          scaled_acc = std::min(scaled_acc, output_activation_max);
-          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
-              static_cast<uint8>(scaled_acc);
-        }
-      }
-    }
   }
 }
 

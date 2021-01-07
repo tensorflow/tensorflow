@@ -346,7 +346,7 @@ def validate_per_replica_inputs(distribution_strategy, x):
     # At this point x should contain only tensors.
     x_values = distribution_strategy.unwrap(x)
     for value in x_values:
-      if not tensor_util.is_tensor(value):
+      if not tensor_util.is_tf_type(value):
         raise ValueError('Dataset input to the model should be tensors instead '
                          'they are of type {}'.format(type(value)))
 

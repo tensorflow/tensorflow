@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -223,14 +224,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
               .getValue()
               .getSExtValue(),
           size);
-    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
+      auto module = get_global->getParentOfType<mlir::ModuleOp>();
+      auto global = mlir::cast<mlir::GlobalMemrefOp>(
+          module.lookupSymbol(get_global.name()));
       int64_t index =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      int64_t offset =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
-      int64_t size =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
-      return BufferAllocation::Slice(&allocations[index], offset, size);
+          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      return BufferAllocation::Slice(&allocations[index], 0,
+                                     allocations[index].size());
     }
     return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
   }
@@ -566,12 +567,7 @@ StatusOr<Shape> GetConsistentInputShapeForRootSlices(
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
                                      const HloComputation* hlo_computation,
                                      IrEmitterContext* ir_emitter_context)
-    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
-      hlo_computation_(hlo_computation),
-      mlir_scratch_module_(mlir::ModuleOp::create(
-          mlir::Builder(ir_emitter_context->mlir_context()).getUnknownLoc())),
-      lhlo_scratch_emitter_(ir_emitter_context_->buffer_assignment(),
-                            *hlo_computation, mlir_scratch_module_.get()) {}
+    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false) {}
 
 StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     const HloModuleConfig& hlo_module_config,
@@ -579,8 +575,15 @@ StatusOr<std::unique_ptr<IrEmitterUnnested>> IrEmitterUnnested::Create(
     IrEmitterContext* ir_emitter_context) {
   auto emitter = std::unique_ptr<IrEmitterUnnested>(new IrEmitterUnnested(
       hlo_module_config, hlo_computation, ir_emitter_context));
-  TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_.Initialize());
-  TF_RETURN_IF_ERROR(emitter->EmitConstants(*hlo_computation, true));
+  if (hlo_computation) {
+    emitter->mlir_scratch_module_.emplace(mlir::ModuleOp::create(
+        mlir::Builder(ir_emitter_context->mlir_context()).getUnknownLoc()));
+    emitter->lhlo_scratch_emitter_.emplace(
+        emitter->ir_emitter_context_->buffer_assignment(), *hlo_computation,
+        emitter->mlir_scratch_module_->get());
+    TF_RETURN_IF_ERROR(emitter->lhlo_scratch_emitter_->Initialize());
+    TF_RETURN_IF_ERROR(emitter->EmitConstants(*hlo_computation, true));
+  }
   return std::move(emitter);
 }
 
@@ -656,9 +659,8 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 
 StatusOr<BufferAllocation::Slice> IrEmitterUnnested::GetAllocationSliceForMlir(
     ::mlir::Value v) {
-  absl::Span<const BufferAllocation> allocations(
-      ir_emitter_context_->buffer_assignment().Allocations());
-  return xla::gpu::GetAllocationSliceForMlir(v, allocations);
+  return xla::gpu::GetAllocationSliceForMlir(
+      v, ir_emitter_context_->allocations());
 }
 
 Status IrEmitterUnnested::DefaultAction(HloInstruction* hlo) {
@@ -1583,7 +1585,7 @@ static Status ProcessFusionForConversion(mlir::Region* region,
 StatusOr<MlirEmitterInput> IrEmitterUnnested::GetMlirEmitterInput(
     HloInstruction* hlo) {
   MlirEmitterInput input;
-  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_.EmitOp(hlo));
+  TF_ASSIGN_OR_RETURN(input.op, lhlo_scratch_emitter_->EmitOp(hlo));
   input.thunk_info = GetThunkInfo(hlo);
   if (hlo->shape().IsTuple()) {
     const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
@@ -1751,7 +1753,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 
           TF_ASSIGN_OR_RETURN(
               const auto dim_numbers,
-              lhlo_scratch_emitter_.GetScatterDimensionNumbers(root));
+              lhlo_scratch_emitter_->GetScatterDimensionNumbers(root));
 
           ScatterDescriptor desc;
           desc.name = IrName(root);
@@ -2647,7 +2649,7 @@ IrEmitterUnnested::GetOrCreateSubComputationFromRegion(mlir::Region* region,
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   MlirEmitterInput result;
 
-  TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_.EmitOp(sort));
+  TF_ASSIGN_OR_RETURN(auto sort_op, lhlo_scratch_emitter_->EmitOp(sort));
   result.op = sort_op;
   const auto& buffer_assignment = ir_emitter_context_->buffer_assignment();
   auto& slice = result.extra_slice.emplace();
@@ -2852,14 +2854,6 @@ Status IrEmitterUnnested::EmitSortFromMlir(MlirEmitterInput mlir_input) {
 
   AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
       mlir_input.thunk_info, std::move(thunks)));
-  if (context.operand_shapes.size() > 1) {
-    // Emit the tuple as part of the last stage of sorting.
-    // We are currently in the block sorted.in_bounds.after.
-    b_.SetInsertPoint(b_.GetInsertBlock()->getTerminator());
-    llvm_ir::EmitTuple(
-        ir_arrays.back(),
-        absl::MakeSpan(ir_arrays).subspan(0, ir_arrays.size() - 1), &b_);
-  }
   return Status::OK();
 }
 
@@ -3175,7 +3169,22 @@ Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
-  return ThunkEmitter(this).HandleInfeed(xla_infeed);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(xla_infeed));
+
+  auto infeed_op = mlir::dyn_cast<mlir::lmhlo::InfeedOp>(input.op);
+
+  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  dest_slices.reserve(infeed_op.outputs().size());
+
+  for (mlir::Value output : infeed_op.outputs()) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(output));
+    const Shape& shape = TypeToShape(output.getType());
+    dest_slices.push_back(InfeedThunk::ShapedSlice{slice, shape});
+  }
+
+  AddThunkToThunkSequence(
+      absl::make_unique<InfeedThunk>(input.thunk_info, std::move(dest_slices)));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {
@@ -3300,8 +3309,6 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     absl::Span<const BufferSlice* const> slices,
     std::function<void(const BufferSlice*, llvm::Value*)>
         bind_slice_to_ir_value) {
-  const auto& buffer_assn = ir_emitter_context_->buffer_assignment();
-
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in slices,
   // plus the XLA temp buffer (if we have it).  We always include the temp
@@ -3312,7 +3319,7 @@ IrEmitterUnnested::BuildKernelThunkFromBufferSlices(
     buffers_needed.insert(slice->buffer_slice.allocation());
   }
   absl::optional<const BufferAllocation*> temp_buffer;
-  for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
+  for (const BufferAllocation& alloc : ir_emitter_context_->allocations()) {
     if (alloc.IsPreallocatedTempBuffer()) {
       if (!temp_buffer.has_value()) {
         // Retrieve the first seen temp buffer.
@@ -5856,6 +5863,15 @@ Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(
         static_cast<int64>(index_map->GetProfileIndexFor(*hlo)));
   }
   return info;
+}
+
+Status IrEmitterUnnested::EmitOp(MlirEmitterInput mlir_input) {
+  if (mlir::isa<mlir::lmhlo::SortOp>(mlir_input.op)) {
+    return EmitSortFromMlir(mlir_input);
+  }
+  LOG(FATAL)
+      << "This function is for test only, and the op is not implemented: "
+      << MlirToString(mlir_input.op);
 }
 
 void MlirEmitterContext::SetOperation(mlir::Operation* op) {

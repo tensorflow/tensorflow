@@ -200,13 +200,14 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
 }
 
 // Try to load ptx from files defined in the FLAGS. If successful, return true.
-bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
+bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
+                          const HloModule* module, std::string* ptx) {
   // If the xla_gpu_ptx_file options is set, be explicit when a file is used
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
   for (const string& full_filename :
-       module->config().debug_options().xla_gpu_ptx_file()) {
+       module_config.debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
     auto filename = tensorflow::io::Basename(full_filename);
@@ -216,7 +217,7 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
       break;
     }
   }
-  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
+  if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
       matched_filename.empty()) {
     VLOG(0) << "RunBackend() - For module with prefix '" << prefix
             << "', we did not found a PTX file to load.";
@@ -297,11 +298,12 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-NVPTXCompiler::CompileTargetBinary(const HloModule* module,
+NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
                                    se::StreamExecutor* stream_exec,
-                                   bool relocatable) {
+                                   bool relocatable,
+                                   const HloModule* debug_module) {
   std::pair<int, int> compute_capability =
       absl::get<std::pair<int, int>>(gpu_version);
 
@@ -313,34 +315,24 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     // time, we have a one-element cache, keyed on the module's config's
     // cuda_data_dir.
     if (cached_libdevice_dir_.empty()) {
-      cached_libdevice_dir_ = GetLibdeviceDir(module->config());
+      cached_libdevice_dir_ = GetLibdeviceDir(module_config);
     }
     libdevice_dir = cached_libdevice_dir_;
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
 
   string ptx;
-  if (!MaybeLoadPtxFromFile(module, &ptx)) {
+  if (!(debug_module &&
+        MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
-                                 libdevice_dir));
-  }
-
-  llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/true);
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
-  }
-  // Write PTX to IR dump directory, if IR dumping was requested.
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
+    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(llvm_module, gpu_version,
+                                                 module_config, libdevice_dir));
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability.first, compute_capability.second,
-      module->config(), relocatable);
+      module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));

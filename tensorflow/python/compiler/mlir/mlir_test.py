@@ -46,13 +46,14 @@ class MLIRConcreteFunctionImportTest(test.TestCase):
   def testImport(self):
 
     @def_function.function
-    def identity(i):
-      return i
+    def sqr(i):
+      return i * i
 
-    concrete_function = identity.get_concrete_function(
+    concrete_function = sqr.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.float32))
-    mlir_module = mlir.convert_function(concrete_function)
-    self.assertRegex(mlir_module, r'func @.*identity.*\(')
+    mlir_module = mlir.convert_function(concrete_function, show_debug_info=True)
+    self.assertRegex(mlir_module, r'func @.*sqr.*\(')
+    self.assertRegex(mlir_module, r'loc\(')
 
   def testImportWithCall(self):
 

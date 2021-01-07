@@ -1489,11 +1489,16 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
     auto tuple =
         xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
-
     builder->ClearSharding();
 
-    for (BlockArgument& arg : block->getArguments())
+    bool set_tuple_element_sharding =
+        !arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings);
+    for (BlockArgument& arg : block->getArguments()) {
+      if (set_tuple_element_sharding)
+        builder->SetSharding(arg_shardings[arg.getArgNumber()].value());
       lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
+    }
+    builder->ClearSharding();
   } else {
     for (BlockArgument& arg : block->getArguments()) {
       auto num = arg.getArgNumber();

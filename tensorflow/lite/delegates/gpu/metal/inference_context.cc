@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 
 #include <map>
+#include <string>
 #include <vector>
 
 #include "absl/strings/substitute.h"
@@ -422,41 +423,31 @@ void RemoveInputProxies(std::list<FusionSequence>* chains) {
 }
 
 NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
-                               ValueId output_id) {
+                               ValueId output_id,
+                               const OperationDef& definition) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->is_linkable = false;
   desc->shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
     $0
-    kernel void ComputeFunction(
-                                $1
+    kernel void ComputeFunction($1
                                 uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= size.x || int(gid.y) >= size.y) {
+      if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
         return;
       }
-      const int linear_index = (gid.z * size.y + gid.y) * size.x + gid.x;
-      FLT4 value = src_tensor[linear_index];
+      FLT4 value = args.src_tensor.Read(gid.x, gid.y, gid.z);
+      args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
       $2
-      dst_tensor[linear_index] = value;
+      args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
     }
   )";
 
-  desc->AddSrcTensor("src_tensor", {});
-  desc->AddDstTensor("dst_tensor", {});
-
-  desc->uniform_buffers = {
-      {"constant int2& size",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         return GetByteBuffer(
-             std::vector<int>{src_shapes[0].w, src_shapes[0].h});
-       }},
-  };
+  desc->AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc->AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc->resize_function = [](const std::vector<BHWC>& src_shapes,
                              const std::vector<BHWC>& dst_shapes) {
-    uint3 groups_size{16, 16, 1};
+    uint3 groups_size{8, 8, 1};
     uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
                        DivideRoundUp(dst_shapes[0].h, groups_size.y),
                        DivideRoundUp(dst_shapes[0].c, 4)};
@@ -471,120 +462,43 @@ NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
   return node_desc;
 }
 
-NodeDescriptor FuseChain(const FusionSequence& chain) {
-  NodeDescriptor node_desc;
-  auto fused_descriptor = std::make_shared<ComputeTaskDescriptor>();
-  FusionSequence sequence;
+absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst,
+                        std::string link_name) {
+  dst->dst_tensors_ids[0] = src->dst_tensors_ids[0];
+  dst->description += " linked : " + src->description;
+  for (int i = 0; i < src->task->src_tensors_names.size(); ++i) {
+    std::string tensor_name = src->task->src_tensors_names[i];
+    dst->task->src_tensors_names.push_back(tensor_name + link_name);
+    dst->task->definition.src_tensors.push_back(
+        src->task->definition.src_tensors[i + 1]);
+    dst->src_tensors_ids.push_back(src->src_tensors_ids[i + 1]);
+  }
+
+  std::string code = src->task->shader_source;
+  src->task->args.RenameArgs(link_name, &code);
+
+  RETURN_IF_ERROR(dst->task->args.Merge(std::move(src->task->args), link_name));
+
+  dst->task->shader_source = absl::Substitute(dst->task->shader_source, "$0",
+                                              "$1", "{\n" + code + "\n}\n$2");
+
+  return absl::OkStatus();
+}
+
+absl::Status FuseChain(const FusionSequence& chain, NodeDescriptor* node_desc) {
   if (chain.front().task->is_linkable) {
-    // The first task is linkable so it contains only linkable code. Insert
-    // unlinkable meta-task with remaining shader code.
-    sequence.push_back(NonLinkableStub(-1, chain.front().src_tensors_ids[0],
-                                       chain.front().src_tensors_ids[0]));
+    *node_desc = NonLinkableStub(
+        chain.front().id, chain.front().src_tensors_ids[0],
+        chain.front().dst_tensors_ids[0], chain.front().task->definition);
+    RETURN_IF_ERROR(MergeNodes(&chain.front(), node_desc, "_link0"));
+  } else {
+    *node_desc = chain.front();
   }
-  sequence.insert(sequence.end(), chain.begin(), chain.end());
-
-  // Count buffers to calculate proper indices then.
-  int num_outputs = 1;
-  int num_inputs = 0;
-  int num_immutables = 0;
-  bool invalid_id = true;
-  ValueId fused_id;
-  for (const auto& desc : sequence) {
-    for (const auto& id : desc.src_tensors_ids) {
-      if (invalid_id || id != fused_id) {
-        num_inputs++;
-      }
-    }
-    fused_id = desc.dst_tensors_ids[0];
-    invalid_id = false;
-    num_immutables += desc.task->immutable_buffers.size();
+  for (int j = 1; j < chain.size(); ++j) {
+    RETURN_IF_ERROR(
+        MergeNodes(&chain[j], node_desc, "_link" + std::to_string(j)));
   }
-
-  int output_index = 0;
-  int input_index = num_outputs;
-  int immutable_index = num_outputs + num_inputs;
-  int uniform_index = num_outputs + num_inputs + num_immutables;
-
-  int function_index = 0;
-  std::string function_code;
-  std::string buffer_declarations;
-  std::string call_code;
-  invalid_id = true;
-  for (const auto& desc : sequence) {
-    if (desc.task->is_linkable) {
-      function_code +=
-          absl::Substitute(desc.task->shader_source, function_index) + "\n";
-    } else {
-      // Declare output buffer only for the first unlinkable task.
-      buffer_declarations +=
-          desc.task->dst_tensors_names[0] + "[[buffer(0)]],\n";
-      output_index++;
-    }
-
-    std::string call_arguments;
-    for (int i = 0; i < desc.task->src_tensors_names.size(); ++i) {
-      if (invalid_id || desc.src_tensors_ids[i] != fused_id) {
-        std::string index = std::to_string(input_index);
-        std::string name = (desc.task->is_linkable ? (" buffer" + index) : "");
-        buffer_declarations += desc.task->src_tensors_names[i] + name +
-                               "[[buffer(" + index + ")]],\n";
-        call_arguments += ", buffer" + index;
-        input_index++;
-        fused_descriptor->AddSrcTensor("", {});
-        node_desc.src_tensors_ids.push_back(desc.src_tensors_ids[i]);
-      }
-    }
-    // We have an output id that is the input for the next task.
-    fused_id = desc.dst_tensors_ids[0];
-    invalid_id = false;
-
-    for (const auto& buffer : desc.task->immutable_buffers) {
-      std::string index = std::to_string(immutable_index);
-      std::string name = (desc.task->is_linkable ? (" buffer" + index) : "");
-      buffer_declarations +=
-          buffer.declaration + name + "[[buffer(" + index + ")]],\n";
-      call_arguments += ", buffer" + index;
-      immutable_index++;
-      fused_descriptor->immutable_buffers.push_back(buffer);
-    }
-
-    for (const auto& buffer : desc.task->uniform_buffers) {
-      std::string index = std::to_string(uniform_index);
-      std::string name = (desc.task->is_linkable ? (" buffer" + index) : "");
-      buffer_declarations +=
-          buffer.declaration + name + "[[buffer(" + index + ")]],\n";
-      call_arguments += ", buffer" + index;
-      uniform_index++;
-      fused_descriptor->uniform_buffers.push_back({"", buffer.data_function});
-    }
-
-    if (desc.task->is_linkable) {
-      call_code +=
-          absl::Substitute("value = linkable$0(value, linear_index, gid$1);\n",
-                           function_index, call_arguments);
-      function_index++;
-    }
-  }
-  fused_descriptor->args = std::move(sequence.front().task->args);
-
-  auto& non_linkable = sequence.front();
-  fused_descriptor->shader_source =
-      absl::Substitute(non_linkable.task->shader_source, function_code + "$0",
-                       buffer_declarations + "$1", call_code);
-  fused_descriptor->AddDstTensor("", {});
-  fused_descriptor->src_tensors_names = non_linkable.task->src_tensors_names;
-  fused_descriptor->dst_tensors_names = non_linkable.task->dst_tensors_names;
-  fused_descriptor->tensors_as_args = non_linkable.task->tensors_as_args;
-  fused_descriptor->resize_function = non_linkable.task->resize_function;
-  node_desc.dst_tensors_ids = {fused_id};
-  node_desc.task = fused_descriptor;
-  // The id of fused descriptor is the id of the first descriptor in the list.
-  node_desc.id = chain.front().id;
-  for (const auto& desc : sequence) {
-    node_desc.description += desc.description + "_";
-  }
-
-  return node_desc;
+  return absl::OkStatus();
 }
 }  // namespace
 
@@ -756,8 +670,11 @@ absl::Status InferenceContext::ValidateOptimizeModel(
         std::to_string(info.missing_output_buffer_ids.size());
     return absl::InternalError(message);
   }
-  for (const auto& chain : sorted_chains)
-    output_model->nodes.push_back(FuseChain(chain));
+  for (const auto& chain : sorted_chains) {
+    NodeDescriptor fused_node;
+    RETURN_IF_ERROR(FuseChain(chain, &fused_node));
+    output_model->nodes.push_back(std::move(fused_node));
+  }
   output_model->tensor_shapes = input_model.tensor_shapes;
   return absl::OkStatus();
 }

@@ -41,6 +41,7 @@ def index_directory(directory,
     directory: The target directory (string).
     labels: Either "inferred"
         (labels are generated from the directory structure),
+        None (no labels),
         or a list/tuple of integer labels of the same size as the number of
         valid files found in the directory. Labels should be sorted according
         to the alphanumeric order of the image file paths
@@ -61,19 +62,24 @@ def index_directory(directory,
       labels: list of matching integer labels (same length as file_paths)
       class_names: names of the classes corresponding to these labels, in order.
   """
-  inferred_class_names = []
-  for subdir in sorted(os.listdir(directory)):
-    if os.path.isdir(os.path.join(directory, subdir)):
-      inferred_class_names.append(subdir)
-  if not class_names:
-    class_names = inferred_class_names
+  if labels is None:
+    # in the no-label case, index from the parent directory down.
+    subdirs = ['']
+    class_names = subdirs
   else:
-    if set(class_names) != set(inferred_class_names):
-      raise ValueError(
-          'The `class_names` passed did not match the '
-          'names of the subdirectories of the target directory. '
-          'Expected: %s, but received: %s' %
-          (inferred_class_names, class_names))
+    subdirs = []
+    for subdir in sorted(os.listdir(directory)):
+      if os.path.isdir(os.path.join(directory, subdir)):
+        subdirs.append(subdir)
+    if not class_names:
+      class_names = subdirs
+    else:
+      if set(class_names) != set(subdirs):
+        raise ValueError(
+            'The `class_names` passed did not match the '
+            'names of the subdirectories of the target directory. '
+            'Expected: %s, but received: %s' %
+            (subdirs, class_names))
   class_indices = dict(zip(class_names, range(len(class_names))))
 
   # Build an index of the files
@@ -81,7 +87,8 @@ def index_directory(directory,
   pool = multiprocessing.pool.ThreadPool()
   results = []
   filenames = []
-  for dirpath in (os.path.join(directory, subdir) for subdir in class_names):
+
+  for dirpath in (os.path.join(directory, subdir) for subdir in subdirs):
     results.append(
         pool.apply_async(index_subdirectory,
                          (dirpath, class_indices, follow_links, formats)))
@@ -90,7 +97,7 @@ def index_directory(directory,
     partial_filenames, partial_labels = res.get()
     labels_list.append(partial_labels)
     filenames += partial_filenames
-  if labels != 'inferred':
+  if labels not in ('inferred', None):
     if len(labels) != len(filenames):
       raise ValueError('Expected the lengths of `labels` to match the number '
                        'of files in the target directory. len(labels) is %s '
@@ -103,8 +110,11 @@ def index_directory(directory,
       labels[i:i + len(partial_labels)] = partial_labels
       i += len(partial_labels)
 
-  print('Found %d files belonging to %d classes.' %
-        (len(filenames), len(class_names)))
+  if labels is None:
+    print('Found %d files.' % (len(filenames),))
+  else:
+    print('Found %d files belonging to %d classes.' %
+          (len(filenames), len(class_names)))
   pool.close()
   pool.join()
   file_paths = [os.path.join(directory, fname) for fname in filenames]
