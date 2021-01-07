@@ -133,6 +133,8 @@ struct GrapplerItem {
   OptimizationOptions optimization_options_;
 };
 
+GrapplerItem::OptimizationOptions CreateOptOptionsForEager();
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

@@ -23,6 +23,7 @@ namespace ops {
 namespace custom {
 
 TfLiteRegistration* RegisterMaxUnpooling2D();
+TfLiteRegistration* RegisterMaxPoolWithArgmax();
 
 extern "C" void AddPerceptionOps(::tflite::MutableOpResolver* resolver);
 

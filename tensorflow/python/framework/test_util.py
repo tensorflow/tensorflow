@@ -43,7 +43,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -82,6 +81,7 @@ from tensorflow.python.platform import _pywrap_stacktrace_handler
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import _pywrap_util_port
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -616,12 +616,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(self, *args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
@@ -2047,6 +2047,10 @@ class TensorFlowTestCase(googletest.TestCase):
     self._tempdir = None
     self._cached_session = None
     self._test_start_time = None
+    # This flag provides the ability to control whether the graph mode gets
+    # initialized for TF1 or not. Initializing for TF1, which is what was
+    # happening earlier, was preventing enablement of 'eager mode' in the test.
+    self._set_default_seed = True
 
   def setUp(self):
     super(TensorFlowTestCase, self).setUp()
@@ -2061,7 +2065,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    if self._set_default_seed:
+      random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
@@ -2555,7 +2560,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def _GetNdArray(self, a):
     # If a is tensor-like then convert it to ndarray
-    if tensor_util.is_tensor(a):
+    if tensor_util.is_tf_type(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:

@@ -4,8 +4,8 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_cc_test_mkl",
-    "tf_copts",
     "tf_cuda_library",
+    "tf_mkl_kernel_library",
 )
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -392,6 +392,7 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:annotated_traceme",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/grappler:grappler_item",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -517,10 +518,9 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_mkl_kernel_library(
     name = "mkl_eager_op_rewrite",
     srcs = ["mkl_eager_op_rewrite.cc"],
-    copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:all_kernels",

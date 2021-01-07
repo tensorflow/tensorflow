@@ -86,9 +86,6 @@ struct ComputeTaskDescriptor {
   //   output_buffer[linear_index] = value;
   // }
 
-  // when operation associative, we can rearrange input tensors
-  // for example add is associative
-  bool is_associative_op = false;
   std::string shader_source;
   std::vector<std::string> src_tensors_names;
   std::vector<std::string> dst_tensors_names;

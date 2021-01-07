@@ -22,7 +22,8 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
 
-namespace pybind11::detail {
+namespace pybind11 {
+namespace detail {
 
 // absl::Span
 template <typename T>
@@ -66,6 +67,7 @@ template <>
 struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
 #endif
 
-}  // namespace pybind11::detail
+}  // namespace detail
+}  // namespace pybind11
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_ABSL_CASTERS_H_

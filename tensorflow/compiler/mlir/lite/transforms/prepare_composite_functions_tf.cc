@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/nms_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/perception_ops_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/tftext_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -61,6 +62,7 @@ constexpr char kTFAPIImplements[] = "tf.api_implements";
 constexpr char kTFTextAPIPrefix[] = "tftext:";
 constexpr char kCustomSSDPostprocessing[] = "TFLite_Detection_PostProcess";
 constexpr char kTfNMSPadded[] = "non_max_suppression_padded_v2";
+constexpr char kCustomMaxUnpooling[] = "addons:MaxUnpooling2D";
 
 using mlir::TF::FuncAttr;
 
@@ -70,8 +72,8 @@ class ConvertEmbeddedLookupFunc {
   explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
-    func_.setAttr(kTFImplements,
-                  StringAttr::get("embedding_lookup", func_.getContext()));
+    func_->setAttr(kTFImplements,
+                   StringAttr::get("embedding_lookup", func_.getContext()));
     Value lookup = func_.getArgument(1);
     Value value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);
@@ -294,6 +296,12 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
         failed(convert_ssd_postprocess.RewriteFunc())) {
       return signalPassFailure();
     }
+  } else if (api_name == kCustomMaxUnpooling) {
+    ConvertMaxUnpoolingFunc max_unpooling(func, attr);
+    if (failed(max_unpooling.VerifySignature()) ||
+        failed(max_unpooling.RewriteFunc())) {
+      return signalPassFailure();
+    }
   }
 }
 
@@ -326,20 +334,21 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
     // 2) tf._implements, with proto attributes.
     // 3) tf.api_implements.
     // We need to handle them separately.
-    auto tf_implements_attr_str = func.getAttrOfType<StringAttr>(kTFImplements);
+    auto tf_implements_attr_str =
+        func->getAttrOfType<StringAttr>(kTFImplements);
     if (tf_implements_attr_str) {
       ConvertTFImplements(func, tf_implements_attr_str);
       continue;
     }
 
-    auto tf_implements_attr = func.getAttrOfType<FuncAttr>(kTFImplements);
+    auto tf_implements_attr = func->getAttrOfType<FuncAttr>(kTFImplements);
     if (tf_implements_attr) {
       ConvertTFImplementsWithAttributes(func, tf_implements_attr);
       continue;
     }
 
     auto tf_api_implements_attr =
-        func.getAttrOfType<StringAttr>(kTFAPIImplements);
+        func->getAttrOfType<StringAttr>(kTFAPIImplements);
     if (tf_api_implements_attr) {
       // TODO(b/147536816): Keras lstm should set up the correct attributes.
       ConvertTFAPIImplements(func, tf_api_implements_attr, module);

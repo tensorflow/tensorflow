@@ -58,7 +58,10 @@ int CustomDeviceTensorHandle::DeviceId(Status* status) const {
 AbstractTensorInterface* CustomDeviceTensorHandle::Resolve(Status* status) {
   core::RefCountPtr<ImmediateExecutionTensorHandle> copied_off(
       context_->CopyTensorHandleToDevice(
-          this, "/job:localhost/replica:0/task:0/device:CPU:0", status));
+          this,
+          DeviceNameUtils::ParsedNameToString(context_->HostCPUParsedName())
+              .c_str(),
+          status));
   if (!status->ok()) {
     return nullptr;
   }

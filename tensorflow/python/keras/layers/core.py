@@ -175,7 +175,7 @@ class Dropout(Layer):
    [ 7.5   8.75]
    [10.    0.  ]], shape=(5, 2), dtype=float32)
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     noise_shape: 1D integer tensor representing the shape of the
       binary dropout mask that will be multiplied with the input.
@@ -255,7 +255,7 @@ class SpatialDropout1D(Dropout):
   decrease. In this case, SpatialDropout1D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
 
   Call arguments:
@@ -297,7 +297,7 @@ class SpatialDropout2D(Dropout):
   decrease. In this case, SpatialDropout2D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     data_format: 'channels_first' or 'channels_last'.
       In 'channels_first' mode, the channels dimension
@@ -356,7 +356,7 @@ class SpatialDropout3D(Dropout):
   decrease. In this case, SpatialDropout3D will help promote independence
   between feature maps and should be used instead.
 
-  Arguments:
+  Args:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     data_format: 'channels_first' or 'channels_last'.
         In 'channels_first' mode, the channels dimension (the depth)
@@ -406,7 +406,7 @@ class SpatialDropout3D(Dropout):
 class Activation(Layer):
   """Applies an activation function to an output.
 
-  Arguments:
+  Args:
     activation: Activation function, such as `tf.nn.relu`, or string name of
       built-in activation function, such as "relu".
 
@@ -497,7 +497,7 @@ class Reshape(Layer):
     This is a near direct port of the internal Numpy function
     `_fix_unknown_dimension` in `numpy/core/src/multiarray/shape.c`
 
-    Arguments:
+    Args:
       input_shape: Shape of array being reshaped
       output_shape: Desired shape of the array with at most
         a single -1 which indicates a dimension that should be
@@ -577,7 +577,7 @@ class Permute(Layer):
   # note: `None` is the batch dimension
   ```
 
-  Arguments:
+  Args:
     dims: Tuple of integers. Permutation pattern does not include the
       samples dimension. Indexing starts at 1.
       For instance, `(2, 1)` permutes the first and second dimensions
@@ -627,7 +627,7 @@ class Flatten(Layer):
   Note: If inputs are shaped `(batch,)` without a feature axis, then
   flattening adds an extra channel dimension and output shape is `(batch, 1)`.
 
-  Arguments:
+  Args:
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
       The ordering of the dimensions in the inputs.
@@ -724,7 +724,7 @@ class RepeatVector(Layer):
   # now: model.output_shape == (None, 3, 32)
   ```
 
-  Arguments:
+  Args:
     n: Integer, repetition factor.
 
   Input shape:
@@ -821,7 +821,7 @@ class Lambda(Layer):
     In general, Lambda layers can be convenient for simple stateless
     computation, but anything more complex should use a subclass Layer instead.
 
-  Arguments:
+  Args:
     function: The function to be evaluated. Takes input tensor as first
       argument.
     output_shape: Expected output shape from function. This argument can be
@@ -1113,7 +1113,7 @@ class Dense(Layer):
   >>> model.output_shape
   (None, 32)
 
-  Arguments:
+  Args:
     units: Positive integer, dimensionality of the output space.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied
@@ -1250,7 +1250,7 @@ class Dense(Layer):
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 
-  Arguments:
+  Args:
     l1: L1 regularization factor (positive float).
     l2: L2 regularization factor (positive float).
 
@@ -1621,7 +1621,7 @@ def _delegate_property(keras_tensor_cls, property_name):  # pylint: disable=inva
   `InstanceProperty` layer to access the property on the represented
   intermediate values in the model.
 
-  Arguments:
+  Args:
     keras_tensor_cls: The KerasTensor subclass that should expose the property.
     property_name: The name of the property to expose and delegate to the
       represented (Composite)Tensor.
@@ -1641,7 +1641,7 @@ def _delegate_method(keras_tensor_cls, method_name):  # pylint: disable=invalid-
   an `InstanceMethod` layer to run the desired method on the represented
   intermediate values in the model.
 
-  Arguments:
+  Args:
     keras_tensor_cls: The KerasTensor subclass that should expose the property.
     method_name: The name of the method to expose and delegate to the
       represented (Composite)Tensor.

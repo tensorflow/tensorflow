@@ -37,6 +37,7 @@ load(
 package(
     default_visibility = [
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -622,7 +623,10 @@ cc_library(
     name = "bfloat16",
     srcs = ["bfloat16.cc"],
     hdrs = ["bfloat16.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/core:__subpackages__",
+        "//tensorflow/security/fuzzing:__subpackages__",
+    ],
     deps = [
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
@@ -665,6 +669,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
     ],
     deps = [
         ":bounds_check",
@@ -677,7 +682,9 @@ cc_library(
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/lib/strings:str_util",
         "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
         "//tensorflow/core/util:overflow",
         "//third_party/eigen3",
     ],
@@ -752,6 +759,7 @@ tf_cuda_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
+        "//tensorflow/core/tfrt/utils:__subpackages__",
         "//tensorflow/core/util:__pkg__",
         "//tensorflow/security/fuzzing:__subpackages__",
     ],
@@ -1245,6 +1253,7 @@ cc_library(
     visibility = [
         "//tensorflow/core:__pkg__",
         "//tensorflow/python:__pkg__",
+        "//tensorflow/python/util:__pkg__",
     ],
 )
 

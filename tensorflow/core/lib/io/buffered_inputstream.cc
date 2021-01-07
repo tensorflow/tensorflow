@@ -157,15 +157,22 @@ Status BufferedInputStream::Seek(int64 position) {
                                    position);
   }
 
-  // Position of the buffer within file.
-  const int64 bufpos = Tell();
-  if (position < bufpos) {
-    // Reset input stream and skip 'position' bytes.
+  // Position of the buffer's lower limit within file.
+  const int64 buf_lower_limit = input_stream_->Tell() - limit_;
+  if (position < buf_lower_limit) {
+    // Seek before buffer, reset input stream and skip 'position' bytes.
     TF_RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
 
-  return SkipNBytes(position - bufpos);
+  if (position < Tell()) {
+    // Seek within buffer before 'pos_'
+    pos_ -= Tell() - position;
+    return Status::OK();
+  }
+
+  // Seek after 'pos_'
+  return SkipNBytes(position - Tell());
 }
 
 template <typename T>

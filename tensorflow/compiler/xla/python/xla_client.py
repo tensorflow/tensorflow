@@ -48,6 +48,9 @@ import numpy as np
 ops = _xla.ops
 profiler = _xla.profiler
 
+# Just an internal arbitrary increasing number to help with backward-compatible
+# changes.
+_version = 1
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -352,7 +355,7 @@ def execute_with_python_values(executable, arguments, backend):
 def execute_with_python_values_replicated(executable, arguments, backend):
   """Execute on many replicas with Python values as arguments and output.
 
-  Arguments:
+  Args:
     executable: the program to run.
     arguments: a list of lists of Python values indexed by `[replica][arg_num]`
       to pass as inputs.
@@ -431,7 +434,10 @@ def register_custom_call_target(name, fn, platform='cpu'):
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
   """
-  _xla.register_custom_call_target(name, fn, xla_platform_names[platform])
+  # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
+  # Since that is hardcoded to CUDA, we are using the following as workaround.
+  _xla.register_custom_call_target(name, fn,
+                                   xla_platform_names.get(platform, platform))
 
 
 # Deprecated. Use register_custom_call_target instead.

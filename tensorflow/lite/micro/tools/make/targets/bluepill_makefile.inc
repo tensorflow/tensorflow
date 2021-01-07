@@ -6,6 +6,11 @@ $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),g
 $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/renode_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the renode download: $(DOWNLOAD_RESULT))
+endif
+
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
   -mcpu=cortex-m3 \
@@ -57,5 +62,10 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_bluepill_binary.sh
+TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_renode.sh
 
+# We are setting this variable to non-zero to allow us to have a custom
+# implementation of `make test` for bluepill
+TARGET_SPECIFIC_MAKE_TEST := 1
+test: build
+	$(TEST_SCRIPT) $(BINDIR) $(TEST_PASS_STRING) $(TARGET)

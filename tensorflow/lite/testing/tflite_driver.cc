@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/parse_example/parse_example.h"
+#include "tensorflow/lite/kernels/perception/perception_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
@@ -79,8 +80,16 @@ unique_void_ptr make_type_erased_array(size_t size) {
                          [](void* data) { delete[] static_cast<T*>(data); });
 }
 
-bool IsQuantized(const TfLiteTensor& tensor) {
-  if (tensor.type != kTfLiteInt8 && tensor.type != kTfLiteInt16) return false;
+bool InterpretAsQuantized(const TfLiteTensor& tensor) {
+  if (tensor.quantization.type == kTfLiteNoQuantization) return false;
+
+  // Quantized single-op models with uint8 input/output type are only used for
+  // EdgeTPU tests.
+  // EdgeTPU tests need to read the quantized values as-is to check for
+  // bit-exactness. As a result we don't interpret the tensor as quantized.
+  // TODO(b/176121243): Add an option to interpret uint8 buffers as
+  // non-quantized type and set if from the child class.
+  if (tensor.type == kTfLiteUInt8) return false;
 
   if (tensor.quantization.params != nullptr) {
     auto* quantization =
@@ -315,7 +324,7 @@ bool TfLiteDriver::DataExpectation::QuantizedCheck(bool verbose,
 
 bool TfLiteDriver::DataExpectation::Check(bool verbose,
                                           const TfLiteTensor& tensor) {
-  if (IsQuantized(tensor)) {
+  if (InterpretAsQuantized(tensor)) {
     return QuantizedCheck(verbose, tensor);
   }
 
@@ -372,6 +381,7 @@ TfLiteDriver::TfLiteDriver(DelegateType delegate_type, bool reference_kernel)
         reinterpret_cast<ops::builtin::BuiltinOpResolver*>(resolver_.get());
     tflite::ops::custom::AddHashtableOps(buildinop_resolver_);
     tflite::ops::custom::AddParseExampleOp(buildinop_resolver_);
+    tflite::ops::custom::AddPerceptionOps(buildinop_resolver_);
   }
 
   switch (delegate_type) {
@@ -547,7 +557,7 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       new DataExpectation(relative_threshold_, absolute_threshold_,
                           quantization_error_multiplier_));
 
-  if (IsQuantized(*tensor)) {
+  if (InterpretAsQuantized(*tensor)) {
     expected_output_[id]->SetData<float>(csv_values);
     return;
   }

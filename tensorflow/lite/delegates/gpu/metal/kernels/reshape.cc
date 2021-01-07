@@ -37,41 +37,34 @@ std::string GetReshapeCode() {
   std::string code = R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-  int4 src_size;
-  int4 dst_size;
-};
-
 $0
 kernel void ComputeFunction(
                             $1
                             uint3 gid[[thread_position_in_grid]]) {
   const int3 igid = int3(gid);
 
-  if (igid.x >= params.dst_size.x || igid.y >= params.dst_size.y ||
-      igid.z * 4 >= params.dst_size.z) return;
+  if (igid.x >= args.dst_tensor.Width() || igid.y >= args.dst_tensor.Height() ||
+      igid.z >= args.dst_tensor.Slices()) return;
 
   FLT4 value;
 
   for (int i = 0; i < 4; ++i) {
     const int dst_channel = igid.z * 4 + i;
-    if (dst_channel < params.dst_size.z) {
-      int p = dst_channel + params.dst_size.z * igid.x + params.dst_size.w * igid.y;
-      int src_y = p / params.src_size.w;
-      int t0 = p - src_y * params.src_size.w;  // p % params.src_size.w;
-      int src_x = t0 / params.src_size.z;
-      int src_z = t0 - src_x * params.src_size.z;  // t0 % params.src_size.z;
+    if (dst_channel < args.dst_tensor.Channels()) {
+      int p = (igid.y * args.dst_tensor.Width() + igid.x) * args.dst_tensor.Channels() + dst_channel;
+      int src_wc = args.src_tensor.Width() * args.src_tensor.Channels();
+      int src_y = p / src_wc;
+      int t0 = p - src_y * src_wc;  // p % src_wc;
+      int src_x = t0 / args.src_tensor.Channels();
+      int src_z = t0 - src_x * args.src_tensor.Channels();  // t0 % args.src_tensor.Channels();
       int src_layer = src_z >> 2;
       int src_channel = src_z & 3;
-      int src_linear_id = (src_layer * params.src_size.y + src_y) * params.src_size.x + src_x;
-      value[i] = src_tensor[src_linear_id][src_channel];
+      value[i] = args.src_tensor.Read(src_x, src_y, src_layer)[src_channel];
     }
   }
 
-  int linear_index = (igid.z * params.dst_size.y + igid.y) * params.dst_size.x + igid.x;
   $2
-  dst_tensor[linear_index] = value;
+  args.dst_tensor.Write(value, igid.x, igid.y, igid.z);
 })";
   return code;
 }
@@ -80,15 +73,6 @@ std::string GetReshapex4Code() {
   std::string code = R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-  int4 src_size;
-  int4 dst_size;
-  int2 plane_xz;
-  int2 dummy0;  // dummy, for alignment
-  int4 dummy1;  // dummy, for alignment
-};
-
 $0
 kernel void ComputeFunction(
                             $1
@@ -97,55 +81,33 @@ kernel void ComputeFunction(
   int Y = gid.y;
   int Z = gid.z;
 
-  if (X >= params.dst_size.x || Y >= params.dst_size.y || Z >= params.dst_size.z) return;
+  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height() || Z >= args.dst_tensor.Slices()) return;
 
-  int p = Z + params.dst_size.z * X + params.plane_xz.y * Y;
-  int src_y = p / params.plane_xz.x;
-  int t0 = p - src_y * params.plane_xz.x;  // p % params.plane_xz.x;
-  int src_x = t0 / params.src_size.z;
-  int src_z = t0 - src_x * params.src_size.z;  // t0 % params.src_size.z;
+  int p = (Y * args.dst_tensor.Width() + X) * args.dst_tensor.Slices() + Z;
+  int src_ws = args.src_tensor.Width() * args.src_tensor.Slices();
+  int src_y = p / src_ws;
+  int t0 = p - src_y * src_ws;  // p % src_ws;
+  int src_x = t0 / args.src_tensor.Slices();
+  int src_z = t0 - src_x * args.src_tensor.Slices();  // t0 % args.src_tensor.Slices();
 
-  int src_index = src_z * params.src_size.w + src_y * params.src_size.x + src_x;
-  int linear_index = Z * params.dst_size.w + Y * params.dst_size.x + X;
-  FLT4 value = src_tensor[src_index];
+  FLT4 value = args.src_tensor.Read(src_x, src_y, src_z);
   $2
-  dst_tensor[linear_index] = value;
+  args.dst_tensor.Write(value, X, Y, Z);
 })";
   return code;
 }
 
 }  // namespace
 
-ComputeTaskDescriptor Reshape(const OperationDef& definition,
-                              const ReshapeAttributes& attr) {
+ComputeTaskDescriptor Reshape(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetReshapeCode();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         std::vector<int> uniform_params{
-             // int4 src_size
-             src_shapes[0].w,
-             src_shapes[0].h,
-             src_shapes[0].c,
-             src_shapes[0].c * src_shapes[0].w,
-             // int4 dst_size
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             dst_shapes[0].c,
-             dst_shapes[0].c * dst_shapes[0].w,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-
-  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
-                                const std::vector<BHWC>& dst_shapes) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
                              DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
@@ -158,43 +120,15 @@ ComputeTaskDescriptor Reshape(const OperationDef& definition,
   return desc;
 }
 
-ComputeTaskDescriptor Reshapex4(const OperationDef& definition,
-                                const ReshapeAttributes& attr) {
+ComputeTaskDescriptor Reshapex4(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.shader_source = GetReshapex4Code();
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         std::vector<int32_t> uniform_params{
-             // int4 src_size
-             src_shapes[0].w, src_shapes[0].h,
-             DivideRoundUp(src_shapes[0].c, 4),
-             src_shapes[0].w * src_shapes[0].h,
-             // int4 dst_size
-             dst_shapes[0].w, dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             dst_shapes[0].w * dst_shapes[0].h,
-             // int2 plane_xz
-             src_shapes[0].w * DivideRoundUp(src_shapes[0].c, 4),
-             dst_shapes[0].w * DivideRoundUp(dst_shapes[0].c, 4),
-             0,  // dummy, for alignment
-             0,  // dummy, for alignment
-             0,  // dummy, for alignment
-             0,  // dummy, for alignment
-             0,  // dummy, for alignment
-             0   // dummy, for alignment
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-
-  desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
-                                const std::vector<BHWC>& dst_shapes) {
+  desc.resize_function = [](const std::vector<BHWC>& src_shapes,
+                            const std::vector<BHWC>& dst_shapes) {
     const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
                              DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
 
-#include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -30,7 +30,7 @@ class GpuDebugInfoManagerTest : public HloTestBase {
     int unique_id;
     string id;
     std::shared_ptr<HloModule> module;
-    std::shared_ptr<BufferAssignment> buffer_assignment;
+    std::shared_ptr<BufferAssignmentProto> buffer_assignment;
   };
 
   // Return unique id of this module.

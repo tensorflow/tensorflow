@@ -57,11 +57,14 @@ TEST_P(AutotuneSetting, MapParallelizationTest) {
        NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
-       MakeMapNode("map", "range", stateless_fun_name)},
+       MakeMapNode("map", "range", stateless_fun_name),
+       NDef("Sink", "Identity", {"map"}, {})},
       // FunctionLib
       {
           test::function::XTimesTwo(),
       });
+
+  item.fetch.push_back("Sink");
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithMapParallelization(item, &output, autotune));
@@ -71,6 +74,39 @@ TEST_P(AutotuneSetting, MapParallelizationTest) {
 }
 
 INSTANTIATE_TEST_SUITE_P(Test, AutotuneSetting, ::testing::Values(false, true));
+
+class FromFunctionDef : public ::testing::TestWithParam<string> {};
+
+TEST_P(FromFunctionDef, MapParallelizationTest) {
+  const string op = GetParam();
+  bool from_function_def = (op == "_Retval");
+
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       MakeMapNode("map", "range", stateless_fun_name),
+       NDef("Sink", op, {"map"}, {})},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  item.fetch.push_back("Sink");
+
+  GraphDef output;
+  TF_ASSERT_OK(OptimizeWithMapParallelization(item, &output, true));
+  EXPECT_EQ(graph_utils::ContainsNodeWithOp("ParallelMapDataset", output),
+            !from_function_def);
+  EXPECT_EQ(graph_utils::ContainsGraphNodeWithName("map", output),
+            from_function_def);
+}
+
+INSTANTIATE_TEST_SUITE_P(Test, FromFunctionDef,
+                         ::testing::Values("Identity", "_Retval"));
 
 TEST(ParallelizeAssert, MapParallelizationTest) {
   using test::function::NDef;
@@ -83,12 +119,15 @@ TEST(ParallelizeAssert, MapParallelizationTest) {
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        MakeMapNode("map1", "range", stateful_fun_name),
        MakeMapNode("map2", "map1", stateless_fun_name),
-       NDef("cache", "CacheDataset", {"map2", "filename"}, {})},
+       NDef("cache", "CacheDataset", {"map2", "filename"}, {}),
+       NDef("Sink", "Identity", {"cache"}, {})},
       // FunctionLib
       {
           test::function::XTimesTwo(),
           test::function::RandomUniform(),
       });
+
+  item.fetch.push_back("Sink");
 
   GraphDef output;
   TF_ASSERT_OK(OptimizeWithMapParallelization(item, &output, true));

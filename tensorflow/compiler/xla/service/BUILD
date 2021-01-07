@@ -1036,31 +1036,8 @@ cc_library(
     ],
 )
 
-# This flag enables experimental MLIR GPU support.
-config_setting(
-    name = "with_mlir_gpu_support",
-    define_values = {"with_mlir_gpu_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-# Lets us choose the right GPU plugin depending on whether the experimental MLIR
-# GPU plugin should be used or not.
 cc_library(
     name = "gpu_plugin",
-    deps = select(
-        {
-            ":with_mlir_gpu_support": [
-                ":gpu_plugin_mlir",
-            ],
-            "//conditions:default": [
-                ":gpu_plugin_no_mlir",
-            ],
-        },
-    ),
-)
-
-cc_library(
-    name = "gpu_plugin_no_mlir",
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
@@ -1072,17 +1049,6 @@ cc_library(
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/service/gpu:amdgpu_compiler",
         "//tensorflow/core/platform/default/build_config:stream_executor_rocm",
-    ]) + internal_cuda_deps(),
-)
-
-cc_library(
-    name = "gpu_plugin_mlir",
-    deps = [
-        ":service",
-        "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
-    ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler_impl",
     ]) + internal_cuda_deps(),
 )
 
@@ -3063,6 +3029,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -3942,6 +3909,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -4698,6 +4666,48 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "while_loop_all_reduce_code_motion",
+    srcs = ["while_loop_all_reduce_code_motion.cc"],
+    hdrs = ["while_loop_all_reduce_code_motion.h"],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        ":hlo_query",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_all_reduce_code_motion_test",
+    srcs = ["while_loop_all_reduce_code_motion_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_matchers",
+        ":hlo_verifier",
+        ":while_loop_all_reduce_code_motion",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "while_loop_invariant_code_motion",
     srcs = ["while_loop_invariant_code_motion.cc"],
     hdrs = ["while_loop_invariant_code_motion.h"],
@@ -5254,9 +5264,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "integral_upcaster",
-    srcs = ["integral_upcaster.cc"],
-    hdrs = ["integral_upcaster.h"],
+    name = "operand_upcaster",
+    srcs = ["operand_upcaster.cc"],
+    hdrs = ["operand_upcaster.h"],
     deps = [
         ":hlo",
         ":op_expander_pass",
@@ -5265,11 +5275,11 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "integral_upcaster_test",
-    srcs = ["integral_upcaster_test.cc"],
+    name = "operand_upcaster_test",
+    srcs = ["operand_upcaster_test.cc"],
     deps = [
         ":hlo_matchers",
-        ":integral_upcaster",
+        ":operand_upcaster",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",

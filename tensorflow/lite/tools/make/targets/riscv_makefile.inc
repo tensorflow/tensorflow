@@ -8,3 +8,16 @@ ifeq ($(TARGET), riscv)
 	LIBS += -ldl
 	BUILD_TYPE := micro
 endif
+
+ifeq ($(TARGET), linux_riscv64)
+  TARGET_ARCH := riscv64
+  TARGET_TOOLCHAIN_PREFIX := riscv64-unknown-linux-gnu-
+  TARGET_OUT_DIR := linux_riscv64
+  LIBS := -lstdc++ -lpthread -lm -ldl -latomic
+  LDFLAGS := \
+        -Wl,--no-export-dynamic \
+        -Wl,--exclude-libs,ALL \
+        -Wl,--gc-sections \
+        -Wl,--as-needed \
+        -lrt
+endif

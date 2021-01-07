@@ -37,10 +37,10 @@ constexpr unsigned kSigned = quant::QuantizationFlags::Signed;
 
 DeviceTarget::DeviceTarget(MLIRContext* ctx) : ctx_(ctx) {
   f32_ = FloatType::getF32(ctx_);
-  i8_ = IntegerType::get(k8Bits, ctx_);
+  i8_ = IntegerType::get(ctx_, k8Bits);
   i8_min_ = QuantizedType::getDefaultMinimumForInteger(kSigned, k8Bits);
   i8_max_ = QuantizedType::getDefaultMaximumForInteger(kSigned, k8Bits);
-  i32_ = IntegerType::get(k32Bits, ctx_);
+  i32_ = IntegerType::get(ctx_, k32Bits);
   i32_min_ = QuantizedType::getDefaultMinimumForInteger(kSigned, k32Bits);
   i32_max_ = QuantizedType::getDefaultMaximumForInteger(kSigned, k32Bits);
   any_ = AnyQuantizedType();
@@ -131,8 +131,8 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   output_multipliers->push_back(quant::QuantizeMultiplier(real_multiplier));
 
   // output ranges
-  auto min = rop.getAttrOfType<FloatAttr>("min");
-  auto max = rop.getAttrOfType<FloatAttr>("max");
+  auto min = rop->getAttrOfType<FloatAttr>("min");
+  auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
       (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),
@@ -166,8 +166,8 @@ LogicalResult DeviceTarget::DecomposeSameScale(
   if (!o_spec) return failure();
 
   // output ranges
-  auto min = rop.getAttrOfType<FloatAttr>("min");
-  auto max = rop.getAttrOfType<FloatAttr>("max");
+  auto min = rop->getAttrOfType<FloatAttr>("min");
+  auto max = rop->getAttrOfType<FloatAttr>("max");
   output_ranges->push_back(quant::CalculateQuantizedRange(
       o_spec.getScale(), o_spec.getZeroPoint(),
       (min ? absl::optional<double>(min.getValueAsDouble()) : absl::nullopt),

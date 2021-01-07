@@ -38,12 +38,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
-
-    struct uniforms {
-      int4 src_size;
-      int4 dst_size;
-      int4 padding;
-    };)";
+)";
   if (attr.type == PaddingContentType::REFLECT) {
     code += R"(
     int reflect(int x, int size) {
@@ -55,25 +50,22 @@ std::string GetPaddingCode(const PadAttributes& attr) {
     kernel void ComputeFunction(
                                 $1
                                 uint3 gid[[thread_position_in_grid]]) {
-      if (static_cast<int>(gid.x) >= params.dst_size.x ||
-          static_cast<int>(gid.y) >= params.dst_size.y) {
+      if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
+          static_cast<int>(gid.y) >= args.dst_tensor.Height()) {
         return;
       }
 
       FLT4 value = FLT4(0.0f);
-      int s_x = static_cast<int>(gid.x) - params.padding.x;
-      int s_y = static_cast<int>(gid.y) - params.padding.y;)";
+      int s_x = static_cast<int>(gid.x) - args.padding_w;
+      int s_y = static_cast<int>(gid.y) - args.padding_h;)";
   if (attr.type == PaddingContentType::REFLECT) {
     code += R"(
-      s_x = reflect(s_x, params.src_size.x);
-      s_y = reflect(s_y, params.src_size.y);
+      s_x = reflect(s_x, args.src_tensor.Width());
+      s_y = reflect(s_y, args.src_tensor.Height());
 )";
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
       // optimized case
-      code +=
-          "      int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
-          "params.src_size.x + s_x;\n";
-      code += "      value = src_tensor[buffer_index];\n";
+      code += "      value = args.src_tensor.Read(s_x, s_y, gid.z);\n";
     } else {
       code += "      int start_channel = static_cast<int>(gid.z) * 4;\n";
       for (int i = 0; i < 4; ++i) {
@@ -81,17 +73,14 @@ std::string GetPaddingCode(const PadAttributes& attr) {
         code += "      {\n";
         code += "        int channel = start_channel + " + std::to_string(i) +
                 ";\n";
-        code += "        int s_z = channel - params.padding.z;\n";
+        code += "        int s_z = channel - args.padding_c;\n";
         // We need additional clamp for z, so that we use alignment for channels
         // and can proceed extra channels that can lead to reading out of
         // resource.
         code +=
-            "        s_z = clamp(reflect(s_z, params.src_size.z), 0, "
-            "params.src_size.z - 1);\n";
-        code +=
-            "        int buffer_index = ((s_z / 4) * params.src_size.y + s_y) "
-            "* params.src_size.x + s_x;\n";
-        code += "        FLT4 t = src_tensor[buffer_index];\n";
+            "        s_z = clamp(reflect(s_z, args.src_tensor.Channels()), 0, "
+            "args.src_tensor.Channels() - 1);\n";
+        code += "        FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
         code += "        FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
         code += "        value" + s + " = t_ar[s_z % 4];\n";
         code += "      }\n";
@@ -99,23 +88,19 @@ std::string GetPaddingCode(const PadAttributes& attr) {
     }
   } else {
     code += R"(
-      bool inside_x = s_x >= 0 && s_x < params.src_size.x;
-      bool inside_y = s_y >= 0 && s_y < params.src_size.y;
+      bool inside_x = s_x >= 0 && s_x < args.src_tensor.Width();
+      bool inside_y = s_y >= 0 && s_y < args.src_tensor.Height();
       if (inside_x && inside_y) {
         int start_channel = static_cast<int>(gid.z) * 4;
     )";
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
       // optimized case
-      code +=
-          "        int buffer_index = (int(gid.z) * params.src_size.y + s_y) * "
-          "params.src_size.x + s_x;\n";
-      code += "        value = src_tensor[buffer_index];\n";
+      code += "        value = args.src_tensor.Read(s_x, s_y, gid.z);\n";
     } else if (attr.prepended.c % 4 == 0) {
       code += R"(
-        int s_z = static_cast<int>(gid.z) - params.padding.z / 4;
-        if (s_z >= 0 && s_z < params.src_size.w) {
-          int buffer_index = (s_z * params.src_size.y + s_y) * params.src_size.x + s_x;
-          value = src_tensor[buffer_index];
+        int s_z = static_cast<int>(gid.z) - args.padding_c / 4;
+        if (s_z >= 0 && s_z < args.src_tensor.Slices()) {
+          value = args.src_tensor.Read(s_x, s_y, s_z);
         })";
     } else {
       for (int i = 0; i < 4; ++i) {
@@ -123,13 +108,9 @@ std::string GetPaddingCode(const PadAttributes& attr) {
         code += "    {\n";
         code +=
             "    int channel = start_channel + " + std::to_string(i) + ";\n";
-        code += "    int s_z = channel - params.padding.z;\n";
-        code += "    if (s_z >= 0 && s_z < params.src_size.z) {\n";
-        code +=
-            "      int buffer_index = ((s_z / 4) * params.src_size.y + s_y) * "
-            "params.src_size.x + "
-            "s_x;\n";
-        code += "      FLT4 t = src_tensor[buffer_index];\n";
+        code += "    int s_z = channel - args.padding_c;\n";
+        code += "    if (s_z >= 0 && s_z < args.src_tensor.Channels()) {\n";
+        code += "      FLT4 t = args.src_tensor.Read(s_x, s_y, s_z / 4);\n";
         code += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
         code += "      value" + s + " = t_ar[s_z % 4];\n";
         code += "    }\n";
@@ -138,12 +119,8 @@ std::string GetPaddingCode(const PadAttributes& attr) {
     }
     code += "  }\n";
   }
-  code +=
-      "  int linear_index = (gid.z * params.dst_size.y + int(gid.y)) * "
-      "params.dst_size.x + "
-      "int(gid.x);\n";
   code += "  $2\n";
-  code += "  dst_tensor[linear_index] = value;\n";
+  code += "  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);\n";
   code += "}\n";
   return code;
 }
@@ -157,30 +134,10 @@ ComputeTaskDescriptor Padding(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         std::vector<int> uniform_params{
-             // int4 src_size
-             src_shapes[0].w,
-             src_shapes[0].h,
-             src_shapes[0].c,
-             DivideRoundUp(src_shapes[0].c, 4),
-             // int4 dst_size
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             dst_shapes[0].c,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             // int4 prepended padding
-             attr.prepended.w,
-             attr.prepended.h,
-             attr.prepended.c,
-             attr.prepended.b,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  desc.args.AddInt("padding_w", attr.prepended.w);
+  desc.args.AddInt("padding_h", attr.prepended.h);
+  desc.args.AddInt("padding_c", attr.prepended.c);
+  desc.args.AddInt("padding_b", attr.prepended.b);
 
   desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
                                 const std::vector<BHWC>& dst_shapes) {

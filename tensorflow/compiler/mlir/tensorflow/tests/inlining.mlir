@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -inline="disable-simplify" | FileCheck %s
+// RUN: tf-opt %s -inline='default-pipeline=''' | FileCheck %s
 
 // Test that simple TF operations can be inlined.
 

@@ -34,7 +34,9 @@ cc_library(
         ],
     }),
     copts = micro_copts(),
-    deps = select({
+    deps = [
+        ":xtensa",
+    ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
@@ -62,6 +64,7 @@ cc_library(
     deps = [
         ":fixedpoint_utils",
         ":kernel_util",
+        ":xtensa",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:common",
@@ -130,6 +133,7 @@ cc_library(
         "sub.cc",
         "svdf_common.cc",
         "tanh.cc",
+        "transpose_conv.cc",
         "unpack.cc",
     ] + select({
         "//conditions:default": [
@@ -160,9 +164,11 @@ cc_library(
     ],
     deps = [
         ":activation_utils",
-        ":kernel_util",
         ":fixedpoint_utils",
+        ":kernel_util",
         ":micro_utils",
+        ":xtensa",
+        "@flatbuffers",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
@@ -175,8 +181,25 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:memory_helpers",
         "//tensorflow/lite/micro:micro_utils",
-        "@flatbuffers",
     ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
+)
+
+cc_library(
+    name = "xtensa",
+    hdrs = select({
+        "//conditions:default": [
+        ],
+        ":xtensa_hifimini": [
+            "xtensa/xtensa.h",
+        ],
+    }),
+    copts = micro_copts(),
+    deps = select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
             #"//third_party/xtensa/cstub64s:hifi_mini",
@@ -310,12 +333,30 @@ tflite_micro_cc_test(
     ],
 )
 
+cc_library(
+    name = "conv_test_common",
+    srcs = [
+        "conv_test_common.cc",
+    ],
+    hdrs = [
+        "conv_test.h",
+    ],
+    deps = [
+        ":kernel_runner",
+        ":micro_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
 tflite_micro_cc_test(
     name = "conv_test",
     srcs = [
         "conv_test.cc",
     ],
     deps = [
+        ":conv_test_common",
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_utils",
@@ -794,6 +835,21 @@ tflite_micro_cc_test(
         ":kernel_runner",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:op_resolvers",
+        "//tensorflow/lite/micro:test_helpers",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "transpose_conv_test",
+    srcs = [
+        "transpose_conv_test.cc",
+    ],
+    deps = [
+        ":conv_test_common",
+        ":kernel_runner",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_utils",
         "//tensorflow/lite/micro:test_helpers",
         "//tensorflow/lite/micro/testing:micro_test",
     ],

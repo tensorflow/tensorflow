@@ -94,6 +94,8 @@ class ComputeTask {
   DispatchParamsFunction resize_function_;
   std::string description_;
   MetalArguments metal_args_;
+  std::vector<std::string> src_tensors_names_;
+  std::vector<std::string> dst_tensors_names_;
 };
 
 }  // namespace metal

@@ -282,6 +282,9 @@ void CreateConvertMlirToXlaHloPipeline(
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
   pm.addNestedPass<mlir::FuncOp>(mlir::TF::CreateDropWhileShapeInvariantPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  // The SCCP pass performs constant propagation across the IR, which, for
+  // example, propagates constant arguments into callee functions.
+  pm.addPass(mlir::createSCCPPass());
   // Guarantee all functions have one use, which enables shape inference.
   pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run shape inference pass before tensorlist decomposition to get buffer
@@ -303,9 +306,6 @@ void CreateConvertMlirToXlaHloPipeline(
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
   pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
-  // The SCCP pass performs constant propagation across the IR, which, for
-  // example, propagates constant arguments into callee functions.
-  pm.addPass(mlir::createSCCPPass());
 
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
       /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
@@ -529,6 +529,12 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
     mlir::BlockArgument mlir_arg = main_fn.getArgument(idx);
     if (xla_arg.kind == XlaArgument::kResource) {
       mlir::Type element_type;
+      if (xla_arg.type == DT_INVALID) {
+        return errors::Unimplemented(absl::StrCat(
+            "Argument ", idx,
+            " is an uninitialized resource variable which is currently"
+            " unsupported in the MLIR-based TPU bridge"));
+      }
       TF_RETURN_IF_ERROR(ConvertDataType(xla_arg.type, builder, &element_type));
       TF_ASSIGN_OR_RETURN(TensorShape arg_shape,
                           GetTensorShapeFromXlaArgument(xla_arg));
@@ -569,9 +575,9 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
     for (mlir::BlockArgument& arg : main_fn.getArguments())
       updated_argument_types.push_back(arg.getType());
 
-    main_fn.setType(mlir::FunctionType::get(updated_argument_types,
-                                            main_fn.getType().getResults(),
-                                            main_fn.getContext()));
+    main_fn.setType(mlir::FunctionType::get(main_fn.getContext(),
+                                            updated_argument_types,
+                                            main_fn.getType().getResults()));
   }
 
   for (int idx : llvm::reverse(args_to_erase)) main_fn.eraseArgument(idx);

@@ -312,8 +312,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         mlir::edsc::makeGenericLinalgOp(
             /*iteratorTypes=*/iteratorTypes,
             /*inputs=*/{s_b(b_exprs), s_c(c_exprs)},
-            /*outputBuffers=*/{s_a(parallel_exprs)},
-            /*initTensors=*/{},
+            /*outputs=*/{s_a(parallel_exprs)},
             /*resultTensorTypes=*/{}, mlir::edsc::ops::macRegionBuilder);
         mlir::edsc::intrinsics::std_ret();
 

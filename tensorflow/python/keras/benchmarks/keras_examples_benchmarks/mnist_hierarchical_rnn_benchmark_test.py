@@ -73,6 +73,9 @@ class HierarchicalRNNBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'hierarchical_rnn', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_hrnn_mnist_bs_512(self):
@@ -87,6 +90,9 @@ class HierarchicalRNNBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'hierarchical_rnn', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_hrnn_mnist_bs_1024(self):
@@ -101,6 +107,9 @@ class HierarchicalRNNBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'hierarchical_rnn', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_hrnn_mnist_bs_1024_gpu_2(self):
@@ -120,6 +129,9 @@ class HierarchicalRNNBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
+    metadata = benchmark_util.get_keras_examples_metadata(
+        'hierarchical_rnn', batch_size)
+    extras.update(metadata)
     self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 

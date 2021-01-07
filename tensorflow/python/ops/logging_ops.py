@@ -294,7 +294,7 @@ def print_v2(*inputs, **kwargs):
                        "File needs to be in the form of 'file://<filepath>'.")
 
   # If we are only printing a single string scalar, there is no need to format
-  if (len(inputs) == 1 and tensor_util.is_tensor(inputs[0]) and
+  if (len(inputs) == 1 and tensor_util.is_tf_type(inputs[0]) and
       (not isinstance(inputs[0], sparse_tensor.SparseTensor)) and
       (inputs[0].shape.ndims == 0) and (inputs[0].dtype == dtypes.string)):
     formatted_string = inputs[0]
@@ -318,7 +318,7 @@ def print_v2(*inputs, **kwargs):
       else:
         inputs_ordered_dicts_sorted.append(input_)
     tensor_free_structure = nest.map_structure(
-        lambda x: "" if tensor_util.is_tensor(x) else x,
+        lambda x: "" if tensor_util.is_tf_type(x) else x,
         inputs_ordered_dicts_sorted)
 
     tensor_free_template = " ".join(
@@ -338,7 +338,7 @@ def print_v2(*inputs, **kwargs):
           placeholders.append(
               "SparseTensor(indices={}, values={}, shape={})".format(
                   placeholder, placeholder, placeholder))
-        elif tensor_util.is_tensor(x):
+        elif tensor_util.is_tf_type(x):
           tensors.append(x)
           placeholders.append(placeholder)
         else:

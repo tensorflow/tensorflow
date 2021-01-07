@@ -13,15 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass takes ops with the same `_tpu_replicate` attribute
-// in a block and clusters them together under a `tf_device.cluster`.
-// Associated TPUReplicateMetadata ops are removed and its attributes are copied
-// over to the associated `tf_device.cluster`. If a cluster should be
-// replicated, the associated `tf_device::LaunchOp` will be wrapped further with
-// a `tf_device.replicate`. This pass also assumes ops of the same cluster do
-// not have ops outside of the cluster that are both operands and results of the
-// cluster. Note, this currently does not handle side effecting ops yet.
-
 #include <algorithm>
 #include <iterator>
 #include <memory>
@@ -51,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/resource_alias_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -68,8 +60,7 @@ constexpr char kBadTPUReplicateAttrMsg[] =
     "requires '_tpu_replicate' string attribute";
 
 // Mapping for `_tpu_replicate` attribute to TPUReplicateMetadata attributes.
-using MetadataMap =
-    llvm::SmallDenseMap<llvm::StringRef, MutableDictionaryAttr, 8>;
+using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttrList, 8>;
 
 // A set of operations in a cluster.
 using ClusterOps = llvm::SmallSetVector<Operation*, 8>;
@@ -77,16 +68,13 @@ using ClusterOps = llvm::SmallSetVector<Operation*, 8>;
 // Mapping for `_tpu_replicate` attribute to ops of a cluster.
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, ClusterOps, 8>;
 
-struct TPUClusterFormation
-    : public TF::PerFunctionAggregateAnalysisConsumerPass<
-          TPUClusterFormation, TF::ResourceAliasAnalysis> {
+struct TPUClusterFormationPass
+    : public TF::TPUClusterFormationPassBase<TPUClusterFormationPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
 
-  void runOnFunction(
-      FuncOp func,
-      const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);
+  void runOnOperation() override;
 };
 
 // Creates a mapping from the TPUReplicateMetadata ops `_tpu_replicate`
@@ -99,7 +87,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
     auto metadata_op = dyn_cast<TF::TPUReplicateMetadataOp>(op);
     if (!metadata_op) continue;
 
-    MutableDictionaryAttr attrs = metadata_op.getAttrs();
+    NamedAttrList attrs(metadata_op->getAttrDictionary());
 
     // Missing or bad `_tpu_replicate` attribute.
     auto tpu_replicate_attr = attrs.get(kTPUReplicateAttr);
@@ -111,7 +99,7 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
       return metadata_op.emitError() << kBadTPUReplicateAttrMsg;
 
     // Remove `name` attribute.
-    attrs.remove(Identifier::get(kNameAttr, metadata_op.getContext()));
+    attrs.erase(Identifier::get(kNameAttr, metadata_op.getContext()));
 
     auto it = metadata_map->try_emplace(tpu_replicate_attr_str.getValue(),
                                         std::move(attrs));
@@ -210,8 +198,8 @@ bool ShouldMoveOpAfterCluster(
 // cluster may be interleaved with other ops in the cluster. Resource id's are
 // also captured, to keep track of resource usage before, in, or after the
 // cluster.
-// TODO(lyandy): Extend this to handle all side effecting ops while handling
-// transitive data dependencies.
+// TODO(b/175701589): Extend this to handle all side effecting ops while
+// handling transitive data dependencies.
 llvm::SmallSetVector<Operation*, 8> CollectClusterPrecedingUsers(
     Block* block, const ClusterOps& cluster_ops,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
@@ -550,7 +538,8 @@ LogicalResult FormClustersInBlock(
       return failure();
 
     // Copy TPUReplicateMetadata attributes to `tf_device.cluster`.
-    cluster->setAttrs(cluster_metadata->second);
+    cluster->setAttrs(
+        cluster_metadata->second.getDictionary(cluster.getContext()));
     // Exclude `num_replicas` as cluster should be replicated if necessary.
     cluster.removeAttr(kNumReplicasAttr);
   }
@@ -558,16 +547,14 @@ LogicalResult FormClustersInBlock(
   return success();
 }
 
-void TPUClusterFormation::runOnFunction(
+LogicalResult FormClustersInFunction(
     FuncOp func,
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
-  if (!llvm::hasSingleElement(func)) {
-    func.emitOpError("Expecting a single block function");
-    return signalPassFailure();
-  }
+  if (!llvm::hasSingleElement(func))
+    return func.emitOpError("Expecting a single block function");
 
   if (failed(FormClustersInBlock(&func.front(), resource_alias_analysis)))
-    return signalPassFailure();
+    return failure();
 
   // Remove TPUReplicatedInput and TPUReplicatedOutput nodes.
   auto remove_result = func.walk([&](Operation* op) {
@@ -593,17 +580,22 @@ void TPUClusterFormation::runOnFunction(
     return WalkResult::advance();
   });
 
-  if (remove_result.wasInterrupted()) return signalPassFailure();
+  return failure(remove_result.wasInterrupted());
+}
+
+void TPUClusterFormationPass::runOnOperation() {
+  auto& resource_alias_analysis = getAnalysis<TF::ResourceAliasAnalysis>();
+  for (auto func : getOperation().getOps<FuncOp>())
+    if (!func.isExternal() &&
+        failed(FormClustersInFunction(
+            func, resource_alias_analysis.GetAnalysisForFunc(func))))
+      return signalPassFailure();
 }
 }  // anonymous namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass() {
-  return std::make_unique<TPUClusterFormation>();
+  return std::make_unique<TPUClusterFormationPass>();
 }
-
-static PassRegistration<TPUClusterFormation> pass(
-    "tf-tpu-cluster-formation",
-    "Form clusters from operations assigned to the same TPU cluster");
 
 }  // namespace TFTPU
 }  // namespace mlir

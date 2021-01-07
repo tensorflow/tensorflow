@@ -243,7 +243,7 @@ DenseElementsAttr GetShape(Value output_val) {
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
-          mlir::IntegerType::get(32, output_val.getContext())),
+          mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::makeArrayRef(shape));
 }
 
@@ -650,7 +650,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     ShapedType filter_type = filter_cst.getType();
 
     if (llvm::isa<AddOp, SubOp>(binary_op)) {
-      auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
+      auto padding = fc_op->template getAttrOfType<StringAttr>("padding");
       if (padding && padding.getValue() != "VALID") return failure();
 
       // The fusion of add/sub is actually applying the following

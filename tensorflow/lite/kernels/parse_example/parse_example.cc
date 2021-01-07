@@ -128,8 +128,8 @@ Status FastParseSerializedExample(
   if (!ParseExample(serialized_example, &parsed_example)) {
     return tf::errors::Internal("Failed to parse example");
   }
-  std::vector<int64> dense_feature_last_example(config.dense.size(), -1);
-  std::vector<int64> sparse_feature_last_example(config.sparse.size(), -1);
+  std::vector<tf::int64> dense_feature_last_example(config.dense.size(), -1);
+  std::vector<tf::int64> sparse_feature_last_example(config.sparse.size(), -1);
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
   for (size_t i = 0; i < parsed_example_size; ++i) {
@@ -193,8 +193,8 @@ Status FastParseSerializedExample(
 
         switch (config.dense[d].dtype) {
           case tf::DT_INT64: {
-            auto out_p = reinterpret_cast<int64*>(out->data.raw) + offset;
-            LimitedArraySlice<int64> slice(out_p, num_elements);
+            auto out_p = reinterpret_cast<tf::int64*>(out->data.raw) + offset;
+            LimitedArraySlice<tf::int64> slice(out_p, num_elements);
             if (!feature.ParseInt64List(&slice)) return parse_error();
             if (slice.EndDistance() != 0) {
               return shape_error(num_elements - slice.EndDistance(), "int64");
@@ -348,7 +348,7 @@ Status FastParseSerializedExample(
     const std::size_t offset = example_index * num_elements;
     switch (config.dense[d].dtype) {
       case tf::DT_INT64: {
-        std::copy_n(in.flat<int64>().data(), num_elements,
+        std::copy_n(in.flat<tf::int64>().data(), num_elements,
                     out->data.i64 + offset);
         break;
       }
@@ -428,7 +428,7 @@ void CopySparseBufferToTensor(tf::DataType dtype, size_t offset,
   }
 }
 
-inline void CopyToBuffer(gtl::ArraySlice<tstring> vec, char* tensor_buffer,
+inline void CopyToBuffer(tf::gtl::ArraySlice<tstring> vec, char* tensor_buffer,
                          int num_examples, int batch_size,
                          int elements_per_stride) {
   int i = 0, k = 0;
@@ -452,7 +452,7 @@ inline void CopyToBuffer(gtl::ArraySlice<tstring> vec, char* tensor_buffer,
 
 Status FastParseExampleLite(
     const FastParseExampleConfig& config, const TfLiteTensor* serialized,
-    gtl::ArraySlice<tstring> example_names, bool* quick_filter,
+    tf::gtl::ArraySlice<tstring> example_names, bool* quick_filter,
     int quick_filter_size, const std::unique_ptr<ConfigIndex>& config_index,
     int config_index_size, SeededHasher* hasher, TfLiteResult* result,
     std::map<absl::string_view, int>& stats, TfLiteContext* context) {
@@ -569,8 +569,9 @@ Status FastParseExampleLite(
     const size_t num_elements_per_minibatch = num_elements / batch_size;
     switch (config.dense[d].dtype) {
       case tf::DT_INT64: {
-        FillAndCopyVarLen<int64>(d, num_elements, num_elements_per_minibatch,
-                                 config, varlen_dense_buffers, values);
+        FillAndCopyVarLen<tf::int64>(d, num_elements,
+                                     num_elements_per_minibatch, config,
+                                     varlen_dense_buffers, values);
         break;
       }
       case tf::DT_FLOAT: {
@@ -610,8 +611,9 @@ Status FastParseExampleLite(
           }
         }
       }
-      int32_t num_strings = offsets.size() - 1;
-      size_t required_bytes = total_size + sizeof(int32_t) * (num_strings + 2);
+      const int32_t num_strings = offsets.size() - 1;
+      const size_t required_bytes = sizeof(int32_t) * (num_strings + 2) +
+          total_size;
       char* tensor_buffer =
           reinterpret_cast<char*>(result->dense_values[d]->data.raw);
       if (result->dense_values[d]->bytes < required_bytes) {
@@ -622,14 +624,14 @@ Status FastParseExampleLite(
         result->dense_values[d]->data.raw = tensor_buffer;
         result->dense_values[d]->bytes = required_bytes;
       }
-      int32_t start = sizeof(int32_t) * (num_strings + 2);
+      const int32_t start = sizeof(int32_t) * (num_strings + 2);
       memcpy(tensor_buffer, &num_strings, sizeof(int32_t));
       for (size_t i = 0; i < offsets.size(); i++) {
         int32_t offset_i = start + offsets[i];
         memcpy(tensor_buffer + sizeof(int32_t) * (i + 1), &offset_i,
                sizeof(int32_t));
       }
-      gtl::ArraySlice<tstring> slice(vec.data(), vec.size());
+      tf::gtl::ArraySlice<tstring> slice(vec.data(), vec.size());
       CopyToBuffer(slice, tensor_buffer + start, count, batch_size,
                    elements_per_stride);
     }
@@ -673,7 +675,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 template <typename T>
 tf::Tensor AsTensor(const std::vector<T>& val) {
   tf::Tensor ret(tf::DataTypeToEnum<T>::value,
-                 {static_cast<int64>(val.size())});
+                 {static_cast<tf::int64>(val.size())});
   std::copy_n(val.begin(), val.size(), ret.flat<T>().data());
   return ret;
 }
@@ -816,7 +818,8 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       std::string k(key.str, key.len);
       switch (sparse_output->type) {
         case kTfLiteInt64:
-          data->config.sparse.emplace_back(k, tf::DataTypeToEnum<int64>::value);
+          data->config.sparse.emplace_back(
+              k, tf::DataTypeToEnum<tf::int64>::value);
           break;
         case kTfLiteFloat32:
           data->config.sparse.emplace_back(k, tf::DataTypeToEnum<float>::value);
@@ -853,8 +856,8 @@ TfLiteStatus EvalParseExample(TfLiteContext* context, TfLiteNode* node) {
       switch (dense_output->type) {
         case kTfLiteInt64:
           data->config.dense.emplace_back(
-              k, tf::DataTypeToEnum<int64>::value, dense_shapes[i],
-              AsTensor<int64>(std::vector<int64>(
+              k, tf::DataTypeToEnum<tf::int64>::value, dense_shapes[i],
+              AsTensor<tf::int64>(std::vector<tf::int64>(
                   dense_defaults->data.i64,
                   dense_defaults->data.i64 + elements_per_stride)),
               false, elements_per_stride);

@@ -52,6 +52,11 @@ void PopulateGatherToTorchIndexSelectPatterns(
 void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
                                MLIRContext *ctx);
 
+// Collection of rewrite patterns for lowering of dynamic HLOs to LHLO dialect.
+void populateDynamicHLOToLHLOConversionPattern(
+    MLIRContext *context, BufferizeTypeConverter *converter,
+    OwningRewritePatternList *patterns, bool insert_copy = true);
+
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         BufferizeTypeConverter *converter,

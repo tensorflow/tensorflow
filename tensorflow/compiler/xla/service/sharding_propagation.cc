@@ -666,12 +666,13 @@ bool InferShardingFromOperands(HloInstruction* instruction,
     return false;
   }
   // Propagate manual sharding. Avoid tuple shaped HLOs that group independent
-  // together. Reduce and Sort can be tuples but the elements are correlated, so
-  // we propagate manual sharding through them.
+  // together. Reduce, ReduceWindow, and Sort can be tuples but the elements
+  // are correlated, so we propagate manual sharding through them.
   if (!instruction->has_sharding() &&
       (instruction->shape().IsArray() ||
        instruction->opcode() == HloOpcode::kReduce ||
-       instruction->opcode() == HloOpcode::kSort) &&
+       instruction->opcode() == HloOpcode::kSort ||
+       instruction->opcode() == HloOpcode::kReduceWindow) &&
       absl::c_any_of(instruction->operands(), [](const HloInstruction* op) {
         return op->has_sharding() && op->sharding().IsManual();
       })) {
@@ -868,6 +869,10 @@ bool InferShardingFromOperands(HloInstruction* instruction,
                                              may_combine_partial_sharding);
     }
     case HloOpcode::kReduceWindow: {
+      if (instruction->shape().IsTuple()) {
+        // TODO (b/73062247) variadic reduce window is not yet supported here.
+        return false;
+      }
       const HloInstruction* lhs = instruction->operand(0);
       if (!IsSpatiallyPartitioned(lhs)) {
         return false;
@@ -1292,6 +1297,10 @@ absl::optional<HloSharding> GetShardingFromUser(
       return user.sharding();
     }
     case HloOpcode::kReduceWindow: {
+      if (user.shape().IsTuple()) {
+        return user.sharding().GetSubSharding(
+            user.shape(), {user.operand_index(&instruction)});
+      }
       if (&instruction != user.operand(0)) {
         return absl::nullopt;
       }
