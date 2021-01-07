@@ -37307,6 +37307,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_BFLOAT16
       }
     }
   }

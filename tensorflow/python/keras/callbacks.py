@@ -2367,7 +2367,8 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._pop_writer()
 
   def _implements_train_batch_hooks(self):
-    return self._should_trace  # Only call batch hooks when tracing is enabled
+    # Only call batch hooks when tracing or write_steps_per_second are enabled
+    return self._should_trace or self.write_steps_per_second
 
   def on_train_batch_begin(self, batch, logs=None):
     self._global_train_batch += 1

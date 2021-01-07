@@ -71,6 +71,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
@@ -223,14 +224,14 @@ StatusOr<BufferAllocation::Slice> GetAllocationSliceForMlir(
               .getValue()
               .getSExtValue(),
           size);
-    } else if (mlir::isa<mlir::GetGlobalMemrefOp>(op)) {
+    } else if (auto get_global = mlir::dyn_cast<mlir::GetGlobalMemrefOp>(op)) {
+      auto module = get_global->getParentOfType<mlir::ModuleOp>();
+      auto global = mlir::cast<mlir::GlobalMemrefOp>(
+          module.lookupSymbol(get_global.name()));
       int64_t index =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
-      int64_t offset =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_offset").getInt();
-      int64_t size =
-          op->getAttrOfType<mlir::IntegerAttr>("lmhlo.slice_size").getInt();
-      return BufferAllocation::Slice(&allocations[index], offset, size);
+          global->getAttrOfType<mlir::IntegerAttr>("lmhlo.alloc").getInt();
+      return BufferAllocation::Slice(&allocations[index], 0,
+                                     allocations[index].size());
     }
     return Unimplemented("MemRefReinterpretCastOp has to wrap a ViewOp");
   }
@@ -3168,7 +3169,22 @@ Status IrEmitterUnnested::HandleAllToAll(HloInstruction* hlo) {
 }
 
 Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
-  return ThunkEmitter(this).HandleInfeed(xla_infeed);
+  TF_ASSIGN_OR_RETURN(auto input, GetMlirEmitterInput(xla_infeed));
+
+  auto infeed_op = mlir::dyn_cast<mlir::lmhlo::InfeedOp>(input.op);
+
+  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  dest_slices.reserve(infeed_op.outputs().size());
+
+  for (mlir::Value output : infeed_op.outputs()) {
+    TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(output));
+    const Shape& shape = TypeToShape(output.getType());
+    dest_slices.push_back(InfeedThunk::ShapedSlice{slice, shape});
+  }
+
+  AddThunkToThunkSequence(
+      absl::make_unique<InfeedThunk>(input.thunk_info, std::move(dest_slices)));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleOutfeed(HloInstruction* outfeed) {

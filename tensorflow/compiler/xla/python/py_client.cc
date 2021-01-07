@@ -89,7 +89,7 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 }
 
 StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
-    const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+    pybind11::handle argument, PjRtDevice* device, bool force_copy,
     PjRtClient::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
     TF_RET_CHECK(!pjrt_client_->local_devices().empty());
@@ -123,7 +123,7 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
   return buffer;
 }
 StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
-    const pybind11::object& argument, PjRtDevice* device, bool force_copy,
+    pybind11::handle argument, PjRtDevice* device, bool force_copy,
     PjRtClient::HostBufferSemantics host_buffer_semantics) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtBuffer> buffer,

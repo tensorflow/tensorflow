@@ -584,7 +584,7 @@ class Bijector(object):
       self._name = camel_to_snake(type(self).__name__.lstrip("_"))
 
     for i, t in enumerate(self._graph_parents):
-      if t is None or not tensor_util.is_tensor(t):
+      if t is None or not tensor_util.is_tf_type(t):
         raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
 
   @property

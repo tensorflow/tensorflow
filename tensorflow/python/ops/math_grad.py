@@ -187,7 +187,7 @@ def _SumGrad(op, grad):
 
           # Compute and cache `output_shape_kept_dims` and `tile_scaling`.
           def EvaluateAsTuple(t):
-            if tensor_util.is_tensor(t):
+            if tensor_util.is_tf_type(t):
               value = c_api.TF_TryEvaluateConstant_wrapper(
                   t.graph._c_graph, t._as_tf_output())  # pylint: disable=protected-access
               assert value is not None

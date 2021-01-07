@@ -88,5 +88,4 @@ TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_renode.sh
 # implementation of `make test` for bluepill
 TARGET_SPECIFIC_MAKE_TEST := 1
 test: build
-	$(TEST_SCRIPT) $(BINDIR) $(TARGET)
-
+	$(TEST_SCRIPT) $(BINDIR) $(TEST_PASS_STRING) $(TARGET)

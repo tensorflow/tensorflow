@@ -1239,18 +1239,22 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       quantized_converter.inference_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'The `quantized_input_stats` flag must be defined when '
-        'either `inference_type` flag or `inference_input_type` '
-        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
+        'The `quantized_input_stats` flag must be defined when either '
+        '`inference_type` flag or `inference_input_type` flag is set to '
+        'tf.int8 or tf.uint8. Currently, `inference_type=tf.{}` and '
+        '`inference_input_type=None`.'.format(quantized_type.name),
+        str(error.exception))
 
     with self.assertRaises(ValueError) as error:
       quantized_converter.inference_type = dtypes.float32
       quantized_converter.inference_input_type = quantized_type
       quantized_converter.convert()
     self.assertEqual(
-        'The `quantized_input_stats` flag must be defined when '
-        'either `inference_type` flag or `inference_input_type` '
-        'flag is set to tf.uint8 or tf.int8.', str(error.exception))
+        'The `quantized_input_stats` flag must be defined when either '
+        '`inference_type` flag or `inference_input_type` flag is set to '
+        'tf.int8 or tf.uint8. Currently, `inference_type=tf.float32` and '
+        '`inference_input_type=tf.{}`.'.format(quantized_type.name),
+        str(error.exception))
 
     quantized_converter.inference_type = quantized_type
     quantized_converter.inference_input_type = quantized_type

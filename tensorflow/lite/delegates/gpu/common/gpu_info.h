@@ -256,6 +256,7 @@ struct OpenClInfo {
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
+  bool supports_images;
   int compute_units_count;
   uint64_t buffer_max_size;
   uint64_t image2d_max_width;
@@ -303,6 +304,7 @@ struct GpuInfo {
 
   bool SupportsFP16() const;
 
+  bool SupportsImages() const;
   bool SupportsTextureArray() const;
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;

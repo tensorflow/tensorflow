@@ -96,7 +96,6 @@ class ComputeTask {
   MetalArguments metal_args_;
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
-  bool tensors_as_args_;
 };
 
 }  // namespace metal

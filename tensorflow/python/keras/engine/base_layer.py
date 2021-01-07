@@ -1074,7 +1074,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         training_value = backend.learning_phase()
         # Force the training_value to be bool type which matches to the contract
         # for layer/model call args.
-        if tensor_util.is_tensor(training_value):
+        if tensor_util.is_tf_type(training_value):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
@@ -1209,7 +1209,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           # Ensure value is a `bool` or `tf.bool`.
           if isinstance(training_mode, bool):
             pass
-          elif tensor_util.is_tensor(training_mode):
+          elif tensor_util.is_tf_type(training_mode):
             training_mode = math_ops.cast(training_mode, dtypes.bool)
           else:
             training_mode = bool(training_mode)
@@ -1551,7 +1551,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       loss._unconditional_loss = True  # pylint: disable=protected-access
@@ -1568,7 +1568,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if loss is None:
         continue
-      if not tensor_util.is_tensor(loss) and not isinstance(
+      if not tensor_util.is_tf_type(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
@@ -1577,7 +1577,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
            isinstance(loss, keras_tensor.KerasTensor)) and
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(loss)
-      elif tensor_util.is_tensor(loss):
+      elif tensor_util.is_tf_type(loss):
         eager_losses.append(loss)
 
     self._callable_losses.extend(callable_losses)

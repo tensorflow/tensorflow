@@ -62,24 +62,16 @@ ComputeTaskDescriptor::ComputeTaskDescriptor(const OperationDef& def)
 
 void ComputeTaskDescriptor::AddSrcTensor(const std::string& tensor_name,
                                          const TensorDescriptor& desc) {
-  if (tensors_as_args) {
-    src_tensors_names.push_back("device FLT4* " + tensor_name + "_buffer");
-    auto desc_new = absl::make_unique<TensorDescriptor>(desc);
-    args.AddObjectRef(tensor_name, AccessType::READ, std::move(desc_new));
-  } else {
-    src_tensors_names.push_back("device FLT4* " + tensor_name);
-  }
+  src_tensors_names.push_back(tensor_name);
+  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  args.AddObjectRef(tensor_name, AccessType::READ, std::move(desc_new));
 }
 
 void ComputeTaskDescriptor::AddDstTensor(const std::string& tensor_name,
                                          const TensorDescriptor& desc) {
-  if (tensors_as_args) {
-    dst_tensors_names.push_back("device FLT4* " + tensor_name + "_buffer");
-    auto desc_new = absl::make_unique<TensorDescriptor>(desc);
-    args.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
-  } else {
-    dst_tensors_names.push_back("device FLT4* " + tensor_name);
-  }
+  dst_tensors_names.push_back(tensor_name);
+  auto desc_new = absl::make_unique<TensorDescriptor>(desc);
+  args.AddObjectRef(tensor_name, AccessType::WRITE, std::move(desc_new));
 }
 
 }  // namespace metal

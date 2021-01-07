@@ -32,7 +32,7 @@ def _validate_list_constructor(elements, element_dtype, element_shape):
   """Validates the inputs of tensor_list."""
   if element_dtype is not None and element_shape is not None:
     return
-  if tensor_util.is_tensor(elements):
+  if tensor_util.is_tf_type(elements):
     return
   if isinstance(elements, (list, tuple)):
     if elements:
@@ -49,7 +49,7 @@ def _validate_list_constructor(elements, element_dtype, element_shape):
 
 def match_staging_level(value, like_value):
   """Casts a value to be staged at the same level as another."""
-  if tensor_util.is_tensor(like_value):
+  if tensor_util.is_tf_type(like_value):
     return constant_op.constant(value)
   return value
 

@@ -59,10 +59,6 @@ class GpuDummyCompiler : public GpuCompiler {
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       GpuVersion gpu_version, se::StreamExecutor* stream_exec, bool relocatable,
       const HloModule* debug_module) {
-    if (user_post_optimization_hook_) {
-      user_post_optimization_hook_(*llvm_module);
-    }
-
     std::vector<uint8> compiled_results;
     return std::pair<std::string, std::vector<uint8>>(
         "", std::move(compiled_results));

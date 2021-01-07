@@ -25,7 +25,7 @@ OPENMPI_DOWNLOAD_URL=${OPENMPI_DOWNLOAD_URL:-https://www.open-mpi.org/software/o
 INSTALL_HOROVOD_FROM_COMMIT=${INSTALL_HOROVOD_FROM_COMMIT:-no}
 BUILD_SSH=${BUILD_SSH:-no}
 HOROVOD_VERSION=${HOROVOD_VERSION:-0.19.1}
-SSH_CONFIG_PATH=/etc/ssh/ssh_config
+SSH_CONFIG_PATH=/etc/ssh
 
 # Install Open MPI
 echo "Installing OpenMPI version ${OPENMPI_VERSION} ..."
@@ -71,7 +71,7 @@ if [[ ${BUILD_SSH} == "yes" ]]; then
 	apt-get clean && apt-get update && \
 	    apt-get install -y --no-install-recommends --fix-missing \
 	        libnuma-dev cmake
-        SSH_CONFIG_PATH=/usr/local/etc/ssh_config
+        SSH_CONFIG_PATH=/usr/local/etc
 else
 	apt-get clean && apt-get update && \
 	    apt-get install -y --no-install-recommends --fix-missing \
@@ -90,10 +90,10 @@ else
 	fi
 fi
 mkdir -p /var/run/sshd
-grep -v StrictHostKeyChecking ${SSH_CONFIG_PATH} > /etc/ssh/ssh_config.new
+grep -v StrictHostKeyChecking ${SSH_CONFIG_PATH}/ssh_config > ${SSH_CONFIG_PATH}/ssh_config.new
 # Allow OpenSSH to talk to containers without asking for confirmation
-echo " StrictHostKeyChecking no" >> /etc/ssh/ssh_config.new
-mv /etc/ssh/ssh_config.new ${SSH_CONFIG_PATH}
+echo " StrictHostKeyChecking no" >> ${SSH_CONFIG_PATH}/ssh_config.new
+mv ${SSH_CONFIG_PATH}/ssh_config.new ${SSH_CONFIG_PATH}/ssh_config
 
 # Install Horovod
 if [[ ${INSTALL_HOROVOD_FROM_COMMIT} == "yes" ]]; then

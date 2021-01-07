@@ -265,13 +265,14 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
 }
 
 // Returns whether the module could use any device bitcode library functions.
-// This function may have false positives -- the module might not use libdevice
-// on NVPTX or ROCm-Device-Libs on AMDGPU even if this function returns true.
 bool CouldNeedDeviceBitcode(const llvm::Module& module) {
   for (const llvm::Function& function : module.functions()) {
-    // This is a conservative approximation -- not all such functions are in
-    // libdevice or ROCm-Device-Libs.
-    if (!function.isIntrinsic() && function.isDeclaration()) {
+    // The list of prefixes should be in sync with library functions used in
+    // target_util.cc.
+    if (!function.isIntrinsic() && function.isDeclaration() &&
+        (function.getName().startswith("__nv_") ||
+         function.getName().startswith("__ocml_") ||
+         function.getName().startswith("__ockl_"))) {
       return true;
     }
   }
@@ -800,8 +801,16 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
     llvm::Triple target_triple, int amdgpu_version,
     const HloModuleConfig& hlo_module_config) {
+  string feature_str = "+code-object-v3";
+#if TF_ROCM_VERSION >= 30900
+  // code-object-v3 is default, so no need to expliticitly specify it
+  // in the feature string. Also, starting with ROCm 4.0, this feature string
+  // is deprecated, and we get a warning to that effect. So removing that
+  // feature string
+  feature_str = "";
+#endif
   return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version),
-                          hlo_module_config, "+code-object-v3");
+                          hlo_module_config, feature_str);
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
