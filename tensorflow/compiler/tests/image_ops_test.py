@@ -604,8 +604,6 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
   )
 
-  @test.disable_for_rocm(skip_message="Disabled on ROCm, because "
-                                      "it runs out of memory")
   def test(self, src_y, src_x, dst_y, dst_x, dtype=np.float32):
     max_y = max(src_y - 1, 1) * (dst_y - 1) + 1
     max_x = max(src_x - 1, 1) * (dst_x - 1) + 1
