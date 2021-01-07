@@ -1465,7 +1465,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(U16IotaDot)) {
+XLA_TEST_F(DotOperationTextTest, U16IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1481,7 +1481,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(U16IotaSquaredDot)) {
+XLA_TEST_F(DotOperationTextTest, U16IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1500,7 +1500,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S16IotaDot)) {
+XLA_TEST_F(DotOperationTextTest, S16IotaDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1515,7 +1515,7 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S16IotaSquaredDot)) {
+XLA_TEST_F(DotOperationTextTest, S16IotaSquaredDot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
@@ -1534,7 +1534,22 @@ ENTRY SmallIntegerDot {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
 }
 
-XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(S8Dot)) {
+XLA_TEST_F(DotOperationTextTest, PREDDot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = pred[20,2] parameter(0)
+  arg1 = pred[2,20] parameter(1)
+  ROOT dot = pred[20,20] dot(arg0, arg1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{0, 0}));
+}
+
+XLA_TEST_F(DotOperationTextTest, S8Dot) {
   absl::string_view hlo_string =
       R"(
 HloModule SmallIntegerDot
