@@ -154,10 +154,8 @@ class CppGradients
 };
 
 TEST_P(CppGradients, TestReluGrad) {
-  // Mathematically, Relu isn't differentiable at `0`. So `gradient_checker`
-  // does not work with it.
   float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 10.0f, -1.0f};
-  int64_t X_dims[] = {2, 2};
+  int64_t X_dims[] = {3, 3};
   AbstractTensorHandlePtr X;
   {
     AbstractTensorHandle* X_raw;
@@ -170,6 +168,8 @@ TEST_P(CppGradients, TestReluGrad) {
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       ReluModel, ReluGradModel, ctx_.get(), {X.get()}, UseFunction()));
 
+  // Mathematically, Relu isn't differentiable at `0`. So `gradient_checker`
+  // does not work with it.
   AbstractTensorHandlePtr Y;
   {
     AbstractTensorHandle* Y_raw;
@@ -178,8 +178,13 @@ TEST_P(CppGradients, TestReluGrad) {
     Y.reset(Y_raw);
   }
 
-  ASSERT_NO_FATAL_FAILURE(CompareManualAndAutodiffGradients(
-      ReluGradModel, ctx_.get(), {Y.get()}, {0.0f}, UseFunction()));
+  std::vector<AbstractTensorHandle*> outputs(1);
+  auto s = RunModel(ReluGradModel, ctx_.get(), {Y.get()},
+                    absl::MakeSpan(outputs), UseFunction());
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], {0.0f}, /*dims*/ {},
+                                           /*abs_error*/ 0));
+  outputs[0]->Unref();
 }
 
 TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {

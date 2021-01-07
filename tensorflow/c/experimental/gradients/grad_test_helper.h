@@ -26,14 +26,8 @@ void CompareNumericalAndAutodiffGradients(
     absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
     double abs_error = 1e-2);
 
-// `manuals` should be a flat array of expected results of `grad_model`. e.g if
-// `grad_model` output is `[[1, 2], nullptr, [3, 4]]`, `manuals` will be `[1,
-// 2, 3, 4]`.
-void CompareManualAndAutodiffGradients(
-    Model grad_model, AbstractContext* ctx,
-    absl::Span<AbstractTensorHandle* const> inputs,
-    absl::Span<const float> manuals, bool use_function,
-    double abs_error = 1e-2);
+void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
+                      absl::Span<const int64_t> dims, double abs_error = 1e-2);
 
 }  // namespace internal
 }  // namespace gradients
