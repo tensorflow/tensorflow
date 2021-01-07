@@ -56,6 +56,7 @@ cc_library(
         ":tpu_op_util",
         ":tpu_program_group_interface",
         ":tpu_util",
+        "//tensorflow/core/tpu:tpu_compile_interface",
         "//tensorflow/core/tpu:tpu_ops_c_api_hdrs",
         ":tpu_util_hdrs",
         "@com_google_absl//absl/strings",
