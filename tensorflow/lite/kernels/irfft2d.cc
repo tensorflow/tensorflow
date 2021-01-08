@@ -265,8 +265,6 @@ void PrepareInputBuffer(const complex<float>* input_data, int input_height,
                         int input_width, int fft_height, int fft_width,
                         double** fft_input_output) {
   int valid_input_height = std::min(input_height, fft_height);
-  // TODO: how does `input_width` behave? Is `valid_input_width` calculated
-  // right?
   int valid_input_width = std::min(input_width, fft_width / 2 + 1);
   for (int i = 0; i < valid_input_height; ++i) {
     int in_pos = i * input_width;
@@ -331,8 +329,6 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
 
   int input_height = input_dims_data[input_dims_count - 2];
   int input_width = input_dims_data[input_dims_count - 1];
-  // TODO: we probably need to swap input and output slice size here.
-  // Or at least redefine output_slice_size.
   int input_slice_size = input_height * input_width;
   int output_slice_size = fft_height * fft_width;
 
@@ -408,7 +404,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     const RuntimeShape output_shape = GetTensorShape(output);
     TF_LITE_ENSURE_EQ(context, num_dims_output, NumDimensions(input));
     TF_LITE_ENSURE(context, num_dims_output >= 2);
-    // TODO: the output_shape likely is different
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 2),
                       fft_length_data[0]);
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 1),
