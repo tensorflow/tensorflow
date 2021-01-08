@@ -878,7 +878,8 @@ def load_internal(export_dir, tags=None, options=None, loader_cls=Loader,
     # tensor_content field contains raw bytes in litle endian format which causes problems
     # when loaded on big-endian systems requiring byteswap
     if sys.byteorder == 'big':
-      saved_model_utils.swap_function_tensor_content(meta_graph_def, "little", "big")
+      saved_model_utils.swap_function_tensor_content(
+              meta_graph_def, "little", "big")
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
       raise ValueError(
