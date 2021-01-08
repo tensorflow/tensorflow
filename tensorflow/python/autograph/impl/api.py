@@ -209,30 +209,31 @@ class PyToTF(transpiler.PyToPy):
 
   def __init__(self):
     super(PyToTF, self).__init__()
-
-    # TODO(mdan): Move into core or replace with an actual importable module.
-    # Craft a module that exposes the external API as well as certain
-    # internal modules.
-    ag_internal = imp.new_module('autograph')
-    ag_internal.__dict__.update(inspect.getmodule(PyToTF).__dict__)
-    ag_internal.ConversionOptions = converter.ConversionOptions
-    ag_internal.STD = converter.STANDARD_OPTIONS
-    ag_internal.Feature = converter.Feature
-    ag_internal.utils = utils
-    ag_internal.FunctionScope = function_wrappers.FunctionScope
-    ag_internal.with_function_scope = function_wrappers.with_function_scope
-    # TODO(mdan): Add safeguards against name clashes.
-    # We don't want to create a submodule because we want the operators to be
-    # accessible as ag__.<operator>
-    ag_internal.__dict__.update(special_functions.__dict__)
-    ag_internal.__dict__.update(operators.__dict__)
-
-    self._extra_locals = {'ag__': ag_internal}
+    self._extra_locals = None
 
   def get_transformed_name(self, node):
     return 'tf__' + super(PyToTF, self).get_transformed_name(node)
 
   def get_extra_locals(self):
+    if self._extra_locals is None:
+      # TODO(mdan): Move into core or replace with an actual importable module.
+      # Craft a module that exposes the external API as well as certain
+      # internal modules.
+      ag_internal = imp.new_module('autograph')
+      ag_internal.__dict__.update(inspect.getmodule(PyToTF).__dict__)
+      ag_internal.ConversionOptions = converter.ConversionOptions
+      ag_internal.STD = converter.STANDARD_OPTIONS
+      ag_internal.Feature = converter.Feature
+      ag_internal.utils = utils
+      ag_internal.FunctionScope = function_wrappers.FunctionScope
+      ag_internal.with_function_scope = function_wrappers.with_function_scope
+      # TODO(mdan): Add safeguards against name clashes.
+      # We don't want to create a submodule because we want the operators to be
+      # accessible as ag__.<operator>
+      ag_internal.__dict__.update(special_functions.__dict__)
+      ag_internal.__dict__.update(operators.__dict__)
+
+      self._extra_locals = {'ag__': ag_internal}
     return self._extra_locals
 
   def get_caching_key(self, ctx):
