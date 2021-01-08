@@ -25,7 +25,7 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 
 
 @register_make_test_function()
-def make_rfft2d_tests(options):
+def make_irfft2d_tests(options):
   """Make a set of tests to do irfft2d."""
 
   test_parameters = [{
