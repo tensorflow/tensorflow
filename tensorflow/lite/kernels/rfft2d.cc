@@ -245,40 +245,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 //   Real(-3/4, 0) = Real(1/4, 0) = Real(-1/4, 0)
 //   Img(-3/4, 0) = Img(1/4, 0) = -Img(-1/4, 0)
 void Rfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
-  int fft_height_half;
   ruy::profiler::ScopeLabel label("Rfft2dReorder");
-  double real, img;
-
-  fft_height_half = fft_height >> 1;
-  // Use 4x4 input as an example, reorder the frequency matrix from
-  //    [[(F(0, 0), F(0, -2/4))       F(0, -1/4),   0],
-  //     [ F(-1/4, 0),                F(-1/4, -1/4), 0],
-  //     [(F(-2/4, 0),F(-2/4, -2/4)), F(-2/4, -1/4), 0],
-  //     [ j*F(-3/4, -2/4),           F(-3/4, -1/4), 0]]
-  // to
-  //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],
-  //    [F(-1/4, 0), F(-1/4, -1/4), F(-1/4, -2/4)],
-  //    [F(-2/4, 0), F(-2/4, -1/4), F(-2/4, -2/4)],
-  //    [F(-3/4, 0), F(-3/4, -1/4), F(-3/4, -2/4)]]
-  for (int i = fft_height_half + 1; i < fft_height; ++i) {
-    real = fft_input_output[i][0];
-    img = fft_input_output[i][1];
-    fft_input_output[i][fft_width] = img;
-    fft_input_output[i][fft_width + 1] = real;
-    fft_input_output[fft_height - i][fft_width] = img;
-    fft_input_output[fft_height - i][fft_width + 1] = -real;
-    fft_input_output[i][0] = fft_input_output[fft_height - i][0];
-    fft_input_output[i][1] = -fft_input_output[fft_height - i][1];
-  }
-
-  double temp = fft_input_output[0][1];
-  fft_input_output[0][fft_width + 1] = 0;
-  fft_input_output[0][1] = 0;
-  fft_input_output[fft_height_half][fft_width] =
-      fft_input_output[fft_height_half][1];
-  fft_input_output[fft_height_half][fft_width + 1] = 0;
-  fft_input_output[fft_height_half][1] = 0;
-  fft_input_output[0][fft_width] = temp;
+  const int kForwardFft = 1;
+  rdft2dsort(fft_height, fft_width, kForwardFft, fft_input_output);
 
   // Reorder the frequency matrix from
   //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],
