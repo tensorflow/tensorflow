@@ -334,7 +334,7 @@ _AG_FIXED_RETURN_TYPE = {
 QN = qual_names.QN
 
 # TODO(mdan): Fix this with an importable module.
-AG_MODULE = api._TRANSPILER.get_extra_locals()['ag__']  # pylint:disable=protected-access
+AG_MODULE = api._TRANSPILER._extra_locals['ag__']  # pylint:disable=protected-access
 
 
 class TFRTypeResolver(type_inference.Resolver):
