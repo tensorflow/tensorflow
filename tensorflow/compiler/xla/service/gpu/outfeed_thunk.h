@@ -38,8 +38,8 @@ class OutfeedThunk : public Thunk {
  public:
   // Constructs a OutfeedThunk that copies data to the host-side
   // outfeed queue from the buffers in the given shape tree.
-  OutfeedThunk(ThunkInfo thunk_info, OutfeedConfig config,
-               std::vector<ShapedSlice> source_slices);
+  OutfeedThunk(ThunkInfo thunk_info, OutfeedConfig&& config,
+               ShapeTree<BufferAllocation::Slice> outfeed_slices);
 
   OutfeedThunk(const OutfeedThunk&) = delete;
   OutfeedThunk& operator=(const OutfeedThunk&) = delete;
@@ -48,7 +48,7 @@ class OutfeedThunk : public Thunk {
 
  private:
   const OutfeedConfig config_;
-  const std::vector<ShapedSlice> source_slices_;
+  const ShapeTree<BufferAllocation::Slice> outfeed_slices_;
 };
 
 }  // namespace gpu
