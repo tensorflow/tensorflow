@@ -489,13 +489,19 @@ Eigen::half baseline_floor_div(Eigen::half lhs, Eigen::half rhs) {
   return static_cast<Eigen::half>(std::floor(static_cast<float>(lhs / rhs)));
 }
 
-GENERATE_DEFAULT_TESTS(FloorDiv,
-                       /*test_name=*/Half, Eigen::half, Eigen::half,
-                       baseline_floor_div)
-GENERATE_DEFAULT_TESTS(FloorDiv,
-                       /*test_name=*/Float, float, float, baseline_floor_div)
-GENERATE_DEFAULT_TESTS(FloorDiv,
-                       /*test_name=*/Double, double, double, baseline_floor_div)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>("Div"),
+    test::DefaultInputNonZero<Eigen::half>(), baseline_floor_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Float, float, float, test::DefaultInput<float>("Div"),
+    test::DefaultInputNonZero<float>(), baseline_floor_div);
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    FloorDiv,
+    /*test_name=*/Double, double, double, test::DefaultInput<double>("Div"),
+    test::DefaultInputNonZero<double>(), baseline_floor_div);
 
 /// Test `tf.Greater`.
 
@@ -544,14 +550,22 @@ T baseline_left_shift(T lhs, T rhs) {
   return lhs << rhs;
 }
 
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int8, int8, int8,
-                       baseline_left_shift)
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int16, int16, int16,
-                       baseline_left_shift)
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int32, int32, int32,
-                       baseline_left_shift)
-GENERATE_DEFAULT_TESTS(LeftShift, /*test_name=*/Int64, int64, int64,
-                       baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int8, int8, int8,
+    test::DefaultInput<int8>("LeftShift"),
+    test::DefaultInputLessThanBitwidth<int8>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int16, int16, int16,
+    test::DefaultInput<int16>("LeftShift"),
+    test::DefaultInputLessThanBitwidth<int16>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int32, int32, int32,
+    test::DefaultInput<int32>("LeftShift"),
+    test::DefaultInputLessThanBitwidth<int32>(), baseline_left_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    LeftShift, /*test_name=*/Int64, int64, int64,
+    test::DefaultInput<int64>("LeftShift"),
+    test::DefaultInputLessThanBitwidth<int64>(), baseline_left_shift)
 
 /// Test `tf.Less`.
 
@@ -656,14 +670,22 @@ T baseline_right_shift(T lhs, T rhs) {
   return lhs >> rhs;
 }
 
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int8, int8, int8, baseline_right_shift)
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int16, int16, int16, baseline_right_shift)
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int32, int32, int32, baseline_right_shift)
-GENERATE_DEFAULT_TESTS(RightShift,
-                       /*test_name=*/Int64, int64, int64, baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int8, int8, int8, test::DefaultInput<int8>("RightShift"),
+    test::DefaultInputLessThanBitwidth<int8>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int16, int16, int16, test::DefaultInput<int16>("RightShift"),
+    test::DefaultInputLessThanBitwidth<int16>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int32, int32, int32, test::DefaultInput<int32>("RightShift"),
+    test::DefaultInputLessThanBitwidth<int32>(), baseline_right_shift)
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    RightShift,
+    /*test_name=*/Int64, int64, int64, test::DefaultInput<int64>("RightShift"),
+    test::DefaultInputLessThanBitwidth<int64>(), baseline_right_shift)
 
 /// Test `tf.Sub`.
 

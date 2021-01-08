@@ -139,14 +139,17 @@ absl::InlinedVector<T, 10> DefaultInputNonZero() {
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
+absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
+  auto max_shift = sizeof(T) * 8 - 1;
+  absl::InlinedVector<T, 10> v(max_shift);
+  for (auto i = 0; i < max_shift; ++i) v.push_back(i);
+  return v;
+}
+
+template <typename T,
+          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
+                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
-  // Only generate values less than the bitwidth of the data type.
-  if (op_name == "LeftShift" || op_name == "RightShift") {
-    auto max_shift = sizeof(T) * 8 - 1;
-    absl::InlinedVector<T, 10> v(max_shift);
-    for (auto i = 0; i < max_shift; ++i) v.push_back(i);
-    return v;
-  }
   return InputAsVector<T, int>({-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
 }
 
@@ -154,10 +157,6 @@ template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
 absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
-  if (op_name == "FloorDiv") {
-    return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.1, 0.1, 1e-6, 0.1,
-                                     0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
-  }
   return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
                                    0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
