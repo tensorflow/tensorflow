@@ -27,6 +27,9 @@
 # Halt on any error or any unknown variable.
 set -ue
 
+# mktemp from coreutils has different flags. Make sure we get the iOS one.
+MKTEMP=/usr/bin/mktemp
+
 LD_DEBUGGABLE_FLAGS="-x"
 # Uncomment the below to get debuggable output. This can only be done for one
 # library at a time.
@@ -43,7 +46,7 @@ if grep -q "^__Z" "${ALLOWLIST_FILE_PATH}"; then
   exit 1 # terminate and indicate error
 fi
 # Unzips the framework zip file into a temp workspace.
-framework=$(mktemp -t framework -d)
+framework=$($MKTEMP -t framework -d)
 unzip "${INPUT_FRAMEWORK}" -d "${framework}"/
 
 # Executable file in the framework.
@@ -59,7 +62,7 @@ merge_cmd=(xcrun lipo)
 
 # Merges object files and hide symbols for each architecture.
 for arch in "${archs[@]}"; do
-    archdir=$(mktemp -t "${arch}" -d)
+    archdir=$($MKTEMP -t "${arch}" -d)
     arch_file="${archdir}/${arch}"
 
     # Handles the binary differently if they are fat or thin.
@@ -84,7 +87,7 @@ for arch in "${archs[@]}"; do
     xcrun ar -x "${arch_file}"
     mv *.o "${archdir}"/
 
-    objects_file_list=$(mktemp)
+    objects_file_list=$($MKTEMP)
     # Hides the symbols except the allowed ones.
     find "${archdir}" -name "*.o" >> "${objects_file_list}"
 
