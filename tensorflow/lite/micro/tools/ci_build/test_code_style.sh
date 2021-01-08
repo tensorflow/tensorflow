@@ -131,11 +131,11 @@ fi
 # Re-enable exit on error now that we are done with the temporary git repo.
 set -e
 
-if [[ -n ${LICENSE_CHECK_RESULT} || \
-         ${CLANG_FORMAT_RESULT} || \
-         ${GTEST_RESULT} || \
-         ${ERROR_REPORTER_RESULT} || \
-         ${ASSERT_RESULT} \
+if [[ ${LICENSE_CHECK_RESULT}  != 0 || \
+      ${CLANG_FORMAT_RESULT}   != 0 || \
+      ${GTEST_RESULT}          != 0 || \
+      ${ERROR_REPORTER_RESULT} != 0 || \
+      ${ASSERT_RESULT}         != 0    \
    ]]
 then
   exit 1
