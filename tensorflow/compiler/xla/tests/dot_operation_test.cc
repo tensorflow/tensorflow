@@ -302,7 +302,7 @@ template <>
 void ParametricDotTest::ComputeAndCompareR2WithError<Eigen::half>(
     XlaBuilder* builder, const Array2D<Eigen::half>& expected,
     absl::Span<GlobalData* const> arguments) {
-  ErrorSpec error_spec(0.3, 5e-3);
+  ErrorSpec error_spec(0.3, 7e-3);
   ComputeAndCompareR2(builder, expected, arguments, error_spec);
 }
 
