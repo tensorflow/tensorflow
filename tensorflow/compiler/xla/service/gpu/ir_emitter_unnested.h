@@ -162,6 +162,9 @@ class IrEmitterUnnested : public IrEmitter,
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
+  Status HandleConstant(HloInstruction* constant) override;
+  Status EmitConstant(MlirEmitterInput mlir_input);
+
   Status HandleCopy(HloInstruction* copy) override;
   Status EmitCopyForMlir(MlirEmitterInput input);
 

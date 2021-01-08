@@ -51,7 +51,7 @@ class GpuExecutable : public Executable {
  public:
   struct ConstantInfo {
     std::string symbol_name;
-    xla::Literal content;
+    std::vector<uint8> content;
     int allocation_index = -1;
   };
 
