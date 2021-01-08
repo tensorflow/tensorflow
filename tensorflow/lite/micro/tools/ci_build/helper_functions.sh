@@ -33,3 +33,18 @@ function readable_run {
   echo "Command completed successfully at $(date)"
   set -x
 }
+
+# Check if the regex ${1} is to be found in the pathspec ${2}.
+# An optional error messsage can be passed with ${3}
+function check_contents() {
+  GREP_OUTPUT=$(git grep -E -rn ${1} -- ${2})
+
+  if [ "${GREP_OUTPUT}" ]; then
+    echo "=============================================="
+    echo "Found matches for ${1} that are not permitted."
+    echo "${3}"
+    echo "=============================================="
+    echo "${GREP_OUTPUT}"
+    return 1
+  fi
+}
