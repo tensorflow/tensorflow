@@ -216,32 +216,28 @@ Offset<tflite::EdgeTpuDeviceSpec> ConvertEdgeTpuDeviceSpec(
       device_spec.num_chips(), device_paths_fb, device_spec.chip_family());
 }
 
-Offset<Vector<Offset<tflite::EdgeTpuInactivePowerConfig>>>
-ConvertEdgeTpuInactivePowerConfigs(
-    FlatBufferBuilder* builder,
-    const ::proto2::RepeatedPtrField<proto::EdgeTpuInactivePowerConfig>&
-        inactive_power_configs_pb) {
-  std::vector<Offset<tflite::EdgeTpuInactivePowerConfig>>
-      inactive_power_configs;
-  for (const auto& config_pb : inactive_power_configs_pb) {
-    inactive_power_configs.push_back(tflite::CreateEdgeTpuInactivePowerConfig(
-        *builder,
-        static_cast<tflite::EdgeTpuPowerState>(
-            config_pb.inactive_power_state()),
-        config_pb.inactive_timeout_us()));
-  }
-
-  return builder->CreateVector<Offset<tflite::EdgeTpuInactivePowerConfig>>(
-      inactive_power_configs);
-}
-
 Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
     const proto::EdgeTpuSettings& settings, FlatBufferBuilder* builder) {
   Offset<Vector<Offset<tflite::EdgeTpuInactivePowerConfig>>>
       inactive_power_configs = 0;
+
+  // Uses std vector to first construct the list and creates the flatbuffer
+  // offset from it later.
+  std::vector<Offset<tflite::EdgeTpuInactivePowerConfig>>
+      inactive_power_configs_std;
   if (settings.inactive_power_configs_size() > 0) {
-    inactive_power_configs = ConvertEdgeTpuInactivePowerConfigs(
-        builder, settings.inactive_power_configs());
+    for (const auto& config : settings.inactive_power_configs()) {
+      inactive_power_configs_std.push_back(
+          tflite::CreateEdgeTpuInactivePowerConfig(
+              *builder,
+              static_cast<tflite::EdgeTpuPowerState>(
+                  config.inactive_power_state()),
+              config.inactive_timeout_us()));
+    }
+
+    inactive_power_configs =
+        builder->CreateVector<Offset<tflite::EdgeTpuInactivePowerConfig>>(
+            inactive_power_configs_std);
   }
 
   Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0;
