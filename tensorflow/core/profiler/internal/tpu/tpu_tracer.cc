@@ -111,7 +111,7 @@ std::unique_ptr<ProfilerInterface> CreateTpuTracer(
   return absl::make_unique<TpuTracer>();
 }
 
-auto register_host_tracer_factory = [] {
+auto register_tpu_tracer_factory = [] {
   RegisterProfilerFactory(&CreateTpuTracer);
   return 0;
 }();
