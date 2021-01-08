@@ -143,7 +143,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
 // TFL Runtime type predicate.
 class TFL_RuntimeType<TypeConstraint t> {
   Pred tflRuntimeTypePredicate = t.predicate;
-  string tflRuntimeTypeDescription = t.description;
+  string tflRuntimeTypeDescription = t.summary;
 }
 
 class TFL_AnyTypeOf<list<Type> allowedRuntimeTypes, string description = "",
@@ -806,7 +806,7 @@ def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
                             StructFieldAttr<"dense_size", I32Attr>,
                             StructFieldAttr<"segments", I32ArrayAttr>,
                             StructFieldAttr<"indices", I32ArrayAttr>] > {
-  let description = "Dimension metadata.";
+  let summary = "Dimension metadata.";
 }
 
 def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
@@ -816,7 +816,7 @@ def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
                             StructFieldAttr<"traversal_order", I32ArrayAttr>,
                             StructFieldAttr<"block_map", I32ArrayAttr>,
                             StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
-  let description = "Sparsity parameter.";
+  let summary = "Sparsity parameter.";
   let storageType = [{ TFL::SparsityParameterAttr }];
 }
 
