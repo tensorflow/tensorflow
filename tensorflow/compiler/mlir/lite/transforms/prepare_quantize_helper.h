@@ -302,8 +302,7 @@ struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
                                    /*symmetric=*/true, mins, maxs);
       double scale = maxs[0] / -llvm::minIntN(tensor_property.number_of_bits);
       quant_type = UniformQuantizedType::getChecked(
-          quant::QuantizationFlags::Signed,
-          rewriter.getIntegerType(16, /*isSigned=*/true),
+          quant::QuantizationFlags::Signed, rewriter.getIntegerType(16),
           attr.getType().getElementType(), scale, /*zeroPoint=*/0,
           llvm::minIntN(10), -llvm::minIntN(10), const_op->getLoc());
     } else {
@@ -551,9 +550,8 @@ struct ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
       : ConvertOpStatsToQDQs<TFL::SVDFOp>(context) {}
   LogicalResult matchAndRewrite(TFL::SVDFOp op,
                                 PatternRewriter& rewriter) const override {
-    operator_property::OpVariant op_variant = {
-        .op_code = tflite::BuiltinOperator_SVDF,
-    };
+    operator_property::OpVariant op_variant;
+    op_variant.op_code = tflite::BuiltinOperator_SVDF;
     auto op_property = operator_property::GetOperatorProperty(op_variant);
     return ConvertOpStatsToQDQs<TFL::SVDFOp>::processInputs(
         op, op_variant, op_property, rewriter);
