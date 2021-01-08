@@ -24,6 +24,7 @@
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
     gathered at runtime to be used in embedding layer partitioning decisions.
 * `tf.keras.metrics.AUC` now support logit predictions.
+* Creating `tf.random.Generator` under `tf.distribute.Strategy` scopes is now allowed (except for `tf.distribute.experimental.CentralStorageStrategy` and `tf.distribute.experimental.ParameterServerStrategy`). Different replicas will get different random-number streams.
 
 ## Bug Fixes and Other Changes
 
