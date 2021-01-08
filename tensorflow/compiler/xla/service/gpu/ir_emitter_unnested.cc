@@ -3175,13 +3175,13 @@ Status IrEmitterUnnested::HandleInfeed(HloInstruction* xla_infeed) {
 
   auto infeed_op = mlir::dyn_cast<mlir::lmhlo::InfeedOp>(input.op);
 
-  std::vector<InfeedThunk::ShapedSlice> dest_slices;
+  std::vector<ShapedSlice> dest_slices;
   dest_slices.reserve(infeed_op.outputs().size());
 
   for (mlir::Value output : infeed_op.outputs()) {
     TF_ASSIGN_OR_RETURN(auto slice, GetAllocationSliceForMlir(output));
     const Shape& shape = TypeToShape(output.getType());
-    dest_slices.push_back(InfeedThunk::ShapedSlice{slice, shape});
+    dest_slices.push_back(ShapedSlice{slice, shape});
   }
 
   AddThunkToThunkSequence(
@@ -4325,8 +4325,8 @@ void IrEmitterUnnested::EmitPrologueForReduction(
       }
       const HloInstruction* init_value = reduce_hlo->operand(1);
 
-      init_ir_value = (*fused_emitter->GetGenerator(init_value))(
-                          IrArray::Index(b_.getInt32Ty()))
+      init_ir_value = (*fused_emitter->GetGenerator(
+          init_value))(IrArray::Index(b_.getInt32Ty()))
                           .ValueOrDie();
     } else {
       init_ir_value = operand_ir_arrays[1].EmitReadArrayElement(
