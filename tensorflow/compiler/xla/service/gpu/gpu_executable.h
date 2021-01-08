@@ -56,11 +56,11 @@ class GpuExecutable : public Executable {
   };
 
   struct OutputInfo {
-    // Output is passed-through from a parameter.
-    bool passthrough;
-
     // Corresponding allocation index.
     int allocation_index;
+
+    // Output is passed-through from a parameter.
+    bool passthrough = false;
 
     // Whether this output is hinted to alias a parameter (BufferAllocation*
     // would indicate the aliased parameter), and what kind of alias it is.

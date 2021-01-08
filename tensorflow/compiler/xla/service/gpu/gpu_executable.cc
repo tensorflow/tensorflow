@@ -431,6 +431,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
 
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
+    if (!output_info_.contains(index)) {
+      continue;
+    }
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
         &allocations_[output_info.allocation_index];
