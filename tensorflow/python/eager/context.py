@@ -661,6 +661,17 @@ class Context(object):
     else:
       raise ValueError("Context is not initialized.")
 
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
 
