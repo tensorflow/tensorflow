@@ -1000,6 +1000,46 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
     self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
 
+  def testFunctionArgumentChecking(self):
+
+    class A(object):
+
+      def func(self, position_arg1, position_arg2):
+        return position_arg1, position_arg2
+
+    def func_pos(position_arg1, position_arg2):
+      return position_arg1, position_arg2
+
+    def func_named(position_arg, named_arg=None):
+      return position_arg, named_arg
+
+    def func_pos_3args(position_arg1, position_arg2, position_arg3):
+      return position_arg1, position_arg2, position_arg3
+
+    a_instance = A()
+    tf_method_pos = def_function.function(a_instance.func)
+    tf_func_pos = def_function.function(func_pos)
+    tf_func_named = def_function.function(func_named)
+    tf_func_pos_3args = def_function.function(func_pos_3args)
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_method_pos(position_arg2='foo')
+
+    with self.assertRaisesRegex(
+        TypeError, '.* missing 1 required argument: position_arg1'):
+      tf_func_pos(position_arg2='foo')
+
+    with self.assertRaisesRegex(TypeError,
+                                '.* missing 1 required argument: position_arg'):
+      tf_func_named(named_arg='foo')
+
+    with self.assertRaisesRegex(
+        TypeError,
+        '.* missing required arguments: position_arg1, position_arg3'):
+      tf_func_pos_3args(position_arg2='foo')
+
+    tf_func_named(position_arg='bar')
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
