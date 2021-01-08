@@ -149,14 +149,14 @@ absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
                            bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, int>({-18, -9, -1, 0, 0, 1, 1, 2, 3, 5, 7, 9, 9, 18});
 }
 
 template <typename T, std::enable_if_t<
                           llvm::is_one_of<T, Eigen::half, float, double>::value,
                           bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, double>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1,
                                    0.2, 0.3, 0.5, 0.7, 0.9, 9.0, 18.0});
 }
@@ -165,9 +165,9 @@ template <typename T,
           std::enable_if_t<llvm::is_one_of<T, std::complex<float>,
                                            std::complex<double>>::value,
                            bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
+absl::InlinedVector<T, 10> DefaultInput() {
   using ElementType = typename T::value_type;
-  auto input = test::DefaultInput<ElementType>(op_name);
+  auto input = test::DefaultInput<ElementType>();
   absl::InlinedVector<T, 10> complex_input;
   for (ElementType value : input) {
     complex_input.emplace_back(value, -value);
@@ -177,7 +177,7 @@ absl::InlinedVector<T, 10> DefaultInput(absl::string_view op_name) {
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, bool>::value, bool> = true>
-absl::InlinedVector<T, 10> DefaultInput(absl::string_view /*op_name*/) {
+absl::InlinedVector<T, 10> DefaultInput() {
   return InputAsVector<T, bool>({true, false, true, true, false});
 }
 
