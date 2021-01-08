@@ -229,6 +229,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseFullyConnected(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_GATHER_ND: {
+      return ParseGatherNd(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_GREATER: {
       return ParseGreater(op, error_reporter, allocator, builtin_data);
     }
@@ -805,7 +809,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SQUARED_DIFFERENCE:
     case BuiltinOperator_REVERSE_V2:
     case BuiltinOperator_ADD_N:
-    case BuiltinOperator_GATHER_ND:
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
     case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
@@ -1204,6 +1207,14 @@ TfLiteStatus ParseFullyConnected(const Operator* op,
   }
 
   *builtin_data = params.release();
+  return kTfLiteOk;
+}
+
+// We have this parse function instead of directly returning kTfLiteOk from the
+// switch-case in ParseOpData because this function is used as part of the
+// selective registration for the OpResolver implementation in micro.
+TfLiteStatus ParseGatherNd(const Operator*, ErrorReporter*,
+                           BuiltinDataAllocator*, void**) {
   return kTfLiteOk;
 }
 
