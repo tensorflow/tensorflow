@@ -84,29 +84,32 @@ TEST(Irfft2dOpTest, FftLengthSmallerThanInputSize) {
     {-15, 0}, {-2, 13}, {-5, 0}, {-10, -5}, {3, -6}, {-6, -11}
   });
   // clang-format on
-  model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 4});
+  model.PopulateTensor<int32_t>(model.fft_lengths(), {2, 2});
   model.Invoke();
 
-  float expected_result[16] = {1, 2, 3, 4, 3, 8, 6, 3,
-                               5, 2, 7, 6, 9, 5, 8, 3};
+  float expected_result[4] = {14, 18.5, 20.5, 22};
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
-// TODO: broken test
 TEST(Irfft2dOpTest, DISABLED_FftLengthGreaterThanInputSize) {
-  Irfft2dOpModel model({TensorType_COMPLEX64, {4, 5}}, {TensorType_INT32, {2}});
+  Irfft2dOpModel model({TensorType_COMPLEX64, {4, 3}}, {TensorType_INT32, {2}});
   // clang-format off
   model.PopulateTensor<std::complex<float>>(model.input(), {
-    {50, 0}, {8.29289341, -33.6776695}, {-7, 1}, {9.70710659, -1.67766953}, {0, 0},
-    {-10, -20}, {-16.3639603, -1.12132037}, {-5, 1}, {-7.19238806, -2.05025244}, {-6, 2},
-    {10, 0}, {-4.7781744, -6.12132025}, {-1, 11}, {10.7781744, 1.87867963}, {4, 0},
-    {-10, 20}, {11.1923885, 11.9497471}, {5, -5}, {-3.63603902, -3.12132025}, {-6, -2}
+    {75, 0},  {-6, -1}, {9, 0},  {-10, 5},  {-3, 2}, {-6, 11},
+    {-15, 0}, {-2, 13}, {-5, 0}, {-10, -5}, {3, -6}, {-6, -11}
   });
   // clang-format on
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 8});
   model.Invoke();
 
-  float expected_result[12] = {1, 2, 3, 4, 3, 8, 6, 3, 5, 2, 7, 6};
+  // clang-format off
+  float expected_result[32] = {
+    0.25, 0.54289322, 1.25, 1.25, 1.25, 1.95710678, 2.25, 1.25,
+    1.25, 2.85355339, 4.25, 3.91421356, 2.75, 2.14644661, 1.75, 1.08578644,
+    3., 1.43933983, 0.5, 2.14644661, 4., 3.56066017, 2.5, 2.85355339,
+    5.625, 3.65533009, 1.375, 3.3017767, 5.125, 2.59466991, 0.375, 2.9482233
+  };
+  // clang-format on
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
