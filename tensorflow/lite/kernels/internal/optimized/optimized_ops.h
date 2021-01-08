@@ -5448,6 +5448,8 @@ inline void Slice(const tflite::SliceParams& op_params,
   return Slice(op_params, input_shape, output_shape, &writer);
 }
 
+// Note: This implementation is only optimized for the case where the inner
+// stride == 1.
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                          const RuntimeShape& unextended_input_shape,
@@ -5457,16 +5459,7 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   using strided_slice::StartForAxis;
   using strided_slice::StopForAxis;
 
-  // We only have an optimized implementation for the case where the inner-most
-  // stride == 1. For all other cases, fall back to the reference impl.
-  if ((op_params.strides_count <= 0) ||
-      (op_params.strides[op_params.strides_count - 1] != 1)) {
-    reference_ops::StridedSlice(op_params, unextended_input_shape,
-                                unextended_output_shape, writer);
-    return;
-  }
-
-  ruy::profiler::ScopeLabel label("StridedSliceInnerStrideOne");
+  ruy::profiler::ScopeLabel label("StridedSlice");
 
   // Note that the output_shape is not used herein.
   tflite::StridedSliceParams params_copy = op_params;
@@ -5481,7 +5474,6 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   // Reverse and pad to 5 dimensions because that is what the runtime code
   // requires (ie. all shapes must be 5D and are given backwards).
   strided_slice::StridedSlicePadIndices(&params_copy, 5);
-  TFLITE_DCHECK_EQ(params_copy.strides[4], 1);
 
   const int start_0 = StartForAxis(params_copy, input_shape, 0);
   const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
@@ -5493,6 +5485,7 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
   const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
   const int start_4 = StartForAxis(params_copy, input_shape, 4);
   const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
+  const bool inner_stride_is_1 = params_copy.strides[4] == 1;
 
   for (int offset_0 = start_0 * input_shape.Dims(1),
            end_0 = stop_0 * input_shape.Dims(1),
@@ -5514,11 +5507,20 @@ inline void StridedSlice(const tflite::StridedSliceParams& op_params,
                  step_3 = params_copy.strides[3] * input_shape.Dims(4);
              !LoopCondition(offset_3, end_3, params_copy.strides[3]);
              offset_3 += step_3) {
-          // Note: We've already validated that the inner-most stride is 1, so
-          // we can safely write the full inner sequence.
-          const int len = stop_4 - start_4;
-          if (len > 0) {
-            writer->WriteN(offset_3 + start_4, len);
+          // When the stride is 1, the inner loop is equivalent to the
+          // optimized slice inner loop. Otherwise, it is identical to the
+          // strided_slice reference implementation inner loop.
+          if (inner_stride_is_1) {
+            const int len = stop_4 - start_4;
+            if (len > 0) {
+              writer->WriteN(offset_3 + start_4, len);
+            }
+          } else {
+            for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
+                 !LoopCondition(offset_4, end_4, params_copy.strides[4]);
+                 offset_4 += params_copy.strides[4]) {
+              writer->Write(offset_4);
+            }
           }
         }
       }
