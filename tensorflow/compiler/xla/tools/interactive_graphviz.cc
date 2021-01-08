@@ -72,6 +72,7 @@ bool ReadLine(const char* prompt, string* line) {
 struct Options {
   string hlo_snapshot;
   string hlo_proto;
+  string hlo_module_proto;
   string hlo_text;
   string platform;
   string browser;
@@ -664,11 +665,14 @@ void CheckFlags(const Options& opts) {
   if (!opts.hlo_text.empty()) {
     ++nonempty_flags_amount;
   }
+  if (!opts.hlo_module_proto.empty()) {
+    ++nonempty_flags_amount;
+  }
   if (nonempty_flags_amount == 1) {
     return;
   }
   LOG(FATAL) << "Can only specify one and only one of '--hlo_proto', "
-                "'--hlo_snapshot', '--hlo_text' flags.";
+                "'--hlo_snapshot', '--hlo_text', '--hlo_module_proto' flags.";
 }
 
 void RealMain(const Options& opts) {
@@ -700,6 +704,10 @@ void RealMain(const Options& opts) {
   } else if (!opts.hlo_text.empty()) {
     module = HloRunner::ReadModuleFromHloTextFile(
                  opts.hlo_text, xla::GetDebugOptionsFromFlags())
+                 .ValueOrDie();
+  } else if (!opts.hlo_module_proto.empty()) {
+    module = HloRunner::ReadModuleFromModuleBinaryProtofile(
+                 opts.hlo_module_proto, xla::GetDebugOptionsFromFlags())
                  .ValueOrDie();
   }
 
@@ -739,6 +747,8 @@ int main(int argc, char** argv) {
                        "HloSnapshot proto to interactively dump to graphviz"),
       tensorflow::Flag("hlo_proto", &opts.hlo_proto,
                        "XLA hlo proto to interactively dump to graphviz"),
+      tensorflow::Flag("hlo_module_proto", &opts.hlo_module_proto,
+                       "XLA hlomodule proto to interactively dump to graphviz"),
       tensorflow::Flag("hlo_text", &opts.hlo_text,
                        "XLA hlo proto to interactively dump to graphviz"),
       tensorflow::Flag("platform", &opts.platform,
