@@ -76,8 +76,7 @@ TEST(Irfft2dOpTest, FftLengthMatchesInputSize) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
-// TODO: broken test
-TEST(Irfft2dOpTest, DISABLED_FftLengthSmallerThanInputSize) {
+TEST(Irfft2dOpTest, FftLengthSmallerThanInputSize) {
   Irfft2dOpModel model({TensorType_COMPLEX64, {4, 3}}, {TensorType_INT32, {2}});
   // clang-format off
   model.PopulateTensor<std::complex<float>>(model.input(), {
@@ -88,8 +87,8 @@ TEST(Irfft2dOpTest, DISABLED_FftLengthSmallerThanInputSize) {
   model.PopulateTensor<int32_t>(model.fft_lengths(), {4, 4});
   model.Invoke();
 
-  float expected_result[20] = {1, 2, 3, 4, 0, 3, 8, 6, 3, 0,
-                               5, 2, 7, 6, 0, 9, 5, 8, 3, 0};
+  float expected_result[16] = {1, 2, 3, 4, 3, 8, 6, 3,
+                               5, 2, 7, 6, 9, 5, 8, 3};
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
