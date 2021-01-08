@@ -242,6 +242,8 @@ class Conv(Layer):
     self.built = True
 
   def call(self, inputs):
+    input_shape = inputs.shape
+
     if self._is_causal:  # Apply causal padding to inputs for Conv1D.
       inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
 
@@ -265,6 +267,11 @@ class Conv(Layer):
         else:
           outputs = nn.bias_add(
               outputs, self.bias, data_format=self._tf_data_format)
+
+    if not context.executing_eagerly():
+      # Infer the static output shape:
+      out_shape = self.compute_output_shape(input_shape)
+      outputs.set_shape(out_shape)
 
     if self.activation is not None:
       return self.activation(outputs)

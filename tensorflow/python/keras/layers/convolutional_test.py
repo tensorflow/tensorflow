@@ -174,24 +174,36 @@ class Conv1DTest(keras_parameterized.TestCase):
 @keras_parameterized.run_all_keras_modes
 class Conv2DTest(keras_parameterized.TestCase):
 
-  def _run_test(self, kwargs, expected_output_shape):
+  def _run_test(self, kwargs, expected_output_shape, spatial_shape=(7, 6)):
     num_samples = 2
     stack_size = 3
-    num_row = 7
-    num_col = 6
+    num_row, num_col = spatial_shape
+    input_data = None
+    # Generate valid input data.
+    if None in spatial_shape:
+      input_data_shape = (num_samples, num_row or 7, num_col or 6, stack_size)
+      input_data = 10 * np.random.random(input_data_shape).astype(np.float32)
 
     with self.cached_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.Conv2D,
           kwargs=kwargs,
           input_shape=(num_samples, num_row, num_col, stack_size),
+          input_data=input_data,
           expected_output_shape=expected_output_shape)
 
-  def _run_test_extra_batch_dim(self, kwargs, expected_output_shape):
+  def _run_test_extra_batch_dim(self,
+                                kwargs,
+                                expected_output_shape,
+                                spatial_shape=(7, 6)):
     batch_shape = (2, 11)
     stack_size = 3
-    num_row = 7
-    num_col = 6
+    num_row, num_col = spatial_shape
+    input_data = None
+    # Generate valid input data.
+    if None in spatial_shape:
+      input_data_shape = batch_shape + (num_row or 7, num_col or 6, stack_size)
+      input_data = 10 * np.random.random(input_data_shape).astype(np.float32)
 
     with self.cached_session(use_gpu=True):
       if expected_output_shape is not None:
@@ -200,6 +212,7 @@ class Conv2DTest(keras_parameterized.TestCase):
           keras.layers.Conv2D,
           kwargs=kwargs,
           input_shape=batch_shape + (num_row, num_col, stack_size),
+          input_data=input_data,
           expected_output_shape=expected_output_shape)
 
   @parameterized.named_parameters(
@@ -230,13 +243,24 @@ class Conv2DTest(keras_parameterized.TestCase):
           'groups': 3,
           'filters': 6
       }, (None, 5, 4, 6), True),
+      ('dilation_2_unknown_width', {
+          'dilation_rate': (2, 2)
+      }, (None, None, 2, 2), False, (None, 6)),
+      ('dilation_2_unknown_height', {
+          'dilation_rate': (2, 2)
+      }, (None, 3, None, 2), False, (7, None)),
   )
-  def test_conv2d(self, kwargs, expected_output_shape=None, requires_gpu=False):
+  def test_conv2d(self,
+                  kwargs,
+                  expected_output_shape=None,
+                  requires_gpu=False,
+                  spatial_shape=(7, 6)):
     kwargs['filters'] = kwargs.get('filters', 2)
     kwargs['kernel_size'] = (3, 3)
     if not requires_gpu or test.is_gpu_available(cuda_only=True):
-      self._run_test(kwargs, expected_output_shape)
-      self._run_test_extra_batch_dim(kwargs, expected_output_shape)
+      self._run_test(kwargs, expected_output_shape, spatial_shape)
+      self._run_test_extra_batch_dim(kwargs, expected_output_shape,
+                                     spatial_shape)
 
   def test_conv2d_regularizers(self):
     kwargs = {
