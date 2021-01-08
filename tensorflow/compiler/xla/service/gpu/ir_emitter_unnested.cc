@@ -5377,6 +5377,9 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       if (auto fusion = mlir::dyn_cast<mlir::lmhlo::FusionOp>(unnested_hlo)) {
         fan_out = fusion.getFusionResults().size();
       }
+
+      // 64 is the general advice as the smallest block sizes.
+      // Moreover, XLA:GPU emitters need at least 32 threads at some places.
       int64 max_block_size = std::max(64LL, 512LL / NearestPowerOfTwo(fan_out));
       return std::min(
           max_block_size,
