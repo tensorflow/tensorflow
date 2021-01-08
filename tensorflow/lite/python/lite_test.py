@@ -2498,7 +2498,7 @@ class FromKerasFile(TestModels, parameterized.TestCase):
     self.assertEqual((0., 0.), output_details[1]['quantization'])
 
   def testPartialShapeOverriding(self):
-    """Test a Functional tf.keras model with parital input shape overriding."""
+    """Test a Functional tf.keras model with partial input shape overriding."""
     self._getFunctionalModelMultipleInputs()
 
     # Convert to TFLite model.
