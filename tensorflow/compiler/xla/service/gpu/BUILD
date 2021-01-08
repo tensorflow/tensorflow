@@ -119,8 +119,6 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-    ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -129,6 +127,10 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
