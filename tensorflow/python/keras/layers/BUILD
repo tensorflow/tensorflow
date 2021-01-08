@@ -219,6 +219,7 @@ py_library(
     srcs = ["multi_head_attention.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:platform",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
