@@ -21,13 +21,13 @@ limitations under the License.
 #include <algorithm>
 #include <complex>
 
-#include "third_party/fft2d/fft2d.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "third_party/fft2d/fft2d.h"
 
 namespace tflite {
 namespace ops {
@@ -265,27 +265,28 @@ void PrepareInputBuffer(const complex<float>* input_data, int input_height,
                         int input_width, int fft_height, int fft_width,
                         double** fft_input_output) {
   int valid_input_height = std::min(input_height, fft_height);
-  // TODO: how does `input_width` behave? Is `valid_input_width` calculated right?
+  // TODO: how does `input_width` behave? Is `valid_input_width` calculated
+  // right?
   int valid_input_width = std::min(input_width, fft_width / 2 + 1);
   for (int i = 0; i < valid_input_height; ++i) {
     int in_pos = i * input_width;
     for (int j = 0; j < valid_input_width; ++j) {
-      fft_input_output[i][2*j] = input_data[in_pos].real();
-      fft_input_output[i][2*j+1] = input_data[in_pos].imag();
+      fft_input_output[i][2 * j] = input_data[in_pos].real();
+      fft_input_output[i][2 * j + 1] = input_data[in_pos].imag();
       ++in_pos;
     }
     // Zero-pad the rest of the input buffer
     for (int j = valid_input_width; j < fft_width / 2 + 1; ++j) {
-      fft_input_output[i][2*j] = 0;
-      fft_input_output[i][2*j+1] = 0;
+      fft_input_output[i][2 * j] = 0;
+      fft_input_output[i][2 * j + 1] = 0;
     }
   }
 
   // Zero-pad input buffer, if fft_height is greater than valid_input_height.
   for (int i = valid_input_height; i < fft_height; ++i) {
     for (int j = 0; j < fft_width / 2 + 1; ++j) {
-      fft_input_output[i][2*j] = 0;
-      fft_input_output[i][2*j+1] = 0;
+      fft_input_output[i][2 * j] = 0;
+      fft_input_output[i][2 * j + 1] = 0;
     }
   }
 }
