@@ -76,6 +76,7 @@ TEST(Irfft2dOpTest, FftLengthMatchesInputSize) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
+// TODO: broken test
 TEST(Irfft2dOpTest, DISABLED_FftLengthSmallerThanInputSize) {
   Irfft2dOpModel model({TensorType_COMPLEX64, {4, 3}}, {TensorType_INT32, {2}});
   // clang-format off
@@ -92,6 +93,7 @@ TEST(Irfft2dOpTest, DISABLED_FftLengthSmallerThanInputSize) {
   EXPECT_THAT(model.GetOutput(), ElementsAreArray(expected_result));
 }
 
+// TODO: broken test
 TEST(Irfft2dOpTest, DISABLED_FftLengthGreaterThanInputSize) {
   Irfft2dOpModel model({TensorType_COMPLEX64, {4, 5}}, {TensorType_INT32, {2}});
   // clang-format off

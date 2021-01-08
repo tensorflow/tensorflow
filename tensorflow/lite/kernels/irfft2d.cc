@@ -128,7 +128,7 @@ TfLiteStatus ResizeOutputandTemporaryTensors(TfLiteContext* context,
                     GetOutputSafe(context, node, kOutputTensor, &output));
   TfLiteIntArray* output_shape = TfLiteIntArrayCopy(input->dims);
   output_shape->data[num_dims - 2] = fft_length_data[0];
-  output_shape->data[num_dims - 1] = fft_length_data[1] / 2 + 1;
+  output_shape->data[num_dims - 1] = fft_length_data[1];
   TF_LITE_ENSURE_STATUS(context->ResizeTensor(context, output, output_shape));
 
   // Resize temporary tensors, fft_integer_working_area.
@@ -226,80 +226,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-// Reorder the result so that it matches the pattern of tf.signal.irfft2.
-// In tf.signal.fft2d the frequency matrix of a 4x4 input is
-//    [[F(0, 0),  F(0, 1/4),   F(0, 2/4)],
-//    [F(1/4, 0), F(1/4, 1/4), F(1/4, 2/4)],
-//    [F(2/4, 0), F(2/4, 1/4), F(2/4, 2/4)],
-//    [F(3/4, 0), F(3/4, 1/4), F(3/4, 2/4)]]
-// While in rdft2d, the frequency matrix of a 4x4 input is
-//    [[(F(0, 0), F(0, -2/4))       F(0, -1/4),   0],
-//     [ F(-1/4, 0),                F(-1/4, -1/4), 0],
-//     [(F(-2/4, 0),F(-2/4, -2/4)), F(-2/4, -1/4), 0],
-//     [ j*F(-3/4, -2/4),           F(-3/4, -1/4), 0]]
-// Since real fft has the property that
-//   Real(u,v) = Real(-u, -v)
-//   Img(u,v) = - Img(-u, -v)
-// Result of rdft2d can be reordered and match the pattern of tf.signal.irfft2.
-// For example,
-//   Real(-3/4, 0) = Real(1/4, 0) = Real(-1/4, 0)
-//   Img(-3/4, 0) = Img(1/4, 0) = -Img(-1/4, 0)
+// Reorder the input so that it takes the pattern of tf.signal.irfft2.
+//
+// In tf.signal.fft2d the frequency matrix is the complex conjugate
+// of what rdft2d takes as input.
+//
+// Additionally, rdft2d requires calling a rdft2dsort function to arrange
+// the matrix in the right way for rdft2d to operate.
 void Irfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
-  int fft_height_half;
   ruy::profiler::ScopeLabel label("Irfft2dReorder");
-  double real, img;
-
-  fft_height_half = fft_height >> 1;
-  // Use 4x4 input as an example, reorder the frequency matrix from
-  //    [[(F(0, 0), F(0, -2/4))       F(0, -1/4),   0],
-  //     [ F(-1/4, 0),                F(-1/4, -1/4), 0],
-  //     [(F(-2/4, 0),F(-2/4, -2/4)), F(-2/4, -1/4), 0],
-  //     [ j*F(-3/4, -2/4),           F(-3/4, -1/4), 0]]
-  // to
-  //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],
-  //    [F(-1/4, 0), F(-1/4, -1/4), F(-1/4, -2/4)],
-  //    [F(-2/4, 0), F(-2/4, -1/4), F(-2/4, -2/4)],
-  //    [F(-3/4, 0), F(-3/4, -1/4), F(-3/4, -2/4)]]
-  for (int i = fft_height_half + 1; i < fft_height; ++i) {
-    real = fft_input_output[i][0];
-    img = fft_input_output[i][1];
-    fft_input_output[i][fft_width] = img;
-    fft_input_output[i][fft_width + 1] = real;
-    fft_input_output[fft_height - i][fft_width] = img;
-    fft_input_output[fft_height - i][fft_width + 1] = -real;
-    fft_input_output[i][0] = fft_input_output[fft_height - i][0];
-    fft_input_output[i][1] = -fft_input_output[fft_height - i][1];
-  }
-
-  double temp = fft_input_output[0][1];
-  fft_input_output[0][fft_width + 1] = 0;
-  fft_input_output[0][1] = 0;
-  fft_input_output[fft_height_half][fft_width] =
-      fft_input_output[fft_height_half][1];
-  fft_input_output[fft_height_half][fft_width + 1] = 0;
-  fft_input_output[fft_height_half][1] = 0;
-  fft_input_output[0][fft_width] = temp;
-
-  // Reorder the frequency matrix from
-  //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],
-  //    [F(-1/4, 0), F(-1/4, -1/4), F(-1/4, -2/4)],
-  //    [F(-2/4, 0), F(-2/4, -1/4), F(-2/4, -2/4)],
-  //    [F(-3/4, 0), F(-3/4, -1/4), F(-3/4, -2/4)]]
-  // to
-  //    [[F(0, 0),  F(0, 1/4),   F(0, 2/4)],
-  //    [F(1/4, 0), F(1/4, 1/4), F(1/4, 2/4)],
-  //    [F(2/4, 0), F(2/4, 1/4), F(2/4, 2/4)],
-  //    [F(3/4, 0), F(3/4, 1/4), F(3/4, 2/4)]]
+  // Take complex conjugate of frequency matrix
   for (int i = 0; i < fft_height; ++i) {
     for (int j = 1; j < fft_width + 2; j += 2) {
       fft_input_output[i][j] = -fft_input_output[i][j];
     }
   }
+
+  // Arrange matrix into correct format for rdft2d function
+  const int kBackwardFft = -1;
+  rdft2dsort(fft_height, fft_width, kBackwardFft, fft_input_output);
 }
 
 void Irfft2dImpl(int fft_height, int fft_width, double** fft_input_output,
-                int* fft_integer_working_area_data,
-                double* fft_double_working_area_data) {
+                 int* fft_integer_working_area_data,
+                 double* fft_double_working_area_data) {
   ruy::profiler::ScopeLabel label("Irfft2dImpl");
   Irfft2dReorder(fft_height, fft_width, fft_input_output);
 
@@ -311,40 +261,42 @@ void Irfft2dImpl(int fft_height, int fft_width, double** fft_input_output,
          fft_double_working_area_data);
 }
 
-// TODO: I'm not sure we're zero padding correctly
 void PrepareInputBuffer(const complex<float>* input_data, int input_height,
                         int input_width, int fft_height, int fft_width,
                         double** fft_input_output) {
   int valid_input_height = std::min(input_height, fft_height);
-  int valid_input_width = std::min(input_width, fft_width);
+  // TODO: how does `input_width` behave? Is `valid_input_width` calculated right?
+  int valid_input_width = std::min(input_width, fft_width / 2 + 1);
   for (int i = 0; i < valid_input_height; ++i) {
     int in_pos = i * input_width;
     for (int j = 0; j < valid_input_width; ++j) {
-      // C++0x guarantees that real and imag in complex are always adjacent,
-      // as such the following cast is guaranteed to work as desired.
-      fft_input_output[i][j] = reinterpret_cast<const double*>(input_data)[in_pos++];
+      fft_input_output[i][2*j] = input_data[in_pos].real();
+      fft_input_output[i][2*j+1] = input_data[in_pos].imag();
+      ++in_pos;
     }
     // Zero-pad the rest of the input buffer
-    for (int j = valid_input_width; j < fft_width + 2; ++j) {
-      fft_input_output[i][j] = 0;
+    for (int j = valid_input_width; j < fft_width / 2 + 1; ++j) {
+      fft_input_output[i][2*j] = 0;
+      fft_input_output[i][2*j+1] = 0;
     }
   }
 
   // Zero-pad input buffer, if fft_height is greater than valid_input_height.
   for (int i = valid_input_height; i < fft_height; ++i) {
-    for (int j = 0; j < fft_width + 2; ++j) {
-      fft_input_output[i][j] = 0;
+    for (int j = 0; j < fft_width / 2 + 1; ++j) {
+      fft_input_output[i][2*j] = 0;
+      fft_input_output[i][2*j+1] = 0;
     }
   }
 }
 
-void PrepareOutputBuffer(float* output_data, int fft_height,
-                         int fft_width, double** fft_input_output) {
+void PrepareOutputBuffer(float* output_data, int fft_height, int fft_width,
+                         double** fft_input_output) {
   int cnt = 0;
+  float norm = 2.0 / float(fft_height) / float(fft_width);
   for (int i = 0; i < fft_height; ++i) {
-    for (int j = 0; j < fft_width / 2 + 1; ++j) {
-      // Discard the imaginary part and only store the real part
-      output_data[cnt++] = fft_input_output[i][j * 2];
+    for (int j = 0; j < fft_width; ++j) {
+      output_data[cnt++] = fft_input_output[i][j] * norm;
     }
   }
 }
@@ -381,7 +333,7 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   // TODO: we probably need to swap input and output slice size here.
   // Or at least redefine output_slice_size.
   int input_slice_size = input_height * input_width;
-  int output_slice_size = fft_height * (fft_width / 2 + 1);
+  int output_slice_size = fft_height * fft_width;
 
   // Create input/output buffer for FFT
   double** fft_input_output = new double*[fft_height];
@@ -413,7 +365,7 @@ TfLiteStatus Irfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
     memset(fft_integer_working_area_data, 0, fft_integer_working_area->bytes);
     memset(fft_double_working_area_data, 0, fft_double_working_area->bytes);
     Irfft2dImpl(fft_height, fft_width, fft_input_output,
-               fft_integer_working_area_data, fft_double_working_area_data);
+                fft_integer_working_area_data, fft_double_working_area_data);
     PrepareOutputBuffer(output_data, fft_height, fft_width, fft_input_output);
     input_data += input_slice_size;
     output_data += output_slice_size;
@@ -459,7 +411,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 2),
                       fft_length_data[0]);
     TF_LITE_ENSURE_EQ(context, output_shape.Dims(num_dims_output - 1),
-                      fft_length_data[1] / 2 + 1);
+                      fft_length_data[1]);
   }
 
   return Irfft2dHelper(context, node);
