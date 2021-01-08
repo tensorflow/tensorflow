@@ -184,11 +184,11 @@ func @var_handle_on_tpu_iter_on_cpu() -> tensor<i32> {
       mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
     tf_device.return %1#0, %1#1 : tensor<!tf.string>, tensor<2x!tf.string>
   }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
-  %var = "tf.VarHandleOp"() {container = "c", shared_name = "v", device = "/device:TPU:0"} : () -> tensor<!tf.resource<tensor<3x3x1x32xf32>>>
+  %var = "tf.VarHandleOp"() {container = "c", shared_name = "v", device = "/device:TPU:0"} : () -> tensor<*x!tf.resource>
   // CHECK-NOT: "tf.TPUGetLayoutOp"
   // CHECK-NOT: "tf.TPUCopyWithLayout"
   %2:2 = "tf.IteratorGetNext"(%var) {device = "/device:CPU:0"}
-    : (tensor<!tf.resource<tensor<3x3x1x32xf32>>>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
+    : (tensor<*x!tf.resource>) -> (tensor<3x3x1x32xf32>, tensor<3x3x1x32xf32>)
   "tf_device.launch"() ( {
     "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
     tf_device.return

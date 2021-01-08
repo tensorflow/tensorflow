@@ -45,7 +45,7 @@ Status CompositeOpExpansion::Run(EagerOperation* orig_op,
   // isn't a composite op. The following ops are explicitly skipped here because
   // their "no-op" expansion is known to cause problems in some cases.
   static const char* kOpsToSkip[] = {"IdentityOp", "NoOp", "OptionalHasValue",
-                                     "OptionalGetValue"};
+                                     "OptionalGetValue", "VarHandleOp"};
   for (const char* skip : kOpsToSkip) {
     if (absl::StartsWith(orig_op->op_name(), skip)) return Status::OK();
   }

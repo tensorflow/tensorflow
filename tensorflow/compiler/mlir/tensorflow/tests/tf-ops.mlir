@@ -4135,27 +4135,3 @@ func @testInvalidTPUExecuteAndUpdateVariables(%arg0: tensor<!tf.resource<tensor<
   "tf.TPUExecuteAndUpdateVariables"(%arg0, %arg1) {device_var_reads_indices = [0], device_var_updates_indices = [-2]} : (tensor<!tf.resource<tensor<i32>>>, tensor<3x!tf.string>) -> ()
   return
 }
-
-// -----
-
-// Valid VarHandleOp operation.
-// CHECK-LABEL: func @testVarHandleOp
-func @testVarHandleOp() -> tensor<!tf.resource<tensor<*xf32>>> {
-  %0 = "tf.VarHandleOp"() {
-    container = "",
-    shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
-  } : () -> tensor<!tf.resource<tensor<*xf32>>>
-  return %0 : tensor<!tf.resource<tensor<*xf32>>>
-}
-
-// -----
-
-// VarHandleOp operation missing the required resource subtype.
-func @testVarHandleOp() -> tensor<*x!tf.resource> {
-  // expected-error @+1 {{must have exactly one subtype in the result resource type}}
-  %0 = "tf.VarHandleOp"() {
-    container = "",
-    shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
-  } : () -> tensor<*x!tf.resource>
-  return %0 : tensor<*x!tf.resource>
-}
