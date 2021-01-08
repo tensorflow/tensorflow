@@ -23,102 +23,60 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
+
 namespace tensorflow {
 using mkldnn::prop_kind;
 
 template <typename T>
 void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
-  DCHECK(fwdParams.alg_kind == ALGORITHM::pooling_max ||
-         fwdParams.alg_kind == ALGORITHM::pooling_avg ||
-         fwdParams.alg_kind == ALGORITHM::pooling_avg_include_padding ||
-         fwdParams.alg_kind == ALGORITHM::pooling_avg_exclude_padding)
+  DCHECK(fwdParams.alg_kind == mkldnn::algorithm::pooling_max ||
+         fwdParams.alg_kind == mkldnn::algorithm::pooling_avg ||
+         fwdParams.alg_kind == mkldnn::algorithm::pooling_avg_include_padding ||
+         fwdParams.alg_kind == mkldnn::algorithm::pooling_avg_exclude_padding)
       << "Pooling algorithm kind is not supported";
 
   context_.alg_kind = fwdParams.alg_kind;
   context_.prop_kind = fwdParams.prop_kind;
 
-// Create memory descriptor
-// FIXME: Pooling doesn't expose to get the src_primitive_desc,
-//        so src format is currently hard-coded.
-//        A utility function is used to do this,
-//        which may be broken with future CPU architectures
-#ifndef ENABLE_MKLDNN_V1
-  bool is_2d = (fwdParams.src_dims.size() == 4);
-  if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
-    context_.src_fmt = is_2d ? MEMORY_FORMAT::nhwc : MEMORY_FORMAT::ndhwc;
-  else
-    context_.src_fmt = fwdParams.src_format;
-
-  context_.src_md.reset(new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
-                                         context_.src_fmt));
-#else
+  // Create memory descriptor
+  // FIXME: Pooling doesn't expose to get the src_primitive_desc,
+  //        so src format is currently hard-coded.
+  //        A utility function is used to do this,
+  //        which may be broken with future CPU architectures
   context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
-#endif  //  !ENABLE_MKLDNN_V1
-  context_.dst_md.reset(new memory::desc(
-      {fwdParams.dst_dims}, MklDnnType<T>(),
-      fwdParams.native_format ? fwdParams.src_format : MEMORY_FORMAT::any));
+  context_.dst_md.reset(new memory::desc({fwdParams.dst_dims}, MklDnnType<T>(),
+                                         fwdParams.native_format
+                                             ? fwdParams.src_format
+                                             : memory::format_tag::any));
 
-#ifndef ENABLE_MKLDNN_V1
   // Create a pooling descriptor.
   context_.fwd_desc.reset(new pooling_forward::desc(
       fwdParams.prop_kind, fwdParams.alg_kind, *context_.src_md,
       *context_.dst_md, fwdParams.strides, fwdParams.filter_dims,
-      fwdParams.padding_left, fwdParams.padding_right, padding_kind::zero));
-#else
-  context_.fwd_desc.reset(new pooling_forward::desc(
-      fwdParams.prop_kind, fwdParams.alg_kind, *context_.src_md,
-      *context_.dst_md, fwdParams.strides, fwdParams.filter_dims,
       fwdParams.padding_left, fwdParams.padding_right));
-#endif  // !ENABLE_MKLDNN_V1
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
-#ifndef ENABLE_MKLDNN_V1
-  context_.dst_fmt = static_cast<MEMORY_FORMAT>(
-      context_.fwd_pd.get()->PRIMITIVE_DESC_DST.desc().data.format);
-#else
-  context_.dst_fmt = static_cast<MEMORY_FORMAT>(MEMORY_FORMAT::any);
-#endif  // ENABLE_MKLDNN_V1
+  context_.dst_fmt = static_cast<memory::format_tag>(memory::format_tag::any);
 
   // Create MKL-DNN internal memory object with dummy data.
-  context_.src_mem.reset(new MEMORY_CONSTRUCTOR(
-      context_.fwd_pd.get()->PRIMITIVE_DESC_SRC, cpu_engine_, DummyData));
-  context_.dst_mem.reset(new MEMORY_CONSTRUCTOR(
-      context_.fwd_pd.get()->PRIMITIVE_DESC_DST, cpu_engine_, DummyData));
+  context_.src_mem.reset(
+      new memory(context_.fwd_pd.get()->src_desc(), cpu_engine_, DummyData));
+  context_.dst_mem.reset(
+      new memory(context_.fwd_pd.get()->dst_desc(), cpu_engine_, DummyData));
+
   // For max pooling, need to return workspace (ws) for backward computing.
-  if (fwdParams.alg_kind == ALGORITHM::pooling_max &&
+  if (fwdParams.alg_kind == mkldnn::algorithm::pooling_max &&
       fwdParams.prop_kind == prop_kind::forward_training) {
-#ifdef ENABLE_MKLDNN_V1
-    context_.ws_mem.reset(
-        new MEMORY_CONSTRUCTOR(context_.fwd_pd.get()->PRIMITIVE_DESC_WORKSPACE,
-                               cpu_engine_, DummyData));
+    context_.ws_mem.reset(new memory(context_.fwd_pd.get()->workspace_desc(),
+                                     cpu_engine_, DummyData));
     context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
                                  {MKLDNN_ARG_DST, *context_.dst_mem},
                                  {MKLDNN_ARG_WORKSPACE, *context_.ws_mem}});
     context_.fwd.reset(new pooling_forward(*context_.fwd_pd));
-#else
-    auto ws_pd = context_.fwd_pd.get()->PRIMITIVE_DESC_WORKSPACE.desc().data;
-    // Store workspace's dims and format to create workspace tensor.
-    context_.ws_fmt = static_cast<MEMORY_FORMAT>(ws_pd.format);
-    context_.ws_dims.assign(ws_pd.dims, ws_pd.dims + ws_pd.ndims);
-    context_.ws_dt = static_cast<mkldnn::memory::data_type>(ws_pd.data_type);
-    context_.ws_size =
-        context_.fwd_pd.get()->PRIMITIVE_DESC_WORKSPACE.get_size();
-
-    context_.ws_mem.reset(
-        new memory(context_.fwd_pd.get()->PRIMITIVE_DESC_WORKSPACE, DummyData));
-    context_.fwd.reset(new pooling_forward(*context_.fwd_pd, *context_.src_mem,
-                                           *context_.dst_mem,
-                                           *context_.ws_mem));
-#endif  // ENABLE_MKLDNN_V1
   } else {
-#ifdef ENABLE_MKLDNN_V1
     context_.net_args.push_back({{MKLDNN_ARG_SRC, *context_.src_mem},
                                  {MKLDNN_ARG_DST, *context_.dst_mem}});
     context_.fwd.reset(new pooling_forward(*context_.fwd_pd));
-#else
-    context_.fwd.reset(new pooling_forward(*context_.fwd_pd, *context_.src_mem,
-                                           *context_.dst_mem));
-#endif  // ENABLE_MKLDNN_V1
   }
 
   context_.fwd_primitives.push_back(*context_.fwd);
@@ -132,7 +90,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)), *fwd_stream);
   context_.dst_mem->set_data_handle(static_cast<void*>(dst_data), *fwd_stream);
-  if (context_.alg_kind == ALGORITHM::pooling_max &&
+  if (context_.alg_kind == mkldnn::algorithm::pooling_max &&
       context_.prop_kind ==
           prop_kind::forward_training) {  // Max pooling must have workspace.
     DCHECK(ws_data != nullptr);
@@ -142,23 +100,19 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)));
   context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-  if (context_.alg_kind == ALGORITHM::pooling_max &&
+  if (context_.alg_kind == mkldnn::algorithm::pooling_max &&
       context_.prop_kind ==
           prop_kind::forward_training) {  // Max pooling must have workspace.
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(ws_data);
   }
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#ifdef ENABLE_MKLDNN_V1
   execute_primitives(context_.fwd_primitives, fwd_stream, context_.net_args);
-#else
-  fwd_stream->submit(context_.fwd_primitives);
-#endif  // ENABLE_MKLDNN_V1
 
   // Set back data handle.
   context_.src_mem->set_data_handle(DummyData);
   context_.dst_mem->set_data_handle(DummyData);
-  if (context_.alg_kind == ALGORITHM::pooling_max &&
+  if (context_.alg_kind == mkldnn::algorithm::pooling_max &&
       context_.prop_kind ==
           prop_kind::forward_training) {  // Max pooling must have workspace.
     DCHECK(ws_data != nullptr);
@@ -173,39 +127,22 @@ template class MklPoolingFwdPrimitive<bfloat16>;
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
-  DCHECK(bwdParams.alg_kind == ALGORITHM::pooling_max ||
-         bwdParams.alg_kind == ALGORITHM::pooling_avg ||
-         bwdParams.alg_kind == ALGORITHM::pooling_avg_include_padding ||
-         bwdParams.alg_kind == ALGORITHM::pooling_avg_exclude_padding)
+  DCHECK(bwdParams.alg_kind == mkldnn::algorithm::pooling_max ||
+         bwdParams.alg_kind == mkldnn::algorithm::pooling_avg ||
+         bwdParams.alg_kind == mkldnn::algorithm::pooling_avg_include_padding ||
+         bwdParams.alg_kind == mkldnn::algorithm::pooling_avg_exclude_padding)
       << "Pooling algorithm kind is not supported";
   context_.alg_kind = bwdParams.alg_kind;
 
   // Create memory descriptor.
   context_.src_md.reset(new memory::desc({bwdParams.src_dims}, MklDnnType<T>(),
-                                         MEMORY_FORMAT::any));
-#ifndef ENABLE_MKLDNN_V1
-  context_.diff_dst_md.reset(new memory::desc(
-      {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
-#else
+                                         memory::format_tag::any));
   context_.src_md.reset(new memory::desc(bwdParams.src_md.data));
-  context_.dst_md.reset(new memory::desc(
-      {bwdParams.dst_dims}, MklDnnType<T>(),
-      bwdParams.native_format ? bwdParams.src_format : MEMORY_FORMAT::any));
-#endif  // !ENABLE_MKLDNN_V1
+  context_.dst_md.reset(new memory::desc({bwdParams.dst_dims}, MklDnnType<T>(),
+                                         bwdParams.native_format
+                                             ? bwdParams.src_format
+                                             : memory::format_tag::any));
 
-#ifndef ENABLE_MKLDNN_V1
-  context_.bwd_desc.reset(new pooling_backward::desc(
-      bwdParams.alg_kind, *context_.diff_src_md, *context_.diff_dst_md,
-      bwdParams.strides, bwdParams.filter_dims, bwdParams.padding_left,
-      bwdParams.padding_right, padding_kind::zero));
-
-  // Create a forward primitive,
-  // which will be used as a hint for creating backward primitive.
-  context_.fwd_desc.reset(new pooling_forward::desc(
-      bwdParams.prop_kind, bwdParams.alg_kind, *context_.diff_src_md,
-      *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
-      bwdParams.padding_left, bwdParams.padding_right, padding_kind::zero));
-#else
   // Create a backward primitive. The implementation for backward must comply to
   // the workspace format it gets from forward pass, so we directly use src_md
   // and dst_md here.
@@ -218,36 +155,19 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
       bwdParams.prop_kind, bwdParams.alg_kind, *context_.src_md,
       *context_.dst_md, bwdParams.strides, bwdParams.filter_dims,
       bwdParams.padding_left, bwdParams.padding_right));
-#endif  // !ENABLE_MKLDNN_V1
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
   context_.bwd_pd.reset(new pooling_backward::primitive_desc(
       *context_.bwd_desc, cpu_engine_, *context_.fwd_pd));
 
-#ifndef ENABLE_MKLDNN_V1
-  context_.diff_src_fmt = static_cast<MEMORY_FORMAT>(
-      context_.bwd_pd.get()->PRIMITIVE_DESC_DIFF_SRC.desc().data.format);
-  context_.diff_dst_fmt = bwdParams.src_format;
-#endif  // ENABLE_MKLDNN_V1
-
-#ifdef ENABLE_MKLDNN_V1
   // Create MKL-DNN internal memory object with dummy data.
   context_.diff_src_mem.reset(new memory(context_.bwd_pd.get()->diff_src_desc(),
                                          cpu_engine_, DummyData));
   context_.diff_dst_mem.reset(new memory(context_.bwd_pd.get()->diff_dst_desc(),
                                          cpu_engine_, DummyData));
-#else
-  context_.diff_src_mem.reset(
-      new memory(context_.bwd_pd.get()->diff_src_primitive_desc(), DummyData));
-  context_.diff_dst_mem.reset(new memory(
-      {{{bwdParams.dst_dims}, MklDnnType<T>(), context_.diff_dst_fmt},
-       cpu_engine_},
-      DummyData));
-#endif  // ENABLE_MKLDNN_V1
 
   // For max pooling, need to return workspace for backward computing.
-  if (bwdParams.alg_kind == ALGORITHM::pooling_max) {
-#ifdef ENABLE_MKLDNN_V1
+  if (bwdParams.alg_kind == mkldnn::algorithm::pooling_max) {
     context_.ws_mem.reset(
         new memory(context_.fwd_pd.get()->workspace_desc(), cpu_engine_));
     context_.net_args.push_back(
@@ -255,28 +175,11 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
          {MKLDNN_ARG_WORKSPACE, *context_.ws_mem},
          {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem}});
     context_.bwd.reset(new pooling_backward(*context_.bwd_pd));
-#else
-    auto ws_pd = context_.fwd_pd.get()->PRIMITIVE_DESC_WORKSPACE.desc().data;
-    context_.ws_dims.assign(ws_pd.dims, ws_pd.dims + ws_pd.ndims);
-    context_.ws_fmt = static_cast<memory::format>(ws_pd.format);
-    context_.ws_dt = static_cast<mkldnn::memory::data_type>(ws_pd.data_type);
-    context_.ws_mem.reset(new memory(
-        {{{context_.ws_dims}, context_.ws_dt, context_.ws_fmt}, cpu_engine_},
-        DummyData));
-    context_.bwd.reset(
-        new pooling_backward(*context_.bwd_pd, *context_.diff_dst_mem,
-                             *context_.ws_mem, *context_.diff_src_mem));
-#endif  // ENABLE_MKLDNN_V1
   } else {
-#ifdef ENABLE_MKLDNN_V1
     context_.net_args.push_back(
         {{MKLDNN_ARG_DIFF_DST, *context_.diff_dst_mem},
          {MKLDNN_ARG_DIFF_SRC, *context_.diff_src_mem}});
     context_.bwd.reset(new pooling_backward(*context_.bwd_pd));
-#else
-    context_.bwd.reset(new pooling_backward(
-        *context_.bwd_pd, *context_.diff_dst_mem, *context_.diff_src_mem));
-#endif  // ENABLE_MKLDNN_V1
   }
   context_.bwd_primitives.push_back(*context_.bwd);
 }
@@ -290,7 +193,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
       static_cast<void*>(const_cast<T*>(diff_dst_data)), *bwd_stream);
   context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data),
                                          *bwd_stream);
-  if (context_.alg_kind == ALGORITHM::pooling_max) {
+  if (context_.alg_kind == mkldnn::algorithm::pooling_max) {
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data), *bwd_stream);
   }
@@ -298,21 +201,18 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
   context_.diff_dst_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(diff_dst_data)));
   context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
-  if (context_.alg_kind == ALGORITHM::pooling_max) {
+  if (context_.alg_kind == mkldnn::algorithm::pooling_max) {
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
   }
 #endif  // ENABLE_MKLDNN_THREADPOOL
-#ifdef ENABLE_MKLDNN_V1
+
   execute_primitives(context_.bwd_primitives, bwd_stream, context_.net_args);
-#else
-  bwd_stream->submit(context_.bwd_primitives);
-#endif  // ENABLE_MKLDNN_V1
 
   // Set back data handle.
   context_.diff_dst_mem->set_data_handle(DummyData);
   context_.diff_src_mem->set_data_handle(DummyData);
-  if (context_.alg_kind == ALGORITHM::pooling_max) {
+  if (context_.alg_kind == mkldnn::algorithm::pooling_max) {
     DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
