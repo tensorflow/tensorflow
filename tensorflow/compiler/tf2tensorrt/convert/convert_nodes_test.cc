@@ -1642,13 +1642,18 @@ class OpConverterTest : public ::testing::Test {
   }
 
   // Helper method to run both validation and conversion, and check the output
-  // shape.
+  // shapes.
   void RunValidationAndConversion(
       const NodeDef& node_def, const Status& status, const char* output_name,
       const std::vector<std::vector<int>>& exp_out_dims) {
     RunValidationAndConversion(node_def, status.code(),
                                status.error_message().c_str(), true);
     if (status.ok()) {
+      // TODO(tfeher): Enable this check in explicit_batch_mode.
+      // In dynamic shape mode the output dims cannot be tested here. In that
+      // case we need to wait for the concrate input shapes to be defined (by
+      // setBindingDimensions before enqueue) before we can check the output
+      // dims.
       if (converter_->use_implicit_batch()) {
         for (int i = 0; i < exp_out_dims.size(); i++) {
           TRT_TensorOrWeights output;
@@ -1656,14 +1661,7 @@ class OpConverterTest : public ::testing::Test {
           TF_EXPECT_OK(GetTensorOrWeights(name.c_str(), &output));
           ASSERT_TRUE(output.is_tensor());
           if (!exp_out_dims[i].empty()) {
-            // We only check output shape implicit batch mode. In dynamic shape
-            // mode we need to wait for the concrate input shapes to be defined
-            // (by setBindingDimensions before enqueue) before we can check
-            // whether the output dims are equal.
-            //
-            // TODO(tfeher): Enable this check in explicit_batch_mode.
-
-            // Removing batch dim
+            // Removing batch dim.
             auto out_dims = std::vector<int>(exp_out_dims[i].begin() + 1,
                                              exp_out_dims[i].end());
             VLOG(2) << "Testing output shape for tensor " << name;
@@ -5111,51 +5109,33 @@ TEST_P(OpConverter_FP32_Test, ConvertPool) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertTopK) {
-  // TODO(tmorris): This test isn't setting the input dtype properly. TopK with
-  // int32 is unsupported by TRT.
-  for (const auto dtype : {DT_FLOAT}) {
-    // Get the NodeDef for TopKV2.
-    Scope s = Scope::NewRootScope();
-    auto input = ops::Placeholder(s.WithOpName("input"), dtype);
-    auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
-    auto topk = ops::TopK(s.WithOpName("my_topk"), input, weights);
-    const NodeDef& node_def = topk.operation.node()->def();
-    {
-      // K is a tensor, should fail.
-      Reset();
-      nvinfer1::DataType trt_type;
-      TF_ASSERT_OK(TfTypeToTrtType(dtype, &trt_type));
-      AddTestTensor("input", {1, 2, 3}, /*batch_size=*/1, trt_type);
-      AddTestTensor("weights", {2});
-      RunValidationAndConversion(
-          node_def, error::UNIMPLEMENTED,
-          "The input \"k\" for TopKV2 must be a constant, at my_topk");
-    }
-    {
-      // Ok.
-      Reset();
-      AddTestTensor("input", {1, 2, 5});
-      AddTestWeights<int32>("weights", {1}, {2});
-      RunValidationAndConversion(node_def);
-      TRT_TensorOrWeights outputs[2];
-      TF_EXPECT_OK(GetTensorOrWeights("my_topk", &outputs[0]));
-      TF_EXPECT_OK(GetTensorOrWeights("my_topk:1", &outputs[1]));
-      for (auto& output : outputs) {
-        ASSERT_TRUE(output.is_tensor());
-        ExpectTrtDimsEqualsArray({1, 2, 2}, output.tensor()->getDimensions());
-      }
-
-      const DataVec input_data{
-          {"input", AsTensor<float>({-9, 3, 5, 1, 6, -5, 7, 1, 0, -1})}};
-      DataVec output_data{{"my_topk", ConstructTensor<float>(4)},
-                          {"my_topk:1", ConstructTensor<int32>(4)}};
-      TF_EXPECT_OK(BuildAndRun(input_data, &output_data));
-      EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                  ElementsAre(6, 5, 7, 1));
-      EXPECT_THAT(GetSpanForData<int32>(output_data[1]),
-                  ElementsAre(4, 2, 1, 2));
-    }
+TEST_P(OpConverter_FP32_FP16_Test, ConvertTopK) {
+  // Get the NodeDef for TopKV2.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), tf_type_);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto topk = ops::TopK(s.WithOpName("my_topk"), input, weights);
+  const NodeDef& node_def = topk.operation.node()->def();
+  {
+    // K is a tensor, should fail.
+    Reset();
+    AddTestTensor("input", {1, 1, 2, 3});
+    AddTestTensor("weights", {1}, DT_INT32, {});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"k\" for TopKV2 must be a constant, at my_topk");
+  }
+  {
+    // Ok.
+    Reset();
+    AddTestTensor("input", {1, 1, 2, 5}, {-9, 3, 5, 1, 6, -5, 7, 1, 0, -1});
+    AddTestWeights<int32>("weights", {1}, {2});
+    std::vector<std::vector<int>> expected_output_dims{{1, 1, 2, 2},
+                                                       {1, 1, 2, 2}};
+    TestOpConverterMultiOut("my_topk", node_def, expected_output_dims,
+                            Status::OK(), Status::OK(),
+                            {ElementsAre(6, 5, 7, 1), ElementsAre(4, 2, 1, 2)},
+                            {tf_type_, DT_INT32});
   }
 }
 
