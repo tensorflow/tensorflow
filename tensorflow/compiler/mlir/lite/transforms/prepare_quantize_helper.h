@@ -15,8 +15,8 @@ limitations under the License.
 
 // Transform pass for LSTMs.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_LSTM
-#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_LSTM
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER
+#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER
 
 #include <algorithm>
 #include <cmath>
@@ -221,15 +221,187 @@ struct PrepareLstmOutputScale : public OpRewritePattern<SourceOp> {
   }
 };
 
+template <typename SourceOp>
+struct ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
+ public:
+  explicit ConvertOpStatsToQDQs(MLIRContext* context,
+                                PatternBenefit benefit = 1)
+      : OpRewritePattern<SourceOp>(context, benefit) {}
+
+ protected:
+  LogicalResult processInputs(
+      SourceOp op, const operator_property::OpVariant& op_variant,
+      const operator_property::OperatorProperty& op_property,
+      PatternRewriter& rewriter) const {
+    for (auto& enumerated_inputs : op_property.inputs) {
+      int index = enumerated_inputs.first;
+      auto& tensor_property = enumerated_inputs.second;
+
+      Value input = op.getOperand(index);
+
+      if (input.getDefiningOp() == nullptr) continue;
+
+      // TODO(b/172517537): make this work with non-PTQ case.
+      if (llvm::isa<ConstantOp, TFL::ConstOp>(input.getDefiningOp())) {
+        // Tensors with derived scale are biases, and handled in propagation.
+        if (tensor_property.use_derived_scale) continue;
+        // For weights, use quantization scale inferred from the values.
+        if (failed(processConstantOp(op, input.getDefiningOp(), index,
+                                     tensor_property, rewriter))) {
+          return failure();
+        }
+      } else {
+        if (auto stats_op =
+                llvm::dyn_cast<quant::StatisticsOp>(input.getDefiningOp())) {
+          if (failed(replaceStatsOp(op, stats_op, index, tensor_property,
+                                    rewriter))) {
+            return failure();
+          }
+        } else if (!llvm::isa<DQ>(input.getDefiningOp()) &&
+                   !llvm::isa<SameScalesOpInterface>(input.getDefiningOp())) {
+          // Continue if StatisticsOp is already converted to Q-DQ pair, or
+          // stats op is not immediately available to the input because it's
+          // connected to ops with same scale requirements.
+          // TODO(b/172517537): make this work with non-PTQ case.
+          op.emitError() << "Input " << index
+                         << " should be from DequantizeCast, Statistics, "
+                         << ", or ops with same scale requirement.";
+          input.getDefiningOp()->emitError();
+          return failure();
+        }
+      }
+    }
+    return success();
+  }
+
+  LogicalResult processConstantOp(
+      SourceOp op, Operation* const_op, int input_index,
+      const operator_property::TensorProperty& tensor_property,
+      PatternRewriter& rewriter) const {
+    // Non-float tensors are neither weights nor require quantization.
+    auto type = const_op->getResult(0).getType().dyn_cast<ShapedType>();
+    if (!type || !type.getElementType().isa<FloatType>()) return success();
+
+    DenseFPElementsAttr attr;
+    if (!matchPattern(const_op->getResult(0), m_Constant(&attr))) {
+      const_op->emitError("Not a constant op.");
+      return failure();
+    }
+
+    UniformQuantizedType quant_type = nullptr;
+    // When the number of bits is 10 (instead of 16), quantize the tensor to
+    // [-512, 512], instead of [-32767, 32767].
+    // For now this behavior is specific for SVDF, where 6 bits are reserved for
+    // the reduce operation after element-wise multiplication between state and
+    // time weights.
+    if (tensor_property.number_of_bits == 10) {
+      SmallVector<double, 4> mins(1, std::numeric_limits<double>::max());
+      SmallVector<double, 4> maxs(1, std::numeric_limits<double>::min());
+      // Computes the effective min/max values of the attribute values.
+      quant::ExtractMinMaxFromAttr(attr, /*dim_size=*/1, /*slice_size=*/1,
+                                   /*symmetric=*/true, mins, maxs);
+      double scale = maxs[0] / -llvm::minIntN(tensor_property.number_of_bits);
+      quant_type = UniformQuantizedType::getChecked(
+          quant::QuantizationFlags::Signed,
+          rewriter.getIntegerType(16, /*isSigned=*/true),
+          attr.getType().getElementType(), scale, /*zeroPoint=*/0,
+          llvm::minIntN(10), -llvm::minIntN(10), const_op->getLoc());
+    } else {
+      quant_type =
+          quant::GetUniformQuantizedTypeForWeight(
+              attr, /*symmetric=*/true,
+              /*num_bits=*/tensor_property.number_of_bits, /*is_signed=*/true,
+              /*narrow_range=*/true)
+              .template dyn_cast<quant::UniformQuantizedType>();
+    }
+    if (!quant_type) {
+      const_op->emitError("Failed to get quantized type");
+      return failure();
+    }
+
+    // TODO(b/172517537): duplicate the constant when the bias is shared.
+    Type expressed_type = const_op->getResult(0).getType();
+    Type cast_type = quant_type.castFromExpressedType(expressed_type);
+    rewriter.setInsertionPointAfter(const_op);
+    auto q = rewriter.create<Q>(const_op->getLoc(), cast_type,
+                                const_op->getResult(0));
+    auto dq = rewriter.create<DQ>(const_op->getLoc(), expressed_type, q);
+    op.setOperand(input_index, dq.getResult());
+    return success();
+  }
+
+  LogicalResult replaceStatsOp(
+      SourceOp op, quant::StatisticsOp stats_op, int input_index,
+      const operator_property::TensorProperty& tensor_property,
+      PatternRewriter& rewriter) const {
+    if (tensor_property.state_tensor && !stats_op.getResult().hasOneUse()) {
+      // TODO(b/172517537): check if other tensors should go through this
+      // check too.
+      op.emitError() << "Input tensor [" << input_index
+                     << "] is a state tensor, but has more than one use.";
+      return failure();
+    }
+    auto stats = stats_op.layerStats().dyn_cast<DenseFPElementsAttr>();
+    if (!stats || stats.getNumElements() != 2) {
+      stats_op.emitError("Stats should have 2 values.");
+      return failure();
+    }
+    quant::QuantizedType quant_type;
+    double min = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
+    double max = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
+    // Make sure the range includes zero.
+    min = std::min(min, 0.0);
+    max = std::max(max, 0.0);
+    Type expressed = getElementTypeOrSelf(stats_op.getType());
+
+    if (tensor_property.extend_to_power_of_two) {
+      if (tensor_property.number_of_bits != 16) {
+        op.emitError(
+            "extended power of 2 scale is only supported for 16-bit"
+            " quantization.");
+        return failure();
+      }
+
+      double bound = PowerOfTwoBound(std::max(std::abs(min), std::abs(max)));
+      // Set flags to 1 for signed type.
+      quant_type = UniformQuantizedType::getChecked(
+          quant::QuantizationFlags::Signed,
+          rewriter.getIntegerType(tensor_property.number_of_bits), expressed,
+          /*scale=*/bound / -llvm::minIntN(tensor_property.number_of_bits),
+          /*zeroPoint=*/0, llvm::minIntN(tensor_property.number_of_bits),
+          llvm::maxIntN(tensor_property.number_of_bits), op.getLoc());
+    } else {
+      // int16 uses range [-32767, 32767]
+      if (tensor_property.number_of_bits == 16) {
+        max = std::max(std::abs(min), std::abs(max));
+        min = -max;
+        quant_type = quant::fakeQuantAttrsToType(
+            op.getLoc(), tensor_property.number_of_bits, min, max,
+            /*narrowRange=*/true, expressed,
+            /*isSigned=*/true);
+      } else {
+        quant_type = quant::fakeQuantAttrsToType(
+            op.getLoc(), tensor_property.number_of_bits, min, max,
+            /*narrowRange=*/false, expressed,
+            /*isSigned=*/true);
+      }
+    }
+    rewriter.setInsertionPointAfter(stats_op);
+    Type result_type = quant_type.castFromExpressedType(stats_op.getType());
+    auto q = rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.arg());
+    rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
+    return success();
+  }
+};
+
 // Quantize LSTM according to its quantization recipe.
 template <typename SourceOp>
-struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
+struct ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
  public:
   ConvertLstmStatsToQDQs(MLIRContext* context,
                          const QuantizationSpecs& quant_specs)
 
-      : OpRewritePattern<SourceOp>(context, /*benefit=*/2),
-        quant_specs(quant_specs) {}
+      : ConvertOpStatsToQDQs<SourceOp>(context), quant_specs(quant_specs) {}
   LogicalResult matchAndRewrite(SourceOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant lstm_variant;
@@ -239,7 +411,8 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
     }
 
     if (failed(processIntermediates(op, lstm_variant, lstm_property)) ||
-        failed(processInputs(op, lstm_variant, lstm_property, rewriter))) {
+        failed(ConvertOpStatsToQDQs<SourceOp>::processInputs(
+            op, lstm_variant, lstm_property, rewriter))) {
       return failure();
     }
 
@@ -311,143 +484,6 @@ struct ConvertLstmStatsToQDQs : public OpRewritePattern<SourceOp> {
     }
     return success();
   }
-
-  LogicalResult processInputs(
-      SourceOp op, const operator_property::OpVariant& lstm_variant,
-      const operator_property::OperatorProperty& lstm_property,
-      PatternRewriter& rewriter) const {
-    for (auto& enumerated_inputs : lstm_property.inputs) {
-      int index = enumerated_inputs.first;
-      auto& tensor_property = enumerated_inputs.second;
-
-      Value input = op.getOperand(index);
-
-      if (input.getDefiningOp() == nullptr) continue;
-
-      // TODO(b/172517537): make this work with non-PTQ case.
-      if (llvm::isa<ConstantOp, TFL::ConstOp>(input.getDefiningOp())) {
-        // Tensors with derived scale are biases, and handled in propagation.
-        if (tensor_property.use_derived_scale) continue;
-        if (failed(processConstantOp(op, input.getDefiningOp(), index,
-                                     tensor_property, rewriter))) {
-          return failure();
-        }
-      } else {
-        if (auto stats_op =
-                llvm::dyn_cast<quant::StatisticsOp>(input.getDefiningOp())) {
-          if (failed(replaceStatsOp(op, stats_op, index, tensor_property,
-                                    rewriter))) {
-            return failure();
-          }
-        } else if (!llvm::isa<DQ>(input.getDefiningOp()) &&
-                   !llvm::isa<SameScalesOpInterface>(input.getDefiningOp())) {
-          // Continue if StatisticsOp is already converted to Q-DQ pair, or
-          // stats op is not immediately available to the input because it's
-          // connected to ops with same scale requirements.
-          // TODO(b/172517537): make this work with non-PTQ case.
-          op.emitError() << "Input " << index
-                         << " should be from DequantizeCast, Statistics, "
-                         << ", or ops with same scale requirement.";
-          input.getDefiningOp()->emitError();
-          return failure();
-        }
-      }
-    }
-    return success();
-  }
-
-  // For weights, use quantization scale directly inferred from the values.
-  //
-  // input 1~4: input to gate weights
-  // input 5~8: recurrent to gate weights
-  // input 9~11: peephole weights, input 16: projection weight
-  // input 20~23: normalization weights
-  LogicalResult processConstantOp(
-      SourceOp op, Operation* const_op, int input_index,
-      const operator_property::TensorProperty& tensor_property,
-      PatternRewriter& rewriter) const {
-    // Non-float tensors are neither weights nor require quantization.
-    auto type = const_op->getResult(0).getType().dyn_cast<ShapedType>();
-    if (!type || !type.getElementType().isa<FloatType>()) return success();
-
-    DenseFPElementsAttr attr;
-    if (!matchPattern(const_op->getResult(0), m_Constant(&attr))) {
-      const_op->emitError("Not a constant op.");
-      return failure();
-    }
-
-    UniformQuantizedType quant_type =
-        quant::GetUniformQuantizedTypeForWeight(
-            attr, /*symmetric=*/true,
-            /*num_bits=*/tensor_property.number_of_bits, /*is_signed=*/true,
-            /*narrow_range=*/true)
-            .template dyn_cast<quant::UniformQuantizedType>();
-
-    if (!quant_type) {
-      const_op->emitError("Failed to get quantized type");
-      return failure();
-    }
-
-    // TODO(b/172517537): duplicate the constant when the bias is shared.
-    Type expressed_type = const_op->getResult(0).getType();
-    Type cast_type = quant_type.castFromExpressedType(expressed_type);
-    rewriter.setInsertionPointAfter(const_op);
-    auto q = rewriter.create<Q>(const_op->getLoc(), cast_type,
-                                const_op->getResult(0));
-    auto dq = rewriter.create<DQ>(const_op->getLoc(), expressed_type, q);
-    op.setOperand(input_index, dq.getResult());
-    return success();
-  }
-
-  LogicalResult replaceStatsOp(
-      SourceOp op, quant::StatisticsOp stats_op, int input_index,
-      const operator_property::TensorProperty& tensor_property,
-      PatternRewriter& rewriter) const {
-    if (tensor_property.state_tensor && !stats_op.getResult().hasOneUse()) {
-      // TODO(b/172517537): check if other tensors should go through this
-      // check too.
-      op.emitError() << "Input tensor [" << input_index
-                     << "] is a state tensor, but has more than one use.";
-      return failure();
-    }
-    auto stats = stats_op.layerStats().dyn_cast<DenseFPElementsAttr>();
-    if (!stats || stats.getNumElements() != 2) {
-      stats_op.emitError("Stats should have 2 values.");
-      return failure();
-    }
-    quant::QuantizedType quant_type;
-    double min = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
-    double max = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));
-    Type expressed = getElementTypeOrSelf(stats_op.getType());
-
-    if (tensor_property.extend_to_power_of_two) {
-      if (tensor_property.number_of_bits != 16) {
-        op.emitError(
-            "extended power of 2 scale is only supported for 16-bit"
-            " quantization.");
-        return failure();
-      }
-
-      double bound = PowerOfTwoBound(std::max(std::abs(min), std::abs(max)));
-      // Set flags to 1 for signed type.
-      quant_type = UniformQuantizedType::getChecked(
-          quant::QuantizationFlags::Signed,
-          rewriter.getIntegerType(tensor_property.number_of_bits), expressed,
-          /*scale=*/bound / -llvm::minIntN(tensor_property.number_of_bits),
-          /*zeroPoint=*/0, llvm::minIntN(tensor_property.number_of_bits),
-          llvm::maxIntN(tensor_property.number_of_bits), op.getLoc());
-    } else {
-      quant_type = quant::fakeQuantAttrsToType(
-          op.getLoc(), tensor_property.number_of_bits, min, max,
-          /*narrowRange=*/false, expressed,
-          /*isSigned=*/true);
-    }
-    rewriter.setInsertionPointAfter(stats_op);
-    Type result_type = quant_type.castFromExpressedType(stats_op.getType());
-    auto q = rewriter.create<Q>(stats_op.getLoc(), result_type, stats_op.arg());
-    rewriter.replaceOpWithNewOp<DQ>(stats_op, stats_op.getType(), q);
-    return success();
-  }
 };
 
 // Returns a function that returns the quantized type of a bias input.
@@ -509,7 +545,22 @@ std::unique_ptr<quant::OpQuantSpec> GetLstmOpQuantSpec(LstmOp op) {
   return spec;
 }
 
+struct ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
+ public:
+  explicit ConvertSvdfStatsToQDQs(MLIRContext* context)
+      : ConvertOpStatsToQDQs<TFL::SVDFOp>(context) {}
+  LogicalResult matchAndRewrite(TFL::SVDFOp op,
+                                PatternRewriter& rewriter) const override {
+    operator_property::OpVariant op_variant = {
+        .op_code = tflite::BuiltinOperator_SVDF,
+    };
+    auto op_property = operator_property::GetOperatorProperty(op_variant);
+    return ConvertOpStatsToQDQs<TFL::SVDFOp>::processInputs(
+        op, op_variant, op_property, rewriter);
+  }
+};
+
 }  // namespace TFL
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_LSTM
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER

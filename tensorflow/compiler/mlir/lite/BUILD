@@ -530,7 +530,7 @@ cc_library(
     ],
     hdrs = [
         "transforms/passes.h",
-        "transforms/prepare_quantize_lstm.h",
+        "transforms/prepare_quantize_helper.h",
     ],
     deps = [
         "convert_type",

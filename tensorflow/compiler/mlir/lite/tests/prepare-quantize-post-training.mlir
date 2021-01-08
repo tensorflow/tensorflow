@@ -380,3 +380,25 @@ func @QuantizeLstmFull(%arg0: tensor<1x5xf32>) -> tensor<*xf32> attributes {tf.e
 // CHECK: "tfl.quantize"(%[[lstm]]) {qtype = tensor<*x!quant.uniform<i8:f32, 0.015686274509803921:-1>>}
 }
 
+// CHECK-LABEL: QuantizeSVDF
+func @QuantizeSVDF(%arg0: tensor<1x3xf32>) -> tensor<1x2xf32>  {
+  %0 = "quant.stats"(%arg0) {layerStats = dense<[2.07937503, 1.365000e+01]> : tensor<2xf32>} : (tensor<1x3xf32>) -> tensor<1x3xf32>
+  %1 = "tfl.pseudo_const"() {value = dense<[[1.125947117805481, 1.0, 1.1], [-1.164743185043335, -1.0, -1.1]]> : tensor<2x3xf32>} : () -> tensor<2x3xf32>
+  %2 = "tfl.pseudo_const"() {value = dense<[[1.8328168392181396], [-1.897219181060791]]> : tensor<2x1xf32>} : () -> tensor<2x1xf32>
+  %3 = "tfl.pseudo_const"() {value = dense<[1.4014043807983398, -1.0950859785079956]> : tensor<2xf32>} : () -> tensor<2xf32>
+  %4 = "tfl.pseudo_const"() {value = dense<0.000000e+00> : tensor<1x4xf32>} : () -> tensor<1x4xf32>
+  %5 = "quant.stats"(%4) {layerStats = dense<[-56.2916565, 122.922478]> : tensor<2xf32>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
+  %6 = "tfl.svdf"(%0, %1, %2, %3, %5) {fused_activation_function = "RELU", rank = 1 : i32} : (tensor<1x3xf32>, tensor<2x3xf32>, tensor<2x1xf32>, tensor<2xf32>, tensor<1x4xf32>) -> tensor<1x2xf32>
+  %7 = "quant.stats"(%6) {layerStats = dense<[0.000000e+00, 33.0349121]> : tensor<2xf32>} : (tensor<1x2xf32>) -> tensor<1x2xf32>
+  return %7 : tensor<1x2xf32>
+
+// CHECK-DAG: %[[input_0:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x3x!quant.uniform<i8:f32, 0.053529410268746171:-128>>)
+// CHECK-DAG: %[[input_1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x3x!quant.uniform<i8<-127:127>:f32, 0.0091712061814435818>>)
+// CHECK-DAG: %[[input_2:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x1x!quant.uniform<i16<-512:512>:f32, 0.0037055062130093575>>)
+// CHECK-DAG: %[[input_3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<2x!quant.uniform<i32:f32, 1.3900876031311922E-5>>)
+// CHECK-DAG: %[[input_4:.*]] = "tfl.dequantize"({{.*}}) : (tensor<1x4x!quant.uniform<i16<-32767:32767>:f32, 0.0037514108011770368>>)
+// CHECK: %[[svdf:.*]] = "tfl.svdf"(%[[input_0]], %[[input_1]], %[[input_2]], %[[input_3]], %[[input_4]])
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[svdf]]) {qtype = tensor<1x2x!quant.uniform<i8:f32, 0.12954867493872549:-128>>}
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%11)
+// CHECK: return %[[dq]]
+}
