@@ -1877,6 +1877,7 @@ tf_cc_tests(
         "//tensorflow/core/example:feature_util_test.cc",
         "//tensorflow/core/graph:algorithm_test.cc",
         "//tensorflow/core/graph:control_flow_test.cc",
+        "//tensorflow/core/graph:costmodel_test.cc",
         "//tensorflow/core/graph:edgeset_test.cc",
         "//tensorflow/core/graph:graph_def_builder_test.cc",
         "//tensorflow/core/graph:graph_partition_test.cc",
