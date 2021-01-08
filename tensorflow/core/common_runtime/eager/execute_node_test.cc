@@ -105,7 +105,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
 
   std::vector<Device*> input_devices;
   for (auto* h : inputs) {
-    input_devices.push_back(absl::get<Device*>(h->DeviceOrHostCPU(*ctx)));
+    input_devices.push_back(h->DeviceOrHostCPU(*ctx));
   }
   const core::RefCountPtr<KernelAndDevice> kernel(
       new TestKernelAndDeviceFunc(std::move(input_devices), device0));

@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -33,14 +34,16 @@ class CustomDevice {
  public:
   virtual ~CustomDevice() {}
   virtual const string& name() = 0;
-  virtual Status CopyTensorToDevice(TensorHandle* tensor,
-                                    TensorHandle** result) = 0;
+  virtual Status CopyTensorToDevice(
+      ImmediateExecutionTensorHandle* tensor,
+      ImmediateExecutionTensorHandle** result) = 0;
 
-  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
-                                      const string& target_device_name,
-                                      TensorHandle** result) = 0;
+  virtual Status CopyTensorFromDevice(
+      ImmediateExecutionTensorHandle* tensor, const string& target_device_name,
+      ImmediateExecutionTensorHandle** result) = 0;
 
-  virtual Status Execute(const EagerOperation* op, TensorHandle** retvals,
+  virtual Status Execute(const ImmediateExecutionOperation* op,
+                         ImmediateExecutionTensorHandle** retvals,
                          int* num_retvals) = 0;
 };
 
@@ -48,6 +51,10 @@ class CustomDevice {
 // much more restricted interface. We pass around ambiguous pointers since
 // operations may be placed either on custom or physical devices.
 using VariantDevice = absl::variant<Device*, CustomDevice*>;
+
+// Indicates either HostCPU or an unset physical device. We never set a null
+// CustomDevice*.
+const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 
 // A tensor handle produced by a custom device. Generally they can only be
 // consumed by executing an operation on the same custom device that produced it
@@ -64,6 +71,10 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
         context_(context),
         device_(device),
         dtype_(dtype) {}
+
+  // TODO(allenl): Should this be a generic method of
+  // ImmediateExecutionTensorHandle to support TFE_TensorHandleDevicePointer?
+  virtual void* DevicePointer() const = 0;
 
   tensorflow::DataType DataType() const override { return dtype_; }
   Status Shape(PartialTensorShape* shape) const override;

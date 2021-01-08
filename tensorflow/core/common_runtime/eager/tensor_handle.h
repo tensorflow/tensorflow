@@ -60,7 +60,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // TensorHandle for dtype == DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
                EagerContext* ctx);
-  TensorHandle(tensorflow::Tensor&& t, CustomDevice* d, EagerContext* ctx);
   TensorHandle(Device* d, Device* op_device, Device* resource_device,
                tensorflow::DataType dtype, EagerContext* ctx);
 
@@ -81,8 +80,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
                                          Device* op_device,
                                          Device* resource_device,
                                          EagerContext* ctx);
-  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t,
-                                         CustomDevice* d, EagerContext* ctx);
   static TensorHandle* CreateEmptyLocalHandle(Device* d, Device* op_device,
                                               Device* resource_device,
                                               tensorflow::DataType dtype,
@@ -150,7 +147,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // requesting the HostCPU.
   Status TensorValue(const Device* d, tensorflow::TensorValue* t);
 
-  VariantDevice device() const { return device_; }
+  Device* device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
   int64 resource_remote_device_incarnation() const {
@@ -161,7 +158,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // are set (data is ready).
   Status WaitUnknownDevice() const;
 
-  VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
+  Device* DeviceOrHostCPU(const EagerContext& ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
 
@@ -286,7 +283,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   bool IsReady() const;
   Status WaitReady(const char* caller) const;
 
-  VariantDevice device_;
+  tensorflow::Device* device_;
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
@@ -390,19 +387,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   PartialTensorShape inference_shape_;
 };
-
-// Checks whether a VariantDevice contains a custom device.
-bool VariantDeviceIsCustom(VariantDevice device);
-
-// Wraps device->name() or CustomDevice->name().
-string VariantDeviceName(VariantDevice device);
-
-// Wraps device->DebugString() or CustomDevice->name().
-string VariantDeviceDebugString(VariantDevice device);
-
-// Indicates either HostCPU or an unset physical device. We never set a null
-// CustomDevice*.
-const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

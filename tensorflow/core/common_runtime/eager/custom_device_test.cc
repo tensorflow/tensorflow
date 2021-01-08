@@ -28,20 +28,22 @@ class TestCustomDevice : public CustomDevice {
  public:
   explicit TestCustomDevice(std::string name) : name_(name) {}
   const std::string& name() override { return name_; }
-  Status CopyTensorToDevice(TensorHandle* tensor,
-                            TensorHandle** result) override {
+  Status CopyTensorToDevice(ImmediateExecutionTensorHandle* tensor,
+                            ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
     return Status::OK();
   }
-  Status CopyTensorFromDevice(TensorHandle* tensor,
-                              const std::string& target_device_name,
-                              TensorHandle** result) override {
+  Status CopyTensorFromDevice(
+      ImmediateExecutionTensorHandle* tensor,
+      const std::string& target_device_name,
+      ImmediateExecutionTensorHandle** result) override {
     tensor->Ref();
     *result = tensor;
     return Status::OK();
   }
-  Status Execute(const EagerOperation* op, TensorHandle** retvals,
+  Status Execute(const ImmediateExecutionOperation* op,
+                 ImmediateExecutionTensorHandle** retvals,
                  int* num_retvals) override {
     return errors::Unimplemented("Not implemented");
   }
@@ -57,6 +59,7 @@ class TestCustomDeviceTensorHandle : public CustomDeviceTensorHandle {
                                tensorflow::DataType dtype)
       : CustomDeviceTensorHandle(context, device, dtype) {}
 
+  void* DevicePointer() const override { return nullptr; }
   Status NumDims(int* num_dims) const override {
     *num_dims = 1;
     return Status::OK();
