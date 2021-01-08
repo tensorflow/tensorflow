@@ -268,11 +268,14 @@ class OpNode {
     return tensorflow::Status::OK();
   }
 
-  void ClearEagerInputs() { op_->Clear(); }
+  void ClearEagerInputs() {
+    for (tensorflow::TensorHandle* h : *op_->MutableInputs()) {
+      if (h) h->Unref();
+    }
+    op_->MutableInputs()->clear();
+  }
 
   tensorflow::Status BuildEagerInputs(const BufferMap* buffer_map) {
-    absl::InlinedVector<tensorflow::TensorHandle*, 4>* op_inputs;
-    TF_RETURN_IF_ERROR(op_->MutableTensorHandleInputs(&op_inputs));
     for (int i = 0; i < inputs_.Size(); ++i) {
       int input_index = inputs_.TfLiteIndex(i);
       TensorSource s = inputs_.GetTensorSource(i);
@@ -287,14 +290,14 @@ class OpNode {
         tensorflow::TensorHandle* handle =
             tensorflow::TensorHandle::CreateLocalHandle(
                 buffer_map->GetTensor(input_index));
-        op_inputs->push_back(handle);
+        op_->MutableInputs()->push_back(handle);
       } else {
         // If this is a forwardable tensor, we will remove it from the previous
         // op's list, giving TF the opportunity to reuse its buffer.
         bool unref_handle = inputs_.IsForwardable(i);
         auto* handle =
             s.node->outputs_.GetHandle(s.node_output_index, unref_handle);
-        op_inputs->push_back(handle);
+        op_->MutableInputs()->push_back(handle);
       }
     }
     return tensorflow::Status::OK();

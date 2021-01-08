@@ -81,6 +81,14 @@ const string& DeviceNameOrUnspecified(Device* device) {
   return (device == nullptr) ? *unspecified_string : device->name();
 }
 
+const string& DeviceNameOrUnspecified(VariantDevice device) {
+  if (VariantDeviceIsCustom(device)) {
+    return absl::get<CustomDevice*>(device)->name();
+  } else {
+    return DeviceNameOrUnspecified(absl::get<Device*>(device));
+  }
+}
+
 // Returns whether a kernel should be cached.
 bool KernelCacheEnabled(const OpDef& op_def) {
   if (data::DatasetOpKernel::IsDatasetOp(&op_def)) {
@@ -192,10 +200,9 @@ Status ValidateInputTypeAndPlacement(
   const bool is_function = kernel->IsFunction();
   if (n_inputs > 0) {
     const DataType* input_types = &kernel->input_dtypes()[0];
-    const absl::InlinedVector<TensorHandle*, 4>* handles;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&handles));
+    TensorHandle* const* handles = &op->Inputs()[0];
     for (int i = 0; i < n_inputs; ++i) {
-      TensorHandle* handle = (*handles)[i];
+      TensorHandle* handle = handles[i];
       Device* expected_device = kernel->InputDevice(i);
       if (!kernel->IsFunction() && handle->Type() == TensorHandle::PACKED) {
         // Extract a handle on the op device from a packed input.
@@ -213,7 +220,13 @@ Status ValidateInputTypeAndPlacement(
           }
         }
       }
-      Device* handle_device = handle->DeviceOrHostCPU(*ctx);
+      auto handle_device_variant = handle->DeviceOrHostCPU(*ctx);
+      if (VariantDeviceIsCustom(handle_device_variant)) {
+        return errors::Unimplemented(
+            "Custom devices and remote execution are not yet supported "
+            "together.");
+      }
+      Device* handle_device = absl::get<Device*>(handle_device_variant);
       const bool maybe_copy =
           !is_function || handle->Type() != TensorHandle::REMOTE;
       // If the input is already on the right device, then nothing to do.
@@ -267,10 +280,14 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
 
 Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
                          Device** result) {
+  if (TF_PREDICT_FALSE(VariantDeviceIsCustom(tensor_handle->device()))) {
+    return errors::Unimplemented(
+        "The kernel cache does not work with custom devices.");
+  }
   Device* cpu_device = ctx.HostCPU();
   string device_name;
   if (tensor_handle->Type() != TensorHandle::LOCAL) {
-    Device* device = tensor_handle->device();
+    Device* device = absl::get<Device*>(tensor_handle->device());
     device_name = device != nullptr ? device->name() : cpu_device->name();
     *result = (device == nullptr ? cpu_device : device);
   } else if (tensor_handle->dtype == DT_RESOURCE) {
@@ -287,7 +304,7 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
         ctx.FindDeviceFromName(device_name.c_str(), &input_device));
     *result = input_device;
   } else {
-    Device* device = tensor_handle->device();
+    Device* device = absl::get<Device*>(tensor_handle->device());
     const bool is_tpu = device != nullptr && device->device_type() == "TPU";
     // int32 return values can be placed on TPUs.
     const bool use_host_memory =
@@ -414,10 +431,8 @@ Status GetOrCreateKernelAndDevice(
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    for (int i = 0, end = inputs->size(); i < end; i++) {
-      TensorHandle* input = (*inputs)[i];
+    for (int i = 0, end = op->Inputs().size(); i < end; i++) {
+      TensorHandle* input = op->Inputs()[i];
 
       // Get device for this input, and add it to 'cache_key'.
       Device* input_device;
@@ -462,7 +477,7 @@ Status GetOrCreateKernelAndDevice(
   core::RefCountPtr<KernelAndDevice> kernel = ctx.GetCachedKernel(cache_key);
   if (kernel == nullptr) {
     DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
-             << DeviceNameOrUnspecified(absl::get<Device*>(op->Device()));
+             << DeviceNameOrUnspecified(op->Device());
     bool run_function_with_flr = false;
     bool function_outputs_on_op_device = false;
     if (op->is_function()) {
@@ -641,11 +656,9 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
                                  remote_func_params, &ctx, &retvals[i]));
       }
     }
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
     auto node = absl::make_unique<AsyncExecuteNode>(
-        &ctx, *inputs, remote_func_params, std::move(kernel), graph_collector,
-        op->GetCancellationManager(),
+        &ctx, op->Inputs(), remote_func_params, std::move(kernel),
+        graph_collector, op->GetCancellationManager(),
         absl::Span<TensorHandle*>(retvals, num_outputs), op->GetStackTrace());
     // Release the inputs from the eager operation since the AsyncExecuteNode
     // would have taken ownership. This allows the inputs to be forwarded if
@@ -660,10 +673,8 @@ Status AddOrExecuteNode(core::RefCountPtr<KernelAndDevice> kernel,
     for (int i = 0, end = num_outputs; i < end; ++i) {
       retvals[i] = nullptr;
     }
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    ExecuteNode node(&ctx, *inputs, remote_func_params, kernel, graph_collector,
-                     op->GetCancellationManager(),
+    ExecuteNode node(&ctx, op->Inputs(), remote_func_params, kernel,
+                     graph_collector, op->GetCancellationManager(),
                      {retvals, static_cast<size_t>(num_outputs)});
     Status s = executor.SyncExecute(&node);
     // We release the inputs AFTER executing the operation in sync mode since
@@ -753,10 +764,8 @@ Status MaybePackInputTensor(EagerOperation* op) {
     return Status::OK();
   }
   EagerContext& ctx = op->EagerContext();
-  const absl::InlinedVector<TensorHandle*, 4>* inputs;
-  TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-  for (int i = 0; i < inputs->size(); ++i) {
-    TensorHandle* handle = (*inputs)[i];
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    TensorHandle* handle = op->Inputs()[i];
     if (handle->Type() == TensorHandle::PACKED) {
       EagerOperation pack_op(&ctx);
       TF_RETURN_IF_ERROR(pack_op.Reset("Pack", /*device_name=*/nullptr,
@@ -833,7 +842,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   if (!DeviceNameUtils::GetTaskName(op->GetDeviceParsedName(), &remote_task)) {
     return errors::InvalidArgument(
         "Unable to find remote task corresponding to device ",
-        op->DeviceName());
+        VariantDeviceName(op->Device()));
   }
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
@@ -846,12 +855,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("CopyInputToExpectedDevice",
                                profiler::TraceMeLevel::kInfo);
     const bool is_function = op->is_function();
-    const absl::InlinedVector<TensorHandle*, 4>* inputs;
-    TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-    for (int i = 0, end = inputs->size(); i < end; i++) {
-      tensorflow::TensorHandle* input = (*inputs)[i];
-      tensorflow::Device* input_device = input->device();
-      tensorflow::Device* input_device_or_cpu = input->DeviceOrHostCPU(ctx);
+    for (int i = 0, end = op->Inputs().size(); i < end; i++) {
+      tensorflow::TensorHandle* input = op->Inputs()[i];
+      tensorflow::Device* input_device = absl::get<Device*>(input->device());
+      tensorflow::Device* input_device_or_cpu =
+          absl::get<Device*>(input->DeviceOrHostCPU(ctx));
       const string* input_device_name = &input_device_or_cpu->name();
       bool serialize_resource_dtype_and_shape = false;
       if (op_device != input_device &&
@@ -868,8 +876,9 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
           // Always copy to the remote CPU so that the actual device can be
           // correctly determined after the kernel is selected/instantiated,
           // since the op might have its inputs on host memory.
-          TensorHandle* handle = input;
-          Device* handle_device = handle->DeviceOrHostCPU(ctx);
+          TensorHandle* handle = op->Inputs()[i];
+          Device* handle_device =
+              absl::get<Device*>(handle->DeviceOrHostCPU(ctx));
           // If the input is already on the right device, then nothing to do.
           if (remote_cpu_device != handle_device) {
             TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(
@@ -950,14 +959,11 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   DVLOG(4) << "Execute remote eager op: " << op->Name()
            << " (is async?: " << executor.Async() << ").";
 
-  const absl::InlinedVector<TensorHandle*, 4>* inputs;
-  TF_RETURN_IF_ERROR(op->TensorHandleInputs(&inputs));
-
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
       &op->EagerContext(), std::move(request), op_device,
       ctx.GetContextViewId(), eager_client.get(), op->GetCancellationManager(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
-      *inputs, {retvals, num_outputs}));
+      op->Inputs(), {retvals, num_outputs}));
 
   if (op->EagerContext().LogDevicePlacement() || VLOG_IS_ON(1)) {
     string msg = strings::StrCat(
@@ -1014,7 +1020,7 @@ Status GetKernelOutputs(
             "kernel. This should never happen.");
       }
       if (TF_PREDICT_FALSE(ctx->CanonicalDevice(kernel->OutputDevice(i)) !=
-                           retvals[i]->device())) {
+                           absl::get<Device*>(retvals[i]->device()))) {
         return errors::Internal(
             "Kernel output tensor handle locates on a different device than "
             "the specified kernel output device. This should never happen.");
@@ -1031,8 +1037,8 @@ Status GetKernelOutputs(
             "Remote outputs are not available on mobile devices.");
 #else  // !IS_MOBILE_PLATFORM
         TF_RETURN_IF_ERROR(retvals[i]->SetRemoteShape(
-            absl::get<TensorShape>(ret), retvals[i]->device(),
-            ctx->GetContextViewId()));
+            absl::get<TensorShape>(ret),
+            absl::get<Device*>(retvals[i]->device()), ctx->GetContextViewId()));
 #endif  // !IS_MOBILE_PLATFORM
       }
     }
@@ -1212,7 +1218,11 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          TensorHandle** result) {
   TF_RETURN_IF_ERROR(h->WaitUnknownDevice());
   auto send_device = h->DeviceOrHostCPU(*ctx);
-  bool sender_is_local = send_device->IsLocal();
+  if (VariantDeviceIsCustom(send_device)) {
+    return errors::Unimplemented(
+        "Copying a TensorHandle from a custom device is not supported.");
+  }
+  bool sender_is_local = absl::get<Device*>(send_device)->IsLocal();
 
   bool receiver_is_local = device->IsLocal();
 
@@ -1353,6 +1363,11 @@ void EagerKernelExecuteAsync(
 // triggered after execution with its status.
 void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
                             int* num_retvals, StatusCallback done) {
+  if (VariantDeviceIsCustom(op->Device())) {
+    done(errors::Unimplemented(
+        "Custom device is not supported in EagerLocalExecuteAsync."));
+    return;
+  }
   if (!op->IsLocal()) {
     done(errors::InvalidArgument(
         "Remote execution is not supported in async EagerLocalExecuteAsync"));
@@ -1404,14 +1419,8 @@ void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], &ctx);
   }
 
-  const absl::InlinedVector<TensorHandle*, 4>* inputs;
-  s = op->TensorHandleInputs(&inputs);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
   EagerKernelExecuteAsync(
-      &ctx, *inputs, op->remote_func_params(), std::move(kernel),
+      &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
       graph_collector, op->GetCancellationManager(), retvals, num_outputs,
       [op, num_outputs, retvals, done = std::move(done)](const Status& s) {
         op->Clear();

@@ -186,7 +186,7 @@ Status AddOpRetvalsToResponse(
     for (int i = 0; i < num_retvals; i++) {
       TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
       if (add_device_fn) {
-        Device* device = retvals[i]->device();
+        Device* device = absl::get<Device*>(retvals[i]->device());
         *add_device_fn() = device ? device->name() : "";
       }
       if (retvals[i]->Type() == TensorHandle::REMOTE) {

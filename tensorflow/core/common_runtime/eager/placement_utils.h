@@ -43,7 +43,8 @@ Status MaybePinSmallOpsToCpu(
 // If a resource touching input is specified, all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been
 // specified. This is identical to the graph mode behavior.
-Status MaybePinToResourceDevice(Device** device, const EagerOperation& op);
+Status MaybePinToResourceDevice(VariantDevice* device,
+                                const EagerOperation& op);
 
 // If all the inputs are on the same custom device, use that custom
 // device. Otherwise, it is an error to have a custom device as an input.
