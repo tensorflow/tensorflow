@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#if (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 #include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #endif
 
