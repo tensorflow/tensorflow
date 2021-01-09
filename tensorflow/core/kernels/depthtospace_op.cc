@@ -17,13 +17,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/depthtospace_op.h"
+
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "tensorflow/core/kernels/depthtospace_op.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -142,6 +143,58 @@ class DepthToSpaceOp : public OpKernel {
   TensorFormat data_format_;
 };
 
+namespace generator {
+template <typename T>
+struct DepthToSpaceGenerator {
+  EIGEN_ALWAYS_INLINE DepthToSpaceGenerator(
+      typename TTypes<T, 4>::ConstTensor input, const Eigen::Index block_size,
+      const Eigen::Index output_height, const Eigen::Index output_width,
+      const Eigen::Index output_depth)
+      : input_(input),
+        block_size_(block_size),
+        output_height_(output_height),
+        output_width_(output_width),
+        output_depth_(output_depth),
+        ys_(output_height),
+        xs_(output_width) {
+    compute_indices(ys_);
+    compute_indices(xs_);
+  }
+
+  EIGEN_ALWAYS_INLINE T
+  operator()(const Eigen::array<Eigen::Index, 4>& coords) const {
+    const Eigen::Index b = coords[0];
+    const Eigen::Index h = coords[1];
+    const Eigen::Index w = coords[2];
+    const Eigen::Index d = coords[3];
+    const Eigen::Index in_h = ys_[h].first;
+    const Eigen::Index offset_h = ys_[h].second;
+    const Eigen::Index in_w = xs_[w].first;
+    const Eigen::Index offset_w = xs_[w].second;
+    const Eigen::Index offset_d =
+        (offset_h * block_size_ + offset_w) * output_depth_;
+    const Eigen::Index in_d = d + offset_d;
+    return input_(b, in_h, in_w, in_d);
+  }
+
+  EIGEN_ALWAYS_INLINE void compute_indices(
+      std::vector<std::pair<Eigen::Index, Eigen::Index>>& indices) {
+    // Cache input indices to reduce repetitive computation.
+    for (Eigen::Index i = 0; i < indices.size(); ++i) {
+      indices[i].first = i / block_size_;
+      indices[i].second = i % block_size_;
+    }
+  }
+
+  typename TTypes<T, 4>::ConstTensor input_;
+  const Eigen::Index block_size_;
+  const Eigen::Index output_height_;
+  const Eigen::Index output_width_;
+  const Eigen::Index output_depth_;
+  std::vector<std::pair<Eigen::Index, Eigen::Index>> ys_, xs_;
+};
+}  // namespace generator
+
 // Partial specialization of DepthToSpaceOpFunctor for a CPUDevice
 // with FORMAT_NHWC.
 namespace functor {
@@ -149,27 +202,12 @@ template <typename T>
 struct DepthToSpaceOpFunctor<CPUDevice, T, FORMAT_NHWC> {
   void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = output.dimension(0);
-    const int output_height = output.dimension(1);
-    const int output_width = output.dimension(2);
-    const int output_depth = output.dimension(3);
-
-    for (int b = 0; b < batch_size; ++b) {
-      for (int h = 0; h < output_height; ++h) {
-        const int in_h = h / block_size;
-        const int offset_h = (h % block_size);
-        for (int w = 0; w < output_width; ++w) {
-          const int in_w = w / block_size;
-          const int offset_w = (w % block_size);
-          const int offset_d =
-              (offset_h * block_size + offset_w) * output_depth;
-          for (int d = 0; d < output_depth; ++d) {
-            const int in_d = d + offset_d;
-            output(b, h, w, d) = input(b, in_h, in_w, in_d);
-          }
-        }
-      }
-    }
+    const Eigen::Index output_height = output.dimension(1);
+    const Eigen::Index output_width = output.dimension(2);
+    const Eigen::Index output_depth = output.dimension(3);
+    generator::DepthToSpaceGenerator<T> generator(
+        input, block_size, output_height, output_width, output_depth);
+    output.device(d) = output.generate(std::move(generator));
   }
 };
 
