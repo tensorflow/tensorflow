@@ -607,13 +607,14 @@ class IrEmitterUnnested : public IrEmitter,
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(
       absl::Span<HloComputation* const> reducers,
-      absl::Span<llvm::AllocaInst* const> partial_result_addresses);
+      absl::Span<llvm::AllocaInst* const> partial_result_addresses,
+      int threads_per_block);
 
   // Emits shuffle-down reduction for the `partial_result_address` using the
   // reduction computation `reducer` over types `element_type`.
   void EmitFullWarpShuffleDownLoopForReduce(
       HloComputation* reducer, llvm::Type* element_type,
-      llvm::Value* partial_result_address);
+      llvm::Value* partial_result_address, int threads_per_block);
 
   std::unique_ptr<KernelThunk> BuildKernelThunkFromBufferSlices(
       absl::string_view name, Thunk::ThunkInfo thunk_info,
