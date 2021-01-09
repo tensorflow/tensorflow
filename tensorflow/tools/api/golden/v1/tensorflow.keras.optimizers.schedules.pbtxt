@@ -1,6 +1,14 @@
 path: "tensorflow.keras.optimizers.schedules"
 tf_module {
   member {
+    name: "CosineDecay"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CosineDecayRestarts"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ExponentialDecay"
     mtype: "<type \'type\'>"
   }

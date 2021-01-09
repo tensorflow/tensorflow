@@ -561,7 +561,7 @@ def compare_model_golden(tflite_model,
     input_data: np.ndarray to pass into models during inference.
     golden_name: Name of the file containing the (expected) golden values.
     update_golden: Whether to update the golden values with the model output
-      instead of comparing againts them. This should only be done when a change
+      instead of comparing against them. This should only be done when a change
       in TFLite warrants it.
     tolerance: Decimal place to check accuracy to. (default 5).
   """
@@ -815,7 +815,7 @@ def _test_conversion_quant_float16(converter,
     golden_name: Optional golden values to compare the output of the model
       against.
     update_golden: Whether to update the golden values with the model output
-      instead of comparing againts them.
+      instead of comparing against them.
     **kwargs: Additional arguments to be passed into the converter.
   """
   tflite_model_float = _convert(converter, version=2, **kwargs)
@@ -867,7 +867,7 @@ def test_saved_model_v2_quant_float16(directory,
     golden_name: Optional golden values to compare the output of the model
       against.
     update_golden: Whether to update the golden values with the model output
-      instead of comparing againts them.
+      instead of comparing against them.
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverterV2.from_saved_model(directory)
@@ -897,7 +897,7 @@ def test_frozen_graph_quant_float16(filename,
     golden_name: Optional golden values to compare the output of the model
       against.
     update_golden: Whether to update the golden values with the model output
-      instead of comparing againts them.
+      instead of comparing against them.
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_frozen_graph(filename, input_arrays,

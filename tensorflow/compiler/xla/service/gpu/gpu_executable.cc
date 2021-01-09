@@ -279,18 +279,13 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
 
   for (const auto& info : constants_) {
-    const Literal& literal = info.content;
-
     TF_ASSIGN_OR_RETURN(auto global, executor->GetUntypedSymbol(
                                          info.symbol_name, module_handle));
     VLOG(3) << "Resolved global " << info.symbol_name << " to "
             << global.opaque();
 
-    CHECK(literal.shape().IsArray());
-    if (!ShouldEmitLiteralInLlvmIr(literal)) {
-      VLOG(3) << "H2D memcpy for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-      stream->ThenMemcpy(&global, literal.untyped_data(), literal.size_bytes());
+    if (!info.content.empty()) {
+      stream->ThenMemcpy(&global, info.content.data(), info.content.size());
     }
 
     if (info.allocation_index != -1) {
@@ -436,6 +431,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
 
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
+    if (!output_info_.contains(index)) {
+      continue;
+    }
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
         &allocations_[output_info.allocation_index];

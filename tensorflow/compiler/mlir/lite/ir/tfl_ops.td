@@ -143,7 +143,7 @@ class TFL_OperandsHaveSameShapesOrBroadcastableShape<
 // TFL Runtime type predicate.
 class TFL_RuntimeType<TypeConstraint t> {
   Pred tflRuntimeTypePredicate = t.predicate;
-  string tflRuntimeTypeDescription = t.description;
+  string tflRuntimeTypeDescription = t.summary;
 }
 
 class TFL_AnyTypeOf<list<Type> allowedRuntimeTypes, string description = "",
@@ -806,7 +806,7 @@ def DimensionMetadataAttr : StructAttr<"DimensionMetadataAttr", TFL_Dialect, [
                             StructFieldAttr<"dense_size", I32Attr>,
                             StructFieldAttr<"segments", I32ArrayAttr>,
                             StructFieldAttr<"indices", I32ArrayAttr>] > {
-  let description = "Dimension metadata.";
+  let summary = "Dimension metadata.";
 }
 
 def DimensionMetadataArrayAttr : TypedArrayAttrBase<DimensionMetadataAttr,
@@ -816,7 +816,7 @@ def SparsityParameterAttr : StructAttr<"SparsityParameterAttr", TFL_Dialect, [
                             StructFieldAttr<"traversal_order", I32ArrayAttr>,
                             StructFieldAttr<"block_map", I32ArrayAttr>,
                             StructFieldAttr<"dim_metadata", DimensionMetadataArrayAttr>]> {
-  let description = "Sparsity parameter.";
+  let summary = "Sparsity parameter.";
   let storageType = [{ TFL::SparsityParameterAttr }];
 }
 
@@ -4303,7 +4303,8 @@ def TFL_SVDFOp :
   TFL_Op<"svdf", [
     PredOpTrait<"the input and result tensor elemental types must be same",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    TFL_StatefulOp]> {
+    TFL_StatefulOp,
+    AccumulatorUniformScale<3, 2, 4>]> {
 
   let summary = "Single value decomposition filter operator";
 
@@ -4321,10 +4322,10 @@ def TFL_SVDFOp :
     TFL_TensorOf<[F32, QI8, QUI8]>:$feature_weights,
 
     // Time weights
-    TFL_TensorOf<[F32, QI8]>:$time_weights,
+    TFL_TensorOf<[F32, QI16]>:$time_weights,
 
     // Bias
-    TFL_TensorOfOrNone<[F32]>:$input_gate_bias,
+    TFL_TensorOfOrNone<[F32, QI32]>:$input_gate_bias,
 
     // Activation state.
     TFL_StatefulTensor:$activation_state,

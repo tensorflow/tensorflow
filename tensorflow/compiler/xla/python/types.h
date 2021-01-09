@@ -36,9 +36,6 @@ limitations under the License.
 
 namespace xla {
 
-// Initializes the NumPy API for the use of the types module.
-bool InitializeNumpyAPIForTypes();
-
 // Helper that converts a failing StatusOr to an exception.
 // For use only inside pybind11 code.
 template <typename T>

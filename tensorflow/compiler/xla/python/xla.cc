@@ -106,7 +106,7 @@ PYBIND11_MODULE(xla_extension, m) {
     import_array1(false);
     return true;
   };
-  if (!init_numpy() || !InitializeNumpyAPIForTypes()) {
+  if (!init_numpy()) {
     throw std::runtime_error("Unable to initialize Numpy API");
   }
 

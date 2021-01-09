@@ -75,8 +75,9 @@ def NonScalarType : Type<Neg<HasAnyRankOfPred<[0]>>, "Non scalar type">;
 def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
   (TF_SoftmaxCrossEntropyWithLogitsOp AnyRankedTensor:$features,
                                       AnyRankedTensor:$labels),
-  [(TF_SumOp (TF_MulOp:$sum_input (TF_NegOp $labels),
-                                  (TF_LogSoftmaxOp $features)),
+  [(TF_SumOp (TF_MulNoNanOp:$sum_input
+                     (TF_LogSoftmaxOp $features),
+                     (TF_NegOp $labels)),
              (TF_ConstOp (GetI64ScalarElementsAttr<-1>)),
              /*keep_dims=*/ConstBoolAttrFalse),
    (TF_SubOp (TF_SoftmaxOp $features), $labels)],

@@ -104,7 +104,7 @@ plt.plot(cmsis_dft, label='CMSIS fixed')
 plt.legend()
 plt.subplot(313)
 plt.plot(to_float(micro_dft, 22), label='Micro to float')
-# CMSIS result has 6 fractionanl bits (not 7) due to documentation error (see
+# CMSIS result has 6 fractional bits (not 7) due to documentation error (see
 # README.md)
 plt.plot(to_float(cmsis_dft, 6), label='CMSIS to float')
 plt.plot(py_result, label='Python result')

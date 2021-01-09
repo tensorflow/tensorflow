@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -75,6 +76,124 @@ HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
     }
   }
   return schedule;
+}
+
+bool CanInferShape(HloOpcode code) {
+  switch (code) {
+    case HloOpcode::kAbs:
+    case HloOpcode::kAdd:
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kAtan2:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kCall:
+    case HloOpcode::kCeil:
+    case HloOpcode::kCholesky:
+    case HloOpcode::kClamp:
+    case HloOpcode::kClz:
+    case HloOpcode::kCompare:
+    case HloOpcode::kComplex:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kCopy:
+    case HloOpcode::kCos:
+    case HloOpcode::kDivide:
+    case HloOpcode::kDomain:
+    case HloOpcode::kDot:
+    case HloOpcode::kExp:
+    case HloOpcode::kExpm1:
+    case HloOpcode::kFft:
+    case HloOpcode::kFloor:
+    case HloOpcode::kGather:
+    case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kImag:
+    case HloOpcode::kIsFinite:
+    case HloOpcode::kLog:
+    case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
+    case HloOpcode::kAnd:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
+    case HloOpcode::kXor:
+    case HloOpcode::kMap:
+    case HloOpcode::kMaximum:
+    case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
+    case HloOpcode::kNegate:
+    case HloOpcode::kPad:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kPopulationCount:
+    case HloOpcode::kPower:
+    case HloOpcode::kReal:
+    case HloOpcode::kReduce:
+    case HloOpcode::kRemainder:
+    case HloOpcode::kReplicaId:
+    case HloOpcode::kReverse:
+    case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelect:
+    case HloOpcode::kShiftLeft:
+    case HloOpcode::kShiftRightArithmetic:
+    case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
+    case HloOpcode::kCbrt:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSort:
+    case HloOpcode::kSubtract:
+    case HloOpcode::kTanh:
+    case HloOpcode::kTrace:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kTriangularSolve:
+    case HloOpcode::kTuple:
+    case HloOpcode::kTupleSelect:
+    case HloOpcode::kWhile:
+      return true;
+    // Technically the following ops do not require an explicit result shape,
+    // but we made it so that we always write the shapes explicitly.
+    case HloOpcode::kAllGather:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
+    case HloOpcode::kCollectivePermute:
+    case HloOpcode::kCollectivePermuteStart:
+    case HloOpcode::kCollectivePermuteDone:
+    case HloOpcode::kCopyDone:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kDynamicReshape:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
+    case HloOpcode::kSlice:
+    // The following ops require an explicit result shape.
+    case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
+    case HloOpcode::kConstant:
+    case HloOpcode::kConvert:
+    case HloOpcode::kCustomCall:
+    case HloOpcode::kFusion:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kParameter:
+    case HloOpcode::kReducePrecision:
+    case HloOpcode::kReshape:
+    case HloOpcode::kRng:
+    case HloOpcode::kRngBitGenerator:
+    case HloOpcode::kRngGetAndUpdateState:
+      return false;
+  }
 }
 
 // Parser for the HloModule::ToString() format text.
@@ -860,8 +979,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   HloOpcode opcode;
   std::vector<HloInstruction*> operands;
 
-  if (!ParseShape(&shape) || !ParseOpcode(&opcode)) {
+  const bool parse_shape = CanBeShape();
+  if ((parse_shape && !ParseShape(&shape)) || !ParseOpcode(&opcode)) {
     return false;
+  }
+  if (!parse_shape && !CanInferShape(opcode)) {
+    return TokenError(StrFormat("cannot infer shape for opcode: %s",
+                                HloOpcodeString(opcode)));
   }
 
   // Add optional attributes. These are added to any HloInstruction type if
@@ -889,7 +1013,20 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   attrs["outer_dimension_partitions"] = {/*required=*/false,
                                          AttrTy::kBracedInt64List,
                                          &outer_dimension_partitions};
-
+  const auto maybe_infer_shape =
+      [&](const std::function<StatusOr<Shape>()>& infer, Shape* shape) {
+        if (parse_shape) {
+          return true;
+        }
+        auto inferred = infer();
+        if (!inferred.ok()) {
+          return TokenError(StrFormat(
+              "failed to infer shape for opcode: %s, error: %s",
+              HloOpcodeString(opcode), inferred.status().error_message()));
+        }
+        *shape = std::move(inferred).ValueOrDie();
+        return true;
+      };
   HloInstruction* instruction;
   switch (opcode) {
     case HloOpcode::kParameter: {
@@ -968,6 +1105,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(
           HloInstruction::CreateUnary(shape, opcode, operands[0]));
       break;
@@ -993,6 +1137,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferBinaryOpShape(opcode, operands[0],
+                                                          operands[1]);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateBinary(
           shape, opcode, operands[0], operands[1]));
       break;
@@ -1003,6 +1155,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kTupleSelect: {
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferTernaryOpShape(
+                    opcode, operands[0], operands[1], operands[2]);
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateTernary(
@@ -1238,6 +1398,18 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           dimensions->size() != 1) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferVariadicOpShape(opcode, arg_shapes);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(
           HloInstruction::CreateSort(shape, dimensions->at(0), operands,
                                      to_apply.value(), is_stable.value()));
@@ -1259,6 +1431,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["body"] = {/*required=*/true, AttrTy::kHloComputation, &body};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferWhileShape(
+                    condition.value()->ComputeProgramShape(),
+                    body.value()->ComputeProgramShape(), operands[0]->shape());
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateWhile(
@@ -1345,6 +1526,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeUtil::GetTupleElementShape(operands[0]->shape(),
+                                                       *index);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(
           HloInstruction::CreateGetTupleElement(shape, operands[0], *index));
       break;
@@ -1354,6 +1543,19 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferCallShape(
+                    arg_shapes, to_apply.value()->ComputeProgramShape());
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1376,6 +1578,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         auto loc = lexer_.GetLoc();
         return Error(loc, StrCat("expects an even number of operands, but has ",
                                  operands.size(), " operands"));
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferReduceWindowShape(
+                    operands[0]->shape(), operands[1]->shape(), *window,
+                    reduce_computation.value()->ComputeProgramShape());
+              },
+              &shape)) {
+        return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateReduceWindow(
           shape, /*operands=*/
@@ -1423,6 +1634,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         precision_config.mutable_operand_precision()->Resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferConvolveShape(
+                    operands[0]->shape(), operands[1]->shape(),
+                    *feature_group_count, *batch_group_count, *window, *dnums,
+                    /*preferred_element_type=*/absl::nullopt);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateConvolve(
           shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
           feature_group_count.value(), batch_group_count.value(), *window,
@@ -1439,6 +1660,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferFftShape(operands[0]->shape(),
+                                                     *fft_type, *fft_length);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateFft(
           shape, operands[0], *fft_type, *fft_length));
       break;
@@ -1448,6 +1677,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributesAsProtoMessage(
               /*non_proto_attrs=*/attrs, &options)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferTriangularSolveShape(
+                    operands[0]->shape(), operands[1]->shape(), options);
+              },
+              &shape)) {
         return false;
       }
       instruction =
@@ -1465,6 +1702,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferBinaryOpShape(opcode, operands[0],
+                                                          operands[1]);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateCompare(
           shape, operands[0], operands[1], *direction, type));
       break;
@@ -1474,6 +1719,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributesAsProtoMessage(
               /*non_proto_attrs=*/attrs, &options)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferCholeskyShape(operands[0]->shape());
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1488,6 +1740,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferBroadcastShape(
+                    operands[0]->shape(), *broadcast_dimensions);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateBroadcast(
           shape, operands[0], *broadcast_dimensions));
       break;
@@ -1498,6 +1758,19 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                              &dimensions};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
           dimensions->size() != 1) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferConcatOpShape(arg_shapes,
+                                                          dimensions->at(0));
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConcatenate(
@@ -1512,6 +1785,20 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
                              &dimensions};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferMapShape(
+                    arg_shapes, to_apply.value()->ComputeProgramShape(),
+                    *dimensions);
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1534,6 +1821,20 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         return Error(loc, StrCat("expects an even number of operands, but has ",
                                  operands.size(), " operands"));
       }
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<const Shape*, 2> arg_shapes;
+                arg_shapes.reserve(operands.size());
+                for (auto* operand : operands) {
+                  arg_shapes.push_back(&operand->shape());
+                }
+                return ShapeInference::InferReduceShape(
+                    arg_shapes, *dimensions_to_reduce,
+                    reduce_computation.value()->ComputeProgramShape());
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateReduce(
           shape, /*operands=*/
           absl::Span<HloInstruction* const>(operands).subspan(
@@ -1550,6 +1851,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                              &dimensions};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferReverseShape(operands[0]->shape(),
+                                                         *dimensions);
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(
@@ -1569,6 +1878,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       if (!window) {
         window.emplace();
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferSelectAndScatterShape(
+                    operands[0]->shape(), select.value()->ComputeProgramShape(),
+                    *window, operands[1]->shape(), operands[2]->shape(),
+                    scatter.value()->ComputeProgramShape());
+              },
+              &shape)) {
+        return false;
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreateSelectAndScatter(
@@ -1635,6 +1954,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferTransposeShape(operands[0]->shape(),
+                                                           *dimensions);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(
           HloInstruction::CreateTranspose(shape, operands[0], *dimensions));
       break;
@@ -1647,6 +1974,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                 &feature_index};
       if (!ParseOperands(&operands, /*expected_size=*/3) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferBatchNormTrainingShape(
+                    operands[0]->shape(), operands[1]->shape(),
+                    operands[2]->shape(), *feature_index);
+              },
+              &shape)) {
         return false;
       }
       instruction =
@@ -1663,6 +1999,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                                 &feature_index};
       if (!ParseOperands(&operands, /*expected_size=*/5) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferBatchNormInferenceShape(
+                    operands[0]->shape(), operands[1]->shape(),
+                    operands[2]->shape(), operands[3]->shape(),
+                    operands[4]->shape(), *feature_index);
+              },
+              &shape)) {
         return false;
       }
       instruction =
@@ -1682,6 +2028,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferBatchNormGradShape(
+                    operands[0]->shape(), operands[1]->shape(),
+                    operands[2]->shape(), operands[3]->shape(),
+                    operands[4]->shape(), *feature_index);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateBatchNormGrad(
           shape, /*operand=*/operands[0], /*scale=*/operands[1],
           /*mean=*/operands[2], /*variance=*/operands[3],
@@ -1693,6 +2049,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["padding"] = {/*required=*/true, AttrTy::kPaddingConfig, &padding};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferPadShape(
+                    operands[0]->shape(), operands[1]->shape(), *padding);
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreatePad(
@@ -1830,6 +2194,26 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       if (branch_computations->empty() ||
           operands.size() != branch_computations->size() + 1) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                absl::InlinedVector<ProgramShape, 2> branch_computation_shapes;
+                branch_computation_shapes.reserve(branch_computations->size());
+                for (auto* computation : *branch_computations) {
+                  branch_computation_shapes.push_back(
+                      computation->ComputeProgramShape());
+                }
+                absl::InlinedVector<Shape, 2> branch_operand_shapes;
+                branch_operand_shapes.reserve(operands.size() - 1);
+                for (int i = 1; i < operands.size(); ++i) {
+                  branch_operand_shapes.push_back(operands[i]->shape());
+                }
+                return ShapeInference::InferConditionalShape(
+                    operands[0]->shape(), branch_computation_shapes,
+                    branch_operand_shapes);
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConditional(
@@ -2023,7 +2407,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         precision_config.mutable_operand_precision()->Resize(
             operands.size(), PrecisionConfig::DEFAULT);
       }
-
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferDotOpShape(
+                    operands[0]->shape(), operands[1]->shape(), dnum,
+                    /*preferred_element_type=*/absl::nullopt);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateDot(
           shape, operands[0], operands[1], dnum, precision_config));
       break;
@@ -2059,7 +2451,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               /*collapsed_slice_dims=*/*collapsed_slice_dims,
               /*start_index_map=*/*start_index_map,
               /*index_vector_dim=*/*index_vector_dim);
-
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferGatherShape(
+                    operands[0]->shape(), operands[1]->shape(), dim_numbers,
+                    *slice_sizes);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateGather(
           shape, /*operand=*/operands[0], /*start_indices=*/operands[1],
           dim_numbers, *slice_sizes, indices_are_sorted.value()));
@@ -2102,6 +2502,17 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
               /*scatter_dims_to_operand_dims=*/*scatter_dims_to_operand_dims,
               /*index_vector_dim=*/*index_vector_dim);
 
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferScatterShape(
+                    operands[0]->shape(), operands[1]->shape(),
+                    operands[2]->shape(),
+                    update_computation.value()->ComputeProgramShape(),
+                    dim_numbers);
+              },
+              &shape)) {
+        return false;
+      }
       instruction = builder->AddInstruction(HloInstruction::CreateScatter(
           shape, /*operand=*/operands[0], /*scatter_indices=*/operands[1],
           /*updates=*/operands[2], *update_computation, dim_numbers,
@@ -2113,6 +2524,13 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["domain"] = {/*required=*/true, AttrTy::kDomain, &domain};
       if (!ParseOperands(&operands, /*expected_size=*/1) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferUnaryOpShape(opcode, operands[0]);
+              },
+              &shape)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateDomain(
@@ -2131,6 +2549,14 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           !ParseAttributes(attrs)) {
         return false;
       }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferGetDimensionSizeShape(
+                    operands[0]->shape(), dimensions->at(0));
+              },
+              &shape)) {
+        return false;
+      }
       instruction =
           builder->AddInstruction(HloInstruction::CreateGetDimensionSize(
               shape, operands[0], (*dimensions)[0]));
@@ -2142,6 +2568,15 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
                              &dimensions};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
+        return false;
+      }
+      if (!maybe_infer_shape(
+              [&] {
+                return ShapeInference::InferSetDimensionSizeShape(
+                    operands[0]->shape(), operands[1]->shape(),
+                    dimensions->at(0));
+              },
+              &shape)) {
         return false;
       }
       instruction =

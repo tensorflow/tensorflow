@@ -26,10 +26,10 @@ module attributes {gpu.container_module} {
   gpu.module @abs_kernel {
     // CHECK-LABEL: llvm.func @abs_kernel
     // ABI-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float> {llvm.align = 16 : index},
-    // ABI-SAME: %[[ARG2:.*]]: !llvm.i64, %[[ARG3:.*]]: !llvm.i64, %[[ARG4:.*]]: !llvm.i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float> {llvm.align = 16 : index, llvm.noalias = true},
-    // ABI-SAME: %[[ARG7:.*]]: !llvm.i64, %[[ARG8:.*]]: !llvm.i64, %[[ARG9:.*]]: !llvm.i64
-    // SHAPE-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float>, %[[ARG2:.*]]: !llvm.i64, %[[ARG3:.*]]: !llvm.i64, %[[ARG4:.*]]: !llvm.i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float>, %[[ARG7:.*]]: !llvm.i64, %[[ARG8:.*]]: !llvm.i64, %[[ARG9:.*]]: !llvm.i64
-    llvm.func @abs_kernel(%arg0: !llvm.ptr<float>, %arg1: !llvm.ptr<float>, %arg2: !llvm.i64, %arg3: !llvm.i64, %arg4: !llvm.i64, %arg5: !llvm.ptr<float>, %arg6: !llvm.ptr<float>, %arg7: !llvm.i64, %arg8: !llvm.i64, %arg9: !llvm.i64) attributes {gpu.kernel} {
+    // ABI-SAME: %[[ARG2:.*]]: i64, %[[ARG3:.*]]: i64, %[[ARG4:.*]]: i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float> {llvm.align = 16 : index, llvm.noalias = true},
+    // ABI-SAME: %[[ARG7:.*]]: i64, %[[ARG8:.*]]: i64, %[[ARG9:.*]]: i64
+    // SHAPE-SAME: %[[ARG0:.*]]: !llvm.ptr<float>, %[[ARG1:.*]]: !llvm.ptr<float>, %[[ARG2:.*]]: i64, %[[ARG3:.*]]: i64, %[[ARG4:.*]]: i64, %[[ARG5:.*]]: !llvm.ptr<float>, %[[ARG6:.*]]: !llvm.ptr<float>, %[[ARG7:.*]]: i64, %[[ARG8:.*]]: i64, %[[ARG9:.*]]: i64
+    llvm.func @abs_kernel(%arg0: !llvm.ptr<float>, %arg1: !llvm.ptr<float>, %arg2: i64, %arg3: i64, %arg4: i64, %arg5: !llvm.ptr<float>, %arg6: !llvm.ptr<float>, %arg7: i64, %arg8: i64, %arg9: i64) attributes {gpu.kernel} {
       // ABI: %[[ZERO:.*]] = llvm.mlir.constant(0 : index)
       // ABI: %[[ONE:.*]] = llvm.mlir.constant(1 : index)
       // CHECK: llvm.mlir.undef
@@ -93,9 +93,9 @@ module attributes {gpu.container_module} {
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index, llvm.noalias = true}
-    llvm.func @AddV2_kernel(%arg0: !llvm.i64, %arg1: !llvm.ptr<float>, %arg2: !llvm.ptr<float>, %arg3: !llvm.i64, %arg4: !llvm.i64, %arg5: !llvm.i64, %arg6: !llvm.ptr<float>, %arg7: !llvm.ptr<float>, %arg8: !llvm.i64, %arg9: !llvm.i64, %arg10: !llvm.i64, %arg11: !llvm.ptr<float>, %arg12: !llvm.ptr<float>, %arg13: !llvm.i64, %arg14: !llvm.i64, %arg15: !llvm.i64) attributes {gpu.kernel} {
-      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : !llvm.i64
-      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+    llvm.func @AddV2_kernel(%arg0: i64, %arg1: !llvm.ptr<float>, %arg2: !llvm.ptr<float>, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: !llvm.ptr<float>, %arg7: !llvm.ptr<float>, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: !llvm.ptr<float>, %arg12: !llvm.ptr<float>, %arg13: i64, %arg14: i64, %arg15: i64) attributes {gpu.kernel} {
+      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
+      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       %1 = llvm.insertvalue %arg1, %0[0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       %2 = llvm.insertvalue %arg2, %1[1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
@@ -181,9 +181,9 @@ module attributes {gpu.container_module} {
     // ABI-SAME: {llvm.align = 16 : index, llvm.noalias = true}
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
-    llvm.func @AddV2_kernel(%arg0: !llvm.i64, %arg1: !llvm.i64, %arg2: !llvm.ptr<float>, %arg3: !llvm.ptr<float> {llvm.align = 16 : index, llvm.noalias = true}, %arg4: !llvm.i64, %arg5: !llvm.i64, %arg6: !llvm.i64, %arg7: !llvm.i64, %arg8: !llvm.i64, %arg9: !llvm.ptr<float>, %arg10: !llvm.ptr<float> {llvm.align = 16 : index}, %arg11: !llvm.i64, %arg12: !llvm.i64, %arg13: !llvm.i64, %arg14: !llvm.i64, %arg15: !llvm.i64, %arg16: !llvm.ptr<float>, %arg17: !llvm.ptr<float> {llvm.align = 16 : index}, %arg18: !llvm.i64, %arg19: !llvm.i64, %arg20: !llvm.i64, %arg21: !llvm.i64, %arg22: !llvm.i64) attributes {gpu.kernel} {
-      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : !llvm.i64
-      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+    llvm.func @AddV2_kernel(%arg0: i64, %arg1: i64, %arg2: !llvm.ptr<float>, %arg3: !llvm.ptr<float> {llvm.align = 16 : index, llvm.noalias = true}, %arg4: i64, %arg5: i64, %arg6: i64, %arg7: i64, %arg8: i64, %arg9: !llvm.ptr<float>, %arg10: !llvm.ptr<float> {llvm.align = 16 : index}, %arg11: i64, %arg12: i64, %arg13: i64, %arg14: i64, %arg15: i64, %arg16: !llvm.ptr<float>, %arg17: !llvm.ptr<float> {llvm.align = 16 : index}, %arg18: i64, %arg19: i64, %arg20: i64, %arg21: i64, %arg22: i64) attributes {gpu.kernel} {
+      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
+      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<2 x i64>, array<2 x i64>)>
       %1 = llvm.insertvalue %arg2, %0[0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<2 x i64>, array<2 x i64>)>
       %2 = llvm.insertvalue %arg3, %1[1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<2 x i64>, array<2 x i64>)>
@@ -289,9 +289,9 @@ module attributes {gpu.container_module} {
     // ABI-SAME: {llvm.align = 16 : index, llvm.noalias = true}
     // ABI-SAME: {llvm.align = 16 : index}
     // ABI-SAME: {llvm.align = 16 : index}
-    llvm.func @AddV2_kernel(%arg0: !llvm.i64, %arg1: !llvm.ptr<float>, %arg2: !llvm.ptr<float>, %arg3: !llvm.i64, %arg4: !llvm.i64, %arg5: !llvm.i64, %arg6: !llvm.ptr<float>, %arg7: !llvm.ptr<float>, %arg8: !llvm.i64, %arg9: !llvm.i64, %arg10: !llvm.i64, %arg11: !llvm.ptr<float>, %arg12: !llvm.ptr<float>, %arg13: !llvm.i64, %arg14: !llvm.i64, %arg15: !llvm.i64) attributes {gpu.kernel} {
-      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : !llvm.i64
-      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : !llvm.i64
+    llvm.func @AddV2_kernel(%arg0: i64, %arg1: !llvm.ptr<float>, %arg2: !llvm.ptr<float>, %arg3: i64, %arg4: i64, %arg5: i64, %arg6: !llvm.ptr<float>, %arg7: !llvm.ptr<float>, %arg8: i64, %arg9: i64, %arg10: i64, %arg11: !llvm.ptr<float>, %arg12: !llvm.ptr<float>, %arg13: i64, %arg14: i64, %arg15: i64) attributes {gpu.kernel} {
+      // ABI: %[[C0:.*]] = llvm.mlir.constant(0 : index) : i64
+      // ABI: %[[C1:.*]] = llvm.mlir.constant(1 : index) : i64
       %0 = llvm.mlir.undef : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       %1 = llvm.insertvalue %arg1, %0[0] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>
       %2 = llvm.insertvalue %arg2, %1[1] : !llvm.struct<(ptr<float>, ptr<float>, i64, array<1 x i64>, array<1 x i64>)>

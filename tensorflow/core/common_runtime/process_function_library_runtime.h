@@ -150,8 +150,7 @@ class ProcessFunctionLibraryRuntime {
   // is set to the device backing the resource.
   // REQUIRES: `handle` identifies a multi-device function.
   Status GetOutputDevices(FunctionLibraryRuntime::Handle handle,
-                          std::vector<Device*>* output_devices,
-                          const bool eager_lazy_copy) const;
+                          std::vector<Device*>* output_devices) const;
 
   // Returns true if function with handle `handle` was instantiated on device
   // `device_name`. Returns false for multi-device functions.

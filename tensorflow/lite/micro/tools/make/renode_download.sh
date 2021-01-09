@@ -31,6 +31,12 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR=${SCRIPT_DIR}/../../../../..
+cd "${ROOT_DIR}"
+
+source tensorflow/lite/micro/tools/make/bash_helpers.sh
+
 DOWNLOADS_DIR=${1}
 if [ ! -d ${DOWNLOADS_DIR} ]; then
   echo "The top-level downloads directory: ${DOWNLOADS_DIR} does not exist."
@@ -73,12 +79,7 @@ else
   wget ${LINUX_PORTABLE_URL} -O ${TEMP_ARCHIVE} >&2
 
   EXPECTED_MD5="8415361f5caa843f1e31b59c50b2858f"
-  MD5=`md5sum ${TEMP_ARCHIVE} | awk '{print $1}'`
-  if [[ ${MD5} != ${EXPECTED_MD5} ]]
-  then
-    echo "Bad checksum. Expected: ${EXPECTED_MD5}, Got: ${MD5}"
-    exit 1
-  fi
+  check_md5 ${TEMP_ARCHIVE} ${EXPECTED_MD5}
 
   mkdir ${DOWNLOADED_RENODE_PATH}
   tar xzf ${TEMP_ARCHIVE} --strip-components=1 --directory "${DOWNLOADED_RENODE_PATH}" >&2

@@ -177,41 +177,83 @@ message XNNPackSettings {
   optional int32 num_threads = 1;
 }
 
-// EdgeTPU Delegate settings
+// EdgeTPU device spec.
 //
-message EdgeTpuSettings {
-  // Generic definitions of EdgeTPU power states.
-  enum PowerState {
-    // Undefined power state.
-    UNDEFINED = 0;
-
-    // TPU core is off but control cluster is on.
-    TPU_CORE_OFF = 1;
-
-    // A non-active low-power state that has much smaller transition time to
-    // active compared to off.
-    READY = 2;
-
-    // Device is inactive but ready and all previous data is retained (e.g.
-    // cached parameters).
-    READY_WITH_RETENTION = 3;
-
-    // Minimum power active state.
-    ACTIVE_MIN_POWER = 4;
-
-    // Low performance, low power.
-    ACTIVE_LOW_POWER = 5;
-
-    // The normal performance and power. This setting usually provides the
-    // optimal perf/power trade-off for the average use-case.
-    ACTIVE = 6;
-
-    // Maximum performance level. Potentially higher power and thermal. This
-    // setting may not be allowed in production depending on the system.
-    OVER_DRIVE = 7;
+message EdgeTpuDeviceSpec {
+  // EdgeTPU platform types.
+  enum PlatformType {
+    MMIO = 0;
+    REFERENCE = 1;
+    SIMULATOR = 2;
+    REMOTE_SIMULATOR = 3;
   }
 
-  optional PowerState inference_power_state = 1;
+  // Execution platform for the EdgeTPU device.
+  optional PlatformType platform_type = 1;
+
+  // Number of chips to use for the EdgeTPU device.
+  optional int32 num_chips = 2;
+
+  // Paths to the EdgeTPU devices;
+  repeated string device_paths = 3;
+
+  // Chip family used by the EdgeTpu device.
+  optional int32 chip_family = 4;
+}
+
+// Generic definitions of EdgeTPU power states.
+enum EdgeTpuPowerState {
+  // Undefined power state.
+  UNDEFINED_POWERSTATE = 0;
+
+  // TPU core is off but control cluster is on.
+  TPU_CORE_OFF = 1;
+
+  // A non-active low-power state that has much smaller transition time to
+  // active compared to off.
+  READY = 2;
+
+  // Device is inactive but ready and all previous data is retained (e.g.
+  // cached parameters).
+  READY_WITH_RETENTION = 3;
+
+  // Minimum power active state.
+  ACTIVE_MIN_POWER = 4;
+
+  // Low performance, low power.
+  ACTIVE_LOW_POWER = 5;
+
+  // The normal performance and power. This setting usually provides the
+  // optimal perf/power trade-off for the average use-case.
+  ACTIVE = 6;
+
+  // Maximum performance level. Potentially higher power and thermal. This
+  // setting may not be allowed in production depending on the system.
+  OVER_DRIVE = 7;
+}
+
+message EdgeTpuInactivePowerConfig {
+  // Inactive power states between inferences.
+  optional EdgeTpuPowerState inactive_power_state = 1;
+
+  // Inactive timeout in microseconds between inferences.
+  optional int64 inactive_timeout_us = 2;
+}
+
+// EdgeTPU Delegate settings.
+//
+message EdgeTpuSettings {
+  // Target inference power state for running the model.
+  optional EdgeTpuPowerState inference_power_state = 1;
+
+  // Inactive power states between inferences.
+  repeated EdgeTpuInactivePowerConfig inactive_power_configs = 2;
+
+  // Priority for the inference request.
+  optional int32 inference_priority = 3 [default = -1];
+
+  // Device spec for creating the EdgeTpu device.
+  optional EdgeTpuDeviceSpec edgetpu_device_spec = 4;
 }
 
 message CPUSettings {

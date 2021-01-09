@@ -132,7 +132,7 @@ class GpuUnaryOpTest : public OpsTestBase {
                                 baseline_callback, config)                   \
   GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(                        \
       op_name, InT, BaselineT, OutT, BaselineOutT,                           \
-      test::DefaultInput<NativeT>(#op_name), baseline_callback, config)
+      test::DefaultInput<NativeT>(), baseline_callback, config)
 
 #define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(        \
     op_name, InT, OutT, input_values, baseline_callback, config) \
@@ -252,7 +252,7 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
   Test<float, float, bool, bool>(
       /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<float>("IsInf"),
+      test::DefaultInput<float>(),
       /*baseline_callback=*/std::isinf,
       test::GpuOpsTestConfig().ExpectStrictlyEqual());
 }
@@ -263,7 +263,7 @@ TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
   // comparing expected values.
   Test<double, float, bool, bool>(
       /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<double>("IsInf"),
+      test::DefaultInput<double>(),
       /*baseline_callback=*/std::isinf,
       test::GpuOpsTestConfig().ExpectStrictlyEqual());
 }
@@ -271,7 +271,7 @@ TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
   Test<Eigen::half, float, bool, bool>(
       /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<Eigen::half>("IsInf"),
+      test::DefaultInput<Eigen::half>(),
       /*baseline_callback=*/std::isinf,
       test::GpuOpsTestConfig().ExpectStrictlyEqual());
 }

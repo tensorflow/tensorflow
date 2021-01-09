@@ -295,6 +295,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<CallInliner>(/*single_call_site=*/true);
   pipeline.AddPass<BatchDotSimplification>();
   pipeline.AddPass<DotDecomposer>();
+  // Convert BF16 operations to F32 operations so that the CPU backend can
+  // support BF16 operations without directly implementing a BF16 lowering for
+  // most ops.
+  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
   // After canonicalization, there may be more batch dots that can be
   // simplified.
   pipeline.AddPass<BatchDotSimplification>();
@@ -403,8 +407,6 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
-
-  pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
 
   // Outline ops in the entry computation into calls to subcomputations.
   const int max_parallelism =
