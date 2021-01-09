@@ -24,6 +24,7 @@
     `_tpu_estimator_embedding.py`. This allows embedding lookup statistics
     gathered at runtime to be used in embedding layer partitioning decisions.
 * `tf.keras.metrics.AUC` now support logit predictions.
+* Creating `tf.random.Generator` under `tf.distribute.Strategy` scopes is now allowed (except for `tf.distribute.experimental.CentralStorageStrategy` and `tf.distribute.experimental.ParameterServerStrategy`). Different replicas will get different random-number streams.
 
 ## Bug Fixes and Other Changes
 
@@ -36,6 +37,9 @@
     *   Improvements to model saving/loading:
         *   `model.load_weights` now accepts paths to saved models.
     *   Keras inputs can now be created directly from arbitrary `tf.TypeSpecs`.
+    *   Two new learning rate schedules added:
+        `tf.keras.optimizers.schedules.CosineDecay` and
+        `tf.keras.optimizers.schedules.CosineDecayRestarts`.
 
 *   `tf.data`:
     *   Exposing `tf.data.experimental.ExternalStatePolicy`, which can be used
@@ -103,11 +107,16 @@
         value of `is_dynamic_op` is not True. We didn't use the value for
         `max_batch_size` for building TensorRT engines.
     *   Issue a warning when function get_tensorrt_rewriter_config is used.
-*   Other:
+
+*   TF XLA
     *   Add new enum value `MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED` to
         `tf.config.experimental.mlir_bridge_rollout` to enable a \"safe\" mode.
         This runs the MLIR bridge only when an analysis of the graph only when
         an analysis of the graph determines that it is safe to run.
+
+* Other
+    *   Adding show_debug_info to mlir.convert_graph_def and
+        mlir.convert_function.
 
 ## Thanks to our Contributors
 

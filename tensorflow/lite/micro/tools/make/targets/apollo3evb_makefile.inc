@@ -10,8 +10,12 @@ APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)
 GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
 $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 $(eval $(call add_third_party_download,$(AM_SDK_URL),$(AM_SDK_MD5),$(AM_SDK_DEST),patch_am_sdk))
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+endif
 
 ifeq ($(findstring sparkfun,$(TARGET)), sparkfun)
   $(eval $(call add_third_party_download,$(SF_BSPS_URL),$(SF_BSPS_MD5),$(AM_SDK_DEST)/$(SF_BSPS_DEST),))

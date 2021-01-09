@@ -61,17 +61,22 @@ class XlaVariadicSortOp : public XlaOpKernel {
       : XlaOpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("T", &input_types_));
     OP_REQUIRES_OK(context, context->GetAttr("comparator", &comparator_));
-    OP_REQUIRES_OK(context, context->GetAttr("dimension", &dimension_));
     OP_REQUIRES_OK(context, context->GetAttr("is_stable", &is_stable_));
   }
 
   void Compile(XlaOpKernelContext* context) override {
-    std::vector<xla::XlaOp> inputs(input_types_.size());
+    std::vector<xla::XlaOp> inputs;
+    std::vector<TensorShape> input_shapes;
+    OP_REQUIRES_OK(context,
+                   context->InputList("inputs", &inputs, &input_shapes));
+    int64 dimension;
+    OP_REQUIRES_OK(context,
+                   context->ConstantInputAsIntScalar("dimension", &dimension));
+
     std::vector<xla::PrimitiveType> input_xla_types(input_types_.size());
     std::vector<XlaCompiler::Argument> comparator_args(2 * input_types_.size());
 
-    for (int i = 0; i < input_types_.size(); ++i) {
-      inputs[i] = context->Input(i);
+    for (int i = 0; i < inputs.size(); ++i) {
       OP_REQUIRES_OK(context, DataTypeToPrimitiveType(input_types_[i],
                                                       &input_xla_types[i]));
       XlaCompiler::Argument comparator_arg;
@@ -101,12 +106,12 @@ class XlaVariadicSortOp : public XlaOpKernel {
         xla::ShapeUtil::Compatible(comparator.xla_output_shape,
                                    expected_comparator_output_shape),
         errors::InvalidArgument(
-            "Invalid output shape of XlaReduce reducer. Expected ",
+            "Invalid output shape of XlaVariadicSort comparator. Expected ",
             xla::ShapeUtil::HumanString(expected_comparator_output_shape),
             " got ", xla::ShapeUtil::HumanString(comparator.xla_output_shape)));
 
     xla::XlaOp outputs =
-        xla::Sort(inputs, *comparator.computation, dimension_, is_stable_);
+        xla::Sort(inputs, *comparator.computation, dimension, is_stable_);
 
     for (int i = 0; i < input_types_.size(); ++i) {
       xla::XlaOp output_handle =
@@ -119,12 +124,12 @@ class XlaVariadicSortOp : public XlaOpKernel {
  private:
   DataTypeVector input_types_;
   const NameAttrList* comparator_;
-  int64 dimension_;
   bool is_stable_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaVariadicSortOp);
 };
 
-REGISTER_XLA_OP(Name("XlaVariadicSort"), XlaVariadicSortOp);
+REGISTER_XLA_OP(Name("XlaVariadicSort").CompileTimeConstantInput("dimension"),
+                XlaVariadicSortOp);
 }  // namespace
 }  // namespace tensorflow

@@ -142,7 +142,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
-      opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
+      opts->async, device_mgr.release(),
       /*device_mgr_owned*/ true, r);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(

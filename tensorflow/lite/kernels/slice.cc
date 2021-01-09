@@ -190,7 +190,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // The dimensions in the kernel used to be in reverse-order, and TFLite
   // arranged the begins and sizes vectors accordingly. This macro incorporates
   // the needed reversing.
-#define TF_LITE_SLICE(data_type, kernel_type)                                  \
+#define TF_LITE_SLICE(data_type)                                               \
   {                                                                            \
     TF_LITE_ENSURE_EQ(context, begins.size(), kMaxDim);                        \
     TF_LITE_ENSURE_EQ(context, sizes.size(), kMaxDim);                         \
@@ -213,28 +213,28 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {
     case kTfLiteFloat32:
-      TF_LITE_SLICE(float, kernel_type);
+      TF_LITE_SLICE(float);
       break;
     case kTfLiteInt32:
-      TF_LITE_SLICE(int32_t, kernel_type);
+      TF_LITE_SLICE(int32_t);
       break;
     case kTfLiteInt64:
-      TF_LITE_SLICE(int64_t, kernel_type);
+      TF_LITE_SLICE(int64_t);
       break;
     case kTfLiteInt8:
-      TF_LITE_SLICE(int8_t, kernel_type);
+      TF_LITE_SLICE(int8_t);
       break;
     case kTfLiteInt16:
-      TF_LITE_SLICE(int16_t, kernel_type);
+      TF_LITE_SLICE(int16_t);
       break;
     case kTfLiteUInt8:
-      TF_LITE_SLICE(uint8_t, kernel_type);
+      TF_LITE_SLICE(uint8_t);
       break;
     case kTfLiteBool:
-      TF_LITE_SLICE(bool, kernel_type);
+      TF_LITE_SLICE(bool);
       break;
     case kTfLiteString:
-      TF_LITE_SLICE(string, kernel_type);
+      TF_LITE_SLICE(string);
       break;
     default:
       context->ReportError(

@@ -141,7 +141,6 @@ kernel void ComputeFunction($1
     }
   }
   c += "  FLT4 value = result;\n";
-  c += "  args.dst_tensor.GetAddress(linear_index, X, Y, Z);\n";
   c += "  $2\n";
   c += "  args.dst_tensor.Write(value, X, Y, Z);\n";
   c += "}\n";
@@ -152,7 +151,6 @@ kernel void ComputeFunction($1
 ComputeTaskDescriptor Slice(const OperationDef& definition,
                             const SliceAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetSliceCode(definition, Is4Aligned(attr));
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);

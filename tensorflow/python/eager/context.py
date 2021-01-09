@@ -419,7 +419,6 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
-    self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -521,9 +520,6 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
-        if self._lazy_remote_inputs_copy is not None:
-          pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
-              opts, self._lazy_remote_inputs_copy)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -662,6 +658,17 @@ class Context(object):
     """
     if self._context_handle:
       pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -1177,10 +1184,6 @@ class Context(object):
       A packed EagerTensor.
     """
     self.ensure_initialized()
-    if self._lazy_remote_inputs_copy is not None and (
-        not self._lazy_remote_inputs_copy):
-      raise ValueError("Packing eager tensors is not supported when "
-                       "lazy_remote_inputs_copy is disabled.")
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
 
   def remove_function(self, name):
@@ -1668,22 +1671,6 @@ class Context(object):
       if self._context_handle is not None:
         pywrap_tfe.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
-
-  @property
-  def lazy_remote_inputs_copy(self):
-    return self._lazy_remote_inputs_copy
-
-  @lazy_remote_inputs_copy.setter
-  def lazy_remote_inputs_copy(self, lazy_copy):
-    """Sets whether to copy remote inputs lazily for functions."""
-    if not isinstance(lazy_copy, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
-
-    if self._lazy_remote_inputs_copy != lazy_copy:
-      if self._initialized:
-        raise ValueError(
-            "lazy_remote_inputs_copy should be set before being initialized.")
-      self._lazy_remote_inputs_copy = lazy_copy
 
   @property
   def use_tfrt(self):

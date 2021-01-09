@@ -449,6 +449,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
@@ -559,6 +560,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
         "reference/ceil.h",

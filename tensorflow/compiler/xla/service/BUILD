@@ -4839,6 +4839,7 @@ cc_library(
         ":hlo",
         ":hlo_casting_utils",
         ":hlo_lexer",
+        ":shape_inference",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

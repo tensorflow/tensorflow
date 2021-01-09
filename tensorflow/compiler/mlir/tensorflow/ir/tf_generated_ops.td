@@ -11774,6 +11774,24 @@ Both input and output have a range `(-inf, inf)`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_RiscDotOp : TF_Op<"RiscDot", [NoSideEffect]> {
+  let summary = "";
+
+  let arguments = (ins
+    TF_FloatTensor:$a,
+    TF_FloatTensor:$b,
+
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_a,
+    DefaultValuedAttr<BoolAttr, "false">:$transpose_b
+  );
+
+  let results = (outs
+    TF_FloatTensor:$product
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_RollOp : TF_Op<"Roll", [NoSideEffect]> {
   let summary = "Rolls the elements of a tensor along an axis.";
 

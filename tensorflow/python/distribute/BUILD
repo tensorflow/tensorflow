@@ -587,6 +587,22 @@ py_library(
     ],
 )
 
+distribute_py_test(
+    name = "random_generator_test",
+    srcs = ["random_generator_test.py"],
+    main = "random_generator_test.py",
+    shard_count = 10,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+    ],
+)
+
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],

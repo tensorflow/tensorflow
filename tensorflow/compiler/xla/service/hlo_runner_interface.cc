@@ -71,6 +71,20 @@ HloRunnerInterface::ReadModuleFromHloTextFile(
   return ParseAndReturnUnverifiedModule(hlo_string, config);
 }
 
+/*static*/ StatusOr<std::unique_ptr<HloModule>>
+HloRunnerInterface::ReadModuleFromModuleBinaryProtofile(
+    const std::string& filename, const DebugOptions& debug_options) {
+  HloModuleProto module_proto;
+  TF_RETURN_IF_ERROR(tensorflow::ReadBinaryProto(tensorflow::Env::Default(),
+                                                 filename, &module_proto));
+
+  TF_ASSIGN_OR_RETURN(
+      HloModuleConfig module_config,
+      HloModule::CreateModuleConfigFromProto(module_proto, debug_options));
+
+  return HloModule::CreateFromProto(module_proto, module_config);
+}
+
 StatusOr<Literal> HloRunnerInterface::Execute(
     std::unique_ptr<HloModule> module, absl::Span<const Literal> arguments,
     bool run_hlo_passes, ExecutionProfile* profile) {

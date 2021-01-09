@@ -1116,7 +1116,6 @@ xla_test(
     srcs = ["convolution_test.cc"],
     shard_count = 50,
     tags = [
-        "no_rocm",
         "optonly",
         # Timed out on 2020-07-18
         "nozapfhahn",
@@ -2599,9 +2598,12 @@ xla_test(
     ],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":test_macros_header",
         ":xla_internal_test_main",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

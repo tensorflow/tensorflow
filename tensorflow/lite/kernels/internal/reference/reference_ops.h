@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
+#include "tensorflow/lite/kernels/internal/reference/add_n.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
@@ -209,22 +210,6 @@ inline void ReluX(const tflite::ActivationParams& params,
                       : val < min_value ? min_value
                                         : val;
     output_data[i] = clamped;
-  }
-}
-
-// T is expected to be either float or int.
-template <typename T>
-inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
-                 T* const* input_data, T* output_data) {
-  // All inputs and output should have the same shape, this is checked during
-  // Prepare stage.
-  const size_t size = input_shape.FlatSize();
-  for (int i = 0; i < size; ++i) {
-    T x = 0;
-    for (int j = 0; j < num_inputs; ++j) {
-      x += input_data[j][i];
-    }
-    output_data[i] = x;
   }
 }
 

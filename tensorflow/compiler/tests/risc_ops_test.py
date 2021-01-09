@@ -31,12 +31,49 @@ class XlaRiscOpsTest(xla_test.XLATestCase):
     def f(a, b):
       return risc_ops.risc_add(a, b)
 
-    l1 = constant_op.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
-                              dtype=dtypes.float32)
-    l2 = constant_op.constant([[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
-                              dtype=dtypes.float32)
-    l = f(l1, l2)
-    self.assertAllEqual(l, [[8.0, 10.0], [12.0, 14.0], [16.0, 18.0]])
+    a = constant_op.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                             dtype=dtypes.float32)
+    b = constant_op.constant([[7.0, 8.0], [9.0, 10.0], [11.0, 12.0]],
+                             dtype=dtypes.float32)
+    self.assertAllEqual(f(a, b), [[8.0, 10.0], [12.0, 14.0], [16.0, 18.0]])
+
+  def testRiscDotBasic(self):
+
+    @def_function.function(jit_compile=True)
+    def f(a, b):
+      return risc_ops.risc_dot(a, b)
+
+    a = constant_op.constant([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+                             dtype=dtypes.float32)
+    b = constant_op.constant([[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+                             dtype=dtypes.float32)
+    self.assertAllEqual(
+        f(a, b), [[27.0, 30.0, 33.0], [61.0, 68.0, 75.0], [95.0, 106.0, 117.0]])
+
+  def testRiscDotDimensionMismatch(self):
+
+    @def_function.function(jit_compile=True)
+    def f(a, b):
+      return risc_ops.risc_dot(a, b)
+
+    a = constant_op.constant([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]],
+                             dtype=dtypes.float32)
+    b = constant_op.constant([[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+                             dtype=dtypes.float32)
+    self.assertRaisesRegex(ValueError, "Dimensions must be equal", f, a, b)
+
+  def testRiscDotTransposeA(self):
+
+    @def_function.function(jit_compile=True)
+    def f(a, b):
+      return risc_ops.risc_dot(a, b, transpose_a=True)
+
+    a = constant_op.constant([[1.0, 3.0, 5.0], [2.0, 4.0, 6.0]],
+                             dtype=dtypes.float32)
+    b = constant_op.constant([[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
+                             dtype=dtypes.float32)
+    self.assertAllEqual(
+        f(a, b), [[27.0, 30.0, 33.0], [61.0, 68.0, 75.0], [95.0, 106.0, 117.0]])
 
 
 if __name__ == "__main__":

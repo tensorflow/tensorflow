@@ -1107,21 +1107,6 @@ def run_in_async_and_sync_mode(f):
   return decorator
 
 
-def eager_lazy_remote_copy_on_and_off(f):
-  """Execute the test method w/o lazy tensor copy for function remote inputs."""
-
-  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
-  @functools.wraps(f)
-  def decorator(self, lazily_remote_copy, *args, **kwargs):
-    if lazily_remote_copy:
-      context.context().lazy_remote_inputs_copy = True
-    else:
-      context.context().lazy_remote_inputs_copy = False
-    f(self, *args, **kwargs)
-
-  return decorator
-
-
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
@@ -2047,6 +2032,10 @@ class TensorFlowTestCase(googletest.TestCase):
     self._tempdir = None
     self._cached_session = None
     self._test_start_time = None
+    # This flag provides the ability to control whether the graph mode gets
+    # initialized for TF1 or not. Initializing for TF1, which is what was
+    # happening earlier, was preventing enablement of 'eager mode' in the test.
+    self._set_default_seed = True
 
   def setUp(self):
     super(TensorFlowTestCase, self).setUp()
@@ -2061,7 +2050,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    if self._set_default_seed:
+      random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access

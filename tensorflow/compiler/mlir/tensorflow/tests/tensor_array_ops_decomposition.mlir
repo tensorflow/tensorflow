@@ -557,7 +557,7 @@ func @main() -> () {
   %call = "tf.PartitionedCall"() {config = "", config_proto = "", executor_type = "", f = @callee} : () -> (tensor<*xf32>)
   return
 }
-func @callee() -> (tensor<*xf32>) attributes {sym_visibility = "private"} {
+func private @callee() -> (tensor<*xf32>) {
   %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
   // CHECK: %[[LOCAL_VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
   %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = #tf.shape<*>, dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource<tensor<*xf32>>>, tensor<f32>)
@@ -598,7 +598,7 @@ func @main() -> () {
 
 // CHECK-LABEL: func private @callee
 // CHECK-SAME:  %[[VAR:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>, %[[GVAR:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>
-func @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> attributes {sym_visibility = "private"} {
+func private @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
   %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>

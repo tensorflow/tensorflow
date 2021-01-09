@@ -22,16 +22,12 @@
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/mkl/mkl_pooling_ops_common.h"
-#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::algorithm;
 using mkldnn::engine;
 using mkldnn::error;
 using mkldnn::memory;
-#ifndef ENABLE_MKLDNN_V1
-using mkldnn::padding_kind;
-#endif
 using mkldnn::pooling_backward;
 using mkldnn::pooling_forward;
 using mkldnn::prop_kind;
@@ -112,21 +108,14 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         pooling_prop_kind = prop_kind::forward_inference;
       else
         pooling_prop_kind = prop_kind::forward_training;
-#ifdef ENABLE_MKLDNN_V1
+
       // TODO(DNNL): Find out what should we use input_md.data.format.
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
-          padding_right, ALGORITHM::pooling_avg_exclude_padding,
+          padding_right, mkldnn::algorithm::pooling_avg_exclude_padding,
           pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md,
+          static_cast<memory::format_tag>(this->data_format_mkldnn_), input_md,
           this->native_format_);
-#else
-      MklPoolingParams fwdParams(
-          src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
-          padding_right, ALGORITHM::pooling_avg_exclude_padding,
-          pooling_prop_kind, static_cast<MEMORY_FORMAT>(input_md.data.format),
-          input_md);
-#endif
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // Allocate output tensor.
@@ -174,7 +163,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
   }  // Compute
 
  private:
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 };  // MklAvgPoolingOp
 
 template <class Device, class T, bool native_format = false>
@@ -248,23 +237,15 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
               : memory::desc(diff_dst_dims, MklDnnType<T>(),
                              this->data_format_mkldnn_);
 
-// Pass prop_kind::forward_training to create a forward primitive
-// that is used in the backward pass.
-#ifdef ENABLE_MKLDNN_V1
-      // TODO(DNNL): Find out what should we use src_md.data.format.
+      // Pass prop_kind::forward_training to create a forward primitive
+      // that is used in the backward pass.
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right,
-          ALGORITHM::pooling_avg_exclude_padding, prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
+          mkldnn::algorithm::pooling_avg_exclude_padding,
+          prop_kind::forward_training,
+          static_cast<memory::format_tag>(this->data_format_mkldnn_), src_md,
           this->native_format_);
-#else
-      MklPoolingParams bwdParams(
-          orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
-          strides, padding_left, padding_right,
-          ALGORITHM::pooling_avg_exclude_padding, prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(src_md.data.format), src_md);
-#endif
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
@@ -282,11 +263,10 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           pooling_bwd->GetPoolingBwdPd();
       T* diff_dst_data = nullptr;
       if (!this->native_format_ &&
-          IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, pooling_bwd_pd,
-                                     pooling_bwd)) {
+          (diff_dst_md != pooling_bwd_pd->diff_dst_desc())) {
         grad_dnn_data.SetUsrMem(diff_dst_md, &grad_tensor);
-        grad_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            GET_DIFF_DST_DESC_FROM_OP_PD(pooling_bwd_pd), cpu_engine_));
+        grad_dnn_data.CheckReorderToOpMem(pooling_bwd_pd->diff_dst_desc(),
+                                          cpu_engine_);
         diff_dst_data =
             static_cast<T*>(grad_dnn_data.GetOpMem().get_data_handle());
       } else {
@@ -313,7 +293,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   // 1. Input("grad: T")
   const int kInputTensorIndexInputShape = 0;
   const int kInputTensorIndexInputGradient = 1;
-  engine cpu_engine_ = engine(ENGINE_CPU, 0);
+  engine cpu_engine_ = engine(engine::kind::cpu, 0);
 };  // MklAvgPoolingGradOp
 
 #define REGISTER_MKL_AVGPOOL3D_KERNELS(T)                                     \

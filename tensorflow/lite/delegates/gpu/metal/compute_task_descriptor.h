@@ -65,10 +65,6 @@ struct ComputeTaskDescriptor {
   ComputeTaskDescriptor(const ComputeTaskDescriptor&) = delete;
   ComputeTaskDescriptor& operator=(const ComputeTaskDescriptor&) = delete;
 
-  // temporary
-  bool tensors_as_args =
-      false;  // must be true if input/output tensors used throught args.tensor
-
   OperationDef definition;
   Arguments args;
   bool is_linkable = false;

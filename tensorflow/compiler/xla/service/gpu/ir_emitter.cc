@@ -145,7 +145,11 @@ Status IrEmitter::EmitConstants(const HloComputation& computation,
 
     GpuExecutable::ConstantInfo info;
     info.symbol_name = global_name;
-    info.content = literal.Clone();
+
+    if (!should_emit_initializer) {
+      auto base = static_cast<const uint8*>(literal.untyped_data());
+      info.content.assign(base, base + literal.size_bytes());
+    }
     if (lookup_indices) {
       auto maybe_slice =
           ir_emitter_context_->buffer_assignment().GetUniqueSlice(instr, {});
