@@ -185,7 +185,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
 #if !defined(IS_MOBILE_PLATFORM)
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
-  if (it != ndef.attr().end()) {
+  if (config_it != ndef.attr().end()) {
     if (!options.config_proto.ParseFromString(config_it->second.s())) {
       return errors::InvalidArgument(
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
