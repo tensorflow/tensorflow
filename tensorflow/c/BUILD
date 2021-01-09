@@ -505,11 +505,13 @@ tf_cuda_library(
             "//tensorflow/core:framework",
         ],
     }) + [
-        ":c_api",
+        ":c_api_macros",
+        ":tf_status",
         ":tf_status_helper",
-        ":c_api_internal",
         ":tf_file_statistics",
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:types",
     ],
 )
 
