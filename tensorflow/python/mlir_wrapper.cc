@@ -14,42 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/python/mlir.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
-
-namespace {
-TFE_Context *GetContextHandle(PyObject *py_context) {
-  tensorflow::Safe_PyObjectPtr py_context_handle(
-      PyObject_GetAttrString(py_context, "_handle"));
-  if (py_context_handle == nullptr) {
-    // Current Python code makes sure this never happens. If it does, or
-    // becomes hard to maintain, we can call the ensure_initialized() method
-    // here.
-    PyErr_SetString(PyExc_TypeError,
-                    "Expected context to have a `_handle` attribute but it did "
-                    "not. Was eager Context initialized?");
-    return nullptr;
-  }
-
-  auto *ctx = reinterpret_cast<TFE_Context *>(
-      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
-  if (ctx == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat(
-                        "Expected context._handle to contain a PyCapsule "
-                        "encoded pointer to TFE_Context. Got ",
-                        Py_TYPE(py_context_handle.get())->tp_name)
-                        .c_str());
-  }
-  return ctx;
-}
-}  // namespace
 
 PYBIND11_MODULE(_pywrap_mlir, m) {
   m.def("ImportGraphDef",
@@ -69,11 +38,9 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
                              bool show_debug_info) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
-    py::object obj = py::reinterpret_steal<py::object>(GetPyEagerContext());
-    TFE_Context *context = GetContextHandle(obj.ptr());
-    if (!context) throw py::error_already_set();
     std::string output = tensorflow::ImportFunction(
-        functiondef, pass_pipeline, show_debug_info, context, status.get());
+        functiondef, functiondef_library, pass_pipeline, show_debug_info,
+        status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
   });

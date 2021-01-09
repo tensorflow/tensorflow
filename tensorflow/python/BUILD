@@ -6597,59 +6597,26 @@ py_library(
     ],
 )
 
-# TODO(jpienaar): These deps can be reduced, consider moving getting the context to Python side to reduce need for TFE deps.
 tf_python_pybind_extension(
     name = "_pywrap_mlir",
     srcs = ["mlir_wrapper.cc"],
     hdrs = [
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
-        "//tensorflow/c/eager:pywrap_required_hdrs",
-        "//tensorflow/c/experimental/ops:pywrap_required_hdrs",
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
-        "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
-        "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
-        "//tensorflow/python/eager:pywrap_required_hdrs",
-        "//tensorflow/python/lib/core:numpy_hdr",
-        "//tensorflow/python/lib/core:py_exception_registry_hdr",
         "//tensorflow/python/lib/core:safe_ptr_hdr",
-        "//tensorflow/python/util:util_hdr",
     ],
     module_name = "_pywrap_mlir",
     deps = [
-        "//tensorflow/python/lib/core:safe_pyobject_ptr",
-        "//tensorflow/python/lib/core:pybind11_lib",
-        "//third_party/py/numpy:headers",
-        "//tensorflow/python/lib/core:pybind11_status",
-        "//tensorflow/core/framework:pywrap_required_hdrs",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/hash",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
-        "//tensorflow/c:pywrap_required_hdrs",
-        "@pybind11",
-        "//third_party/python_runtime:headers",
-        "//tensorflow/c/eager:tfe_tensorhandle_internal_hdrs_only",
-        "//tensorflow/core/common_runtime:core_cpu_headers_lib",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform",
-    ] + if_static(
-        extra_deps = [
-            "//tensorflow/core/protobuf:eager_service_proto_cc",
-            "//tensorflow/core/protobuf:master_proto_cc",
-            "//tensorflow/core/protobuf:worker_proto_cc",
-        ],
-        otherwise = [
-            "//tensorflow/core/protobuf:eager_service_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:master_proto_cc_headers_only",
-            "//tensorflow/core/protobuf:worker_proto_cc_headers_only",
-        ],
-    ),
+        "//tensorflow/core/platform:status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",
+        "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:fixed_array",
+        "@pybind11",
+    ],
 )
 
 cc_library(
