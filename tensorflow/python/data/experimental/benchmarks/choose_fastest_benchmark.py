@@ -136,7 +136,7 @@ class ChooseFastestBenchmarkEager(test.Benchmark):
     self._benchmark_first_n(merge_dataset, "merge_dataset")
 
   def _benchmark_first_n(self, dataset, name):
-    n = 50  # The default num_experiments for ChooseFastestDataset
+    n = 50  # The default num_experiments for ChooseFastestDataset.
     iterator = iter(dataset)
 
     deltas = []
