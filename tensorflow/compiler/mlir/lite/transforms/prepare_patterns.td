@@ -66,6 +66,15 @@ def : Pat<(TF_SnapshotOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_StopGradientOp $arg), (TF_IdentityOp $arg)>;
 def : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_IdentityOp $arg)>;
 
+def CreateTFShapeOp : NativeCodeCall<
+  "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $_builder.getBoolAttr(mlir::getElementTypeOrSelf($0.getType()).isInteger(32)))">;
+
+// Convert Size to Prod(Shape)
+def : Pat<(TF_SizeOp:$result $arg),
+          (TF_ProdOp (CreateTFShapeOp $result, $arg),
+                     (TF_ConstOp TFi32<0>),
+                     ConstBoolAttrFalse)>;
+
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
