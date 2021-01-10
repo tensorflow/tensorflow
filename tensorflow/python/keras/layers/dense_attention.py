@@ -126,7 +126,7 @@ class BaseDenseAttention(Layer):
     if scores_mask is not None:
       padding_mask = math_ops.logical_not(scores_mask)
       # Bias so padding positions do not contribute to attention distribution.
-      scores -= 1.e9 * math_ops.cast(padding_mask, dtype=K.floatx())
+      scores -= 1.e9 * math_ops.cast(padding_mask, dtype=scores.dtype)
     if training is None:
       training = K.learning_phase()
     weights = nn.softmax(scores)
