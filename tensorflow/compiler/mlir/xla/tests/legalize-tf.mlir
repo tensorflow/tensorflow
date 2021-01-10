@@ -3879,13 +3879,6 @@ func @size_ranked(%input: tensor<2x?x8xf32>) -> (tensor<i32>) {
   return %size : tensor<i32>
 }
 
-// CHECK-LABEL: @size_unranked
-func @size_unranked(%input: tensor<*xf32>) -> (tensor<i32>) {
-  // CHECK: tf.Size
-  %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<i32>
-  return %size : tensor<i32>
-}
-
 //===----------------------------------------------------------------------===//
 // tf.Split legalization
 //===----------------------------------------------------------------------===//
