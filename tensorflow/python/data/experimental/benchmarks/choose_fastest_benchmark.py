@@ -101,5 +101,74 @@ class ChooseFastestBenchmark(test.Benchmark):
       self.report_benchmark(iters=100, wall_time=median_wall_time, name=name)
 
 
+class ChooseFastestBenchmarkEager(test.Benchmark):
+  """Benchmarks for static optimizations using eager execution."""
+
+  def benchmark_choose_fastest(self):
+
+    dataset = dataset_ops.Dataset.range(1000**2).repeat()
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    map_batch_dataset = dataset.map(lambda x: x + 1).batch(100)
+    batch_map_dataset = dataset.batch(100).map(lambda x: x + 1)
+
+    merge_dataset = optimization._ChooseFastestDataset(  # pylint: disable=protected-access
+        [batch_map_dataset, map_batch_dataset])
+    self._benchmark(map_batch_dataset, "map_batch_dataset")
+    self._benchmark(batch_map_dataset, "batch_map_dataset")
+    self._benchmark(merge_dataset, "merge_dataset")
+
+  def benchmark_choose_fastest_first_n_iterations(self):
+
+    dataset = dataset_ops.Dataset.range(1000**2).repeat()
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    dataset = dataset.with_options(options)
+    map_batch_dataset = dataset.map(lambda x: x + 1).batch(100)
+    batch_map_dataset = dataset.batch(100).map(lambda x: x + 1)
+
+    merge_dataset = optimization._ChooseFastestDataset(  # pylint: disable=protected-access
+        [batch_map_dataset, map_batch_dataset])
+
+    self._benchmark_first_n(map_batch_dataset, "map_batch_dataset")
+    self._benchmark_first_n(batch_map_dataset, "batch_map_dataset")
+    self._benchmark_first_n(merge_dataset, "merge_dataset")
+
+  def _benchmark_first_n(self, dataset, name):
+    n = 10  # The default num_experiments for ChooseFastestDataset
+    iterator = iter(dataset)
+
+    deltas = []
+    for _ in range(100):
+      start = time.time()
+      for _ in range(n):
+        next(iterator)
+      end = time.time()
+      deltas.append(end - start)
+    median_wall_time = np.median(deltas) / n
+    self.report_benchmark(
+        iters=n, wall_time=median_wall_time, name=name + "_first_%d" % n)
+
+  def _benchmark(self, dataset, name):
+    iterator = iter(dataset)
+
+    # Run 10 steps to warm up the session caches before taking the first
+    # measurement. Additionally, 10 is the default num_experiments for
+    # ChooseFastestDataset.
+    for _ in range(10):
+      next(iterator)
+    deltas = []
+    for _ in range(50):
+      start = time.time()
+      for _ in range(50):
+        next(iterator)
+      end = time.time()
+      deltas.append(end - start)
+
+    median_wall_time = np.median(deltas) / 100
+    self.report_benchmark(iters=100, wall_time=median_wall_time, name=name)
+
+
 if __name__ == "__main__":
   test.main()
