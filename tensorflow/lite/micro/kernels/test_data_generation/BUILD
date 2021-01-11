@@ -1,6 +1,9 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
-licenses(["notice"])
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_binary(
     name = "generate_flexbuffers_data",

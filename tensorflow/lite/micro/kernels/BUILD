@@ -7,7 +7,10 @@ load(
     "micro_copts",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    licenses = ["notice"],  # Apache 2.0
+    features = ["-layering_check"],
+)
 
 config_setting(
     name = "xtensa_hifimini",
@@ -670,6 +673,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:debug_log",
     ],
 )
 
