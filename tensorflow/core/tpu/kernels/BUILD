@@ -513,17 +513,20 @@ cc_library(
     srcs = ["tpu_compilation_cache_rpc_lookup.cc"],
     hdrs = ["tpu_compilation_cache_rpc_lookup.h"],
     copts = tf_copts(),
-    deps = [
-        ":tpu_compilation_cache_common_proto_cc",
+    deps = if_libtpu(
+        [":tpu_compilation_cache_rpc_support"],
+        ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support"],
+    ) + [
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_rpc_support_hdrs",
         ":tpu_program_group_interface",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
 )
