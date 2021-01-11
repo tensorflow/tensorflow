@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -565,6 +566,21 @@ int64 HloSharding::NumTiles() const {
            tile_assignment().dimensions().back();
   }
   return tile_assignment().num_elements();
+}
+
+int64 HloSharding::NumTiles(absl::Span<const int64> dims) const {
+  if (IsTileMaximal()) {
+    return 1;
+  }
+  CHECK(!IsManual());
+  CHECK(!ReplicateOnLastTileDim() ||
+        !absl::c_linear_search(dims, tile_assignment().num_dimensions() - 1));
+  int64 num_tiles = 1;
+  for (auto d : dims) {
+    CHECK(d < tile_assignment().num_dimensions());
+    num_tiles *= tile_assignment().dim(d);
+  }
+  return num_tiles;
 }
 
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
