@@ -107,19 +107,19 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     tf_shared_lock l(mu_);
     captured_state = iterator_state_;
   }
-  if (!captured_state->GetIterator()) {
+  if (!captured_state->iterator()) {
     return errors::FailedPrecondition(
         "GetNext() failed because the iterator has not been initialized. "
         "Ensure that you have run the initializer operation for this iterator "
         "before getting the next element.");
   }
   IteratorContext::Params params(ctx);
-  params.flr = captured_state->GetFLR();
-  params.function_handle_cache = captured_state->GetFunctionHandleCache();
-  params.resource_mgr = captured_state->GetResourceMgr();
+  params.flr = captured_state->flr();
+  params.function_handle_cache = captured_state->function_handle_cache();
+  params.resource_mgr = captured_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = captured_state->GetCancellationManager();
+  params.cancellation_manager = captured_state->cancellation_manager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -141,7 +141,7 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     }
     num_get_next_calls_++;
   }
-  auto iterator_ = captured_state->GetIterator();
+  auto iterator_ = captured_state->iterator();
   auto status = iterator_->GetNext(IteratorContext(std::move(params)),
                                    out_tensors, end_of_sequence);
   if (collect_metrics_) {
@@ -168,7 +168,7 @@ Status IteratorResource::Save(SerializationContext* ctx,
     tf_shared_lock l(mu_);
     captured_state = iterator_state_;
   }
-  auto iterator_ = captured_state->GetIterator();
+  auto iterator_ = captured_state->iterator();
   if (iterator_) {
     return iterator_->Save(ctx, writer);
   }
@@ -184,30 +184,30 @@ Status IteratorResource::Restore(OpKernelContext* ctx,
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);
-    if (!iterator_state_->GetIterator()) {
+    if (!iterator_state_->iterator()) {
       return errors::FailedPrecondition(
           "Restore() failed because the iterator has not been initialized. "
           "Ensure that you have run the initializer operation for this "
           "iterator before restoring it.");
     }
-    auto iterator_ = iterator_state_->GetIterator();
+    auto iterator_ = iterator_state_->iterator();
     dataset = iterator_->dataset();
     // Hang onto a reference until we've created the new iterator, which will
     // then hold its own reference to keep the dataset alive.
     dataset->Ref();
-    new_state = std::make_shared<State>(iterator_state_->GetFlibDef(),
-                                        iterator_state_->GetPFLR(),
-                                        iterator_state_->GetFLR(),
-                                        /*iterator=*/nullptr);
+    new_state =
+        std::make_shared<State>(iterator_state_->flib_def(),
+                                iterator_state_->pflr(), iterator_state_->flr(),
+                                /*iterator=*/nullptr);
   }
   core::ScopedUnref scoped_unref(dataset);
   IteratorContext::Params params(ctx);
-  params.flr = new_state->GetFLR();
-  params.function_handle_cache = new_state->GetFunctionHandleCache();
-  params.resource_mgr = new_state->GetResourceMgr();
+  params.flr = new_state->flr();
+  params.function_handle_cache = new_state->function_handle_cache();
+  params.resource_mgr = new_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = new_state->GetCancellationManager();
+  params.cancellation_manager = new_state->cancellation_manager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
@@ -229,20 +229,20 @@ Status IteratorResource::SetIteratorFromDataset(OpKernelContext* ctx,
   std::shared_ptr<State> new_state;
   {
     tf_shared_lock l(mu_);
-    new_state = std::make_shared<State>(iterator_state_->GetFlibDef(),
-                                        iterator_state_->GetPFLR(),
-                                        iterator_state_->GetFLR(),
-                                        /*iterator=*/nullptr);
+    new_state =
+        std::make_shared<State>(iterator_state_->flib_def(),
+                                iterator_state_->pflr(), iterator_state_->flr(),
+                                /*iterator=*/nullptr);
   }
   // Create new iterator.
   std::unique_ptr<IteratorBase> iterator;
   IteratorContext::Params params(ctx);
-  params.flr = new_state->GetFLR();
-  params.function_handle_cache = new_state->GetFunctionHandleCache();
-  params.resource_mgr = new_state->GetResourceMgr();
+  params.flr = new_state->flr();
+  params.function_handle_cache = new_state->function_handle_cache();
+  params.resource_mgr = new_state->resource_mgr();
   params.thread_factory = unbounded_thread_pool_.get_thread_factory();
   params.thread_pool = &unbounded_thread_pool_;
-  params.cancellation_manager = new_state->GetCancellationManager();
+  params.cancellation_manager = new_state->cancellation_manager();
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
       ctx->cancellation_manager(),
