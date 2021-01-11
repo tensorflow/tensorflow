@@ -97,6 +97,7 @@ tf_py_test(
     shard_count = 21,
     tags = [
         "noasan",  # Multi-process runner does not work with test sanitizers
+        "nomac",  # TODO(b/177065434)
         "notsan",  # Multi-process runner does not work with test sanitizers
     ],
     deps = [
