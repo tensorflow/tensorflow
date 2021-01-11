@@ -1139,19 +1139,6 @@ class NestedTrackingTest(test.TestCase):
     del l.a
     self.assertEqual([], l._self_tracked_trackables)
 
-  def test_assign_op_not_tracked_as_variable(self):
-
-    class LayerWithAssignAttr(base_layer.Layer):
-
-      def build(self, input_shape):
-        self.v = variables.Variable(1.)
-        self.v_assign = self.v.assign_add(2.)
-
-    layer = LayerWithAssignAttr()
-    layer.build((10, 10))
-
-    self.assertEqual([layer.v], layer.variables)
-
   def test_layer_class_not_tracked_as_sublayer(self):
     # See https://github.com/tensorflow/tensorflow/issues/27431 for details.
 
