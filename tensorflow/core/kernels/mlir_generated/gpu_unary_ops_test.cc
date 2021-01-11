@@ -246,18 +246,15 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
 /// Test `tf.IsInf`.
-
-// TODO(b/162575339): The tests currently still fails with CUDA_ILLEGAL_ADDRESS
-// when Test with unranked kernels.
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
+TEST_F(GpuUnaryOpTest, IsInfFloat) {
   Test<float, float, bool, bool>(
       /*op_name=*/"IsInf", test::DefaultInputShape(),
       test::DefaultInput<float>(),
       /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 }
 
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
+TEST_F(GpuUnaryOpTest, IsInfDouble) {
   // Workaround for gcc bug, it would fail with "unresolved overloaded function
   // type" if passing std::isinf with type double. So we use type float for
   // comparing expected values.
@@ -265,17 +262,17 @@ TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
       /*op_name=*/"IsInf", test::DefaultInputShape(),
       test::DefaultInput<double>(),
       /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 }
 
-TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
+TEST_F(GpuUnaryOpTest, IsInfHalf) {
   Test<Eigen::half, float, bool, bool>(
       /*op_name=*/"IsInf", test::DefaultInputShape(),
       test::DefaultInput<Eigen::half>(),
       /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual());
+      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 }
-
+//
 /// Test `tf.Log`.
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(

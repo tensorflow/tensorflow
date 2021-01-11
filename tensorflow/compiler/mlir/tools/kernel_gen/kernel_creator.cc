@@ -99,6 +99,8 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(mlir::createTransformUnrankedHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
 
   // Transform HLO operations to LinAlg.
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());

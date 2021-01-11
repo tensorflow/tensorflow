@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -434,6 +435,55 @@ class HloBroadcastInDimConverter
     return {
         AffineMap::get(nloops, /*symbolCount=*/0, dim_exprs, b->getContext()),
         b->getMultiDimIdentityMap(nloops)};
+  }
+};
+
+class HloDynamicBroadcastInDimConverter
+    : public OpConversionPattern<mhlo::DynamicBroadcastInDimOp> {
+ public:
+  using OpConversionPattern<mhlo::DynamicBroadcastInDimOp>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    // Convert only if the producer is an HLO constant. Ideally the pattern
+    // (`mhlo.constant` -> `mhlo.dynamic_broadcast_in_dim`) should be converted
+    // to an Tensor-dialect op similar to TF ConstantLikeOp.
+    if (!op.operand().getDefiningOp<mhlo::ConstOp>()) return failure();
+
+    mhlo::DynamicBroadcastInDimOp::Adaptor adaptor(op);
+    Value operand = adaptor.operand();
+    auto operand_type = operand.getType().dyn_cast<RankedTensorType>();
+    if (!operand_type || operand_type.getRank() != 0) return failure();
+
+    Value shape = adaptor.output_dimensions();
+    auto shape_type = shape.getType().cast<RankedTensorType>();
+    int64_t result_rank = shape_type.getDimSize(0);
+
+    SmallVector<Value, 2> dyn_dims;
+    Location loc = op.getLoc();
+    for (int i = 0; i < result_rank; ++i) {
+      Value index = rewriter.create<ConstantIndexOp>(loc, i);
+      dyn_dims.push_back(rewriter.create<tensor::ExtractOp>(loc, shape, index));
+    }
+    auto result_type = op.getType().cast<RankedTensorType>();
+
+    int64_t nloops = result_type.getRank();
+    Value init = rewriter.create<linalg::InitTensorOp>(
+        loc, dyn_dims, result_type.getShape(), result_type.getElementType());
+    Operation* generic = rewriter.create<linalg::GenericOp>(
+        loc, TypeRange{init.getType()}, ValueRange{operand},
+        /*outputBuffers=*/ValueRange{init},
+        llvm::makeArrayRef(
+            {AffineMap::get(/*dimCount=*/nloops, /*symbolCount=*/0, {},
+                            rewriter.getContext()),
+             rewriter.getMultiDimIdentityMap(nloops)}),
+        GetNParallelLoopsAttrs(nloops),
+        [&](OpBuilder& nested_builder, Location nested_loc, ValueRange args) {
+          nested_builder.create<linalg::YieldOp>(loc, *args.begin());
+        });
+    rewriter.replaceOp(op, generic->getResults());
+    return success();
   }
 };
 
@@ -1067,7 +1117,7 @@ struct HloLegalizeToLinalgPass
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           scf::SCFDialect>();
+                           tensor::TensorDialect, scf::SCFDialect>();
 
     auto func = getFunction();
     mhlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
@@ -1091,8 +1141,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
   patterns
       ->insert<BroadcastConverter<mhlo::BroadcastOp, false>,
-               ConstConverter<mhlo::ConstOp>, HloBroadcastInDimConverter,
-               IotaConverter<mhlo::IotaOp, false>,
+               ConstConverter<mhlo::ConstOp>, HloDynamicBroadcastInDimConverter,
+               HloBroadcastInDimConverter, IotaConverter<mhlo::IotaOp, false>,
                PointwiseToLinalgConverter<mhlo::AbsOp, false>,
                PointwiseToLinalgConverter<mhlo::AddOp, false>,
                PointwiseToLinalgConverter<mhlo::AndOp, false>,
