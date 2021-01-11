@@ -1161,7 +1161,7 @@ class MetricTest(test.TestCase, parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
-    with self.assertRaisesRegex(ValueError, 'custom_objects'):
+    with self.assertRaisesRegex(ValueError, 'metric'):
       keras_load.load(saved_model_dir)
 
     keras_load.load(saved_model_dir, compile=False)
