@@ -648,6 +648,20 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     id_2 = data_service_ops.register_dataset(cluster.target, ds_2)
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
 
+  def testDistributedEpochOnZippedDataset(self):
+    ds_1 = dataset_ops.Dataset.range(10)
+    ds_2 = dataset_ops.Dataset.range(10)
+    cluster = self.create_cluster(num_workers=1)
+
+    ds_3 = dataset_ops.Dataset.zip((ds_1, ds_2))
+    ds_3 = self.make_distributed_dataset(
+        ds_3, cluster, processing_mode="distributed_epoch")
+
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type ZipDataset"
+    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
+      self.getDatasetOutput(ds_3)
+
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributedEpochOnDistributedDataset(self):
     cluster_1 = self.create_cluster(num_workers=1)
@@ -666,28 +680,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         "of type DataServiceDataset"
     with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds)
-
-  def testDistributedEpochOnZippedDistributedDatasets(self):
-    cluster_1 = self.create_cluster(num_workers=1)
-    cluster_2 = self.create_cluster(num_workers=1)
-    cluster_3 = self.create_cluster(num_workers=1)
-    num_sizes = 10
-    size_repeats = 5
-    numbers = [1 * i for i in range(num_sizes)] * size_repeats
-    ds1 = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds1 = self.make_distributed_dataset(ds1, cluster_1)
-
-    ds2 = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds2 = self.make_distributed_dataset(ds2, cluster_2)
-
-    ds3 = dataset_ops.Dataset.zip((ds1, ds2))
-    ds3 = self.make_distributed_dataset(
-        ds3, cluster_3, processing_mode="distributed_epoch")
-
-    error_regex = "Cannot create a split provider for dataset " + \
-        "of type ZipDataset"
-    with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
-      self.getDatasetOutput(ds3)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testTwoLevelDistribute(self):
