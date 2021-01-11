@@ -7782,22 +7782,6 @@ cusparseStatus_t CUSPARSEAPI cusparseCsr2cscEx2_bufferSize(
 
 #if !defined(_WIN32)
 
-cusparseStatus_t CUSPARSEAPI cusparseCreateCoo(cusparseSpMatDescr_t *spMatDescr,
-                                               int64_t rows, int64_t cols,
-                                               int64_t nnz, void *cooRowInd,
-                                               void *cooColInd, void *cooValues,
-                                               cusparseIndexType_t cooIdxType,
-                                               cusparseIndexBase_t idxBase,
-                                               cudaDataType valueType) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
-      cusparseSpMatDescr_t *, int64_t, int64_t, int64_t, void *, void *, void *,
-      cusparseIndexType_t, cusparseIndexBase_t, cudaDataType);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCreateCoo");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(spMatDescr, rows, cols, nnz, cooRowInd, cooColInd, cooValues,
-                  cooIdxType, idxBase, valueType);
-}
-
 cusparseStatus_t CUSPARSEAPI cusparseCreateCsr(
     cusparseSpMatDescr_t *spMatDescr, int64_t rows, int64_t cols, int64_t nnz,
     void *csrRowOffsets, void *csrColInd, void *csrValues,
@@ -7833,24 +7817,6 @@ cusparseDestroySpMat(cusparseSpMatDescr_t spMatDescr) {
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDestroySpMat");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(spMatDescr);
-}
-
-cusparseStatus_t CUSPARSEAPI
-cusparseCooGet(const cusparseSpMatDescr_t spMatDescr, int64_t *rows,
-               int64_t *cols, int64_t *nnz,
-               void **cooRowInd,  // COO row indices
-               void **cooColInd,  // COO column indices
-               void **cooValues,  // COO values
-               cusparseIndexType_t *idxType, cusparseIndexBase_t *idxBase,
-               cudaDataType *valueType) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
-      const cusparseSpMatDescr_t, int64_t *, int64_t *, int64_t *, void **,
-      void **, void **, cusparseIndexType_t *, cusparseIndexBase_t *,
-      cudaDataType *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCooGet");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(spMatDescr, rows, cols, nnz, cooRowInd, cooColInd, cooValues,
-                  idxType, idxBase, valueType);
 }
 
 cusparseStatus_t CUSPARSEAPI
@@ -7937,36 +7903,6 @@ cusparseStatus_t CUSPARSEAPI cusparseSpMatGetStridedBatch(
   return func_ptr(spMatDescr, batchCount);
 }
 
-cusparseStatus_t CUSPARSEAPI cusparseCreateDnMat(
-    cusparseDnMatDescr_t *dnMatDescr, int64_t rows, int64_t cols, int64_t ld,
-    void *values, cudaDataType valueType, cusparseOrder_t order) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
-      cusparseDnMatDescr_t *, int64_t, int64_t, int64_t, void *, cudaDataType,
-      cusparseOrder_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseCreateDnMat");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(dnMatDescr, rows, cols, ld, values, valueType, order);
-}
-
-cusparseStatus_t CUSPARSEAPI
-cusparseDestroyDnMat(cusparseDnMatDescr_t dnMatDescr) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(cusparseDnMatDescr_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDestroyDnMat");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(dnMatDescr);
-}
-
-cusparseStatus_t CUSPARSEAPI cusparseDnMatGet(
-    const cusparseDnMatDescr_t dnMatDescr, int64_t *rows, int64_t *cols,
-    int64_t *ld, void **values, cudaDataType *type, cusparseOrder_t *order) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(
-      const cusparseDnMatDescr_t, int64_t *, int64_t *, int64_t *, void **,
-      cudaDataType *, cusparseOrder_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDnMatGet");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(dnMatDescr, rows, cols, ld, values, type, order);
-}
-
 cusparseStatus_t CUSPARSEAPI
 cusparseDnMatGetValues(const cusparseDnMatDescr_t dnMatDescr, void **values) {
   using FuncPtr =
@@ -7982,25 +7918,6 @@ cusparseDnMatSetValues(cusparseDnMatDescr_t dnMatDescr, void *values) {
   static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDnMatSetValues");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(dnMatDescr, values);
-}
-
-cusparseStatus_t CUSPARSEAPI cusparseDnMatSetStridedBatch(
-    cusparseDnMatDescr_t dnMatDescr, int batchCount, int64_t batchStride) {
-  using FuncPtr =
-      cusparseStatus_t(CUSPARSEAPI *)(cusparseDnMatDescr_t, int, int64_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDnMatSetStridedBatch");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(dnMatDescr, batchCount, batchStride);
-}
-
-cusparseStatus_t CUSPARSEAPI
-cusparseDnMatGetStridedBatch(const cusparseDnMatDescr_t dnMatDescr,
-                             int *batchCount, int64_t *batchStride) {
-  using FuncPtr = cusparseStatus_t(CUSPARSEAPI *)(const cusparseDnMatDescr_t,
-                                                  int *, int64_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cusparseDnMatGetStridedBatch");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(dnMatDescr, batchCount, batchStride);
 }
 
 cusparseStatus_t CUSPARSEAPI cusparseSpMM(
