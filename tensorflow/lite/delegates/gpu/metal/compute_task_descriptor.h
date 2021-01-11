@@ -104,7 +104,6 @@ using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;
 
 struct NodeDescriptor {
   ComputeTaskDescriptorPtr task;
-  // Unique ID to match the graph compilation errors.
   int id;
   std::string description;
   std::vector<ValueId> src_tensors_ids;
