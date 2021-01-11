@@ -48,12 +48,6 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                          std::to_string(bind_index) + ")]],\n";
     bind_index++;
   }
-  for (const auto& buffer : desc.task->immutable_buffers) {
-    args_declarations += buffer.declaration + "[[buffer(" +
-                         std::to_string(bind_index) + ")]],\n";
-    bind_index++;
-  }
-
   for (const auto& buffer : desc.task->uniform_buffers) {
     args_declarations += buffer.declaration + "[[buffer(" +
                          std::to_string(bind_index) + ")]],\n";
@@ -126,17 +120,6 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
     uniform_buffers_.emplace_back(UniformBuffer{{}, uniform.data_function});
   }
   output_buffers_.emplace_back(OutputBuffer{desc.dst_tensors_ids[0], nil});
-  const bool f32_storage = precision == CalculationsPrecision::F32;
-  for (auto& immutable : desc.task->immutable_buffers) {
-    int padding = 4 * (f32_storage ? sizeof(float) : sizeof(HalfBits));
-    int paddedSize = AlignByN(immutable.data.size(), padding);
-    immutable.data.resize(paddedSize);
-    id<MTLBuffer> metalBuffer =
-        [device newBufferWithBytes:immutable.data.data()
-                            length:immutable.data.size()
-                           options:MTLResourceStorageModeShared];
-    immutable_buffers_.emplace_back(metalBuffer);
-  }
   resize_function_ = desc.task->resize_function;
   program_ = program;
   src_tensors_names_ = desc.task->src_tensors_names;
@@ -216,10 +199,6 @@ void ComputeTask::EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder) {
   }
   for (const auto& buffer : input_buffers_) {
     [encoder setBuffer:buffer.metal_handle offset:0 atIndex:bindIndex];
-    bindIndex++;
-  }
-  for (auto& immutable : immutable_buffers_) {
-    [encoder setBuffer:immutable offset:0 atIndex:bindIndex];
     bindIndex++;
   }
   for (auto& uniform : uniform_buffers_) {

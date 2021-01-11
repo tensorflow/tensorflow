@@ -668,16 +668,16 @@ StatusOr<Operation*> ConvertOp(
     if (op_name == "tfl.quantize") {
       // Special case for quantize: return type must also be in qtype attribute
       op_state.addAttribute("qtype", mlir::TypeAttr::get(type));
-    } else if (op_name == "tfl.reshape" && type.hasStaticShape() &&
-               op_state.operands.size() == 1) {
+    } else if (op_name == "tfl.reshape" && op_state.operands.size() == 1) {
       // Special case for reshape: the second op is optional in the old
       // converter and kernel, so we create the second operand, which is
-      // required by the new converter, from the result shape.
-      auto shape_type =
-          RankedTensorType::get({type.getRank()}, builder.getIntegerType(32));
+      // required by the new converter, from the reshape op's option.
+      auto new_shape = op.builtin_options.AsReshapeOptions()->new_shape;
+      auto shape_type = RankedTensorType::get(
+          {static_cast<int64_t>(new_shape.size())}, builder.getIntegerType(32));
+
       mlir::SmallVector<mlir::Attribute, 4> shape;
-      shape.reserve(type.getRank());
-      for (auto s : type.getShape()) {
+      for (auto s : new_shape) {
         shape.push_back(builder.getI32IntegerAttr(static_cast<int32_t>(s)));
       }
       auto output_shape = DenseElementsAttr::get(shape_type, shape);
