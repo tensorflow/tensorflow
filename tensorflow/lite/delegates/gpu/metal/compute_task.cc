@@ -38,16 +38,6 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                                             CalculationsPrecision precision) {
   std::string args_declarations;
   int bind_index = 0;
-  for (const auto& dst_name : desc.task->dst_tensors_names) {
-    args_declarations += "device FLT4* " + dst_name + "_buffer[[buffer(" +
-                         std::to_string(bind_index) + ")]],\n";
-    bind_index++;
-  }
-  for (const auto& src_name : desc.task->src_tensors_names) {
-    args_declarations += "device FLT4* " + src_name + "_buffer[[buffer(" +
-                         std::to_string(bind_index) + ")]],\n";
-    bind_index++;
-  }
   desc.task->shader_source = absl::Substitute(desc.task->shader_source, "$0",
                                               args_declarations + "$1", "");
 
@@ -108,10 +98,8 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
   if (!program) {
     return absl::InternalError("Unknown shader compilation error");
   }
-  for (auto& id : desc.src_tensors_ids) {
-    input_buffers_.emplace_back(InputBuffer{id, nil});
-  }
-  output_buffers_.emplace_back(OutputBuffer{desc.dst_tensors_ids[0], nil});
+  input_buffers_ = desc.src_tensors_ids;
+  output_buffers_ = desc.dst_tensors_ids;
   update_function_ = desc.task->update_function;
   resize_function_ = desc.task->resize_function;
   program_ = program;
@@ -125,14 +113,14 @@ absl::Status ComputeTask::UpdateParamsWithDevice(
   std::vector<BHWC> src_shapes;
   std::vector<BHWC> dst_shapes;
   for (const auto& in_buf : input_buffers_) {
-    auto it = tensor_shapes.find(in_buf.uid);
+    auto it = tensor_shapes.find(in_buf);
     if (it == tensor_shapes.end()) {
       return absl::InvalidArgumentError("Missing tensor shape");
     }
     src_shapes.push_back(it->second);
   }
   for (const auto& out_buf : output_buffers_) {
-    auto it = tensor_shapes.find(out_buf.uid);
+    auto it = tensor_shapes.find(out_buf);
     if (it == tensor_shapes.end()) {
       return absl::InvalidArgumentError("Missing tensor shape");
     }
@@ -163,12 +151,12 @@ absl::Status ComputeTask::UpdateParamsWithDevice(
 
 bool ComputeTask::HasInOutIds(const std::set<ValueId>& ids) const {
   for (auto& buffer : input_buffers_) {
-    if (ids.count(buffer.uid)) {
+    if (ids.count(buffer)) {
       return true;
     }
   }
   for (auto& buffer : output_buffers_) {
-    if (ids.count(buffer.uid)) {
+    if (ids.count(buffer)) {
       return true;
     }
   }
@@ -184,14 +172,6 @@ void ComputeTask::EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder) {
   [encoder setComputePipelineState:program_];
 
   int bindIndex = 0;
-  for (const auto& buffer : output_buffers_) {
-    [encoder setBuffer:buffer.metal_handle offset:0 atIndex:bindIndex];
-    bindIndex++;
-  }
-  for (const auto& buffer : input_buffers_) {
-    [encoder setBuffer:buffer.metal_handle offset:0 atIndex:bindIndex];
-    bindIndex++;
-  }
   metal_args_.Encode(encoder, bindIndex);
 
   MTLSize groupsCount =
@@ -202,28 +182,16 @@ void ComputeTask::EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder) {
 }
 
 std::vector<ValueId> ComputeTask::GetOutputIds() const {
-  std::vector<tflite::gpu::ValueId> result;
-  for (auto& buffer : output_buffers_) {
-    result.push_back(buffer.uid);
-  }
-  return result;
+  return output_buffers_;
 }
 
-std::vector<ValueId> ComputeTask::GetInputIds() const {
-  std::vector<tflite::gpu::ValueId> result;
-  for (auto& buffer : input_buffers_) {
-    result.push_back(buffer.uid);
-  }
-  return result;
-}
+std::vector<ValueId> ComputeTask::GetInputIds() const { return input_buffers_; }
 
 void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
-  input_buffers_[index].metal_handle = tensor.GetBufferHandle();
   auto status = metal_args_.SetObjectRef(src_tensors_names_[index], tensor);
 }
 
 void ComputeTask::SetDstTensor(const MetalSpatialTensor& tensor, int index) {
-  output_buffers_[index].metal_handle = tensor.GetBufferHandle();
   auto status = metal_args_.SetObjectRef(dst_tensors_names_[index], tensor);
 }
 

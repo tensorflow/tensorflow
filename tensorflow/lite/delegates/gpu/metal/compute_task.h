@@ -69,19 +69,9 @@ class ComputeTask {
   void SetDescription(const std::string& description);
 
  private:
-  struct InputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metal_handle;
-  };
-
-  struct OutputBuffer {
-    ValueId uid;
-    id<MTLBuffer> metal_handle;
-  };
-
   id<MTLComputePipelineState> program_;
-  std::vector<InputBuffer> input_buffers_;
-  std::vector<OutputBuffer> output_buffers_;
+  std::vector<ValueId> input_buffers_;
+  std::vector<ValueId> output_buffers_;
   uint3 groups_size_;
   uint3 groups_count_;
   UpdateArgsFunction update_function_;

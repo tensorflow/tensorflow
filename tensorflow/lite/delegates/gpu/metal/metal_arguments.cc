@@ -314,14 +314,7 @@ absl::Status MetalArguments::SetObjectRef(const std::string& name,
   }
   GPUResourcesWithValue resources;
   RETURN_IF_ERROR(object.GetGPUResources(it->second.get(), &resources));
-  for (const auto& r : resources.ints) {
-    RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
-  }
-  for (const auto& r : resources.floats) {
-    RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
-  }
-  return absl::OkStatus();
-  // return SetGPUResources(name, resources);
+  return SetGPUResources(name, resources);
 }
 
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
@@ -353,14 +346,7 @@ absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
     AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   for (auto& t : args->object_refs_) {
-    auto resources = t.second->GetGPUResources();
-    for (const auto& r : resources.ints) {
-      args->AddInt(absl::StrCat(t.first, "_", r));
-    }
-    for (const auto& r : resources.floats) {
-      args->AddFloat(absl::StrCat(t.first, "_", r));
-    }
-    // AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   return absl::OkStatus();
 }
