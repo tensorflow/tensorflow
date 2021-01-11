@@ -85,8 +85,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       TF_LITE_KERNEL_LOG(
-          context,
-          "Fill only currently supports float32 for input 1, got %d.",
+          context, "Fill only currently supports float32 for input 1, got %d.",
           TfLiteTypeGetName(value->type));
       return kTfLiteError;
   }
