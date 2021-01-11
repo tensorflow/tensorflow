@@ -402,14 +402,35 @@ config_setting(
 )
 
 config_setting(
-    name = "macos_with_framework_shared_object",
+    name = "macos_x86_64_with_framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
     },
     values = {
         "apple_platform_type": "macos",
+        "cpu": "darwin",
     },
     visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "macos_arm64_with_framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_arm64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "macos_with_framework_shared_object",
+    match_any = [
+        ":macos_x86_64_with_framework_shared_object",
+        ":macos_arm64_with_framework_shared_object",
+    ],
 )
 
 config_setting(
