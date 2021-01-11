@@ -2160,16 +2160,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         session = None
       else:
         session = backend.get_session()
-      optimizer = getattr(self, 'optimizer', None)
-      if (optimizer
-          and not isinstance(optimizer, trackable.Trackable)):
-        logging.warning(
-            ('This model was compiled with a Keras optimizer (%s) but is being '
-             'saved in TensorFlow format with `save_weights`. The model\'s '
-             'weights will be saved, but unlike with TensorFlow optimizers in '
-             'the TensorFlow format the optimizer\'s state will not be '
-             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
-            % (optimizer,))
       self._trackable_saver.save(filepath, session=session, options=options)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
