@@ -667,43 +667,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds)
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testDistributeDistributedToParallel(self):
-    cluster_1 = self.create_cluster(num_workers=1)
-    cluster_2 = self.create_cluster(num_workers=1)
-    num_sizes = 10
-    size_repeats = 5
-    numbers = [1 * i for i in range(num_sizes)] * size_repeats
-    ds = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds = self.make_distributed_dataset(
-        ds, cluster_1, processing_mode="distributed_epoch")
-    ds = ds.map(lambda x: x + 1)
-    ds = self.make_distributed_dataset(
-        ds, cluster_2, processing_mode="parallel_epochs")
-
-    self.assertDatasetProduces(
-        ds, [i + 1 for i in numbers], assert_items_equal=True)
-
-  def testParallelZippedDistributedDatasets(self):
-    cluster_1 = self.create_cluster(num_workers=1)
-    cluster_2 = self.create_cluster(num_workers=1)
-    cluster_3 = self.create_cluster(num_workers=1)
-    num_sizes = 10
-    size_repeats = 5
-    numbers = [1 * i for i in range(num_sizes)] * size_repeats
-    ds1 = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds1 = self.make_distributed_dataset(ds1, cluster_1)
-
-    ds2 = dataset_ops.Dataset.from_tensor_slices(numbers)
-    ds2 = self.make_distributed_dataset(ds2, cluster_2)
-
-    ds3 = dataset_ops.Dataset.zip((ds1, ds2))
-    ds3 = self.make_distributed_dataset(
-        ds3, cluster_3, processing_mode="parallel_epochs")
-
-    self.assertDatasetProduces(
-        ds3, list(zip(numbers, numbers)), assert_items_equal=True)
-
   def testDistributedZippedDistributedDatasets(self):
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
