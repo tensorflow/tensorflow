@@ -88,7 +88,7 @@ endif
 MICROLITE_LIBS := \
   $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
   $(APOLLO3_SDK)/mcu/apollo3/hal/gcc/bin/libam_hal.a \
-  $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/hard/crtbegin.o \
+  $(GCC_ARM)/lib/gcc/arm-none-eabi/10.2.1/thumb/v7e-m/nofp/crtbegin.o \
   -lm
 INCLUDES += \
   -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
