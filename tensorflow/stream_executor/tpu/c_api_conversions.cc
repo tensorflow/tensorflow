@@ -429,6 +429,10 @@ XLA_HloModuleConfig ToC(const xla::HloModuleConfig& config) {
     hlo_config.static_device_assignment =
         stream_executor::tpu::SerializeProto(dev_proto);
   }
+
+  hlo_config.debug_options =
+      stream_executor::tpu::SerializeProto(config.debug_options());
+
   if (config.has_entry_computation_layout()) {
     const auto& layout = config.entry_computation_layout();
     ApiConverter::ToC(layout.result_layout().shape(),
@@ -462,6 +466,9 @@ xla::HloModuleConfig FromC(const XLA_HloModuleConfig& c_config) {
     config.set_static_device_assignment(
         *(device_assignment.ConsumeValueOrDie()));
   }
+  config.set_debug_options(
+      stream_executor::tpu::DeserializeProto<xla::DebugOptions>(
+          c_config.debug_options));
   return config;
 }
 
@@ -477,6 +484,7 @@ void Free(XLA_HloModuleConfig* c_config) {
     stream_executor::tpu::SerializedProto_Free(
         c_config->static_device_assignment);
   }
+  stream_executor::tpu::SerializedProto_Free(c_config->debug_options);
 }
 
 }  // namespace ApiConverter
