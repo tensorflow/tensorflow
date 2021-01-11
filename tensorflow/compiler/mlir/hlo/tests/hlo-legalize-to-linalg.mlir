@@ -830,3 +830,44 @@ func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>) -> tensor<?xf32> {
 // CHECK-SAME: ins([[CST]] : tensor<f32>) outs([[INIT]] : tensor<?xf32>)
 // CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
 // CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+func @dot_matmul(%arg0: tensor<2x3xf32>,
+                 %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>,
+                                   tensor<3x?xf32>) -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+// CHECK: func @dot_matmul(%[[ARG0:.*]]: tensor<2x3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.matmul
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xf32>, tensor<3x?xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<2x?xf32>)
+
+// -----
+
+func @dot_matvec(%arg0: tensor<?x3xf32>,
+                 %arg1: tensor<3xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x3xf32>,
+                                   tensor<3xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+// CHECK: func @dot_matvec(%[[ARG0:.*]]: tensor<?x3xf32>, %[[ARG1:.*]]: tensor<3xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.matvec
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x3xf32>, tensor<3xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<?xf32>)
+
+// -----
+
+func @dot_dot(%arg0: tensor<?xf32>,
+              %arg1: tensor<?xf32>) -> tensor<f32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+// CHECK: func @dot_dot(%[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.dot
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?xf32>, tensor<?xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<f32>)

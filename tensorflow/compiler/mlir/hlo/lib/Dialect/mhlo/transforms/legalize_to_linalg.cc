@@ -1014,6 +1014,123 @@ class SliceConverter : public OpConversionPattern<lmhlo::SliceOp> {
   }
 };
 
+enum class DotOperationType {
+  kVectorDot = 0,
+  kMatrixVector = 1,
+  kMatrixMatrix = 2,
+  kUnsupported = 3
+};
+
+DotOperationType GetDotOperationType(mhlo::DotOp dot_op) {
+  ArrayRef<int64_t> lhs_shape =
+      dot_op.lhs().getType().cast<ShapedType>().getShape();
+  ArrayRef<int64_t> rhs_shape =
+      dot_op.rhs().getType().cast<ShapedType>().getShape();
+  auto shape_matches = [](int64_t a, int64_t b) {
+    return a == ShapedType::kDynamicSize || b == ShapedType::kDynamicSize ||
+           a == b;
+  };
+  if (lhs_shape.size() == 1 && rhs_shape.size() == 1 &&
+      shape_matches(lhs_shape[0], rhs_shape[0])) {
+    return DotOperationType::kVectorDot;
+  }
+  if (lhs_shape.size() == 2 && rhs_shape.size() == 1 &&
+      shape_matches(lhs_shape[1], rhs_shape[0])) {
+    return DotOperationType::kMatrixVector;
+  }
+  if (rhs_shape.size() == 2 && rhs_shape.size() == 2 &&
+      shape_matches(lhs_shape[1], rhs_shape[0])) {
+    return DotOperationType::kMatrixMatrix;
+  }
+  return DotOperationType::kUnsupported;
+}
+
+SmallVector<Value, 8> GetDotOpInitTensorDynSizes(OpBuilder& b, Location loc,
+                                                 Value lhs, Value rhs,
+                                                 ShapedType result_type,
+                                                 DotOperationType type) {
+  SmallVector<Value, 8> dyn_shape;
+  switch (type) {
+    case DotOperationType::kMatrixMatrix: {
+      if (result_type.isDynamicDim(0))
+        dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+      if (result_type.isDynamicDim(1))
+        dyn_shape.push_back(b.create<DimOp>(loc, rhs, 1));
+      break;
+    }
+    case DotOperationType::kMatrixVector: {
+      if (result_type.isDynamicDim(0))
+        dyn_shape.push_back(b.create<DimOp>(loc, lhs, 0));
+      break;
+    }
+    case DotOperationType::kVectorDot:
+    case DotOperationType::kUnsupported:
+    default: {
+      break;
+    }
+  }
+  return dyn_shape;
+}
+
+class DotOpOnTensorsConversion : public OpConversionPattern<mhlo::DotOp> {
+ public:
+  using OpConversionPattern<mhlo::DotOp>::OpConversionPattern;
+  LogicalResult matchAndRewrite(
+      mhlo::DotOp op, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!VerifyHloOpBufferOrTensorSemantics</*isLHLO=*/false>(op)) {
+      return failure();
+    }
+    Location loc = op.getLoc();
+    mhlo::DotOp::Adaptor adaptor(args);
+    Type result_type = op.getResult().getType();
+    auto shaped_type = result_type.cast<ShapedType>();
+    DotOperationType op_type = GetDotOperationType(op);
+    SmallVector<Value, 8> dyn_shape = GetDotOpInitTensorDynSizes(
+        rewriter, loc, adaptor.lhs(), adaptor.rhs(), shaped_type, op_type);
+    auto zero_attr = rewriter.getZeroAttr(shaped_type.getElementType());
+    Value zero = rewriter.create<ConstantOp>(loc, zero_attr);
+    auto init_tensor = rewriter.create<DynamicTensorFromElementsOp>(
+        loc, result_type, dyn_shape);
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      SmallVector<Type, 4> arg_types(shaped_type.getRank(),
+                                     rewriter.getIndexType());
+      Region& region = init_tensor.body();
+      Block* block = rewriter.createBlock(&region, region.begin(), arg_types);
+      rewriter.setInsertionPointToEnd(block);
+      rewriter.create<YieldOp>(loc, zero);
+    }
+    linalg::LinalgOp linalg_op;
+    switch (op_type) {
+      case DotOperationType::kMatrixMatrix: {
+        linalg_op = rewriter.create<linalg::MatmulOp>(
+            loc, TypeRange{result_type},
+            ValueRange{adaptor.lhs(), adaptor.rhs()}, ValueRange{init_tensor});
+        break;
+      }
+      case DotOperationType::kMatrixVector: {
+        linalg_op = rewriter.create<linalg::MatvecOp>(
+            loc, TypeRange{result_type},
+            ValueRange{adaptor.lhs(), adaptor.rhs()}, ValueRange{init_tensor});
+        break;
+      }
+      case DotOperationType::kVectorDot: {
+        linalg_op = rewriter.create<linalg::DotOp>(
+            loc, TypeRange{result_type},
+            ValueRange{adaptor.lhs(), adaptor.rhs()}, ValueRange{init_tensor});
+        break;
+      }
+      case DotOperationType::kUnsupported:
+      default: {
+        return op.emitError("unsupported dot operation type");
+      }
+    }
+    rewriter.replaceOp(op, linalg_op->getResults());
+    return success();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -1181,7 +1298,8 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                PointwiseToLinalgConverter<mhlo::XorOp, false>,
                ReshapeOpConverter<mhlo::ReshapeOp, false>,
                ReverseConverter<mhlo::ReverseOp, false>,
-               TransposeConverter<mhlo::TransposeOp, false>>(context);
+               TransposeConverter<mhlo::TransposeOp, false>,
+               DotOpOnTensorsConversion>(context);
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
