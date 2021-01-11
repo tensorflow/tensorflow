@@ -863,6 +863,8 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
   int gcn_arch_value = amdgpu_version->first;
   auto gcn_arch_name = amdgpu_version->second; 
   std::string feature_str = GetFeatureStrFromGCNArchName(gcn_arch_name);
+  return GetTargetMachine(target_triple, absl::StrCat("gfx", gcn_arch_name),
+                          hlo_module_config, feature_str);
 #elif TF_ROCM_VERSION >= 30900
   string feature_str = "+code-object-v3";
   // code-object-v3 is default, so no need to expliticitly specify it
@@ -870,9 +872,9 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
   // is deprecated, and we get a warning to that effect. So removing that
   // feature string
   feature_str = "";
-#endif
-  return GetTargetMachine(target_triple, absl::StrCat("gfx", amdgpu_version->second),
+  return GetTargetMachine(target_triple, amdgpu_version->second,
                           hlo_module_config, feature_str);
+#endif
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {
