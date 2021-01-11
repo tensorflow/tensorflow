@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import time
+import time  # pylint: disable=unused-import
 
-import collections
+import collections  # pylint: disable=unused-import
 
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import constant_op
@@ -29,7 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradient_checker  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -37,7 +37,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.client import session
 
-import numpy as np
+import numpy as np  # pylint: disable=unused-import
 
 class FusionOpsTestCase(test.TestCase) :
 
@@ -58,7 +58,8 @@ class FusionOpsTestCase(test.TestCase) :
 
         # compare the results with and without fusion
         tol = 1e-3 if dtype == dtypes.float16 else 1e-5
-        for with_fusion, without_fusion in zip(results_with_fusion, results_without_fusion) :
+        for with_fusion, without_fusion in zip(results_with_fusion,
+                                               results_without_fusion) :
             self.assertAllClose(with_fusion, without_fusion, atol=tol, rtol=tol)
         
 
@@ -67,8 +68,11 @@ class CBAForwardTestSuite(FusionOpsTestCase):
     def _test01(self, dtype):
         with test_util.device(True):
             
-            x = constant_op.constant([5,5,5,5,5,7,7,7,7,7,9,9,9,9,9,11,11,11,11,11,13,13,13,13,13], dtype=dtype, shape=[1,5,5,1])
-            k = constant_op.constant([1,0,1,1,0,1,1,0,1], dtype=dtype, shape=[3,3,1,1])
+            x = constant_op.constant([5,5,5,5,5,7,7,7,7,7,9,9,9,9,9,
+                                      11,11,11,11,11,13,13,13,13,13],
+                                      dtype=dtype, shape=[1,5,5,1])
+            k = constant_op.constant([1,0,1,1,0,1,1,0,1], dtype=dtype,
+                                     shape=[3,3,1,1])
             offset = constant_op.constant([2], dtype=dtype)
             
             conv = nn_ops.conv2d(x, k, [1,1,1,1], "VALID")
@@ -90,11 +94,13 @@ class BnAForwardTestSuite(FusionOpsTestCase):
     def _test01(self, dtype):
         with test_util.device(True):
             
-            x = constant_op.constant([5,5,7,7,9,9,11,11,13,13,15,15], dtype=dtype, shape=[1,1,6,2])
+            x = constant_op.constant([5,5,7,7,9,9,11,11,13,13,15,15],
+                                     dtype=dtype, shape=[1,1,6,2])
             scale = constant_op.constant([4,5], dtype=float)
             offset = constant_op.constant([2,3], dtype=float)
             
-            batch_norm, batch_mean, batch_var = nn_impl.fused_batch_norm(x, scale, offset, is_training=True)
+            batch_norm, batch_mean, batch_var = nn_impl.fused_batch_norm(x,
+                                                scale, offset, is_training=True)
             relu = nn_ops.relu(batch_norm)
 
             y1 = array_ops.identity(relu)
@@ -123,7 +129,8 @@ class BnABackwardTestSuite(FusionOpsTestCase):
             scale = constant_op.constant([4,5], dtype=float)
             offset = constant_op.constant([2,3], dtype=float)
             
-            batch_norm, batch_mean, batch_var = nn_impl.fused_batch_norm(x, scale, offset, is_training=True)
+            batch_norm, batch_mean, batch_var = nn_impl.fused_batch_norm(x,
+                                                scale, offset, is_training=True)
             relu = nn_ops.relu(batch_norm)
             grad = gradients_impl.gradients(relu, x)
             
@@ -142,13 +149,16 @@ class BnAInferenceTestSuite(FusionOpsTestCase):
 
     def _test01(self, dtype):
         with test_util.device(True):
-            x = constant_op.constant([5,5,7,7,9,9,11,11,13,13,15,15], dtype=dtype, shape=[1,1,6,2])
+            x = constant_op.constant([5,5,7,7,9,9,11,11,13,13,15,15],
+                dtype=dtype, shape=[1,1,6,2])
             scale = constant_op.constant([4,5], dtype=float)
             offset = constant_op.constant([2,3], dtype=float)
             batch_mean = constant_op.constant([10,10], dtype=float)
             batch_var = constant_op.constant([14,14], dtype=float)
             
-            batch_norm, _, _ = nn_impl.fused_batch_norm(x, scale, offset, mean=batch_mean, variance=batch_var, is_training=False)
+            batch_norm, _, _ = nn_impl.fused_batch_norm(x, scale, offset,
+                               mean=batch_mean, variance=batch_var,
+                               is_training=False)
             relu = nn_ops.relu(batch_norm)
             
             y1 = array_ops.identity(relu)

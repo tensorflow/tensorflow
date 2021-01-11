@@ -49,13 +49,6 @@ using TypesF16F32 = ::testing::Types<float>;
 using TypesF16F32F64 = ::testing::Types<float>;
 using TypesF16F32F64CF64 = ::testing::Types<float>;
 #elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
-    !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64) && \
-    defined(XLA_BACKEND_DOES_NOT_SUPPORT_COMPLEX)
-using TypesF16F32 = ::testing::Types<Eigen::half, float>;
-using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;
-using TypesF16F32F64CF64 =
-    ::testing::Types<Eigen::half, float, double>;
-#elif !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16) && \
     !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64)
 using TypesF16F32 = ::testing::Types<Eigen::half, float>;
 using TypesF16F32F64 = ::testing::Types<Eigen::half, float, double>;

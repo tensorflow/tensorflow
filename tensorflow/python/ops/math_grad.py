@@ -1892,7 +1892,8 @@ def _BatchMatMulV2(op, grad):
 def _BatchGemm(op, grad):
   """Returns the gradient of x and y given the gradient of alpha * x * y."""
   alpha = op.get_attr("alpha")
-  return [math_ops.multiply(grad, alpha) for grad in _BatchMatMulV2(op, grad)] + [None]
+  return [math_ops.multiply(grad,
+    alpha) for grad in _BatchMatMulV2(op, grad)] + [None]
 
 
 ops.NotDifferentiable("Range")

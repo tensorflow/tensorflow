@@ -26,7 +26,6 @@ import sys
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -36,13 +35,9 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops_v2
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import math_ops, map_fn
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import variable_scope, variables, control_flow_ops
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.platform import test
 from tensorflow.python.eager import def_function
 
@@ -932,7 +927,7 @@ class MathOpsOverloadTest(test.TestCase):
       with self.subTest(dtype=dtype):
         self._compareBinary(10, 3, dtype, np.mod, _MOD)
 
-  def _gen_random_for_broadcast(self, sh, type):
+  def _gen_random_for_broadcast(self, sh, type): # pylint: disable=redefined-builtin
     red_sh = [(sh[k] if np.random.randint(2) else 1) for k in range(len(sh))]
     while len(red_sh)>1 and red_sh[0]==1 and np.random.randint(2):
       red_sh=red_sh[1:]
@@ -970,10 +965,14 @@ class MathOpsOverloadTest(test.TestCase):
             with self.session(use_gpu=True):
               print(sgn,  dtype, shape, bcast)
               if bcast!=15:
-                x1 = np.random.normal(size=(1,) if (bcast & 1) else shape).astype(dtype)
-                y1 = np.random.normal(size=(1,) if (bcast & 2) else shape).astype(dtype)
-                x2 = np.random.normal(size=(1,) if (bcast & 4) else shape).astype(dtype)
-                y2 = np.random.normal(size=(1,) if (bcast & 8) else shape).astype(dtype)
+                x1 = np.random.normal(size=(1,)
+                  if (bcast & 1) else shape).astype(dtype)
+                y1 = np.random.normal(size=(1,)
+                  if (bcast & 2) else shape).astype(dtype)
+                x2 = np.random.normal(size=(1,)
+                  if (bcast & 4) else shape).astype(dtype)
+                y2 = np.random.normal(size=(1,)
+                  if (bcast & 8) else shape).astype(dtype)
               else:
                 x1=self._gen_random_for_broadcast(shape, dtype)
                 y1=self._gen_random_for_broadcast(shape, dtype)
@@ -986,10 +985,12 @@ class MathOpsOverloadTest(test.TestCase):
               iny2 = ops.convert_to_tensor(y2)
               if sgn>0:
                 self.assertAllClose(x1*y1+x2, _FMA(inx1,iny1,inx2), atol, rtol)
-                self.assertAllClose(x1*y1+x2*y2, _FMA2(inx1,iny1,inx2,iny2), atol, rtol)
+                self.assertAllClose(x1*y1+x2*y2, _FMA2(inx1,iny1,inx2,iny2),
+                  atol, rtol)
               elif sgn<0:
                 self.assertAllClose(x1*y1-x2, _FMS(inx1,iny1,inx2), atol, rtol)
-                self.assertAllClose(x1*y1-x2*y2, _FMS2(inx1,iny1,inx2,iny2), atol, rtol)
+                self.assertAllClose(x1*y1-x2*y2, _FMS2(inx1,iny1,inx2,iny2),
+                  atol, rtol)
               else:
                 self.assertAllClose(x2-x1*y1, _FMSR(inx1,iny1,inx2), atol, rtol)
               if np.prod(shape)<100 and not (test_count % 5):
@@ -1431,7 +1432,7 @@ class PolyvalTest(test.TestCase):
     with self.assertRaisesRegex(ValueError, "Argument coeffs must be list"):
       math_ops.polyval(coeffs, x)
 
-class FMABenchmark(test.Benchmark): 
+class FMABenchmark(test.Benchmark):
   def _grappler_config(self):
     config = config_pb2.ConfigProto()
     off = rewriter_config_pb2.RewriterConfig.OFF
@@ -1443,13 +1444,14 @@ class FMABenchmark(test.Benchmark):
     config.graph_options.rewrite_options.arithmetic_optimization = off
     #config.graph_options.rewrite_options.dependency_optimization = on
     return config
-  def _run(self, op, feed_dict=None, num_iters=100, name=None, ref=True, **kwargs):
+  def _run(self, op, feed_dict=None, num_iters=100,
+  name=None, ref=True, **kwargs):
     config = self._grappler_config()
     os.environ['TF_ROCM_FMA_DISABLE']='1' if ref else '0'
     with session.Session(config=config) as sess:
     #with session.Session() as sess:
       deltas = []
-      for iter in range(num_iters+2):
+      for iter in range(num_iters+2): # pylint: disable=redefined-builtin
         start = time.time()
         if iter==2:
           print("Starting test...")
@@ -1591,9 +1593,12 @@ class FMABenchmark(test.Benchmark):
       rng_sx1 = rng(sx1)
       rng_sy1 = rng(sy1)
       rng_sx2 = rng(sx2)
-      c1 = constant_op.constant([float(k+0.1)/n_repeats for k in range(n_repeats)])
-      c2 = constant_op.constant([float(k+0.2)/n_repeats for k in range(n_repeats)])
-      c3 = constant_op.constant([float(k+0.3)/n_repeats for k in range(n_repeats)])
+      c1 = constant_op.constant([float(k+0.1)/n_repeats
+        for k in range(n_repeats)])
+      c2 = constant_op.constant([float(k+0.2)/n_repeats
+        for k in range(n_repeats)])
+      c3 = constant_op.constant([float(k+0.3)/n_repeats
+        for k in range(n_repeats)])
       c1 = array_ops.reshape(c1,[-1]+[1]*len(sx1))
       c2 = array_ops.reshape(c2,[-1]+[1]*len(sy1))
       c3 = array_ops.reshape(c3,[-1]+[1]*len(sx2))
@@ -1630,7 +1635,10 @@ class FMABenchmark(test.Benchmark):
                     x1, y1, x2 = _gen_inputs(test,n_repeats)
                     with session.Session() as sess:
                       x1, y1, x2 = sess.run((x1,y1,x2))
-                    self._run(self._apply_n_times(_FMA, n_repeats, x1,y1,x2), name="FMA_" + ("ref_" if test_reference else "")+str(dtype)+"_"+strform, ref=test_reference, num_iters=num_iters)
+                    self._run(self._apply_n_times(_FMA, n_repeats, x1,y1,x2),
+                      name="FMA_" + ("ref_" if test_reference else
+                        "")+str(dtype)+"_"+strform,
+                      ref=test_reference, num_iters=num_iters)
 
 if __name__ == "__main__":
   test.main()

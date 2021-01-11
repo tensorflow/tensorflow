@@ -1640,10 +1640,6 @@ class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters((True), (False))
   @test_util.disable_xla("XLA changes the names, breaking graph analysis")
   def testFoo(self, noinline):
-    if test.is_built_with_rocm():
-      self.skipTest("Skip the newly created test which has yet been verified on ROCm.")
-      return
-
     dtype = dtypes.float32
     cfg = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(
@@ -1653,9 +1649,7 @@ class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
                 do_function_inlining=True,
                 do_constant_folding=True)))
     cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
-
-    @function.Defun(dtype, noinline=noinline, func_name="CellT" if noinline
-                                              else "CellF")
+    @function.Defun(dtype, noinline=noinline)
     def Cell(v):
       # If v is a vector [n, 1], x is a big square matrix.
       x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))

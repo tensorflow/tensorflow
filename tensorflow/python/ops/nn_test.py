@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import math
 import os
-import sys
 import time
 from absl.testing import parameterized
 import numpy as np
@@ -38,7 +37,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
@@ -350,7 +348,8 @@ class DropoutTest(test_lib.TestCase):
     # validate that it is producing approximately the right number of ones 
     # over a large number of samples, based on the keep probability.
     for gpu in (True,False):
-      for t, x_dim, y_dim in ((np.float16,40,30),(np.float16,41,31), (np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
+      for t, x_dim, y_dim in ((np.float16,40,30),(np.float16,41,31),
+      (np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
       #for t, x_dim, y_dim in ((np.float32,40,30),):
       #for t, x_dim, y_dim in ((np.float32,40,30), (np.float64,40,30), (np.float32,1000,1000)):
         num_iter = 100 if x_dim*y_dim<100000 else 1
@@ -375,7 +374,8 @@ class DropoutTest(test_lib.TestCase):
               self.assertEqual(0, sorted_value[0])
               self.assertEqual(2, len(sorted_value))
               tol=0.02 if t==np.float16 else 0.001
-              self.assertAllClose(1 / keep_prob, sorted_value[1], rtol=tol, atol=tol)
+              self.assertAllClose(1 / keep_prob, sorted_value[1],
+                rtol=tol, atol=tol)
             # Check that we are in the error range
             expected_count = x_dim * y_dim * keep_prob * num_iter
             rel_error = math.fabs(final_count - expected_count) / expected_count
@@ -384,7 +384,8 @@ class DropoutTest(test_lib.TestCase):
             sigma = math.sqrt(keep_prob * (1-keep_prob) * num_iter)
             for x in site_counts.flatten()[:min(len(site_counts),10000)]:
               if math.fabs(x-num_iter*keep_prob) > 6*sigma:
-                print(x, num_iter*keep_prob, sigma, math.fabs(x-num_iter*keep_prob) / sigma)
+                print(x, num_iter*keep_prob, sigma,
+                  math.fabs(x-num_iter*keep_prob) / sigma)
               self.assertTrue(math.fabs(x-num_iter*keep_prob) < 6*sigma)
             # Finally, verify that there are no undue local correlations.
             p00 = (1-keep_prob)*(1-keep_prob)
@@ -419,7 +420,8 @@ class DropoutTest(test_lib.TestCase):
 
   def testDropoutGrad(self):
     if not test_lib.is_built_with_rocm():
-      self.skipTest("Dropout gradient kernels are enabled only in ROCm platform")
+      self.skipTest("Dropout gradient kernels are"
+                    "enabled only in ROCm platform")
     for t in (np.float16, np.float32, np.float64): 
       print("Running test ", t)
       x_dim = 40
@@ -1945,12 +1947,14 @@ class BenchmarkDropout(test_lib.Benchmark):
           #for dt, m in [(dtypes.float32, 16000), (dtypes.float16, 16000), (dtypes.float16, 16001)]:
           #for dt, m in [(dtypes.float32, 2000), (dtypes.float16, 2000), (dtypes.float16, 2001)]:
           #for dt, m in [(dtypes.float16, 16001)]:
-          name="BenchmarkDropout"+("FP16" if dt==dtypes.float16 else "FP32")+"_"+str(m)+("_old" if old else "")
+          name="BenchmarkDropout"+("FP16" if dt==dtypes.float16
+            else "FP32")+"_"+str(m)+("_old" if old else "")
           os.environ['TF_ROCM_OLD_DROPOUT']='1' if old else '0'
           with ops.Graph().as_default():
             with ops.device(device):
               x = array_ops.ones([m,n], dtype=dt)
-              self._run(self._apply_n_times(test_func, 1600, x), name=name, num_iters=400)
+              self._run(self._apply_n_times(test_func, 1600, x),
+                name=name, num_iters=400)
 
 class IsotonicTest(parameterized.TestCase, test_lib.TestCase):
 
