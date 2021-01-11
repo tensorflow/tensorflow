@@ -1260,6 +1260,14 @@ REGISTER_OP("_MklDepthwiseConv2dNativeBackpropInput")
       return Status::OK();
     });
 
+REGISTER_OP("_MklEinsum")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("equation: string")
+    .Attr("N: int >= 1")
+    .Attr("T: {bfloat16, float}")
+    .SetShapeFn(shape_inference::EinsumShape);
+
 REGISTER_OP("_MklDepthwiseConv2dNativeBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")

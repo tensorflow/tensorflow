@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_
-#if defined(INTEL_MKL)
+#ifdef INTEL_MKL
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -54,7 +54,7 @@ struct MklBatchMatMulHelper {
 
   std::unique_ptr<MklMatMulParams> CreateMatMulParams(
       const TensorShape& lhs_shape, const TensorShape& rhs_shape,
-      const TensorShape& out_shape, bool& adj_x_, bool& adj_y_) {
+      const TensorShape& out_shape, bool& adj_x, bool& adj_y) {
     const auto ndims_lhs = lhs_shape.dims();
     const auto ndims_rhs = rhs_shape.dims();
     const auto ndims_out = out_shape.dims();
@@ -74,14 +74,14 @@ struct MklBatchMatMulHelper {
       ExpandInputDimsToOutputShape(rhs_shape, out_shape, &rhs_dims);
     }
     using dim = dnnl::memory::dim;
-    dim m;  // number of rows in x
-    dim k;  // number of columns in x
-    dim n;  // number of columns in y
+    dim m;  // Number of rows in x
+    dim k;  // Number of columns in x
+    dim n;  // Number of columns in y
     auto lhs_strides = CalculateTFStrides(lhs_dims);
     auto rhs_strides = CalculateTFStrides(rhs_dims);
     auto out_strides = CalculateTFStrides(out_dims);
 
-    if (adj_x_) {
+    if (adj_x) {
       int m_idx = ndims_out - 1;
       int k_idx = ndims_out - 2;
       m = lhs_dims[m_idx];
@@ -91,7 +91,7 @@ struct MklBatchMatMulHelper {
       lhs_strides[k_idx] = 1;
     }
 
-    if (adj_y_) {
+    if (adj_y) {
       int k_idx = ndims_out - 1;
       int n_idx = ndims_out - 2;
       k = rhs_dims[k_idx];
@@ -105,6 +105,8 @@ struct MklBatchMatMulHelper {
         lhs_dims, rhs_dims, out_dims, lhs_strides, rhs_strides, out_strides);
   }
 };
+
 }  // namespace tensorflow
-#endif  // Intel MKL
-#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_EINSUM_OP_CC_
+
+#endif  // INTEL_MKL
+#endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_BATCH_MATMUL_HELPER_H_

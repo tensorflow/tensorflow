@@ -675,7 +675,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_softmax_op",
         "//tensorflow/core/kernels/mkl:mkl_transpose_op",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
-	"//tensorflow/core/kernels/mkl:mkl_einsum_op",
+        "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_tfconv_op",
         "//tensorflow/core/kernels/mkl:mkl_tmp_bf16_ops",
@@ -1954,7 +1954,7 @@ tf_cc_test_mkl(
     ] + if_mkl([
         "//tensorflow/core/kernels/mkl:mkl_aggregate_ops",
         "//tensorflow/core/kernels/mkl:mkl_batch_matmul_op",
-	"//tensorflow/core/kernels/mkl:mkl_einsum_op",
+        "//tensorflow/core/kernels/mkl:mkl_einsum_op",
         "//tensorflow/core/kernels/mkl:mkl_concat_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_cwise_ops_common",

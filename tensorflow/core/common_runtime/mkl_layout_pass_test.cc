@@ -5137,12 +5137,12 @@ TEST_F(MklLayoutPassTest, BatchMatMulV2_Positive) {
 
 TEST_F(MklLayoutPassTest, Einsum_Positive) {
   InitGraph(
-      "node{ name: 'B' op: 'Float32InputList'"
+      "node { name: 'B' op: 'Float32InputList'"
       " attr { key: 'N'                value { i: 2 } }}"
-      "node{ name: 'C' op: 'Einsum'"
-      " attr { key: 'equation'     value { s: '->' }}"
-      " attr{ key: 'N'                value { i: 2 } }"
-      " attr{ key: 'T'      value { type: DT_FLOAT } }"
+      "node { name: 'C' op: 'Einsum'"
+      " attr { key: 'equation'         value { s: '->' }}"
+      " attr { key: 'N'                value { i: 2 } }"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
       " input: ['B:0', 'B:1']}");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "B(Float32InputList);C(_MklEinsum)"

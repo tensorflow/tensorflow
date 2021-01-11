@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "mkl_batch_matmul_helper.h"
+#include "tensorflow/core/kernels/mkl/mkl_batch_matmul_helper.h"
 
 namespace tensorflow {
 

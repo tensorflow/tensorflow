@@ -93,9 +93,8 @@ struct MklEinsumHelper {
     // The maximum number of dimensions for a tensor in DNNL is 12.
     if (!(out_shape.dims() <= 12))
       return errors::InvalidArgument(
-          "Rank of output tensor is required as <= 12, ", "but is ",
-          out_shape.dims(), ". Current implementation supports upto ",
-          "rank 12 tensors.");
+          "Rank of output tensor must be <= 12, ", "but is ", out_shape.dims(),
+          ". Current implementation supports upto ", "rank 12 tensors.");
 
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> f;
