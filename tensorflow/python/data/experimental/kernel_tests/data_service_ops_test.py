@@ -649,7 +649,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testDistributeParallelToDistributed(self):
+  def testDistributedEpochOnDistributedDataset(self):
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
     num_sizes = 10
