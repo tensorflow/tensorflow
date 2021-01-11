@@ -22,6 +22,7 @@
 #   INPUT_FRAMEWORK: a zip file containing the iOS static framework.
 #   BUNDLE_NAME: the pod/bundle name of the iOS static framework.
 #   ALLOWLIST_FILE_PATH: contains the allowed symbols.
+#   EXTRACT_SCRIPT_PATH: path to the extract_object_files script.
 #   OUTPUT: the output zip file.
 
 # Halt on any error or any unknown variable.
@@ -84,8 +85,17 @@ for arch in "${archs[@]}"; do
          echo
       fi
     fi
-    xcrun ar -x "${arch_file}"
-    mv *.o "${archdir}"/
+    if [[ ! -z "${EXTRACT_SCRIPT_PATH}" ]]; then
+      "${EXTRACT_SCRIPT_PATH}" "${arch_file}" "${archdir}"
+    else
+      # ar tool extracts the objects in the current working directory. Since the
+      # default working directory for a genrule is always the same, there can be
+      # a race condition when this script is called for multiple targets
+      # simultaneously.
+      pushd "${archdir}" > /dev/null
+      xcrun ar -x "${arch_file}"
+      popd > /dev/null
+    fi
 
     objects_file_list=$($MKTEMP)
     # Hides the symbols except the allowed ones.
