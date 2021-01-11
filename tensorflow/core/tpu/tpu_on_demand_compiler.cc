@@ -161,7 +161,8 @@ class TpuExecutable : public TpuExecutableInterface {
       output.AddAliasedIndex(
           ApiConverter::FromC(&se_execution_output.aliased_indices[i]));
     }
-    ApiConverter::Free(se_execution_output.aliased_indices);
+    ExecutorApiFn()->TpuExecutable_FreeXlaShapeIndexArrayFn(
+        se_execution_output.aliased_indices);
 
     for (int i = 0; i < se_execution_output.to_be_released_size; ++i) {
       output.AddToBeReleased(
@@ -170,7 +171,8 @@ class TpuExecutable : public TpuExecutableInterface {
               .Release()
               .value());
     }
-    delete[] se_execution_output.to_be_released;
+    ExecutorApiFn()->TpuExecutable_FreeMaybeOwningDeviceMemoryArrayFn(
+        se_execution_output.to_be_released);
 
     return output;
   }
