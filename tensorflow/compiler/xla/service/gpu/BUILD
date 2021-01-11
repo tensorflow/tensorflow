@@ -128,16 +128,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
     ] + if_cuda_is_configured([
-<<<<<<< HEAD
-       "@local_config_cuda//cuda:cuda_headers",
-    ])
-    + if_rocm_is_configured([
-       "@local_config_rocm//rocm:rocm_headers",
-=======
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
->>>>>>> upstream/master
     ]),
 )
 
