@@ -79,17 +79,12 @@ class ComputeTask {
     id<MTLBuffer> metal_handle;
   };
 
-  struct UniformBuffer {
-    std::vector<uint8_t> data;
-    UniformsFunction data_function;
-  };
-
   id<MTLComputePipelineState> program_;
   std::vector<InputBuffer> input_buffers_;
   std::vector<OutputBuffer> output_buffers_;
-  std::vector<UniformBuffer> uniform_buffers_;
   uint3 groups_size_;
   uint3 groups_count_;
+  UpdateArgsFunction update_function_;
   DispatchParamsFunction resize_function_;
   std::string description_;
   MetalArguments metal_args_;

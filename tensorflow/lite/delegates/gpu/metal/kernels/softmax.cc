@@ -39,13 +39,7 @@ std::string GetSoftmax1x1Code(const GpuInfo& gpu_info) {
   std::string code = R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-  float4 mask;
-};
-
 $0
-
 kernel void ComputeFunction($1
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 ugid[[thread_position_in_grid]])
@@ -53,7 +47,7 @@ kernel void ComputeFunction($1
 
   float4 maxx4 = float4(args.src_tensor.Read(0, 0, 0).x);
   for (int s = int(tid); s < args.src_tensor.Slices(); s += 32) {
-    float4 mask_a = s == args.src_tensor.Slices() - 1 ? params.mask : float4(1.0f);
+    float4 mask_a = s == args.src_tensor.Slices() - 1 ? float4(args.mask_x, args.mask_y, args.mask_z, args.mask_w) : float4(1.0f);
     float4 mask_b = float4(1.0f) - mask_a;
     float4 src = float4(args.src_tensor.Read(0, 0, s));
     src = src * mask_a + mask_b * src.x;
@@ -90,7 +84,7 @@ kernel void ComputeFunction($1
 
   float sum = 0.0f;
   for (int s = int(tid); s < args.src_tensor.Slices(); s += 32) {
-    float4 mask_temp = s == args.src_tensor.Slices() - 1 ? params.mask : float4(1.0f);
+    float4 mask_temp = s == args.src_tensor.Slices() - 1 ? float4(args.mask_x, args.mask_y, args.mask_z, args.mask_w) : float4(1.0f);
     float4 src = float4(args.src_tensor.Read(0, 0, s)) - float4(maximum);
     sum += dot(mask_temp, exp(src));
   }
@@ -137,10 +131,6 @@ ComputeTaskDescriptor Softmax(const OperationDef& definition) {
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-  float4 mask;
-};
 $0
 kernel void ComputeFunction(
                             $1
@@ -151,7 +141,7 @@ kernel void ComputeFunction(
 
   float maximum = args.src_tensor.Read(gid.x, gid.y, 0).x;
   for (int d = 0; d < args.dst_tensor.Slices(); ++d) {
-    float4 mask_a = d == args.dst_tensor.Slices() - 1 ? params.mask : float4(1.0f);
+    float4 mask_a = d == args.dst_tensor.Slices() - 1 ? float4(args.mask_x, args.mask_y, args.mask_z, args.mask_w) : float4(1.0f);
     float4 mask_b = float4(1.0f) - mask_a;
     float4 src = float4(args.src_tensor.Read(gid.x, gid.y, d));
     src = src * mask_a + mask_b * src.x;
@@ -163,7 +153,7 @@ kernel void ComputeFunction(
 
   float sum = 0.0f;
   for (int d = 0; d < args.dst_tensor.Slices(); ++d) {
-    float4 mask_temp = d == args.dst_tensor.Slices() - 1 ? params.mask : float4(1.0f);
+    float4 mask_temp = d == args.dst_tensor.Slices() - 1 ? float4(args.mask_x, args.mask_y, args.mask_z, args.mask_w) : float4(1.0f);
     float4 src = float4(args.src_tensor.Read(gid.x, gid.y, d)) - float4(maximum);
     sum += dot(mask_temp, exp(src));
   }
@@ -180,15 +170,21 @@ kernel void ComputeFunction(
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         float4 mask = GetMaskForLastPlane(dst_shapes[0].c);
-         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&mask);
-         return std::vector<uint8_t>(ptr, ptr + sizeof(float4));
-       }},
-  };
+  desc.args.AddFloat("mask_x");
+  desc.args.AddFloat("mask_y");
+  desc.args.AddFloat("mask_z");
+  desc.args.AddFloat("mask_w");
+
+  desc.update_function = {[](const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes,
+                             ArgumentsBinder* args) -> absl::Status {
+    float4 mask = GetMaskForLastPlane(dst_shapes[0].c);
+    RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
+    RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
+    RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
+    RETURN_IF_ERROR(args->SetFloat("mask_w", mask.w));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {
@@ -209,15 +205,21 @@ ComputeTaskDescriptor Softmax1x1(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         float4 mask = GetMaskForLastPlane(dst_shapes[0].c);
-         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&mask);
-         return std::vector<uint8_t>(ptr, ptr + sizeof(float4));
-       }},
-  };
+  desc.args.AddFloat("mask_x");
+  desc.args.AddFloat("mask_y");
+  desc.args.AddFloat("mask_z");
+  desc.args.AddFloat("mask_w");
+
+  desc.update_function = {[](const std::vector<BHWC>& src_shapes,
+                             const std::vector<BHWC>& dst_shapes,
+                             ArgumentsBinder* args) -> absl::Status {
+    float4 mask = GetMaskForLastPlane(dst_shapes[0].c);
+    RETURN_IF_ERROR(args->SetFloat("mask_x", mask.x));
+    RETURN_IF_ERROR(args->SetFloat("mask_y", mask.y));
+    RETURN_IF_ERROR(args->SetFloat("mask_z", mask.z));
+    RETURN_IF_ERROR(args->SetFloat("mask_w", mask.w));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {

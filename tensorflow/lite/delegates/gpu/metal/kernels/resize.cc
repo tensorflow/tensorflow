@@ -44,9 +44,11 @@ kernel void ComputeFunction(
   }
 )";
   if (attr.half_pixel_centers) {
-    c += "  float2 tex_coord = (float2(gid.xy) + 0.5f) * scale - 0.5f;";
+    c += "  float2 tex_coord = (float2(gid.xy) + 0.5f) * float2(args.scale_x, "
+         "args.scale_y) - 0.5f;";
   } else {
-    c += "  float2 tex_coord = float2(gid.xy) * scale;";
+    c += "  float2 tex_coord = float2(gid.xy) * float2(args.scale_x, "
+         "args.scale_y);";
   }
   c += R"(
   float2 tex_coord_floor = floor(tex_coord);
@@ -85,11 +87,11 @@ kernel void ComputeFunction(
   std::string fxc;
   std::string fyc;
   if (attr.half_pixel_centers) {
-    fxc = "(float(gid.x) + 0.5f) * scale.x";
-    fyc = "(float(gid.y) + 0.5f) * scale.y";
+    fxc = "(float(gid.x) + 0.5f) * args.scale_x";
+    fyc = "(float(gid.y) + 0.5f) * args.scale_y";
   } else {
-    fxc = "float(gid.x) * scale.x";
-    fyc = "float(gid.y) * scale.y";
+    fxc = "float(gid.x) * args.scale_x";
+    fyc = "float(gid.y) * args.scale_y";
   }
   if (attr.align_corners) {
     fxc += " + 0.5f";
@@ -130,17 +132,20 @@ ComputeTaskDescriptor Resize(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant float2& scale",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         std::vector<float> sizes = {
-             CalculateResizeScale(src_shapes[0].w, dst_shapes[0].w, attr),
-             CalculateResizeScale(src_shapes[0].h, dst_shapes[0].h, attr),
-         };
-         return GetByteBuffer(sizes);
-       }},
-  };
+  desc.args.AddFloat("scale_x");
+  desc.args.AddFloat("scale_y");
+
+  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
+                                 const std::vector<BHWC>& dst_shapes,
+                                 ArgumentsBinder* args) -> absl::Status {
+    const float scale_x =
+        CalculateResizeScale(src_shapes[0].w, dst_shapes[0].w, attr);
+    const float scale_y =
+        CalculateResizeScale(src_shapes[0].h, dst_shapes[0].h, attr);
+    RETURN_IF_ERROR(args->SetFloat("scale_x", scale_x));
+    RETURN_IF_ERROR(args->SetFloat("scale_y", scale_y));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {

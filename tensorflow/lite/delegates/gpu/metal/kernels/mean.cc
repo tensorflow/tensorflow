@@ -42,10 +42,6 @@ std::string GetMeanCode(const int3& work_group_size) {
   std::string c = R"(
     #include <metal_stdlib>
     using namespace metal;
-    struct uniforms {
-      float4 inv_multipliers;
-    };
-
     $0
     kernel void ComputeFunction(
                                 $1
@@ -68,7 +64,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   c += "      accum[local_id] += float4(args.src_tensor.Read(s_x, s_y, S));\n";
   c += "    }\n";
   c += "  }\n";
-  c += "  accum[local_id] *= params.inv_multipliers.x;\n";
+  c += "  accum[local_id] *= args.inv_multiplier_x;\n";
   c += "  threadgroup_barrier(mem_flags::mem_threadgroup);\n";
   const int total_size = work_group_size.x * work_group_size.y;
   int offset = 1;
@@ -88,7 +84,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   for (int i = 1; i < reminder; ++i) {
     c += "  sum += accum[" + std::to_string(offset * i) + "];\n";
   }
-  c += "  FLT4 value = FLT4(sum * params.inv_multipliers.y);\n";
+  c += "  FLT4 value = FLT4(sum * args.inv_multiplier_y);\n";
   c += R"(
   $2
   args.dst_tensor.Write(value, 0, 0, gid.z);
@@ -113,21 +109,20 @@ ComputeTaskDescriptor Mean(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [work_group_size](const std::vector<BHWC>& src_shapes,
-                         const std::vector<BHWC>& dst_shapes) {
-         float4 inv_multipliers;
-         const double total_size = src_shapes[0].w * src_shapes[0].h;
-         const double size_0 = work_group_size.x * work_group_size.y;
-         const double size_1 = total_size / size_0;
-         inv_multipliers.x = 1.0 / size_1;
-         inv_multipliers.y = 1.0 / size_0;
-         const uint8_t* ptr =
-             reinterpret_cast<const uint8_t*>(&inv_multipliers);
-         return std::vector<uint8_t>(ptr, ptr + sizeof(float4));
-       }},
-  };
+  desc.args.AddFloat("inv_multiplier_x");
+  desc.args.AddFloat("inv_multiplier_y");
+
+  desc.update_function = {
+      [work_group_size](const std::vector<BHWC>& src_shapes,
+                        const std::vector<BHWC>& dst_shapes,
+                        ArgumentsBinder* args) -> absl::Status {
+        const double total_size = src_shapes[0].w * src_shapes[0].h;
+        const double size_0 = work_group_size.x * work_group_size.y;
+        const double size_1 = total_size / size_0;
+        RETURN_IF_ERROR(args->SetFloat("inv_multiplier_x", 1.0 / size_1));
+        RETURN_IF_ERROR(args->SetFloat("inv_multiplier_y", 1.0 / size_0));
+        return absl::OkStatus();
+      }};
 
   desc.resize_function = [work_group_size](
                              const std::vector<BHWC>& src_shapes,

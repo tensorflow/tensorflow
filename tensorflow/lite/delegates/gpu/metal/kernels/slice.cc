@@ -93,12 +93,6 @@ std::string GetSliceCode(const OperationDef& op_def, bool alignedx4) {
   std::string c = R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-  int4 offset;
-  int4 stride;
-};
-
 $0
 kernel void ComputeFunction($1
                             uint3 gid[[thread_position_in_grid]]) {
@@ -117,14 +111,14 @@ kernel void ComputeFunction($1
        "Z >= args.dst_tensor.Slices()) { \n";
   c += "    return; \n";
   c += "  } \n";
-  c += "  int s_x = X * params.stride.x + params.offset.x;\n";
-  c += "  int s_y = Y * params.stride.y + params.offset.y;\n";
+  c += "  int s_x = X * args.stride_x + args.offset_x;\n";
+  c += "  int s_y = Y * args.stride_y + args.offset_y;\n";
   if (op_def.src_tensors[0].HasAxis(Axis::BATCH)) {
-    c += "  int s_b = " + batch_id + " * params.stride.w + params.offset.w;\n";
+    c += "  int s_b = " + batch_id + " * args.stride_b + args.offset_b;\n";
     c += "  args.src_tensor.SetBatchRef(s_b);\n";
   }
   if (alignedx4) {
-    c += "  int s_z = Z + params.offset.z;\n";
+    c += "  int s_z = Z + args.offset_z;\n";
     c += "  FLT4 result = args.src_tensor.Read(s_x, s_y, s_z);\n";
   } else {
     c += "  FLT4 result;\n";
@@ -132,7 +126,7 @@ kernel void ComputeFunction($1
     for (int i = 0; i < 4; ++i) {
       c += "  {\n";
       const std::string ch = "(Z * 4 + " + std::to_string(i) + ")";
-      c += "    int s_ch = " + ch + " * params.stride.z + params.offset.z;\n";
+      c += "    int s_ch = " + ch + " * args.stride_z + args.offset_z;\n";
       c += "    int s_z = min(s_ch >> 2, args.src_tensor.Slices() - 1);\n";
       c += "    int s_z_rem = s_ch & 3;\n";
       c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z);\n";
@@ -156,27 +150,26 @@ ComputeTaskDescriptor Slice(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         int4 offset = GetOffset(attr, src_shapes[0].w, src_shapes[0].h,
-                                 src_shapes[0].c, src_shapes[0].b);
-         std::vector<int> uniform_params{
-             // int4 offset
-             offset.x,
-             offset.y,
-             offset.z,
-             offset.w,
-             // int4 stride
-             attr.strides.w,
-             attr.strides.h,
-             attr.strides.c,
-             attr.strides.b,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  desc.args.AddInt("offset_x");
+  desc.args.AddInt("offset_y");
+  desc.args.AddInt("offset_z");
+  desc.args.AddInt("offset_b");
+  desc.args.AddInt("stride_x", attr.strides.w);
+  desc.args.AddInt("stride_y", attr.strides.h);
+  desc.args.AddInt("stride_z", attr.strides.c);
+  desc.args.AddInt("stride_b", attr.strides.b);
+
+  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
+                                 const std::vector<BHWC>& dst_shapes,
+                                 ArgumentsBinder* args) -> absl::Status {
+    int4 offset = GetOffset(attr, src_shapes[0].w, src_shapes[0].h,
+                            src_shapes[0].c, src_shapes[0].b);
+    RETURN_IF_ERROR(args->SetInt("offset_x", offset.x));
+    RETURN_IF_ERROR(args->SetInt("offset_y", offset.y));
+    RETURN_IF_ERROR(args->SetInt("offset_z", offset.z));
+    RETURN_IF_ERROR(args->SetInt("offset_b", offset.w));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
                                 const std::vector<BHWC>& dst_shapes) {

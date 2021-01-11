@@ -38,11 +38,6 @@ std::string GetKernelWinograd4x4To36() {
   c += R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-    int2 padding;
-    int2 tiles_count;
-};
 )";
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
   c += "constant FLT Bt[36] = {\n";
@@ -63,7 +58,7 @@ kernel void ComputeFunction($1
 {
   int3 gid = int3(ugid.x * 4, ugid.y * 4, ugid.z);
 
-  if (ugid.x >= params.tiles_count.x || ugid.y >= params.tiles_count.y) return;
+  if (ugid.x >= args.tiles_x || ugid.y >= args.tiles_y) return;
 
   FLT4 I[6][6];
   for (int y = 0; y < 6; ++y) {
@@ -76,7 +71,7 @@ kernel void ComputeFunction($1
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
     c += "  {\n";
-    c += "    int coord_y = gid.y + " + s_y + " + params.padding.y;\n";
+    c += "    int coord_y = gid.y + " + s_y + " + args.padding_y;\n";
     c += "    bool in_y = FLT(coord_y >= 0 && coord_y < "
          "args.src_tensor.Height());\n";
     c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
@@ -85,7 +80,7 @@ kernel void ComputeFunction($1
     for (int x = 0; x < 6; ++x) {
       const std::string s_x = std::to_string(x);
       c += "    {\n";
-      c += "      int coord_x = gid.x + " + s_x + " + params.padding.x;\n";
+      c += "      int coord_x = gid.x + " + s_x + " + args.padding_x;\n";
       c += "      bool in_x = FLT(coord_x >= 0 && coord_x < "
            "args.src_tensor.Width());\n";
       c += "      FLT mult = FLT(in_y && in_x);\n";
@@ -109,7 +104,7 @@ kernel void ComputeFunction($1
   }
   c += R"(
 
-  int dst_x = ugid.y * params.tiles_count.x + ugid.x;
+  int dst_x = ugid.y * args.tiles_x + ugid.x;
   args.dst_tensor.GetAddress(dst_adress, dst_x, 0, gid.z);
   for (int y = 0; y < 6; ++y) {
     FLT4 value = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
@@ -140,11 +135,6 @@ std::string GetKernelWinograd4x4To36TileX6() {
   std::string c = R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-    int2 padding;
-    int2 tiles;
-};
 )";
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
   c += "constant FLT Bt[36] = {\n";
@@ -166,11 +156,11 @@ kernel void ComputeFunction($1
   int DST_X = global_ids.x;
   int DST_Y = global_ids.y;
   int DST_Z = global_ids.z;
-  if (DST_X >= params.tiles.y || DST_Y >= 6 || DST_Z >= args.dst_tensor.Slices()) {
+  if (DST_X >= args.tiles_y || DST_Y >= 6 || DST_Z >= args.dst_tensor.Slices()) {
     return;
   }
-  int tile_x = (DST_X % params.tiles.x) * 4;
-  int tile_y = (DST_X / params.tiles.x) * 4;
+  int tile_x = (DST_X % args.tiles_x) * 4;
+  int tile_y = (DST_X / args.tiles_x) * 4;
   FLT4 I0, I1, I2, I3, I4, I5;
   FLT bt_ar[6];
   FLT4 t0 = args.bt_arr.Read(DST_Y * 2 + 0);
@@ -189,7 +179,7 @@ kernel void ComputeFunction($1
   };
   for (int x = 0; x < 6; ++x) {
     const std::string xs = std::to_string(x);
-    c += "  int xc" + xs + " = tile_x + params.padding.x + " + xs + ";\n";
+    c += "  int xc" + xs + " = tile_x + args.padding_x + " + xs + ";\n";
     c += "  FLT m" + xs + "_x = xc" + xs + " >= 0 && xc" + xs +
          " < args.src_tensor.Width();\n";
     c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
@@ -201,7 +191,7 @@ kernel void ComputeFunction($1
          xs + ";\n";
   }
   c += "  {\n";
-  c += "    int yc = tile_y + params.padding.y;\n";
+  c += "    int yc = tile_y + args.padding_y;\n";
   c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
   c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
   c += "    int offset = yc * args.src_tensor.Width();\n";
@@ -216,7 +206,7 @@ kernel void ComputeFunction($1
   for (int y = 1; y < 6; ++y) {
     const std::string ys = std::to_string(y);
     c += "  {\n";
-    c += "    int yc = tile_y + params.padding.y + (" + ys + ");\n";
+    c += "    int yc = tile_y + args.padding_y + (" + ys + ");\n";
     c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
     c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
     c += "    int offset = yc * args.src_tensor.Width();\n";
@@ -352,10 +342,6 @@ std::string GetKernelWinograd36To4x4Tile4x1() {
   c += R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-    int4 tiles;
-};
 )";
   auto at_mat = AtMatrixForWinograd4x4To6x6();
   c += "constant FLT At[24] = {\n";
@@ -377,8 +363,8 @@ kernel void ComputeFunction($1
   int tile_id = global_ids.x;
   int DST_Y = global_ids.y;
   int DST_Z = global_ids.z;
-  int tile_x = (tile_id % params.tiles.x) * 4;
-  int tile_y = (tile_id / params.tiles.x) * 4 + DST_Y;
+  int tile_x = (tile_id % args.tiles_x) * 4;
+  int tile_y = (tile_id / args.tiles_x) * 4 + DST_Y;
   if (tile_x >= args.dst_tensor.Width() || tile_y >= args.dst_tensor.Height() || DST_Z >= args.dst_tensor.Slices()) {
     return;
   }
@@ -463,25 +449,24 @@ ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         int new_width = src_shapes[0].w + attr.padding.prepended.w +
-                         attr.padding.appended.w - 2;
-         int new_height = src_shapes[0].h + attr.padding.prepended.h +
-                          attr.padding.appended.h - 2;
-         int tiles_x = DivideRoundUp(new_width, 4);
-         int tiles_y = DivideRoundUp(new_height, 4);
-         std::vector<int> sizes = {
-             -attr.padding.prepended.w,
-             -attr.padding.prepended.h,
-             tiles_x,
-             tiles_y,
-         };
-         return GetByteBuffer(sizes);
-       }},
-  };
+  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args.AddInt("tiles_x");
+  desc.args.AddInt("tiles_y");
+
+  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
+                                 const std::vector<BHWC>& dst_shapes,
+                                 ArgumentsBinder* args) -> absl::Status {
+    int new_width = src_shapes[0].w + attr.padding.prepended.w +
+                    attr.padding.appended.w - 2;
+    int new_height = src_shapes[0].h + attr.padding.prepended.h +
+                     attr.padding.appended.h - 2;
+    int tiles_x = DivideRoundUp(new_width, 4);
+    int tiles_y = DivideRoundUp(new_height, 4);
+    RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
+    RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_y));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [attr](const std::vector<BHWC>& src_shapes,
                                 const std::vector<BHWC>& dst_shapes) {
@@ -529,25 +514,24 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   desc.args.AddObject("bt_arr",
                       absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         int new_width = src_shapes[0].w + attr.padding.prepended.w +
-                         attr.padding.appended.w - 2;
-         int new_height = src_shapes[0].h + attr.padding.prepended.h +
-                          attr.padding.appended.h - 2;
-         int tiles_x = DivideRoundUp(new_width, 4);
-         int tiles_y = DivideRoundUp(new_height, 4);
-         std::vector<int> sizes = {
-             -attr.padding.prepended.w,
-             -attr.padding.prepended.h,
-             tiles_x,
-             tiles_x * tiles_y,
-         };
-         return GetByteBuffer(sizes);
-       }},
-  };
+  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
+  desc.args.AddInt("tiles_x");
+  desc.args.AddInt("tiles_y");
+
+  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
+                                 const std::vector<BHWC>& dst_shapes,
+                                 ArgumentsBinder* args) -> absl::Status {
+    int new_width = src_shapes[0].w + attr.padding.prepended.w +
+                    attr.padding.appended.w - 2;
+    int new_height = src_shapes[0].h + attr.padding.prepended.h +
+                     attr.padding.appended.h - 2;
+    int tiles_x = DivideRoundUp(new_width, 4);
+    int tiles_y = DivideRoundUp(new_height, 4);
+    RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
+    RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_x * tiles_y));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {
@@ -634,21 +618,18 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
   desc.args.AddObject("at_arr",
                       absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
-         const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
-         std::vector<int> sizes = {
-             tiles_x,
-             tiles_y,
-             0,
-             0,
-         };
-         return GetByteBuffer(sizes);
-       }},
-  };
+  desc.args.AddInt("tiles_x");
+  desc.args.AddInt("tiles_y");
+
+  desc.update_function = {[attr](const std::vector<BHWC>& src_shapes,
+                                 const std::vector<BHWC>& dst_shapes,
+                                 ArgumentsBinder* args) -> absl::Status {
+    const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
+    const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
+    RETURN_IF_ERROR(args->SetInt("tiles_x", tiles_x));
+    RETURN_IF_ERROR(args->SetInt("tiles_y", tiles_y));
+    return absl::OkStatus();
+  }};
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {

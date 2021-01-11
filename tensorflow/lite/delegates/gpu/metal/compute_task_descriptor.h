@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
@@ -33,8 +34,9 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-using UniformsFunction = std::function<std::vector<uint8_t>(
-    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
+using UpdateArgsFunction = std::function<absl::Status(
+    const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes,
+    ArgumentsBinder* args)>;
 using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
     const std::vector<BHWC>& src_shapes, const std::vector<BHWC>& dst_shapes)>;
 
@@ -44,15 +46,6 @@ using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
 // building blocks. All required data like immutable operation parameters
 // (weights etc.) is attached to the descriptor.
 struct ComputeTaskDescriptor {
-  // Uniforms are recalculated at any setInputDimensions call.
-  struct UniformBufferDescriptor {
-    // The declaration is inserted into the compute function arguments list.
-    // Example: "constant uint4& some_uniforms"
-    std::string declaration;
-    // This function re-calculates uniforms for specific input dimensions.
-    UniformsFunction data_function;
-  };
-
   ComputeTaskDescriptor() = default;
   explicit ComputeTaskDescriptor(const OperationDef& def);
   // Move only
@@ -85,7 +78,10 @@ struct ComputeTaskDescriptor {
   std::string shader_source;
   std::vector<std::string> src_tensors_names;
   std::vector<std::string> dst_tensors_names;
-  std::vector<UniformBufferDescriptor> uniform_buffers;
+  UpdateArgsFunction update_function = {
+      [](const std::vector<BHWC>& src_shapes,
+         const std::vector<BHWC>& dst_shapes,
+         ArgumentsBinder* args) -> absl::Status { return absl::OkStatus(); }};
   // Dynamic resizing of input tensor is supported. User-defined functions to
   // calculate new parameters for GPU compute task dispatching. A leading
   // unlinkable task must provide this.
