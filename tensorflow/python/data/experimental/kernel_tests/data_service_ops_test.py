@@ -650,7 +650,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeParallelToDistributed(self):
-
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
     num_sizes = 10
@@ -669,7 +668,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeDistributedToParallel(self):
-
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
     num_sizes = 10
@@ -686,7 +684,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds, [i + 1 for i in numbers], assert_items_equal=True)
 
   def testParallelZippedDistributedDatasets(self):
-
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
     cluster_3 = self.create_cluster(num_workers=1)
@@ -707,7 +704,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         ds3, list(zip(numbers, numbers)), assert_items_equal=True)
 
   def testDistributedZippedDistributedDatasets(self):
-
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
     cluster_3 = self.create_cluster(num_workers=1)
