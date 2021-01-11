@@ -307,6 +307,10 @@ std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
     const py::handle& scalar, xla::PjRtClient* client,
     xla::PjRtDevice* device) {
   CppType data = py::cast<Pybind11Type>(scalar);
+  // Work around for https://github.com/pybind/pybind11/issues/2786
+  if (PyErr_Occurred()) {
+    throw py::error_already_set();
+  }
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<CppType>({});
   return ValueOrThrow(client->BufferFromHostBuffer(
       &data, shape,
