@@ -662,7 +662,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds = self.make_distributed_dataset(
         ds, cluster_2, processing_mode="distributed_epoch")
 
-    error_regex = "Cannot create a split provider for dataset of type DataServiceDataset"  # pylint: disable=line-too-long
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type DataServiceDataset"
     with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds)
 
@@ -720,7 +721,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     ds3 = self.make_distributed_dataset(
         ds3, cluster_3, processing_mode="distributed_epoch")
 
-    error_regex = "Cannot create a split provider for dataset of type ZipDataset"  # pylint: disable=line-too-long
+    error_regex = "Cannot create a split provider for dataset " + \
+        "of type ZipDataset"
     with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds3)
 
