@@ -893,6 +893,9 @@ AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
 bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     const AllocationValue& value, const HloUse& use) const {
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  if (!options_.is_use_allowed_in_alternate_mem_fn(use)) {
+    return false;
+  }
   if (use.instruction->opcode() == HloOpcode::kWhile) {
     HloComputation* while_body = use.instruction->while_body();
 
@@ -938,12 +941,8 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
     int64 while_time = instruction_schedule.at(use.instruction);
     auto existing_required_assignment =
         RequiredMemoryAssignmentAt(while_value, while_time);
-    if (existing_required_assignment) {
-      // TODO(berkin): Failing for now when the output is requested to be in
-      // alternate memory, and the buffer is a while loop output.
-      CHECK(existing_required_assignment->memory_space == MemorySpace::kDefault)
-          << "While loop buffers pinned to alternate memory not "
-             "currently supported.";
+    if (existing_required_assignment &&
+        existing_required_assignment->memory_space == MemorySpace::kDefault) {
       VLOG(4) << "While allocation not allowed in alternate memory because "
                  "there is a required default memory assignment.";
       return false;
@@ -2001,14 +2000,26 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
   }
 
   if (required_assignment_at_start) {
-    if (!allocation_sequence->empty() &&
-        required_assignment_at_start->memory_space == MemorySpace::kAlternate) {
-      const auto& prev_allocation = allocation_sequence->back();
-      CHECK(prev_allocation->memory_space() ==
-            required_assignment_at_start->memory_space);
-      CHECK_EQ(GetAliasedOffset(*prev_allocation),
-               required_assignment_at_start->offset);
-      prev_allocation->Extend(request.start_time);
+    if (!allocation_sequence->empty()) {
+      // We shouldn't have a situation where the required assignment at start is
+      // at alternate memory space and we have existing allocations in the
+      // allocation sequence. The only time we'll have required assignment at
+      // start to be in the alternate memory space is in called computations
+      // (e.g., while body) and we shouldn't have any allocations in the
+      // allocation sequence so far.
+      CHECK(required_assignment_at_start->memory_space ==
+            MemorySpace::kDefault);
+      // Find the previous allocation in default memory (might not be the very
+      // last one) and extend its lifetime to include the start time of this
+      // segment.
+      auto prev_allocation_in_default_mem_it = std::find_if(
+          allocation_sequence->rbegin(), allocation_sequence->rend(),
+          [&](const auto& allocation) {
+            return allocation->memory_space() == MemorySpace::kDefault &&
+                   allocation->defining_position() == defining_position;
+          });
+      CHECK(prev_allocation_in_default_mem_it != allocation_sequence->rend());
+      (*prev_allocation_in_default_mem_it)->Extend(request.start_time);
     } else {
       absl::optional<Chunk> aliased_chunk = absl::nullopt;
       if (required_assignment_at_start->memory_space ==

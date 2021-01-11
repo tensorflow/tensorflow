@@ -43,7 +43,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -82,6 +81,7 @@ from tensorflow.python.platform import _pywrap_stacktrace_handler
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import _pywrap_util_port
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -616,12 +616,12 @@ def enable_output_all_intermediates(fn):
     The wrapped function
   """
 
-  def wrapper(self, *args, **kwargs):
+  def wrapper(*args, **kwargs):
     output_all_intermediates_old = \
         control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE
     control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = True
     try:
-      return fn(self, *args, **kwargs)
+      return fn(*args, **kwargs)
     finally:
       control_flow_util_v2._EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = \
           output_all_intermediates_old
@@ -1104,21 +1104,6 @@ def run_in_async_and_sync_mode(f):
     else:
       with context.execution_mode(context.SYNC):
         f(self, *args, **kwargs)
-  return decorator
-
-
-def eager_lazy_remote_copy_on_and_off(f):
-  """Execute the test method w/o lazy tensor copy for function remote inputs."""
-
-  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
-  @functools.wraps(f)
-  def decorator(self, lazily_remote_copy, *args, **kwargs):
-    if lazily_remote_copy:
-      context.context().lazy_remote_inputs_copy = True
-    else:
-      context.context().lazy_remote_inputs_copy = False
-    f(self, *args, **kwargs)
-
   return decorator
 
 
@@ -2047,6 +2032,10 @@ class TensorFlowTestCase(googletest.TestCase):
     self._tempdir = None
     self._cached_session = None
     self._test_start_time = None
+    # This flag provides the ability to control whether the graph mode gets
+    # initialized for TF1 or not. Initializing for TF1, which is what was
+    # happening earlier, was preventing enablement of 'eager mode' in the test.
+    self._set_default_seed = True
 
   def setUp(self):
     super(TensorFlowTestCase, self).setUp()
@@ -2061,7 +2050,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    if self._set_default_seed:
+      random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
@@ -2555,7 +2545,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def _GetNdArray(self, a):
     # If a is tensor-like then convert it to ndarray
-    if tensor_util.is_tensor(a):
+    if tensor_util.is_tf_type(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2579,6 +2569,12 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
     msgs = [msg]
+    # np.allclose does not always work for our custom bfloat16 extension type
+    # when type promotions are involved, so we first cast any bfloat16 arrays
+    # to float32.
+    a_dtype = a.dtype
+    a = a.astype(np.float32) if a.dtype == dtypes.bfloat16.as_numpy_dtype else a
+    b = b.astype(np.float32) if b.dtype == dtypes.bfloat16.as_numpy_dtype else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Adds more details to np.testing.assert_allclose.
       #
@@ -2602,7 +2598,7 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not close rhs = {}".format(y))
       msgs.append("not close dif = {}".format(np.abs(x - y)))
       msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
-      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
+      msgs.append("dtype = {}, shape = {}".format(a_dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.

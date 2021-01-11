@@ -217,7 +217,6 @@ tensorflow::Status CreateRemoteContexts(
     tensorflow::uint64 context_id, tensorflow::uint64 context_view_id,
     int keep_alive_secs, const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
-    const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -269,8 +268,9 @@ tensorflow::Status CreateRemoteContexts(
     }
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
-    request.set_lazy_copy_remote_function_inputs(
-        lazy_copy_remote_function_inputs);
+    // TODO(b/134094971): deprecate lazy_copy_remote_function_inputs when server
+    // doesn't try to get the value of lazy_copy_remote_function_inputs.
+    request.set_lazy_copy_remote_function_inputs(true);
 
     eager_client->CreateContextAsync(
         &request, response,
@@ -557,7 +557,7 @@ tensorflow::Status UpdateContextWithServerDef(
     const tensorflow::Status s = CreateRemoteContexts(
         context, remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
-        context->LazyCopyFunctionRemoteInputs(), base_request);
+        base_request);
     // NOTE: the remote tasks could fail after `GetAllRemoteDevices` and cause
     // the CreateRemoteContexts to fail. We currently only log instead of
     // directly returning the error, since returning here will cause the server
@@ -582,8 +582,7 @@ tensorflow::Status UpdateContextWithServerDef(
       sg.Update(CreateRemoteContexts(
           context, added_workers, context_id, context_view_id + 1,
           keep_alive_secs, server_def, remote_eager_workers.get(),
-          context->Executor().Async(), context->LazyCopyFunctionRemoteInputs(),
-          base_request));
+          context->Executor().Async(), base_request));
     }
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {

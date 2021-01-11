@@ -30,15 +30,16 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
@@ -247,7 +248,7 @@ bool CanInferTensorListElementType(Value tensorlist,
       continue;
     }
     if (auto yield = llvm::dyn_cast<YieldOp>(use.getOwner())) {
-      Operation* parent = yield.getParentOp();
+      Operation* parent = yield->getParentOp();
       if (!CanInferTensorListElementType(
               parent->getResult(use.getOperandNumber()), initial_element_shape,
               potential_element_type))
@@ -619,7 +620,7 @@ ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context,
 ArrayRef<FuncOp> ShapeInference::GetCallers(FuncOp fn) {
   auto pair = callers_of_func_.try_emplace(fn);
   if (pair.second) {
-    ModuleOp module = fn.getParentOfType<ModuleOp>();
+    ModuleOp module = fn->getParentOfType<ModuleOp>();
     auto uses = mlir::SymbolTable::getSymbolUses(fn.getOperation(), module);
     if (uses) {
       pair.first->second.reserve(pair.first->second.size());
@@ -948,7 +949,8 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
     return RefineTypeForPassThroughOperands(op, terminator->getOperands(),
                                             op->getResults());
   }
-  if (op->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+  if (op->hasTrait<OpTrait::SameOperandsAndResultShape>() ||
+      isa<tensor::CastOp>(op)) {
     return RefineShapeForPassThroughOps(op);
   }
   if (auto call = dyn_cast<CallOpInterface>(op)) return InferShapeForCall(call);
@@ -1150,8 +1152,8 @@ LogicalResult ShapeInference::PropagateShapeToFunctions(
     }
 
     FunctionType func_type = func.getType();
-    func.setType(FunctionType::get(input_types, func_type.getResults(),
-                                   func.getContext()));
+    func.setType(FunctionType::get(func.getContext(), input_types,
+                                   func_type.getResults()));
 
     auto res =
         PropagateShapeToRegions(input_types, {&func.getBody()}, max_iteration);
@@ -1493,8 +1495,8 @@ void ShapeInference::InferShapeForFunctionReturnType(FuncOp func) {
   }
 
   DCOMMENT("Updating function type");
-  func.setType(FunctionType::get(
-      func.getArgumentTypes(), return_op.getOperandTypes(), func.getContext()));
+  func.setType(FunctionType::get(func.getContext(), func.getArgumentTypes(),
+                                 return_op.getOperandTypes()));
 
   if (changed) EnqueueCallers(func);
 }
@@ -1611,8 +1613,8 @@ LogicalResult InferShapeForFunction(FuncOp func,
     return failure();
 
   context.InferShapeForFunctionReturnType(func);
-  func.setType(FunctionType::get(new_arg_types, func.getType().getResults(),
-                                 func.getContext()));
+  func.setType(FunctionType::get(func.getContext(), new_arg_types,
+                                 func.getType().getResults()));
 
   return success();
 }
@@ -1627,8 +1629,10 @@ LogicalResult InferModuleShape(ModuleOp module, int64_t max_iterations) {
     return success();
   }
   int64_t producer = producer_or.ValueOrDie();
+  // TODO(jpienaar): Clean up propagate_caller_callee_constants if it is no
+  // longer needed.
   ShapeInference context(producer, module.getContext(),
-                         /*propagate_caller_callee_constants=*/true);
+                         /*propagate_caller_callee_constants=*/false);
   if (auto main = module.lookupSymbol<mlir::FuncOp>("main"))
     context.enqueue(main);
   for (auto func : module.getOps<FuncOp>()) context.enqueue(func);

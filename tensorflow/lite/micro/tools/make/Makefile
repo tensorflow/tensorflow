@@ -1,3 +1,18 @@
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
   $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
 endif
@@ -290,6 +305,7 @@ tensorflow/lite/micro/kernels/strided_slice_test.cc \
 tensorflow/lite/micro/kernels/sub_test.cc \
 tensorflow/lite/micro/kernels/svdf_test.cc \
 tensorflow/lite/micro/kernels/tanh_test.cc \
+tensorflow/lite/micro/kernels/transpose_conv_test.cc \
 tensorflow/lite/micro/kernels/unpack_test.cc \
 tensorflow/lite/micro/memory_planner/greedy_memory_planner_test.cc \
 tensorflow/lite/micro/memory_planner/linear_memory_planner_test.cc
@@ -303,6 +319,7 @@ tensorflow/lite/micro/kernels/circular_buffer.cc \
 tensorflow/lite/micro/kernels/comparisons.cc \
 tensorflow/lite/micro/kernels/concatenation.cc \
 tensorflow/lite/micro/kernels/conv.cc \
+tensorflow/lite/micro/kernels/conv_test_common.cc \
 tensorflow/lite/micro/kernels/depthwise_conv.cc \
 tensorflow/lite/micro/kernels/dequantize.cc \
 tensorflow/lite/micro/kernels/detection_postprocess.cc \
@@ -325,6 +342,7 @@ tensorflow/lite/micro/kernels/pad.cc \
 tensorflow/lite/micro/kernels/pooling.cc \
 tensorflow/lite/micro/kernels/prelu.cc \
 tensorflow/lite/micro/kernels/quantize.cc \
+tensorflow/lite/micro/kernels/quantize_common.cc \
 tensorflow/lite/micro/kernels/reduce.cc \
 tensorflow/lite/micro/kernels/reshape.cc \
 tensorflow/lite/micro/kernels/resize_nearest_neighbor.cc \
@@ -336,7 +354,9 @@ tensorflow/lite/micro/kernels/split_v.cc \
 tensorflow/lite/micro/kernels/strided_slice.cc \
 tensorflow/lite/micro/kernels/sub.cc \
 tensorflow/lite/micro/kernels/svdf.cc \
+tensorflow/lite/micro/kernels/svdf_common.cc \
 tensorflow/lite/micro/kernels/tanh.cc \
+tensorflow/lite/micro/kernels/transpose_conv.cc \
 tensorflow/lite/micro/kernels/unpack.cc
 
 MICROLITE_TEST_HDRS := \
@@ -367,6 +387,7 @@ $(wildcard tensorflow/lite/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
+tensorflow/lite/c/c_api_types.h \
 tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
@@ -400,6 +421,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/mean.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h \
 tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
@@ -418,6 +440,7 @@ tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/tanh.h \
+tensorflow/lite/kernels/internal/reference/transpose_conv.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
 tensorflow/lite/kernels/internal/min.h \
@@ -478,23 +501,37 @@ ALL_PROJECT_TARGETS :=
 ARDUINO_LIBRARY_TARGETS :=
 ARDUINO_LIBRARY_ZIPS :=
 
-# The download scripts require that the downloads directory already exist for
-# improved error checking. To accomodate that, we first create a downloads
-# directory.
-$(shell mkdir -p ${MAKEFILE_DIR}/downloads)
+# For some invocations of the makefile, it is useful to avoid downloads. This
+# can be achieved by explicitly passing in DISABLE_DOWNLOADS=true on the command
+# line. Note that for target-specific downloads (e.g. CMSIS) there will need to
+# be corresponding checking in the respecitve included makefiles (e.g.
+# ext_libs/cmsis_nn.inc)
+DISABLE_DOWNLOADS :=
 
-# Directly download the flatbuffers library.
-DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
-ifneq ($(DOWNLOAD_RESULT), SUCCESS)
-  $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+ifneq ($(DISABLE_DOWNLOADS), true)
+  # The download scripts require that the downloads directory already exist for
+  # improved error checking. To accomodate that, we first create a downloads
+  # directory.
+  $(shell mkdir -p ${MAKEFILE_DIR}/downloads)
+
+  # Directly download the flatbuffers library.
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/flatbuffers_download.sh ${MAKEFILE_DIR}/downloads)
+  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+    $(error Something went wrong with the flatbuffers download: $(DOWNLOAD_RESULT))
+  endif
+
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/pigweed_download.sh ${MAKEFILE_DIR}/downloads)
+  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+    $(error Something went wrong with the pigweed download: $(DOWNLOAD_RESULT))
+  endif
+
+  include $(MAKEFILE_DIR)/third_party_downloads.inc
+  THIRD_PARTY_DOWNLOADS :=
+  $(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
+  $(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
+  $(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
+  $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 endif
-
-include $(MAKEFILE_DIR)/third_party_downloads.inc
-THIRD_PARTY_DOWNLOADS :=
-$(eval $(call add_third_party_download,$(GEMMLOWP_URL),$(GEMMLOWP_MD5),gemmlowp,))
-$(eval $(call add_third_party_download,$(RUY_URL),$(RUY_MD5),ruy,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_URL),$(PERSON_MODEL_MD5),person_model_grayscale,))
-$(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_INT8_MD5),person_model_int8,))
 
 # The target-specific makefile must have a name that is exactly
 # TARGET_makefile.inc and is only needed for cross-compilation (i.e. when TARGET
@@ -505,8 +542,15 @@ $(eval $(call add_third_party_download,$(PERSON_MODEL_INT8_URL),$(PERSON_MODEL_I
 # will be separating the project generation from the Makefile in the future.
 TARGETS_WITHOUT_MAKEFILES := \
 $(HOST_OS) \
-arduino \
-chre
+arduino
+
+# This specific string needs to be outputted for a test to be recognized as
+# having passed.
+TEST_PASS_STRING:='~~~ALL TESTS PASSED~~~'
+
+# ${TARGET}_makefile.inc can set this to true to allow it to defined a custom
+# implementation for `make test`. See bluepill_makefile as an example.
+TARGET_SPECIFIC_MAKE_TEST:=0
 
 ifeq ($(findstring $(TARGET),$(TARGETS_WITHOUT_MAKEFILES)),)
   include $(MAKEFILE_DIR)/targets/$(TARGET)_makefile.inc
@@ -611,7 +655,7 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	@test -f $(TEST_SCRIPT) || (echo 'Unable to find the test script. Is the software emulation available in $(TARGET)?'; exit 1)
-	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
+	$(TEST_SCRIPT) $< $(TEST_PASS_STRING)
 
 # snease: Add %.bin rule here since BINDIR is now defined
 # These are microcontroller-specific rules for converting the ELF output
@@ -627,7 +671,9 @@ $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET)
 $(foreach TEST_TARGET,$(filter tensorflow/lite/micro/kernels/%,$(MICROLITE_TEST_SRCS)),\
 $(eval $(call microlite_test,kernel_$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
+ifeq ($(TARGET_SPECIFIC_MAKE_TEST),0)
 test: $(MICROLITE_TEST_TARGETS)
+endif
 
 # Just build the test targets
 build: $(MICROLITE_BUILD_TARGETS)

@@ -206,6 +206,9 @@ Status PropagateConstIntoFuncAttr(
   n->ClearAttr(attr_name);
   n->AddAttr(attr_name, func_attr);
 
+  TF_RETURN_IF_ERROR(fld->AddFunctionDef(
+      replace_fdef, lookup_fld->GetStackTraces(func_attr.name())));
+
   // Copy associated functions.
   TF_RETURN_IF_ERROR(CopyAssociatedFunctions(func_graph, lookup_fld, fld));
 

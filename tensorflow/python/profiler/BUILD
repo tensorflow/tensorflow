@@ -88,8 +88,8 @@ py_library(
         ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
-        "//tensorflow/python:_pywrap_tfprof",
         "//tensorflow/python:errors",
+        "//tensorflow/python/util:_pywrap_tfprof",
         "@six_archive//:six",
     ],
 )
@@ -229,8 +229,8 @@ py_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

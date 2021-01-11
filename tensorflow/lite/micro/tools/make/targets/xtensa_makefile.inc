@@ -22,14 +22,23 @@ ifndef XTENSA_CORE
   $(error XTENSA_CORE is undefined)
 endif
 
+ifeq ($(TARGET_ARCH), )
+  $(error TARGET_ARCH must be specified on the command line)
+endif
+
+# Create a cflag based on the specified TARGET_ARCH. For example:
+#   TARGET_ARCH=hifimini --> -DHIFIMINI
+#   TARGET_ARCH=fusion_f1 --> -DFUSION_F1
+TARGET_ARCH_DEFINES := -D$(shell echo $(TARGET_ARCH) | tr [a-z] [A-Z])
+
 PLATFORM_FLAGS = \
   -DTF_LITE_MCU_DEBUG_LOG \
   -DTF_LITE_USE_CTIME \
   --xtensa-core=$(XTENSA_CORE) \
   -mcoproc \
-  -DXTENSA \
   -DMAX_RFFT_PWR=9 \
-  -DMIN_RFFT_PWR=MAX_RFFT_PWR
+  -DMIN_RFFT_PWR=MAX_RFFT_PWR \
+  $(TARGET_ARCH_DEFINES)
 
 ifeq ($(BUILD_TYPE), release)
   PLATFORM_FLAGS += -Wno-unused-private-field

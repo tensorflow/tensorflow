@@ -70,7 +70,7 @@ def VGG16(
   For VGG16, call `tf.keras.applications.vgg16.preprocess_input` on your
   inputs before passing them to the model.
 
-  Arguments:
+  Args:
       include_top: whether to include the 3 fully-connected
           layers at the top of the network.
       weights: one of `None` (random initialization),

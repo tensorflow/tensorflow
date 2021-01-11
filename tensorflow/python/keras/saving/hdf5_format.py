@@ -66,7 +66,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
   the exact same state, without any of the code
   used for model definition or training.
 
-  Arguments:
+  Args:
       model: Keras model instance to be saved.
       filepath: One of the following:
           - String, path where to save the model
@@ -139,7 +139,7 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
 def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model_to_hdf5`.
 
-  Arguments:
+  Args:
       filepath: One of the following:
           - String, path to the saved model
           - `h5py.File` object from which to load the model
@@ -179,7 +179,9 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     model_config = f.attrs.get('model_config')
     if model_config is None:
       raise ValueError('No model found in config file.')
-    model_config = json_utils.decode(model_config.decode('utf-8'))
+    if hasattr(model_config, 'decode'):
+      model_config = model_config.decode('utf-8')
+    model_config = json_utils.decode(model_config)
     model = model_config_lib.model_from_config(model_config,
                                                custom_objects=custom_objects)
 
@@ -189,11 +191,13 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
     if compile:
       # instantiate optimizer
       training_config = f.attrs.get('training_config')
+      if hasattr(training_config, 'decode'):
+        training_config = training_config.decode('utf-8')
       if training_config is None:
         logging.warning('No training configuration found in the save file, so '
                         'the model was *not* compiled. Compile it manually.')
         return model
-      training_config = json_utils.decode(training_config.decode('utf-8'))
+      training_config = json_utils.decode(training_config)
 
       # Compile model.
       model.compile(**saving_utils.compile_args_from_training_config(
@@ -233,7 +237,7 @@ def preprocess_weights_for_loading(layer,
   Converts layers weights from Keras 1 format to Keras 2 and also weights of
   CuDNN layers in Keras 2.
 
-  Arguments:
+  Args:
       layer: Layer instance.
       weights: List of weights values (Numpy arrays).
       original_keras_version: Keras version for the weights, as a string.
@@ -249,7 +253,7 @@ def preprocess_weights_for_loading(layer,
     This function uses `preprocess_weights_for_loading()` for converting
     layers.
 
-    Arguments:
+    Args:
         weights: List of weights values (Numpy arrays).
 
     Returns:
@@ -270,7 +274,7 @@ def preprocess_weights_for_loading(layer,
     This function uses `preprocess_weights_for_loading()` for converting nested
     layers.
 
-    Arguments:
+    Args:
         weights: List of weights values (Numpy arrays).
 
     Returns:
@@ -285,7 +289,7 @@ def preprocess_weights_for_loading(layer,
     This function uses `preprocess_weights_for_loading()` for converting nested
     layers.
 
-    Arguments:
+    Args:
         weights: List of weights values (Numpy arrays).
 
     Returns:
@@ -423,7 +427,7 @@ def _convert_rnn_weights(layer, weights):
 
   For missing biases in `LSTM`/`GRU` (`use_bias=False`) no conversion is made.
 
-  Arguments:
+  Args:
       layer: Target layer instance.
       weights: List of source weights values (input kernels, recurrent
           kernels, [biases]) (Numpy arrays).
@@ -438,7 +442,7 @@ def _convert_rnn_weights(layer, weights):
   def transform_kernels(kernels, func, n_gates):
     """Transforms kernel for each gate separately using given function.
 
-    Arguments:
+    Args:
         kernels: Stacked array of kernels for individual gates.
         func: Function applied to kernel of each gate.
         n_gates: Number of gates (4 for LSTM, 3 for GRU).
@@ -461,7 +465,7 @@ def _convert_rnn_weights(layer, weights):
 
     It can be passed to `transform_kernels()`.
 
-    Arguments:
+    Args:
         from_cudnn: `True` if source weights are in CuDNN format, `False`
             if they're in plain Keras format.
 
@@ -497,7 +501,7 @@ def _convert_rnn_weights(layer, weights):
     def convert_lstm_weights(weights, from_cudnn=True):
       """Converts the weights between CuDNNLSTM and LSTM.
 
-      Arguments:
+      Args:
         weights: Original weights.
         from_cudnn: Indicates whether original weights are from CuDNN layer.
 
@@ -534,7 +538,7 @@ def _convert_rnn_weights(layer, weights):
     def convert_gru_weights(weights, from_cudnn=True):
       """Converts the weights between CuDNNGRU and GRU.
 
-      Arguments:
+      Args:
         weights: Original weights.
         from_cudnn: Indicates whether original weights are from CuDNN layer.
 
@@ -580,7 +584,7 @@ def _convert_rnn_weights(layer, weights):
 def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
   """Saves optimizer weights of a optimizer to a HDF5 group.
 
-  Arguments:
+  Args:
       hdf5_group: HDF5 group.
       optimizer: optimizer instance.
   """
@@ -604,7 +608,7 @@ def save_optimizer_weights_to_hdf5_group(hdf5_group, optimizer):
 def load_optimizer_weights_from_hdf5_group(hdf5_group):
   """Load optimizer weights from a HDF5 group.
 
-  Arguments:
+  Args:
       hdf5_group: A pointer to a HDF5 group.
 
   Returns:
@@ -619,7 +623,7 @@ def load_optimizer_weights_from_hdf5_group(hdf5_group):
 def save_weights_to_hdf5_group(f, layers):
   """Saves the weights of a list of layers to a HDF5 group.
 
-  Arguments:
+  Args:
       f: HDF5 group.
       layers: List of layer instances.
   """
@@ -650,7 +654,7 @@ def save_weights_to_hdf5_group(f, layers):
 def load_weights_from_hdf5_group(f, layers):
   """Implements topological (order-based) weight loading.
 
-  Arguments:
+  Args:
       f: A pointer to a HDF5 group.
       layers: a list of target layers.
 
@@ -659,11 +663,15 @@ def load_weights_from_hdf5_group(f, layers):
           and weights file.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version'].decode('utf8')
+    original_keras_version = f.attrs['keras_version']
+    if hasattr(original_keras_version, 'decode'):
+      original_keras_version = original_keras_version.decode('utf8')
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend'].decode('utf8')
+    original_backend = f.attrs['backend']
+    if hasattr(original_backend, 'decode'):
+      original_backend = original_backend.decode('utf8')
   else:
     original_backend = None
 
@@ -718,7 +726,7 @@ def load_weights_from_hdf5_group_by_name(
 
   Layers that have no matching name are skipped.
 
-  Arguments:
+  Args:
       f: A pointer to a HDF5 group.
       layers: a list of target layers.
       skip_mismatch: Boolean, whether to skip loading of layers
@@ -730,11 +738,15 @@ def load_weights_from_hdf5_group_by_name(
           and weights file and skip_match=False.
   """
   if 'keras_version' in f.attrs:
-    original_keras_version = f.attrs['keras_version'].decode('utf8')
+    original_keras_version = f.attrs['keras_version']
+    if hasattr(original_keras_version, 'decode'):
+      original_keras_version = original_keras_version.decode('utf8')
   else:
     original_keras_version = '1'
   if 'backend' in f.attrs:
-    original_backend = f.attrs['backend'].decode('utf8')
+    original_backend = f.attrs['backend']
+    if hasattr(original_backend, 'decode'):
+      original_backend = original_backend.decode('utf8')
   else:
     original_backend = None
 
@@ -798,7 +810,7 @@ def save_attributes_to_hdf5_group(group, name, data):
   This method deals with an inherent problem of HDF5 file which is not
   able to store data larger than HDF5_OBJECT_HEADER_LIMIT bytes.
 
-  Arguments:
+  Args:
       group: A pointer to a HDF5 group.
       name: A name of the attributes to save.
       data: Attributes data to store.
@@ -841,7 +853,7 @@ def load_attributes_from_hdf5_group(group, name):
   of HDF5 file which is not able to store
   data larger than HDF5_OBJECT_HEADER_LIMIT bytes.
 
-  Arguments:
+  Args:
       group: A pointer to a HDF5 group.
       name: A name of the attributes to load.
 
@@ -849,13 +861,18 @@ def load_attributes_from_hdf5_group(group, name):
       data: Attributes data.
   """
   if name in group.attrs:
-    data = [n.decode('utf8') for n in group.attrs[name]]
+    data = [
+        n.decode('utf8') if hasattr(n, 'decode') else n
+        for n in group.attrs[name]
+    ]
   else:
     data = []
     chunk_id = 0
     while '%s%d' % (name, chunk_id) in group.attrs:
-      data.extend(
-          [n.decode('utf8') for n in group.attrs['%s%d' % (name, chunk_id)]])
+      data.extend([
+          n.decode('utf8') if hasattr(n, 'decode') else n
+          for n in group.attrs['%s%d' % (name, chunk_id)]
+      ])
       chunk_id += 1
   return data
 

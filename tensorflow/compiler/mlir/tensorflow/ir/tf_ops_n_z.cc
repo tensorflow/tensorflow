@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
@@ -54,7 +55,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -400,8 +400,8 @@ static LogicalResult Verify(ParseExampleV2Op op) {
 
 template <class OpClass>
 static LogicalResult VerifyPartitionedCall(OpClass op) {
-  auto module = op.template getParentOfType<ModuleOp>();
-  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
+  auto module = op->template getParentOfType<ModuleOp>();
+  SymbolRefAttr func = op->getAttr("f").template cast<SymbolRefAttr>();
 
   auto function =
       dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
@@ -532,7 +532,11 @@ OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
   auto ranked_type = type.dyn_cast<RankedTensorType>();
   if (!ranked_type) return {};
 
-  auto output_type = getType().cast<ShapedType>();
+  // DenseIntElementsAttr::get requires the output type be ranked with static
+  // shape.
+  auto output_type = getType().dyn_cast<RankedTensorType>();
+  if (!output_type || !output_type.hasStaticShape()) return {};
+
   int32_t rank = ranked_type.getRank();
   return DenseIntElementsAttr::get(output_type, rank);
 }
@@ -894,7 +898,7 @@ static Attribute ConvertShapeToAttr(Type input_ty, int out_width) {
     dimensions.push_back(APInt(out_width, shape[i]));
 
   auto result_type = RankedTensorType::get(
-      {rank}, IntegerType::get(out_width, input_ty.getContext()));
+      {rank}, IntegerType::get(input_ty.getContext(), out_width));
   return DenseElementsAttr::get(result_type, dimensions);
 }
 
@@ -2375,7 +2379,7 @@ OpFoldResult FoldIdentityTranspose(TransposeOp op) {
     // If the types don't match then only fold if all the operands are in the TF
     // dialect.
     for (auto user : op.getOperation()->getUsers())
-      if (user->getDialect() != op.getDialect()) return {};
+      if (user->getDialect() != op->getDialect()) return {};
   }
 
   return op.x();
@@ -2512,6 +2516,74 @@ static LogicalResult Verify(UnpackOp op) {
     return op.emitOpError("result count must be equal to ") << dim_size;
 
   return success();
+}
+
+namespace {
+
+// Hoist coefficient-wise unary operation out of the Unpack op:
+//
+//   %unpacked:N = "tf.Unpack"(%0)
+//   %neg0 = "tf.Neg"(%unpacked#0)
+//   %neg1 = "tf.Neg"(%unpacked#1)
+//   ...
+//   %negN-1 = "tf.Neg"(%unpacked:N-1)
+//
+// Rewrite it to:
+//
+//   %neg = "tf.Neg"(%0)
+//   %unpacked:N = "tf.Unpack"(%neg)
+class HoistCwiseUnaryOutOfUnpack : public OpRewritePattern<UnpackOp> {
+ public:
+  explicit HoistCwiseUnaryOutOfUnpack(MLIRContext *context)
+      : OpRewritePattern<UnpackOp>(context) {}
+  LogicalResult matchAndRewrite(UnpackOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult HoistCwiseUnaryOutOfUnpack::matchAndRewrite(
+    UnpackOp op, PatternRewriter &rewriter) const {
+  auto loc = op.getLoc();
+
+  // First unpack user must be coeff-wise unary operation.
+  Operation *first_user = *op->getUsers().begin();
+  if (!first_user->hasTrait<OpTrait::TF::CwiseUnary>()) return failure();
+
+  // All unpack users must be defined by the op of same kind.
+  bool users_same_op = llvm::all_of(op->getUsers(), [&](Operation *user) {
+    return user->getName() == first_user->getName();
+  });
+  if (!users_same_op) return failure();
+
+  // Pass unpack operand to unary operation.
+  OperationState new_unary_op_state(loc, first_user->getName().getStringRef(),
+                                    op.getOperand(), op.getOperand().getType(),
+                                    ArrayRef<NamedAttribute>());
+  Operation *new_unary_op = rewriter.createOperation(new_unary_op_state);
+
+  // Unpack results after applying unary operation.
+  auto unpack_unary_op = rewriter.create<UnpackOp>(
+      loc, op.getResultTypes(), new_unary_op->getResult(0), op.axis());
+
+  // Bypass all users of the original unpack operation and use `unpack_unary_op`
+  // results instead.
+  for (auto pair : llvm::zip(op.getResults(), unpack_unary_op.getResults())) {
+    OpResult old_result = std::get<0>(pair);  // result of original Unpack
+    OpResult new_result = std::get<1>(pair);  // result of transformed Unpack
+    for (Operation *user : llvm::make_early_inc_range(old_result.getUsers()))
+      rewriter.replaceOp(user, ValueRange(new_result));
+  }
+
+  // Erase original unpack operation.
+  rewriter.eraseOp(op.getOperation());
+
+  return success();
+}
+
+}  // namespace
+
+void UnpackOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<HoistCwiseUnaryOutOfUnpack>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2895,6 +2967,18 @@ void WhileRegionOp::getCanonicalizationPatterns(
 void XdivyOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   results.insert<XdivyWithSqrtDivisor>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaSetDynamicDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  inferredReturnTypes.assign({operands.front().getType()});
+  return success();
 }
 
 }  // namespace TF

@@ -31,6 +31,12 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR=${SCRIPT_DIR}/../../../../..
+cd "${ROOT_DIR}"
+
+source tensorflow/lite/micro/tools/make/bash_helpers.sh
+
 DOWNLOADS_DIR=${1}
 if [ ! -d ${DOWNLOADS_DIR} ]; then
   echo "The top-level downloads directory: ${DOWNLOADS_DIR} does not exist."
@@ -69,6 +75,15 @@ function patch_to_avoid_strtod() {
   mv ${temp_flexbuffers_path} ${input_flexbuffers_path}
 }
 
+# The BUILD files in the downloaded folder result in an error with:
+#  bazel build tensorflow/lite/micro/...
+#
+# Parameters:
+#   $1 - path to the downloaded flatbuffers code.
+function delete_build_files() {
+  rm -f `find ${1} -name BUILD`
+}
+
 DOWNLOADED_FLATBUFFERS_PATH=${DOWNLOADS_DIR}/flatbuffers
 
 if [ -d ${DOWNLOADED_FLATBUFFERS_PATH} ]; then
@@ -79,18 +94,13 @@ else
   FLATBUFFERS_MD5="aa9adc93eb9b33fa1a2a90969e48baee"
 
   wget ${FLATBUFFERS_URL} -O /tmp/${ZIP_PREFIX}.zip >&2
-  MD5=`md5sum /tmp/${ZIP_PREFIX}.zip | awk '{print $1}'`
-
-  if [[ ${MD5} != ${FLATBUFFERS_MD5} ]]
-  then
-    echo "Bad checksum. Expected: ${FLATBUFFERS_MD5}, Got: ${MD5}"
-    exit 1
-  fi
+  check_md5 /tmp/${ZIP_PREFIX}.zip ${FLATBUFFERS_MD5}
 
   unzip -qo /tmp/${ZIP_PREFIX}.zip -d /tmp >&2
   mv /tmp/flatbuffers-${ZIP_PREFIX} ${DOWNLOADED_FLATBUFFERS_PATH}
 
   patch_to_avoid_strtod ${DOWNLOADED_FLATBUFFERS_PATH}/include/flatbuffers/flexbuffers.h
+  delete_build_files ${DOWNLOADED_FLATBUFFERS_PATH}
 fi
 
 echo "SUCCESS"

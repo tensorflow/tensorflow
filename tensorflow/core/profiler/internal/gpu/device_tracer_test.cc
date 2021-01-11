@@ -19,6 +19,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#if GOOGLE_CUDA
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime.h"
+#endif  // GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/direct_session.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -52,6 +56,7 @@ std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
   ProfileOptions options = ProfilerSession::DefaultOptions();
   return CreateGpuTracer(options);
 }
+
 #else
 // We don't have device tracer for non-cuda case.
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
@@ -290,6 +295,63 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   });
   EXPECT_GE(total_events, 5);
 }
+
+#if GOOGLE_CUDA
+TEST_F(DeviceTracerTest, CudaRuntimeResource) {
+  auto tracer = CreateGpuTracer();
+  if (!tracer) return;
+  const size_t size_in_bytes = 8;
+  const int8_t test_value = 7;
+  TF_EXPECT_OK(tracer->Start());
+  void* devptr = 0;
+  // These four CUDA API calls will create 4 XEvents.
+  ASSERT_EQ(cudaSuccess, cudaMalloc(&devptr, size_in_bytes));
+  ASSERT_EQ(cudaSuccess, cudaMemset(devptr, test_value, size_in_bytes));
+  int8_t buffer[size_in_bytes];
+  ASSERT_EQ(cudaSuccess,
+            cudaMemcpy(buffer, devptr, size_in_bytes, cudaMemcpyDeviceToHost));
+  ASSERT_EQ(cudaSuccess, cudaFree(devptr));
+  TF_EXPECT_OK(tracer->Stop());
+  for (int8_t value_from_device : buffer) {
+    EXPECT_EQ(value_from_device, test_value);
+  }
+
+  XSpace space;
+  TF_EXPECT_OK(tracer->CollectData(&space));
+  const XPlane* cupti_host_plane =
+      FindPlaneWithName(space, kCuptiDriverApiPlaneName);
+  ASSERT_NE(cupti_host_plane, nullptr);
+
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(cupti_host_plane);
+  EXPECT_EQ(plane.NumLines(), 1);
+
+  // These follow the order in which they were invoked above.
+  const StatType expected_stat_type[] = {
+      kMemallocDetails,
+      kMemsetDetails,
+      kMemcpyDetails,
+      kMemFreeDetails,
+  };
+
+  int event_idx = 0;
+
+  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    VLOG(3) << "Line " << line.Id() << "\n";
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      VLOG(3) << " Event " << *event.Type() << "\n";
+      absl::optional<XStatVisitor> stat =
+          event.GetStat(expected_stat_type[event_idx]);
+      EXPECT_TRUE(stat.has_value());
+      VLOG(3) << "  Stat name=" << stat->Name() << " type=" << *stat->Type()
+              << " " << stat->ToString() << "\n";
+      event_idx += 1;
+    });
+  });
+
+  // One event for each API call.
+  EXPECT_EQ(event_idx, 4);
+}
+#endif
 
 }  // namespace
 }  // namespace profiler

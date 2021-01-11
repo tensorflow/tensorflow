@@ -878,9 +878,27 @@ Example:
   }];
 }
 
+def TF_EnqueueTPUEmbeddingBatchOp : TF_Op<"EnqueueTPUEmbeddingBatch", [TF_TPUEmbeddingSideEffect]> {
+  let summary = [{
+An op that enqueues a list of input batch tensors to TPUEmbedding.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_StrTensor>:$batch,
+    TF_StrTensor:$mode_override,
+
+    DefaultValuedAttr<I64Attr, "-1">:$device_ordinal,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$combiners
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
-def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
   let summary = "Performs gradient updates of embedding tables.";
 
   let description = [{
@@ -911,7 +929,7 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
-def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+def TF__SendTPUEmbeddingGradientsOp : TF_Op<"_SendTPUEmbeddingGradients", [AttrSizedOperandSegments, TF_TPUEmbeddingSideEffect]> {
   let summary = "Performs gradient updates of embedding tables.";
 
   let description = [{
@@ -2024,5 +2042,48 @@ argument "ref" in addition to returning the results.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TPUPartitionedInputOp : TF_Op<"TPUPartitionedInput", [NoSideEffect]> {
+  let summary = [{
+An op that groups a list of partitioned inputs together. This op
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_TPUPartitionedOutputOp : TF_Op<"TPUPartitionedOutput", [NoSideEffect]> {
+  let summary = [{
+An op that demultiplexes a tensor to be sharded by XLA to a list of partitioned
+  }];
+
+  let description = [{
+outputs outside the XLA computation.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$inputs,
+
+    DefaultValuedAttr<I64Attr, "0">:$partition_dim,
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_splits = TF_DerivedResultSizeAttr<0>;
+}
 
 #endif // TF_OPS

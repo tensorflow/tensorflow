@@ -99,10 +99,6 @@ class TPUEmbeddingCheckpointTest(parameterized.TestCase, test.TestCase):
     self.cpu_mid_level = self.build_mid_level(
         self.second_mid_level_contents, self.cpu_mid_level_optimizer)
 
-  def tearDown(self):
-    tpu_strategy_util.shutdown_tpu_system(self.resolver)
-    super(TPUEmbeddingCheckpointTest, self).tearDown()
-
   def test_checkpoint_save_retrieves(self):
     # Ensure that the variables from the first model are loaded.
     self.first_mid_level._load_variables()
@@ -400,11 +396,6 @@ class TPUEmbeddingTest(parameterized.TestCase, test.TestCase):
     self.feature_friends_values = [3, 0, 1, 2, 3, 0, 1, 2]
     self.feature_friends_row_lengths = [1, 3, 1, 3]
     self.resolver = None
-
-  def tearDown(self):
-    if self.resolver:
-      tpu_strategy_util.shutdown_tpu_system(self.resolver)
-    super(TPUEmbeddingTest, self).tearDown()
 
   def test_tables_with_same_name(self):
     with self.assertRaisesRegex(

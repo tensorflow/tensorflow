@@ -58,7 +58,7 @@ Status CreateUncachedKernelAndDeviceOp(
                                       ctx.HostCPU()));
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-  return kernel->get()->Init({ctx.LogDevicePlacement()}, ndef,
+  return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
                              /*graph_collector=*/nullptr);
 }
 
@@ -333,8 +333,13 @@ Status SerializePackedHandle(const uint64 op_id, TensorHandle* packed_handle,
       const bool serialize_resource_dtype_and_shape =
           (i == 0) && (h->dtype == DT_RESOURCE) &&
           (!ctx->OnSameTask(src_device, target_device));
+      // For a remote component function, a function execution request and an
+      // input generation request may come from different workers. We need to
+      // guarantee that the input generation request is processed before the
+      // function execution request, so wait until the underlying remote handles
+      // are ready before sending a packed handle to the function device.
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          h, /*wait_until_ready=*/false,
+          h, /*wait_until_ready=*/true,
           op->add_handles()->mutable_remote_handle(), src_device,
           absl::get<Device*>(h->DeviceOrHostCPU(*ctx))->name(),
           serialize_resource_dtype_and_shape));

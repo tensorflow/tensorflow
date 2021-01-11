@@ -482,11 +482,6 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
 }
 
-void TFE_ContextOptionsSetLazyRemoteInputsCopy(TFE_ContextOptions* options,
-                                               bool lazy_copy) {
-  options->lazy_remote_inputs_copy = lazy_copy;
-}
-
 void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
   options->use_tfrt = use_tfrt;
 }

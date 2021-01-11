@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -407,7 +409,79 @@ REGISTER_OP("XlaPad")
     .Output("output: T")
     .Attr("T: type")
     .Attr("Tindices: {int32, int64}")
-    .SetShapeFn(UnchangedRank)
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle input_shape_handle = c->input(0);
+      if (!c->FullyDefined(input_shape_handle)) {
+        return UnchangedRank(c);
+      }
+      const int32 op_rank = c->Rank(input_shape_handle);
+
+      shape_inference::ShapeHandle padding_shape_handle = c->input(1);
+      if (!c->RankKnown(padding_shape_handle) ||
+          c->Rank(padding_shape_handle) != 0) {
+        return errors::InvalidArgument(
+            "padding_value input must be scalar, found rank ",
+            c->Rank(padding_shape_handle));
+      }
+      const Tensor* padding_low_tensor = c->input_tensor(2);
+      const Tensor* padding_high_tensor = c->input_tensor(3);
+      const Tensor* padding_interior_tensor = c->input_tensor(4);
+      if (padding_low_tensor == nullptr || padding_high_tensor == nullptr ||
+          padding_interior_tensor == nullptr) {
+        return UnchangedRank(c);
+      }
+
+      if (padding_low_tensor->shape().dims() != 1 ||
+          padding_low_tensor->shape().dim_size(0) != op_rank) {
+        return errors::InvalidArgument(
+            "padding_low must be a 1D tensor of size ", op_rank);
+      }
+      if (padding_high_tensor->shape().dims() != 1 ||
+          padding_high_tensor->shape().dim_size(0) != op_rank) {
+        return errors::InvalidArgument(
+            "padding_high must be a 1D tensor of size ", op_rank);
+      }
+      if (padding_interior_tensor->shape().dims() != 1 ||
+          padding_interior_tensor->shape().dim_size(0) != op_rank) {
+        return errors::InvalidArgument(
+            "padding_interior must be a 1D tensor of size ", op_rank);
+      }
+      std::vector<shape_inference::DimensionHandle> output_dims;
+      output_dims.reserve(op_rank);
+      for (int64 i = 0; i < op_rank; ++i) {
+        int64 low, high, interior;
+        TF_RETURN_IF_ERROR(c->GetScalarFromTensor(padding_low_tensor, i, &low));
+        TF_RETURN_IF_ERROR(
+            c->GetScalarFromTensor(padding_high_tensor, i, &high));
+        TF_RETURN_IF_ERROR(
+            c->GetScalarFromTensor(padding_interior_tensor, i, &interior));
+        if (interior < 0) {
+          return errors::InvalidArgument(
+              "padding_interior must contain only non-negative values, found ",
+              interior);
+        }
+
+        shape_inference::DimensionHandle orig_size_handle =
+            c->Dim(input_shape_handle, i);
+        if (c->ValueKnown(orig_size_handle)) {
+          auto orig_dim = c->Value(orig_size_handle);
+          int64 new_dim = orig_dim + low + high;
+          if (orig_dim > 0) {
+            new_dim += interior * (orig_dim - 1);
+          }
+          if (new_dim < 0) {
+            return errors::InvalidArgument(
+                "resulting padded dimension has negative size ", new_dim);
+          }
+          output_dims.emplace_back(c->MakeDim(new_dim));
+        } else {
+          output_dims.emplace_back(c->UnknownDim());
+        }
+      }
+
+      c->set_output(0, c->MakeShape(output_dims));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Wraps the XLA Pad operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#pad
@@ -415,9 +489,13 @@ Wraps the XLA Pad operator, documented at
 
 input: A `Tensor` of type T.
 padding_value: A scalar `Tensor` of type T.
-padding_low: the padding to apply at the start of each input dimensions
-padding_high: the padding to apply at the end of each input dimension.
-padding_interior: the padding to apply between each input element.
+padding_low: the padding to apply at the start of each input dimensions. Must
+  be a compile-time constant 1D tensor of length equal to rank of input.
+padding_high: the padding to apply at the end of each input dimension. Must
+  be a compile-time constant 1D tensor of length equal to rank of input.
+padding_interior: the padding to apply between each input element. Must
+  be a compile-time constant 1D tensor of length equal to rank of input,
+  containing only non-negative values.
 output: A `Tensor` of type T.
 )doc");
 
@@ -649,6 +727,36 @@ keys: A `Tensor` of type K.
 values: A `Tensor` of type V.
 sorted_keys: A `Tensor` of type K.
 sorted_values: A `Tensor` of type V.
+)doc");
+
+REGISTER_OP("XlaVariadicSort")
+    .Input("inputs: T")
+    .Input("dimension: int32")
+    .Output("outputs: T")
+    .Attr("T: list(type) >= 1")
+    .Attr("comparator: func")
+    .Attr("is_stable: bool")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<shape_inference::ShapeHandle> input_shapes;
+      TF_RETURN_IF_ERROR(c->input("inputs", &input_shapes));
+      TF_RETURN_IF_ERROR(c->set_output("outputs", input_shapes));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the XLA Sort operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts one or more tensors, with support for custom comparator, dimension, and
+is_stable attributes.
+
+inputs: A list of `Tensor` of identical shape but possibly different types.
+dimension: The dimension along which to sort. Must be a compile-time constant.
+is_stable: Whether to use stable sort.
+comparator: A comparator function to apply to 2*N scalars and returning a
+  boolean. N is the number of sort inputs. If you want to sort in ascending
+  order then the comparator should perform a less-than comparison.
+outputs: A list of `Tensor` of same shape and types as the `input`.
 )doc");
 
 // TODO(b/37549631) setting the While Op to always be stateful is too

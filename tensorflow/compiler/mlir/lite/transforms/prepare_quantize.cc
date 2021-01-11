@@ -30,10 +30,10 @@ limitations under the License.
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -43,8 +43,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
-#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_lstm.h"
+#include "tensorflow/compiler/mlir/lite/transforms/prepare_quantize_helper.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> quantize_allowlist(
@@ -79,6 +80,10 @@ namespace TFL {
 
 namespace {
 
+auto* tflite_quantizer_usage_stats = tensorflow::monitoring::Counter<1>::New(
+    "/tensorflow/lite/quantization/transforms/stats",
+    "The number of quantization pass invocations.", "path");
+
 // Applies prepare quantization on the model in TFL dialect. This pass runs
 // before the quantization pass and propagate the quantization parameters
 // across ops. This step is necessary for post-training quantization and also
@@ -87,8 +92,8 @@ namespace {
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect,
-                    ::mlir::quant::QuantizationDialect>();
+    registry
+        .insert<TensorFlowLiteDialect, ::mlir::quant::QuantizationDialect>();
   }
 
  public:
@@ -321,18 +326,16 @@ bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
-using PrepareLstmQuantStats =
-    TFL::ConvertLstmStatsToQDQs<TFL::UnidirectionalSequenceLSTMOp,
-                                quant::QuantizeCastOp, quant::DequantizeCastOp>;
-
 void PrepareQuantizePass::runOnFunction() {
   FuncOp func = getFunction();
   MLIRContext* ctx = func.getContext();
   ConvertTFLQuantOpsToMlirQuantOps(func);
 
   if (quant_specs_.post_training_quantization) {
+    tflite_quantizer_usage_stats->GetCell("post_training")->IncrementBy(1);
     RemoveRedundantStats(func);
   } else {
+    tflite_quantizer_usage_stats->GetCell("during_training")->IncrementBy(1);
     // Set the quantization parameters for the quantizable input nodes. If this
     // failed, return the function immediately. This is only required for
     // quantization aware training model conversion.
@@ -341,9 +344,6 @@ void PrepareQuantizePass::runOnFunction() {
     }
   }
 
-  // During the legalization, unsigned quantized type is used, so we have to
-  // convert all of them to signed.
-  OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   int bit_width = quant_specs_.GetQuantizationTypeWidth();
   // When this is true, the quantizer will try its best to extract the
@@ -357,18 +357,40 @@ void PrepareQuantizePass::runOnFunction() {
   bool infer_tensor_range =
       (quant_specs_.post_training_quantization || eager_quantize) &&
       !quant_specs_.disable_infer_tensor_range;
+
+  // LSTM's restrict_scale requirement should be handled before converting stats
+  // to Q-DQ ops. The pattern is applied for non-PTQ case to make op ordering
+  // consistent. Otherwise some FileCheck tests would fail.
+  OwningRewritePatternList patterns_1;
+  if (quant_specs_.post_training_quantization) {
+    patterns_1.insert<PrepareLstmOutputScale<LSTMOp>>(ctx);
+    patterns_1.insert<PrepareLstmOutputScale<UnidirectionalSequenceLSTMOp>>(
+        ctx);
+  }
+  applyPatternsAndFoldGreedily(func, std::move(patterns_1));
+
+  // During the legalization, unsigned quantized type is used, so we have to
+  // convert all of them to signed.
+  OwningRewritePatternList patterns_2;
   if (is_signed) {
-    patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
+    patterns_2.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(
+        ctx);
     // Convert quant stats to int8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(bit_width, false, true, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, true, ctx);
   } else {
     // Convert quant stats to uint8 quantization parameters.
     // Currently, only activation stats are imported, so narrow_range = false.
-    patterns.insert<PrepareQuantStats>(bit_width, false, false, ctx);
+    patterns_2.insert<PrepareQuantStats>(bit_width, false, false, ctx);
   }
-  patterns.insert<PrepareLstmQuantStats>(ctx, quant_specs_);
-  applyPatternsAndFoldGreedily(func, std::move(patterns));
+
+  if (quant_specs_.post_training_quantization) {
+    patterns_2.insert<ConvertLstmStatsToQDQs<LSTMOp>>(ctx, quant_specs_);
+    patterns_2.insert<ConvertLstmStatsToQDQs<UnidirectionalSequenceLSTMOp>>(
+        ctx, quant_specs_);
+    patterns_2.insert<ConvertSvdfStatsToQDQs>(ctx);
+  }
+  applyPatternsAndFoldGreedily(func, std::move(patterns_2));
 
   SanityCheckAndAdjustment(func);
 

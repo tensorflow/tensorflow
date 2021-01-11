@@ -130,7 +130,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE());
+  AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -205,7 +207,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SELECT_V2, Register_SELECT_V2());
   AddBuiltin(BuiltinOperator_SLICE, Register_SLICE(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_SIN, Register_SIN());
   AddBuiltin(BuiltinOperator_COS, Register_COS());
   AddBuiltin(BuiltinOperator_TRANSPOSE_CONV, Register_TRANSPOSE_CONV(),
@@ -275,7 +277,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
   AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND(),
              /* min_version = */ 1,
@@ -299,7 +301,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_CUMSUM, Register_CUMSUM());
   // The version one of broadcast to op won't be not supported since the version
   // one was rollbacked and the builtin op code number has been changed because

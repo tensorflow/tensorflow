@@ -265,10 +265,6 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
-// Sets whether to copy the remote inputs of a function lazily.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
-    TFE_ContextOptions*, bool lazy_copy);
-
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);

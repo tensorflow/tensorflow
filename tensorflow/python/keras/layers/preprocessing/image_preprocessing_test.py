@@ -56,24 +56,36 @@ class ResizingTest(keras_parameterized.TestCase):
           expected_output_shape=(None, expected_height, expected_width,
                                  channels))
 
-  @parameterized.named_parameters(
-      ('down_sample_bilinear_2_by_2', {'interpolation': 'bilinear'}, 2, 2),
-      ('down_sample_bilinear_3_by_2', {'interpolation': 'bilinear'}, 3, 2),
-      ('down_sample_nearest_2_by_2', {'interpolation': 'nearest'}, 2, 2),
-      ('down_sample_nearest_3_by_2', {'interpolation': 'nearest'}, 3, 2),
-      ('down_sample_area_2_by_2', {'interpolation': 'area'}, 2, 2),
-      ('down_sample_area_3_by_2', {'interpolation': 'area'}, 3, 2))
+  @parameterized.named_parameters(('down_sample_bilinear_2_by_2', {
+      'interpolation': 'bilinear'
+  }, 2, 2), ('down_sample_bilinear_3_by_2', {
+      'interpolation': 'bilinear'
+  }, 3, 2), ('down_sample_nearest_2_by_2', {
+      'interpolation': 'nearest'
+  }, 2, 2), ('down_sample_nearest_3_by_2', {
+      'interpolation': 'nearest'
+  }, 3, 2), ('down_sample_area_2_by_2', {
+      'interpolation': 'area'
+  }, 2, 2), ('down_sample_area_3_by_2', {
+      'interpolation': 'area'
+  }, 3, 2))
   def test_down_sampling(self, kwargs, expected_height, expected_width):
     with CustomObjectScope({'Resizing': image_preprocessing.Resizing}):
       self._run_test(kwargs, expected_height, expected_width)
 
-  @parameterized.named_parameters(
-      ('up_sample_bilinear_10_by_12', {'interpolation': 'bilinear'}, 10, 12),
-      ('up_sample_bilinear_12_by_12', {'interpolation': 'bilinear'}, 12, 12),
-      ('up_sample_nearest_10_by_12', {'interpolation': 'nearest'}, 10, 12),
-      ('up_sample_nearest_12_by_12', {'interpolation': 'nearest'}, 12, 12),
-      ('up_sample_area_10_by_12', {'interpolation': 'area'}, 10, 12),
-      ('up_sample_area_12_by_12', {'interpolation': 'area'}, 12, 12))
+  @parameterized.named_parameters(('up_sample_bilinear_10_by_12', {
+      'interpolation': 'bilinear'
+  }, 10, 12), ('up_sample_bilinear_12_by_12', {
+      'interpolation': 'bilinear'
+  }, 12, 12), ('up_sample_nearest_10_by_12', {
+      'interpolation': 'nearest'
+  }, 10, 12), ('up_sample_nearest_12_by_12', {
+      'interpolation': 'nearest'
+  }, 12, 12), ('up_sample_area_10_by_12', {
+      'interpolation': 'area'
+  }, 10, 12), ('up_sample_area_12_by_12', {
+      'interpolation': 'area'
+  }, 12, 12))
   def test_up_sampling(self, kwargs, expected_height, expected_width):
     with CustomObjectScope({'Resizing': image_preprocessing.Resizing}):
       self._run_test(kwargs, expected_height, expected_width)
@@ -112,8 +124,9 @@ class ResizingTest(keras_parameterized.TestCase):
         expected_output = np.reshape(expected_output, (1, 4, 4, 1))
         self.assertAllEqual(expected_output, output_image)
 
-  @parameterized.named_parameters(
-      ('reshape_bilinear_10_by_4', {'interpolation': 'bilinear'}, 10, 4))
+  @parameterized.named_parameters(('reshape_bilinear_10_by_4', {
+      'interpolation': 'bilinear'
+  }, 10, 4))
   def test_reshaping(self, kwargs, expected_height, expected_width):
     with CustomObjectScope({'Resizing': image_preprocessing.Resizing}):
       self._run_test(kwargs, expected_height, expected_width)
@@ -151,8 +164,8 @@ class CenterCropTest(keras_parameterized.TestCase):
     kwargs = {'height': expected_height, 'width': expected_width}
     input_images = np.random.random(
         (num_samples, orig_height, orig_width, channels)).astype(np.float32)
-    expected_output = get_numpy_center_crop(
-        input_images, expected_height, expected_width)
+    expected_output = get_numpy_center_crop(input_images, expected_height,
+                                            expected_width)
     with testing_utils.use_gpu():
       testing_utils.layer_test(
           image_preprocessing.CenterCrop,
@@ -163,31 +176,27 @@ class CenterCropTest(keras_parameterized.TestCase):
           expected_output_shape=(None, expected_height, expected_width,
                                  channels))
 
-  @parameterized.named_parameters(
-      ('center_crop_3_by_4', 3, 4),
-      ('center_crop_3_by_2', 3, 2))
+  @parameterized.named_parameters(('center_crop_3_by_4', 3, 4),
+                                  ('center_crop_3_by_2', 3, 2))
   def test_center_crop_aligned(self, expected_height, expected_width):
     with CustomObjectScope({'CenterCrop': image_preprocessing.CenterCrop}):
       self._run_test(expected_height, expected_width)
 
-  @parameterized.named_parameters(
-      ('center_crop_4_by_5', 4, 5),
-      ('center_crop_4_by_3', 4, 3))
+  @parameterized.named_parameters(('center_crop_4_by_5', 4, 5),
+                                  ('center_crop_4_by_3', 4, 3))
   def test_center_crop_mis_aligned(self, expected_height, expected_width):
     with CustomObjectScope({'CenterCrop': image_preprocessing.CenterCrop}):
       self._run_test(expected_height, expected_width)
 
-  @parameterized.named_parameters(
-      ('center_crop_4_by_6', 4, 6),
-      ('center_crop_3_by_2', 3, 2))
+  @parameterized.named_parameters(('center_crop_4_by_6', 4, 6),
+                                  ('center_crop_3_by_2', 3, 2))
   def test_center_crop_half_mis_aligned(self, expected_height, expected_width):
     with CustomObjectScope({'CenterCrop': image_preprocessing.CenterCrop}):
       self._run_test(expected_height, expected_width)
 
-  @parameterized.named_parameters(
-      ('center_crop_5_by_12', 5, 12),
-      ('center_crop_10_by_8', 10, 8),
-      ('center_crop_10_by_12', 10, 12))
+  @parameterized.named_parameters(('center_crop_5_by_12', 5, 12),
+                                  ('center_crop_10_by_8', 10, 8),
+                                  ('center_crop_10_by_12', 10, 12))
   def test_invalid_center_crop(self, expected_height, expected_width):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 r'assertion failed'):
@@ -218,28 +227,23 @@ class RandomCropTest(keras_parameterized.TestCase):
           expected_output_shape=(None, expected_height, expected_width,
                                  channels))
 
-  @parameterized.named_parameters(
-      ('random_crop_5_by_12', 5, 12),
-      ('random_crop_10_by_8', 10, 8),
-      ('random_crop_10_by_12', 10, 12))
+  @parameterized.named_parameters(('random_crop_5_by_12', 5, 12),
+                                  ('random_crop_10_by_8', 10, 8),
+                                  ('random_crop_10_by_12', 10, 12))
   def test_invalid_random_crop(self, expected_height, expected_width):
     with self.assertRaises(errors.InvalidArgumentError):
       with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
         self._run_test(expected_height, expected_width)
 
   def test_training_with_mock(self):
-    if test.is_built_with_rocm():
-      # TODO(rocm):
-      # re-enable this test once ROCm adds support for
-      # the StatefulUniformFullInt Op (on the GPU)
-      self.skipTest('Feature not supported on ROCm')
     np.random.seed(1337)
     height, width = 3, 4
     height_offset = np.random.randint(low=0, high=3)
     width_offset = np.random.randint(low=0, high=5)
     mock_offset = [0, height_offset, width_offset, 0]
     with test.mock.patch.object(
-        stateless_random_ops, 'stateless_random_uniform',
+        stateless_random_ops,
+        'stateless_random_uniform',
         return_value=mock_offset):
       with testing_utils.use_gpu():
         layer = image_preprocessing.RandomCrop(height, width)
@@ -249,15 +253,9 @@ class RandomCropTest(keras_parameterized.TestCase):
                               width_offset:(width_offset + width), :]
         self.assertAllClose(expected_output, actual_output)
 
-  @parameterized.named_parameters(
-      ('random_crop_4_by_6', 4, 6),
-      ('random_crop_3_by_2', 3, 2))
+  @parameterized.named_parameters(('random_crop_4_by_6', 4, 6),
+                                  ('random_crop_3_by_2', 3, 2))
   def test_random_crop_output_shape(self, expected_height, expected_width):
-    if test.is_built_with_rocm():
-      # TODO(rocm):
-      # re-enable this test once ROCm adds support for
-      # the StatefulUniformFullInt Op (on the GPU)
-      self.skipTest('Feature not supported on ROCm')
     with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
       self._run_test(expected_height, expected_width)
 
@@ -283,8 +281,7 @@ class RandomCropTest(keras_parameterized.TestCase):
     with testing_utils.use_gpu():
       layer = image_preprocessing.RandomCrop(height, width)
       actual_output = layer(inp, training=0)
-      resized_inp = image_ops.resize_images_v2(
-          inp, size=[5, 3])
+      resized_inp = image_ops.resize_images_v2(inp, size=[5, 3])
       expected_output = resized_inp[:, 1:4, :, :]
       self.assertAllClose(expected_output, actual_output)
 
@@ -310,7 +307,7 @@ class RescalingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_rescaling_base(self):
-    kwargs = {'scale': 1./127.5, 'offset': -1.}
+    kwargs = {'scale': 1. / 127.5, 'offset': -1.}
     testing_utils.layer_test(
         image_preprocessing.Rescaling,
         kwargs=kwargs,
@@ -319,18 +316,18 @@ class RescalingTest(keras_parameterized.TestCase):
 
   @testing_utils.run_v2_only
   def test_rescaling_correctness_float(self):
-    layer = image_preprocessing.Rescaling(scale=1./127.5, offset=-1.)
+    layer = image_preprocessing.Rescaling(scale=1. / 127.5, offset=-1.)
     inputs = random_ops.random_uniform((2, 4, 5, 3))
     outputs = layer(inputs)
-    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1./127.5) - 1)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1. / 127.5) - 1)
 
   @testing_utils.run_v2_only
   def test_rescaling_correctness_int(self):
-    layer = image_preprocessing.Rescaling(scale=1./127.5, offset=-1)
+    layer = image_preprocessing.Rescaling(scale=1. / 127.5, offset=-1)
     inputs = random_ops.random_uniform((2, 4, 5, 3), 0, 100, dtype='int32')
     outputs = layer(inputs)
     self.assertEqual(outputs.dtype.name, 'float32')
-    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1./127.5) - 1)
+    self.assertAllClose(outputs.numpy(), inputs.numpy() * (1. / 127.5) - 1)
 
   def test_config_with_custom_name(self):
     layer = image_preprocessing.Rescaling(0.5, name='rescaling')
@@ -426,11 +423,7 @@ class RandomFlipTest(keras_parameterized.TestCase):
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class RandomContrastTest(keras_parameterized.TestCase):
 
-  def _run_test(self,
-                lower,
-                upper,
-                expected_output=None,
-                mock_random=None):
+  def _run_test(self, lower, upper, expected_output=None, mock_random=None):
     np.random.seed(1337)
     num_samples = 2
     orig_height = 5
@@ -452,18 +445,16 @@ class RandomContrastTest(keras_parameterized.TestCase):
         actual_output = layer(inp, training=True)
         self.assertAllClose(expected_output, actual_output)
 
-  @parameterized.named_parameters(
-      ('random_contrast_2_by_5', 0.2, 0.5),
-      ('random_contrast_2_by_13', 0.2, 1.3),
-      ('random_contrast_5_by_2', 0.5, 0.2))
+  @parameterized.named_parameters(('random_contrast_2_by_5', 0.2, 0.5),
+                                  ('random_contrast_2_by_13', 0.2, 1.3),
+                                  ('random_contrast_5_by_2', 0.5, 0.2))
   def test_random_contrast(self, lower, upper):
     with CustomObjectScope(
         {'RandomContrast': image_preprocessing.RandomContrast}):
       self._run_test(lower, upper)
 
-  @parameterized.named_parameters(
-      ('random_contrast_amplitude_2', 0.2),
-      ('random_contrast_amplitude_5', 0.5))
+  @parameterized.named_parameters(('random_contrast_amplitude_2', 0.2),
+                                  ('random_contrast_amplitude_5', 0.5))
   def test_random_contrast_amplitude(self, amplitude):
     with CustomObjectScope(
         {'RandomContrast': image_preprocessing.RandomContrast}):
@@ -1002,8 +993,10 @@ class RandomTransformTest(keras_parameterized.TestCase):
     # pyformat: enable
     transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
     self._run_random_transform_with_mock(
-        transform_matrix, expected_output,
-        mode='constant', interpolation='nearest')
+        transform_matrix,
+        expected_output,
+        mode='constant',
+        interpolation='nearest')
 
     # Test up shift by 1.
     # pyformat: disable
@@ -1016,8 +1009,10 @@ class RandomTransformTest(keras_parameterized.TestCase):
     # pyformat: enable
     transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
     self._run_random_transform_with_mock(
-        transform_matrix, expected_output,
-        mode='constant', interpolation='nearest')
+        transform_matrix,
+        expected_output,
+        mode='constant',
+        interpolation='nearest')
 
     # Test left shift by 1.
     # pyformat: disable
@@ -1030,8 +1025,10 @@ class RandomTransformTest(keras_parameterized.TestCase):
     # pyformat: enable
     transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
     self._run_random_transform_with_mock(
-        transform_matrix, expected_output,
-        mode='constant', interpolation='nearest')
+        transform_matrix,
+        expected_output,
+        mode='constant',
+        interpolation='nearest')
 
     # Test right shift by 1.
     # pyformat: disable
@@ -1044,8 +1041,10 @@ class RandomTransformTest(keras_parameterized.TestCase):
     # pyformat: enable
     transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
     self._run_random_transform_with_mock(
-        transform_matrix, expected_output,
-        mode='constant', interpolation='nearest')
+        transform_matrix,
+        expected_output,
+        mode='constant',
+        interpolation='nearest')
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -1083,8 +1082,6 @@ class RandomRotationTest(keras_parameterized.TestCase):
 
   def test_distribution_strategy(self):
     """Tests that RandomRotation can be created within distribution strategies.
-
-    And that replicas got the same random result.
     """
     input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
     with testing_utils.use_gpu():
@@ -1094,7 +1091,6 @@ class RandomRotationTest(keras_parameterized.TestCase):
         output = strat.run(lambda: layer(input_images, training=True))
       values = output.values
       self.assertAllEqual(2, len(values))
-      self.assertAllClose(values[0], values[1], rtol=1e-5)
 
   @testing_utils.run_v2_only
   def test_config_with_custom_name(self):
@@ -1193,8 +1189,7 @@ class RandomZoomTest(keras_parameterized.TestCase):
         self.assertAllEqual(expected_output, output_image)
 
   def test_random_zoom_inference(self):
-    with CustomObjectScope(
-        {'RandomZoom': image_preprocessing.RandomZoom}):
+    with CustomObjectScope({'RandomZoom': image_preprocessing.RandomZoom}):
       input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
       expected_output = input_images
       with testing_utils.use_gpu():
@@ -1239,7 +1234,8 @@ class RandomHeightTest(keras_parameterized.TestCase):
     with test.mock.patch.object(
         gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
       with test.mock.patch.object(
-          gen_stateless_random_ops_v2, 'stateless_random_uniform_v2',
+          gen_stateless_random_ops_v2,
+          'stateless_random_uniform_v2',
           return_value=mock_factor):
         with testing_utils.use_gpu():
           img = np.random.random((12, 5, 8, 3))
@@ -1254,8 +1250,8 @@ class RandomHeightTest(keras_parameterized.TestCase):
         layer = image_preprocessing.RandomHeight(factor=(1., 1.))
         # Return type of RandomHeight() is float32 if `interpolation` is not
         # set to `ResizeMethod.NEAREST_NEIGHBOR`; cast `layer` to desired dtype.
-        output_image = math_ops.cast(layer(np.expand_dims(input_image, axis=0)),
-                                     dtype=dtype)
+        output_image = math_ops.cast(
+            layer(np.expand_dims(input_image, axis=0)), dtype=dtype)
         # pyformat: disable
         expected_output = np.asarray([
             [0, 1, 2],
@@ -1333,7 +1329,8 @@ class RandomWidthTest(keras_parameterized.TestCase):
     with test.mock.patch.object(
         gen_stateful_random_ops, 'stateful_uniform', return_value=mock_factor):
       with test.mock.patch.object(
-          gen_stateless_random_ops_v2, 'stateless_random_uniform_v2',
+          gen_stateless_random_ops_v2,
+          'stateless_random_uniform_v2',
           return_value=mock_factor):
         with testing_utils.use_gpu():
           img = np.random.random((12, 8, 5, 3))
@@ -1348,8 +1345,8 @@ class RandomWidthTest(keras_parameterized.TestCase):
         layer = image_preprocessing.RandomWidth(factor=(1., 1.))
         # Return type of RandomWidth() is float32 if `interpolation` is not
         # set to `ResizeMethod.NEAREST_NEIGHBOR`; cast `layer` to desired dtype.
-        output_image = math_ops.cast(layer(np.expand_dims(input_image, axis=0)),
-                                     dtype=dtype)
+        output_image = math_ops.cast(
+            layer(np.expand_dims(input_image, axis=0)), dtype=dtype)
         # pyformat: disable
         expected_output = np.asarray([
             [0, 0.25, 0.75, 1],

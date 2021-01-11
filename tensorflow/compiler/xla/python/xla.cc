@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
-#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/ops.h"
@@ -59,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace xla {
@@ -106,9 +106,11 @@ PYBIND11_MODULE(xla_extension, m) {
     import_array1(false);
     return true;
   };
-  if (!init_numpy() || !InitializeNumpyAPIForTypes()) {
+  if (!init_numpy()) {
     throw std::runtime_error("Unable to initialize Numpy API");
   }
+
+  CHECK(tensorflow::RegisterNumpyBfloat16());
 
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
@@ -132,7 +134,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
 
-  m.def("bfloat16_dtype", Bfloat16Dtype);
+  m.def("bfloat16_dtype",
+        []() { return py::handle(tensorflow::Bfloat16Dtype()); });
 
   // Must be before PyClient.compile.
   BuildXlaCompilerSubmodule(m);
@@ -149,7 +152,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("host_id", &PjRtDevice::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
-      .def_property_readonly("platform", &PjRtDevice::platform_name)
+      .def_property_readonly("platform",
+                             [](const PjRtDevice& device) {
+                               return device.client()->platform_name();
+                             })
       .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
           "client",
@@ -234,7 +240,7 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def("device_count", &PyClient::device_count)
-      .def("local_device_count", &PyClient::local_device_count)
+      .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
       .def("host_id", &PyClient::host_id)
@@ -343,6 +349,7 @@ PYBIND11_MODULE(xla_extension, m) {
             return npy_value_;
           })
       .def("copy_to_device", &PyBuffer::CopyToDevice)
+      .def("on_device_size_in_bytes", &PyBuffer::OnDeviceSizeInBytes)
       .def("delete", &PyBuffer::Delete)
       // The GIL is released within BlockHostUntilReady.
       .def("block_until_ready",
@@ -381,10 +388,10 @@ PYBIND11_MODULE(xla_extension, m) {
            [](PyExecutable* exec) {
              auto span = exec->addressable_device_logical_ids();
              // Not on dispatch critical path, so ok to have heap allocation.
-             std::vector<std::pair<int, int>> addressable_device_logical_ids;
-             addressable_device_logical_ids.reserve(span.size());
+             std::vector<std::pair<int, int>> addressable_device_logic_ids;
+             addressable_device_logic_ids.reserve(span.size());
              for (const auto& logical_device_id : span) {
-               addressable_device_logical_ids.push_back(std::make_pair(
+               addressable_device_logic_ids.push_back(std::make_pair(
                    logical_device_id.replica, logical_device_id.partition));
              }
            })

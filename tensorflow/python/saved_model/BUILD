@@ -42,21 +42,21 @@ py_strict_library(
     name = "constants",
     srcs = ["constants.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:tf_export"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
     name = "signature_constants",
     srcs = ["signature_constants.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:tf_export"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
     name = "tag_constants",
     srcs = ["tag_constants.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:tf_export"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
 
 py_strict_library(
@@ -75,9 +75,9 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -97,9 +97,9 @@ py_strict_library(
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -137,8 +137,8 @@ py_strict_library(
         ":signature_def_utils",
         ":tag_constants",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -153,9 +153,9 @@ py_strict_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -205,9 +205,9 @@ py_strict_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lib",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -238,8 +238,8 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -347,7 +347,6 @@ py_strict_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:versions",
         "//tensorflow/python/eager:context",
@@ -360,6 +359,7 @@ py_strict_library(
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python/util:tf_export",
         "@absl_py//absl/logging",
     ],
 )
@@ -367,7 +367,6 @@ py_strict_library(
 tf_py_test(
     name = "save_test",
     srcs = ["save_test.py"],
-    tags = ["no_rocm"],
     deps = [
         ":loader",
         ":save",
@@ -407,7 +406,6 @@ py_library(
         "//tensorflow/python:lookup_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
@@ -421,6 +419,7 @@ py_library(
         "//tensorflow/python/training/tracking:base",
         "//tensorflow/python/training/tracking:graph_view",
         "//tensorflow/python/training/tracking:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -604,8 +603,8 @@ py_strict_library(
     name = "save_options",
     srcs = ["save_options.py"],
     deps = [
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
         "@enum34_archive//:enum",
         "@six_archive//:six",
     ],
@@ -615,7 +614,7 @@ py_strict_library(
     name = "load_options",
     srcs = ["load_options.py"],
     deps = [
-        "//tensorflow/python:tf_export",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -628,8 +627,8 @@ py_strict_library(
         ":loader",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -738,7 +738,7 @@ class OptimizerV2(trackable.Trackable):
 
     Should be used only in legacy v1 graph mode.
 
-    Arguments:
+    Args:
       loss: Loss tensor.
       params: List of variables.
 
@@ -1004,7 +1004,7 @@ class OptimizerV2(trackable.Trackable):
       lr_t = math_ops.cast(lr_t(local_step), var_dtype)
     if self._initial_decay > 0.:
       local_step = math_ops.cast(self.iterations, var_dtype)
-      decay_t = self._get_hyper("decay", var_dtype)
+      decay_t = math_ops.cast(self._initial_decay, var_dtype)
       lr_t = lr_t / (1. + decay_t * local_step)
     return lr_t
 
@@ -1037,7 +1037,7 @@ class OptimizerV2(trackable.Trackable):
     capable of instantiating the same optimizer from the config
     dictionary.
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the output of get_config.
         custom_objects: A Python dictionary mapping names to additional Python
           objects used to create this optimizer, such as a function used for a
@@ -1061,7 +1061,7 @@ class OptimizerV2(trackable.Trackable):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if tensor_util.is_tensor(value):
+    if tensor_util.is_tf_type(value):
       return backend.get_value(value)
     return value
 
@@ -1131,7 +1131,7 @@ class OptimizerV2(trackable.Trackable):
     >>> opt.iterations
     <tf.Variable 'RMSprop/iter:0' shape=() dtype=int64, numpy=10>
 
-    Arguments:
+    Args:
         weights: weight values as a list of numpy arrays.
     """
     params = self.weights

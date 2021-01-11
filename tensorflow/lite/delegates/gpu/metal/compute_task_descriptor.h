@@ -44,10 +44,6 @@ using DispatchParamsFunction = std::function<std::pair<uint3, uint3>(
 // building blocks. All required data like immutable operation parameters
 // (weights etc.) is attached to the descriptor.
 struct ComputeTaskDescriptor {
-  struct ImmutableBufferDescriptor {
-    std::string declaration;
-    std::vector<uint8_t> data;
-  };
   // Uniforms are recalculated at any setInputDimensions call.
   struct UniformBufferDescriptor {
     // The declaration is inserted into the compute function arguments list.
@@ -86,13 +82,9 @@ struct ComputeTaskDescriptor {
   //   output_buffer[linear_index] = value;
   // }
 
-  // when operation associative, we can rearrange input tensors
-  // for example add is associative
-  bool is_associative_op = false;
   std::string shader_source;
   std::vector<std::string> src_tensors_names;
   std::vector<std::string> dst_tensors_names;
-  std::vector<ImmutableBufferDescriptor> immutable_buffers;
   std::vector<UniformBufferDescriptor> uniform_buffers;
   // Dynamic resizing of input tensor is supported. User-defined functions to
   // calculate new parameters for GPU compute task dispatching. A leading

@@ -140,6 +140,8 @@ class BufferAllocation {
   // be live out of the entry computation.
   bool maybe_live_out() const { return maybe_live_out_; }
 
+  void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
+
   // Returns the size of the allocation. Necessarily this must be at least as
   // large as any LogicalBuffer assigned to this allocation.
   int64 size() const { return size_; }
@@ -272,14 +274,6 @@ class BufferAllocation {
     return index() < other.index();
   }
 
- private:
-  // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
-  friend class BufferAssigner;
-  friend class BufferAssignment;
-
-  // Adds a LogicalBuffer to the set assigned to this buffer.
-  void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
-
   void set_entry_computation_parameter(int64 parameter_number,
                                        ShapeIndex param_shape_index,
                                        bool parameter_aliased_with_output) {
@@ -289,8 +283,15 @@ class BufferAllocation {
     param_shape_index_ = std::move(param_shape_index);
   }
 
+ private:
+  // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
+  friend class BufferAssigner;
+  friend class BufferAssignment;
+
+  // Adds a LogicalBuffer to the set assigned to this buffer.
+  void AddAssignment(const HloValue& buffer, int64 offset, int64 size);
+
   void set_constant(bool is_constant) { is_constant_ = is_constant; }
-  void set_maybe_live_out(bool value) { maybe_live_out_ = value; }
   void set_index(Index index) { index_ = index; }
   void set_size(int64 size) { size_ = size; }
 
@@ -356,6 +357,14 @@ class BufferAssignment {
   // Returns the vector containing all buffer allocations in this assignment.
   const std::vector<BufferAllocation>& Allocations() const {
     return allocations_;
+  }
+
+  // This is similar to copying Allocations(), but since it's moved out, it
+  // preserves the addresses. Since BufferAllocation::Slice keeps a
+  // BufferAllocation*, and some backends keep BufferAllocation::Slice in
+  // xla::Executables, migrating off the use of addresses can be hard.
+  std::vector<BufferAllocation> ReleaseAllocations() {
+    return std::move(allocations_);
   }
 
   // Returns the total size allocation holding all temporary buffers.

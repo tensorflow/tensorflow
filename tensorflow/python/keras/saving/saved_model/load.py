@@ -146,7 +146,7 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
 
   # Recreate layers and metrics using the info stored in the metadata.
   keras_loader = KerasObjectLoader(metadata, object_graph_def)
-  keras_loader.load_layers()
+  keras_loader.load_layers(compile=compile)
 
   # Generate a dictionary of all loaded nodes.
   nodes_to_load = {'root': None}
@@ -371,7 +371,7 @@ class KerasObjectLoader(object):
           obj_child, child_proto, child_id)
       self.loaded_nodes[child_id] = obj_child, setter
 
-  def load_layers(self):
+  def load_layers(self, compile=True):  # pylint: disable=redefined-builtin
     """Load all layer nodes from the metadata."""
     # Load metrics after models and layers, since it's likely that models
     # and layers will create the metric when initialized (this avoids wasting
@@ -387,9 +387,20 @@ class KerasObjectLoader(object):
           node_metadata.metadata)
 
     for node_metadata in metric_list:
-      self.loaded_nodes[node_metadata.node_id] = self._load_layer(
-          node_metadata.node_id, node_metadata.identifier,
-          node_metadata.metadata)
+      try:
+        self.loaded_nodes[node_metadata.node_id] = self._load_layer(
+            node_metadata.node_id, node_metadata.identifier,
+            node_metadata.metadata)
+      except ValueError:
+        # Metrics are only needed when the model is compiled later. We ignore
+        # errors when trying to load custom metrics when `compile=False` until
+        # custom metrics are serialized properly (b/135550038).
+        if compile:
+          raise
+        logging.warning('Unable to restore custom metric. Please ensure that '
+                        'the layer implements `get_config` and `from_config` '
+                        'when saving. In addition, please use the '
+                        '`custom_objects` arg when calling `load_model()`.')
 
   def _load_layer(self, node_id, identifier, metadata):
     """Load a single layer from a SavedUserObject proto."""
@@ -443,20 +454,20 @@ class KerasObjectLoader(object):
 
   def _revive_graph_network(self, metadata, node_id):
     """Revives a graph network from config."""
-    class_name = compat.as_str(metadata['class_name'])
-    config = metadata.get('config')
-
     # Determine whether the metadata contains information for reviving a
     # functional or Sequential model.
+    config = metadata.get('config')
+    if not generic_utils.validate_config(config):
+      return None
+
+    class_name = compat.as_str(metadata['class_name'])
+    if generic_utils.get_registered_object(class_name) is not None:
+      return None
     model_is_functional_or_sequential = (
         metadata.get('is_graph_network', False) or
-        metadata['class_name'] == 'Sequential' or
-        metadata['class_name'] == 'Functional')
-    if not (generic_utils.validate_config(config) and
-            model_is_functional_or_sequential
-           ) or generic_utils.get_registered_object(class_name) is not None:
-      # Model should not be revived as a graph network. Try reviving directly
-      # from config or as a custom model.
+        class_name == 'Sequential' or
+        class_name == 'Functional')
+    if not model_is_functional_or_sequential:
       return None
 
     # Revive functional and sequential models as blank model objects for now (

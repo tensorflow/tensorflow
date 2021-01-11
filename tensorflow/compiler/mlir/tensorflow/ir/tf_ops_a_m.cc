@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/IR/Identifier.h"  // from @llvm-project
@@ -53,7 +54,6 @@ limitations under the License.
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -67,7 +67,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
 namespace mlir {
@@ -157,19 +159,13 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
-// BatchMatMulOp
+// BatchMatMulV2Op & BatchMatMulOp
 //===----------------------------------------------------------------------===//
 
-void BatchMatMulOp::getCanonicalizationPatterns(
-    OwningRewritePatternList &results, MLIRContext *context) {
-  results.insert<BatchMatMulToMatMul>(context);
-}
-
-//===----------------------------------------------------------------------===//
-// BatchMatMulV2Op
-//===----------------------------------------------------------------------===//
-
-static LogicalResult Verify(BatchMatMulV2Op op) {
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, BatchMatMulOp, BatchMatMulV2Op>::value>::type * = nullptr>
+static LogicalResult Verify(OpT op) {
   if (!HasRankAtLeast(op.x(), 2)) {
     return op.emitOpError("requires lhs operand to have rank at least two");
   }
@@ -185,17 +181,34 @@ static LogicalResult Verify(BatchMatMulV2Op op) {
   ArrayRef<int64_t> x_shape = x_ty.getShape();
   ArrayRef<int64_t> y_shape = y_ty.getShape();
 
-  // Check broadcast compatibility if both input shapes are known.
+  llvm::SmallVector<int64_t, 4> result_batch_shape;
+  llvm::ArrayRef<int64_t> x_batches = x_shape.drop_back(2);
+  llvm::ArrayRef<int64_t> y_batches = y_shape.drop_back(2);
+
+  // Check compatibility of batch dimensions if both input shapes are known.
+  // BatchMatMul should have exactly the same batch dimensions and
+  // BatchMatMulV2 should have broadcastable batch dimensions.
   //
   // The last two dimensions are non-batch dimensions that don't need to
   // participate in batch dimension compatibility check.
-
-  llvm::SmallVector<int64_t, 4> result_batch_shape;
-  if (!OpTrait::util::getBroadcastedShape(
-          x_shape.drop_back(2), y_shape.drop_back(2), result_batch_shape))
-    return op.emitOpError()
-           << "found incompatible broadcast batch dimensions for lhs shape "
-           << x_ty << " and rhs shape " << y_ty;
+  if (std::is_same<OpT, BatchMatMulOp>()) {
+    for (const auto &dim_pairs : llvm::zip(x_batches, y_batches)) {
+      int64_t x_dim = std::get<0>(dim_pairs);
+      int64_t y_dim = std::get<1>(dim_pairs);
+      if (!ShapedType::isDynamic(x_dim) && !ShapedType::isDynamic(y_dim) &&
+          x_dim != y_dim) {
+        return op.emitOpError()
+               << "found mismatching batch dimensions for lhs shape " << x_ty
+               << " and rhs shape " << y_ty;
+      }
+    }
+  } else {
+    if (!OpTrait::util::getBroadcastedShape(x_batches, y_batches,
+                                            result_batch_shape))
+      return op.emitOpError()
+             << "found incompatible broadcast batch dimensions for lhs shape "
+             << x_ty << " and rhs shape " << y_ty;
+  }
 
   RankedTensorType output_ty = GetRankedTensorTypeForOperand(op.output());
   if (!output_ty) return success();
@@ -243,6 +256,11 @@ static LogicalResult Verify(BatchMatMulV2Op op) {
            << expected_out_col_dim << " but got " << out_col_dim;
 
   return success();
+}
+
+void BatchMatMulOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulToV2>(context);
 }
 
 void BatchMatMulV2Op::getCanonicalizationPatterns(
@@ -594,6 +612,12 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
                                             ArrayRef<int64_t> s1_shape,
                                             SmallVectorImpl<int64_t> &r0,
                                             SmallVectorImpl<int64_t> &r1) {
+  r0.clear();
+  r1.clear();
+
+  // No broadcasting is required if both the shapes are equal.
+  if (s0_shape == s1_shape) return;
+
   for (int i = bcasted_shape.size(); i > 0; --i) {
     int idx = bcasted_shape.size() - i;
     int s0_idx = i > s0_shape.size() ? -1 : s0_shape.size() - i;
@@ -609,6 +633,15 @@ void GetOutputShapeForBroadcastGradientArgs(ArrayRef<int64_t> bcasted_shape,
         r0.push_back(idx);
       else
         r1.push_back(idx);
+    } else if (s0_shape[s0_idx] == 1) {
+      // This op is used to compute the gradient dimensions requiring reduction
+      // to match the input dimensions. In case both the dimensions are one,
+      // reducing the dimension has no effect. We choose to reduce such
+      // dimensions to match the TensorFlow kernel behavior. However, note that
+      // the TF behavior in this case is inconsistent with the case with the
+      // same shapes.
+      r0.push_back(idx);
+      r1.push_back(idx);
     }
   }
 }
@@ -634,12 +667,14 @@ static LogicalResult Verify(BroadcastGradientArgsOp op) {
   GetOutputShapeForBroadcastGradientArgs(bcasted_shape, s0_shape, s1_shape, r0,
                                          r1);
 
-  RankedTensorType r0_ty = GetRankedTensorTypeForOperand(op.r0());
-  RankedTensorType r1_ty = GetRankedTensorTypeForOperand(op.r1());
-  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getShape()[0] != r0.size())
+  // Verify that output types are of rank one and matches the computed result
+  // shape.
+  auto r0_ty = op.r0().getType().dyn_cast<RankedTensorType>();
+  auto r1_ty = op.r1().getType().dyn_cast<RankedTensorType>();
+  if (r0_ty && r0_ty.hasStaticShape() && r0_ty.getDimSize(0) != r0.size())
     return op.emitOpError() << "requires dimension 0 size of 'r0' to be "
                             << r0.size() << " but got " << r0_ty.getShape()[0];
-  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getShape()[0] != r1.size())
+  if (r1_ty && r1_ty.hasStaticShape() && r1_ty.getDimSize(0) != r1.size())
     return op.emitOpError() << "requires dimension 0 size of 'r1' to be "
                             << r1.size() << " but got " << r1_ty.getShape()[0];
 
@@ -1275,7 +1310,7 @@ LogicalResult ConcatOffsetOp::fold(ArrayRef<Attribute> operands,
   results.reserve(shapes.size());
   SmallVector<int32_t, 4> cumulative_sum(num_dims, 0);
   RankedTensorType offset_type =
-      RankedTensorType::get({num_dims}, IntegerType::get(32, getContext()));
+      RankedTensorType::get({num_dims}, IntegerType::get(getContext(), 32));
   for (DenseIntElementsAttr shape : shapes) {
     results.push_back(DenseIntElementsAttr::get(offset_type, cumulative_sum));
     cumulative_sum[concat_dim] += shape.getValue<int32_t>(concat_dim);
@@ -1350,79 +1385,37 @@ LogicalResult ConstOp::inferReturnTypes(
 // Conv2DOp and Conv3DOp
 //===----------------------------------------------------------------------===//
 
-template <typename OpT>
-static LogicalResult VerifyConvOpAttributes(OpT op, int num_dims) {
-  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
-    return op.emitOpError()
-           << "requires result to be " << num_dims << "D tensor";
-
+static LogicalResult VerifyConvOpAttributes(
+    int num_dims, ArrayRef<Attribute> strides, ArrayRef<Attribute> dilations,
+    llvm::Optional<mlir::Location> location) {
+  int64_t strides_size = strides.size();
+  if (strides_size != num_dims)
+    return emitOptionalError(
+        location, "requires strides attribute length to be ", num_dims);
   auto is_not_positive = [](Attribute val) {
     return val.cast<IntegerAttr>().getValue().getSExtValue() <= 0;
   };
+  if (llvm::any_of(strides, is_not_positive))
+    return emitOptionalError(location, "requires positive strides");
 
-  int64_t strides_size = op.strides().size();
-  if (strides_size != num_dims)
-    return op.emitOpError() << "requires strides attribute length to be "
-                            << num_dims << "; actual length " << strides_size;
-  if (llvm::any_of(op.strides().getValue(), is_not_positive))
-    return op.emitOpError("requires positive strides");
-
-  int64_t dilations_size = op.strides().size();
-  if (op.dilations().size() != num_dims)
-    return op.emitOpError() << "requires dilations attribute length to be "
-                            << num_dims << "; actual length " << dilations_size;
-  if (llvm::any_of(op.dilations().getValue(), is_not_positive))
-    return op.emitOpError("requires positive dilations");
+  int64_t dilations_size = dilations.size();
+  if (dilations_size != num_dims)
+    return emitOptionalError(
+        location, "requires dilations attribute length to be ", num_dims);
+  if (llvm::any_of(dilations, is_not_positive))
+    return emitOptionalError(location, "requires positive dilations");
 
   return success();
 }
 
 // Verifies that,
-// * Ranks of operands and result are valid
 // * Number of input channels is divisible by the number of filter input
 //   channels
-// * Length of explicit_paddings attribute is valid and has non negative
-//   elements
-// * strides and dilations attributes have positive elements
 template <typename OpT, typename std::enable_if<llvm::is_one_of<
                             OpT, Conv2DOp, Conv3DOp>::value>::type * = nullptr>
 static LogicalResult Verify(OpT op) {
   int num_spatial_dims = std::is_same<OpT, Conv2DOp>() ? 2 : 3;
   int num_dims = 2 + num_spatial_dims;
-
-  if (!IsOfRankOrUnranked(op.input(), num_dims) ||
-      !IsOfRankOrUnranked(op.filter(), num_dims))
-    return op.emitOpError()
-           << "requires operands to be " << num_dims << "D tensor";
-
-  // EXPLICIT padding mode and the associated attribute is limited to Conv2D.
-  // So, fetch attribute by string instead of the op.explicit_paddings()
-  // attribute getter.
-  if (op.padding() == "EXPLICIT") {
-    auto paddings = op.template getAttrOfType<ArrayAttr>("explicit_paddings");
-    if (!paddings)
-      return op.emitOpError() << "requires attribute 'explicit_paddings' with "
-                                 "'EXPLICIT' padding mode";
-
-    int64_t paddings_size = paddings.size();
-    int64_t expected_size = 2 * num_dims;
-
-    if (paddings_size != expected_size)
-      return op.emitOpError()
-             << "requires explicit_paddings attribute length to be "
-             << expected_size << "; actual length " << paddings_size;
-
-    auto is_negative = [](Attribute val) {
-      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
-    };
-    if (llvm::any_of(paddings.getValue(), is_negative))
-      return op.emitOpError("requires non negative explicit paddings");
-  }
-
-  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
-  if (failed(verify_result)) {
-    return verify_result;
-  }
 
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
@@ -1460,11 +1453,141 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   return success();
+}
+
+// Verifies the inferred return type of the given operation.
+template <typename OpT,
+          typename std::enable_if<llvm::is_one_of<
+              OpT, Conv2DOpAdaptor, Conv3DOpAdaptor>::value>::type * = nullptr>
+static LogicalResult inferConvReturnTypes(
+    OpT op, llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes,
+    llvm::Optional<mlir::Location> location,
+    ArrayRef<Attribute> explicit_padding) {
+  const int64_t num_spatial_dims = std::is_same<OpT, Conv2DOpAdaptor>() ? 2 : 3;
+  const int64_t num_dims = 2 + num_spatial_dims;
+  const Value input = op.input();
+  const Value filter = op.filter();
+  const TensorType input_ty = input.getType().template cast<TensorType>();
+  const TensorType filter_ty = filter.getType().template cast<TensorType>();
+  const StringRef paddings = op.padding().getValue();
+
+  ArrayRef<Attribute> strides = op.strides().getValue();
+  StringRef data_format = op.data_format().getValue();
+  ArrayRef<Attribute> dilations = op.dilations().getValue();
+
+  tensorflow::TensorFormat format;
+  auto data_format_is_valid = FormatFromString(data_format.str(), &format);
+  if (!data_format_is_valid) {
+    return emitOptionalError(location, "Invalid data format provided");
+  }
+  tensorflow::Padding padding;
+  auto padding_is_valid = GetPaddingFromString(paddings.str(), &padding);
+  if (!padding_is_valid.ok()) {
+    return emitOptionalError(location, "Invalid padding format provided");
+  }
+  auto get_int = [](Attribute attr) {
+    return attr.template cast<IntegerAttr>().getInt();
+  };
+
+  // Necessary sanity checks.
+  // Verifies that,
+  // * Ranks of operands and result are valid
+  // * Length of explicit_paddings attribute is valid and has non negative
+  //   elements
+  // * strides and dilations attributes have positive elements
+  if (!IsOfRankOrUnranked(input, num_dims) ||
+      !IsOfRankOrUnranked(filter, num_dims))
+    return emitOptionalError(location, "requires operands to be ", num_dims,
+                             "D tensor");
+
+  if (padding == tensorflow::Padding::EXPLICIT) {
+    if (explicit_padding.size() == 0) {
+      return emitOptionalError(location,
+                               "requires attribute 'explicit_paddings' with "
+                               "'EXPLICIT' padding mode");
+    }
+    if (explicit_padding.size() != num_dims * 2) {
+      return emitOptionalError(
+          location, "requires explicit_paddings attribute length to be ",
+          num_dims * 2);
+    }
+    auto is_negative = [](Attribute val) {
+      return val.cast<IntegerAttr>().getValue().getSExtValue() < 0;
+    };
+    if (llvm::any_of(explicit_padding, is_negative))
+      return emitOptionalError(location,
+                               "requires non negative explicit paddings");
+  }
+
+  if (failed(VerifyConvOpAttributes(num_dims, strides, dilations, location))) {
+    return failure();
+  }
+
+  // For operands having dynamic shape.
+  SmallVector<int64_t, 4> return_shape(num_dims, ShapedType::kDynamicSize);
+  if (!input_ty.hasStaticShape() || !filter_ty.hasStaticShape()) {
+    inferredReturnTypes.assign(
+        {RankedTensorType::get(return_shape, input_ty.getElementType())});
+    return success();
+  }
+
+  // Checks the size of each of the output dimension.
+  for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
+    const int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
+    int64_t stride = get_int(strides[dim]);
+    tensorflow::int64 expected_output_size;
+    tensorflow::int64 pad_low;
+    tensorflow::int64 pad_high;
+    // Retrieve padding, if defined explicitly.
+    if (padding == tensorflow::Padding::EXPLICIT) {
+      pad_low = get_int(explicit_padding[2 * dim]);
+      pad_high = get_int(explicit_padding[2 * dim + 1]);
+    }
+    // Calculate the expected_output_size.
+    tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
+        input_ty.getDimSize(dim), filter_ty.getDimSize(i),
+        get_int(dilations[dim]), stride, padding, &expected_output_size,
+        &pad_low, &pad_high);
+    // Return failure if expected_output_size could not be calculated.
+    if (!status.ok()) return failure();
+    return_shape[dim] = expected_output_size;
+  }
+
+  // The remaining dimensions can be obtained using utilities from
+  // tensorflow/core/util/tensor_format.h.
+  return_shape[GetTensorBatchDimIndex(num_dims, format)] =
+      input_ty.getShape()[GetTensorBatchDimIndex(num_dims, format)];
+  return_shape[GetTensorFeatureDimIndex(num_dims, format)] =
+      filter_ty.getShape()[GetFilterTensorOutputChannelsDimIndex(
+          num_dims, tensorflow::FORMAT_HWIO)];
+
+  inferredReturnTypes.assign(
+      {RankedTensorType::get(return_shape, input_ty.getElementType())});
+  return success();
+}
+
+LogicalResult Conv2DOp::inferReturnTypes(
+    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
+    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
+    mlir::RegionRange regions,
+    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+  Conv2DOpAdaptor op(operands, attributes);
+  ArrayRef<Attribute> explicit_padding;
+  ArrayAttr explicit_pad =
+      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
+  if (!explicit_pad) {
+    explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
+  }
+  explicit_padding = explicit_pad.getValue();
+
+  return inferConvReturnTypes(op, inferredReturnTypes, location,
+                              explicit_padding);
 }
 
 StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
@@ -1534,9 +1657,10 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
@@ -1580,8 +1704,15 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
       !IsOfRankOrUnranked(op.filter(), num_dims))
     return op.emitOpError()
            << "requires operands to be " << num_dims << "D tensor";
+  if (!IsOfRankOrUnranked(op.getResult(), num_dims))
+    return op.emitOpError()
+           << "requires result to be " << num_dims << "D tensor";
 
-  LogicalResult verify_result = VerifyConvOpAttributes(op, num_dims);
+  llvm::Optional<mlir::Location> location = op.getLoc();
+  ArrayRef<Attribute> strides = op.strides().getValue();
+  ArrayRef<Attribute> dilations = op.dilations().getValue();
+  LogicalResult verify_result =
+      VerifyConvOpAttributes(num_dims, strides, dilations, location);
   if (failed(verify_result)) {
     return verify_result;
   }
@@ -1599,9 +1730,10 @@ LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
   if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
 
   // Update convolution attributes.
-  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
-  setAttr("strides", ShuffleArrayAttr(strides(), perm));
-  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+  (*this)->setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  (*this)->setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  (*this)->setAttr("explicit_paddings",
+                   ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   // Permute input sizes operand.
   OpBuilder builder(getOperation());
@@ -1631,6 +1763,28 @@ StringRef Conv2DBackpropInputOp::GetOptimalLayout(
 
   // Otherwise always use "NCHW".
   return "NCHW";
+}
+
+//===----------------------------------------------------------------------===//
+// Conv3DOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Conv3DOp::inferReturnTypes(
+    mlir::MLIRContext *context, llvm::Optional<mlir::Location> location,
+    mlir::ValueRange operands, mlir::DictionaryAttr attributes,
+    mlir::RegionRange regions,
+    llvm::SmallVectorImpl<mlir::Type> &inferredReturnTypes) {
+  Conv3DOpAdaptor op(operands, attributes);
+  ArrayRef<Attribute> explicit_padding;
+  ArrayAttr explicit_pad =
+      attributes.get("explicit_paddings").dyn_cast_or_null<::mlir::ArrayAttr>();
+  if (!explicit_pad) {
+    explicit_pad = ::mlir::Builder(context).getI64ArrayAttr({});
+  }
+  explicit_padding = explicit_pad.getValue();
+
+  return inferConvReturnTypes(op, inferredReturnTypes, location,
+                              explicit_padding);
 }
 
 //===----------------------------------------------------------------------===//

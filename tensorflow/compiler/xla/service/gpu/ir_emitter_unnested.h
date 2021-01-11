@@ -157,25 +157,30 @@ class IrEmitterUnnested : public IrEmitter,
   }
 
   Status DefaultAction(HloInstruction* hlo) override;
-  Status DefaultActionForMlir(MlirEmitterInput input);
+  Status EmitUsingElementalIrEmitter(MlirEmitterInput input);
 
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
+  Status HandleConstant(HloInstruction* constant) override;
+  Status EmitConstant(MlirEmitterInput mlir_input);
+
   Status HandleCopy(HloInstruction* copy) override;
   Status EmitCopyForMlir(MlirEmitterInput input);
 
   Status HandleConditional(HloInstruction* conditional) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status EmitConvolutionThunkFromMlir(MlirEmitterInput input);
   Status EmitGemmThunkFromMlir(MlirEmitterInput input);
-#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+  Status EmitBatchNormThunkFromMlir(MlirEmitterInput input);
+#if GOOGLE_CUDA
   Status EmitCholeskyThunkFromMlir(MlirEmitterInput input);
-#endif  // (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
+#endif  // GOOGLE_CUDA
   Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status EmitLoopFusionFromMlir(MlirEmitterInput input,
-                                const Shape& output_shape, int unroll_factor);
+                                const Shape& output_shape);
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
@@ -192,10 +197,14 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleSort(HloInstruction* sort) override;
   Status EmitSortFromMlir(MlirEmitterInput mlir_input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
+  Status HandleAllGather(HloInstruction* hlo) override;
   Status HandleAllReduce(HloInstruction* crs) override;
+  Status HandleAllToAll(HloInstruction* hlo) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+
+  Status EmitOp(MlirEmitterInput mlir_input);
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -706,19 +715,23 @@ class IrEmitterUnnested : public IrEmitter,
 
   Thunk::ThunkInfo GetThunkInfo(const HloInstruction* hlo) const override;
 
+  Status AssertNonDeterminismIsOkay(const string& op_name);
+
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // The HloComputation that this IrEmitter emits code for.
-  const HloComputation* hlo_computation_;
-
-  mlir::OwningModuleRef mlir_scratch_module_;
+  // Begin optional members for XLA HLO -> LMHLO:
+  // TODO(timshen): Once XLA HLO -> LMHLO converter is complete,
+  // IrEmitterUnnested should take LMHLO only, and won't require a scratch
+  // module.
+  absl::optional<mlir::OwningModuleRef> mlir_scratch_module_;
 
   // This is for cache-purpose only. It has no significant semantics.
-  mlir::LhloDialectEmitter lhlo_scratch_emitter_;
+  absl::optional<mlir::LhloDialectEmitter> lhlo_scratch_emitter_;
 
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
+  // End optional members for XLA HLO -> LMHLO.
 };
 
 }  // namespace gpu

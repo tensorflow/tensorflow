@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=3.1.0
+LATEST_BAZEL_VERSION=3.7.2
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -126,7 +126,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'astunparse ~= 1.6.3'
   "${PIP_CMD}" install --user 'flatbuffers ~= 1.12.0'
   "${PIP_CMD}" install --user 'google_pasta ~= 0.2'
-  "${PIP_CMD}" install --user 'h5py ~= 2.10.0'
+  "${PIP_CMD}" install --user 'h5py ~= 3.1.0'
   "${PIP_CMD}" install --user 'keras_preprocessing ~= 1.1.2'
   "${PIP_CMD}" install --user 'numpy ~= 1.19.2'
   "${PIP_CMD}" install --user 'opt_einsum ~= 3.3.0'
@@ -137,13 +137,13 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install --user 'wheel ~= 0.35'
   "${PIP_CMD}" install --user 'wrapt ~= 1.12.1'
   # We need to pin gast dependency exactly
-  "${PIP_CMD}" install --user 'gast == 0.3.3'
+  "${PIP_CMD}" install --user 'gast == 0.4.0'
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   "${PIP_CMD}" install --user --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
   "${PIP_CMD}" install --user --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
-  "${PIP_CMD}" install --user 'grpcio ~= 1.32.0'
+  "${PIP_CMD}" install --user 'grpcio ~= 1.34.0'
   "${PIP_CMD}" install --user 'portpicker ~= 1.3.1'
   "${PIP_CMD}" install --user 'scipy ~= 1.5.2'
   # LINT.ThenChange(:mac_pip_installations)
@@ -188,7 +188,7 @@ function install_macos_pip_deps {
   ${PIP_CMD} install $USER_FLAG 'astunparse ~= 1.6.3'
   ${PIP_CMD} install $USER_FLAG 'flatbuffers ~= 1.12.0'
   ${PIP_CMD} install $USER_FLAG 'google_pasta ~= 0.2'
-  ${PIP_CMD} install $USER_FLAG 'h5py ~= 2.10.0'
+  ${PIP_CMD} install $USER_FLAG 'h5py ~= 3.1.0'
   ${PIP_CMD} install $USER_FLAG 'keras_preprocessing ~= 1.1.2'
   ${PIP_CMD} install $USER_FLAG 'numpy ~= 1.19.2'
   ${PIP_CMD} install $USER_FLAG 'opt_einsum ~= 3.3.0'
@@ -199,13 +199,13 @@ function install_macos_pip_deps {
   ${PIP_CMD} install $USER_FLAG 'wheel ~= 0.35'
   ${PIP_CMD} install $USER_FLAG 'wrapt ~= 1.12.1'
   # We need to pin gast dependency exactly
-  ${PIP_CMD} install $USER_FLAG 'gast == 0.3.3'
+  ${PIP_CMD} install $USER_FLAG 'gast == 0.4.0'
   # Finally, install tensorboard and estimator
   # Note that here we want the latest version that matches (b/156523241)
   ${PIP_CMD} install $USER_FLAG --upgrade --force-reinstall 'tb-nightly ~= 2.4.0.a'
   ${PIP_CMD} install $USER_FLAG --upgrade --force-reinstall 'tensorflow_estimator ~= 2.3.0'
   # Test dependencies
-  ${PIP_CMD} install $USER_FLAG 'grpcio ~= 1.32.0'
+  ${PIP_CMD} install $USER_FLAG 'grpcio ~= 1.34.0'
   ${PIP_CMD} install $USER_FLAG 'portpicker ~= 1.3.1'
   ${PIP_CMD} install $USER_FLAG 'scipy ~= 1.5.2'
 

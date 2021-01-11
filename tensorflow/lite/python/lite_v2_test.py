@@ -28,6 +28,7 @@ from six.moves import zip
 import tensorflow as tf
 
 from tensorflow.lite.kernels.hashtable import pywrap_hashtable_ops as hashtable_ops_registerer
+from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
@@ -38,6 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
@@ -312,9 +314,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     # TODO(b/156309549): We should add INT16 to the builtin types.
     converter.optimizations = [lite.Optimize.DEFAULT]
-    converter.target_spec.supported_ops = [
-        lite.OpsSet.TFLITE_BUILTINS_INT8
-    ]
+    converter.target_spec.supported_ops = [lite.OpsSet.TFLITE_BUILTINS_INT8]
     converter.representative_dataset = calibration_gen
     converter._experimental_calibrate_only = True
     calibrated_tflite = converter.convert()
@@ -608,11 +608,15 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
       ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
       ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
       ('_IntOnly_UINT8InputOutput', True, False, dtypes.uint8),
-      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16))
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True, dtypes.int16),
+      ('_IntOnly_INT8InputOutputMlirQuant', True, False, dtypes.int8, True),
+      ('_IntOnly_UINT8InputOutputMlirQuant', True, False, dtypes.uint8, True))
   @test_util.run_v2_only
-  def testIntegerQuantizationWithUnsupportedOps(self, is_int_only,
+  def testIntegerQuantizationWithUnsupportedOps(self,
+                                                is_int_only,
                                                 is_int16_quantize,
-                                                inference_input_output_type):
+                                                inference_input_output_type,
+                                                enable_mlir_quantizer=False):
     func, calib_gen = self._getIntegerQuantizationModelWithUnsupportedOps()
 
     quantized_converter = tf.lite.TFLiteConverter.from_concrete_functions(
@@ -644,23 +648,101 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
+    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
+
+    expected_dtype = inference_input_output_type.as_numpy_dtype
+    # Allow float32 for fallback on non-quantizable op.
+    expected_ceil_dtype = (
+        expected_dtype if enable_mlir_quantizer else dtypes.float32)
 
     interpreter = Interpreter(model_content=quantized_tflite_model)
     interpreter.allocate_tensors()
     input_details = interpreter.get_input_details()
     self.assertLen(input_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(input_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(input_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(input_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(input_details[1]['dtype'], expected_dtype)
     output_details = interpreter.get_output_details()
     self.assertLen(output_details, 2)
-    # Allow float32 for fallback.
-    self.assertEqual(output_details[0]['dtype'], dtypes.float32)
-    self.assertEqual(output_details[1]['dtype'],
-                     inference_input_output_type.as_numpy_dtype)
+    self.assertEqual(output_details[0]['dtype'], expected_ceil_dtype)
+    self.assertEqual(output_details[1]['dtype'], expected_dtype)
+
+  @test_util.run_v2_only
+  def testNewQuantizerNumericVerificationDebugMode(self):
+    """Test the model quantized by the new converter with numeric verify ops."""
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.target_spec.supported_ops = [
+        lite.OpsSet.TFLITE_BUILTINS_INT8
+    ]
+    quantized_converter.representative_dataset = calibration_gen
+
+    # Create a TFLite model with new quantizer.
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter._experimental_new_quantizer = True
+    production_tflite = quantized_converter.convert()
+    # Create a TFLite model with new quantizer and numeric verify ops.
+    quantized_converter._experimental_calibrate_only = True
+    calibrated = quantized_converter.convert()
+    debug_mode_tflite = mlir_quantize(calibrated, enable_numeric_verify=True)
+
+    # Check if adding debug mode should output a different flatbuffer.
+    self.assertNotEqual(production_tflite, debug_mode_tflite)
+
+    # Check if newly added ops are numeric verify ops.
+    input_data = tf.constant(
+        np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
+
+    def examine_tflite_model(tflite_content, input_data):
+      interpreter = Interpreter(model_content=tflite_content)
+      interpreter.allocate_tensors()
+      input_details = interpreter.get_input_details()
+      interpreter.set_tensor(input_details[0]['index'], input_data.numpy())
+      interpreter.invoke()
+      tensor_details = interpreter.get_tensor_details()
+      return {
+          details['name']: interpreter.get_tensor(details['index'])
+          for details in interpreter.get_tensor_details()
+      }, tensor_details
+
+    tflite_result, _ = examine_tflite_model(production_tflite, input_data)
+    debug_mode_tflite_result, debug_tensor_details = examine_tflite_model(
+        debug_mode_tflite, input_data)
+
+    # MLIR-based quantizer should output flatbuffer model with `tfl.quantize`.
+    num_production_quantize_ops = len([
+        None for output_tensor_name in tflite_result
+        if 'tfl.quantize' in output_tensor_name
+    ])
+    self.assertEqual(num_production_quantize_ops, 1)
+    # MLIR-based quantizer should output flatbuffer model with `tfl.quantize`.
+    num_debug_quantize_ops = len([
+        None for output_tensor_name in debug_mode_tflite_result
+        if 'tfl.quantize' in output_tensor_name
+    ])
+    # Two numbers should be equal.
+    self.assertEqual(num_production_quantize_ops, num_debug_quantize_ops)
+    # DebugMode TFLite flatbuffer should have NumericVerifyOps more than zero.
+    # The name has the prefix "NumericVerify/{name}:{id}
+    # where {name} is the tensor name of the original quantized op's activation,
+    # and {id} is its tensor id.
+    num_debug_ops = 0
+    for output_tensor_name in debug_mode_tflite_result:
+      if 'NumericVerify' in output_tensor_name:
+        pos_end_prefix = len('NumericVerify/')
+        pos_colon = output_tensor_name.rfind(':')
+        self.assertEqual('NumericVerify/',
+                         output_tensor_name[:pos_end_prefix])
+        tensor_id = int(output_tensor_name[pos_colon+1:])
+        original_tensor_name = output_tensor_name[pos_end_prefix:pos_colon]
+        self.assertEqual(original_tensor_name,
+                         debug_tensor_details[tensor_id]['name'])
+        num_debug_ops += 1
+    self.assertEqual(num_debug_ops, 1)
+    # The number of debug ops should be equal to that of quantized ops.
+    self.assertEqual(num_debug_ops, num_debug_quantize_ops)
 
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
@@ -919,8 +1001,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(len(signature_defs.values()), 1)
     self.assertEqual(
         list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
-    self.assertEqual(
-        sorted(signature_defs['mul_add']['inputs']), ['x', 'y'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only
@@ -960,8 +1041,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     self.assertEqual(len(signature_defs.values()), 1)
     self.assertEqual(
         list(signature_defs['mul_add'].keys()), ['inputs', 'outputs'])
-    self.assertEqual(
-        sorted(signature_defs['mul_add']['inputs']), ['x', 'y'])
+    self.assertCountEqual(signature_defs['mul_add']['inputs'], ['x', 'y'])
     self.assertEqual(list(signature_defs['mul_add']['outputs']), ['output_0'])
 
   @test_util.run_v2_only
@@ -1262,6 +1342,18 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data['x'], input_data['b']])[0]
     self.assertAllClose(expected_value, actual_value)
+
+  @test_util.run_v2_only
+  def testConverterErrorOnControlFlowV1Ops(self):
+    filename = resource_loader.get_path_to_datafile(
+        'testdata/control_flow_v1_saved_model')
+    converter = lite.TFLiteConverterV2.from_saved_model(filename)
+    with self.assertRaises(convert.ConverterError) as error:
+      converter.convert()
+    self.assertIn(
+        'Failed to functionalize Control Flow V1 ops. Consider using Control '
+        'Flow V2 ops instead. See https://www.tensorflow.org/api_docs/python/'
+        'tf/compat/v1/enable_control_flow_v2.', str(error.exception))
 
   @test_util.run_v2_only
   def testStaticRnn(self):

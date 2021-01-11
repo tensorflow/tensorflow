@@ -193,7 +193,7 @@ void CreateFunctions(ModuleOp module_op,
     std::replace(func_name.begin(), func_name.end(), '/', '_');
 
     FunctionType func_type =
-        FunctionType::get(input_types, result_types, context);
+        FunctionType::get(context, input_types, result_types);
     Location loc = metadata.ops.front()->getLoc();
     FuncOp func_op = FuncOp::create(loc, func_name, func_type);
     // Sets the device attribute for every input and every result of the
@@ -208,7 +208,7 @@ void CreateFunctions(ModuleOp module_op,
           StringAttr::get(metadata.result_devices[i], context));
     }
 
-    func_op.setAttr(kHostAttr, StringAttr::get(host, context));
+    func_op->setAttr(kHostAttr, StringAttr::get(host, context));
     func_op.setPublic();
     Block *block = func_op.addEntryBlock();
 
@@ -291,7 +291,7 @@ class ClusterTFOpsByHostPass
   void runOnFunction() override {
     MLIRContext *context = &getContext();
     FuncOp func_op = getOperation();
-    ModuleOp module_op = func_op.getParentOfType<mlir::ModuleOp>();
+    ModuleOp module_op = func_op->getParentOfType<mlir::ModuleOp>();
 
     llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
         GetFunctionMetadatas(func_op);

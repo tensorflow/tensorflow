@@ -392,6 +392,20 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
 }
 
+inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3,
+                  int i4) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), 5);
+  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
+  TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
+  TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
+  TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
+  TFLITE_DCHECK(i3 >= 0 && i3 < dims_data[3]);
+  TFLITE_DCHECK(i4 >= 0 && i4 < dims_data[4]);
+  return (((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3) *
+             dims_data[4] +
+         i4;
+}
+
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK(i0 >= 0 && i0 < dims.sizes[0]);
   TFLITE_DCHECK(i1 >= 0 && i1 < dims.sizes[1]);
@@ -1025,9 +1039,9 @@ struct ResizeNearestNeighborParams {
 
 struct SliceParams {
   int8_t begin_count;
-  int32_t begin[4];
+  int32_t begin[5];
   int8_t size_count;
-  int32_t size[4];
+  int32_t size[5];
 };
 
 struct SoftmaxParams {

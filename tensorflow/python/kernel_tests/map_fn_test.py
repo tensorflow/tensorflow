@@ -138,10 +138,11 @@ class MapFnTest(test.TestCase):
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
       y = map_fn.map_fn(
           lambda x: math_ops.multiply(math_ops.square(x), param), elems)
-      r = gradients_impl.gradients(y, param)[0]
-      self.assertAllEqual(91.0, self.evaluate(r))
-      r = gradients_impl.gradients(y, elems)[0]
-      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], self.evaluate(r))
+      r_param = gradients_impl.gradients(y, param)[0]
+      r_elems = gradients_impl.gradients(y, elems)[0]
+      self.assertAllEqual(91.0, self.evaluate(r_param))
+      self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0],
+                          self.evaluate(r_elems))
 
   @test_util.run_in_graph_and_eager_modes
   def testMap_SimpleNotTensor(self):

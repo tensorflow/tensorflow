@@ -93,6 +93,9 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
       return inst->mutable_operand(init_value_index);
     }
     case HloOpcode::kReduceWindow: {
+      if (inst->shape().IsTuple()) {
+        return Unimplemented("Variadic reduce window not yet supported. ");
+      }
       // Because of the way we do reduce, we already require the `init`
       // operand of hlo reduce instruction to be identity value. Here we reuse
       // the operand.
@@ -1015,6 +1018,10 @@ StatusOr<bool> RewriteDynamicConvolutionKernelGrad(
 StatusOr<bool> RewriteDynamicReduceWindowSamePadding(
     HloInstruction* hlo,
     DynamicDimensionInference* dynamic_dimension_inference) {
+  if (hlo->shape().IsTuple()) {
+    // TODO (b/73062247) variadic reduce window is not yet supported here.
+    return Unimplemented("Variadic reduce window net yet supported.");
+  }
   HloInstruction* input = hlo->mutable_operand(0);
   HloInstruction* init = hlo->mutable_operand(1);
   HloComputation* comp = hlo->parent();

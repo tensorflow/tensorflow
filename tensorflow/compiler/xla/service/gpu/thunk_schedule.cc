@@ -81,6 +81,13 @@ ThunkSchedule::ThunkSchedule(
   }
 }
 
+ThunkSchedule::ThunkSchedule(std::unique_ptr<ThunkSequence> thunks)
+    : thunks_(std::move(thunks)) {
+  for (auto& thunk : *thunks_) {
+    thunk_total_order_.push_back(thunk.get());
+  }
+}
+
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
   std::unordered_map<const Thunk*, int> thunk_to_total_order;
   for (int i = 0; i < thunk_total_order_.size(); ++i) {

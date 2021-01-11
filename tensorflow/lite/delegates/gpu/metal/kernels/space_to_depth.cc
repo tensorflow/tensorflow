@@ -36,65 +36,32 @@ ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
   desc.shader_source = R"(
 #include <metal_stdlib>
 using namespace metal;
-struct uniforms {
-  uint4 src_size;
-  uint4 dst_size;
-  uint4 block_size;
-};
 $0
 kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
-  uint3 src_size = (uint3)(params.src_size.xyz);
-  uint3 dst_size = (uint3)(params.dst_size.xyz);
-  uint block_size = (uint)(params.block_size.x);
-  if (gid.x >= dst_size.x || gid.y >= dst_size.y || gid.z * 4 >= dst_size.z) {
+  if (gid.x >= args.dst_tensor.Width() || gid.y >= args.dst_tensor.Height() || gid.z >= args.dst_tensor.Slices()) {
     return;
   }
   FLT4 value;
   for (uint i = 0; i < 4; ++i) {
     uint dst_c = 4 * gid.z + i;
-    uint block_id = dst_c / src_size.z;
-    uint src_x = gid.x * block_size + block_id % block_size;
-    uint src_y = gid.y * block_size + block_id / block_size;
-    uint src_c = dst_c % src_size.z;
-    value[i] =
-        src_tensor[src_x + src_size.x * (src_y + src_size.y * (src_c / 4))]
-                  [src_c % 4];
+    uint block_id = dst_c / args.src_tensor.Channels();
+    uint src_x = gid.x * args.block_size + block_id % args.block_size;
+    uint src_y = gid.y * args.block_size + block_id / args.block_size;
+    uint src_c = dst_c % args.src_tensor.Channels();
+    value[i] = args.src_tensor.Read(src_x, src_y, src_c / 4)[src_c % 4];
   }
   $2
-  dst_tensor[gid.x + dst_size.x * (gid.y + dst_size.y * gid.z)] = value;
+  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 })";
 
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  desc.uniform_buffers = {
-      {"constant uniforms& params",
-       [attr](const std::vector<BHWC>& src_shapes,
-              const std::vector<BHWC>& dst_shapes) {
-         const std::vector<int> uniform_params = {
-             // src_size
-             src_shapes[0].w,
-             src_shapes[0].h,
-             src_shapes[0].c,
-             0,
-             // dst_size
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             dst_shapes[0].c,
-             0,
-             // block_size
-             attr.block_size,
-             0,
-             0,
-             0,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
+  desc.args.AddInt("block_size", attr.block_size);
 
   desc.resize_function =
-      [attr](const std::vector<BHWC>& src_shapes,
-             const std::vector<BHWC>& dst_shapes) -> std::pair<uint3, uint3> {
+      [](const std::vector<BHWC>& src_shapes,
+         const std::vector<BHWC>& dst_shapes) -> std::pair<uint3, uint3> {
     const uint3 grid = uint3(dst_shapes[0].w, dst_shapes[0].h,
                              DivideRoundUp(dst_shapes[0].c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);

@@ -40,8 +40,6 @@ std::string GetKernelWinograd4x4To36() {
 using namespace metal;
 
 struct uniforms {
-    int4 src_size;
-    int4 dst_size;
     int2 padding;
     int2 tiles_count;
 };
@@ -65,7 +63,7 @@ kernel void ComputeFunction($1
 {
   int3 gid = int3(ugid.x * 4, ugid.y * 4, ugid.z);
 
-  if (ugid.x >= U.tiles_count.x || ugid.y >= U.tiles_count.y) return;
+  if (ugid.x >= params.tiles_count.x || ugid.y >= params.tiles_count.y) return;
 
   FLT4 I[6][6];
   for (int y = 0; y < 6; ++y) {
@@ -73,23 +71,27 @@ kernel void ComputeFunction($1
       I[y][x] = FLT4(0.0f);
     }
   }
-  const int src_base = gid.z * U.src_size.y * U.src_size.x;
+  const int src_base = gid.z * args.src_tensor.Height() * args.src_tensor.Width();
 )";
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
     c += "  {\n";
-    c += "    int coord_y = gid.y + " + s_y + " + U.padding.y;\n";
-    c += "    bool in_y = FLT(coord_y >= 0 && coord_y < U.src_size.y);\n";
-    c += "    coord_y = clamp(coord_y, 0, U.src_size.y - 1);\n";
-    c += "    const int src_adress_y = src_base + coord_y * U.src_size.x;\n";
+    c += "    int coord_y = gid.y + " + s_y + " + params.padding.y;\n";
+    c += "    bool in_y = FLT(coord_y >= 0 && coord_y < "
+         "args.src_tensor.Height());\n";
+    c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
+    c += "    const int src_adress_y = src_base + coord_y * "
+         "args.src_tensor.Width();\n";
     for (int x = 0; x < 6; ++x) {
       const std::string s_x = std::to_string(x);
       c += "    {\n";
-      c += "      int coord_x = gid.x + " + s_x + " + U.padding.x;\n";
-      c += "      bool in_x = FLT(coord_x >= 0 && coord_x < U.src_size.x);\n";
+      c += "      int coord_x = gid.x + " + s_x + " + params.padding.x;\n";
+      c += "      bool in_x = FLT(coord_x >= 0 && coord_x < "
+           "args.src_tensor.Width());\n";
       c += "      FLT mult = FLT(in_y && in_x);\n";
-      c += "      coord_x = clamp(coord_x, 0, U.src_size.x - 1);\n";
-      c += "      FLT4 src = src_tensor[src_adress_y + coord_x] * mult;\n";
+      c += "      coord_x = clamp(coord_x, 0, args.src_tensor.Width() - 1);\n";
+      c += "      FLT4 src = args.src_tensor.Read(src_adress_y + coord_x) * "
+           "mult;\n";
       c += "      I[0][" + s_x + "] += Bt[" + std::to_string(y) + "] * src;\n";
       c += "      I[1][" + s_x + "] += Bt[" + std::to_string(y + 6) +
            "] * src;\n";
@@ -107,21 +109,27 @@ kernel void ComputeFunction($1
   }
   c += R"(
 
-  int dst_x = ugid.y * U.tiles_count.x + ugid.x;
-  int dst_adress = gid.z * U.dst_size.y * U.dst_size.x + dst_x;
+  int dst_x = ugid.y * params.tiles_count.x + ugid.x;
+  args.dst_tensor.GetAddress(dst_adress, dst_x, 0, gid.z);
   for (int y = 0; y < 6; ++y) {
-    dst_tensor[dst_adress] = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
-    dst_adress += U.dst_size.x;
-    dst_tensor[dst_adress] = Bt[7] * I[y][1] + Bt[8] * I[y][2] + Bt[9] * I[y][3] + Bt[10] * I[y][4];
-    dst_adress += U.dst_size.x;
-    dst_tensor[dst_adress] = Bt[13] * I[y][1] + Bt[14] * I[y][2] + Bt[15] * I[y][3] + Bt[16] * I[y][4];
-    dst_adress += U.dst_size.x;
-    dst_tensor[dst_adress] = Bt[19] * I[y][1] + Bt[20] * I[y][2] + Bt[21] * I[y][3] + Bt[22] * I[y][4];
-    dst_adress += U.dst_size.x;
-    dst_tensor[dst_adress] = Bt[25] * I[y][1] + Bt[26] * I[y][2] + Bt[27] * I[y][3] + Bt[28] * I[y][4];
-    dst_adress += U.dst_size.x;
-    dst_tensor[dst_adress] = Bt[31] * I[y][1] + Bt[33] * I[y][3] + I[y][5];
-    dst_adress += U.dst_size.x;
+    FLT4 value = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
+    args.dst_tensor.WriteLinear(value, dst_adress);
+    dst_adress += args.dst_tensor.Width();
+    value = Bt[7] * I[y][1] + Bt[8] * I[y][2] + Bt[9] * I[y][3] + Bt[10] * I[y][4];
+    args.dst_tensor.WriteLinear(value, dst_adress);
+    dst_adress += args.dst_tensor.Width();
+    value = Bt[13] * I[y][1] + Bt[14] * I[y][2] + Bt[15] * I[y][3] + Bt[16] * I[y][4];
+    args.dst_tensor.WriteLinear(value, dst_adress);
+    dst_adress += args.dst_tensor.Width();
+    value = Bt[19] * I[y][1] + Bt[20] * I[y][2] + Bt[21] * I[y][3] + Bt[22] * I[y][4];
+    args.dst_tensor.WriteLinear(value, dst_adress);
+    dst_adress += args.dst_tensor.Width();
+    value = Bt[25] * I[y][1] + Bt[26] * I[y][2] + Bt[27] * I[y][3] + Bt[28] * I[y][4];
+    args.dst_tensor.WriteLinear(value, dst_adress);
+    dst_adress += args.dst_tensor.Width();
+    value = Bt[31] * I[y][1] + Bt[33] * I[y][3] + I[y][5];
+    args.dst_tensor.WriteLinear(value, dst_adress);
+    dst_adress += args.dst_tensor.Width();
   }
 }
 )";
@@ -134,8 +142,6 @@ std::string GetKernelWinograd4x4To36TileX6() {
 using namespace metal;
 
 struct uniforms {
-    int4 src_size;
-    int4 dst_size;
     int2 padding;
     int2 tiles;
 };
@@ -160,15 +166,15 @@ kernel void ComputeFunction($1
   int DST_X = global_ids.x;
   int DST_Y = global_ids.y;
   int DST_Z = global_ids.z;
-  if (DST_X >= U.tiles.y || DST_Y >= 6 || DST_Z >= U.dst_size.z) {
+  if (DST_X >= params.tiles.y || DST_Y >= 6 || DST_Z >= args.dst_tensor.Slices()) {
     return;
   }
-  int tile_x = (DST_X % U.tiles.x) * 4;
-  int tile_y = (DST_X / U.tiles.x) * 4;
+  int tile_x = (DST_X % params.tiles.x) * 4;
+  int tile_y = (DST_X / params.tiles.x) * 4;
   FLT4 I0, I1, I2, I3, I4, I5;
   FLT bt_ar[6];
-  FLT4 t0 = bt_arr[DST_Y * 2 + 0];
-  FLT4 t1 = bt_arr[DST_Y * 2 + 1];
+  FLT4 t0 = args.bt_arr.Read(DST_Y * 2 + 0);
+  FLT4 t1 = args.bt_arr.Read(DST_Y * 2 + 1);
   DST_Y *= 6;
   bt_ar[0] = t0.x;
   bt_ar[1] = t0.y;
@@ -178,25 +184,27 @@ kernel void ComputeFunction($1
   bt_ar[5] = t1.y;
 )";
   auto read_src = [&](const std::string& src, const std::string& xs) {
-    c += "    FLT4 " + src + " = src_tensor[src_a_" + xs + " + offset] * m" +
-         xs + "_x;\n";
+    c += "    FLT4 " + src + " = args.src_tensor.Read(src_a_" + xs +
+         " + offset) * m" + xs + "_x;\n";
   };
   for (int x = 0; x < 6; ++x) {
     const std::string xs = std::to_string(x);
-    c += "  int xc" + xs + " = tile_x + U.padding.x + " + xs + ";\n";
+    c += "  int xc" + xs + " = tile_x + params.padding.x + " + xs + ";\n";
     c += "  FLT m" + xs + "_x = xc" + xs + " >= 0 && xc" + xs +
-         " < U.src_size.x;\n";
+         " < args.src_tensor.Width();\n";
     c += "  bool inx" + xs + " = (xc" + xs + " >= 0 && xc" + xs +
-         " < U.src_size.x);\n";
-    c += "  xc" + xs + " = clamp(xc" + xs + ", 0, U.src_size.x - 1);\n";
-    c += "  int src_a_" + xs + " = DST_Z * U.src_size.x * U.src_size.y + xc" +
+         " < args.src_tensor.Width());\n";
+    c += "  xc" + xs + " = clamp(xc" + xs +
+         ", 0, args.src_tensor.Width() - 1);\n";
+    c += "  int src_a_" + xs +
+         " = DST_Z * args.src_tensor.Width() * args.src_tensor.Height() + xc" +
          xs + ";\n";
   }
   c += "  {\n";
-  c += "    int yc = tile_y + U.padding.y;\n";
-  c += "    bool iny = (yc >= 0 && yc < U.src_size.y);\n";
-  c += "    yc = clamp(yc, 0, U.src_size.y - 1);\n";
-  c += "    int offset = yc * U.src_size.x;\n";
+  c += "    int yc = tile_y + params.padding.y;\n";
+  c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+  c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
+  c += "    int offset = yc * args.src_tensor.Width();\n";
   c += "    FLT bt = bt_ar[0] * FLT(iny);\n";
   for (int x = 0; x < 6; ++x) {
     const std::string xs = std::to_string(x);
@@ -208,10 +216,10 @@ kernel void ComputeFunction($1
   for (int y = 1; y < 6; ++y) {
     const std::string ys = std::to_string(y);
     c += "  {\n";
-    c += "    int yc = tile_y + U.padding.y + (" + ys + ");\n";
-    c += "    bool iny = (yc >= 0 && yc < U.src_size.y);\n";
-    c += "    yc = clamp(yc, 0, U.src_size.y - 1);\n";
-    c += "    int offset = yc * U.src_size.x;\n";
+    c += "    int yc = tile_y + params.padding.y + (" + ys + ");\n";
+    c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
+    c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
+    c += "    int offset = yc * args.src_tensor.Width();\n";
     c += "    FLT bt = bt_ar[" + ys + "] * FLT(iny);\n";
     for (int x = 0; x < 6; ++x) {
       const std::string xs = std::to_string(x);
@@ -224,32 +232,32 @@ kernel void ComputeFunction($1
   c += R"(
   {
     FLT4 r0 = I0 + Bt[2] * I2 + Bt[4] * I4;
-    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[7] * I1 + Bt[8] * I2 + Bt[9] * I3 + Bt[10] * I4;
-    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[13] * I1 + Bt[14] * I2 + Bt[15] * I3 + Bt[16] * I4;
-    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[19] * I1 + Bt[20] * I2 + Bt[21] * I3 + Bt[22] * I4;
-    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[25] * I1 + Bt[26] * I2 + Bt[27] * I3 + Bt[28] * I4;
-    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);
     DST_Y++;
   }
   {
     FLT4 r0 = Bt[31] * I1 + Bt[33] * I3 + I5;
-    dst_tensor[(DST_Z * U.dst_size.y + DST_Y) * U.dst_size.x + DST_X] = r0;
+    args.dst_tensor.Write(r0, DST_X, DST_Y, DST_Z);
   }
 }
 )";
@@ -261,11 +269,6 @@ std::string GetKernelWinograd36To4x4() {
   c += R"(
 #include <metal_stdlib>
 using namespace metal;
-
-struct uniforms {
-    int4 src_size;
-    int4 dst_size;
-};
 )";
   auto at_mat = AtMatrixForWinograd4x4To6x6();
   c += "constant FLT At[24] = {\n";
@@ -286,12 +289,12 @@ kernel void ComputeFunction($1
 {
   int tile_id = global_ids.x;
   int Z = static_cast<int>(global_ids.z);
-  int tiles_count_x = (U.dst_size.x + 3) / 4;
+  int tiles_count_x = (args.dst_tensor.Width() + 3) / 4;
   int tile_x = (tile_id % tiles_count_x) * 4;
   int tile_y = (tile_id / tiles_count_x) * 4;
-  if (tile_x >= U.dst_size.x || tile_y >= U.dst_size.y) return;
+  if (tile_x >= args.dst_tensor.Width() || tile_y >= args.dst_tensor.Height()) return;
 
-  int src_adress = Z * U.src_size.y * U.src_size.x + tile_id;
+  int src_adress = Z * args.src_tensor.Height() * args.src_tensor.Width() + tile_id;
   FLT4 I[4][6];
   for (int y = 0; y < 4; ++y) {
     for (int x = 0; x < 6; ++x) {
@@ -299,8 +302,8 @@ kernel void ComputeFunction($1
     }
   }
   for (int y = 0; y < 6; ++y) {
-    for (int x = 0; x < 6; ++x, src_adress += U.src_size.x) {
-      FLT4 src = src_tensor[src_adress];
+    for (int x = 0; x < 6; ++x, src_adress += args.src_tensor.Width()) {
+      FLT4 src = args.src_tensor.Read(src_adress);
       I[0][x] += src * At[y];
       I[1][x] += src * At[y + 6];
       I[2][x] += src * At[y + 12];
@@ -308,42 +311,36 @@ kernel void ComputeFunction($1
     }
   }
 
-  FLT4 bias_val = biases[Z];
-  int dst_adress = (Z * U.dst_size.y + tile_y) * U.dst_size.x + tile_x;
-  for (int y = 0; y < 4 && tile_y + y < U.dst_size.y; ++y) {
+  FLT4 bias_val = args.biases.Read(Z);
+  for (int y = 0; y < 4 && tile_y + y < args.dst_tensor.Height(); ++y) {
     FLT4 t0 = I[y][1] + I[y][2];
     FLT4 t1 = I[y][3] + I[y][4];
-    if (tile_x < U.dst_size.x) {
+    if (tile_x < args.dst_tensor.Width()) {
       FLT4 value = I[y][0] + t0 + t1 + bias_val;
-      int linear_index = dst_adress;
       uint3 gid = uint3(tile_x, tile_y + y, global_ids.z);
       $2
-      dst_tensor[linear_index] = value;
+      args.dst_tensor.Write(value, tile_x, tile_y + y, global_ids.z);
     }
     FLT4 t2 = I[y][1] - I[y][2];
     FLT4 t3 = I[y][3] - I[y][4];
-    if (tile_x + 1 < U.dst_size.x) {
+    if (tile_x + 1 < args.dst_tensor.Width()) {
       FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
-      int linear_index = dst_adress + 1;
       uint3 gid = uint3(tile_x + 1, tile_y + y, global_ids.z);
       $2
-      dst_tensor[linear_index] = value;
+      args.dst_tensor.Write(value, tile_x + 1, tile_y + y, global_ids.z);
     }
-    if (tile_x + 2 < U.dst_size.x) {
+    if (tile_x + 2 < args.dst_tensor.Width()) {
       FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
-      int linear_index = dst_adress + 2;
       uint3 gid = uint3(tile_x + 2, tile_y + y, global_ids.z);
       $2
-      dst_tensor[linear_index] = value;
+      args.dst_tensor.Write(value, tile_x + 2, tile_y + y, global_ids.z);
     }
-    if (tile_x + 3 < U.dst_size.x) {
+    if (tile_x + 3 < args.dst_tensor.Width()) {
       FLT4 value = t2 * At[19] + t3 * At[21] + I[y][5] + bias_val;
       uint3 gid = uint3(tile_x + 3, tile_y + y, global_ids.z);
-      int linear_index = dst_adress + 3;
       $2
-      dst_tensor[linear_index] = value;
+      args.dst_tensor.Write(value, tile_x + 3, tile_y + y, global_ids.z);
     }
-    dst_adress += U.dst_size.x;
   }
 }
 )";
@@ -357,8 +354,6 @@ std::string GetKernelWinograd36To4x4Tile4x1() {
 using namespace metal;
 
 struct uniforms {
-    int4 src_size;
-    int4 dst_size;
     int4 tiles;
 };
 )";
@@ -382,30 +377,32 @@ kernel void ComputeFunction($1
   int tile_id = global_ids.x;
   int DST_Y = global_ids.y;
   int DST_Z = global_ids.z;
-  int tile_x = (tile_id % U.tiles.x) * 4;
-  int tile_y = (tile_id / U.tiles.x) * 4 + DST_Y;
-  if (tile_x >= U.dst_size.x || tile_y >= U.dst_size.y || DST_Z >= U.dst_size.z) {
+  int tile_x = (tile_id % params.tiles.x) * 4;
+  int tile_y = (tile_id / params.tiles.x) * 4 + DST_Y;
+  if (tile_x >= args.dst_tensor.Width() || tile_y >= args.dst_tensor.Height() || DST_Z >= args.dst_tensor.Slices()) {
     return;
   }
   FLT4 I0, I1, I2, I3, I4, I5;
   FLT at_ar[6];
-  FLT4 t00 = at_arr[DST_Y * 2 + 0];
-  FLT4 t01 = at_arr[DST_Y * 2 + 1];
+  FLT4 t00 = args.at_arr.Read(DST_Y * 2 + 0);
+  FLT4 t01 = args.at_arr.Read(DST_Y * 2 + 1);
   at_ar[0] = t00.x;
   at_ar[1] = t00.y;
   at_ar[2] = t00.z;
   at_ar[3] = t00.w;
   at_ar[4] = t01.x;
   at_ar[5] = t01.y;
-  int src_adress = DST_Z * U.src_size.y * U.src_size.x + tile_id;
+  int src_adress = DST_Z * args.src_tensor.Height() * args.src_tensor.Width() + tile_id;
+  int src_adress_final;
   {
     FLT at = at_ar[0];
 )";
   for (int x = 0; x < 6; ++x) {
     const std::string yc = std::to_string(x);
     const std::string src = "src" + std::to_string(x);
-    c += "    FLT4 " + src + " = src_tensor[src_adress + U.src_size.x * " + yc +
-         "];\n";
+    c += "    src_adress_final = src_adress + args.src_tensor.Width() * " + yc +
+         ";\n";
+    c += "    FLT4 " + src + " = args.src_tensor.Read(src_adress_final);\n";
     c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
   }
   c += "  }\n";
@@ -415,8 +412,9 @@ kernel void ComputeFunction($1
     for (int x = 0; x < 6; ++x) {
       const std::string yc = std::to_string(y * 6 + x);
       const std::string src = "src" + std::to_string(x);
-      c += "    FLT4 " + src + " = src_tensor[src_adress + U.src_size.x * " +
-           yc + "];\n";
+      c += "    src_adress_final = src_adress + args.src_tensor.Width() * " +
+           yc + ";\n";
+      c += "    FLT4 " + src + " = args.src_tensor.Read(src_adress_final);\n";
       c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
     }
     c += "  }\n";
@@ -424,37 +422,32 @@ kernel void ComputeFunction($1
   c += R"(
   FLT4 t0 = I1 + I2;
   FLT4 t1 = I3 + I4;
-  FLT4 bias_val = biases[DST_Z];
-  int dst_adress = (DST_Z * U.dst_size.y + tile_y) * U.dst_size.x + tile_x;
-  if (tile_x < U.dst_size.x) {
+  FLT4 bias_val = args.biases.Read(DST_Z);
+  if (tile_x < args.dst_tensor.Width()) {
     FLT4 value = I0 + t0 + t1 + bias_val;
     uint3 gid = uint3(tile_x, tile_y, global_ids.z);
-    int linear_index = dst_adress;
     $2;
-    dst_tensor[linear_index] = value;
+    args.dst_tensor.Write(value, tile_x, tile_y, global_ids.z);
   }
   FLT4 t2 = I1 - I2;
   FLT4 t3 = I3 - I4;
-  if (tile_x + 1 < U.dst_size.x) {
+  if (tile_x + 1 < args.dst_tensor.Width()) {
     FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
     uint3 gid = uint3(tile_x + 1, tile_y, global_ids.z);
-    int linear_index = dst_adress + 1;
     $2;
-    dst_tensor[linear_index] = value;
+    args.dst_tensor.Write(value, tile_x + 1, tile_y, global_ids.z);
   }
-  if (tile_x + 2 < U.dst_size.x) {
+  if (tile_x + 2 < args.dst_tensor.Width()) {
     FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
     uint3 gid = uint3(tile_x + 2, tile_y, global_ids.z);
-    int linear_index = dst_adress + 2;
     $2;
-    dst_tensor[linear_index] = value;
+    args.dst_tensor.Write(value, tile_x + 2, tile_y, global_ids.z);
   }
-  if (tile_x + 3 < U.dst_size.x) {
+  if (tile_x + 3 < args.dst_tensor.Width()) {
     FLT4 value = t2 * At[19] + t3 * At[21] + I5 + bias_val;
     uint3 gid = uint3(tile_x + 3, tile_y, global_ids.z);
-    int linear_index = dst_adress + 3;
     $2;
-    dst_tensor[linear_index] = value;
+    args.dst_tensor.Write(value, tile_x + 3, tile_y, global_ids.z);
   }
 }
 )";
@@ -471,7 +464,7 @@ ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   desc.uniform_buffers = {
-      {"constant uniforms& U",
+      {"constant uniforms& params",
        [attr](const std::vector<BHWC>& src_shapes,
               const std::vector<BHWC>& dst_shapes) {
          int new_width = src_shapes[0].w + attr.padding.prepended.w +
@@ -481,14 +474,6 @@ ComputeTaskDescriptor Winograd4x4To36(const OperationDef& definition,
          int tiles_x = DivideRoundUp(new_width, 4);
          int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
-             src_shapes[0].w,
-             src_shapes[0].h,
-             DivideRoundUp(src_shapes[0].c, 4),
-             0,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
              tiles_x,
@@ -535,13 +520,17 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   }
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const bt_arr",
-       GetByteBufferConverted(bt_aligned, data_type)},
-  };
+  BufferDescriptor buf_desc;
+  buf_desc.element_type = data_type;
+  buf_desc.element_size = 4;
+  buf_desc.data = GetByteBufferConverted(bt_aligned, data_type);
+  buf_desc.size = buf_desc.data.size();
+
+  desc.args.AddObject("bt_arr",
+                      absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
   desc.uniform_buffers = {
-      {"constant uniforms& U",
+      {"constant uniforms& params",
        [attr](const std::vector<BHWC>& src_shapes,
               const std::vector<BHWC>& dst_shapes) {
          int new_width = src_shapes[0].w + attr.padding.prepended.w +
@@ -551,14 +540,6 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
          int tiles_x = DivideRoundUp(new_width, 4);
          int tiles_y = DivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
-             src_shapes[0].w,
-             src_shapes[0].h,
-             DivideRoundUp(src_shapes[0].c, 4),
-             0,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
              tiles_x,
@@ -591,29 +572,15 @@ ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.biases.data, data_type,
-                                     AlignByN(attr.output_shape.c, 4))},
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.biases.data, data_type, AlignByN(attr.output_shape.c, 4));
+  bias_desc.size = bias_desc.data.size();
 
-  desc.uniform_buffers = {
-      {"constant uniforms& U",
-       [](const std::vector<BHWC>& src_shapes,
-          const std::vector<BHWC>& dst_shapes) {
-         std::vector<int> sizes = {
-             src_shapes[0].w,
-             src_shapes[0].h,
-             DivideRoundUp(src_shapes[0].c, 4),
-             0,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             0,
-         };
-         return GetByteBuffer(sizes);
-       }},
-  };
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {
@@ -648,29 +615,32 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
   }
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.biases.data, data_type,
-                                     AlignByN(attr.output_shape.c, 4))},
-      {"device FLT4* const at_arr",
-       GetByteBufferConverted(at_aligned, data_type)},
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.biases.data, data_type, AlignByN(attr.output_shape.c, 4));
+  bias_desc.size = bias_desc.data.size();
+
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+
+  BufferDescriptor buf_desc;
+  buf_desc.element_type = data_type;
+  buf_desc.element_size = 4;
+  buf_desc.data = GetByteBufferConverted(at_aligned, data_type);
+  buf_desc.size = buf_desc.data.size();
+
+  desc.args.AddObject("at_arr",
+                      absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
   desc.uniform_buffers = {
-      {"constant uniforms& U",
+      {"constant uniforms& params",
        [](const std::vector<BHWC>& src_shapes,
           const std::vector<BHWC>& dst_shapes) {
          const int tiles_x = DivideRoundUp(dst_shapes[0].w, 4);
          const int tiles_y = DivideRoundUp(dst_shapes[0].h, 4);
          std::vector<int> sizes = {
-             src_shapes[0].w,
-             src_shapes[0].h,
-             DivideRoundUp(src_shapes[0].c, 4),
-             0,
-             dst_shapes[0].w,
-             dst_shapes[0].h,
-             DivideRoundUp(dst_shapes[0].c, 4),
-             0,
              tiles_x,
              tiles_y,
              0,

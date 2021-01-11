@@ -23,7 +23,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -71,9 +71,9 @@ struct TensorListOpsDecompositionPass
 void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
-  func.setType(FunctionType::get(
-      arg_types, func.front().getTerminator()->getOperandTypes(),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), arg_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Holds the size value of a tensor list and whether the size is statically
@@ -457,7 +457,7 @@ LogicalResult HandlePartitionedCallOp(
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call.getAttrs());
-    new_call.setAttr(
+    new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.buffer_ret_to_size_ret) {

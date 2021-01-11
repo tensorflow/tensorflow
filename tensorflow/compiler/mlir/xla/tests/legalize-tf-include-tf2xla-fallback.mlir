@@ -37,14 +37,4 @@ func @mirror_pad(%arg0: tensor<2x3xcomplex<f64>>) -> tensor<4x7xcomplex<f64>> {
   return %1 : tensor<4x7xcomplex<f64>>
 }
 
-// CHECK-LABEL: atan2
-func @atan2(%arg0: tensor<4x1xf32>, %arg1: tensor<4x1x4xf32>) -> tensor<4x4x4xf32> {
-  // NO_FALLBACK: tf.Atan2
-  // SUPPORTED_FALLBACK_DEVICE-NOT: tf.Atan2
-  // UNSPECIFIED_FALLBACK_DEVICE: tf.Atan2
-  // UNSUPPORTED_FALLBACK_DEVICE: tf.Atan2
-  %0 = "tf.Atan2"(%arg0, %arg1) : (tensor<4x1xf32>, tensor<4x1x4xf32>) -> tensor<4x4x4xf32>
-  return %0: tensor<4x4x4xf32>
-}
-
 }

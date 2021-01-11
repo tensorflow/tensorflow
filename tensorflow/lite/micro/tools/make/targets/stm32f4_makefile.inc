@@ -6,8 +6,17 @@ TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 TARGET_TOOLCHAIN_ROOT := $(TENSORFLOW_ROOT)$(MAKEFILE_DIR)/downloads/gcc_embedded/bin/
 
 $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-$(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/renode_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the renode download: $(DOWNLOAD_RESULT))
+endif
+
+DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+  $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+endif
 
 # TODO(b/161478030) : change - Wno - vla to - Wvla and remove - Wno-shadow once
 # we have a solution for fixing / avoiding being tripped up by these warnings.
@@ -59,7 +68,6 @@ EXCLUDED_SRCS := \
   $(MAKEFILE_DIR)/downloads/stm32_bare_lib/source/debug_log.c
 THIRD_PARTY_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(THIRD_PARTY_CC_SRCS))
 MICROLITE_CC_SRCS := $(filter-out $(EXCLUDED_SRCS), $(MICROLITE_CC_SRCS))
-TEST_SCRIPT := tensorflow/lite/micro/testing/test_stm32f4_binary.sh
 
 # TODO(b/158324045): Examine why some tests fail here.
 EXCLUDED_TESTS := \
@@ -78,11 +86,10 @@ EXCLUDED_EXAMPLE_TESTS := \
   tensorflow/lite/micro/examples/image_recognition_experimental/Makefile.inc
 MICRO_LITE_EXAMPLE_TESTS := $(filter-out $(EXCLUDED_EXAMPLE_TESTS), $(MICRO_LITE_EXAMPLE_TESTS))
 
-# These are microcontroller-specific rules for converting the ELF output
-# of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+TEST_SCRIPT := tensorflow/lite/micro/testing/test_with_renode.sh
 
-$(BINDIR)/%.bin: $(BINDIR)/%
-	@mkdir -p $(dir $@)
-	$(OBJCOPY) $< $@ -O binary
-
+# We are setting this variable to non-zero to allow us to have a custom
+# implementation of `make test` for bluepill
+TARGET_SPECIFIC_MAKE_TEST := 1
+test: build
+	$(TEST_SCRIPT) $(BINDIR) $(TEST_PASS_STRING) $(TARGET)

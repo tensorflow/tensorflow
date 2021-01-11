@@ -327,6 +327,15 @@ func @slice_2D_fold_vertical() -> tensor<4x1xi64> {
   return %1 : tensor<4x1xi64>
 }
 
+// CHECK-LABEL: slice_zero_elements
+func @slice_zero_elements() -> tensor<0xi64> {
+  %0 = mhlo.constant dense<> : tensor<0xi64>
+  // CHECK: %[[CONST:.*]] = mhlo.constant dense<> : tensor<0xi64>
+  %1 = "mhlo.slice"(%0) { limit_indices = dense<[0]> : tensor<1xi64>, start_indices = dense<[0]> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<0xi64>) -> (tensor<0xi64>)
+  // CHECK: return %[[CONST]] : tensor<0xi64>
+  return %1 : tensor<0xi64>
+}
+
 // CHECK-LABEL: slice_unknown_shape
 func @slice_unknown_shape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
@@ -1506,6 +1515,14 @@ func @pad_fold() -> tensor<4x5xi32> {
   // CHECK-SAME: ]> : tensor<4x5xi32>
 }
 
+func @pad_fold_zero_elements() -> tensor<3xi32> {
+  %0 = mhlo.constant dense<> : tensor<0xi32>
+  %1 = mhlo.constant dense<7> : tensor<i32>
+  %2 = "mhlo.pad"(%0, %1) {edge_padding_high = dense<3> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<0> : tensor<1xi64>} : (tensor<0xi32>, tensor<i32>) -> tensor<3xi32>
+  return %2 : tensor<3xi32>
+  // CHECK: mhlo.constant dense<7> : tensor<3xi32>
+}
+
 // CHECK-LABEL: @identity_broadcast_reshape
 func @identity_broadcast_reshape(%arg0: tensor<128xf32>) -> tensor<128xf32> {
   %0 = "mhlo.broadcast"(%arg0) {
@@ -1523,3 +1540,43 @@ func @identity_broadcast_in_dim_reshape(%arg0: tensor<128xf32>) -> tensor<128xf3
   return %1 : tensor<128xf32>
   // CHECK: return %arg0 : tensor<128xf32>
 }
+
+// CHECK-LABEL: @broadcast_of_reshape
+func @broadcast_of_reshape(%arg: tensor<?xf32>,
+                           %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+      : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape) {
+    broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>
+  } : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+// CHECK: [[RESHAPE:%.*]] = "mhlo.dynamic_reshape"
+// CHECK: return [[RESHAPE]]
+
+// CHECK-LABEL: @permutation_broadcast_of_reshape
+func @permutation_broadcast_of_reshape(%arg: tensor<?xf32>,
+    %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+      : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.dynamic_broadcast_in_dim"(%0, %shape) {
+    broadcast_dimensions = dense<[1, 0]> : tensor<2xi64>
+  } : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %1 : tensor<?x?xf32>
+}
+// CHECK: mhlo.dynamic_reshape
+// CHECK: mhlo.dynamic_broadcast_in_dim
+
+// CHECK-LABEL: @reshape_of_same_shape_op_result
+func @reshape_of_same_shape_op_result(%arg: tensor<?xf32>,
+    %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "mhlo.dynamic_reshape"(%arg, %shape)
+    : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  %1 = "mhlo.abs"(%0) : (tensor<?x?xf32>) -> tensor<?x?xf32>
+  %2 = "mhlo.dynamic_reshape"(%1, %shape)
+    : (tensor<?x?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %2 : tensor<?x?xf32>
+}
+// CHECK: mhlo.dynamic_reshape
+// CHECK-NEXT: mhlo.abs
+// CHECK-NOT: mhlo.dynamic_reshape

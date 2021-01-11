@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
@@ -63,7 +63,7 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
   LogicalResult matchAndRewrite(
       AllocOp alloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    auto func = alloc.getParentOfType<FuncOp>();
+    auto func = alloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -76,8 +76,13 @@ class TFAllocOpConverter : public OpConversionPattern<AllocOp> {
     if (!alloc.symbolOperands().empty()) {
       return failure();
     }
+    auto reuse_input_candidates = alloc->getAttrOfType<ArrayAttr>(
+        TFAllocOp::kReuseInputCandidatesAttrName);
+    auto reuse_output_index =
+        alloc->getAttrOfType<IntegerAttr>(TFAllocOp::kReuseOutputAttrName);
     rewriter.replaceOpWithNewOp<TFAllocOp>(alloc, alloc.getType(), ctx,
-                                           operands);
+                                           operands, reuse_input_candidates,
+                                           reuse_output_index);
     return success();
   }
 };
@@ -91,7 +96,7 @@ class TFDeallocOpConverter : public OpConversionPattern<DeallocOp> {
   LogicalResult matchAndRewrite(
       DeallocOp dealloc, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    FuncOp func = dealloc.getParentOfType<FuncOp>();
+    auto func = dealloc->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -120,7 +125,7 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
   LogicalResult matchAndRewrite(
       AssertOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
-    FuncOp func = op.getParentOfType<FuncOp>();
+    auto func = op->getParentOfType<FuncOp>();
     if (func.getNumArguments() == 0) {
       return failure();
     }
@@ -129,8 +134,7 @@ class TFAssertOpConverter : public OpConversionPattern<AssertOp> {
       return failure();
     }
     Location loc = op.getLoc();
-    AssertOp::Adaptor transformed(operands,
-                                  op.getOperation()->getAttrDictionary());
+    AssertOp::Adaptor transformed(operands, op->getAttrDictionary());
 
     // Split the block to insert CondBr.
     OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();

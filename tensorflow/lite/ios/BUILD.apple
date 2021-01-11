@@ -9,6 +9,13 @@ load(
 )
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_strict_binary")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pytype_strict_library")
+load("//tensorflow:tensorflow.bzl", "py_strict_test")
+
 package(
     default_visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -27,10 +34,57 @@ sh_binary(
     ],
 )
 
+pytype_strict_library(
+    name = "extract_object_files",
+    srcs = [
+        "extract_object_files.py",
+    ],
+)
+
+pytype_strict_binary(
+    name = "extract_object_files_main",
+    srcs = [
+        "extract_object_files_main.py",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+        "//tensorflow_lite_support:__subpackages__",
+    ],
+    deps = [
+        ":extract_object_files",
+    ],
+)
+
+filegroup(
+    name = "extract_object_files_testdata",
+    srcs = glob(["testdata/**"]),
+)
+
+py_strict_test(
+    name = "extract_object_files_test",
+    srcs = [
+        "extract_object_files_test.py",
+    ],
+    data = [
+        ":extract_object_files_testdata",
+    ],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":extract_object_files",
+        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 strip_common_include_path_prefix(
     name = "strip_common_include_path_core",
     hdr_labels = [
         "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
     ],
 )
@@ -49,8 +103,9 @@ tflite_ios_static_framework(
     name = "TensorFlowLiteC_framework",
     hdrs = [
         ":c_api.h",
+        ":common.h",
         ":xnnpack_delegate.h",
-        "//tensorflow/lite/c:common.h",
+        "//tensorflow/lite/c:c_api_types.h",
     ],
     allowlist_symbols_file = ":allowlist_TensorFlowLiteC.txt",
     bundle_name = "TensorFlowLiteC",
@@ -121,6 +176,7 @@ cc_library(
     name = "tensorflow_lite_c",
     hdrs = [
         "//tensorflow/lite/c:c_api.h",
+        "//tensorflow/lite/c:c_api_types.h",
         "//tensorflow/lite/c:common.h",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
     ],
@@ -130,6 +186,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
 )
@@ -142,6 +199,8 @@ build_test(
         "noasan",
         "nomsan",
         "notsan",
+        # TODO(b/176993122): restore once the apple_genrule issue is resolved.
+        "notap",
     ],
     targets = [
         ":TensorFlowLiteCCoreML_framework",

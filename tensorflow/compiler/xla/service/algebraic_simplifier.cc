@@ -3890,16 +3890,50 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
     }
   }
 
-  // reshape(iota) -> iota.
+  // reshape(iota) -> iota or a mixed radix calculation like
+  // s32[2,3,4] reshape(s32[24] iota()) to
+  // add(
+  //    add(s32[2,3,4] iota() iota_dimension=2,
+  //        4 * s32[2,3,4] iota() iota_dimension=1),
+  //    12 * s32[2,3,4] iota() iota_dimension=0).
   if (operand->opcode() == HloOpcode::kIota) {
     auto* iota = Cast<HloIotaInstruction>(operand);
-    auto opt_dims =
-        ReshapeLeavesDimensionsUnmodified(reshape, {iota->iota_dimension()});
-    if (opt_dims.has_value()) {
-      CHECK_EQ(opt_dims->size(), 1);
-      return ReplaceWithNewInstruction(
-          reshape,
-          HloInstruction::CreateIota(reshape->shape(), opt_dims->front()));
+    auto common_factors =
+        CommonFactors(reshape->operand(0)->shape().dimensions(),
+                      reshape->shape().dimensions());
+    auto iota_dim = absl::c_find_if(
+        common_factors, [&](const std::pair<int64, int64>& dim_pair) {
+          return dim_pair.first == iota->iota_dimension() &&
+                 reshape->shape().dimensions(dim_pair.second) > 1;
+        });
+    auto next_dim = absl::c_find_if(
+        common_factors, [&](const std::pair<int64, int64>& dim_pair) {
+          return dim_pair.first == iota->iota_dimension() + 1;
+        });
+    if (iota_dim != common_factors.end() && next_dim != common_factors.end()) {
+      int64 multiplier = 1;
+      HloInstruction* new_reshape = nullptr;
+
+      for (int64 dim = (iota_dim + 1)->second - 1; dim >= iota_dim->second;
+           --dim) {
+        HloInstruction* new_iota = computation_->AddInstruction(
+            HloInstruction::CreateIota(reshape->shape(), dim));
+        iota->SetupDerivedInstruction(new_iota);
+        if (new_reshape) {
+          new_reshape =
+              computation_->AddInstruction(HloInstruction::CreateBinary(
+                  reshape->shape(), HloOpcode::kAdd, new_reshape,
+                  computation_->AddInstruction(HloInstruction::CreateBinary(
+                      reshape->shape(), HloOpcode::kMultiply, new_iota,
+                      MakeScalarLike(reshape, multiplier)))));
+          reshape->SetupDerivedInstruction(new_reshape);
+        } else {
+          new_reshape = new_iota;
+        }
+        multiplier *= reshape->shape().dimensions(dim);
+      }
+      reshape->SetupDerivedInstruction(new_reshape);
+      return ReplaceInstruction(reshape, new_reshape);
     }
   }
 
@@ -4696,6 +4730,10 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* hlo) {
 
 Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     HloInstruction* reduce_window) {
+  // TODO(b/73062247) Variadic reduce window is not yet supported in simplifier.
+  if (reduce_window->shape().IsTuple()) {
+    return Status::OK();
+  }
   if (ShapeUtil::IsZeroElementArray(reduce_window->operand(0)->shape())) {
     return ReplaceWithNewInstruction(
         reduce_window,

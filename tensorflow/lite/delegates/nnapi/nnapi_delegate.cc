@@ -221,6 +221,8 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinPow:
     case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMinimum:
+    case kTfLiteBuiltinPrelu:
+    case kTfLiteBuiltinLeakyRelu:
       return true;
     default:
       return false;
@@ -1876,14 +1878,25 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReshape: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
-      Expect(node->inputs->size >= 2,
-             NNAPIValidationFailureType::kMissingRequiredOperand,
-             "Expected at least 2 inputs", &val_ctx);
       if (node->inputs->size >= 2) {
         Expect(context->tensors[node->inputs->data[1]].allocation_type ==
                    kTfLiteMmapRo,
                NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
                "The shape input tensor must be constant.", &val_ctx);
+      }
+      if (node->inputs->size == 1) {
+        // reject scalar reshaping
+        auto* params =
+            reinterpret_cast<TfLiteReshapeParams*>(node->builtin_data);
+        int num_dimensions = params->num_dimensions;
+        if (num_dimensions == 1 && params->shape[0] == 0) {
+          // Legacy tflite models use a shape parameter of [0] to indicate
+          // scalars.
+          num_dimensions = 0;
+        }
+        Expect(num_dimensions > 0,
+               NNAPIValidationFailureType::kUnsupportedOperandRank,
+               "New shape rank should be > 0", &val_ctx);
       }
     } break;
     case kTfLiteBuiltinResizeBilinear: {
@@ -2223,7 +2236,7 @@ bool NNAPIDelegateKernel::Validate(
       ExpectIsFloatOperator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTransposeConv: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       Expect((node->inputs->size > 1) &&
@@ -2448,6 +2461,7 @@ bool NNAPIDelegateKernel::Validate(
             &val_ctx);
       }
     } break;
+    case kTfLiteBuiltinLeakyRelu:
     case kTfLiteBuiltinPrelu: {
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
@@ -2810,6 +2824,18 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       *nn_op_type = ANEURALNETWORKS_SOFTMAX;
     } break;
     case kTfLiteBuiltinReshape: {
+      if (mapping_args.node->inputs->size == 1) {
+        // if no new_shape tensor, construct the new shape from params.
+        auto* params = reinterpret_cast<TfLiteReshapeParams*>(
+            mapping_args.node->builtin_data);
+        int num_dimensions = params->num_dimensions;
+        std::vector<int32_t> output_shape(num_dimensions);
+        for (int i = 0; i < num_dimensions; ++i) {
+          output_shape[i] = params->shape[i];
+        }
+        mapping_args.builder->AddVectorInt32Operand(
+            output_shape.data(), static_cast<uint32_t>(num_dimensions));
+      }
       *nn_op_type = ANEURALNETWORKS_RESHAPE;
     } break;
     case kTfLiteBuiltinResizeBilinear: {
@@ -3356,6 +3382,38 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     } break;
     case kTfLiteBuiltinCast: {
       *nn_op_type = ANEURALNETWORKS_CAST;
+    } break;
+    case kTfLiteBuiltinLeakyRelu: {
+      const auto input_type =
+          mapping_args.context->tensors[mapping_args.node->inputs->data[0]]
+              .type;
+      auto builtin = reinterpret_cast<TfLiteLeakyReluParams*>(
+          mapping_args.node->builtin_data);
+
+      TfLiteTensor alpha_tensor;
+      alpha_tensor.type = input_type;
+      alpha_tensor.allocation_type = kTfLiteDynamic;
+      alpha_tensor.dims = TfLiteIntArrayCreate(1);
+      alpha_tensor.dims->data[0] = 1;
+      alpha_tensor.params.zero_point = 0;
+
+      int new_tensor_index = -1;
+      if (input_type == kTfLiteFloat32) {
+        alpha_tensor.params.scale = 0;
+        std::vector<float> alpha_value = {builtin->alpha};
+        mapping_args.builder->AddNewInputConstantTensor(
+            ANEURALNETWORKS_TENSOR_FLOAT32, kTfLiteFloat32, alpha_tensor.dims,
+            alpha_value, alpha_tensor.params, &new_tensor_index);
+      } else {
+        alpha_tensor.params.scale = builtin->alpha;
+        std::vector<uint8_t> alpha_value = {1};
+        mapping_args.builder->AddNewInputConstantTensor(
+            ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, kTfLiteUInt8,
+            alpha_tensor.dims, alpha_value, alpha_tensor.params,
+            &new_tensor_index);
+      }
+
+      *nn_op_type = ANEURALNETWORKS_PRELU;
     } break;
     case kTfLiteBuiltinPrelu: {
       *nn_op_type = ANEURALNETWORKS_PRELU;

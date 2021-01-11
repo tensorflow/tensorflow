@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 #include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 using ::tflite::gpu::BHWC;
@@ -93,22 +92,15 @@ using ::tflite::gpu::metal::CompareVectors;
   op_def.src_tensors.push_back(tensor_descriptor);
   op_def.dst_tensors.push_back(tensor_descriptor);
   auto gpu_op = tflite::gpu::metal::Winograd4x4To36(op_def, attr);
-  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
-  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
-  nodes[0].src_tensors_ids = {0};
-  nodes[0].dst_tensors_ids = {1};
 
-  std::map<ValueId, TensorFloat32> inputs;
-  inputs[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs;
-  outputs[1].shape = BHWC(1, 36, 1, 1);
-  outputs[1].data.resize(36, 0.0f);
-
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(nodes, device, inputs, &outputs);
+  tflite::gpu::metal::MetalExecutionEnvironment env;
+  auto op_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  TensorFloat32 gpu_output;
+  auto status = env.ExecuteGPUOperation(src_tensor, std::move(op_ptr),
+                                        BHWC(1, 36, 1, 1), &gpu_output);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);
+  status = CompareVectors(dst_tensor.data, gpu_output.data, 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
@@ -151,10 +143,6 @@ using ::tflite::gpu::metal::CompareVectors;
     }
   }
 
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-
   tflite::gpu::metal::Winograd4x4To36Attributes attr;
   attr.padding.prepended = tflite::gpu::HW(1, 1);
   attr.padding.appended = tflite::gpu::HW(1, 1);
@@ -167,22 +155,15 @@ using ::tflite::gpu::metal::CompareVectors;
   op_def.src_tensors.push_back(tensor_descriptor);
   op_def.dst_tensors.push_back(tensor_descriptor);
   auto gpu_op = tflite::gpu::metal::Winograd4x4To36TileX6(op_def, attr);
-  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
-  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
-  nodes[0].src_tensors_ids = {0};
-  nodes[0].dst_tensors_ids = {1};
 
-  std::map<ValueId, TensorFloat32> inputs;
-  inputs[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs;
-  outputs[1].shape = BHWC(1, 36, 1, 1);
-  outputs[1].data.resize(36, 0.0f);
-
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(nodes, device, inputs, &outputs);
+  tflite::gpu::metal::MetalExecutionEnvironment env;
+  auto op_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  TensorFloat32 gpu_output;
+  auto status = env.ExecuteGPUOperation(src_tensor, std::move(op_ptr),
+                                        BHWC(1, 36, 1, 1), &gpu_output);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);
+  status = CompareVectors(dst_tensor.data, gpu_output.data, 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
@@ -229,10 +210,6 @@ using ::tflite::gpu::metal::CompareVectors;
   attr.biases.shape = tflite::gpu::Linear(1);
   attr.biases.data.resize(1, 0.0f);
 
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-
   tflite::gpu::OperationDef op_def;
   op_def.precision = tflite::gpu::CalculationsPrecision::F32;
   tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
@@ -242,22 +219,15 @@ using ::tflite::gpu::metal::CompareVectors;
   op_def.src_tensors.push_back(tensor_descriptor);
   op_def.dst_tensors.push_back(tensor_descriptor);
   auto gpu_op = tflite::gpu::metal::Winograd36To4x4(op_def, attr);
-  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
-  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
-  nodes[0].src_tensors_ids = {0};
-  nodes[0].dst_tensors_ids = {1};
 
-  std::map<ValueId, TensorFloat32> inputs;
-  inputs[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs;
-  outputs[1].shape = BHWC(1, 4, 4, 1);
-  outputs[1].data.resize(16, 0.0f);
-
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(nodes, device, inputs, &outputs);
+  tflite::gpu::metal::MetalExecutionEnvironment env;
+  auto op_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  TensorFloat32 gpu_output;
+  auto status = env.ExecuteGPUOperation(src_tensor, std::move(op_ptr),
+                                        BHWC(1, 4, 4, 1), &gpu_output);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-5f);
+  status = CompareVectors(dst_tensor.data, gpu_output.data, 1e-5f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
@@ -304,10 +274,6 @@ using ::tflite::gpu::metal::CompareVectors;
   attr.biases.shape = tflite::gpu::Linear(1);
   attr.biases.data.resize(1, 0.0f);
 
-  tflite::gpu::metal::RuntimeOptions options;
-  options.storage_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-  options.accumulator_precision = tflite::gpu::metal::RuntimeOptions::Precision::FP32;
-
   tflite::gpu::OperationDef op_def;
   op_def.precision = tflite::gpu::CalculationsPrecision::F32;
   tflite::gpu::TensorDescriptor tensor_descriptor = tflite::gpu::TensorDescriptor{
@@ -317,22 +283,15 @@ using ::tflite::gpu::metal::CompareVectors;
   op_def.src_tensors.push_back(tensor_descriptor);
   op_def.dst_tensors.push_back(tensor_descriptor);
   auto gpu_op = tflite::gpu::metal::Winograd36To4x4Tile4x1(op_def, attr);
-  std::vector<tflite::gpu::metal::NodeDescriptor> nodes(1);
-  nodes[0].task = std::make_shared<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
-  nodes[0].src_tensors_ids = {0};
-  nodes[0].dst_tensors_ids = {1};
 
-  std::map<ValueId, TensorFloat32> inputs;
-  inputs[0] = src_tensor;
-  std::map<ValueId, TensorFloat32> outputs;
-  outputs[1].shape = BHWC(1, 4, 4, 1);
-  outputs[1].data.resize(16, 0.0f);
-
-  id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-  auto status = RunGraph(nodes, device, inputs, &outputs);
+  tflite::gpu::metal::MetalExecutionEnvironment env;
+  auto op_ptr = absl::make_unique<tflite::gpu::metal::ComputeTaskDescriptor>(std::move(gpu_op));
+  TensorFloat32 gpu_output;
+  auto status = env.ExecuteGPUOperation(src_tensor, std::move(op_ptr),
+                                        BHWC(1, 4, 4, 1), &gpu_output);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 
-  status = CompareVectors(dst_tensor.data, outputs[1].data, 1e-6f);
+  status = CompareVectors(dst_tensor.data, gpu_output.data, 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 

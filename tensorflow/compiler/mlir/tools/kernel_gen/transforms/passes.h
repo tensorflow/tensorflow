@@ -52,7 +52,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTFKernelToLLVMPass(
 
 // Pass to tranform shape computations in shape dialect to standard and scf
 // using memref descriptors.
-std::unique_ptr<OperationPass<ModuleOp> > CreateShapeToDescriptorsPass();
+std::unique_ptr<OperationPass<ModuleOp>> CreateShapeToDescriptorsPass();
 
 // Pass to tranform hlo-level computations on values to their corresponding
 // parts on buffers.
@@ -62,9 +62,6 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateHloBufferizePass();
 // buffers.
 std::unique_ptr<OperationPass<ModuleOp>> CreateFinalBufferizePass();
 
-// Pass to materialize broadcasts.
-std::unique_ptr<FunctionPass> CreateMaterializeBroadcastsPass();
-
 // Pass to convert scf::ParallelOp to scf::ForOp.
 std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 
@@ -72,10 +69,7 @@ std::unique_ptr<FunctionPass> CreateParallelLoopsToSequential();
 std::unique_ptr<OperationPass<gpu::GPUModuleOp>> CreateGpuKernelToBlobPass(
     mlir::StringRef blob_annotation = {},
     ArrayRef<std::string> architectures = {}, bool generate_fatbin = true,
-    bool print_ptx = false);
-
-// Pass to unfuse batch norm.
-std::unique_ptr<FunctionPass> CreateUnfuseBatchNormPass();
+    bool print_ptx = false, bool enable_ftz = false);
 
 // Pass to propagate tensorflow runtime ABI knowledge across kernel boundaries.
 std::unique_ptr<FunctionPass> CreatePropagateTfAbiKnowledgeToKernels();
@@ -85,6 +79,22 @@ std::unique_ptr<FunctionPass> CreatePropagateShapeKnowledgeToKernels();
 
 // Pass to print content of memrefs.
 std::unique_ptr<FunctionPass> CreateEmbedMemRefPrintsPass();
+
+/// Greedily maps loops to GPU hardware dimensions.
+std::unique_ptr<mlir::FunctionPass> CreateMapParallelLoopsPass();
+
+/// We need to direct fusion to the inner loops. This cannot be done with
+/// a passmanager alone ATM, as nested pass managers require operations to
+/// be closed from above.
+std::unique_ptr<mlir::FunctionPass> CreateFuseInnerParallelLoopsPass();
+
+/// Pass that transforms gpu modules in standard dialect to NNVM.
+std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
+CreateGpuKernelToNvvmPass();
+
+/// Pass that transforms gpu modules in standard dialect to ROCDL.
+std::unique_ptr<OperationPass<mlir::gpu::GPUModuleOp>>
+CreateGpuKernelToRocdlPass();
 
 }  // namespace transforms
 

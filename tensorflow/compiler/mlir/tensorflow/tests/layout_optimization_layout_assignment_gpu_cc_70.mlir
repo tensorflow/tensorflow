@@ -5,7 +5,7 @@ module attributes {
 } {
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f32
-func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x3x64x64xf32>) -> tensor<1x28x28x64xf32> {
+func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x3x64x64xf32>) -> tensor<1x26x26x64xf32> {
   // cuDNN prefers NCHW data format for spatial convolutions.
   // CHECK: "tf.Conv2D"(%[[INPUT_TRANSPOSE:[0-9]*]], %arg1)
   // CHECK-SAME: data_format = "NCHW"
@@ -15,9 +15,9 @@ func @transposeConv2D_3x3_f32(%input: tensor<1x28x28x64xf32>, %filter: tensor<3x
          padding = "VALID",
          strides = [1, 1, 1, 1]
        } : (tensor<1x28x28x64xf32>, tensor<3x3x64x64xf32>)
-        -> tensor<1x28x28x64xf32>
+        -> tensor<1x26x26x64xf32>
 
-  return %0 : tensor<1x28x28x64xf32>
+  return %0 : tensor<1x26x26x64xf32>
 }
 
 // CHECK-LABEL: func @transposeConv2D_1x1_f32
@@ -48,7 +48,7 @@ func @transposeConv2D_1x1_f32(%input: tensor<1x64x28x28xf32>, %filter: tensor<1x
 }
 
 // CHECK-LABEL: func @transposeConv2D_3x3_f16
-func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x64x28x28xf16> {
+func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x3x64x64xf16>) -> tensor<1x64x26x26xf16> {
   // To use Tensor Cores for f16 data type, input must be in NHWC data format.
   // CHECK: "tf.Conv2D"(%[[INPUT_TRANSPOSE:[0-9]*]], %arg1)
   // CHECK-SAME: data_format = "NHWC"
@@ -58,9 +58,9 @@ func @transposeConv2D_3x3_f16(%input: tensor<1x64x28x28xf16>, %filter: tensor<3x
          padding = "VALID",
          strides = [1, 1, 1, 1]
        } : (tensor<1x64x28x28xf16>, tensor<3x3x64x64xf16>)
-        -> tensor<1x64x28x28xf16>
+        -> tensor<1x64x26x26xf16>
 
-  return %0 : tensor<1x64x28x28xf16>
+  return %0 : tensor<1x64x26x26xf16>
 }
 
 // CHECK-LABEL: func @transposeConv2DBackpropFilter_f32

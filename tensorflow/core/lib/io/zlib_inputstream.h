@@ -68,6 +68,10 @@ class ZlibInputStream : public InputStreamInterface {
   // others:       If reading from stream failed.
   Status ReadNBytes(int64 bytes_to_read, tstring* result) override;
 
+#if defined(TF_CORD_SUPPORT)
+  Status ReadNBytes(int64 bytes_to_read, absl::Cord* result) override;
+#endif
+
   int64 Tell() const override;
 
   Status Reset() override;

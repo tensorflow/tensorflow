@@ -161,7 +161,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   """
   # If there is only one tensor to format, we will automatically wrap it in a
   # list to simplify the user experience
-  if tensor_util.is_tensor(inputs):
+  if tensor_util.is_tf_type(inputs):
     inputs = [inputs]
   if template.count(placeholder) != len(inputs):
     raise ValueError("%s placeholder(s) in template does not match %s tensor(s)"

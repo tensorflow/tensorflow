@@ -23,11 +23,11 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -527,7 +527,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   // In case of failure, the `diag_handler` converts MLIR errors emitted to
   // the MLIRContext into a tensorflow::Status.
   StatusScopedDiagnosticHandler diag_handler(func_.getContext());
-  LogicalResult result = pm.run(func_.getParentOfType<ModuleOp>());
+  LogicalResult result = pm.run(func_->getParentOfType<ModuleOp>());
   (void)result;
   TF_RETURN_IF_ERROR(diag_handler.ConsumeStatus());
 
@@ -668,7 +668,7 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
 
   auto arg_types = body.getArgumentTypes();
   auto result_types = body.getTerminator()->getOperandTypes();
-  func_.setType(FunctionType::get(arg_types, result_types, func_.getContext()));
+  func_.setType(FunctionType::get(func_.getContext(), arg_types, result_types));
   *f = new MlirFunction(std::move(context_), std::move(module_), func_);
   return Status::OK();
 }

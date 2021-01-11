@@ -2918,8 +2918,9 @@ def group(*inputs, **kwargs):
   output.
 
   Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
-  this method, as code executes in your expected order.* Only use tf.group when
-  working with v1-style code or in a graph context such as inside `Dataset.map`.
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.group` when working with v1
+  `tf.Graph` code.
 
   When operating in a v1-style graph context, ops are not executed in the same
   order as specified in the code; TensorFlow will attempt to execute ops in
@@ -2991,22 +2992,16 @@ def group(*inputs, **kwargs):
 @tf_export("tuple", v1=[])
 @dispatch.add_dispatch_support
 def tuple_v2(tensors, control_inputs=None, name=None):
-  """Group tensors together.
+  """Groups tensors together.
 
-  This creates a tuple of tensors with the same values as the `tensors`
-  argument, except that the value of each tensor is only returned after the
-  values of all tensors have been computed.
+  The returned tensors have the same value as the input tensors, but they
+  are computed only after all the input tensors have been computed.
 
-  `control_inputs` contains additional ops that have to finish before this op
-  finishes, but whose outputs are not returned.
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as ops execute in the expected order thanks to automatic control
+  dependencies.* Only use `tf.tuple` when working with v1 `tf.Graph` code.
 
-  This can be used as a "join" mechanism for parallel computations: all the
-  argument tensors can be computed in parallel, but the values of any tensor
-  returned by `tuple` are only available after all the parallel computations
-  are done.
-
-  See also `tf.group` and
-  `tf.control_dependencies`.
+  See also `tf.group` and `tf.control_dependencies`.
 
   Args:
     tensors: A list of `Tensor`s or `IndexedSlices`, some entries can be `None`.
@@ -3063,7 +3058,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     return tensors
   with ops.name_scope(name, "tuple", tensors) as name:
     tensors = [
-        t if (isinstance(t, ops.Operation) or tensor_util.is_tensor(t) or
+        t if (isinstance(t, ops.Operation) or tensor_util.is_tf_type(t) or
               t is None) else ops.convert_to_tensor(t) for t in tensors
     ]
     gating_ops = [
@@ -3086,7 +3081,7 @@ def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined
     gate = group(*gating_ops)
     tpl = []
     for t in tensors:
-      if tensor_util.is_tensor(t):
+      if tensor_util.is_tf_type(t):
         tpl.append(with_dependencies([gate], t))
       elif isinstance(t, ops.Operation):
         with ops.control_dependencies([gate]):

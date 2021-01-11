@@ -170,17 +170,22 @@ bool MemoryOptimizerEnabled(
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
-bool MetaOptimizer::IsSingleThreadedExecutor() const {
-  return config_proto_.experimental().executor_type() ==
-         "SINGLE_THREADED_EXECUTOR";
+bool MetaOptimizer::LowerControlFlow() const {
+  if (config_proto_.experimental().executor_type() ==
+      "SINGLE_THREADED_EXECUTOR")
+    return false;
+
+  if (config_proto_.experimental().use_tfrt()) return false;
+
+  return true;
 }
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function", new FunctionOptimizer(
-                         cfg_.function_optimization(),
-                         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+  MK_OPT("function",
+         new FunctionOptimizer(cfg_.function_optimization(),
+                               /*lower_control_flow=*/LowerControlFlow()));
   MK_OPT("constfold",
          new ConstantFolding(
              cpu_device_,
@@ -235,7 +240,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
-        /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+        /*lower_control_flow=*/LowerControlFlow()));
   }
   if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
       cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -264,6 +269,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
@@ -272,9 +280,6 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
         /*optimization level*/ cfg_.layout_optimizer(),
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
-  }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(

@@ -94,7 +94,6 @@ tf_cc_binary(
     ],
 )
 
-# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "replay_computation_gpu",
     tags = ["gpu"],
@@ -328,7 +327,6 @@ cc_library(
     ],
 )
 
-# To run with MLIR GPU plugin enabled, pass --define=with_mlir_gpu_support=true.
 tf_cc_binary(
     name = "run_hlo_module",
     testonly = True,

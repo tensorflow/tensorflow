@@ -2878,7 +2878,7 @@ class ReplicaContextBase(object):
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     if not (replica_id_in_sync_group is None or
-            tensor_util.is_tensor(replica_id_in_sync_group) or
+            tensor_util.is_tf_type(replica_id_in_sync_group) or
             isinstance(replica_id_in_sync_group, int)):
       raise ValueError(
           "replica_id_in_sync_group can only be an integer, a Tensor or None.")
@@ -2981,7 +2981,7 @@ class ReplicaContextBase(object):
     # error. Making the tensor at call time to ensure it is the same graph where
     # it's used. However to be compatible with tpu.replicate(),
     # self._replica_id_in_sync_group can also be a Tensor.
-    if tensor_util.is_tensor(self._replica_id_in_sync_group):
+    if tensor_util.is_tf_type(self._replica_id_in_sync_group):
       return self._replica_id_in_sync_group
     return constant_op.constant(
         self._replica_id_in_sync_group,

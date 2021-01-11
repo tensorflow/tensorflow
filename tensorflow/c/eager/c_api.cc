@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -74,6 +75,15 @@ namespace {
 
 string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
+}
+
+// Annotate eager runtime construction context to the given `function_def` as
+// an attribute.
+void AnnotateEagerRuntimeConstructionContext(
+    tensorflow::FunctionDef& function_def) {
+  tensorflow::AttrValue value;
+  SetAttrValue("kEagerRuntime", &value);
+  (*function_def.mutable_attr())["_construction_context"] = value;
 }
 
 }  // namespace
@@ -132,7 +142,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
-      opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
+      opts->async, device_mgr.release(),
       /*device_mgr_owned*/ true, r);
 #if !defined(IS_MOBILE_PLATFORM)
   eager_context->SetDistributedManager(
@@ -744,13 +754,16 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
         tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
     return;
   }
+
+  AnnotateEagerRuntimeConstructionContext(function_def);
   status->status = tensorflow::unwrap(ctx)->AddFunctionDef(function_def);
 }
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithDebugInfo(
-      function->fdef, function->graph_with_debug_info);
+  AnnotateEagerRuntimeConstructionContext(function->fdef);
+  status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithStackTraces(
+      function->fdef, function->stack_traces);
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,

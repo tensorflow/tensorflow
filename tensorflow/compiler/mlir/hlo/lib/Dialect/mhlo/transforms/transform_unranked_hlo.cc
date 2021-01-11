@@ -21,11 +21,12 @@ limitations under the License.
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -42,11 +43,11 @@ namespace {
                       sep fn(SqrtOp) sep fn(TanhOp)
 
 // TODO(herhut): Generate these out of op definitions.
-#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                           \
-  fn(AddOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp) sep fn(MaxOp) \
-      sep fn(MinOp) sep fn(MulOp) sep fn(PowOp) sep fn(RemOp)             \
-          sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp)              \
-              sep fn(ShiftRightLogicalOp) sep fn(SubOp)
+#define MAP_XLA_OPERATION_CWISE_BINARY(fn, sep)                            \
+  fn(AddOp) sep fn(AndOp) sep fn(Atan2Op) sep fn(ComplexOp) sep fn(DivOp)  \
+      sep fn(MaxOp) sep fn(MinOp) sep fn(MulOp) sep fn(OrOp) sep fn(PowOp) \
+          sep fn(RemOp) sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp) \
+              sep fn(ShiftRightLogicalOp) sep fn(SubOp) sep fn(XorOp)
 
 // TODO(herhut): Generate these out of op definitions.
 #define MAP_CHLO_OPERATION_CWISE_UNARY(fn, sep)                         \
@@ -228,7 +229,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
         loc, result_type, IsScalarTensor(rewriter, op, lhs), true);
     OpBuilder if_lhs_scalar_builder =
         if_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_lhs = if_lhs_scalar_builder.create<TensorCastOp>(
+    Value reshaped_lhs = if_lhs_scalar_builder.create<tensor::CastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), lhs);
     Value if_lhs_scalar_result = if_lhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{reshaped_lhs, rhs},
@@ -247,7 +248,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
                                                  if_rhs_scalar_op.getResult(0));
     OpBuilder if_rhs_scalar_builder =
         if_rhs_scalar_op.getThenBodyBuilder(rewriter.getListener());
-    Value reshaped_rhs = if_rhs_scalar_builder.create<TensorCastOp>(
+    Value reshaped_rhs = if_rhs_scalar_builder.create<tensor::CastOp>(
         loc, RankedTensorType::get({}, lhs_type.getElementType()), rhs);
     Value if_rhs_scalar_result = if_rhs_scalar_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type}, ArrayRef<Value>{lhs, reshaped_rhs},
@@ -345,12 +346,12 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value extended_lhs = if_builder.create<shape::BroadcastOp>(
         loc, unknown_rank_extent_tensor_type, lhs_shape, ranked_shape_val,
         nullptr);
-    Value extended_lhs_casted = if_builder.create<TensorCastOp>(
+    Value extended_lhs_casted = if_builder.create<tensor::CastOp>(
         loc, known_rank_extent_tensor_type, extended_lhs);
     Value extended_rhs = if_builder.create<shape::BroadcastOp>(
         loc, unknown_rank_extent_tensor_type, rhs_shape, ranked_shape_val,
         nullptr);
-    Value extended_rhs_casted = if_builder.create<TensorCastOp>(
+    Value extended_rhs_casted = if_builder.create<tensor::CastOp>(
         loc, known_rank_extent_tensor_type, extended_rhs);
 
     // 1. Reshape operands to the given rank (with the same number of elements)
@@ -372,7 +373,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     Value result = if_builder.create<ChloOpTy>(
         loc, ArrayRef<Type>{result_type},
         ArrayRef<Value>{reshaped_lhs, reshaped_rhs}, op.getAttrs());
-    Value reshaped_result = if_builder.create<TensorCastOp>(
+    Value reshaped_result = if_builder.create<tensor::CastOp>(
         loc, UnrankedTensorType::get(result_element_type), result);
     if_builder.create<scf::YieldOp>(loc, reshaped_result);
   }
@@ -409,7 +410,7 @@ struct ConvertUnrankedDynamicBroadcastBinaryOp
     // Put each subsequent rank specialization inside the else statement of the
     // previous one.
     OpBuilder else_builder = if_op.getElseBodyBuilder(rewriter.getListener());
-    constexpr int kMaxRankSpecialization = 5;
+    constexpr int kMaxRankSpecialization = 6;
     for (int i = 2; i < kMaxRankSpecialization; i++) {
       auto inner_if = createIfOpForRankSpecializedBroadcastAndOp(
           else_builder, op, greater_rank, i);
@@ -446,7 +447,8 @@ struct TransformUnrankedHloPass
     MLIRContext &ctx = getContext();
     ConversionTarget target(ctx);
     target.addLegalDialect<mhlo::MhloDialect, StandardOpsDialect,
-                           shape::ShapeDialect, scf::SCFDialect>();
+                           shape::ShapeDialect, scf::SCFDialect,
+                           tensor::TensorDialect>();
     target.addLegalOp<FuncOp>();
 #define ADD_LEGAL_MHLO(op) AddLegalOpOnRankedTensor<mhlo::op>(&target)
 #define ADD_LEGAL_CHLO(op) AddLegalOpOnRankedTensor<chlo::op>(&target)

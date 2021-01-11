@@ -19,9 +19,9 @@ limitations under the License.
 #include "mlir-hlo/utils/broadcast_utils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -202,7 +202,7 @@ LogicalResult BroadcastCompareOp::inferReturnTypeComponents(
     MLIRContext* context, Optional<Location> location, ValueRange operands,
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
-  Type element_type = IntegerType::get(1, context);
+  Type element_type = IntegerType::get(context, 1);
   return InferBroadcastBinaryOpReturnTypeComponents(context, location, operands,
                                                     attributes, element_type,
                                                     inferedReturnShapes);

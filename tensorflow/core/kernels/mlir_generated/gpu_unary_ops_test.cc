@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/kernels/mlir_generated/gpu_ops_test_util.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -44,22 +45,15 @@ class GpuUnaryOpTest : public OpsTestBase {
     SetDevice(tensorflow::DEVICE_GPU, std::move(device_gpu));
   }
 
-  // 'T' is the input type, 'RT' is the input type for the callback function,
-  // 'OutT' is the output type, 'ROutT' is the output type for the callback
-  // function. In most cases it is enough to just provide the input type,
-  // because all the types are the same.
-  template <typename T, typename RT = T, typename OutT = T, typename ROutT = RT>
-  void Run(std::vector<int64> input_shape, std::vector<T> input,
-           const std::string op_name, ROutT (*expected_callback)(RT),
-           bool expect_equal = true, bool add_tout = false) {
-    assert(std::accumulate(input_shape.begin(), input_shape.end(), 1,
-                           std::multiplies<int64>()) == input.size() &&
-           "Expected input length to equal to shape's number of elements.");
-
-    TensorShape shape(input_shape);
+  template <typename T, typename OutT>
+  void SetOpKernel(const std::string& op_name, const TensorShape& shape,
+                   const absl::InlinedVector<T, 10>& input, bool add_t,
+                   bool add_tout) {
     NodeDefBuilder builder("some_name", op_name);
-    builder.Input(FakeInput(DataTypeToEnum<T>::v()))
-        .Attr("T", DataTypeToEnum<T>::v());
+    builder.Input(FakeInput(DataTypeToEnum<T>::v()));
+    if (add_t) {
+      builder.Attr("T", DataTypeToEnum<T>::v());
+    }
     if (add_tout) {
       builder.Attr("Tout", DataTypeToEnum<OutT>::v());
     }
@@ -67,492 +61,364 @@ class GpuUnaryOpTest : public OpsTestBase {
 
     TF_ASSERT_OK(InitOp());
     AddInputFromArray<T>(shape, input);
+  }
+
+  template <typename T, typename OutT>
+  void RunAndExpectResult(const std::string& op_name, const TensorShape& shape,
+                          const absl::InlinedVector<T, 10>& input,
+                          const absl::InlinedVector<OutT, 10>& expected_output,
+                          const test::GpuOpsTestConfig& config) {
+    SetOpKernel<T, OutT>(op_name, shape, input, config.add_t, config.add_tout);
     TF_ASSERT_OK(RunOpKernel());
 
-    Tensor expected_tensor(allocator(), DataTypeToEnum<OutT>::value, shape);
-    absl::InlinedVector<OutT, 14> expected;
-    expected.reserve(input.size());
-    for (const T& inp : input) {
-      expected.push_back(
-          static_cast<OutT>(expected_callback(static_cast<RT>(inp))));
+    // Assert buffer reuse if expected.
+    if (config.expect_buffer_reuse) {
+      void* arg_ptr_on_device = context_->input(0).data();
+      void* result_ptr_on_device = context_->mutable_output(0)->data();
+      ASSERT_EQ(arg_ptr_on_device, result_ptr_on_device);
     }
-    test::FillValues<OutT>(&expected_tensor, expected);
-    if (expect_equal) {
+
+    // Assert expected results.
+    Tensor expected_tensor(allocator(), DataTypeToEnum<OutT>::value, shape);
+    test::FillValues<OutT>(&expected_tensor, expected_output);
+    if (config.expect_strictly_equal) {
       test::ExpectEqual(expected_tensor, *GetOutput(0));
     } else {
       test::ExpectClose(expected_tensor, *GetOutput(0));
     }
   }
 
-  // Some helper functions to get default input values.
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  void Test(const std::string op_name, const TensorShape& shape,
+            absl::InlinedVector<T, 10> input,
+            BaselineOutT (*baseline_callback)(BaselineT),
+            const test::GpuOpsTestConfig& config) {
+    // Prepare inputs and compute expected results.
+    auto repeated_input =
+        test::RepeatInputToMatchShape(input, shape.num_elements());
+    absl::InlinedVector<OutT, 10> expected_output =
+        ComputeExpectedOutput<T, BaselineT, OutT, BaselineOutT>(
+            repeated_input, baseline_callback);
 
-  std::vector<int64> DefaultInputShape() { return std::vector<int64>{2, 7}; }
-
-  template <typename T>
-  std::vector<T> DefaultInput() {
-    return InputAsVector<T>({-18.0, -9.0, -1e-6, -0.0, 0.0, 1e-6, 0.1, 0.2, 0.3,
-                             0.5, 0.7, 0.9, 9.0, 18.0});
-  }
-
-  template <typename T>
-  std::vector<std::complex<T>> DefaultComplexInput() {
-    auto input = DefaultInput<T>();
-    std::vector<std::complex<T>> complex_input;
-    for (T value : input) {
-      complex_input.emplace_back(value, -value);
-    }
-    return complex_input;
-  }
-
-  template <typename T>
-  std::vector<T> DefaultInputGreaterThanZero() {
-    return InputAsVector<T>({18.0, 9.0, 1e-6, 1.0, 0.1, 1e-6, 0.1, 0.2, 0.3,
-                             0.5, 0.7, 0.9, 9.0, 18.0});
-  }
-
-  template <typename T>
-  std::vector<T> DefaultInputGreaterOrEqualToZero() {
-    return InputAsVector<T>({18.0, 9.0, 1e-6, 0.0, 0.1, 1e-6, 0.1, 0.2, 0.3,
-                             0.5, 0.7, 0.9, 9.0, 18.0});
+    RunAndExpectResult<T, OutT>(op_name, shape, repeated_input, expected_output,
+                                config);
   }
 
  private:
-  template <typename T>
-  std::vector<T> InputAsVector(std::initializer_list<double> input) {
-    std::vector<T> result;
-    result.reserve(input.size());
-    for (const auto& value : input) {
-      result.push_back(static_cast<T>(value));
+  template <typename T, typename BaselineT, typename OutT,
+            typename BaselineOutT>
+  absl::InlinedVector<OutT, 10> ComputeExpectedOutput(
+      absl::InlinedVector<T, 10> input,
+      BaselineOutT (*baseline_callback)(BaselineT)) {
+    absl::InlinedVector<OutT, 10> expected_output;
+    for (int i = 0; i < input.size(); i++) {
+      auto arg = static_cast<BaselineT>(input[i]);
+      auto result = static_cast<OutT>(baseline_callback(arg));
+      expected_output.push_back(result);
     }
-    return result;
+    return expected_output;
   }
 };
 
+// Macros to easily generate common test cases. For specific inputs, please
+// define your own test fixtures.
+
+#define GENERATE_DEFAULT_TEST(op_name, InT, OutT, baseline_callback, config) \
+  GENERATE_DEFAULT_TEST_2(op_name, InT, InT, OutT, OutT, baseline_callback,  \
+                          config)
+
+#define GENERATE_DEFAULT_TEST_2(op_name, InT, BaselineT, OutT, BaselineOutT, \
+                                baseline_callback, config)                   \
+  GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(                        \
+      op_name, InT, BaselineT, OutT, BaselineOutT,                           \
+      test::DefaultInput<NativeT>(), baseline_callback, config)
+
+#define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(        \
+    op_name, InT, OutT, input_values, baseline_callback, config) \
+  GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(            \
+      op_name, InT, InT, OutT, OutT, input_values, baseline_callback, config)
+
+#define GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(                   \
+    op_name, InT, BaselineT, OutT, BaselineOutT, input_values,                \
+    baseline_callback, config)                                                \
+  TEST_F(GpuUnaryOpTest, op_name##InT) {                                      \
+    using NativeT = EnumToDataType<InT>::Type;                                \
+    using NativeBaselineT = EnumToDataType<BaselineT>::Type;                  \
+    using NativeOutT = EnumToDataType<OutT>::Type;                            \
+    using NativeBaselineOutT = EnumToDataType<BaselineOutT>::Type;            \
+    Test<NativeT, NativeBaselineT, NativeOutT, NativeBaselineOutT>(           \
+        #op_name, test::DefaultInputShape(), input_values, baseline_callback, \
+        config);                                                              \
+  }
+
 /// Test `tf.Abs`.
 
-TEST_F(GpuUnaryOpTest, AbsFloat) {
-  Run<float>(
-      /*input_shape=*/{2, 3},
-      /*input=*/
-      {-std::numeric_limits<float>::infinity(), -0.1f, -0.0f, 0.0f, 0.1f,
-       std::numeric_limits<float>::infinity()},
-      /*op_name=*/"Abs",
-      /*expected_callback=*/std::abs,
-      /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_FLOAT, DT_FLOAT, test::NearZeroAndExtremeInput<float>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, AbsDouble) {
-  Run<double>(
-      /*input_shape=*/{2, 3},
-      /*input=*/
-      {-std::numeric_limits<double>::infinity(), -0.1, -0.0, 0.0, 0.1,
-       std::numeric_limits<double>::infinity()},
-      /*op_name=*/"Abs",
-      /*expected_callback=*/std::abs,
-      /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_DOUBLE, DT_DOUBLE, test::NearZeroAndExtremeInput<double>(),
+    std::abs, test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, AbsHalf) {
-  Run<Eigen::half, float>(
-      /*input_shape=*/{2, 3},
-      /*input=*/
-      {static_cast<Eigen::half>(-std::numeric_limits<double>::infinity()),
-       static_cast<Eigen::half>(-0.1), static_cast<Eigen::half>(-0.0),
-       static_cast<Eigen::half>(0.0), static_cast<Eigen::half>(0.1),
-       static_cast<Eigen::half>(std::numeric_limits<double>::infinity())},
-      /*op_name=*/"Abs",
-      /*expected_callback=*/std::abs,
-      /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Abs, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::NearZeroAndExtremeInput<Eigen::half>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, AbsInt32) {
-  Run<int32>(
-      /*input_shape=*/{2, 3},
-      /*input=*/
-      {std::numeric_limits<int32>::min(), std::numeric_limits<int32>::min() + 1,
-       -1, 0, 1, std::numeric_limits<int32>::max()},
-      /*op_name=*/"Abs",
-      /*expected_callback=*/std::abs,
-      /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_INT32, DT_INT32, test::NearZeroAndExtremeInput<int32>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, AbsInt64) {
-  Run<int64>(
-      /*input_shape=*/{2, 3},
-      /*input=*/
-      {std::numeric_limits<int64>::min(), std::numeric_limits<int64>::min() + 1,
-       -1, 0, 1, std::numeric_limits<int64>::max()},
-      /*op_name=*/"Abs",
-      /*expected_callback=*/std::abs,
-      /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Ceil`.
 
-TEST_F(GpuUnaryOpTest, CeilFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Ceil",
-             /*expected_callback=*/std::ceil,
-             /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST(Ceil, DT_FLOAT, DT_FLOAT, std::ceil,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, CeilDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Ceil",
-              /*expected_callback=*/std::ceil,
-              /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST(Ceil, DT_DOUBLE, DT_DOUBLE, std::ceil,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, CeilHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Ceil",
-                          /*expected_callback=*/std::ceil,
-                          /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_2(Ceil, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::ceil,
+                        test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Conj`.
 
-TEST_F(GpuUnaryOpTest, ConjFloat) {
-  Run<std::complex<float>, const std::complex<float>&, std::complex<float>,
-      std::complex<float>>(DefaultInputShape(), DefaultComplexInput<float>(),
-                           /*op_name=*/"Conj",
-                           /*expected_callback=*/std::conj,
-                           /*expect_equal=*/false);
+template <typename T>
+T baseline_conj(T x) {
+  return std::conj(x);
 }
 
-TEST_F(GpuUnaryOpTest, ConjDouble) {
-  Run<std::complex<double>, const std::complex<double>&, std::complex<double>,
-      std::complex<double>>(DefaultInputShape(), DefaultComplexInput<double>(),
-                            /*op_name=*/"Conj",
-                            /*expected_callback=*/std::conj,
-                            /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Conj, DT_COMPLEX64, DT_COMPLEX64, baseline_conj,
+                      test::GpuOpsTestConfig().NoBufferReuse())
+
+GENERATE_DEFAULT_TEST(Conj, DT_COMPLEX128, DT_COMPLEX128, baseline_conj,
+                      test::GpuOpsTestConfig().NoBufferReuse())
 
 /// Test `tf.Cos`.
 
-TEST_F(GpuUnaryOpTest, CosFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Cos",
-             /*expected_callback=*/std::cos,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Cos, DT_FLOAT, DT_FLOAT, std::cos,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, CosDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Cos",
-              /*expected_callback=*/std::cos,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Cos, DT_DOUBLE, DT_DOUBLE, std::cos,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, CosHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Cos",
-                          /*expected_callback=*/std::cos,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_2(Cos, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::cos,
+                        test::GpuOpsTestConfig())
 
 /// Test `tf.Exp`.
 
-TEST_F(GpuUnaryOpTest, ExpFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Exp",
-             /*expected_callback=*/std::exp,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Exp, DT_FLOAT, DT_FLOAT, std::exp,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, ExpDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Exp",
-              /*expected_callback=*/std::exp,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Exp, DT_DOUBLE, DT_DOUBLE, std::exp,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, ExpHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Exp",
-                          /*expected_callback=*/std::exp,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_2(Exp, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::exp,
+                        test::GpuOpsTestConfig())
 
 /// Test `tf.Floor`.
 
-TEST_F(GpuUnaryOpTest, FloorFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Floor",
-             /*expected_callback=*/std::floor,
-             /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST(Floor, DT_FLOAT, DT_FLOAT, std::floor,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, FloorDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Floor",
-              /*expected_callback=*/std::floor,
-              /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST(Floor, DT_DOUBLE, DT_DOUBLE, std::floor,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, FloorHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Floor",
-                          /*expected_callback=*/std::floor,
-                          /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST_2(Floor, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::floor,
+                        test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Imag`.
 
-TEST_F(GpuUnaryOpTest, ImagFloat) {
-  Run<std::complex<float>, const std::complex<float>&, float, float>(
-      DefaultInputShape(), DefaultComplexInput<float>(),
-      /*op_name=*/"Imag",
-      /*expected_callback=*/std::imag,
-      /*expect_equal=*/false,
-      /*add_tout=*/true);
+template <typename T>
+typename T::value_type baseline_imag(T x) {
+  return std::imag(x);
 }
 
-TEST_F(GpuUnaryOpTest, ImagDouble) {
-  Run<std::complex<double>, const std::complex<double>&, double, double>(
-      DefaultInputShape(), DefaultComplexInput<double>(),
-      /*op_name=*/"Imag",
-      /*expected_callback=*/std::imag,
-      /*expect_equal=*/false,
-      /*add_tout=*/true);
-}
+GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX64, DT_FLOAT, baseline_imag,
+                      test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
+GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
+                      test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
 /// Test `tf.IsInf`.
 
 // TODO(b/162575339): The tests currently still fails with CUDA_ILLEGAL_ADDRESS
-// when run with unranked kernels.
+// when Test with unranked kernels.
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfFloat) {
-  Run<float, float, bool, bool>(DefaultInputShape(), DefaultInput<float>(),
-                                /*op_name=*/"IsInf",
-                                /*expected_callback=*/std::isinf,
-                                /*expect_equal=*/true);
+  Test<float, float, bool, bool>(
+      /*op_name=*/"IsInf", test::DefaultInputShape(),
+      test::DefaultInput<float>(),
+      /*baseline_callback=*/std::isinf,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
 }
 
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfDouble) {
   // Workaround for gcc bug, it would fail with "unresolved overloaded function
   // type" if passing std::isinf with type double. So we use type float for
   // comparing expected values.
-  Run<double, float, bool, bool>(DefaultInputShape(), DefaultInput<double>(),
-                                 /*op_name=*/"IsInf",
-                                 /*expected_callback=*/std::isinf,
-                                 /*expect_equal=*/true);
+  Test<double, float, bool, bool>(
+      /*op_name=*/"IsInf", test::DefaultInputShape(),
+      test::DefaultInput<double>(),
+      /*baseline_callback=*/std::isinf,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
 }
 
 TEST_F(GpuUnaryOpTest, DISABLED_IsInfHalf) {
-  Run<Eigen::half, float, bool, bool>(DefaultInputShape(),
-                                      DefaultInput<Eigen::half>(),
-                                      /*op_name=*/"IsInf",
-                                      /*expected_callback=*/std::isinf,
-                                      /*expect_equal=*/true);
+  Test<Eigen::half, float, bool, bool>(
+      /*op_name=*/"IsInf", test::DefaultInputShape(),
+      test::DefaultInput<Eigen::half>(),
+      /*baseline_callback=*/std::isinf,
+      test::GpuOpsTestConfig().ExpectStrictlyEqual());
 }
 
 /// Test `tf.Log`.
 
-TEST_F(GpuUnaryOpTest, LogFloat) {
-  Run<float>(DefaultInputShape(), DefaultInputGreaterThanZero<float>(),
-             /*op_name=*/"Log",
-             /*expected_callback=*/std::log,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
+    std::log, test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, LogDouble) {
-  Run<double>(DefaultInputShape(), DefaultInputGreaterThanZero<double>(),
-              /*op_name=*/"Log",
-              /*expected_callback=*/std::log,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
+    std::log, test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, LogHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(),
-                          /*input=*/
-                          DefaultInputGreaterThanZero<Eigen::half>(),
-                          /*op_name=*/"Log",
-                          /*expected_callback=*/std::log,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Log, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterThanZero<Eigen::half>(), std::log,
+    test::GpuOpsTestConfig())
+
+/// Test `tf.LogicalNot`
+
+bool baseline_logical_not(bool x) { return !x; }
+
+GENERATE_DEFAULT_TEST(LogicalNot, DT_BOOL, DT_BOOL, baseline_logical_not,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoT())
 
 /// Test `tf.Neg`.
 
 /// Reference implementation.
 template <typename T>
-T expected_neg(T x) {
+T baseline_neg(T x) {
   return -x;
 }
 
-TEST_F(GpuUnaryOpTest, NegFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Neg",
-             /*expected_callback=*/expected_neg,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Neg, DT_FLOAT, DT_FLOAT, baseline_neg,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, NegDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Neg",
-              /*expected_callback=*/expected_neg,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Neg, DT_DOUBLE, DT_DOUBLE, baseline_neg,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, NegHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Neg",
-                          /*expected_callback=*/expected_neg,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_2(Neg, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, baseline_neg,
+                        test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Neg, DT_INT8, DT_INT8, baseline_neg,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Neg, DT_INT16, DT_INT16, baseline_neg,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
+GENERATE_DEFAULT_TEST(Neg, DT_INT64, DT_INT64, baseline_neg,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Real`.
 
-TEST_F(GpuUnaryOpTest, RealFloat) {
-  Run<std::complex<float>, const std::complex<float>&, float, float>(
-      DefaultInputShape(), DefaultComplexInput<float>(),
-      /*op_name=*/"Real",
-      /*expected_callback=*/std::real,
-      /*expect_equal=*/false,
-      /*add_tout=*/true);
+template <typename T>
+typename T::value_type baseline_real(T x) {
+  return std::real(x);
 }
 
-TEST_F(GpuUnaryOpTest, RealDouble) {
-  Run<std::complex<double>, const std::complex<double>&, double, double>(
-      DefaultInputShape(), DefaultComplexInput<double>(),
-      /*op_name=*/"Real",
-      /*expected_callback=*/std::real,
-      /*expect_equal=*/false,
-      /*add_tout=*/true);
-}
+GENERATE_DEFAULT_TEST(Real, DT_COMPLEX64, DT_FLOAT, baseline_real,
+                      test::GpuOpsTestConfig().AddTout().NoBufferReuse())
+
+GENERATE_DEFAULT_TEST(Real, DT_COMPLEX128, DT_DOUBLE, baseline_real,
+                      test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
 /// Test `tf.Rsqrt`.
 
 /// Reference implementation.
 template <typename T>
-T expected_rsqrt(T x) {
+T baseline_rsqrt(T x) {
   return 1.0 / std::sqrt(x);
 }
 
-TEST_F(GpuUnaryOpTest, RsqrtFloat) {
-  Run<float>(DefaultInputShape(), DefaultInputGreaterThanZero<float>(),
-             /*op_name=*/"Rsqrt",
-             /*expected_callback=*/expected_rsqrt,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Rsqrt, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
+    baseline_rsqrt, test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, RsqrtDouble) {
-  Run<double>(DefaultInputShape(), DefaultInputGreaterThanZero<double>(),
-              /*op_name=*/"Rsqrt",
-              /*expected_callback=*/expected_rsqrt,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Rsqrt, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
+    baseline_rsqrt, test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, RsqrtHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(),
-                          /*input=*/
-                          DefaultInputGreaterThanZero<Eigen::half>(),
-                          /*op_name=*/"Rsqrt",
-                          /*expected_callback=*/expected_rsqrt,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Rsqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterThanZero<Eigen::half>(), baseline_rsqrt,
+    test::GpuOpsTestConfig())
 
 /// Test `tf.Sign`.
 
 // Reference implementation
 template <typename T>
-T expected_sign(T x) {
+T baseline_sign(T x) {
   if (x == 0) return 0;
   if (x < 0) return -1;
   return 1;
 }
 
-// TODO(b/162577610): Enable these tests when our generated kernels handle 0.0
-// and -0.0 correctly.
-TEST_F(GpuUnaryOpTest, DISABLED_SignFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Sign",
-             /*expected_callback=*/expected_sign,
-             /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST(Sign, DT_FLOAT, DT_FLOAT, baseline_sign,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, DISABLED_SignDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Sign",
-              /*expected_callback=*/expected_sign,
-              /*expect_equal=*/true);
-}
+GENERATE_DEFAULT_TEST(Sign, DT_DOUBLE, DT_DOUBLE, baseline_sign,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
-TEST_F(GpuUnaryOpTest, DISABLED_SignHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Sign",
-                          /*expected_callback=*/expected_sign,
-                          /*expect_equal=*/true);
-}
+// TODO(b/162577610): We should actually use ExpectStrictlyEqual()
+// here. This requires returning 0.0 for input -0.0.
+GENERATE_DEFAULT_TEST_2(Sign, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+                        baseline_sign, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST(Sign, DT_INT64, DT_INT64, baseline_sign,
+                      test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
 /// Test `tf.Sin`.
 
-TEST_F(GpuUnaryOpTest, SinFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Sin",
-             /*expected_callback=*/std::sin,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Sin, DT_FLOAT, DT_FLOAT, std::sin,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, SinDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Sin",
-              /*expected_callback=*/std::sin,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Sin, DT_DOUBLE, DT_DOUBLE, std::sin,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, SinHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Sin",
-                          /*expected_callback=*/std::sin,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_2(Sin, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::sin,
+                        test::GpuOpsTestConfig())
 
 /// Test `tf.Sqrt`.
 
-TEST_F(GpuUnaryOpTest, SqrtFloat) {
-  Run<float>(DefaultInputShape(), DefaultInputGreaterOrEqualToZero<float>(),
-             /*op_name=*/"Sqrt",
-             /*expected_callback=*/std::sqrt,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Sqrt, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterOrEqualToZero<float>(),
+    std::sqrt, test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, SqrtDouble) {
-  Run<double>(DefaultInputShape(), DefaultInputGreaterOrEqualToZero<double>(),
-              /*op_name=*/"Sqrt",
-              /*expected_callback=*/std::sqrt,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Sqrt, DT_DOUBLE, DT_DOUBLE,
+    test::DefaultInputGreaterOrEqualToZero<double>(), std::sqrt,
+    test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, SqrtHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(),
-                          DefaultInputGreaterOrEqualToZero<Eigen::half>(),
-                          /*op_name=*/"Sqrt",
-                          /*expected_callback=*/std::sqrt,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Sqrt, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterOrEqualToZero<Eigen::half>(), std::sqrt,
+    test::GpuOpsTestConfig())
 
 /// Test `tf.Tanh`.
 
-TEST_F(GpuUnaryOpTest, TanhFloat) {
-  Run<float>(DefaultInputShape(), DefaultInput<float>(),
-             /*op_name=*/"Tanh",
-             /*expected_callback=*/std::tanh,
-             /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Tanh, DT_FLOAT, DT_FLOAT, std::tanh,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, TanhDouble) {
-  Run<double>(DefaultInputShape(), DefaultInput<double>(),
-              /*op_name=*/"Tanh",
-              /*expected_callback=*/std::tanh,
-              /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST(Tanh, DT_DOUBLE, DT_DOUBLE, std::tanh,
+                      test::GpuOpsTestConfig())
 
-TEST_F(GpuUnaryOpTest, TanhHalf) {
-  Run<Eigen::half, float>(DefaultInputShape(), DefaultInput<Eigen::half>(),
-                          /*op_name=*/"Tanh",
-                          /*expected_callback=*/std::tanh,
-                          /*expect_equal=*/false);
-}
+GENERATE_DEFAULT_TEST_2(Tanh, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT, std::tanh,
+                        test::GpuOpsTestConfig())
 
 }  // namespace
 }  // end namespace tensorflow

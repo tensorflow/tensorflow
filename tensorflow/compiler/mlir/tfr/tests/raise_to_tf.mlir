@@ -4,6 +4,8 @@ tfr.func @tf__risc_same_(!tfr.tensor<T>) -> !tfr.tensor<T> attributes {T}
 tfr.func @tf__risc_concat_(!tfr.tensor_list<N, T>) -> !tfr.tensor<T> attributes {T, N}
 tfr.func @tf__risc_split_(!tfr.tensor<T>, i32 {tfr.name="N"}) -> !tfr.tensor_list<N, T> attributes {T, N}
 tfr.func @tf__risc_cast_(!tfr.tensor, !tfr.attr {tfr.name="K"}) -> !tfr.tensor<K> attributes {T, K}
+tfr.func @tf__const_(!tfr.attr {tfr.name="value", tfr.type="tensor"},
+  !tfr.attr {tfr.name="K",tfr.type="dtype"}) -> !tfr.tensor<K> attributes {T, K}
 
 // CHECK-LABEL: decompose_tf_same
 func @decompose_tf_same(%arg0: tensor<1x2x3x4x!tf.string>) -> tensor<1x2x3x4x!tf.string> {
@@ -71,6 +73,31 @@ func @decompose_tf_cast(%arg0: tensor<f32>) -> tensor<i32> {
   return %4 : tensor<i32>
 
 // CHECK: %[[tfcast:.*]] = "tf.RiscCast"(%arg0) {K = i32} : (tensor<f32>) -> tensor<*xi32>
+// CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf.shape<>} : (tensor<*xi32>) -> tensor<i32>
+// CHECK: return %[[es]] : tensor<i32>
+}
+
+// CHECK-LABEL: convert_to_scalar_tensor
+func @convert_to_scalar_tensor() -> tensor<f32> {
+  %0 = constant 3.0: f32
+  %t = tfr.constant f32 -> !tfr.attr
+  %cst = tfr.call @tf__const(%0, %t) : (f32, !tfr.attr) -> !tfr.tensor
+  %4 = "tfr.cast"(%cst) : (!tfr.tensor) -> tensor<f32>
+  return %4 : tensor<f32>
+
+// CHECK: %[[cst:.*]] = "tf.Const"() {value = dense<3.000000e+00> : tensor<f32>} : () -> tensor<f32>
+// CHECK: return %[[cst]] : tensor<f32>
+}
+
+// CHECK-LABEL: attribute_propagate
+func @attribute_propagate(%arg0: tensor<f32>) -> tensor<i32> {
+  %0 = "tfr.cast"(%arg0) : (tensor<f32>) -> !tfr.tensor
+  %t = tfr.constant i32 -> !tfr.attr
+  %concat = tfr.call @tf__risc_cast(%0, %t) {device = "hello", _tpu_replicate} : (!tfr.tensor, !tfr.attr) -> !tfr.tensor
+  %4 = "tfr.cast"(%concat) : (!tfr.tensor) -> tensor<i32>
+  return %4 : tensor<i32>
+
+// CHECK: %[[tfcast:.*]] = "tf.RiscCast"(%arg0) {K = i32, _tpu_replicate, device = "hello"} : (tensor<f32>) -> tensor<*xi32>
 // CHECK: %[[es:.*]] = "tf.EnsureShape"(%[[tfcast]]) {shape = #tf.shape<>} : (tensor<*xi32>) -> tensor<i32>
 // CHECK: return %[[es]] : tensor<i32>
 }

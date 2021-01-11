@@ -42,7 +42,7 @@ const int kMaxNumOfKernels = 1000;
 void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
                              KernelReport* kernel) {
   const std::vector<absl::string_view> params =
-      absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(" :\n"));
+      absl::StrSplit(xstat_kernel_details, absl::ByAnyChar(" \n"));
 
   constexpr uint32 kNumDimensions = 3;
   for (uint32 dim = 0; dim < kNumDimensions; ++dim) {
@@ -50,38 +50,43 @@ void ParseKernelLaunchParams(absl::string_view xstat_kernel_details,
     kernel->add_grid_dim(1);
   }
 
-  // Process value pairs.
-  for (uint32 ii = 0; ii < params.size(); ii += 2) {
+  // Process tokens.
+  for (const auto& param : params) {
+    const std::vector<absl::string_view> key_value = absl::StrSplit(param, ':');
+    if (key_value.size() != 2) {
+      // Unrecognized token.
+      continue;
+    }
+    absl::string_view key = key_value[0];
+    absl::string_view value_str = key_value[1];
     uint32 value = 0;
     double pct = 0.0;
-    if (params[ii] == "regs" && absl::SimpleAtoi(params[ii + 1], &value)) {
+    // Cases that consume a pair of tokens "key:value".
+    if (key == "regs" && absl::SimpleAtoi(value_str, &value)) {
       kernel->set_registers_per_thread(value);
-    } else if (params[ii] == "static_shared" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
+    } else if (key == "static_shared" && absl::SimpleAtoi(value_str, &value)) {
       kernel->set_static_shmem_bytes(value);
-    } else if (params[ii] == "dynamic_shared" &&
-               absl::SimpleAtoi(params[ii + 1], &value)) {
+    } else if (key == "dynamic_shared" && absl::SimpleAtoi(value_str, &value)) {
       kernel->set_dynamic_shmem_bytes(value);
-    } else if (params[ii] == "block") {
+    } else if (key == "block") {
       const std::vector<absl::string_view>& block =
-          absl::StrSplit(params[ii + 1], ',');
+          absl::StrSplit(value_str, ',');
       uint32 tmp[3];
       if (block.size() == 3 && absl::SimpleAtoi(block[0], &tmp[0]) &&
           absl::SimpleAtoi(block[1], &tmp[1]) &&
           absl::SimpleAtoi(block[2], &tmp[2])) {
         std::copy_n(tmp, 3, kernel->mutable_block_dim()->begin());
       }
-    } else if (params[ii] == "grid") {
+    } else if (key == "grid") {
       const std::vector<absl::string_view>& grid =
-          absl::StrSplit(params[ii + 1], ',');
+          absl::StrSplit(value_str, ',');
       uint32 tmp[3];
       if (grid.size() == 3 && absl::SimpleAtoi(grid[0], &tmp[0]) &&
           absl::SimpleAtoi(grid[1], &tmp[1]) &&
           absl::SimpleAtoi(grid[2], &tmp[2])) {
         std::copy_n(tmp, 3, kernel->mutable_grid_dim()->begin());
       }
-    } else if (params[ii] == "occ_pct" &&
-               absl::SimpleAtod(params[ii + 1], &pct)) {
+    } else if (key == "occ_pct" && absl::SimpleAtod(value_str, &pct)) {
       kernel->set_occupancy_pct(pct);
     }
   }
