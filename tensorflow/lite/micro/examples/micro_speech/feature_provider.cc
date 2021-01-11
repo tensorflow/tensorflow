@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-
 #include "tensorflow/lite/micro/examples/micro_speech/feature_provider.h"
 
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
@@ -45,8 +43,8 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
 
   // Quantize the time into steps as long as each window stride, so we can
   // figure out which audio data we need to fetch.
-  const int last_step = (last_time_in_ms - kFeatureSliceDurationMs) / kFeatureSliceStrideMs;
-  const int current_step = (time_in_ms - kFeatureSliceDurationMs) / kFeatureSliceStrideMs;
+  const int last_step = (last_time_in_ms / kFeatureSliceStrideMs);
+  const int current_step = (time_in_ms / kFeatureSliceStrideMs);
 
   int slices_needed = current_step - last_step;
   // If this is the first call, make sure we don't use any cached information.
@@ -94,11 +92,12 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
   if (slices_needed > 0) {
     for (int new_slice = slices_to_keep; new_slice < kFeatureSliceCount;
          ++new_slice) {
-      const int new_step = std::max(0, (current_step - kFeatureSliceCount + 1) + new_slice);
+      const int new_step = (current_step - kFeatureSliceCount + 1) + new_slice;
       const int32_t slice_start_ms = (new_step * kFeatureSliceStrideMs);
       int16_t* audio_samples = nullptr;
       int audio_samples_size = 0;
-      GetAudioSamples(error_reporter, slice_start_ms,
+      // TODO(petewarden): Fix bug that leads to non-zero slice_start_ms
+      GetAudioSamples(error_reporter, (slice_start_ms > 0 ? slice_start_ms : 0),
                       kFeatureSliceDurationMs, &audio_samples_size,
                       &audio_samples);
       if (audio_samples_size < kMaxAudioSampleSize) {
