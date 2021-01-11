@@ -667,7 +667,7 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     with self.assertRaisesRegex(errors.UnimplementedError, error_regex):
       self.getDatasetOutput(ds)
 
-  def testDistributedZippedDistributedDatasets(self):
+  def testDistributedEpochOnZippedDistributedDatasets(self):
     cluster_1 = self.create_cluster(num_workers=1)
     cluster_2 = self.create_cluster(num_workers=1)
     cluster_3 = self.create_cluster(num_workers=1)
