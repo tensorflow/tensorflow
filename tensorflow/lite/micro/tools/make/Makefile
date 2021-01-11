@@ -103,16 +103,17 @@ MICROLITE_LIBS := -lm
 #   1. Convert to uppercase (TARGET=xtensa -> -DXTENSA)
 #   2. (Temporarily) Replace dash with underscore (OPTIMIZED_KERNEL_DIR=cmsis-nn -> -DCMSIS_NN)
 #
-# Transformation 2 is needed because CMSIS-NN and ETHOS-U are not a valid macro names.
-
+# Transformation 2 is needed because CMSIS-NN is not a valid macro names.
 ADDITIONAL_DEFINES := -D$(shell echo $(TARGET) | tr [a-z] [A-Z])
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
+  # TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
+  # directory has been renamed.
   ADDITIONAL_DEFINES += -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z] | tr - _)
 endif
 
 ifneq ($(CO_PROCESSOR),)
-  ADDITIONAL_DEFINES += -D$(shell echo $(CO_PROCESSOR) | tr [a-z] [A-Z] | tr - _)
+  ADDITIONAL_DEFINES += -D$(shell echo $(CO_PROCESSOR) | tr [a-z] [A-Z])
 endif
 
 OPTIMIZATION_LEVEL := -O3
