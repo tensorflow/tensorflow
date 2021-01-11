@@ -96,7 +96,7 @@ ifeq ($(TOOLCHAIN), armclang)
 
 else ifeq ($(TOOLCHAIN), gcc)
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
-  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/gcc_download.sh ${MAKEFILE_DIR}/downloads)
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
   ifneq ($(DOWNLOAD_RESULT), SUCCESS)
     $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
   endif
