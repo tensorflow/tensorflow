@@ -861,6 +861,7 @@ std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
   auto amdgpu_version = absl::get_if<std::pair<int, std::string>>(&gpu_version);
 #if TF_ROCM_VERSION < 30900 
   int gcn_arch_value = amdgpu_version->first;
+  auto gcn_arch_name = amdgpu_version->second; 
   std::string feature_str = GetFeatureStrFromGCNArchName(gcn_arch_name);
 #elif TF_ROCM_VERSION >= 30900
   string feature_str = "+code-object-v3";
