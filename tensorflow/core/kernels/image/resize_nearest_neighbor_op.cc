@@ -127,16 +127,37 @@ struct BoolToScaler<false> {
   typedef LegacyScaler Scaler;
 };
 
+template <bool half_pixel_centers, bool align_corners>
+void compute_indices(const Eigen::Index out_size, const Eigen::Index in_size,
+                     const float scale, Eigen::Index* indices) {
+  typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+  for (Eigen::Index i = 0; i < out_size; ++i) {
+    Eigen::Index x = std::min(
+        (align_corners) ? static_cast<Eigen::Index>(roundf(scaler(i, scale)))
+                        : static_cast<Eigen::Index>(floorf(scaler(i, scale))),
+        in_size - 1);
+    if (half_pixel_centers) {
+      x = std::max(static_cast<Eigen::Index>(0), x);
+    }
+    indices[i] = x;
+  }
+}
+
 namespace generator {
 template <typename T, bool half_pixel_centers, bool align_corners>
 class ResizeNearestNeighborGenerator {
  public:
   EIGEN_ALWAYS_INLINE ResizeNearestNeighborGenerator(
-      typename TTypes<T, 4>::ConstTensor input, const float height_scale,
-      const float width_scale)
-      : input_(input), height_scale_(height_scale), width_scale_(width_scale) {
-    in_height_ = input.dimension(1);
-    in_width_ = input.dimension(2);
+      typename TTypes<T, 4>::ConstTensor input,
+      const Eigen::Index output_height, const Eigen::Index output_width,
+      const float height_scale, const float width_scale)
+      : input_(input), ys_(output_height), xs_(output_width) {
+    const Eigen::Index input_height = input.dimension(1);
+    const Eigen::Index input_width = input.dimension(2);
+    compute_indices<half_pixel_centers, align_corners>(
+        output_height, input_height, height_scale, ys_.data());
+    compute_indices<half_pixel_centers, align_corners>(
+        output_width, input_width, width_scale, xs_.data());
   }
 
   EIGEN_ALWAYS_INLINE T
@@ -146,30 +167,14 @@ class ResizeNearestNeighborGenerator {
     const Eigen::Index x = coords[2];
     const Eigen::Index c = coords[3];
 
-    Eigen::Index in_y = std::min(
-        (align_corners)
-            ? static_cast<Eigen::Index>(roundf(scaler_(y, height_scale_)))
-            : static_cast<Eigen::Index>(floorf(scaler_(y, height_scale_))),
-        in_height_ - 1);
-    if (half_pixel_centers) {
-      in_y = std::max(static_cast<Eigen::Index>(0), in_y);
-    }
-    Eigen::Index in_x = std::min(
-        (align_corners)
-            ? static_cast<Eigen::Index>(roundf(scaler_(x, width_scale_)))
-            : static_cast<Eigen::Index>(floorf(scaler_(x, width_scale_))),
-        in_width_ - 1);
-    if (half_pixel_centers) {
-      in_x = std::max(static_cast<Eigen::Index>(0), in_x);
-    }
+    const Eigen::Index in_y = ys_[y];
+    const Eigen::Index in_x = xs_[x];
     return input_(b, in_y, in_x, c);
   }
 
  private:
   typename TTypes<T, 4>::ConstTensor input_;
-  typename BoolToScaler<half_pixel_centers>::Scaler scaler_;
-  const float height_scale_, width_scale_;
-  Eigen::Index in_height_, in_width_;
+  std::vector<Eigen::Index> ys_, xs_;
 };
 }  // namespace generator
 
@@ -180,10 +185,13 @@ struct ResizeNearestNeighbor<CPUDevice, T, half_pixel_centers, align_corners> {
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
-    output.device(d) = output.generate(
-        generator::ResizeNearestNeighborGenerator<T, half_pixel_centers,
-                                                  align_corners>(
-            input, height_scale, width_scale));
+    const Eigen::Index output_height = output.dimension(1);
+    const Eigen::Index output_width = output.dimension(2);
+    generator::ResizeNearestNeighborGenerator<T, half_pixel_centers,
+                                              align_corners>
+        generator(input, output_height, output_width, height_scale,
+                  width_scale);
+    output.device(d) = output.generate(std::move(generator));
     return true;
   }
 };
