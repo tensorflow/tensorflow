@@ -422,81 +422,19 @@ void RemoveInputProxies(std::list<FusionSequence>* chains) {
   }
 }
 
-NodeDescriptor NonLinkableStub(int operation_id, ValueId input_id,
-                               ValueId output_id,
-                               const OperationDef& definition) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->shader_source = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    $0
-    kernel void ComputeFunction($1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
-        return;
-      }
-      FLT4 value = args.src_tensor.Read(gid.x, gid.y, gid.z);
-      args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
-      $2
-      args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
-    }
-  )";
-
-  desc->AddSrcTensor("src_tensor", definition.src_tensors[0]);
-  desc->AddDstTensor("dst_tensor", definition.dst_tensors[0]);
-
-  desc->resize_function = [](const std::vector<BHWC>& src_shapes,
-                             const std::vector<BHWC>& dst_shapes) {
-    uint3 groups_size{8, 8, 1};
-    uint3 groups_count{DivideRoundUp(dst_shapes[0].w, groups_size.x),
-                       DivideRoundUp(dst_shapes[0].h, groups_size.y),
-                       DivideRoundUp(dst_shapes[0].c, 4)};
-    return std::make_pair(groups_size, groups_count);
-  };
-
-  NodeDescriptor node_desc;
-  node_desc.task = desc;
-  node_desc.id = operation_id;
-  node_desc.src_tensors_ids = {input_id};
-  node_desc.dst_tensors_ids = {output_id};
-  return node_desc;
-}
-
-absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst,
-                        std::string link_name) {
+absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst) {
+  for (int j = 1; j < src->src_tensors_ids.size(); ++j) {
+    dst->src_tensors_ids.push_back(src->src_tensors_ids[j]);
+  }
   dst->dst_tensors_ids[0] = src->dst_tensors_ids[0];
   dst->description += " linked : " + src->description;
-  for (int i = 0; i < src->task->src_tensors_names.size(); ++i) {
-    std::string tensor_name = src->task->src_tensors_names[i];
-    dst->task->src_tensors_names.push_back(tensor_name + link_name);
-    dst->task->definition.src_tensors.push_back(
-        src->task->definition.src_tensors[i + 1]);
-    dst->src_tensors_ids.push_back(src->src_tensors_ids[i + 1]);
-  }
-
-  std::string code = src->task->shader_source;
-  src->task->args.RenameArgs(link_name, &code);
-
-  RETURN_IF_ERROR(dst->task->args.Merge(std::move(src->task->args), link_name));
-
-  dst->task->shader_source = absl::Substitute(dst->task->shader_source, "$0",
-                                              "$1", "{\n" + code + "\n}\n$2");
-
-  return absl::OkStatus();
+  return dst->task->AddTask(src->task.get());
 }
 
 absl::Status FuseChain(const FusionSequence& chain, NodeDescriptor* node_desc) {
-  if (chain.front().task->is_linkable) {
-    *node_desc = NonLinkableStub(
-        chain.front().id, chain.front().src_tensors_ids[0],
-        chain.front().dst_tensors_ids[0], chain.front().task->definition);
-    RETURN_IF_ERROR(MergeNodes(&chain.front(), node_desc, "_link0"));
-  } else {
-    *node_desc = chain.front();
-  }
+  *node_desc = chain.front();
   for (int j = 1; j < chain.size(); ++j) {
-    RETURN_IF_ERROR(
-        MergeNodes(&chain[j], node_desc, "_link" + std::to_string(j)));
+    RETURN_IF_ERROR(MergeNodes(&chain[j], node_desc));
   }
   return absl::OkStatus();
 }

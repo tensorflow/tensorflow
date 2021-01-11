@@ -36,13 +36,9 @@ namespace metal {
 absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                                             const NodeDescriptor& desc,
                                             CalculationsPrecision precision) {
-  std::string args_declarations;
-  int bind_index = 0;
-  desc.task->shader_source = absl::Substitute(desc.task->shader_source, "$0",
-                                              args_declarations + "$1", "");
-
-  RETURN_IF_ERROR(metal_args_.Init(device, bind_index, &desc.task->args,
-                                   &desc.task->shader_source));
+  desc.task->AssembleCode();
+  RETURN_IF_ERROR(
+      metal_args_.Init(device, 0, &desc.task->args, &desc.task->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language
   // version 2.0

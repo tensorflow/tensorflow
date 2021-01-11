@@ -137,6 +137,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "@FP16",
+        "@com_google_absl//absl/strings",
     ],
 )
 
