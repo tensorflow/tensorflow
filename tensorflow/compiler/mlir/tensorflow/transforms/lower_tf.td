@@ -37,6 +37,12 @@ class GetI64ScalarElementsAttr<int value> :
 
 def TrueBoolAttr : AttrConstraint<CPred<"$_self.getValue()">>;
 
+def CreateTFShapeOp : NativeCodeCall<
+    "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
+
+def IsI32 : NativeCodeCall<
+    "$_builder.getBoolAttr(getElementTypeOrSelf($0.getType()).isInteger(32))">;
+
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
 //===----------------------------------------------------------------------===//
@@ -253,6 +259,17 @@ def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
 
 
 //===----------------------------------------------------------------------===//
+// Size op patterns.
+//===----------------------------------------------------------------------===//
+
+// Size(x) = Prod(Shape(x), axis=0, keepdims=false)
+def : Pat<(TF_SizeOp:$result $arg),
+          (TF_ProdOp (CreateTFShapeOp $result, $arg, (IsI32 $result)),
+                     (TF_ConstOp (GetI64ScalarElementsAttr<0>)),
+                     ConstBoolAttrFalse)>;
+
+
+//===----------------------------------------------------------------------===//
 // TanhGrad op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -278,9 +295,6 @@ def LowerFakeQuantWithMinMaxArgs :
 
 // ZerosLike op patterns.
 //===----------------------------------------------------------------------===//
-
-def CreateTFShapeOp : NativeCodeCall<
-    "$_builder.create<TF::ShapeOp>($0.getLoc(), $1, $2)">;
 
 class LowerInitializationOp<Op FromOp, int initial_val>
   : Pat<(FromOp:$src_op
