@@ -713,24 +713,6 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
         self.assertAllEqual(next(it).numpy(), element)
     self.assertEmpty(list(it))
 
-  # @combinations.generate(test_base.eager_only_combinations())
-  # def testCyclicDistribute(self):
-
-  #   cluster_1 = self.create_cluster(num_workers=1)
-  #   cluster_2 = self.create_cluster(num_workers=1)
-  #   num_sizes = 10
-  #   size_repeats = 5
-  #   numbers = [1 * i for i in range(num_sizes)] * size_repeats
-  #   ds = dataset_ops.Dataset.from_tensors(numbers)
-  #   ds = self.make_distributed_dataset(ds, cluster_1, processing_mode="parallel_epochs")
-  #   ds = ds.map(lambda x: x + 1)
-  #   ds = self.make_distributed_dataset(ds, cluster_2, processing_mode="parallel_epochs")
-  #   ds = ds.map(lambda x: x - 1)
-  #   ds = self.make_distributed_dataset(
-  #       ds, cluster_1, processing_mode="parallel_epochs", job_name="temp_jobname")
-
-  #   self.assertDatasetProduces(ds, numbers, assert_items_equal=True)
-
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations()))
   def testDistributeLargeGraph(self):
