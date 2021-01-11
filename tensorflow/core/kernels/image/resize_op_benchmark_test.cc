@@ -21,16 +21,18 @@ limitations under the License.
 
 namespace tensorflow {
 
-static Graph* Resize(const char* algorithm, int batches, int width, int height,
-                     int channels) {
+static Graph* Resize(const char* algorithm, int batches, int input_height,
+                     int input_width, int channels, int output_height,
+                     int output_width) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor in(DT_FLOAT, TensorShape({batches, width, height, channels}));
+  Tensor in(DT_FLOAT,
+            TensorShape({batches, input_height, input_width, channels}));
   in.flat<float>().setRandom();
 
   Tensor out_size(DT_INT32, TensorShape({2}));
   auto out_size_flat = out_size.flat<int32>();
-  out_size_flat(0) = width * 2;
-  out_size_flat(1) = height * 2;
+  out_size_flat(0) = output_height;
+  out_size_flat(1) = output_width;
 
   Node* ret;
   Status s = NodeBuilder(g->NewName("n"), algorithm)
@@ -41,24 +43,30 @@ static Graph* Resize(const char* algorithm, int batches, int width, int height,
   return g;
 }
 
-#define BM_ResizeDev(DEVICE, ALGORITHM, B, W, H, C)                     \
-  static void BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H##_##C( \
-      ::testing::benchmark::State& state) {                             \
-    test::Benchmark(#DEVICE, Resize(#ALGORITHM, B, W, H, C),            \
-                    /*old_benchmark_api*/ false)                        \
-        .Run(state);                                                    \
-    state.SetItemsProcessed(state.iterations() * B * W * H * C);        \
-  }                                                                     \
-  BENCHMARK(BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H##_##C)
+#define BM_ResizeDev(DEVICE, ALGORITHM, B, W, H, C, OW, OH)                   \
+  static void                                                                 \
+      BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H##_##C##_##OW##_##OH( \
+          ::testing::benchmark::State& state) {                               \
+    test::Benchmark(#DEVICE, Resize(#ALGORITHM, B, W, H, C, OW, OH),          \
+                    /*old_benchmark_api*/ false)                              \
+        .Run(state);                                                          \
+    state.SetItemsProcessed(state.iterations() * B * W * H * C);              \
+  }                                                                           \
+  BENCHMARK(                                                                  \
+      BM_Resize_##ALGORITHM##_##DEVICE##_##B##_##W##_##H##_##C##_##OW##_##OH)
 
-BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 1);
-BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 3);
-BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 1);
-BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 3);
+BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 1, 250, 250);
+BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 3, 250, 250);
+BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 1, 998, 998);
+BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499, 3, 998, 998);
+BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 1, 250, 250);
+BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 3, 250, 250);
+BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 1, 998, 998);
+BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499, 3, 998, 998);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-BM_ResizeDev(gpu, ResizeNearestNeighbor, 10, 499, 499, 3);
-BM_ResizeDev(gpu, ResizeBilinear, 10, 499, 499, 3);
+BM_ResizeDev(gpu, ResizeNearestNeighbor, 10, 499, 499, 3, 998, 998);
+BM_ResizeDev(gpu, ResizeBilinear, 10, 499, 499, 3, 998, 998);
 #endif
 
 }  // namespace tensorflow
