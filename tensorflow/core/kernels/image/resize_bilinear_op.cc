@@ -82,21 +82,21 @@ struct CachedInterpolation {
   float lerp;
 };
 
-template <typename Scaler>
-inline void compute_interpolation_weights(const Scaler scaler,
-                                          const int64 out_size,
-                                          const int64 in_size,
+template <bool half_pixel_centers>
+inline void compute_interpolation_weights(const Eigen::Index out_size,
+                                          const Eigen::Index in_size,
                                           const float scale,
                                           CachedInterpolation* interpolation) {
-  interpolation[out_size].lower = 0;
-  interpolation[out_size].upper = 0;
-  for (int64 i = out_size - 1; i >= 0; --i) {
+  typedef typename std::conditional<half_pixel_centers, HalfPixelScaler,
+                                    LegacyScaler>::type Scaler;
+  Scaler scaler;
+  for (Eigen::Index i = 0; i < out_size; ++i) {
     const float in = scaler(i, scale);
     const float in_f = std::floor(in);
     interpolation[i].lower =
-        std::max(static_cast<int64>(in_f), static_cast<int64>(0));
+        std::max(static_cast<Eigen::Index>(in_f), static_cast<Eigen::Index>(0));
     interpolation[i].upper =
-        std::min(static_cast<int64>(std::ceil(in)), in_size - 1);
+        std::min(static_cast<Eigen::Index>(std::ceil(in)), in_size - 1);
     interpolation[i].lerp = in - in_f;
   }
 }
@@ -136,14 +136,21 @@ struct CastFloatTo<GPUDevice, T> {
 }  // namespace
 
 namespace generator {
-template <typename T>
+template <typename T, bool half_pixel_centers>
 class ResizeBilinearGenerator {
  public:
   EIGEN_ALWAYS_INLINE ResizeBilinearGenerator(
       typename TTypes<T, 4>::ConstTensor input,
-      const std::vector<CachedInterpolation>& ys,
-      const std::vector<CachedInterpolation>& xs)
-      : input_(input), ys_(ys), xs_(xs) {}
+      const Eigen::Index output_height, const Eigen::Index output_width,
+      const float height_scale, const float width_scale)
+      : input_(input), ys_(output_height), xs_(output_width) {
+    const Eigen::Index input_height = input.dimension(1);
+    const Eigen::Index input_width = input.dimension(2);
+    compute_interpolation_weights<half_pixel_centers>(
+        output_height, input_height, height_scale, ys_.data());
+    compute_interpolation_weights<half_pixel_centers>(output_width, input_width,
+                                                      width_scale, xs_.data());
+  }
 
   EIGEN_ALWAYS_INLINE float operator()(
       const Eigen::array<Eigen::Index, 4>& coords) const {
@@ -164,8 +171,7 @@ class ResizeBilinearGenerator {
 
  private:
   typename TTypes<T, 4>::ConstTensor input_;
-  const std::vector<CachedInterpolation> ys_;
-  const std::vector<CachedInterpolation> xs_;
+  std::vector<CachedInterpolation> ys_, xs_;
 };
 }  // namespace generator
 
@@ -177,36 +183,27 @@ struct ResizeBilinear<CPUDevice, T> {
                   const float height_scale, const float width_scale,
                   bool half_pixel_centers,
                   typename TTypes<float, 4>::Tensor output) {
-    const int64 in_height = images.dimension(1);
-    const int64 in_width = images.dimension(2);
+    const Eigen::Index input_height = images.dimension(1);
+    const Eigen::Index input_width = images.dimension(2);
 
-    const int64 out_height = output.dimension(1);
-    const int64 out_width = output.dimension(2);
+    const Eigen::Index output_height = output.dimension(1);
+    const Eigen::Index output_width = output.dimension(2);
 
     // Handle no-op resizes efficiently.
-    if (out_height == in_height && out_width == in_width) {
+    if (output_height == input_height && output_width == input_width) {
       output = images.template cast<float>();
       return;
     }
 
-    std::vector<CachedInterpolation> ys(out_height + 1);
-    std::vector<CachedInterpolation> xs(out_width + 1);
-
-    // Compute the cached interpolation weights on the x and y dimensions.
     if (half_pixel_centers) {
-      compute_interpolation_weights(HalfPixelScaler(), out_height, in_height,
-                                    height_scale, ys.data());
-      compute_interpolation_weights(HalfPixelScaler(), out_width, in_width,
-                                    width_scale, xs.data());
-
+      generator::ResizeBilinearGenerator<T, true> generator(
+          images, output_height, output_width, height_scale, width_scale);
+      output.device(d) = output.generate(std::move(generator));
     } else {
-      compute_interpolation_weights(LegacyScaler(), out_height, in_height,
-                                    height_scale, ys.data());
-      compute_interpolation_weights(LegacyScaler(), out_width, in_width,
-                                    width_scale, xs.data());
+      generator::ResizeBilinearGenerator<T, false> generator(
+          images, output_height, output_width, height_scale, width_scale);
+      output.device(d) = output.generate(std::move(generator));
     }
-    output.device(d) =
-        output.generate(generator::ResizeBilinearGenerator<T>(images, ys, xs));
   }
 };
 }  // namespace functor
