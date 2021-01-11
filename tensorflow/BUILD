@@ -757,7 +757,7 @@ tf_cc_shared_object(
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [
-            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text"
+            "-Wl,-rename_section,__TEXT,text_env,__TEXT,__text",
         ],
         "//tensorflow:windows": [],
         "//tensorflow:freebsd": [

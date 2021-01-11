@@ -302,7 +302,6 @@ config_setting(
     },
 )
 
-
 config_setting(
     name = "ios_x86",
     values = {
