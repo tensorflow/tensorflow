@@ -383,7 +383,7 @@ public final class Interpreter implements AutoCloseable {
    * @param inputs A Map of inputs from input name in the signatureDef to an input object.
    * @param outputs a map mapping from output name in SignatureDef to output data.
    * @param methodName The exported method name identifying the SignatureDef.
-   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} or {@code methodName}is
+   * @throws IllegalArgumentException if {@code inputs} or {@code outputs} or {@code methodName} is
    *     null or empty, or if error occurs when running the inference.
    *
    * <p>WARNING: This is an experimental API and subject to change.
@@ -400,7 +400,7 @@ public final class Interpreter implements AutoCloseable {
       throw new IllegalArgumentException(
           "Input error: SignatureDef methodName should not be null. null is only allowed if the"
               + " model has a single Signature. Available Signatures: "
-              +  Arrays.toString(signatureNameList));
+              + Arrays.toString(signatureNameList));
     }
     wrapper.runSignature(inputs, outputs, methodName);
   }
@@ -499,6 +499,31 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Gets the Tensor associated with the provdied input name and signature method name.
+   *
+   * @param inputName Input name in the signature.
+   * @param methodName The exported method name identifying the SignatureDef, can be null if the
+   *     model has one signature.
+   * @throws IllegalArgumentException if {@code inputName} or {@code methodName} is null or empty,
+   *     or invalid name provided.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public Tensor getInputTensorFromSignature(String inputName, String methodName) {
+    checkNotClosed();
+    if (methodName == null && signatureNameList.length == 1) {
+      methodName = signatureNameList[0];
+    }
+    if (methodName == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef methodName should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureNameList));
+    }
+    return wrapper.getInputTensor(inputName, methodName);
+  }
+
+  /**
    * Gets the list of SignatureDef exported method names available in the model.
    *
    * <p>WARNING: This is an experimental API and subject to change.
@@ -561,6 +586,38 @@ public final class Interpreter implements AutoCloseable {
   public Tensor getOutputTensor(int outputIndex) {
     checkNotClosed();
     return wrapper.getOutputTensor(outputIndex);
+  }
+
+  /**
+   * Gets the Tensor associated with the provdied output name in specifc signature method.
+   *
+   * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
+   * is executed. If you need updated details *before* running inference (e.g., after resizing an
+   * input tensor, which may invalidate output tensor shapes), use {@link #allocateTensors()} to
+   * explicitly trigger allocation and shape propagation. Note that, for graphs with output shapes
+   * that are dependent on input *values*, the output shape may not be fully determined until
+   * running inference.
+   *
+   * @param outputName Output name in the signature.
+   * @param methodName The exported method name identifying the SignatureDef, can be null if the
+   *     model has one signature.
+   * @throws IllegalArgumentException if {@code outputName} or {@code methodName} is null or empty,
+   *     or invalid name provided.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public Tensor getOutputTensorFromSignature(String outputName, String methodName) {
+    checkNotClosed();
+    if (methodName == null && signatureNameList.length == 1) {
+      methodName = signatureNameList[0];
+    }
+    if (methodName == null) {
+      throw new IllegalArgumentException(
+          "Input error: SignatureDef methodName should not be null. null is only allowed if the"
+              + " model has a single Signature. Available Signatures: "
+              + Arrays.toString(signatureNameList));
+    }
+    return wrapper.getOutputTensor(outputName, methodName);
   }
 
   /**
