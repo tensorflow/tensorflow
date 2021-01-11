@@ -56,7 +56,6 @@ def if_static(extra_deps, otherwise = [], macos = []):
     }
     if macos:
         ret[str(Label("//tensorflow:macos_with_framework_shared_object"))] = macos
-    
     return select(ret)
 
 def if_static_and_not_mobile(extra_deps, otherwise = []):
