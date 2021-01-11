@@ -173,8 +173,8 @@ kernel void ComputeFunction($1
   int tile_y = (DST_X / params.tiles.x) * 4;
   FLT4 I0, I1, I2, I3, I4, I5;
   FLT bt_ar[6];
-  FLT4 t0 = bt_arr[DST_Y * 2 + 0];
-  FLT4 t1 = bt_arr[DST_Y * 2 + 1];
+  FLT4 t0 = args.bt_arr.Read(DST_Y * 2 + 0);
+  FLT4 t1 = args.bt_arr.Read(DST_Y * 2 + 1);
   DST_Y *= 6;
   bt_ar[0] = t0.x;
   bt_ar[1] = t0.y;
@@ -311,7 +311,7 @@ kernel void ComputeFunction($1
     }
   }
 
-  FLT4 bias_val = biases[Z];
+  FLT4 bias_val = args.biases.Read(Z);
   for (int y = 0; y < 4 && tile_y + y < args.dst_tensor.Height(); ++y) {
     FLT4 t0 = I[y][1] + I[y][2];
     FLT4 t1 = I[y][3] + I[y][4];
@@ -384,8 +384,8 @@ kernel void ComputeFunction($1
   }
   FLT4 I0, I1, I2, I3, I4, I5;
   FLT at_ar[6];
-  FLT4 t00 = at_arr[DST_Y * 2 + 0];
-  FLT4 t01 = at_arr[DST_Y * 2 + 1];
+  FLT4 t00 = args.at_arr.Read(DST_Y * 2 + 0);
+  FLT4 t01 = args.at_arr.Read(DST_Y * 2 + 1);
   at_ar[0] = t00.x;
   at_ar[1] = t00.y;
   at_ar[2] = t00.z;
@@ -422,7 +422,7 @@ kernel void ComputeFunction($1
   c += R"(
   FLT4 t0 = I1 + I2;
   FLT4 t1 = I3 + I4;
-  FLT4 bias_val = biases[DST_Z];
+  FLT4 bias_val = args.biases.Read(DST_Z);
   if (tile_x < args.dst_tensor.Width()) {
     FLT4 value = I0 + t0 + t1 + bias_val;
     uint3 gid = uint3(tile_x, tile_y, global_ids.z);
@@ -520,10 +520,14 @@ ComputeTaskDescriptor Winograd4x4To36TileX6(
   }
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const bt_arr",
-       GetByteBufferConverted(bt_aligned, data_type)},
-  };
+  BufferDescriptor buf_desc;
+  buf_desc.element_type = data_type;
+  buf_desc.element_size = 4;
+  buf_desc.data = GetByteBufferConverted(bt_aligned, data_type);
+  buf_desc.size = buf_desc.data.size();
+
+  desc.args.AddObject("bt_arr",
+                      absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
@@ -568,11 +572,15 @@ ComputeTaskDescriptor Winograd36To4x4(const OperationDef& definition,
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.biases.data, data_type,
-                                     AlignByN(attr.output_shape.c, 4))},
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.biases.data, data_type, AlignByN(attr.output_shape.c, 4));
+  bias_desc.size = bias_desc.data.size();
+
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.resize_function = [](const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes) {
@@ -607,13 +615,24 @@ ComputeTaskDescriptor Winograd36To4x4Tile4x1(
   }
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const biases",
-       GetByteBufferConvertedResized(attr.biases.data, data_type,
-                                     AlignByN(attr.output_shape.c, 4))},
-      {"device FLT4* const at_arr",
-       GetByteBufferConverted(at_aligned, data_type)},
-  };
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.biases.data, data_type, AlignByN(attr.output_shape.c, 4));
+  bias_desc.size = bias_desc.data.size();
+
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+
+  BufferDescriptor buf_desc;
+  buf_desc.element_type = data_type;
+  buf_desc.element_size = 4;
+  buf_desc.data = GetByteBufferConverted(at_aligned, data_type);
+  buf_desc.size = buf_desc.data.size();
+
+  desc.args.AddObject("at_arr",
+                      absl::make_unique<BufferDescriptor>(std::move(buf_desc)));
 
   desc.uniform_buffers = {
       {"constant uniforms& params",

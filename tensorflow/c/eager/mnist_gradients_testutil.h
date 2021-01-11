@@ -61,12 +61,6 @@ Status MatMulTransposeModel(AbstractContext* ctx,
                             absl::Span<AbstractTensorHandle*> outputs,
                             const GradientRegistry& registry);
 
-// Test Model to verify ReluGrad functionality
-Status ReluGradModel(AbstractContext* ctx,
-                     absl::Span<AbstractTensorHandle* const> inputs,
-                     absl::Span<AbstractTensorHandle*> outputs,
-                     const GradientRegistry& registry);
-
 // Test Model to verify Multi-grad functionality for MNIST
 Status MNISTGradModel(AbstractContext* ctx,
                       absl::Span<AbstractTensorHandle* const> inputs,

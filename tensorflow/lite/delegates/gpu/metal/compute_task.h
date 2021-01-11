@@ -87,7 +87,6 @@ class ComputeTask {
   id<MTLComputePipelineState> program_;
   std::vector<InputBuffer> input_buffers_;
   std::vector<OutputBuffer> output_buffers_;
-  std::vector<id<MTLBuffer>> immutable_buffers_;
   std::vector<UniformBuffer> uniform_buffers_;
   uint3 groups_size_;
   uint3 groups_count_;

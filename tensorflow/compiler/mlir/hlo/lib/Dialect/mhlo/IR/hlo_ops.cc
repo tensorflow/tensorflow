@@ -1277,13 +1277,54 @@ class DynamicReshapeOpNotActuallyDynamic
     return success();
   }
 };
+
+// Canonicalizes
+// %0 = "mhlo.dynamic_reshape"(%tensor, %shape)
+// %1 = same_operands_and_result_shape_op(%tensor)
+// %2 = "mhlo.dynamic_reshape"(%1, %shape)
+// ... uses of %2.
+//
+// into
+//
+// %0 = "mhlo.dynamic_reshape"(%tensor, %shape)
+// %1 = same_operands_and_result_shape_op(%tensor)
+// ... uses of %1.
+class DynamicReshapeOpSameShapeOpResult
+    : public OpRewritePattern<DynamicReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    Operation* def_op = op.operand().getDefiningOp();
+    if (!def_op || !def_op->hasTrait<OpTrait::SameOperandsAndResultShape>()) {
+      return failure();
+    }
+    Operation* input_def_op = def_op->getOperand(0).getDefiningOp();
+    if (!input_def_op) {
+      return failure();
+    }
+    auto reshape = dyn_cast<DynamicReshapeOp>(*input_def_op);
+    if (reshape && reshape.output_shape() == op.output_shape()) {
+      rewriter.replaceOp(op, {def_op->getResult(0)});
+      return success();
+    }
+    return failure();
+  }
+};
 }  // namespace
 
 void DynamicReshapeOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
-  results.insert<DynamicReshapeOpNotActuallyDynamic,
-                 RemoveRedundantDynamicBroadcast, RemoveRedundantDynamicReshape,
-                 ShapeOfDynamicReshape>(context);
+  // clang-format off
+  results.insert<
+      DynamicReshapeOpNotActuallyDynamic,
+      DynamicReshapeOpSameShapeOpResult,
+      RemoveRedundantDynamicBroadcast,
+      RemoveRedundantDynamicReshape,
+      ShapeOfDynamicReshape
+    >(context);
+  // clang-format on
 }
 
 //===----------------------------------------------------------------------===//

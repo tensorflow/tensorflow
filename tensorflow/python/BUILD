@@ -249,9 +249,8 @@ py_strict_library(
         "//tensorflow:__pkg__",
     ],
     deps = [
-        ":tf_decorator",
         "//tensorflow/python/types",
-        "//tensorflow/python/util:tf_stack",
+        "//tensorflow/python/util:core",
     ],
 )
 

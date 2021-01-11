@@ -454,7 +454,8 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
         np.array([[1, 2], [3, 4]], dtype=np.float32), [4, 4],
         expected=np.array(
             [[1, 1, 2, 2], [1, 1, 2, 2], [3, 3, 4, 4], [3, 3, 4, 4]],
-            dtype=np.float32), large_tolerance=True)
+            dtype=np.float32),
+        large_tolerance=True)
 
   def testAlignCorners3x3To2x2(self):
     self._assertForwardOpMatchesExpected(
@@ -518,9 +519,11 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
   def testBFloat16(self):
     img = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
                    dtype=dtypes.bfloat16.as_numpy_dtype)
-    self._assertForwardOpMatchesExpected(img, [4, 4], expected=np.array(
-        [[1, 2, 2, 3], [4, 5, 5, 6], [4, 5, 5, 6], [7, 8, 8, 9]],
-        dtype=np.float32))
+    self._assertForwardOpMatchesExpected(
+        img, [4, 4],
+        expected=np.array(
+            [[1, 2, 2, 3], [4, 5, 5, 6], [4, 5, 5, 6], [7, 8, 8, 9]],
+            dtype=np.float32))
 
   def testAlignCorners3x3To12x12_uint8(self):
     # TODO(b/72099414): enable the test for TPU when the issue is fixed.
@@ -603,7 +606,6 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
       # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
   )
-
   def test(self, src_y, src_x, dst_y, dst_x, dtype=np.float32):
     max_y = max(src_y - 1, 1) * (dst_y - 1) + 1
     max_x = max(src_x - 1, 1) * (dst_x - 1) + 1
@@ -684,8 +686,8 @@ class ResizeBilinearGradTest(parameterized.TestCase, xla_test.XLATestCase):
       # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
   )
-
   def test(self, src_y, src_x, dst_y, dst_x):
+
     def GetRow(src, dst):
       if src == 1:
         return np.array([[max(dst**2 - dst, 1)]])
@@ -1001,10 +1003,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     invalid_index = 0
     self.assertAllEqual([[0, 1, 2, 4, 5, invalid_index],
@@ -1037,10 +1036,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     self.assertAllEqual([[0, 1, 2], [0, 1, 3]], indices_output)
     self.assertAllEqual([3, 3], num_valid_output)
@@ -1067,10 +1063,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     self.assertAllEqual([0, 1, 2], indices_output)
     self.assertAllEqual(3, num_valid_output)
@@ -1096,10 +1089,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     self.assertAllEqual([0, 1, 2, 4, 5], indices_output)
     self.assertAllEqual(5, num_valid_output)
@@ -1129,10 +1119,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     self.assertAllEqual([[[0, 1, 2], [0, 1, 3]]], indices_output)
     self.assertAllEqual([[3, 3]], num_valid_output)
@@ -1163,18 +1150,15 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     invalid_index = 0
     self.assertAllEqual([3, 2], num_valid_output)
     self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
 
   def testBatchedNMSUnsortedInputFrom6(self):
-    boxes_data = [[[0, 2, 1, 2], [3, 3, 4, 4], [0, 0, 1, 1],
-                   [0, 0.4, 1, 1.4], [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]],
+    boxes_data = [[[0, 2, 1, 2], [3, 3, 4, 4], [0, 0, 1, 1], [0, 0.4, 1, 1.4],
+                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]],
                   [[0, 0.4, 1, 1.4], [0, 2, 1, 2], [0, 0.2, 1, 1.2],
                    [0, 0, 1, 1], [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]]]
     scores_data = [[0.3, 0.7, 0.9, 0.6, 0.5, 0.4],
@@ -1197,10 +1181,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             pad_to_max_output_size=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     invalid_index = 0
     self.assertAllEqual([[2, 1, 3, 5, 0, invalid_index],
@@ -1234,10 +1215,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             pad_to_max_output_size=True,
             sorted_input=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     invalid_index = 0
     self.assertAllEqual([[0, 1, 2, 4, 5, invalid_index],
@@ -1271,10 +1249,7 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=False)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     invalid_index = 0
     self.assertAllEqual([3, 2], num_valid_output)
@@ -1306,15 +1281,14 @@ class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
             sorted_input=True,
             canonicalized_coordinates=True)
 
-      inputs = {
-          boxes: boxes_np,
-          scores: scores_np
-      }
+      inputs = {boxes: boxes_np, scores: scores_np}
       indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
     invalid_index = 0
     self.assertAllEqual([[0, 1, 2, 4, 5, invalid_index],
                          [0, 1, 3, 5, invalid_index, invalid_index]],
                         indices_output)
     self.assertAllEqual([5, 4], num_valid_output)
+
+
 if __name__ == "__main__":
   test.main()

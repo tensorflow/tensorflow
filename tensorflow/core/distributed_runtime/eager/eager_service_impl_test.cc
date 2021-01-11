@@ -1220,9 +1220,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false,
-      /*lazy_copy_function_remote_inputs=*/false, device_mgr_.get(), false,
-      rendezvous);
+      /*async=*/false, device_mgr_.get(), false, rendezvous);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.

@@ -77,7 +77,7 @@ TEST(CustomDevice, TestTensorHandle) {
   core::RefCountPtr<EagerContext> ctx(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &device_mgr, false, nullptr, nullptr));
+      &device_mgr, false, nullptr, nullptr));
   std::string device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:15";
   TestCustomDevice device(device_name);
   core::RefCountPtr<TestCustomDeviceTensorHandle> tensor(

@@ -42,7 +42,7 @@ def TFFramework_OpKernelContextType : DialectType<TFFramework_Dialect,
     CPred<"$_self.isa<::mlir::kernel_gen::tf_framework::OpKernelContextType>()">,
           "op_kernel_construction">,
     BuildableType<"$_builder.getType<::mlir::kernel_gen::tf_framework::OpKernelContextType>()"> {
-  let typeDescription = [{
+  let description = [{
     OpKernelContextType corresponds to C++ class OpKernelContext defined in
     tensorflow/core/framework/op_kernel.h
   }];

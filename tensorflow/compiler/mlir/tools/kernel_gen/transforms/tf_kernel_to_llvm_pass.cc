@@ -65,13 +65,13 @@ class ConvertLaunchFuncOpToTfRuntimeCallPattern
 
   Type llvm_void_type_ = LLVM::LLVMVoidType::get(context_);
   Type llvm_pointer_type_ =
-      LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(context_, 8));
+      LLVM::LLVMPointerType::get(IntegerType::get(context_, 8));
   Type llvm_pointer_pointer_type_ =
       LLVM::LLVMPointerType::get(llvm_pointer_type_);
-  Type llvm_int8_type_ = LLVM::LLVMIntegerType::get(context_, 8);
-  Type llvm_int32_type_ = LLVM::LLVMIntegerType::get(context_, 32);
-  Type llvm_int64_type_ = LLVM::LLVMIntegerType::get(context_, 64);
-  Type llvm_intptr_type_ = LLVM::LLVMIntegerType::get(
+  Type llvm_int8_type_ = IntegerType::get(context_, 8);
+  Type llvm_int32_type_ = IntegerType::get(context_, 32);
+  Type llvm_int64_type_ = IntegerType::get(context_, 64);
+  Type llvm_intptr_type_ = IntegerType::get(
       context_, this->getTypeConverter()->getPointerBitwidth(0));
 
   llvm::SmallString<32> gpu_binary_annotation_;
@@ -245,7 +245,7 @@ class TFKernelToLLVMPass : public TFKernelToLLVMPassBase<TFKernelToLLVMPass> {
     MLIRContext *ctx = m.getContext();
     LLVMTypeConverter type_converter(ctx);
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMPointerType::get(LLVM::LLVMIntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
     });
 
     // Populate patterns.

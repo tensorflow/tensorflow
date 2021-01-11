@@ -29,6 +29,34 @@ namespace {
 
 using tensorflow::TF_StatusPtr;
 
+Status ReluModel(AbstractContext* ctx,
+                 absl::Span<AbstractTensorHandle* const> inputs,
+                 absl::Span<AbstractTensorHandle*> outputs) {
+  return ops::Relu(ctx, inputs, outputs, "Relu");
+}
+
+Status ReluGradModel(AbstractContext* ctx,
+                     absl::Span<AbstractTensorHandle* const> inputs,
+                     absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(registry.Register("Relu", ReluRegisterer));
+
+  Tape tape(/*persistent=*/false);
+  tape.Watch(inputs[0]);
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
+  TF_RETURN_IF_ERROR(ops::Relu(tape_ctx.get(), inputs,
+                               absl::MakeSpan(temp_outputs), "ReluGrad"));
+
+  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                          /*sources=*/inputs,
+                                          /*output_gradients=*/{}, outputs));
+  for (auto temp_output : temp_outputs) {
+    temp_output->Unref();
+  }
+  return Status::OK();
+}
+
 Status SparseSoftmaxCrossEntropyWithLogitsModel(
     AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
     absl::Span<AbstractTensorHandle*> outputs) {
@@ -125,6 +153,40 @@ class CppGradients
   bool UseFunction() const { return std::get<2>(GetParam()); }
 };
 
+TEST_P(CppGradients, TestReluGrad) {
+  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 10.0f, -1.0f};
+  int64_t X_dims[] = {3, 3};
+  AbstractTensorHandlePtr X;
+  {
+    AbstractTensorHandle* X_raw;
+    Status s =
+        TestTensorHandleWithDimsFloat(ctx_.get(), X_vals, X_dims, 2, &X_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    X.reset(X_raw);
+  }
+
+  ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
+      ReluModel, ReluGradModel, ctx_.get(), {X.get()}, UseFunction()));
+
+  // Mathematically, Relu isn't differentiable at `0`. So `gradient_checker`
+  // does not work with it.
+  AbstractTensorHandlePtr Y;
+  {
+    AbstractTensorHandle* Y_raw;
+    Status s = TestScalarTensorHandle(ctx_.get(), 0.0f, &Y_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    Y.reset(Y_raw);
+  }
+
+  std::vector<AbstractTensorHandle*> outputs(1);
+  auto s = RunModel(ReluGradModel, ctx_.get(), {Y.get()},
+                    absl::MakeSpan(outputs), UseFunction());
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], {0.0f}, /*dims*/ {},
+                                           /*abs_error*/ 0));
+  outputs[0]->Unref();
+}
+
 TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
   if (UseFunction()) {
     // TODO(b/168850692): Enable this.
@@ -158,8 +220,7 @@ TEST_P(CppGradients, TestSparseSoftmaxCrossEntropyWithLogitsGrad) {
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       SparseSoftmaxCrossEntropyWithLogitsModel,
       SparseSoftmaxCrossEntropyWithLogitsGradModel, ctx_.get(),
-      {X.get(), Y.get()},
-      /*use_function=*/UseFunction()));
+      {X.get(), Y.get()}, UseFunction()));
 }
 
 TEST_P(CppGradients, TestBiasAddGrad) {
@@ -192,7 +253,7 @@ TEST_P(CppGradients, TestBiasAddGrad) {
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       BiasAddModel, BiasAddGradModel, ctx_.get(), {A.get(), Bias.get()},
-      /*use_function=*/UseFunction()));
+      UseFunction()));
 }
 
 #ifdef PLATFORM_GOOGLE

@@ -307,18 +307,13 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   TF_RETURN_IF_ERROR(executor->LoadModule(module_spec, &module_handle));
 
   for (const auto& info : constants_) {
-    const Literal& literal = info.content;
-
     TF_ASSIGN_OR_RETURN(auto global, executor->GetUntypedSymbol(
                                          info.symbol_name, module_handle));
     VLOG(3) << "Resolved global " << info.symbol_name << " to "
             << global.opaque();
 
-    CHECK(literal.shape().IsArray());
-    if (!ShouldEmitLiteralInLlvmIr(literal)) {
-      VLOG(3) << "H2D memcpy for constant with shape "
-              << ShapeUtil::HumanString(literal.shape());
-      stream->ThenMemcpy(&global, literal.untyped_data(), literal.size_bytes());
+    if (!info.content.empty()) {
+      stream->ThenMemcpy(&global, info.content.data(), info.content.size());
     }
 
     if (info.allocation_index != -1) {
@@ -332,7 +327,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 }
 
 StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
-    absl::Span<ExecutionInput const> arguments,
+    VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     const BufferAllocation& allocation,
     se::DeviceMemoryAllocator* const memory_allocator, int device_ordinal,
@@ -341,10 +336,17 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::BufferForAllocation(
     return se::DeviceMemoryBase{};
   } else if (allocation.is_entry_computation_parameter()) {
     int64 param_no = allocation.parameter_number();
-    se::DeviceMemoryBase registered_buffer =
-        arguments[param_no]
+    se::DeviceMemoryBase registered_buffer = [&] {
+      if (auto unowned_shapedbuffers =
+              absl::get_if<absl::Span<const ShapedBuffer* const>>(&arguments)) {
+        return (*unowned_shapedbuffers)[param_no]->buffers().element(
+            allocation.param_shape_index());
+      } else {
+        return absl::get<absl::Span<ExecutionInput>>(arguments)[param_no]
             .Buffer(allocation.param_shape_index())
             .AsDeviceMemoryBase();
+      }
+    }();
     if (registered_buffer.is_null() && registered_buffer.size() > 0) {
       return FailedPrecondition(
           "Cannot run XLA computation because pointer to (sub-)buffer at "
@@ -397,7 +399,7 @@ static Status CheckAlignment(const BufferAllocation& allocation,
 }
 
 StatusOr<BufferAllocations> GpuExecutable::GenerateBufferAllocations(
-    absl::Span<ExecutionInput const> arguments,
+    VariantArguments arguments,
     const GpuExecutable::BufferAllocToDeviceMemoryMap* globals,
     se::DeviceMemoryAllocator* const memory_allocator,
     se::StreamExecutor* executor) {
@@ -424,8 +426,25 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  XLA_SCOPED_LOGGING_TIMER(
-      absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(", module_name_, ")"));
+  return ExecuteAsyncOnStreamImpl(run_options, absl::MakeSpan(arguments),
+                                  hlo_execution_profile);
+}
+
+StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* run_options,
+    absl::Span<const ShapedBuffer* const> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  TF_ASSIGN_OR_RETURN(
+      ExecutionOutput out,
+      ExecuteAsyncOnStreamImpl(run_options, arguments, hlo_execution_profile));
+  return out.ConsumeResult();
+}
+
+StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
+    const ServiceExecutableRunOptions* run_options, VariantArguments arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat(
+      "GpuExecutable::ExecuteAsyncOnStreamImpl(", module_name_, ")"));
   se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
   // Force synchronous execution if the allocator requires it.
   const bool block_host_until_done =
@@ -464,6 +483,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
 
   for (auto& p : result.MutableResult()->buffers()) {
     const ShapeIndex& index = p.first;
+    if (!output_info_.contains(index)) {
+      continue;
+    }
     const OutputInfo& output_info = output_info_.at(index);
     const BufferAllocation* allocation =
         &allocations_[output_info.allocation_index];
@@ -473,18 +495,31 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
             << " @ index: " << index.ToString();
 
     if (output_info.alias_config) {
-      ExecutionInput& input = arguments[allocation->parameter_number()];
       MaybeOwningDeviceMemory* maybe_owning_memory =
-          input.MutableBuffer(allocation->param_shape_index());
-      if (output_info.alias_config->must_alias() &&
+          [&]() -> xla::MaybeOwningDeviceMemory* {
+        // ScopedBuffer is never an owned buffer.
+        if (auto* unowned_shapedbuffers =
+                absl::get_if<absl::Span<const ShapedBuffer* const>>(
+                    &arguments)) {
+          return nullptr;
+        } else {
+          auto unowned_execution_input =
+              absl::get<absl::Span<ExecutionInput>>(arguments);
+          ExecutionInput& input =
+              unowned_execution_input[allocation->parameter_number()];
+          return input.MutableBuffer(allocation->param_shape_index());
+        }
+      }();
+      if (output_info.alias_config->must_alias() && maybe_owning_memory &&
           !maybe_owning_memory->HasOwnership()) {
         return InvalidArgument(
             "An input was configured to be must-alias at "
             "compile time but not donated at runtime: allocation %d",
             output_info.allocation_index);
       }
-      if (absl::optional<se::OwningDeviceMemory> owning =
-              maybe_owning_memory->Release()) {
+      if (maybe_owning_memory && maybe_owning_memory->HasOwnership()) {
+        absl::optional<tensorflow::se::OwningDeviceMemory> owning =
+            maybe_owning_memory->Release();
         // If the caller passes the ownership of the device memory, reuse it
         // as the output buffer. It is up to the caller whether or not to
         // donate a buffer; the aliasing information describes which buffers
@@ -550,7 +585,9 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
       buffer_allocations.TearDown(buffers_in_result, allocations_));
 
   // Free allocations for arguments.
-  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
+  if (auto args = absl::get_if<absl::Span<ExecutionInput>>(&arguments)) {
+    MarkToBeReleasedArguments(*args, result);
+  }
   return std::move(result);
 }
 

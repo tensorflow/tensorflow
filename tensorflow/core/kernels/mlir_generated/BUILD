@@ -131,6 +131,7 @@ tf_kernel_library(
     name = "cwise_binary_op",
     srcs = [
         "gpu_op_add.cc",
+        "gpu_op_atan2.cc",
         "gpu_op_bitwise_and.cc",
         "gpu_op_bitwise_or.cc",
         "gpu_op_bitwise_xor.cc",
@@ -154,6 +155,7 @@ tf_kernel_library(
     ],
     deps = [
         ":add_v2_kernels",
+        ":atan2_kernels",
         ":bitwise_and_kernels",
         ":bitwise_or_kernels",
         ":bitwise_xor_kernels",
@@ -456,6 +458,17 @@ gen_kernel_library(
         "right_shift",
     ]
 ]
+
+gen_kernel_library(
+    name = "atan2",
+    tile_size = "256,1,1",
+    types = [
+        "f32",
+        "f64",
+    ],
+    # TODO(b/174543802): Enable once fusion heursitics is better.
+    # unroll_factors = "4",
+)
 
 # Logical operations.
 [

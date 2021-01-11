@@ -39,6 +39,15 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+py_strict_library(
+    name = "core",
+    deps = [
+        ":tf_decorator",
+        ":tf_export",
+        ":tf_stack",
+    ],
+)
+
 # TODO(mdan): Move this utility outside of TF.
 cc_library(
     name = "kernel_registry",

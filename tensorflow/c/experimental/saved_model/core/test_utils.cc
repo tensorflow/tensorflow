@@ -45,8 +45,7 @@ EagerContextPtr CreateTestingEagerContext(DeviceMgr* device_mgr) {
   return EagerContextPtr(new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /* async= */ false,
-      /* lazy_copy_function_remote_inputs= */ false, device_mgr,
+      /* async= */ false, device_mgr,
       /* device_mgr_owned= */ false, /* rendezvous= */ nullptr,
       /* cluster_flr= */ nullptr));
 }

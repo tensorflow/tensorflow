@@ -139,21 +139,20 @@ struct RemoveVolatileOps : public OpRewritePattern<DequantizeOp> {
   }
 };
 
-// Removes LSTMs that have dangling output.
-// LSTMs are not removed automatically becuase they are stateful ops.
-template <typename LstmOpTy>
-struct PruneUnusedLstm : public OpRewritePattern<LstmOpTy> {
+// Removes operations with side effect (i.e. LSTM, SVDF) that have dangling
+// output.
+template <typename OpTy>
+struct PruneUnusedOpsWithSideEffect : public OpRewritePattern<OpTy> {
  public:
-  explicit PruneUnusedLstm(MLIRContext* context)
-      : OpRewritePattern<LstmOpTy>(context) {}
+  explicit PruneUnusedOpsWithSideEffect(MLIRContext* context)
+      : OpRewritePattern<OpTy>(context) {}
 
-  LogicalResult matchAndRewrite(LstmOpTy lstm_op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter& rewriter) const override {
-    Operation* op = lstm_op.getOperation();
-    if (op->isKnownTerminator()) {
+    if (op.getOperation()->isKnownTerminator()) {
       return failure();
     }
-    for (auto result : op->getOpResults()) {
+    for (auto result : op.getOperation()->getOpResults()) {
       if (!result.use_empty()) {
         return failure();
       }
@@ -171,8 +170,11 @@ void PostQuantizePass::runOnFunction() {
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, patterns);
   patterns.insert<quant::FoldTrivalRequantizeOp<QuantizeOp>>(ctx);
-  patterns.insert<PruneUnusedLstm<TFL::LSTMOp>>(ctx);
-  patterns.insert<PruneUnusedLstm<TFL::UnidirectionalSequenceLSTMOp>>(ctx);
+  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::LSTMOp>>(ctx);
+  patterns
+      .insert<PruneUnusedOpsWithSideEffect<TFL::UnidirectionalSequenceLSTMOp>>(
+          ctx);
+  patterns.insert<PruneUnusedOpsWithSideEffect<TFL::SVDFOp>>(ctx);
   applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   if (!emit_quant_adaptor_ops_) {
