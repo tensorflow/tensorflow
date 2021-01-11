@@ -79,46 +79,46 @@ class IteratorResource : public ResourceBase {
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
           FunctionLibraryRuntime* flr,
           std::unique_ptr<DatasetBaseIterator> iterator)
-        : flib_def(std::move(flib_def)),
-          flr(flr),
-          pflr(std::move(pflr)),
-          function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
-          iterator(std::move(iterator)) {}
+        : flib_def_(std::move(flib_def)),
+          flr_(flr),
+          pflr_(std::move(pflr)),
+          function_handle_cache_(absl::make_unique<FunctionHandleCache>(flr)),
+          iterator_(std::move(iterator)) {}
 
-    ~State() { cancellation_manager.StartCancel(); }
+    ~State() { cancellation_manager_.StartCancel(); }
 
     // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
     // it to set the `iterator` field.
     void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
-      iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
+      iterator_.reset(static_cast<DatasetBaseIterator*>(it.release()));
     }
 
-    std::shared_ptr<FunctionLibraryDefinition> flib_def() { return flib_def; }
+    std::shared_ptr<FunctionLibraryDefinition> flib_def() { return flib_def_; }
 
-    FunctionLibraryRuntime* flr() { return flr; }
+    FunctionLibraryRuntime* flr() { return flr_; }
 
-    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr() { return pflr; }
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr() { return pflr_; }
 
     FunctionHandleCache* function_handle_cache() {
-      return function_handle_cache.get();
+      return function_handle_cache_.get();
     }
 
-    ResourceMgr* resource_mgr() { return &resource_mgr; }
+    ResourceMgr* resource_mgr() { return &resource_mgr_; }
 
     CancellationManager* cancellation_manager() {
-      return &cancellation_manager;
+      return &cancellation_manager_;
     }
 
-    DatasetBaseIterator* iterator() { return iterator.get(); }
+    DatasetBaseIterator* iterator() { return iterator_.get(); }
 
    private:
-    std::shared_ptr<FunctionLibraryDefinition> flib_def;
-    FunctionLibraryRuntime* flr = nullptr;  // not owned
-    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
-    std::unique_ptr<FunctionHandleCache> function_handle_cache;
-    ResourceMgr resource_mgr;
-    CancellationManager cancellation_manager;
-    std::unique_ptr<DatasetBaseIterator> iterator;
+    std::shared_ptr<FunctionLibraryDefinition> flib_def_;
+    FunctionLibraryRuntime* flr_ = nullptr;  // not owned
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr_;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache_;
+    ResourceMgr resource_mgr_;
+    CancellationManager cancellation_manager_;
+    std::unique_ptr<DatasetBaseIterator> iterator_;
   };
 
   UnboundedThreadPool unbounded_thread_pool_;
