@@ -966,3 +966,10 @@ func @size_to_prod_shape_i64(%arg0 : tensor<1x?x2x3xf32>) -> tensor<i64> {
   // CHECK: %[[PROD:.*]] = "tf.Prod"(%[[SHAPE]], %[[CONSTANT]]) {keep_dims = false} : (tensor<4xi64>, tensor<i64>) -> tensor<i64>
   // CHECK: return %[[PROD]]
 }
+
+// CHECK-LABEL: size_unranked
+func @size_unranked(%arg0 : tensor<*xf32>) -> tensor<i32> {
+  // CHECK: tf.Size
+  %0 = "tf.Size"(%arg0) : (tensor<*xf32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
