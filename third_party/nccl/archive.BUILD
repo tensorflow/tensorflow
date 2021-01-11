@@ -90,7 +90,7 @@ cc_library(
     hdrs = ["src/nccl.h"],
     include_prefix = "third_party/nccl",
     linkopts = select({
-        "//tensorflow:macos": [],
+        "@org_tensorflow//tensorflow:macos": [],
         "//conditions:default": ["-lrt"],
     }),
     strip_include_prefix = "src",
