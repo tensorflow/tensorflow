@@ -254,33 +254,22 @@ GENERATE_DEFAULT_TEST(Imag, DT_COMPLEX128, DT_DOUBLE, baseline_imag,
                       test::GpuOpsTestConfig().AddTout().NoBufferReuse())
 
 /// Test `tf.IsInf`.
-TEST_F(GpuUnaryOpTest, IsInfFloat) {
-  Test<float, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<float>(),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
-}
 
-TEST_F(GpuUnaryOpTest, IsInfDouble) {
-  // Workaround for gcc bug, it would fail with "unresolved overloaded function
-  // type" if passing std::isinf with type double. So we use type float for
-  // comparing expected values.
-  Test<double, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<double>(),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
-}
+GENERATE_DEFAULT_TEST_2(
+    IsInf, DT_FLOAT, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
 
-TEST_F(GpuUnaryOpTest, IsInfHalf) {
-  Test<Eigen::half, float, bool, bool>(
-      /*op_name=*/"IsInf", test::DefaultInputShape(),
-      test::DefaultInput<Eigen::half>(),
-      /*baseline_callback=*/std::isinf,
-      test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
-}
-//
+// Workaround for gcc bug, it would fail with "unresolved overloaded function
+// type" if passing std::isinf with type double. So we use type float for
+// comparing expected values.
+GENERATE_DEFAULT_TEST_2(
+    IsInf, DT_DOUBLE, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
+GENERATE_DEFAULT_TEST_2(
+    IsInf, DT_HALF, DT_FLOAT, DT_BOOL, DT_BOOL, std::isinf,
+    test::GpuOpsTestConfig().ExpectStrictlyEqual().NoBufferReuse());
+
 /// Test `tf.Log`.
 
 GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
