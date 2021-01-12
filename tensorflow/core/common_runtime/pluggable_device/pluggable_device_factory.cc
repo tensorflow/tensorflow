@@ -66,6 +66,7 @@ int64 MinSystemMemory(int64 available_memory) {
 #endif
   VLOG(5) << "available_memory = " << available_memory;
   VLOG(5) << "min_system_memory = " << min_system_memory;
+  return min_system_memory;
 }
 
 // Get the memory limit for the virtual device being created on PluggableDevice
