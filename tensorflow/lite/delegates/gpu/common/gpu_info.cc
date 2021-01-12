@@ -529,6 +529,9 @@ int GpuInfo::GetMaxWorkGroupSizeForX() const {
   if (IsApiOpenCl()) {
     return opencl_info.max_work_group_size_x;
   }
+  if (IsApiMetal()) {
+    return metal_info.max_work_group_size_x;
+  }
   return 256;
 }
 
@@ -541,6 +544,9 @@ int GpuInfo::GetMaxWorkGroupSizeForY() const {
   }
   if (IsApiOpenCl()) {
     return opencl_info.max_work_group_size_y;
+  }
+  if (IsApiMetal()) {
+    return metal_info.max_work_group_size_y;
   }
   return 256;
 }
@@ -555,6 +561,9 @@ int GpuInfo::GetMaxWorkGroupSizeForZ() const {
   if (IsApiOpenCl()) {
     return opencl_info.max_work_group_size_z;
   }
+  if (IsApiMetal()) {
+    return metal_info.max_work_group_size_z;
+  }
   return 64;
 }
 
@@ -567,6 +576,12 @@ int GpuInfo::GetMaxWorkGroupTotalSize() const {
   }
   if (IsApiOpenCl()) {
     return opencl_info.max_work_group_total_size;
+  }
+  if (IsApiMetal()) {
+    int max_size = metal_info.max_work_group_size_x;
+    max_size = std::max(max_size, metal_info.max_work_group_size_y);
+    max_size = std::max(max_size, metal_info.max_work_group_size_z);
+    return max_size;
   }
   return 256;
 }
@@ -634,6 +649,8 @@ uint64_t GpuInfo::GetMaxImage3DDepth() const {
 uint64_t GpuInfo::GetMaxBufferSize() const {
   if (IsApiOpenCl()) {
     return opencl_info.buffer_max_size;
+  } else if (IsApiMetal()) {
+    return metal_info.buffer_max_size;
   }
   return 128 * 1024 * 1024;
 }

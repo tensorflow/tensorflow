@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GPU_INFO_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -290,6 +291,27 @@ struct OpenClInfo {
   bool supports_rgba_f32_tex2d = false;
 };
 
+enum class MetalLanguageVersion {
+  kMetal1_0,
+  kMetal1_1,
+  kMetal1_2,
+  kMetal2_0,
+  kMetal2_1,
+  kMetal2_2,
+  kMetal2_3,
+  kUnknown,
+};
+
+struct MetalInfo {
+  MetalLanguageVersion language_version;
+
+  int max_work_group_size_x;
+  int max_work_group_size_y;
+  int max_work_group_size_z;
+
+  uint64_t buffer_max_size;
+};
+
 struct GpuInfo {
   bool IsAdreno() const;
   bool IsApple() const;
@@ -352,6 +374,7 @@ struct GpuInfo {
   VulkanInfo vulkan_info;
   bool IsApiVulkan() const;
 
+  MetalInfo metal_info;
   bool IsApiMetal() const;
 
   OpenClInfo opencl_info;

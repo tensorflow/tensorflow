@@ -73,6 +73,7 @@ objc_library(
         "Metal",
     ],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
