@@ -32,13 +32,6 @@ namespace gpu {
 // to the buffer allocated for the infeed op.
 class InfeedThunk : public Thunk {
  public:
-  // A struct that defines a shaped slice, i.e., a BufferAllocation::Slice and
-  // its shape.
-  struct ShapedSlice {
-    BufferAllocation::Slice slice;
-    Shape shape;
-  };
-
   // Constructs a InfeedThunk that copies data from the on-device
   // infeed queue into the buffers in the given shape tree.
   InfeedThunk(ThunkInfo thunk_info, std::vector<ShapedSlice>&& dest_slices);
