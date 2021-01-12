@@ -607,6 +607,27 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
   return Status::OK();
 }
 
+Status DatasetOpsTestBase::CheckIteratorSkip(
+    int num_to_skip, int expected_num_skipped,
+    bool get_next, const std::vector<Tensor>& expected_outputs,
+    bool compare_order) {
+  IteratorBase* iterator = iterator_.get();
+  IteratorContext* ctx = iterator_ctx_.get();
+
+  bool end_of_sequence = false;
+  int num_skipped = 0;
+  iterator->Skip(ctx, num_to_skip, &end_of_sequence, &num_skipped);
+  EXPECT_TRUE(num_skipped == expected_num_skipped);
+  if (get_next) {
+    EXPECT_TRUE(!end_of_sequence);
+    std::vector<Tensor> out_tensors;
+    TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &out_tensors, &end_of_sequence));
+    TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
+                             /*compare_order=*/compare_order));
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CheckSplitProviderFullIteration(
     const DatasetParams& params, const std::vector<Tensor>& expected_outputs) {
   std::unique_ptr<TestDataset> dataset;

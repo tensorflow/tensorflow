@@ -382,6 +382,27 @@ struct GetNextTestCase {
 };
 
 template <typename T>
+struct SkipTestCase {
+  SkipTestCase(T dataset_params, int num_to_skip,
+               int expected_num_skipped, bool get_next = false,
+               std::vector<Tensor> expected_outputs = {},
+               bool compare_ordered = true)
+      : dataset_params(std::move(dataset_params)),
+        num_to_skip(num_to_skip),
+        expected_num_skipped(expected_num_skipped),
+        get_next(get_next),
+        expected_outputs(std::move(expected_outputs)),
+        compare_order(compare_order) {}
+
+  T dataset_params;
+  int num_to_skip;
+  int expected_num_skipped;
+  bool get_next;
+  std::vector<Tensor> expected_outputs;
+  bool compare_order;
+};
+
+template <typename T>
 struct DatasetNodeNameTestCase {
   T dataset_params;
   string expected_node_name;
@@ -561,6 +582,12 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CheckIteratorGetNext(IteratorBase* iterator, IteratorContext* ctx,
                               const std::vector<Tensor>& expected_outputs,
                               bool compare_order);
+
+  // Checks `IteratorBase::Skip()`
+  Status CheckIteratorSkip(int num_to_skip, int expected_num_skipped,
+                           bool get_next,
+                           const std::vector<Tensor>& expected_outputs,
+                           bool compare_order);
 
   // Checks that iterating through the dataset using a split provider produces
   // the expected outputs.
@@ -776,6 +803,29 @@ class DatasetOpsTestBase : public ::testing::Test {
       dataset_op_test_class, ParameterizedGetNextTest,                        \
       ::testing::ValuesIn(                                                    \
           std::vector<GetNextTestCase<dataset_params_class>>(test_cases)));
+
+#define ITERATOR_SKIP_TEST_P(dataset_op_test_class, dataset_params_class,     \
+                             test_cases)                                      \
+  class ParameterizedSkipTest                                                 \
+      : public dataset_op_test_class,                                         \
+        public ::testing::WithParamInterface<                                 \
+            SkipTestCase<dataset_params_class>> {};                           \
+                                                                              \
+  TEST_P(ParameterizedSkipTest, GetNext) {                                    \
+    auto test_case = GetParam();                                              \
+    TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
+    TF_ASSERT_OK(                                                             \
+        CheckIteratorSkip(test_case.num_to_skip,                              \
+                          test_case.expected_num_skipped,                     \
+                          test_case.get_next,                                 \
+                          test_case.expected_outputs,                         \
+                          /*compare_order=*/test_case.compare_order));        \
+  }                                                                           \
+                                                                              \
+  INSTANTIATE_TEST_SUITE_P(                                                   \
+      dataset_op_test_class, ParameterizedSkipTest,                           \
+      ::testing::ValuesIn(                                                    \
+          std::vector<SkipTestCase<dataset_params_class>>(test_cases)));
 
 #define DATASET_NODE_NAME_TEST_P(dataset_op_test_class, dataset_params_class, \
                                  test_cases)                                  \

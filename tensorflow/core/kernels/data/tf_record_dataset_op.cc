@@ -158,6 +158,49 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       } while (true);
     }
 
+    Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                        bool* end_of_sequence,
+                        int* num_skipped) override {
+      *num_skipped = 0;
+      mutex_lock l(mu_);
+      do {
+        // We are currently processing a file, so try to skip reading
+        // the next (num_to_skip - *num_skipped) record.
+        if (reader_) {
+          int num_skipped_once;
+          Status s =
+              reader_->SkipRecords(num_to_skip - *num_skipped,
+                                   &num_skipped_once);
+          *num_skipped += num_skipped_once;
+          if (s.ok()) {
+            *end_of_sequence = false;
+            return Status::OK();
+          }
+          if (!errors::IsOutOfRange(s)) {
+            // In case of other errors e.g., DataLoss, we still move forward
+            // the file index so that it works with ignore_errors.
+            // Otherwise the same file will repeat.
+            ResetStreamsLocked();
+            ++current_file_index_;
+            return s;
+          }
+
+          // We have reached the end of the current file, so maybe move on to
+          // next file.
+          ResetStreamsLocked();
+          ++current_file_index_;
+        }
+
+        // Iteration ends when there are no more files to process.
+        if (current_file_index_ == dataset()->filenames_.size()) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
+
+        TF_RETURN_IF_ERROR(SetupStreamsLocked(ctx->env()));
+      } while (true);
+    }
+
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {

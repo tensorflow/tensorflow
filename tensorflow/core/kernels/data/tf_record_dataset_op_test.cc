@@ -154,6 +154,45 @@ std::vector<GetNextTestCase<TFRecordDatasetParams>> GetNextTestCases() {
 ITERATOR_GET_NEXT_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
                          GetNextTestCases())
 
+std::vector<SkipTestCase<TFRecordDatasetParams>> SkipTestCases() {
+  return {
+      {/*dataset_params=*/TFRecordDatasetParams1(),
+       /*num_to_skip*/2, /*expected_num_skipped*/2, /*get_next*/true,
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+      {/*dataset_params=*/TFRecordDatasetParams1(),
+       /*num_to_skip*/4, /*expected_num_skipped*/4, /*get_next*/true,
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+      {/*dataset_params=*/TFRecordDatasetParams1(),
+       /*num_to_skip*/7, /*expected_num_skipped*/6},
+
+      {/*dataset_params=*/TFRecordDatasetParams2(),
+       /*num_to_skip*/2, /*expected_num_skipped*/2, /*get_next*/true,
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+      {/*dataset_params=*/TFRecordDatasetParams2(),
+       /*num_to_skip*/4, /*expected_num_skipped*/4, /*get_next*/true,
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+      {/*dataset_params=*/TFRecordDatasetParams2(),
+       /*num_to_skip*/7, /*expected_num_skipped*/6},
+
+      {/*dataset_params=*/TFRecordDatasetParams3(),
+       /*num_to_skip*/2, /*expected_num_skipped*/2, /*get_next*/true,
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}), {{"333"}})},
+      {/*dataset_params=*/TFRecordDatasetParams3(),
+       /*num_to_skip*/4, /*expected_num_skipped*/4, /*get_next*/true,
+       /*expected_outputs=*/
+       CreateTensors<tstring>(TensorShape({}), {{"bb"}})},
+      {/*dataset_params=*/TFRecordDatasetParams3(),
+       /*num_to_skip*/7, /*expected_num_skipped*/6}};
+}
+
+ITERATOR_SKIP_TEST_P(TFRecordDatasetOpTest, TFRecordDatasetParams,
+                     SkipTestCases())
+
 TEST_F(TFRecordDatasetOpTest, DatasetNodeName) {
   auto dataset_params = TFRecordDatasetParams1();
   TF_ASSERT_OK(Initialize(dataset_params));
