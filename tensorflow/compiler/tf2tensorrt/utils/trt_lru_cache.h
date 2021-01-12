@@ -146,10 +146,20 @@ struct EngineContext {
   }
 
   // In explicit batch mode, we maintain a vector of contexts for each engine,
-  // where each context is created for a different profile. The
+  // where each context is created for a specific profile. This is because it is
+  // either not possible or non-trivial to change the profile of a context for
+  // the following reasons:
+  // - In TRT 6 it is not possible to switch a profile after it is set
+  //   https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-601/tensorrt-api/c_api/classnvinfer1_1_1_i_execution_context.html#aba0731b9fbc926c477010df818650b0a
+  // - To switch profiles (from TRT 7), one must first ensure that all inference
+  //   calls in that context are finished. This would require an additional
+  //   synchronization before we call setOptimizationProfile. To avoid this
+  //   extra sync call, we mantain separate execution context for each profile.
   // IExecutionContext object is not thread safe: only one thread should use it
   // for inference at a time therefore we need a mutex. More details at
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
+  // Additional discussion about execution context management and thread safety
+  // at https://github.com/tensorflow/tensorflow/issues/36959
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
       TF_GUARDED_BY(mu);
 };
