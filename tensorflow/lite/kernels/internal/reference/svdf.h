@@ -58,19 +58,12 @@ static inline void ApplyTimeWeightsBiasAndActivation(
   }
 
   // Reduction sum.
-  for (int b = 0; b < batch_size; ++b) {
-    float* output_ptr_batch = output_ptr + b * num_units;
-    float* scratch_ptr_batch = scratch_ptr + b * num_filters;
-    tensor_utils::ReductionSumVector(scratch_ptr_batch, output_ptr_batch,
-                                     num_units, rank);
-  }
+  tensor_utils::ReductionSumVector(scratch_ptr, output_ptr,
+                                   batch_size * num_units, rank);
 
   // Apply activation.
-  for (int b = 0; b < batch_size; ++b) {
-    float* output_ptr_batch = output_ptr + b * num_units;
-    tensor_utils::ApplyActivationToVector(output_ptr_batch, num_units,
-                                          activation, output_ptr_batch);
-  }
+  tensor_utils::ApplyActivationToVector(output_ptr, batch_size * num_units,
+                                        activation, output_ptr);
 }
 
 inline void EvalIntegerSVDF(
@@ -146,12 +139,8 @@ inline void EvalIntegerSVDF(
       std::fill_n(output_temp_data, n_batch * n_unit, 0);
     }
     // Reduce.
-    for (int b = 0; b < n_batch; ++b) {
-      int32_t* output_temp_ptr = output_temp_data + b * n_unit;
-      int32_t* scratch_data_batch = scratch_data + b * n_filter;
-      tensor_utils::ReductionSumVector(scratch_data_batch, output_temp_ptr,
-                                       n_unit, n_rank);
-    }
+    tensor_utils::ReductionSumVector(scratch_data, output_temp_data,
+                                     n_batch * n_unit, n_rank);
     // Rescale.
     const int32_t output_max = std::numeric_limits<int8_t>::max();
     const int32_t output_min = std::numeric_limits<int8_t>::min();
