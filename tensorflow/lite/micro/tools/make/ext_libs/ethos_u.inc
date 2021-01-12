@@ -26,7 +26,7 @@ else
     MICROLITE_LIBS += $(ETHOSU_DRIVER_LIBS)
 endif
 
-# Currently there is a dependency to CMSIS even without OPTIMIZED_KERNEL_DIR=cmsis-nn.
+# Currently there is a dependency to CMSIS even without OPTIMIZED_KERNEL_DIR=cmsis_nn.
 CMSIS_DEFAULT_DOWNLOAD_PATH := $(MAKEFILE_DIR)/downloads/cmsis
 CMSIS_PATH := $(CMSIS_DEFAULT_DOWNLOAD_PATH)
 ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))

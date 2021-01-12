@@ -25,6 +25,7 @@ MAKEFILE_DIR := tensorflow/lite/micro/tools/make
 #  make -f tensorflow/lite/micro/tools/make/Makefile PARSE_THIRD_PARTY=true TARGET=apollo3evb generate_hello_world_make_project
 PARSE_THIRD_PARTY :=
 
+
 # Pull in some convenience functions.
 include $(MAKEFILE_DIR)/helper_functions.inc
 
@@ -101,15 +102,11 @@ MICROLITE_LIBS := -lm
 #
 # We apply the following transformations (via the tr command):
 #   1. Convert to uppercase (TARGET=xtensa -> -DXTENSA)
-#   2. (Temporarily) Replace dash with underscore (OPTIMIZED_KERNEL_DIR=cmsis-nn -> -DCMSIS_NN)
-#
-# Transformation 2 is needed because CMSIS-NN is not a valid macro names.
+
 ADDITIONAL_DEFINES := -D$(shell echo $(TARGET) | tr [a-z] [A-Z])
 
 ifneq ($(OPTIMIZED_KERNEL_DIR),)
-  # TODO(b/168824958): remove dash->underscore transformation once the cmsis-nn
-  # directory has been renamed.
-  ADDITIONAL_DEFINES += -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z] | tr - _)
+  ADDITIONAL_DEFINES += -D$(shell echo $(OPTIMIZED_KERNEL_DIR) | tr [a-z] [A-Z])
 endif
 
 ifneq ($(CO_PROCESSOR),)
