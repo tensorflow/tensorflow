@@ -125,6 +125,8 @@ struct AdrenoInfo {
   // Not supported on some Adreno devices with specific driver version.
   // b/131099086
   bool support_one_layer_texture_array = true;
+
+  bool compiler_bugs_in_a6xx = false;
 };
 
 enum class AppleGpu {

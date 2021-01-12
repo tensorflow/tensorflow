@@ -186,7 +186,9 @@ bool AdrenoInfo::IsAdreno6xx() const {
          adreno_gpu == AdrenoGpu::kAdreno685;
 }
 
-bool AdrenoInfo::IsAdreno6xxOrHigher() const { return IsAdreno6xx(); }
+bool AdrenoInfo::IsAdreno6xxOrHigher() const {
+  return !compiler_bugs_in_a6xx && IsAdreno6xx();
+}
 
 int AdrenoInfo::GetMaximumWavesCount() const {
   if (IsAdreno6xx()) {
