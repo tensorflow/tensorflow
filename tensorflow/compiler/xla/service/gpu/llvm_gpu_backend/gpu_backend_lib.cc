@@ -809,14 +809,15 @@ Status AMDGPUTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
 // When that upstreaming happens (and TF LLVM pointer moves past the
 // upstream commit), the following mapping will need to change
 static std::string MapGCNArchNameTokenToFeatureStr(const std::string token) {
-  if (token == "sramecc+")
+  if (token == "sramecc+") {
     return "+sram-ecc";
-  else if (token == "sramecc-")
+  } else if (token == "sramecc-") {
     return "-sram-ecc";
-  else if (token == "xnack+")
+  } else if (token == "xnack+") {
     return "+xnack";
-  else if (token == "xnack-")
+  } else if (token == "xnack-") {
     return "-xnack";
+  }
   return "";
 }
 
@@ -833,23 +834,19 @@ static std::string GetFeatureStrFromGCNArchName(
   feature_str = "";
 #else
   // For ROCm versions 4.0 and greater, we need to specify the correct
-  // feature str, based on the underlying GPU WH to get max performance.
-  feature_str = "";
-  int token_num = 0;
-  size_t start = 0, pos = 0;
-  do {
-    pos = gcn_arch_name.find(":", start);
-    if (token_num != 0) {
-      // first token will be "gfxNNN"...ignore that, use the rest
-      if (feature_str.size()) feature_str += ",";
-      std::string token = gcn_arch_name.substr(start, (pos == std::string::npos)
-                                                          ? std::string::npos
-                                                          : (pos - start));
-      feature_str += MapGCNArchNameTokenToFeatureStr(token);
+  // feature str, based on the underlying GPU HW to get max performance.
+  std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
+  std::vector<std::string> mapped_tokens;
+  for (auto it = tokens.begin(); it != tokens.end(); it++) {
+    // Skip the first token, that is the gfxNNN str
+    // The rest of the tokens are the feature/targetid strings
+    if (it != tokens.begin()) {
+      std::string token(*it);
+      std::string mapped_token = MapGCNArchNameTokenToFeatureStr(token);
+      mapped_tokens.push_back(mapped_token);
     }
-    start = pos + 1;
-    token_num++;
-  } while (pos != std::string::npos);
+  }
+  feature_str = absl::StrJoin(mapped_tokens, ",");
 #endif
 
   return feature_str;
