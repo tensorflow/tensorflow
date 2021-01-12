@@ -76,6 +76,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
+using reference_ops::BroadcastSub16POTSlow;
 using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;

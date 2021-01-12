@@ -116,7 +116,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // 8bit -> 8bit general quantized path, with general rescalings
   // as well as, int16 -> int16 with general rescalings
-  bool pot_scale_int16 = true;
+
+  // There are two implementations of ADD operator in case of
+  // 16bit input/output depending on whether the scale parameter is
+  // the power of 2 or not. Currently only implementation for
+  // general case is used, but we need to use another implementation
+  // for older versions.
+  bool general_scale_int16 = false;
 
   bool input1_scale_is_pot = false;
   bool input2_scale_is_pot = false;
@@ -128,31 +134,35 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
       output->type == kTfLiteInt16) {
-    // In case of 16-bit, there are two implementation:
-    // the scale parameter is a general number
-    // the scale parameter is POT and
-    // zero_point is zero for inputs/output.
-    pot_scale_int16 = (input1->params.zero_point == 0) &&
-                      (input2->params.zero_point == 0) &&
-                      (output->params.zero_point == 0);
+    // In case of int16, quantization is symmetic and
+    // zero point should be zero.
+    TF_LITE_ENSURE_EQ(context, input1->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
-    input1_scale_is_pot =
-        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
+    general_scale_int16 = !params || !params->pot_scale_int16;
 
-    input2_scale_is_pot =
-        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+    if (!general_scale_int16) {
+      // Do preparation in the case of the scale parameter is power of 2.
 
-    output_scale_is_pot =
-        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+      input1_scale_is_pot =
+          CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
 
-    pot_scale_int16 &=
-        input1_scale_is_pot && input2_scale_is_pot && output_scale_is_pot;
+      input2_scale_is_pot =
+          CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+
+      output_scale_is_pot =
+          CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+
+      general_scale_int16 =
+          !input1_scale_is_pot || !input2_scale_is_pot || !output_scale_is_pot;
+    }
   }
 
-  data->pot_scale_int16 = pot_scale_int16;
+  data->pot_scale_int16 = !general_scale_int16;
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      !pot_scale_int16) {
+      general_scale_int16) {
     // 8bit -> 8bit general quantized path, with general rescalings
     // as well as, 16bit -> 16bit with general rescalings
     data->input1_offset = -input1->params.zero_point;
@@ -162,7 +172,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // The shift is set to 15 for 16-bit and 20 in case of 8-bit, accordingly.
     // In case of 16-bit we have 65535 << 15 which is less than 1 << 31,
     // therefore the addition will still fit in a 32 bit accumulator.
-    data->left_shift = !pot_scale_int16 ? 15 : 20;
+    data->left_shift = general_scale_int16 ? 15 : 20;
     const double twice_max_input_scale =
         2 * std::max(input1->params.scale, input2->params.scale);
     const double real_input1_multiplier =

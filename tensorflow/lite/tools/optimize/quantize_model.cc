@@ -510,6 +510,44 @@ TfLiteStatus ApplyConstraints(
   return kTfLiteOk;
 }
 
+// In case of int16 activations, there are two implementations of kernels for
+// ADD/SUB operators. We set the builtin option pot_scale_int16
+// during quantization so that from now only the general case implementation is
+// used.
+void SetOperatorPropertyADDSUBOperator(ModelT* model,
+                                       const TensorType& activations_type) {
+  if (activations_type != TensorType_INT16) {
+    // This is needed only in case of int16 activations.
+    return;
+  }
+
+  for (int subgraph_idx = 0, end = model->subgraphs.size(); subgraph_idx < end;
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    // Iterate backward to avoid messing with index.
+    for (int op_idx = subgraph->operators.size() - 1; op_idx >= 0; op_idx--) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
+      if (op_code && op_code->builtin_code == BuiltinOperator_ADD) {
+        {
+          auto* options = op->builtin_options.AsAddOptions();
+          if (options) {
+            options->pot_scale_int16 = false;
+          }
+        }
+      }
+      if (op_code && op_code->builtin_code == BuiltinOperator_SUB) {
+        {
+          auto* options = op->builtin_options.AsSubOptions();
+          if (options) {
+            options->pot_scale_int16 = false;
+          }
+        }
+      }
+    }
+  }
+}
+
 std::vector<std::pair<int, operator_property::TensorProperty>> GetInputs(
     const OperatorT* op, operator_property::OperatorProperty property) {
   std::vector<std::pair<int, operator_property::TensorProperty>> inputs;
@@ -1411,7 +1449,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   utils::SetOperatorCodeVersion(model);
   TF_LITE_ENSURE_STATUS(SetInputAndOutputTypes(
       model, input_type, output_type, activations_type, error_reporter));
-
+  SetOperatorPropertyADDSUBOperator(model, activations_type);
   flatbuffers::Offset<Model> output_model_location =
       Model::Pack(*builder, model);
   FinishModelBuffer(*builder, output_model_location);

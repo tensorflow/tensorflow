@@ -66,6 +66,7 @@
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+        *   Additional tests and fixes for ADD and SUB operators.
     *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
     *  Added DEPTH_TO_SPACE support in Post training quantization.

@@ -594,7 +594,7 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
-  // Parameters supported by version 4.
+  // Parameters supported by version 3.
   pot_scale_int16:bool = true;
 }
 
