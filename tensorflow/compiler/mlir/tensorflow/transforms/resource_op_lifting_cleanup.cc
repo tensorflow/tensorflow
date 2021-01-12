@@ -117,7 +117,7 @@ void EliminateUnusedResults(
 // multiple uses or unknown uses (for external functions). The cloned function
 // will be marked as private.
 FuncOp CloneFunctionIfNeeded(FuncOp func) {
-  ModuleOp module = func.getParentOfType<ModuleOp>();
+  ModuleOp module = func->getParentOfType<ModuleOp>();
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   if (func_uses.hasValue() && llvm::hasSingleElement(func_uses.getValue()))
     return func;
@@ -184,9 +184,9 @@ void EliminateUnusedResultsForIfCase(Operation *op, ArrayRef<FuncOp> branches) {
   // Patch up function types (with less number of return values and potentially
   // less number of arguments)
   for (FuncOp func : cloned_branches) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
 
   EliminateUnusedResults(op);
@@ -232,9 +232,9 @@ void EliminateUnusedResultsForWhile(TF::WhileOp op) {
 
   // Patch up branch function types.
   for (FuncOp func : {cloned_cond, cloned_body}) {
-    func.setType(FunctionType::get(
-        func.front().getArgumentTypes(),
-        func.front().getTerminator()->getOperandTypes(), func.getContext()));
+    func.setType(
+        FunctionType::get(func.getContext(), func.front().getArgumentTypes(),
+                          func.front().getTerminator()->getOperandTypes()));
   }
   EliminateUnusedResults(op, &can_eliminate);
 }

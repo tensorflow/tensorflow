@@ -1749,7 +1749,8 @@ class SymbolicShapeRefiner {
             }
             int64 size = t->dtype() == DT_INT32 ? t->scalar<int32>()()
                                                 : t->scalar<int64>()();
-            dims.push_back(size < 0 ? ic->UnknownDim() : ic->MakeDim(size));
+            dims.push_back(size < 0 ? ic->MakeDim(kUnknownDimFromConst)
+                                    : ic->MakeDim(size));
           } else {
             // Don't have tensor value, but use input_tensors_as_shapes, if
             // possible.
@@ -1759,7 +1760,9 @@ class SymbolicShapeRefiner {
                 ic->ValueKnown(ic->Dim(shape_handle, 0))) {
               dims.push_back(ic->Dim(shape_handle, 0));
             } else {
-              dims.push_back(ic->UnknownDim());
+              // This is not from Const, but as it shouldn'be used as symbolic
+              // unknown dim for different ops, we use kUnknownDimFromConst.
+              dims.push_back(ic->MakeDim(kUnknownDimFromConst));
             }
           }
         }

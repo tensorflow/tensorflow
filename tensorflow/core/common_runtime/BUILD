@@ -2127,7 +2127,6 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["process_function_library_runtime_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_rocm"],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",
@@ -2513,13 +2512,10 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_cc_test(
+tf_cc_test(
     name = "lower_if_op_test",
     size = "small",
     srcs = ["lower_if_op_test.cc"],
-    tags = tf_cuda_tests_tags() + [
-        "no_cuda_asan",  # TODO(b/171575050): re-enable once fixed.
-    ],
     deps = [
         ":core_cpu",
         ":core_cpu_internal",

@@ -34,8 +34,9 @@ class MetalArguments : public ArgumentsBinder {
  public:
   MetalArguments() = default;
 
-  absl::Status Init(id<MTLDevice> device, int buffer_offset, Arguments* args,
-                    std::string* code);
+  absl::Status Init(id<MTLDevice> device,
+                    const std::map<std::string, std::string>& linkables,
+                    Arguments* args, std::string* code);
 
   // Move only
   MetalArguments(MetalArguments&& args) = default;
@@ -46,10 +47,29 @@ class MetalArguments : public ArgumentsBinder {
   absl::Status SetInt(const std::string& name, int value) override;
   absl::Status SetFloat(const std::string& name, float value) override;
   absl::Status SetHalf(const std::string& name, half value) override;
+  absl::Status SetObjectRef(const std::string& name, const GPUObject& object);
 
   void Encode(id<MTLComputeCommandEncoder> encoder, int buffer_offset) const;
 
  private:
+  // creates structure with layout:
+  // struct uniforms_buffer {
+  //   int val_0;
+  //   int val_1;
+  //   float val_2;
+  //   int dummy;  // for alignment
+  // };
+  std::string ScalarArgumentsToStructWithScalarFields(Arguments* args,
+                                                      std::string* code);
+
+  // creates structure with layout:
+  // struct uniforms_buffer {
+  //   int4 val_0_val_1_dummy_dummy;
+  //   float4 val_2_dummy_dummy_dummy;
+  // };
+  std::string ScalarArgumentsToStructWithVec4Fields(Arguments* args,
+                                                    std::string* code);
+
   absl::Status AllocateObjects(const Arguments& args, id<MTLDevice> device);
   absl::Status AddObjectArgs(Arguments* args);
 

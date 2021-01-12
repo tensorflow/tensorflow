@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 
+#include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -75,19 +76,24 @@ Status PyBuffer::BlockHostUntilReady() {
   return buffer_->BlockHostUntilReady();
 }
 
+// TODO(zhangqiaorjc): Delete UnsafeBufferPointer.
 StatusOr<std::uintptr_t> PyBuffer::UnsafeBufferPointer() const {
-  TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, buffer_->AsShapedBuffer());
-  if (shaped_buffer.on_device_shape().IsTuple()) {
+  if (buffer_->on_device_shape().IsTuple()) {
     return Unimplemented(
         "unsafe_buffer_pointer is not implemented for tuple "
         "buffers.");
   }
-  return absl::bit_cast<std::uintptr_t>(shaped_buffer.root_buffer().opaque());
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
+                          external_reference_hold,
+                      buffer_->AcquireExternalReference());
+  const void* ptr = external_reference_hold->OpaqueDeviceMemoryDataPointer();
+  return absl::bit_cast<std::uintptr_t>(ptr);
 }
 
 StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {
-  if (buffer_->device()->local_device_state()->executor()->platform_kind() !=
-      se::PlatformKind::kCuda) {
+  // TODO(zhangqiaorjc): Differentiate between NVidia and other GPUs.
+  if (buffer_->client()->platform_id() != kGpuId) {
     return InvalidArgument(
         "__cuda_array_interface__ is only defined for NVidia GPU buffers.");
   }
@@ -101,17 +107,20 @@ StatusOr<py::dict> PyBuffer::CudaArrayInterface() const {
   }
   TF_RET_CHECK(
       LayoutUtil::IsMonotonicWithDim0Major(buffer_->on_host_shape().layout()));
-  TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer, buffer_->AsShapedBuffer());
 
   py::dict result;
-  result["shape"] = IntSpanToTuple(shaped_buffer.on_host_shape().dimensions());
-  TF_ASSIGN_OR_RETURN(py::str typestr,
-                      TypeDescriptorForPrimitiveType(
-                          shaped_buffer.on_host_shape().element_type()));
+  result["shape"] = IntSpanToTuple(buffer_->on_host_shape().dimensions());
+  TF_ASSIGN_OR_RETURN(
+      py::str typestr,
+      TypeDescriptorForPrimitiveType(buffer_->on_host_shape().element_type()));
   result["typestr"] = std::move(typestr);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
+                          external_reference_hold,
+                      buffer_->AcquireExternalReference());
+  const void* root_ptr =
+      external_reference_hold->OpaqueDeviceMemoryDataPointer();
   py::tuple data(2);
-  data[0] = py::int_(
-      absl::bit_cast<std::uintptr_t>(shaped_buffer.root_buffer().opaque()));
+  data[0] = py::int_(absl::bit_cast<std::uintptr_t>(root_ptr));
   data[1] = py::bool_(true);  // read-only
   result["data"] = std::move(data);
   result["version"] = py::int_(2);
@@ -124,16 +133,17 @@ namespace {
 
 // Extra data to be kept alive by the consumer of the buffer protocol.
 struct ExtraBufferInfo {
-  explicit ExtraBufferInfo(PjRtBuffer::ScopedHold device_buffer)
-      : device_buffer(std::move(device_buffer)) {}
+  explicit ExtraBufferInfo(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
+                               external_reference_hold)
+      : external_reference_hold(std::move(external_reference_hold)) {}
 
   std::string format;
   std::vector<Py_ssize_t> strides;
-  // We keep a reference to the TrackedDeviceBuffer that backs the
-  // PjRtBuffer. This prevents a use-after-free in the event that Delete() is
-  // called on a buffer with an live buffer protocol view. It does however mean
-  // that Delete() sometimes won't actually delete immediately.
-  PjRtBuffer::ScopedHold device_buffer;
+  // We keep an external reference hold to the PjRtBuffer. This prevents a
+  // use-after-free in the event that Delete() is called on a buffer with an
+  // live buffer protocol view. It does however mean that Delete() sometimes
+  // won't actually delete immediately.
+  std::unique_ptr<PjRtBuffer::ExternalReferenceHold> external_reference_hold;
 };
 
 int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
@@ -163,9 +173,10 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
       return InvalidArgument("XLA buffers are read-only.");
     }
-    PjRtBuffer::ScopedHold device_buffer(
-        buffer.GetBufferWithExternalReference());
-    if (!device_buffer.status().ok()) {
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer::ExternalReferenceHold>
+                            external_reference_hold,
+                        buffer.AcquireExternalReference());
+    if (buffer.IsDeleted()) {
       return InvalidArgument("Deleted buffer used in buffer protocol.");
     }
     const Shape& shape = buffer.on_host_shape();
@@ -182,10 +193,11 @@ int PjRtBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
       return InvalidArgument("Buffer is not in contiguous layout.");
     }
     std::memset(view, 0, sizeof(Py_buffer));
-    CHECK_EQ(device_buffer->device_memory().size(), 1);
-    view->buf =
-        const_cast<void*>(device_buffer->device_memory().front().opaque());
-    auto extra = absl::make_unique<ExtraBufferInfo>(std::move(device_buffer));
+    const void* root_ptr =
+        external_reference_hold->OpaqueDeviceMemoryDataPointer();
+    view->buf = const_cast<void*>(root_ptr);
+    auto extra =
+        absl::make_unique<ExtraBufferInfo>(std::move(external_reference_hold));
     view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
     view->len = ShapeUtil::ByteSizeOf(shape);
     view->readonly = 1;

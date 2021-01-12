@@ -65,6 +65,12 @@ def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
 def TF_SameOperandsAndResultElementTypeResolveRef : NativeOpTrait<
   "TF::SameOperandsAndResultElementTypeResolveRef">;
 
+// Op has the same operand and result types after resolving reference types
+// (i.e., after converting reference types to their corresponding TensorFlow or
+// standard types).
+def TF_SameOperandsAndResultTypeResolveRef : NativeOpTrait<
+  "TF::SameOperandsAndResultTypeResolveRef">;
+
 // Layout agnostic operations do not depend on the operands data layout (data
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
@@ -92,11 +98,13 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
 
 
 class TF_AllTypesMatchPred<list<string> values> :
-    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({" #
+      !interleave(values, ", ") # "}))">;
 
 class TF_AllTypesMatch<list<string> names> :
     PredOpTrait<
-        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        "all of {" # !interleave(names, ", ") #
+          "} have dynamically equal types ",
         TF_AllTypesMatchPred<
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 
@@ -331,8 +339,7 @@ def TF_Bfloat16 : AnyTypeOf<[BF16, TF_Bfloat16Ref], "bfloat16">;
 def TF_F32OrF64 : AnyTypeOf<[TF_Float32, TF_Float64], "32/64-bit float">;
 
 def TF_Float : AnyTypeOf<
-  [TF_Float16, TF_Float32, TF_Float64, TF_Bfloat16,
-   TF_Float16Ref, TF_Float32Ref, TF_Float64Ref, TF_Bfloat16Ref],
+  [TF_Float16, TF_Float32, TF_Float64, TF_Bfloat16],
   "floating-point">;
 
 // Tensor types
@@ -559,26 +566,6 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
 // A derived attribute that returns the shape of the first result type.
 def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
   "return (*getOperation()->result_type_begin()).cast<ShapedType>();",
-  [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
-
-// A derived attribute that returns the element type of the tensor held by a
-// named resource-type operand or result.
-class TF_DerivedOperandOrResultHandleTypeAttr<string name> : DerivedTypeAttr<
-  "auto resource_type =\n"
-  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
-  "  .cast<TF::ResourceType>();\n"
-  "assert(!resource_type.getSubtypes().empty() && \"unknown type\");\n"
-  "return mlir::getElementTypeOrSelf(*resource_type.getSubtypes().begin());">;
-
-// A derived attribute that returns the shape of the tensor held by a named
-// resource-type operand or result.
-class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
-  "ShapedType",
-  "auto resource_type =\n"
-  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
-  "  .cast<TF::ResourceType>();\n"
-  "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
-  "return resource_type.getSubtypes().begin()->cast<ShapedType>();",
   [{ mlir::TF::ShapeAttr::get($_ctx, $_self) }]>;
 
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {

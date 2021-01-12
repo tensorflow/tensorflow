@@ -16,12 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_MAP_LMHLO_TO_SCALAR_OP_H_
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/iterator_range.h"
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_hlo_to_lhlo_op.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
@@ -37,6 +41,7 @@ template <>
 struct LhloToScalarOp<lmhlo::AddOp> {
   using FOp = ::mlir::AddFOp;
   using IOp = ::mlir::AddIOp;
+  using COp = ::mlir::AddCFOp;
 };
 template <>
 struct LhloToScalarOp<lmhlo::CompareOp> {
@@ -62,20 +67,18 @@ template <>
 struct LhloToScalarOp<lmhlo::SubOp> {
   using FOp = ::mlir::SubFOp;
   using IOp = ::mlir::SubIOp;
-};
-
-template <typename LhloBinaryOpTy>
-struct ScalarOp {
-  using FOp = typename LhloToScalarOp<LhloBinaryOpTy>::FOp;
-  using IOp = typename LhloToScalarOp<LhloBinaryOpTy>::IOp;
+  using COp = ::mlir::SubCFOp;
 };
 
 // Alias for the map from LHLO binary op type to STD floating-point op type.
 template <typename LhloOp>
-using ScalarFOp = typename ScalarOp<LhloOp>::FOp;
+using ScalarFOp = typename LhloToScalarOp<LhloOp>::FOp;
 // Alias for the map from LHLO binary op type to STD integer op type.
 template <typename LhloOp>
-using ScalarIOp = typename ScalarOp<LhloOp>::IOp;
+using ScalarIOp = typename LhloToScalarOp<LhloOp>::IOp;
+// Alias for the map from LHLO binary op type to STD complex op type.
+template <typename LhloOp>
+using ScalarCOp = typename LhloToScalarOp<LhloOp>::COp;
 
 template <typename... Args>
 struct MapLhloOpToStdScalarOpImpl {
@@ -143,6 +146,16 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::AbsOp>(Location loc,
   }
   return nullptr;
 }
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::AddOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ScalarIOp<lmhlo::AddOp>,
+                                    FloatType, ScalarFOp<lmhlo::AddOp>,
+                                    ComplexType, ScalarCOp<lmhlo::AddOp>>{}(
+      loc, result_types, args, b);
+}
 
 template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::AndOp>(Location loc,
@@ -172,7 +185,7 @@ inline Optional<CmpFPredicate> getCmpPredicate<CmpFPredicate>(
     StringRef comparison_direction) {
   return llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
       .Case("EQ", CmpFPredicate::OEQ)
-      .Case("NE", CmpFPredicate::ONE)
+      .Case("NE", CmpFPredicate::UNE)
       .Case("GE", CmpFPredicate::OGE)
       .Case("GT", CmpFPredicate::OGT)
       .Case("LE", CmpFPredicate::OLE)
@@ -482,12 +495,55 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::NotOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::OrOp>(Location loc,
+                                                 ArrayRef<Type> result_types,
+                                                 ArrayRef<Value> args,
+                                                 OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::OrOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::RsqrtOp>(Location loc,
                                                     ArrayRef<Type> result_types,
                                                     ArrayRef<Value> args,
                                                     OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::RsqrtOp>{}(
       loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::PowOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  lmhlo::PowOp::Adaptor adaptor(args);
+  // Floating point can use std::powf
+  auto result_type = result_types.front();
+  if (result_type.isa<::mlir::FloatType>())
+    return MapLhloOpToStdScalarOpImpl<::mlir::PowFOp>{}(loc, result_types, args,
+                                                        b);
+
+  assert(result_type.isa<::mlir::IntegerType>() &&
+         "only float and integer `pow` is supported right now");
+
+  // There is no powi, so lower to a simple product. Note that HLO does not
+  // define semantics of negative exponents.
+  Value init = b->create<ConstantOp>(loc, b->getIntegerAttr(result_type, 1));
+
+  Value lowerBound = b->create<ConstantIndexOp>(loc, 0);
+  Value upperBound =
+      b->create<IndexCastOp>(loc, adaptor.rhs(), b->getIndexType());
+  Value step = b->create<ConstantIndexOp>(loc, 1);
+  return b
+      ->create<scf::ForOp>(
+          loc, lowerBound, upperBound, step, llvm::makeArrayRef(init),
+          [&](OpBuilder& b, Location l, Value v, ValueRange iters) {
+            Value prod =
+                b.create<::mlir::MulIOp>(l, adaptor.lhs(), iters.front());
+            b.create<scf::YieldOp>(l, prod);
+          })
+      .getResult(0);
 }
 
 template <>
@@ -499,6 +555,30 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SelectOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftLeftOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::ShiftLeftOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftRightArithmeticOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::SignedShiftRightOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::ShiftRightLogicalOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, mlir::UnsignedShiftRightOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
@@ -506,14 +586,22 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SignOp>(Location loc,
   Type element_type = getElementTypeOrSelf(args.front().getType());
   if (auto float_type = element_type.dyn_cast<FloatType>()) {
     bool ignored;
-    APFloat one_apfloat(1.0f);
-    one_apfloat.convert(float_type.getFloatSemantics(),
-                        APFloat::rmNearestTiesToEven, &ignored);
-    Value one = b->create<mlir::ConstantFloatOp>(loc, one_apfloat, float_type);
+    APFloat zero_apfloat(0.0f);
+    zero_apfloat.convert(float_type.getFloatSemantics(),
+                         APFloat::rmNearestTiesToEven, &ignored);
+    Value zero =
+        b->create<mlir::ConstantFloatOp>(loc, zero_apfloat, float_type);
     if (VectorType vec_type = args.front().getType().dyn_cast<VectorType>()) {
-      one = b->create<::mlir::SplatOp>(loc, vec_type, one);
+      zero = b->create<::mlir::SplatOp>(loc, vec_type, zero);
     }
-    return b->create<::mlir::CopySignOp>(loc, result_types, one, args[0]);
+    Value ne0_i1 =
+        b->create<::mlir::CmpFOp>(loc, CmpFPredicate::ONE, args[0], zero);
+    Value ne0_float = b->create<::mlir::UIToFPOp>(loc, ne0_i1, zero.getType());
+    Value copy_sign =
+        b->create<::mlir::CopySignOp>(loc, result_types, ne0_float, args[0]);
+    auto is_nan =
+        b->create<::mlir::CmpFOp>(loc, CmpFPredicate::UNO, args[0], args[0]);
+    return b->create<::mlir::SelectOp>(loc, is_nan, args[0], copy_sign);
   } else if (auto integer_type = element_type.dyn_cast<IntegerType>()) {
     // sign(x) = x == 0 ? 0 : ((x s>> 31) | 1)
     Value zero =
@@ -548,11 +636,31 @@ inline Value MapLhloOpToStdScalarOp<lmhlo::SqrtOp>(Location loc,
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::SubOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ScalarIOp<lmhlo::SubOp>,
+                                    FloatType, ScalarFOp<lmhlo::SubOp>,
+                                    ComplexType, ScalarCOp<lmhlo::SubOp>>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<lmhlo::TanhOp>(Location loc,
                                                    ArrayRef<Type> result_types,
                                                    ArrayRef<Value> args,
                                                    OpBuilder* b) {
   return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::TanhOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
+inline Value MapLhloOpToStdScalarOp<lmhlo::XorOp>(Location loc,
+                                                  ArrayRef<Type> result_types,
+                                                  ArrayRef<Value> args,
+                                                  OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<IntegerType, ::mlir::XOrOp>{}(
       loc, result_types, args, b);
 }
 

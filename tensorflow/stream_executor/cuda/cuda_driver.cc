@@ -890,6 +890,137 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
+#if CUDA_VERSION >= 10020
+/* static */ port::StatusOr<GpuDriver::VmemSpan>
+GpuDriver::ReserveVirtualMemory(GpuContext* context, uint64 bytes) {
+  ScopedActivateContext activation(context);
+  CUdeviceptr base;
+  CUresult res = cuMemAddressReserve(&base, bytes, /*alignment=*/0,
+                                     /*addr=*/0, /*flags=*/0);
+  if (res != CUDA_SUCCESS) {
+    return port::InternalError(
+        absl::StrFormat("error reserving %d bytes of virtual GPU memory: %s",
+                        bytes, ToString(res)));
+  }
+  return {{base, bytes}};
+}
+
+/* static */ void GpuDriver::FreeVirtualMemory(
+    GpuContext* context, GpuDriver::VmemSpan reservation) {
+  ScopedActivateContext activation(context);
+  CUresult res = cuMemAddressFree(reservation.base, reservation.size_bytes);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "error freeing vmem reservation of size "
+               << reservation.size_bytes << " at address " << reservation.base;
+  }
+}
+
+/* static */ port::StatusOr<uint64> GpuDriver::GetMinAllocationGranularity(
+    int device_ordinal) {
+  CUmemAllocationProp props = {};
+  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  props.location.id = device_ordinal;
+
+  size_t granularity;
+  CUresult res = cuMemGetAllocationGranularity(
+      &granularity, &props, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
+  if (res != CUDA_SUCCESS) {
+    return port::InternalError(absl::StrCat(
+        "failed to get min allocation granularity: ", ToString(res)));
+  }
+  return granularity;
+}
+
+/* static */ port::StatusOr<GpuDriver::GenericMemoryHandle>
+GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
+  ScopedActivateContext activation(context);
+  auto device = DeviceFromContext(context);
+  if (!device.ok()) {
+    LOG(ERROR) << "Failed to get device from context" << device.status();
+    return device.status();
+  }
+
+  CUmemAllocationProp props = {};
+  props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
+  props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+  props.location.id = device.ValueOrDie();
+
+  CUmemGenericAllocationHandle mem_handle;
+  CUresult res = cuMemCreate(&mem_handle, bytes, &props, 0);
+  if (res != CUDA_SUCCESS) {
+    return port::InternalError(
+        absl::StrFormat("failed to create memory allocation of size %d: %s",
+                        bytes, ToString(res)));
+  }
+  return GpuDriver::GenericMemoryHandle{mem_handle, bytes};
+}
+
+/* static */ void GpuDriver::ReleaseMemoryHandle(
+    GpuContext* context, GpuDriver::GenericMemoryHandle handle) {
+  ScopedActivateContext activation(context);
+
+  CUresult res = cuMemRelease(handle.handle);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "Failed to release memory handle " << handle.handle
+               << " of size " << handle.bytes << ": " << ToString(res);
+  }
+}
+
+/* static */ port::Status GpuDriver::MapMemory(
+    GpuContext* context, CUdeviceptr va,
+    const GpuDriver::GenericMemoryHandle& handle,
+    const std::vector<int>& device_ordinals) {
+  ScopedActivateContext activation(context);
+
+  auto device = DeviceFromContext(context);
+  if (!device.ok()) {
+    return device.status();
+  }
+
+  // NB: Zero is the only valid value for both flags and offset.
+  CUresult res =
+      cuMemMap(va, handle.bytes, /*offset=*/0, handle.handle, /*flags=*/0);
+  if (res != CUDA_SUCCESS) {
+    return port::InternalError(absl::StrFormat(
+        "Failed to map %d bytes at %d: %s", handle.bytes, va, ToString(res)));
+  }
+
+  std::vector<CUmemAccessDesc> access_descriptors(device_ordinals.size());
+  for (int i = 0; i < access_descriptors.size(); ++i) {
+    access_descriptors[i].location.id = device_ordinals[i];
+    access_descriptors[i].location.type = CU_MEM_LOCATION_TYPE_DEVICE;
+    access_descriptors[i].flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
+  }
+
+  res = cuMemSetAccess(va, handle.bytes, access_descriptors.data(),
+                       access_descriptors.size());
+  if (res != CUDA_SUCCESS) {
+    // Unmap the memory that we failed to set access for.
+    if (cuMemUnmap(va, handle.bytes) != CUDA_SUCCESS) {
+      LOG(ERROR)
+          << "Failed to unmap memory in GpuDriver::MapMemory error path.";
+    }
+    return port::InternalError(absl::StrFormat(
+        "Failed to set read/write access on memory mapped at %d: %s", va,
+        ToString(res)));
+  }
+  return port::Status::OK();
+}
+
+/* static */ void GpuDriver::UnmapMemory(GpuContext* context, CUdeviceptr va,
+                                         uint64 bytes) {
+  ScopedActivateContext activation(context);
+
+  CUresult res = cuMemUnmap(va, bytes);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR) << "Failed to unmap memory at " << va << " of size " << bytes
+               << ": " << ToString(res);
+  }
+}
+
+#endif
+
 /* static */ port::Status GpuDriver::DestroyEvent(GpuContext* context,
                                                   CUevent* event) {
   if (*event == nullptr) {
@@ -1255,6 +1386,12 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return port::Status{
       port::error::INTERNAL,
       "Feature not supported on CUDA platform (GetGpuISAVersion)"};
+}
+
+/* static */ port::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
+  return port::Status{
+      port::error::INTERNAL,
+      "Feature not supported on CUDA platform (GetGpuGCNArchName)"};
 }
 
 // Helper function that turns the integer output of cuDeviceGetAttribute to type

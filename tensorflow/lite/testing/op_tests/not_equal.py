@@ -35,7 +35,7 @@ def make_not_equal_tests(options):
   }]
 
   def build_graph(parameters):
-    """Build the not euqal op testing graph."""
+    """Build the not equal op testing graph."""
     input_value1 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input1",

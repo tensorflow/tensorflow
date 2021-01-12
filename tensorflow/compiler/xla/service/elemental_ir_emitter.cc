@@ -2237,6 +2237,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
         FAdd(EmitExtractImag(current_accumulator), product_imag), {1});
   } else if (primitive_util::IsFloatingPointType(primitive_type)) {
     next_accumulator = FAdd(current_accumulator, FMul(lhs_value, rhs_value));
+  } else if (primitive_type == PRED) {
+    next_accumulator = Or(current_accumulator, And(lhs_value, rhs_value));
   } else {
     next_accumulator = Add(current_accumulator, Mul(lhs_value, rhs_value));
   }

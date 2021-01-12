@@ -265,10 +265,6 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
-// Sets whether to copy the remote inputs of a function lazily.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
-    TFE_ContextOptions*, bool lazy_copy);
-
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
@@ -560,6 +556,13 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 // Returns the device ID of the operation that produced `h`.
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
+
+// Get a comma-separated list of op names executed in graph functions dispatched
+// to `ctx`. This feature is currently only enabled for TFRT debug builds, for
+// performance and simplicity reasons.
+TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
+                                                  TF_Buffer* buf,
+                                                  TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

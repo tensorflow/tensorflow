@@ -14,7 +14,7 @@ tf_module {
   }
   member_method {
     name: "image_dataset_from_directory"
-    argspec: "args=[\'directory\', \'labels\', \'label_mode\', \'class_names\', \'color_mode\', \'batch_size\', \'image_size\', \'shuffle\', \'seed\', \'validation_split\', \'subset\', \'interpolation\', \'follow_links\'], varargs=None, keywords=None, defaults=[\'inferred\', \'int\', \'None\', \'rgb\', \'32\', \'(256, 256)\', \'True\', \'None\', \'None\', \'None\', \'bilinear\', \'False\'], "
+    argspec: "args=[\'directory\', \'labels\', \'label_mode\', \'class_names\', \'color_mode\', \'batch_size\', \'image_size\', \'shuffle\', \'seed\', \'validation_split\', \'subset\', \'interpolation\', \'follow_links\', \'smart_resize\'], varargs=None, keywords=None, defaults=[\'inferred\', \'int\', \'None\', \'rgb\', \'32\', \'(256, 256)\', \'True\', \'None\', \'None\', \'None\', \'bilinear\', \'False\', \'False\'], "
   }
   member_method {
     name: "text_dataset_from_directory"

@@ -110,6 +110,20 @@ In the tflite_build directory,
 cmake --build . -j -t benchmark_model
 ```
 
+## Available Options to build TensorFlow Lite
+
+Here is the list of available options. You can override it with
+`-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
+disable XNNPACK which is enabled by default.
+
+Option Name           | Feature                                  | Default
+--------------------- | ---------------------------------------- | ------------
+TFLITE_ENABLE_RUY     | Enable RUY matrix multiplication library | OFF
+TFLITE_ENABLE_NNAPI   | Enable NNAPI delegate                    | ON (Android)
+TFLITE_ENABLE_GPU     | Enable GPU delegate                      | OFF
+TFLITE_ENABLE_XNNPACK | Enable XNNPACK delegate                  | ON
+TFLITE_ENABLE_MMAP    | Enable MMAP (unsupported on Windows)     | ON
+
 ## Create a CMake project which uses TensorFlow Lite
 
 Here is the CMakeLists.txt of

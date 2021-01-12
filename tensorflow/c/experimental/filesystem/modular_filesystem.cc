@@ -133,7 +133,7 @@ bool ModularFileSystem::FilesExist(const std::vector<std::string>& files,
                                    TransactionToken* token,
                                    std::vector<Status>* status) {
   if (ops_->paths_exist == nullptr)
-    return FileSystem::FilesExist(files, status);
+    return FileSystem::FilesExist(files, token, status);
 
   std::vector<char*> translated_names;
   translated_names.reserve(files.size());
@@ -234,7 +234,7 @@ Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
         "`undeleted_dirs` set to NULL");
 
   if (ops_->delete_recursively == nullptr)
-    return FileSystem::DeleteRecursively(dirname, undeleted_files,
+    return FileSystem::DeleteRecursively(dirname, token, undeleted_files,
                                          undeleted_dirs);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
@@ -264,7 +264,7 @@ Status ModularFileSystem::DeleteDir(const std::string& dirname,
 Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname,
                                                TransactionToken* token) {
   if (ops_->recursively_create_dir == nullptr)
-    return FileSystem::RecursivelyCreateDir(dirname);
+    return FileSystem::RecursivelyCreateDir(dirname, token);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_name = TranslateName(dirname);
@@ -312,7 +312,8 @@ Status ModularFileSystem::Stat(const std::string& fname,
 
 Status ModularFileSystem::IsDirectory(const std::string& name,
                                       TransactionToken* token) {
-  if (ops_->is_directory == nullptr) return FileSystem::IsDirectory(name);
+  if (ops_->is_directory == nullptr)
+    return FileSystem::IsDirectory(name, token);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_name = TranslateName(name);
@@ -362,7 +363,8 @@ Status ModularFileSystem::RenameFile(const std::string& src,
 Status ModularFileSystem::CopyFile(const std::string& src,
                                    const std::string& target,
                                    TransactionToken* token) {
-  if (ops_->copy_file == nullptr) return FileSystem::CopyFile(src, target);
+  if (ops_->copy_file == nullptr)
+    return FileSystem::CopyFile(src, target, token);
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
   std::string translated_src = TranslateName(src);

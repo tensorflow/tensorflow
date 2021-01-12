@@ -373,6 +373,20 @@ class MergeLayersTestNoExecution(test.TestCase):
     mask = layer.output_mask
     self.assertListEqual(mask.shape.as_list(), [None, 4])
 
+  def test_merge_concatenate_sparse_shape(self):
+    i1 = keras.layers.Input(shape=(1,), batch_size=2, sparse=True)
+    i2 = keras.layers.Input(shape=(2,), batch_size=2, sparse=True)
+    layer = keras.layers.Concatenate(axis=1)
+    o = layer([i1, i2])
+    self.assertListEqual(o.shape.as_list(), [2, 3])
+
+    # Make sure it also respect None as the batch size
+    i1 = keras.layers.Input(shape=(1,), sparse=True)
+    i2 = keras.layers.Input(shape=(2,), sparse=True)
+    layer = keras.layers.Concatenate(axis=1)
+    o = layer([i1, i2])
+    self.assertListEqual(o.shape.as_list(), [None, 3])
+
   def test_user_changes_to_input_structure(self):
     a = keras.layers.Input(shape=(4, 5))
     struct = [a, a]

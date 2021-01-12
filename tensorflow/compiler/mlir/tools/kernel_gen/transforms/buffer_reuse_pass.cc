@@ -26,8 +26,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
@@ -86,7 +86,7 @@ class BufferSizeAnalysis {
 
     // Operands to `linalg.generic` with equal affine maps must be of same size.
     f.walk([&](linalg::GenericOp genericOp) {
-      auto operand_buffers = genericOp.getInputsAndOutputBuffers();
+      auto operand_buffers = genericOp.getShapedOperands();
       int n = operand_buffers.size();
       for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {
@@ -302,7 +302,7 @@ class BufferReuseAnalysis {
       // If `linalg.generic` indexing maps are the same for input and output
       // buffer then the last use of the input buffer happens before its first
       // reuse (per memory location).
-      auto operand_buffers = generic_op.getInputsAndOutputBuffers();
+      auto operand_buffers = generic_op.getShapedOperands();
       int old_index =
           llvm::find(operand_buffers, old_buffer) - operand_buffers.begin();
       int new_index =
@@ -324,7 +324,7 @@ class BufferReuseAnalysis {
 
 struct BufferReusePass : public BufferReusePassBase<BufferReusePass> {
   void runOnFunction() override {
-    if (!getFunction().getAttrOfType<UnitAttr>(
+    if (!getFunction()->getAttrOfType<UnitAttr>(
             tf_framework::TFFrameworkDialect::kTFEntryAttrName))
       return;
 

@@ -44,9 +44,9 @@ constexpr int kBeginTensor = 1;
 constexpr int kSizeTensor = 2;
 constexpr int kOutputTensor = 0;
 
-// This Op only supports 1-4D cases and since we use the optimized ops 4D
-// implementation, the 1-3D tensors are mapped to 4D.
-const int kMaxDim = 4;
+// This Op only supports 1-5D cases and since we use the optimized ops 5D
+// implementation, the 1-4D tensors are mapped to 5D.
+const int kMaxDim = 5;
 
 template <typename T>
 TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
@@ -133,7 +133,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_EQ(context, NumElements(begin), NumElements(size));
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
-                     "Slice op only supports 1D-4D input arrays.");
+                     "Slice op only supports 1D-5D input arrays.");
 
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
@@ -184,20 +184,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  // The original Slice op implementation only accepted 4-D sizes. That
-  // constraint is, for the present, maintained here.
+  // The Slice op implementation only accepts 5-D sizes. That constraint is, for
+  // the present, maintained here.
   //
   // The dimensions in the kernel used to be in reverse-order, and TFLite
   // arranged the begins and sizes vectors accordingly. This macro incorporates
   // the needed reversing.
-#define TF_LITE_SLICE(data_type, kernel_type)                                  \
+#define TF_LITE_SLICE(data_type)                                               \
   {                                                                            \
-    TF_LITE_ENSURE_EQ(context, begins.size(), 4);                              \
-    TF_LITE_ENSURE_EQ(context, sizes.size(), 4);                               \
+    TF_LITE_ENSURE_EQ(context, begins.size(), kMaxDim);                        \
+    TF_LITE_ENSURE_EQ(context, sizes.size(), kMaxDim);                         \
     tflite::SliceParams op_params;                                             \
-    op_params.begin_count = 4;                                                 \
-    op_params.size_count = 4;                                                  \
-    for (int i = 0; i < 4; ++i) {                                              \
+    op_params.begin_count = kMaxDim;                                           \
+    op_params.size_count = kMaxDim;                                            \
+    for (int i = 0; i < kMaxDim; ++i) {                                        \
       op_params.begin[i] = begins[i];                                          \
       op_params.size[i] = sizes[i];                                            \
     }                                                                          \
@@ -213,28 +213,28 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {
     case kTfLiteFloat32:
-      TF_LITE_SLICE(float, kernel_type);
+      TF_LITE_SLICE(float);
       break;
     case kTfLiteInt32:
-      TF_LITE_SLICE(int32_t, kernel_type);
+      TF_LITE_SLICE(int32_t);
       break;
     case kTfLiteInt64:
-      TF_LITE_SLICE(int64_t, kernel_type);
+      TF_LITE_SLICE(int64_t);
       break;
     case kTfLiteInt8:
-      TF_LITE_SLICE(int8_t, kernel_type);
+      TF_LITE_SLICE(int8_t);
       break;
     case kTfLiteInt16:
-      TF_LITE_SLICE(int16_t, kernel_type);
+      TF_LITE_SLICE(int16_t);
       break;
     case kTfLiteUInt8:
-      TF_LITE_SLICE(uint8_t, kernel_type);
+      TF_LITE_SLICE(uint8_t);
       break;
     case kTfLiteBool:
-      TF_LITE_SLICE(bool, kernel_type);
+      TF_LITE_SLICE(bool);
       break;
     case kTfLiteString:
-      TF_LITE_SLICE(string, kernel_type);
+      TF_LITE_SLICE(string);
       break;
     default:
       context->ReportError(

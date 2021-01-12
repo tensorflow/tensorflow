@@ -174,7 +174,7 @@ void PortableCwiseAdd(const int16_t* input_1, const int16_t* input_2,
 
 template <typename T>
 void PortableCwiseClipping(T* vector, const int v_size,
-                           const T clipping_value) {
+                           const T& clipping_value) {
   for (int i = 0; i < v_size; i++) {
     vector[i] = std::max(std::min(clipping_value, vector[i]),
                          static_cast<T>(-clipping_value));

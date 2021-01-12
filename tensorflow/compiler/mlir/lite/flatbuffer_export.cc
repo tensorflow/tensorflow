@@ -47,10 +47,10 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -221,7 +221,7 @@ static std::string GetOpDescriptionForDebug(Operation* inst) {
   inst->getName().print(os);
   // Print out attributes except for large elementsattributes (which should
   // rarely be the cause why the legalization didn't happen).
-  if (!inst->getMutableAttrDict().getAttrs().empty()) {
+  if (!inst->getAttrDictionary().empty()) {
     os << " {";
     bool first = true;
     for (auto& named_attr : inst->getAttrDictionary()) {
@@ -944,7 +944,22 @@ BufferOffset<tflite::Operator> Translator::BuildNumericVerifyOperator(
     mlir::TFL::NumericVerifyOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   float tolerance = op.tolerance().convertToFloat();
-  return BuildCustomOperator(tolerance, "NumericVerify", op, operands, results);
+  bool log_if_failed = op.log_if_failed();
+  auto fbb = absl::make_unique<flexbuffers::Builder>();
+  fbb->Map([&]() {
+    fbb->Float("tolerance", tolerance);
+    fbb->Bool("log_if_failed", log_if_failed);
+  });
+  fbb->Finish();
+  auto f = std::unique_ptr<flexbuffers::Builder>(fbb.release());
+  auto custom_option = f->GetBuffer();
+  auto opcode_index =
+      GetOpcodeIndex("NumericVerify", tflite::BuiltinOperator_CUSTOM);
+  return tflite::CreateOperator(
+      builder_, opcode_index, builder_.CreateVector(operands),
+      builder_.CreateVector(results), tflite::BuiltinOptions_NONE,
+      /*builtin_options=*/0, builder_.CreateVector<uint8_t>(custom_option),
+      tflite::CustomOptionsFormat_FLEXBUFFERS);
 }
 
 BufferOffset<tflite::Operator> Translator::BuildCustomOperator(
@@ -1244,7 +1259,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 }
 
 void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
-  auto dict_attr = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+  auto dict_attr = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
   if (!dict_attr) return;
 
   llvm::SmallVector<llvm::StringRef, 2> input_names;
@@ -1408,6 +1423,17 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
 
     for (auto val : inst.getResults()) {
       std::string name = UniqueName(val);
+      // For "tfl.numeric_verify" op, the name is used to find out the original
+      // activation tensor rather than its own unique name in the visualization
+      // or debugging tools.
+      auto builtin_code = GetBuiltinOpCode(&inst);
+      if (!builtin_code && dyn_cast<mlir::TFL::NumericVerifyOp>(&inst)) {
+        // The first operand is the quantized activation, the target of this
+        // NumericVerify op.
+        auto quantized_op_val = inst.getOperands().front();
+        name = "NumericVerify/" + UniqueName(quantized_op_val) + ":" +
+               std::to_string(tensor_index_map[quantized_op_val]);
+      }
       if (!build_tensor_and_buffer(val, name)) return llvm::None;
     }
 
@@ -1481,7 +1507,7 @@ BufferOffset<tflite::Metadata> Translator::BuildMetadata(StringRef name,
 
 Optional<VectorBufferOffset<BufferOffset<tflite::Metadata>>>
 Translator::CreateMetadataVector() {
-  auto dict_attr = module_.getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
+  auto dict_attr = module_->getAttrOfType<mlir::DictionaryAttr>("tfl.metadata");
   std::vector<BufferOffset<tflite::Metadata>> metadata;
   if (dict_attr) {
     for (const auto& named_attr : dict_attr) {
@@ -1521,11 +1547,13 @@ llvm::SmallVector<llvm::StringRef, 2> GetStringsFromAttrWithSeparator(
 // Helper method that return list of string for all the StringAttr in the
 // Attribute identified by 'attr_name'.
 std::vector<std::string> GetStringsFromDictionaryAttr(
-    const llvm::SmallVector<mlir::MutableDictionaryAttr, 4>& dict_attrs,
+    const llvm::SmallVector<mlir::DictionaryAttr, 4>& dict_attrs,
     const std::string& attr_name) {
   std::vector<std::string> result;
   for (const auto& arg_attr : dict_attrs) {
-    auto attrs = arg_attr.getAttrs();
+    if (!arg_attr) continue;
+
+    auto attrs = arg_attr.getValue();
     for (const auto attr : attrs) {
       if (attr.first.str() == attr_name) {
         auto array_attr = attr.second.dyn_cast_or_null<mlir::ArrayAttr>();
@@ -1545,7 +1573,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   static const char kEntryFunctionAttributes[] = "tf.entry_function";
 
   // Fetch inputs and outputs from the signature.
-  llvm::SmallVector<mlir::MutableDictionaryAttr, 4> arg_attrs, res_attrs;
+  llvm::SmallVector<mlir::DictionaryAttr, 4> arg_attrs, res_attrs;
   main_op.getAllArgAttrs(arg_attrs);
   main_op.getAllResultAttrs(res_attrs);
   std::vector<std::string> sig_def_inputs =
@@ -1559,7 +1587,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
 
   // Fetch function inputs and outputs tensor names.
   auto dict_attr =
-      main_op.getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
+      main_op->getAttrOfType<mlir::DictionaryAttr>(kEntryFunctionAttributes);
   if (!dict_attr) return {};
 
   // Get Input and output tensor names from attribute.
@@ -1592,7 +1620,7 @@ std::vector<SignatureDefData> BuildSignaturedef(
   }
   // Exported method name.
   auto exported_name =
-      main_op.getAttrOfType<mlir::ArrayAttr>("tf_saved_model.exported_names");
+      main_op->getAttrOfType<mlir::ArrayAttr>("tf_saved_model.exported_names");
   if (exported_name.empty()) {
     main_op.emitError("Empty exported names for main Function");
     return {};
@@ -1658,7 +1686,7 @@ bool UpdateEntryFunction(ModuleOp module) {
   int entry_func_count = 0;
   FuncOp entry_func = nullptr;
   for (auto fn : module.getOps<FuncOp>()) {
-    auto attrs = fn.getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
+    auto attrs = fn->getAttrOfType<mlir::DictionaryAttr>("tf.entry_function");
     if (attrs && !attrs.empty()) {
       entry_func_count++;
       entry_func = fn;
@@ -1759,13 +1787,14 @@ Optional<std::string> Translator::TranslateInternal() {
     std::string err;
     if (!failed_flex_ops_.empty())
       err +=
-          "Ops that can be supported by the flex runtime (enabled via setting "
-          "the -emit-select-tf-ops flag):\n" +
+          "Some ops are not supported by the native TFLite runtime, you can "
+          "enable TF kernels fallback using TF Select. See instructions: "
+          "https://www.tensorflow.org/lite/guide/ops_select" +
           failed_flex_ops_summary;
     if (!failed_custom_ops_.empty())
       err +=
-          "Ops that need custom implementation (enabled via setting the "
-          "-emit-custom-ops flag):\n" +
+          "Some ops in the model are custom ops, See instructions to implement "
+          "custom ops: https://www.tensorflow.org/lite/guide/ops_custom" +
           failed_custom_ops_summary;
 
     auto& failed_region = named_regions[first_failed_func];
@@ -1776,7 +1805,7 @@ Optional<std::string> Translator::TranslateInternal() {
   }
 
   std::string model_description;
-  if (auto attr = module_.getAttrOfType<StringAttr>("tfl.description")) {
+  if (auto attr = module_->getAttrOfType<StringAttr>("tfl.description")) {
     model_description = attr.getValue().str();
   } else {
     model_description = "MLIR Converted.";

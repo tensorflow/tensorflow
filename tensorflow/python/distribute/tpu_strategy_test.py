@@ -167,6 +167,19 @@ class TPUTest(test.TestCase):
 @parameterized.named_parameters([("PackedVar", True), ("", False)])
 class TPUStrategyTest(test.TestCase, parameterized.TestCase):
 
+  def test_handle_in_cross_replica_context(self, enable_packed_var):
+    strategy = get_tpu_strategy(enable_packed_var)
+    with strategy.scope():
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def func():
+      self.assertEndsWith(v.handle.device, "device:TPU:0")
+      return v + 1.0
+
+    ret = func()
+    self.assertAllEqual(ret, 2.0)
+
   def test_function_compile_with_xla(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
     with strategy.scope():
@@ -287,7 +300,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
       return strategy.experimental_local_results(
           strategy.run(step_fn, args=(next(iterator),)))
 
-    with self.assertRaisesRegex(errors.InternalError, "Compilation failure"):
+    with self.assertRaises(errors.InternalError):
       logging.info(train_fn(iterator))
 
   def test_computation_on_subset_cores(self, enable_packed_var):

@@ -3,8 +3,8 @@
 #   matrices, and related algorithms.
 
 licenses([
-    # Note: Eigen is an MPL2 library that includes GPL v3 and LGPL v2.1+ code.
-    #       We've taken special care to not reference any restricted code.
+    # Note: Although Eigen also includes GPL V3 and LGPL v2.1+ code, TensorFlow
+    #       has taken special care to not reference any restricted code.
     "reciprocal",  # MPL2
     "notice",  # Portions BSD
 ])

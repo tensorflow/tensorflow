@@ -613,11 +613,18 @@ class WorkerPreemptionHandler(object):
     self._server_def = server_def
     self._cluster = cluster
     self._cluster_update_lock = threading.Lock()
-    self._cluster_due_for_update = threading.Event()
+    self._cluster_due_for_update_or_finish = threading.Event()
     self._worker_up_cond = threading.Condition(self._cluster_update_lock)
+    self._should_preemption_thread_run = True
     threading.Thread(target=self._preemption_handler,
                      name="WorkerPreemptionHandler",
                      daemon=True).start()
+
+  def _mark_finished(self):
+    """Ensure the worker preemption thread is closed."""
+    self._should_preemption_thread_run = False
+    with self._cluster_update_lock:
+      self._cluster_due_for_update_or_finish.set()
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
@@ -658,7 +665,7 @@ class WorkerPreemptionHandler(object):
         on_failure_fn()
 
       with self._cluster_update_lock:
-        self._cluster_due_for_update.set()
+        self._cluster_due_for_update_or_finish.set()
         self._worker_up_cond.wait(_WORKER_MAXIMUM_RECOVERY_SEC)
         logging.info("Worker %s has been recovered.", worker_device_name)
 
@@ -676,7 +683,10 @@ class WorkerPreemptionHandler(object):
     restarted workers.
     """
     while True:
-      self._cluster_due_for_update.wait()
+      self._cluster_due_for_update_or_finish.wait()
+      if not self._should_preemption_thread_run:
+        break
+
       with self._cluster_update_lock:
         try:
           # TODO(haoyuzhang): support partial cluster recovery
@@ -687,7 +697,7 @@ class WorkerPreemptionHandler(object):
           # all workers that they are recovered from failure.
           logging.info("Cluster successfully recovered.")
           self._worker_up_cond.notify_all()
-          self._cluster_due_for_update.clear()
+          self._cluster_due_for_update_or_finish.clear()
         except Exception as e:  # pylint: disable=broad-except
           self._validate_preemption_failure(e)
           # NOTE: Since the first RPC (GetStatus) of update_server_def is
@@ -994,7 +1004,11 @@ class ClusterCoordinator(object):
           "currently.")
     self._strategy = strategy
     self._strategy.extended._used_with_coordinator = True
-    self.cluster = Cluster(strategy)
+    self._cluster = Cluster(strategy)
+
+  def __del__(self):
+    # TODO(xingliu): Stop the worker threads.
+    self._cluster.failure_handler._mark_finished()
 
   @property
   def strategy(self):
@@ -1067,7 +1081,7 @@ class ClusterCoordinator(object):
     # Slot variables are usually created during function tracing time; thus
     # `schedule` needs to be called within the `strategy.scope()`.
     with self.strategy.scope():
-      return self.cluster.schedule(fn, args=args, kwargs=kwargs)
+      return self._cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -1088,7 +1102,7 @@ class ClusterCoordinator(object):
         previously scheduled function since the last time an error was thrown or
         since the beginning of the program.
     """
-    self.cluster.join()
+    self._cluster.join()
 
   def done(self):
     """Returns whether all the scheduled functions have finished execution.
@@ -1106,7 +1120,7 @@ class ClusterCoordinator(object):
         previously scheduled function since the last time an error was thrown or
         since the beginning of the program.
     """
-    return self.cluster.done()
+    return self._cluster.done()
 
   def create_per_worker_dataset(self, dataset_fn):
     """Create dataset on workers by calling `dataset_fn` on worker devices.
@@ -1168,7 +1182,7 @@ class ClusterCoordinator(object):
       iterators (that are on the workers).
     """
     input_workers = input_lib.InputWorkers([
-        (w.device_name, [w.device_name]) for w in self.cluster.workers
+        (w.device_name, [w.device_name]) for w in self._cluster.workers
     ])
 
     return _PerWorkerDistributedDataset(dataset_fn, input_workers, self)
@@ -1191,7 +1205,7 @@ class ClusterCoordinator(object):
       objects.
     """
     results = []
-    for w in self.cluster.workers:
+    for w in self._cluster.workers:
       results.append(w._create_resource(fn, args=args, kwargs=kwargs))  # pylint: disable=protected-access
     return PerWorkerValues(tuple(results))
 

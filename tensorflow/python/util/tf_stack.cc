@@ -19,7 +19,7 @@ limitations under the License.
 // We store the retrieved stack trace within the Node object directly. Then
 // whenever the graph is instantiated/copies, we copy the stack trace with it.
 // Since the graph instantiation goes through the protobuf roundtrip, we store
-// the original Graph with stack traces attached in FunctionLibraryDefinition.
+// the original stack traces mapping attached in FunctionLibraryDefinition.
 
 #include <Python.h>
 #include <frameobject.h>
@@ -53,6 +53,30 @@ namespace tensorflow {
 namespace {
 
 namespace py = pybind11;
+
+using SourceLoc = std::tuple<std::string, int>;
+
+using SourceMap = absl::flat_hash_map<SourceLoc, StackFrame>;
+
+using StringSet = absl::flat_hash_set<std::string>;
+
+// Python wrapper for a SourceMap.
+class PyBindSourceMap {
+ public:
+  PyBindSourceMap() : source_map_(std::make_shared<SourceMap>()) {}
+
+  // Shares ownership with whoever captures traces in the scope of this map.
+  std::shared_ptr<SourceMap> source_map_;
+};
+
+// Python wrapper for a FileSet.
+class PyBindFileSet {
+ public:
+  PyBindFileSet() : file_set_(std::make_shared<StringSet>()) {}
+
+  // Shares ownership with whoever captures traces in the scope of this set.
+  std::shared_ptr<StringSet> file_set_;
+};
 
 // Returns contents of the line corresponding to the given frame.
 //
@@ -98,47 +122,68 @@ std::string StackFrameToString(
 
 class StackTraceWrapper : public AbstractStackTrace {
  public:
-  StackTraceWrapper(StackTrace&& captured, const py::dict& source_map,
-                    const py::set& filtered_filenames)
+  StackTraceWrapper(StackTrace&& captured,
+                    const std::shared_ptr<SourceMap>& source_map,
+                    const std::shared_ptr<StringSet>& filter)
       : captured_(std::move(captured)),
         source_map_(source_map),
-        filtered_filenames_(filtered_filenames) {}
+        filter_(filter) {}
 
   explicit StackTraceWrapper(absl::Span<StackFrame const> stack_frames)
       : stack_frames_cache_(std::vector<StackFrame>(stack_frames.begin(),
                                                     stack_frames.end())) {}
 
-  static StackTraceWrapper ExtractStack(const py::object& limit,
-                                        const py::list& mappers,
-                                        const py::list& filters) {
-    // In Python 3.X ``traceback.extract_stack`` allows ``limit`` to
-    // either be None or -1.
-    int casted_limit = limit.is_none() ? -1 : py::cast<ssize_t>(limit);
-
-    // Raise limit by one since we are dropping the last frame.
-    if (casted_limit != -1) casted_limit++;
-
-    const py::dict& source_map =
-        mappers.empty()
-            ? py::dict()
-            : mappers[mappers.size() - 1].attr("get_effective_source_map")();
-    const py::set& filtered_filenames =
-        filters.empty()
-            ? py::set()
-            : filters[filters.size() - 1].attr("get_filtered_filenames")();
-    return StackTraceWrapper{StackTrace::Capture(casted_limit), source_map,
-                             filtered_filenames};
+  static StackTraceWrapper ExtractStack(
+      const std::shared_ptr<SourceMap>& source_map,
+      const std::shared_ptr<StringSet>& filter) {
+    return StackTraceWrapper{StackTrace::Capture(-1), source_map, filter};
   }
 
   absl::Span<StackFrame const> ToFrames() const override {
-    GenerateCache();
+    if (stack_frames_cache_) {
+      return *stack_frames_cache_;
+    }
+
+    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe,
+    // and 2) ToStackFrames and LineContents actually need it.
+    PyGILState_STATE state = PyGILState_Ensure();
+
+    stack_frames_cache_ = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        [&](const char* f) { return StackTraceFiltering(f); });
+    stack_frames_cache_->pop_back();  // Drop last stack frame.
+    PyGILState_Release(state);
     return *stack_frames_cache_;
   }
 
+  StackFrame LastUserFrame() const override {
+    if (last_stack_frame_cache_) {
+      return *last_stack_frame_cache_;
+    }
+
+    PyGILState_STATE state = PyGILState_Ensure();
+    std::vector<StackFrame> last_frame = captured_.ToStackFrames(
+        [&](std::pair<const char*, int> p) { return StackTraceMapping(p); },
+        [&](const char* file_name) {
+          return StackTraceFiltering(file_name) ||
+                 IsInternalFrameForFilename(file_name);
+        },
+        /*reverse_traversal=*/true,
+        /*limit=*/1);
+
+    if (last_frame.empty()) {
+      last_stack_frame_cache_ = StackFrame{"", -1, ""};
+    } else {
+      DCHECK_EQ(last_frame.size(), 1);
+      last_stack_frame_cache_ = last_frame[0];
+    }
+    PyGILState_Release(state);
+    return *last_stack_frame_cache_;
+  }
+
   std::string ToString(const TracePrintingOptions& opts) const override {
-    GenerateCache();
     std::vector<std::string> files_to_find_prefix;
-    for (const StackFrame& frame : *stack_frames_cache_) {
+    for (const StackFrame& frame : ToFrames()) {
       if (!absl::StrContains(frame.file_name, kFilenameToIgnorePrefix)) {
         files_to_find_prefix.push_back(frame.file_name);
       }
@@ -147,45 +192,18 @@ class StackTraceWrapper : public AbstractStackTrace {
         opts.filter_common_prefix
             ? io::CommonPathPrefix(files_to_find_prefix).size()
             : 0;
-    return absl::StrJoin(
-        *stack_frames_cache_, "\n",
-        [&](std::string* out, const StackFrame& frame) {
-          absl::StrAppend(out,
-                          StackFrameToString(frame, opts, shared_prefix_size));
-        });
-  }
 
-  bool IsCacheGenerated() const { return stack_frames_cache_.has_value(); }
-
-  void GenerateCache() const {
-    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe, and
-    // 2) ToStackFrames and LineContents actually need it.
-    PyGILState_STATE state = PyGILState_Ensure();
-    if (stack_frames_cache_) {
-      return;
+    if (!opts.drop_internal_frames) {
+      return ToStringHelper(*stack_frames_cache_, opts, shared_prefix_size);
     }
 
-    absl::flat_hash_map<std::pair<std::string, int>, StackFrame> m;
-    absl::flat_hash_set<std::string> f;
-
-    for (const std::pair<py::handle, py::handle>& p : *source_map_) {
-      const py::tuple& key = py::cast<py::tuple>(p.first);
-      const py::tuple& value = py::cast<py::tuple>(p.second);
-
-      m.emplace(std::make_pair(std::string(py::cast<py::str>(key[0])),
-                               py::cast<ssize_t>(key[1])),
-                StackFrame{std::string(py::cast<py::str>(value[0])),
-                           py::cast<py::int_>(value[1]),
-                           std::string(py::cast<py::str>(value[2]))});
+    std::vector<StackFrame> filtered_frames;
+    for (const StackFrame& frame : *stack_frames_cache_) {
+      if (!IsInternalFrameForFilename(frame.file_name)) {
+        filtered_frames.push_back(frame);
+      }
     }
-
-    for (const py::handle& h : *filtered_filenames_) {
-      f.emplace(py::cast<py::str>(h));
-    }
-
-    stack_frames_cache_ = captured_.ToStackFrames(m, f);
-    stack_frames_cache_->pop_back();  // Drop last stack frame.
-    PyGILState_Release(state);
+    return ToStringHelper(filtered_frames, opts, shared_prefix_size);
   }
 
   StackTraceWrapper(StackTraceWrapper&&) = default;
@@ -193,21 +211,90 @@ class StackTraceWrapper : public AbstractStackTrace {
     PyGILState_STATE state = PyGILState_Ensure();
     captured_.Clear();
     source_map_.reset();
-    filtered_filenames_.reset();
+    filter_.reset();
     PyGILState_Release(state);
   }
 
  private:
-  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  static std::string ToStringHelper(absl::Span<StackFrame const> stack_frames,
+                                    const TracePrintingOptions& opts,
+                                    int shared_prefix_size) {
+    return absl::StrJoin(
+        stack_frames, "\n", [&](std::string* out, const StackFrame& frame) {
+          absl::StrAppend(out,
+                          StackFrameToString(frame, opts, shared_prefix_size));
+        });
+  }
+
+  static bool IsInternalFrameForFilename(absl::string_view file_name) {
+    // Use a simple heuristic for now.
+    // TODO(cheshire): Build a more sophisticated mechanism, rely on @tf.export.
+    return (absl::StrContains(file_name, "tensorflow/python") ||
+            absl::StrContains(file_name, "tensorflow\\python")) &&
+           !absl::StrContains(file_name, "keras") &&
+           !absl::StrContains(file_name, "test.py");
+  }
+
+  absl::optional<StackFrame> StackTraceMapping(SourceLoc loc) const {
+    if (source_map_->contains(loc)) {
+      return source_map_->at(loc);
+    }
+
+    return absl::nullopt;
+  }
+
+  bool StackTraceFiltering(const char* file_name) const {
+    return filter_->contains(file_name);
+  }
+
   StackTrace captured_;
+  std::shared_ptr<SourceMap> source_map_;
+  std::shared_ptr<StringSet> filter_;
+
   // Using optional to force destruction while we hold a GIL.
-  absl::optional<py::dict> source_map_;
-  absl::optional<py::set> filtered_filenames_;
+  mutable absl::optional<std::vector<StackFrame>> stack_frames_cache_;
+  mutable absl::optional<StackFrame> last_stack_frame_cache_;
 };
 
 }  // namespace
 
 PYBIND11_MODULE(_tf_stack, m) {
+  py::class_<PyBindSourceMap>(m, "PyBindSourceMap")
+      .def(py::init())
+      .def("update_to",
+           [](const PyBindSourceMap& self, const py::tuple& source_map) {
+             self.source_map_->clear();
+             for (const auto& item : source_map) {
+               const auto& tuple_item = py::cast<py::tuple>(item);
+
+               const auto& key = py::cast<py::tuple>(tuple_item[0]);
+               std::string&& k_filename = py::cast<std::string>(key[0]);
+               int k_lineno = py::cast<int>(key[1]);
+
+               const auto& value = py::cast<py::tuple>(tuple_item[1]);
+               std::string&& v_filename = py::cast<std::string>(value[0]);
+               int v_lineno = py::cast<int>(value[1]);
+               const auto& function_name_val = value[2];
+               std::string&& v_function_name =
+                   function_name_val.is_none()
+                       ? ""
+                       : py::cast<std::string>(function_name_val);
+
+               self.source_map_->emplace(
+                   SourceLoc(k_filename, k_lineno),
+                   StackFrame({v_filename, v_lineno, v_function_name}));
+             }
+           });
+
+  py::class_<PyBindFileSet>(m, "PyBindFileSet")
+      .def(py::init())
+      .def("update_to", [](const PyBindFileSet& self, const py::set& file_set) {
+        self.file_set_->clear();
+        for (const auto& item : file_set) {
+          self.file_set_->insert(py::cast<std::string>(item));
+        }
+      });
+
   py::class_<StackFrame>(m, "StackFrame")
       .def_property_readonly(
           "filename",
@@ -293,32 +380,33 @@ PYBIND11_MODULE(_tf_stack, m) {
            })
       .def("__hash__",
            [](const StackTraceWrapper& self) {
-             self.GenerateCache();
              return py::hash(py::str(self.ToString({})));
            })
-      .def("__repr__", [](const StackTraceWrapper& self) {
-        self.GenerateCache();
-        return py::str(self.ToString({}));
-      });
+      .def("__repr__",
+           [](const StackTraceWrapper& self) {
+             return py::str(self.ToString({}));
+           })
+      .def("last_user_frame",
+           [](const StackTraceWrapper& self) { return self.LastUserFrame(); });
 
   m.def(
       "extract_stack_for_node",
-      [](const py::object& limit, const py::list& mappers,
-         const py::list& filters,
+      [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set,
          TF_Operation* op) -> const AbstractStackTrace& {
         Node* node = reinterpret_cast<Node*>(op);
         DCHECK(!node->GetStackTrace()) << "Should not reset the stack trace";
-        node->SetStackTrace(std::make_shared<StackTraceWrapper>(
-            StackTraceWrapper::ExtractStack(limit, mappers, filters)));
+        node->SetStackTrace(
+            std::make_shared<StackTraceWrapper>(StackTraceWrapper::ExtractStack(
+                source_map.source_map_, file_set.file_set_)));
         return *node->GetStackTrace();
       },
       py::return_value_policy::reference);
 
   m.def(
       "extract_stack",
-      [](const py::object& limit, const py::list& mappers,
-         const py::list& filters) {
-        return StackTraceWrapper::ExtractStack(limit, mappers, filters);
+      [](const PyBindSourceMap& source_map, const PyBindFileSet& file_set) {
+        return StackTraceWrapper::ExtractStack(source_map.source_map_,
+                                               file_set.file_set_);
       },
       py::return_value_policy::move);
 }

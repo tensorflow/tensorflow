@@ -61,7 +61,6 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
@@ -96,7 +95,7 @@ class Layer(base_layer.Layer):
     once. Should actually perform the logic of applying the layer to the
     input tensors (which should be passed in as the first argument).
 
-  Arguments:
+  Args:
     trainable: Boolean, whether the layer's variables should be trainable.
     name: String name of the layer.
     dtype: The dtype of the layer's computations and weights (default of
@@ -274,7 +273,7 @@ class Layer(base_layer.Layer):
 
     This is typically used to create the weights of `Layer` subclasses.
 
-    Arguments:
+    Args:
       input_shape: Instance of `TensorShape`, or list of instances of
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
@@ -287,7 +286,7 @@ class Layer(base_layer.Layer):
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
-    Arguments:
+    Args:
         inputs: Input tensor, or list/tuple of input tensors.
         **kwargs: Additional keyword arguments.
 
@@ -300,7 +299,7 @@ class Layer(base_layer.Layer):
   def _add_trackable(self, trackable_object, trainable):
     """Adds a Trackable object to this layer's state.
 
-    Arguments:
+    Args:
       trackable_object: The tf.tracking.Trackable object to add.
       trainable: Boolean, whether the variable should be part of the layer's
         "trainable_variables" (e.g. variables, biases) or
@@ -332,7 +331,7 @@ class Layer(base_layer.Layer):
                  **kwargs):
     """Adds a new variable to the layer.
 
-    Arguments:
+    Args:
       name: Variable name.
       shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -524,7 +523,7 @@ class Layer(base_layer.Layer):
     dictionary. It does not handle layer connectivity
     (handled by Network), nor weights (handled by `set_weights`).
 
-    Arguments:
+    Args:
         config: A Python dictionary, typically the
             output of get_config.
 
@@ -540,7 +539,7 @@ class Layer(base_layer.Layer):
     layer. This assumes that the layer will later be used with inputs that
     match the input shape provided here.
 
-    Arguments:
+    Args:
         input_shape: Shape tuple (tuple of integers)
             or list of shape tuples (one per output tensor of the layer).
             Shape tuples can include None for free dimensions,
@@ -619,7 +618,7 @@ class Layer(base_layer.Layer):
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
-    Arguments:
+    Args:
         inputs: Tensor or list of tensors.
         mask: Tensor or list of tensors.
 
@@ -640,7 +639,7 @@ class Layer(base_layer.Layer):
   def __call__(self, *args, **kwargs):
     """Wraps `call`, applying pre- and post-processing steps.
 
-    Arguments:
+    Args:
       *args: Positional arguments to be passed to `self.call`.
       **kwargs: Keyword arguments to be passed to `self.call`.
 
@@ -735,7 +734,7 @@ class Layer(base_layer.Layer):
       if self._expects_training_arg and training_value is not None:
         # Force the training_value to be bool type which matches to the contract
         # for layer/model call args.
-        if tensor_util.is_tensor(training_value):
+        if tensor_util.is_tf_type(training_value):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
@@ -1015,7 +1014,7 @@ class Layer(base_layer.Layer):
     The `get_losses_for` method allows to retrieve the losses relevant to a
     specific set of inputs.
 
-    Arguments:
+    Args:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
       inputs: Ignored when executing eagerly. If anything other than None is
@@ -1035,7 +1034,7 @@ class Layer(base_layer.Layer):
           loss = loss()
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
@@ -1051,7 +1050,7 @@ class Layer(base_layer.Layer):
         continue
       if loss is None:
         continue
-      if not tensor_util.is_tensor(loss):
+      if not tensor_util.is_tf_type(loss):
         loss = ops.convert_to_tensor_v2_with_dispatch(
             loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
@@ -1168,7 +1167,7 @@ class Layer(base_layer.Layer):
     updates are run on the fly and thus do not need to be tracked for later
     execution).
 
-    Arguments:
+    Args:
       updates: Update op, or list/tuple of update ops, or zero-arg callable
         that returns an update op. A zero-arg callable should be passed in
         order to disable running the updates by setting `trainable=False`
@@ -1200,7 +1199,7 @@ class Layer(base_layer.Layer):
     def process_update(x):
       """Standardize update ops.
 
-      Arguments:
+      Args:
         x: Tensor, op, or callable.
 
       Returns:
@@ -1256,7 +1255,7 @@ class Layer(base_layer.Layer):
            [1.],
            [1.]], dtype=float32), array([0.], dtype=float32)]
 
-    Arguments:
+    Args:
         weights: a list of Numpy arrays. The number
             of arrays and their shape must match
             number of the dimensions of the weights
@@ -1350,7 +1349,7 @@ class Layer(base_layer.Layer):
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1369,7 +1368,7 @@ class Layer(base_layer.Layer):
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
 
-    Arguments:
+    Args:
       inputs: Input tensor or list/tuple of input tensors.
 
     Returns:
@@ -1388,7 +1387,7 @@ class Layer(base_layer.Layer):
   def get_input_mask_at(self, node_index):
     """Retrieves the input mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1407,7 +1406,7 @@ class Layer(base_layer.Layer):
   def get_output_mask_at(self, node_index):
     """Retrieves the output mask tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1468,7 +1467,7 @@ class Layer(base_layer.Layer):
   def get_input_shape_at(self, node_index):
     """Retrieves the input shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1487,7 +1486,7 @@ class Layer(base_layer.Layer):
   def get_output_shape_at(self, node_index):
     """Retrieves the output shape(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1506,7 +1505,7 @@ class Layer(base_layer.Layer):
   def get_input_at(self, node_index):
     """Retrieves the input tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1524,7 +1523,7 @@ class Layer(base_layer.Layer):
   def get_output_at(self, node_index):
     """Retrieves the output tensor(s) of a layer at a given node.
 
-    Arguments:
+    Args:
         node_index: Integer, index of the node
             from which to retrieve the attribute.
             E.g. `node_index=0` will correspond to the
@@ -1683,7 +1682,7 @@ class Layer(base_layer.Layer):
 
     This is an alias of `self.__call__`.
 
-    Arguments:
+    Args:
       inputs: Input tensor(s).
       *args: additional positional arguments to be passed to `self.call`.
       **kwargs: additional keyword arguments to be passed to `self.call`.
@@ -2029,7 +2028,7 @@ class Layer(base_layer.Layer):
         - get_input_at
         etc...
 
-    Arguments:
+    Args:
         node_index: Integer index of the node from which
             to retrieve the attribute.
         attr: Exact node attribute name.
@@ -2240,11 +2239,7 @@ class Layer(base_layer.Layer):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value):
-      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
-      # no longer return True for isinstance Variable checks.
       if not isinstance(val, tf_variables.Variable):
-        continue
-      if isinstance(val, resource_variable_ops._UnreadVariable):  # pylint: disable=protected-access
         continue
 
       # Users may add extra weights/variables

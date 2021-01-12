@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
-
 namespace tensorflow {
 namespace gradients {
 namespace internal {
@@ -160,51 +159,6 @@ Status MatMulTransposeModel(AbstractContext* ctx,
   return Status::OK();
 }
 
-Status ReluGradModel(AbstractContext* ctx,
-                     absl::Span<AbstractTensorHandle* const> inputs,
-                     absl::Span<AbstractTensorHandle*> outputs,
-                     const GradientRegistry& registry) {
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(inputs[0]);  // Watch X
-  vector<AbstractTensorHandle*> relu_outputs(1);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::Relu(tape_ctx.get(), inputs,
-                               absl::MakeSpan(relu_outputs),
-                               "relu0"));  // Relu(X)
-
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx, /*targets=*/relu_outputs,
-                                           /*sources=*/inputs,
-                                           /*output_gradients=*/{}, outputs));
-
-  for (auto relu_output : relu_outputs) {
-    relu_output->Unref();
-  }
-
-  delete tape;
-  return Status::OK();
-}
-
-Status SoftmaxLossGradModel(AbstractContext* ctx,
-                            absl::Span<AbstractTensorHandle* const> inputs,
-                            absl::Span<AbstractTensorHandle*> outputs,
-                            const GradientRegistry& registry) {
-  auto tape = new Tape(/*persistent=*/false);
-  tape->Watch(inputs[0]);  // Watch scores.
-  tape->Watch(inputs[1]);  // Watch labels.
-  vector<AbstractTensorHandle*> sm_outputs(2);
-  AbstractContextPtr tape_ctx(new TapeContext(ctx, tape, registry));
-  TF_RETURN_IF_ERROR(ops::SparseSoftmaxCrossEntropyWithLogits(
-      tape_ctx.get(), inputs, absl::MakeSpan(sm_outputs), "softmax0"));
-
-  TF_RETURN_IF_ERROR(tape->ComputeGradient(ctx,
-                                           /*targets=*/sm_outputs,
-                                           /*sources=*/inputs,
-                                           /*output_gradients=*/{}, outputs));
-
-  delete tape;
-  return Status::OK();
-}
-
 Status MNISTGradModel(AbstractContext* ctx,
                       absl::Span<AbstractTensorHandle* const> inputs,
                       absl::Span<AbstractTensorHandle*> outputs,
@@ -281,14 +235,6 @@ Status MulModel(AbstractContext* ctx,
                 const GradientRegistry& registry) {
   return ops::Mul(ctx, inputs, outputs,
                   "mul0");  // Compute x*y
-}
-
-Status SoftmaxModel(AbstractContext* ctx,
-                    absl::Span<AbstractTensorHandle* const> inputs,
-                    absl::Span<AbstractTensorHandle*> outputs,
-                    const GradientRegistry& registry) {
-  return ops::SparseSoftmaxCrossEntropyWithLogits(ctx, inputs, outputs,
-                                                  "sm_loss");
 }
 
 // ============================= End Models ================================

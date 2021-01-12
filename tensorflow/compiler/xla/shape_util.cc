@@ -309,9 +309,11 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
     PrimitiveType element_type, absl::Span<const int64> dimensions,
     absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
     int64 element_size_in_bits, int64 memory_space) {
-  return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
-                                     tiles, element_size_in_bits, memory_space)
-      .ValueOrDie();
+  auto ret =
+      MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major,
+                                  tiles, element_size_in_bits, memory_space);
+  if (!ret.ok()) LOG(ERROR) << ret.status();
+  return ret.ValueOrDie();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
@@ -1245,7 +1247,9 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     return false;
   }
 
-  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape));
+  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape))
+      << "input_shape=" << input_shape.ShortDebugString()
+      << ", output_shape=" << output_shape.ShortDebugString();
   if (ElementsIn(input_shape) == 0) {
     return true;
   }
@@ -1711,13 +1715,11 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   return s;
 }
 
-/*static*/ bool ShapeUtil::CanUpcastIntegral(const Shape& from,
-                                             const Shape& to) {
-  return ElementIsIntegral(from) && ElementIsIntegral(to) &&
+/*static*/ bool ShapeUtil::ElementCanUpcast(const Shape& from,
+                                            const Shape& to) {
+  return ElementIsFloating(from) == ElementIsFloating(to) &&
          ElementIsSigned(from) == ElementIsSigned(to) &&
-         primitive_util::BitWidth(from.element_type()) <=
-             primitive_util::BitWidth(to.element_type()) &&
-         CompatibleIgnoringElementType(from, to);
+         HigherPrecisionElementType(from, to) == to.element_type();
 }
 
 }  // namespace xla

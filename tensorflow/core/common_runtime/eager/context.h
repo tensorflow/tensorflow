@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -81,26 +82,6 @@ class RemoteMgr;
 class TensorHandle;
 class EagerOperation;
 
-class CustomDevice {
- public:
-  virtual ~CustomDevice() {}
-  virtual const string& name() = 0;
-  virtual Status CopyTensorToDevice(TensorHandle* tensor,
-                                    TensorHandle** result) = 0;
-
-  virtual Status CopyTensorFromDevice(TensorHandle* tensor,
-                                      const string& target_device_name,
-                                      TensorHandle** result) = 0;
-
-  virtual Status Execute(const EagerOperation* op, TensorHandle** retvals,
-                         int* num_retvals) = 0;
-};
-
-// Custom devices do many of the same things as physical Devices, but have a
-// much more restricted interface. We pass around ambiguous pointers since
-// TensorHandles may be placed either on custom or physical devices.
-using VariantDevice = absl::variant<Device*, CustomDevice*>;
-
 class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
  public:
   static constexpr uint64 kInvalidContextId = 0;
@@ -115,8 +96,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
-               bool async, const bool lazy_copy_function_remote_inputs,
-               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               bool async, const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
@@ -209,8 +189,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
 
-  bool LazyCopyFunctionRemoteInputs() const;
-
   bool FindFunctionByName(const string& name) const;
 
   Status FindFunctionOpData(const string& name,
@@ -234,8 +212,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // entry to the KernelAndDevice cache for it if it's not exist.
   Status AddFunctionDef(const FunctionDef& fdef) override;
 
-  Status AddFunctionDefWithDebugInfo(
-      const FunctionDef& fdef, const Graph* graph_with_debug_info) override;
+  Status AddFunctionDefWithStackTraces(
+      const FunctionDef& fdef, const StackTracesMap& stack_traces) override;
 
   // `library` contains all FunctionDefs and GradientDefs to expand `fdef`. Add
   // it to the local FunctionLibraryDefinition as well, but no need to add it
@@ -244,7 +222,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   Status AddFunctionDef(const FunctionDef& fdef,
                         const FunctionDefLibrary& library,
                         const bool add_to_local_only = false,
-                        const Graph* graph_with_debug_info = nullptr);
+                        const StackTracesMap& stack_traces = {});
 
   const FunctionDef* GetFunctionDef(const string& function_name);
 

@@ -23,13 +23,8 @@
 
 TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 TF_TESTS_PER_GPU=${TF_TESTS_PER_GPU:-8}
-# We want to allow running one of the following configs:
-#  - 4 tests per GPU on k80
-#  - 8 tests per GPU on p100
-# p100 has minimum 12G memory. Therefore, we should limit each test to 1.5G.
-# To leave some room in case we want to run more tests in parallel in the
-# future and to use a rounder number, we set it to 1G.
-export TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB:-1024}
+
+export TF_PER_DEVICE_MEMORY_LIMIT_MB=${TF_PER_DEVICE_MEMORY_LIMIT_MB:-2048}
 
 # *******************************************************************
 #         This section of the script is needed to

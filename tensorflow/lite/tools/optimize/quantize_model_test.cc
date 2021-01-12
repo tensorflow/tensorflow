@@ -1049,19 +1049,26 @@ TEST_F(QuantizeMultiInputAddWithReshapeTest, VerifyAddQuantization) {
   EXPECT_EQ(model_.operator_codes[1]->version, 1);
 }
 
-class QuantizeConstInputTest : public QuantizeModelTest {
+class QuantizeConstInputTest : public QuantizeModelTest,
+                               public testing::WithParamInterface<TensorType> {
  protected:
   QuantizeConstInputTest() {
+    tensor_type_ = GetParam();
     input_model_ = ReadModel(internal::kConstInputAddModel);
     readonly_model_ = input_model_->GetModel();
     readonly_model_->UnPackTo(&model_);
   }
-};
 
-TEST_F(QuantizeConstInputTest, VerifyConstOpInput) {
-  auto status = QuantizeModelAllOperators(&builder_, &model_, TensorType_INT8,
-                                          TensorType_INT8, false,
-                                          TensorType_INT8, &error_reporter_);
+  TensorType tensor_type_;
+};
+INSTANTIATE_TEST_SUITE_P(QuantizeConstInputTestInst, QuantizeConstInputTest,
+                         testing::ValuesIn({TensorType_INT8,
+                                            TensorType_INT16}));
+
+TEST_P(QuantizeConstInputTest, VerifyConstOpInput) {
+  auto status =
+      QuantizeModelAllOperators(&builder_, &model_, tensor_type_, tensor_type_,
+                                false, tensor_type_, &error_reporter_);
   ASSERT_EQ(kTfLiteOk, status);
 
   // Verify ConstOp is quantized.
@@ -1081,18 +1088,27 @@ TEST_F(QuantizeConstInputTest, VerifyConstOpInput) {
 
   for (size_t input_idx = 0; input_idx < 2; ++input_idx) {
     EXPECT_EQ(subgraph->tensors[op->inputs[input_idx]].get()->type,
-              TensorType_INT8);
+              tensor_type_);
   }
 
-  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, tensor_type_);
 
   // check op and versioning.
   EXPECT_EQ(model_.operator_codes.size(), 1);
   EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
             BuiltinOperator_ADD);
   EXPECT_EQ(model_.operator_codes[0]->version, 2);
-}
 
+  // check that in case of int16 activations, pot_scale_int16 parameter is set
+  // to false.
+  if (tensor_type_ == TensorType_INT16) {
+    EXPECT_EQ(subgraph->operators[0]
+                  .get()
+                  ->builtin_options.AsAddOptions()
+                  ->pot_scale_int16,
+              false);
+  }
+}
 class QuantizeArgMaxTest : public QuantizeModelTest {
  protected:
   QuantizeArgMaxTest() {
@@ -1637,6 +1653,64 @@ TEST_F(QuantizeTransposeTest, VerifyTranspose) {
                   transpose_output->quantization->scale[0]);
   EXPECT_EQ(transpose_input->quantization->zero_point[0],
             transpose_output->quantization->zero_point[0]);
+}
+
+class QuantizeQatTest : public QuantizeModelTest {
+ protected:
+  QuantizeQatTest() {
+    input_model_ = ReadModel(internal::kQatModelWithFc);
+    readonly_model_ = input_model_->GetModel();
+    readonly_model_->UnPackTo(&model_);
+  }
+};
+
+TEST_F(QuantizeQatTest, VerifySingleQuantize) {
+  auto status = QuantizeModelAllOperators(
+      &builder_, &model_, TensorType_FLOAT32, TensorType_FLOAT32, false,
+      TensorType_INT8, &error_reporter_);
+  ASSERT_EQ(kTfLiteOk, status);
+
+  const auto& subgraph = model_.subgraphs[0];
+  auto op = subgraph->operators[0].get();
+  ASSERT_EQ(GetBuiltinCode(model_.operator_codes[op->opcode_index].get()),
+            BuiltinOperator_QUANTIZE);
+  op = subgraph->operators[1].get();
+  ASSERT_EQ(GetBuiltinCode(model_.operator_codes[op->opcode_index].get()),
+            BuiltinOperator_RESHAPE);
+  op = subgraph->operators[2].get();
+  ASSERT_EQ(GetBuiltinCode(model_.operator_codes[op->opcode_index].get()),
+            BuiltinOperator_FULLY_CONNECTED);
+
+  ASSERT_EQ(op->inputs.size(), 3);
+  ASSERT_EQ(op->outputs.size(), 1);
+
+  auto qat_graph = readonly_model_->subgraphs()->Get(0);
+  // Verify FC input and weight is quantized.
+  ASSERT_EQ(qat_graph->tensors()->Get(op->inputs[0])->type(), TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->inputs[0]].get()->type, TensorType_INT8);
+  ASSERT_EQ(qat_graph->tensors()->Get(op->inputs[1])->type(), TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->inputs[1]].get()->type, TensorType_INT8);
+
+  // Verify FC bias should be int32 quantized.
+  ASSERT_EQ(qat_graph->tensors()->Get(op->inputs[2])->type(), TensorType_INT32);
+  EXPECT_EQ(subgraph->tensors[op->inputs[2]].get()->type, TensorType_INT32);
+
+  // The output of FC should be quantized.
+  ASSERT_EQ(qat_graph->tensors()->Get(op->outputs[0])->type(), TensorType_INT8);
+  EXPECT_EQ(subgraph->tensors[op->outputs[0]].get()->type, TensorType_INT8);
+
+  // check op and versioning.
+  EXPECT_EQ(model_.operator_codes.size(), 4);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[0].get()),
+            BuiltinOperator_QUANTIZE);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[1].get()),
+            BuiltinOperator_RESHAPE);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[2].get()),
+            BuiltinOperator_FULLY_CONNECTED);
+  EXPECT_EQ(GetBuiltinCode(model_.operator_codes[3].get()),
+            BuiltinOperator_DEQUANTIZE);
+  EXPECT_EQ(model_.operator_codes[1]->version, 1);
+  EXPECT_EQ(model_.operator_codes[2]->version, 4);
 }
 
 }  // namespace

@@ -1837,7 +1837,7 @@ def per_image_standardization(image):
       dimensions of each image.
 
   Returns:
-    A `Tensor` with the same shape and dtype as `image`.
+    A `Tensor` with the same shape as `image`.
 
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
@@ -1846,22 +1846,18 @@ def per_image_standardization(image):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
 
-    # Remember original dtype to so we can convert back if needed
-    orig_dtype = image.dtype
-    if orig_dtype not in [dtypes.float16, dtypes.float32]:
-      image = convert_image_dtype(image, dtypes.float32)
-
+    image = math_ops.cast(image, dtype=dtypes.float32)
     num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
     image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
     # Apply a minimum normalization that protects us against uniform images.
     stddev = math_ops.reduce_std(image, axis=[-1, -2, -3], keepdims=True)
-    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, image.dtype))
+    min_stddev = math_ops.rsqrt(math_ops.cast(num_pixels, dtypes.float32))
     adjusted_stddev = math_ops.maximum(stddev, min_stddev)
 
     image -= image_mean
     image = math_ops.divide(image, adjusted_stddev, name=scope)
-    return convert_image_dtype(image, orig_dtype, saturate=True)
+    return image
 
 
 @tf_export('image.random_brightness')
@@ -3095,16 +3091,17 @@ def decode_image(contents,
   frame to fill the unoccupied areas.
 
   Args:
-    contents: 0-D `string`. The encoded image bytes.
+    contents: A `Tensor` of type `string`. 0-D. The encoded image bytes.
     channels: An optional `int`. Defaults to `0`. Number of color channels for
       the decoded image.
     dtype: The desired DType of the returned `Tensor`.
     name: A name for the operation (optional)
-    expand_animations: Controls the shape of the returned op's output. If
-      `True`, the returned op will produce a 3-D tensor for PNG, JPEG, and BMP
-      files; and a 4-D tensor for all GIFs, whether animated or not. If,
-      `False`, the returned op will produce a 3-D tensor for all file types and
-      will truncate animated GIFs to the first frame.
+    expand_animations: An optional `bool`. Defaults to `True`. Controls the
+      shape of the returned op's output. If `True`, the returned op will produce
+      a 3-D tensor for PNG, JPEG, and BMP files; and a 4-D tensor for all GIFs,
+      whether animated or not. If, `False`, the returned op will produce a 3-D
+      tensor for all file types and will truncate animated GIFs to the first
+      frame.
 
   Returns:
     `Tensor` with type `dtype` and a 3- or 4-dimensional shape, depending on
@@ -3667,10 +3664,10 @@ def non_max_suppression(boxes,
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non-max suppression.
-    iou_threshold: A float representing the threshold for deciding whether boxes
-      overlap too much with respect to IOU.
-    score_threshold: A float representing the threshold for deciding when to
-      remove boxes based on score.
+    iou_threshold: A 0-D float tensor representing the threshold for deciding
+      whether boxes overlap too much with respect to IOU.
+    score_threshold: A 0-D float tensor representing the threshold for deciding
+      when to remove boxes based on score.
     name: A name for the operation (optional).
 
   Returns:
@@ -3736,14 +3733,14 @@ def non_max_suppression_with_scores(boxes,
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non-max suppression.
-    iou_threshold: A float representing the threshold for deciding whether boxes
-      overlap too much with respect to IOU.
-    score_threshold: A float representing the threshold for deciding when to
-      remove boxes based on score.
-    soft_nms_sigma: A scalar float representing the Soft NMS sigma parameter;
-      See Bodla et al, https://arxiv.org/abs/1704.04503).  When
-        `soft_nms_sigma=0.0` (which is default), we fall back to standard (hard)
-        NMS.
+    iou_threshold: A 0-D float tensor representing the threshold for deciding
+      whether boxes overlap too much with respect to IOU.
+    score_threshold: A 0-D float tensor representing the threshold for deciding
+      when to remove boxes based on score.
+    soft_nms_sigma: A 0-D float tensor representing the sigma parameter for Soft
+      NMS; see Bodla et al (c.f. https://arxiv.org/abs/1704.04503).  When
+      `soft_nms_sigma=0.0` (which is default), we fall back to standard (hard)
+      NMS.
     name: A name for the operation (optional).
 
   Returns:
@@ -3795,15 +3792,17 @@ def non_max_suppression_with_overlaps(overlaps,
     ```
 
   Args:
-    overlaps: A 2-D float `Tensor` of shape `[num_boxes, num_boxes]`.
+    overlaps: A 2-D float `Tensor` of shape `[num_boxes, num_boxes]`
+      representing the n-by-n box overlap values.
     scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
       of boxes to be selected by non-max suppression.
-    overlap_threshold: A float representing the threshold for deciding whether
-      boxes overlap too much with respect to the provided overlap values.
-    score_threshold: A float representing the threshold for deciding when to
-      remove boxes based on score.
+    overlap_threshold: A 0-D float tensor representing the threshold for
+      deciding whether boxes overlap too much with respect to the provided
+      overlap values.
+    score_threshold: A 0-D float tensor representing the threshold for deciding
+      when to remove boxes based on score.
     name: A name for the operation (optional).
 
   Returns:
@@ -4037,7 +4036,7 @@ def psnr(a, b, max_val, name=None):
       # psnr1 and psnr2 both have type tf.float32 and are almost equal.
   ```
 
-  Arguments:
+  Args:
     a: First set of images.
     b: Second set of images.
     max_val: The dynamic range of the images (i.e., the difference between the
@@ -4081,7 +4080,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
   For SSIM measure with unbiased covariance estimators, pass as `compensation`
   argument (1 - \sum_i w_i ^ 2).
 
-  Arguments:
+  Args:
     x: First set of images.
     y: Second set of images.
     reducer: Function that computes 'local' averages from the set of images. For
@@ -4252,9 +4251,14 @@ def ssim(img1,
   Example:
 
   ```python
-      # Read images from file.
-      im1 = tf.decode_png('path/to/im1.png')
-      im2 = tf.decode_png('path/to/im2.png')
+      # Read images (of size 255 x 255) from file.
+      im1 = tf.image.decode_image(tf.io.read_file('path/to/im1.png'))
+      im2 = tf.image.decode_image(tf.io.read_file('path/to/im2.png'))
+      tf.shape(im1)  # `img1.png` has 3 channels; shape is `(255, 255, 3)`
+      tf.shape(im2)  # `img2.png` has 3 channels; shape is `(255, 255, 3)`
+      # Add an outer batch for each image.
+      im1 = tf.expand_dims(im1, axis=0)
+      im2 = tf.expand_dims(im2, axis=0)
       # Compute SSIM over tf.uint8 Tensors.
       ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size=11,
                             filter_sigma=1.5, k1=0.01, k2=0.03)
@@ -4268,8 +4272,10 @@ def ssim(img1,
   ```
 
   Args:
-    img1: First image batch.
-    img2: Second image batch.
+    img1: First image batch. 4-D Tensor of shape `[batch, height, width,
+      channels]`.
+    img2: Second image batch. 4-D Tensor of shape `[batch, height, width,
+      channels]`.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
     filter_size: Default value 11 (size of gaussian filter).
@@ -4331,7 +4337,7 @@ def ssim_multiscale(img1,
   structural similarity for image quality assessment." Signals, Systems and
   Computers, 2004.
 
-  Arguments:
+  Args:
     img1: First image batch.
     img2: Second image batch. Must have the same rank as img1.
     max_val: The dynamic range of the images (i.e., the difference between the
@@ -4455,7 +4461,7 @@ def image_gradients(image):
     image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS,
       delta=1, dtype=tf.float32),
       shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
-    dx, dy = tf.image.image_gradients(image)
+    dy, dx = tf.image.image_gradients(image)
     print(image[0, :,:,0])
     tf.Tensor(
       [[ 0.  1.  2.  3.  4.]
@@ -4463,14 +4469,14 @@ def image_gradients(image):
       [10. 11. 12. 13. 14.]
       [15. 16. 17. 18. 19.]
       [20. 21. 22. 23. 24.]], shape=(5, 5), dtype=float32)
-    print(dx[0, :,:,0])
+    print(dy[0, :,:,0])
     tf.Tensor(
       [[5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)
-    print(dy[0, :,:,0])
+    print(dx[0, :,:,0])
     tf.Tensor(
       [[1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]
@@ -4479,7 +4485,7 @@ def image_gradients(image):
       [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
     ```
 
-  Arguments:
+  Args:
     image: Tensor with shape [batch_size, h, w, d].
 
   Returns:
@@ -4542,7 +4548,7 @@ def sobel_edges(image):
   Image.fromarray(sobel_x[..., 0] / 4 + 0.5).show()
   ```
 
-  Arguments:
+  Args:
     image: Image tensor with shape [batch_size, h, w, d] and type float32 or
       float64.  The image(s) must be 2x2 or larger.
 
@@ -5231,7 +5237,9 @@ def non_max_suppression_padded(boxes,
       Dimensions except the last two are batch dimensions.
     scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
     max_output_size: a scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non max suppression.
+      of boxes to be selected by non max suppression. Note that setting this
+      value to a large number may result in OOM error depending on the system
+      workload.
     iou_threshold: a float representing the threshold for deciding whether boxes
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes

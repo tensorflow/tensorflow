@@ -55,7 +55,7 @@ AdrenoGpu GetAdrenoGpuVersion(const std::string& gpu_description) {
       {"640", AdrenoGpu::kAdreno640},
       {"630", AdrenoGpu::kAdreno630},
       {"620", AdrenoGpu::kAdreno620},
-      {"616", AdrenoGpu::kAdreno618},
+      {"618", AdrenoGpu::kAdreno618},
       {"616", AdrenoGpu::kAdreno616},
       {"615", AdrenoGpu::kAdreno615},
       {"612", AdrenoGpu::kAdreno612},
@@ -205,7 +205,8 @@ int AdrenoInfo::GetRegisterMemorySizePerComputeUnit() const {
   if (IsAdreno6xx()) {
     if (adreno_gpu == AdrenoGpu::kAdreno640) {
       return 128 * 144 * 16;
-    } else if (adreno_gpu == AdrenoGpu::kAdreno650) {
+    } else if (adreno_gpu == AdrenoGpu::kAdreno650 ||
+               adreno_gpu == AdrenoGpu::kAdreno620) {
       return 128 * 64 * 16;
     } else {
       return 128 * 96 * 16;
@@ -411,6 +412,9 @@ bool GpuInfo::SupportsFP16() const {
 }
 
 bool GpuInfo::SupportsTextureArray() const {
+  if (!SupportsImages()) {
+    return false;
+  }
   if (IsApiOpenCl()) {
     return opencl_info.cl_version >= OpenClVersion::kCl1_2;
   }
@@ -418,6 +422,9 @@ bool GpuInfo::SupportsTextureArray() const {
 }
 
 bool GpuInfo::SupportsImageBuffer() const {
+  if (!SupportsImages()) {
+    return false;
+  }
   if (IsApiOpenCl()) {
     return opencl_info.cl_version >= OpenClVersion::kCl1_2;
   }
@@ -425,12 +432,22 @@ bool GpuInfo::SupportsImageBuffer() const {
 }
 
 bool GpuInfo::SupportsImage3D() const {
+  if (!SupportsImages()) {
+    return false;
+  }
   if (IsApiOpenCl()) {
     if (IsMali() && mali_info.IsMidgard()) {
       // On Mali T880 read_imageh doesn't compile with image3d_t
       return false;
     }
     return opencl_info.supports_image3d_writes;
+  }
+  return true;
+}
+
+bool GpuInfo::SupportsImages() const {
+  if (IsApiOpenCl()) {
+    return opencl_info.supports_images;
   }
   return true;
 }

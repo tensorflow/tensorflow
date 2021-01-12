@@ -268,5 +268,71 @@ class AttentionSubclassTest(keras_parameterized.TestCase):
     self.assertEqual(output.shape.as_list(), [None, 40, 80])
 
 
+class TestModel(keras.Model):
+
+  def __init__(self):
+    super(TestModel, self).__init__()
+    self.attention = multi_head_attention.MultiHeadAttention(
+        num_heads=3,
+        key_dim=4,
+        value_dim=4,
+        use_bias=True,
+        dropout=0.0,
+        output_shape=[12])
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
+
+  def get_config(self):
+    return {}
+
+  def call(self, x, training=False):
+    return self.attention(x, x, training=training)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class KerasModelSavingTest(keras_parameterized.TestCase):
+
+  def test_keras_saving_subclass(self):
+    model = TestModel()
+    query = keras.Input(shape=(40, 80))
+    _ = model(query)
+    model_path = self.get_temp_dir() + "/tmp_model"
+    keras.models.save_model(model, model_path, save_format="tf")
+    reloaded_model = keras.models.load_model(model_path)
+    self.assertEqual(
+        len(model.trainable_variables), len(reloaded_model.trainable_variables))
+    for src_v, loaded_v in zip(model.trainable_variables,
+                               reloaded_model.trainable_variables):
+      self.assertAllEqual(src_v, loaded_v)
+
+  @parameterized.parameters("h5", "tf")
+  def test_keras_saving_functional(self, save_format):
+    model = TestModel()
+    query = keras.Input(shape=(40, 80))
+    output = multi_head_attention.MultiHeadAttention(
+        num_heads=3,
+        key_dim=4,
+        value_dim=4,
+        use_bias=True,
+        dropout=0.0)(query, query)
+    model = keras.Model(inputs=query, outputs=output)
+    model_path = self.get_temp_dir() + "/tmp_model"
+    keras.models.save_model(model, model_path, save_format=save_format)
+    reloaded_model = keras.models.load_model(model_path)
+    self.assertEqual(
+        len(model.trainable_variables), len(reloaded_model.trainable_variables))
+    for src_v, loaded_v in zip(model.trainable_variables,
+                               reloaded_model.trainable_variables):
+      self.assertAllEqual(src_v, loaded_v)
+
+  def test_create_without_build(self):
+    not_intialized_layer = multi_head_attention.MultiHeadAttention(
+        num_heads=3, key_dim=4, value_dim=4)
+    multi_head_attention.MultiHeadAttention.from_config(
+        not_intialized_layer.get_config())
+
+
 if __name__ == "__main__":
   test.main()

@@ -23,6 +23,8 @@ namespace tflite {
 
 using ::flatbuffers::FlatBufferBuilder;
 using ::flatbuffers::Offset;
+using ::flatbuffers::String;
+using ::flatbuffers::Vector;
 
 ExecutionPreference ConvertExecutionPreference(
     proto::ExecutionPreference preference) {
@@ -110,30 +112,29 @@ GPUBackend ConvertGPUBackend(proto::GPUBackend backend) {
   return GPUBackend_UNSET;
 }
 
-EdgeTpuSettings_::PowerState ConvertEdgeTpuPowerState(
-    proto::EdgeTpuSettings::PowerState state) {
+EdgeTpuPowerState ConvertEdgeTpuPowerState(proto::EdgeTpuPowerState state) {
   switch (state) {
-    case proto::EdgeTpuSettings::UNDEFINED:
-      return EdgeTpuSettings_::PowerState_UNDEFINED;
-    case proto::EdgeTpuSettings::TPU_CORE_OFF:
-      return EdgeTpuSettings_::PowerState_TPU_CORE_OFF;
-    case proto::EdgeTpuSettings::READY:
-      return EdgeTpuSettings_::PowerState_READY;
-    case proto::EdgeTpuSettings::READY_WITH_RETENTION:
-      return EdgeTpuSettings_::PowerState_READY_WITH_RETENTION;
-    case proto::EdgeTpuSettings::ACTIVE_MIN_POWER:
-      return EdgeTpuSettings_::PowerState_ACTIVE_MIN_POWER;
-    case proto::EdgeTpuSettings::ACTIVE_LOW_POWER:
-      return EdgeTpuSettings_::PowerState_ACTIVE_LOW_POWER;
-    case proto::EdgeTpuSettings::ACTIVE:
-      return EdgeTpuSettings_::PowerState_ACTIVE;
-    case proto::EdgeTpuSettings::OVER_DRIVE:
-      return EdgeTpuSettings_::PowerState_OVER_DRIVE;
+    case proto::EdgeTpuPowerState::UNDEFINED_POWERSTATE:
+      return EdgeTpuPowerState_UNDEFINED_POWERSTATE;
+    case proto::EdgeTpuPowerState::TPU_CORE_OFF:
+      return EdgeTpuPowerState_TPU_CORE_OFF;
+    case proto::EdgeTpuPowerState::READY:
+      return EdgeTpuPowerState_READY;
+    case proto::EdgeTpuPowerState::ACTIVE_MIN_POWER:
+      return EdgeTpuPowerState_ACTIVE_MIN_POWER;
+    case proto::EdgeTpuPowerState::ACTIVE_VERY_LOW_POWER:
+      return EdgeTpuPowerState_ACTIVE_VERY_LOW_POWER;
+    case proto::EdgeTpuPowerState::ACTIVE_LOW_POWER:
+      return EdgeTpuPowerState_ACTIVE_LOW_POWER;
+    case proto::EdgeTpuPowerState::ACTIVE:
+      return EdgeTpuPowerState_ACTIVE;
+    case proto::EdgeTpuPowerState::OVER_DRIVE:
+      return EdgeTpuPowerState_OVER_DRIVE;
   }
   TFLITE_LOG_PROD(TFLITE_LOG_ERROR,
                   "Unexpected value for EdgeTpuSettings::PowerState: %d",
                   state);
-  return EdgeTpuSettings_::PowerState_UNDEFINED;
+  return EdgeTpuPowerState_UNDEFINED_POWERSTATE;
 }
 
 Offset<FallbackSettings> ConvertFallbackSettings(
@@ -196,10 +197,59 @@ Offset<CPUSettings> ConvertCPUSettings(const proto::CPUSettings& settings,
                            /*num_threads=*/settings.num_threads());
 }
 
+Offset<tflite::EdgeTpuDeviceSpec> ConvertEdgeTpuDeviceSpec(
+    FlatBufferBuilder* builder, const proto::EdgeTpuDeviceSpec& device_spec) {
+  Offset<Vector<Offset<String>>> device_paths_fb = 0;
+  if (device_spec.device_paths_size() > 0) {
+    std::vector<Offset<String>> device_paths;
+    for (const auto& device_path : device_spec.device_paths()) {
+      auto device_path_fb = builder->CreateString(device_path);
+      device_paths.push_back(device_path_fb);
+    }
+    device_paths_fb = builder->CreateVector(device_paths);
+  }
+
+  return tflite::CreateEdgeTpuDeviceSpec(
+      *builder,
+      static_cast<tflite::EdgeTpuDeviceSpec_::PlatformType>(
+          device_spec.platform_type()),
+      device_spec.num_chips(), device_paths_fb, device_spec.chip_family());
+}
+
 Offset<EdgeTpuSettings> ConvertEdgeTpuSettings(
     const proto::EdgeTpuSettings& settings, FlatBufferBuilder* builder) {
+  Offset<Vector<Offset<tflite::EdgeTpuInactivePowerConfig>>>
+      inactive_power_configs = 0;
+
+  // Uses std vector to first construct the list and creates the flatbuffer
+  // offset from it later.
+  std::vector<Offset<tflite::EdgeTpuInactivePowerConfig>>
+      inactive_power_configs_std;
+  if (settings.inactive_power_configs_size() > 0) {
+    for (const auto& config : settings.inactive_power_configs()) {
+      inactive_power_configs_std.push_back(
+          tflite::CreateEdgeTpuInactivePowerConfig(
+              *builder,
+              static_cast<tflite::EdgeTpuPowerState>(
+                  config.inactive_power_state()),
+              config.inactive_timeout_us()));
+    }
+
+    inactive_power_configs =
+        builder->CreateVector<Offset<tflite::EdgeTpuInactivePowerConfig>>(
+            inactive_power_configs_std);
+  }
+
+  Offset<tflite::EdgeTpuDeviceSpec> edgetpu_device_spec = 0;
+  if (settings.has_edgetpu_device_spec()) {
+    edgetpu_device_spec =
+        ConvertEdgeTpuDeviceSpec(builder, settings.edgetpu_device_spec());
+  }
+
   return CreateEdgeTpuSettings(
-      *builder, ConvertEdgeTpuPowerState(settings.inference_power_state()));
+      *builder, ConvertEdgeTpuPowerState(settings.inference_power_state()),
+      inactive_power_configs, settings.inference_priority(),
+      edgetpu_device_spec);
 }
 
 Offset<TFLiteSettings> ConvertTfliteSettings(

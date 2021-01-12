@@ -18,7 +18,6 @@ limitations under the License.
 
 #import <Metal/Metal.h>
 
-#include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
@@ -74,12 +73,15 @@ class MetalSpatialTensor : public GPUObject, public GpuSpatialTensor {
   absl::Status CreateFromDescriptor(const TensorDescriptor& desc,
                                     id<MTLDevice> device);
 
+  void SetBufferHandle(id<MTLBuffer> buffer);
+  id<MTLBuffer> GetBufferHandle() const;
+
  private:
   absl::Status IsValid(const BHWC& shape) const;
   absl::Status IsValid(const BHWDC& shape) const;
 
-  absl::Status WriteDataBHWDC(absl::Span<const float> in);
-  absl::Status ReadDataBHWDC(absl::Span<float> out) const;
+  absl::Status WriteDataBHWDC(const float* in);
+  absl::Status ReadDataBHWDC(float* out) const;
 
   int GetAlignedChannels() const;
   int3 GetFullTensorRegion() const;
@@ -98,6 +100,14 @@ absl::Status CreateTensor(id<MTLDevice> device, const BHWC& shape,
 absl::Status CreateTensor(id<MTLDevice> device, const BHWDC& shape,
                           const TensorDescriptor& descriptor,
                           MetalSpatialTensor* result);
+
+MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
+                                            const BHWC& shape,
+                                            const TensorDescriptor& descriptor);
+
+MetalSpatialTensor CreateSharedBufferTensor(id<MTLBuffer> buffer,
+                                            const BHWDC& shape,
+                                            const TensorDescriptor& descriptor);
 
 }  // namespace metal
 }  // namespace gpu

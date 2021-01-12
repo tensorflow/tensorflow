@@ -79,7 +79,7 @@ REQUIRED_PACKAGES = [
     'astunparse ~= 1.6.3',
     'flatbuffers ~= 1.12.0',
     'google_pasta ~= 0.2',
-    'h5py ~= 2.10.0',
+    'h5py ~= 3.1.0',
     'keras_preprocessing ~= 1.1.2',
     'numpy ~= 1.19.2',
     'opt_einsum ~= 3.3.0',
@@ -91,7 +91,7 @@ REQUIRED_PACKAGES = [
     'wrapt ~= 1.12.1',
     # These packages need to be pinned exactly as newer versions are
     # incompatible with the rest of the ecosystem
-    'gast == 0.3.3',
+    'gast == 0.4.0',
     # TensorFlow ecosystem packages that TF exposes API for
     # These need to be in sync with the existing TF version
     # They are updated during the release process
@@ -118,7 +118,7 @@ if 'tf_nightly' in project_name:
 # BoringSSL support.
 # See https://github.com/tensorflow/tensorflow/issues/17882.
 if sys.byteorder == 'little':
-  REQUIRED_PACKAGES.append('grpcio ~= 1.32.0')
+  REQUIRED_PACKAGES.append('grpcio ~= 1.34.0')
 
 
 # Packages which are only needed for testing code.
@@ -127,6 +127,8 @@ if sys.byteorder == 'little':
 TEST_PACKAGES = [
     'portpicker ~= 1.3.1',
     'scipy ~= 1.5.2',
+    'tblib ~= 1.7.0',
+    'dill ~= 0.3.2',
 ]
 
 

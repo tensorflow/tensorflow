@@ -419,7 +419,6 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
-    self._lazy_remote_inputs_copy = None
     self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
@@ -521,9 +520,6 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tfe.TFE_ContextOptionsSetAsync(opts, True)
-        if self._lazy_remote_inputs_copy is not None:
-          pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
-              opts, self._lazy_remote_inputs_copy)
         if self._use_tfrt is not None:
           pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
@@ -662,6 +658,17 @@ class Context(object):
     """
     if self._context_handle:
       pywrap_tfe.TFE_ContextClearExecutors(self._context_handle)
+    else:
+      raise ValueError("Context is not initialized.")
+
+  def clear_kernel_cache(self):
+    """Clear kernel cache and reset all stateful kernels.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    if self._context_handle is not None:
+      pywrap_tfe.TFE_ContextClearCaches(self._context_handle)
     else:
       raise ValueError("Context is not initialized.")
 
@@ -1177,10 +1184,6 @@ class Context(object):
       A packed EagerTensor.
     """
     self.ensure_initialized()
-    if self._lazy_remote_inputs_copy is not None and (
-        not self._lazy_remote_inputs_copy):
-      raise ValueError("Packing eager tensors is not supported when "
-                       "lazy_remote_inputs_copy is disabled.")
     return pywrap_tfe.TFE_Py_PackEagerTensors(self._handle, tensors)
 
   def remove_function(self, name):
@@ -1245,12 +1248,17 @@ class Context(object):
   def invoking_op_callbacks(self, value):
     self._thread_local_data.invoking_op_callbacks = value
 
-  def _initialize_physical_devices(self):
-    """Get local devices visible to the system."""
+  def _initialize_physical_devices(self, reinitialize=False):
+    """Gets local devices visible to the system.
+
+    Args:
+      reinitialize: If True, reinitializes self._physical_devices  so that
+        dynamic registered devices will also be visible to the python front-end.
+    """
     # We lazy initialize self._physical_devices since we do not want to do this
     # the constructor since the backend may not be initialized yet.
     with self._device_lock:
-      if self._physical_devices is not None:
+      if not reinitialize and self._physical_devices is not None:
         return
 
       devs = pywrap_tfe.TF_ListPhysicalDevices()
@@ -1268,6 +1276,12 @@ class Context(object):
 
     # Import device settings that may have been passed into the constructor
     self._import_config()
+
+  def reinitialize_physical_devices(self):
+    """Gets local devices visible to the system."""
+    # Reinitialize the physical device list after registering
+    # the pluggable device.
+    self._initialize_physical_devices(True)
 
   def list_physical_devices(self, device_type=None):
     """List local devices visible to the system.
@@ -1657,22 +1671,6 @@ class Context(object):
       if self._context_handle is not None:
         pywrap_tfe.TFE_ContextSetThreadLocalDevicePlacementPolicy(
             self._handle, self._device_policy)
-
-  @property
-  def lazy_remote_inputs_copy(self):
-    return self._lazy_remote_inputs_copy
-
-  @lazy_remote_inputs_copy.setter
-  def lazy_remote_inputs_copy(self, lazy_copy):
-    """Sets whether to copy remote inputs lazily for functions."""
-    if not isinstance(lazy_copy, bool):
-      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
-
-    if self._lazy_remote_inputs_copy != lazy_copy:
-      if self._initialized:
-        raise ValueError(
-            "lazy_remote_inputs_copy should be set before being initialized.")
-      self._lazy_remote_inputs_copy = lazy_copy
 
   @property
   def use_tfrt(self):

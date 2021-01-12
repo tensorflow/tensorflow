@@ -31,12 +31,13 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -863,6 +864,86 @@ ConstantOp ShapeToConst(PatternRewriter &rewriter, Value value) {
   return rewriter.create<ConstantOp>(value.getLoc(), attr_type, attr);
 }
 
+class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::GatherOp gather_op, ArrayRef<Value> args,
+      ConversionPatternRewriter &rewriter) const final {
+    if (!CanConvert(gather_op)) {
+      return failure();
+    }
+
+    // Converts mhlo.gather to tf.Gather followed by tf.Reshape (because
+    // mhlo.gather might collapse dimensions).
+    ShapedType operand_type = gather_op.operand().getType().cast<ShapedType>();
+    ShapedType start_indices_type =
+        gather_op.start_indices().getType().cast<ShapedType>();
+    ShapedType tf_gather_type = RankedTensorType::get(
+        start_indices_type.getShape(), operand_type.getElementType());
+    auto axis_type =
+        RankedTensorType::get(/*shape=*/{1},
+                              /*elementType=*/rewriter.getI32Type());
+    auto axis_op = rewriter.create<ConstantOp>(
+        gather_op->getLoc(), axis_type,
+        SplatElementsAttr::get(axis_type, rewriter.getI32IntegerAttr(0)));
+    auto tf_gather_op = rewriter.create<TF::GatherV2Op>(
+        gather_op->getLoc(), tf_gather_type, gather_op.operand(),
+        gather_op.start_indices(), axis_op.getResult());
+    ConstantOp shape = ShapeToConst(rewriter, gather_op.getResult());
+    rewriter.replaceOpWithNewOp<TF::ReshapeOp>(
+        gather_op.getOperation(), gather_op.getResult().getType(),
+        tf_gather_op.output(), shape.getResult());
+    return success();
+  }
+
+  // Returns true if the mhlo::GatherOp can be converted to tf::GatherOp.
+  bool CanConvert(mhlo::GatherOp gather_op) const {
+    // Can only convert with static shaped gather.
+    ShapedType operand_type = gather_op.operand().getType().cast<ShapedType>();
+    ShapedType start_indices_type =
+        gather_op.start_indices().getType().cast<ShapedType>();
+    ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
+    if (!operand_type.hasStaticShape() ||
+        !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
+      return false;
+    }
+    // For now, only support gathering from 1d vector.
+    if (operand_type.getRank() != 1) {
+      return false;
+    }
+
+    // offset_dims is not supported by tf.Gather.
+    DenseIntElementsAttr offset_dims =
+        gather_op.dimension_numbers().offset_dims();
+    if (offset_dims.size() > 0) {
+      return false;
+    }
+
+    // Returns true if the `attr` is a splat integer equals to `value`.
+    const auto is_splat_integer = [](DenseIntElementsAttr attr, int64_t value) {
+      return attr.isSplat() &&
+             attr.getSplatValue<APInt>().getSExtValue() == value;
+    };
+
+    // non-zero start_index_map is not supported by tf.Gather.
+    DenseIntElementsAttr start_index_map =
+        gather_op.dimension_numbers().start_index_map();
+    if (!is_splat_integer(start_index_map, /*value=*/0)) {
+      return false;
+    }
+
+    // slice_sizes > 1 is not supported by tf.Gather.
+    DenseIntElementsAttr slice_sizes = gather_op.slice_sizes();
+    if (!is_splat_integer(slice_sizes, /*value=*/1)) {
+      return false;
+    }
+
+    return true;
+  }
+};
+
 // Converts mhlo.dot to tf.MatMul. Reshape ops will be inserted when
 // necessary.
 Value ConvertDotOp(PatternRewriter &rewriter, Operation *old_op) {
@@ -1000,9 +1081,10 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 void PopulateLegalizeHloToTfPatterns(OwningRewritePatternList *patterns,
                                      MLIRContext *context) {
-  patterns->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertSliceOp,
-                   ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
-                   ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
+  patterns
+      ->insert<ConvertAvgPoolOp, ConvertConvOp, ConvertGatherOp, ConvertSliceOp,
+               ConvertReduceOpToTfMax, ConvertReduceOpToTfMin,
+               ConvertReduceOpToTfSum, ConvertIotaOpToTfRange>(context);
   populateWithGenerated(context, *patterns);
 }
 

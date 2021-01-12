@@ -40,7 +40,6 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
 from tensorflow.python.training.tracking import util as trackable
@@ -54,11 +53,14 @@ except ImportError:
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
+  def _save_model_dir(self, dirname='saved_model'):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    return os.path.join(temp_dir, dirname)
+
   @keras_parameterized.run_with_all_weight_formats
   def test_weight_loading(self):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    saved_model_dir = os.path.join(temp_dir, 'saved_model')
+    saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))
@@ -213,9 +215,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     if h5py is None:
       return
 
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    h5_path = os.path.join(temp_dir, 'test.h5')
+    h5_path = self._save_model_dir('test.h5')
 
     num_hidden = 5
     input_dim = 3
@@ -244,9 +244,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       exclude_formats=['tf_no_traces'])
   def test_nested_model_weight_loading(self):
     save_format = testing_utils.get_save_format()
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    saved_model_dir = os.path.join(temp_dir, 'saved_model')
+    saved_model_dir = self._save_model_dir()
 
     batch_size = 5
     shape = (None, None, 3)
@@ -284,9 +282,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     if h5py is None:
       return
 
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    h5_path = os.path.join(temp_dir, 'test.h5')
+    h5_path = self._save_model_dir('test.h5')
 
     num_hidden = 5
     input_dim = 3
@@ -326,9 +322,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
     if h5py is None:
       return
 
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    h5_path = os.path.join(temp_dir, 'test.h5')
+    h5_path = self._save_model_dir('test.h5')
 
     num_hidden = 5
     input_dim = 3
@@ -367,6 +361,32 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       self.assertAllClose([3.5] * num_classes,
                           keras.backend.get_value(model.layers[1].bias))
 
+  @keras_parameterized.run_with_all_saved_model_formats(
+      exclude_formats=['tf_no_traces'])
+  @keras_parameterized.run_with_all_model_types
+  def test_load_weights_from_saved_model(self):
+    save_path = self._save_model_dir()
+    save_format = testing_utils.get_save_format()
+
+    if save_format == 'h5' and testing_utils.get_model_type() == 'subclass':
+      # TODO(b/173646281): HDF5 format currently does not allow saving
+      # subclassed models.
+      return
+
+    with self.cached_session():
+      model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+      data = np.random.random((1, 3))
+      labels = np.random.random((1, 4))
+      model.compile(loss='mse', optimizer='rmsprop')
+      model.fit(data, labels)
+      model.save(save_path, save_format=save_format)
+      new_model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+      if testing_utils.get_model_type() == 'subclass':
+        # Call on test data to build the model.
+        new_model.predict(data)
+      new_model.load_weights(save_path)
+      self.assertAllClose(model.weights, new_model.weights)
+
 
 class SubclassedModel(training.Model):
 
@@ -380,21 +400,6 @@ class SubclassedModel(training.Model):
 
 
 class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
-
-  def test_keras_optimizer_warning(self):
-    graph = ops.Graph()
-    with graph.as_default(), self.session(graph):
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_shape=(3,)))
-      model.add(keras.layers.Dense(3))
-      model.compile(loss='mse', optimizer=optimizer_v1.Adam(), metrics=['acc'])
-      if not ops.executing_eagerly_outside_functions():
-        model._make_train_function()
-      temp_dir = self.get_temp_dir()
-      prefix = os.path.join(temp_dir, 'ckpt')
-      with test.mock.patch.object(logging, 'warning') as mock_log:
-        model.save_weights(prefix)
-        self.assertRegex(str(mock_log.call_args), 'Keras optimizer')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_tensorflow_format_overwrite(self):

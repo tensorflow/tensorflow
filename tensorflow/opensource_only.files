@@ -4,6 +4,7 @@ tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/compat_template_v1.__init__.py
 tensorflow/compiler/mlir/glob_lit_test.bzl
+tensorflow/compiler/mlir/hlo/WORKSPACE
 tensorflow/go/op/wrappers.go
 tensorflow/lite/core/shims/BUILD
 tensorflow/lite/core/shims/c/builtin_op_data.h
@@ -18,6 +19,7 @@ tensorflow/lite/core/shims/cc/model_builder.h
 tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h
 tensorflow/lite/delegates/gpu/cl/serialization_generated.h
 tensorflow/lite/delegates/gpu/common/task/serialization_base_generated.h
+tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h
 tensorflow/lite/micro/build_def.bzl
 tensorflow/lite/schema/schema_generated.h
 tensorflow/python/autograph/core/config.py

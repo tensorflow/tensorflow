@@ -37,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as framework_function
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -292,6 +293,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       imported_tensor = imported.f()
       with monitored_session.MonitoredSession() as sess:
         imported_output = sess.run(imported_tensor)
+        self.assertLen(ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS), 1)
         self.assertNotEqual(original_output, imported_output)
         with open(imported_output, "r") as f:
           self.assertEqual("contents", f.read())
@@ -797,6 +799,39 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(original_gradient, 2.)
     self.assertIsNotNone(imported_gradient)
     self.assertAllClose(imported_gradient, 2.)
+
+  def test_nested_fn_backprop(self, cycles):
+    weight = variables.Variable(2., trainable=True)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float32, shape=(None, None))])
+    def g(x):
+      weight.read_value()  # Just get the tape to watch the variable
+      handle = array_ops.identity(weight.handle)
+      @def_function.function
+      def launder_var_handle():
+        return array_ops.identity(handle)
+      return x + resource_variable_ops.read_variable_op(
+          launder_var_handle(), dtypes.float32)
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+    def get_gradient(obj, persistent):
+      with backprop.GradientTape(persistent=persistent) as t:
+        x = constant_op.constant([[1., 2., 3.], [1., -2, 3.]])
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight + x)
+        loss = math_ops.reduce_sum(y)
+        return t.gradient(loss, obj.weight)
+
+    imported_gradient = get_gradient(imported, persistent=False)
+    original_gradient = get_gradient(root, persistent=False)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 6.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 6.)
 
   def test_restored_func_with_captured_var_backprop_float32(self, cycles):
     self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
@@ -1973,6 +2008,25 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     load.load(path, tags=tag_constants.SERVING)
     load.load(path, tags=set([tag_constants.SERVING]))
 
+  def test_single_restore_op_used(self):
+    root = module.Module()
+    root.v1 = variables.Variable(1.)
+    root.v2 = variables.Variable(2.)
+    root.v3 = variables.Variable(3.)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    restore_count = 0
+
+    def _count_restores(op_type, *unused_args, **unused_kwargs):
+      nonlocal restore_count
+      if op_type == b"RestoreV2":
+        restore_count += 1
+
+    op_callbacks.add_op_callback(_count_restores)
+    load.load(path)
+    op_callbacks.remove_op_callback(_count_restores)
+    self.assertEqual(1, restore_count)
+
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     exported = util.Checkpoint(v=variables.Variable(3.))
@@ -2064,6 +2118,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
   # allocations at a lower level.
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def test_functions_cleaned(self):
+    self.skipTest("TODO(b/175152958): The test is leaking function definitions")
     if sys.version_info.major < 3:
       self.skipTest("Not working in Python 2")
     root = module.Module()

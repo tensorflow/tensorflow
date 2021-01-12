@@ -334,10 +334,11 @@ ConstFloat(Mean|Any)OpTest/KeepDims
 ConstFloat(Sum|Prod|Max|Min)OpTest/ScalarAxis,29
 
 # reshape_test
-# Acceleration would be only for the test with shape being a constant tensor
-VariedShapeSpec/ReshapeOpTest/InvalidShape/1
-VariedShapeSpec/ReshapeOpTest/RegularShapes/1
-VariedShapeSpec/ReshapeOpTest/WithStretchDimension/1
+# Acceleration would be only for the test with shape being a constant tensor or
+# as hardcoded options.
+VariedShapeSpec/ReshapeOpTest/InvalidShape/[01]
+VariedShapeSpec/ReshapeOpTest/RegularShapes/[01]
+VariedShapeSpec/ReshapeOpTest/WithStretchDimension/[01]
 
 # resize_bilinear_test
 // align_corners & half_pixel_centers are not implemented in NNAPI before API 30
@@ -420,9 +421,8 @@ TopKV2OpTest/TopKV2OpTest/.+/0,29
 TransposeTest/.+
 
 # transpose_conv_test
--TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
--TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/0
--TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannel16x8/.+
+-TransposeConvOpTest/TransposeConvOpTest..*Bias.*
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 

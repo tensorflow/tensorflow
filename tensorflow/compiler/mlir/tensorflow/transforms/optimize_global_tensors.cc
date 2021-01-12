@@ -23,8 +23,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
@@ -212,6 +212,9 @@ GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
       }
       auto global_tensor = symbol_table.lookup<GlobalTensorOp>(
           sym.cast<FlatSymbolRefAttr>().getValue());
+      if (!global_tensor) {
+        continue;
+      }
       global_tensor_uses[global_tensor].push_back({func, i});
     }
   }

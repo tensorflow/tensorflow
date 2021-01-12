@@ -132,5 +132,19 @@ DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit) {
   llvm_unreachable("unsupported type");
 }
 
+std::string LmhloToMhloOpName(llvm::StringRef op_name,
+                              mlir::MLIRContext *context) {
+  assert(op_name.startswith("lmhlo.") && "Expected an LMHLO op");
+  std::string mhlo_op_name(op_name.drop_front(1));
+  if (context->isOperationRegistered(mhlo_op_name)) return mhlo_op_name;
+  return "";
+}
+
+bool IsSequenceStartingWith0(DenseIntElementsAttr attr) {
+  for (int64_t i = 0, e = attr.getNumElements(); i < e; ++i)
+    if (attr.getValue<IntegerAttr>(i).getInt() != i) return false;
+  return true;
+}
+
 }  // namespace hlo
 }  // namespace mlir

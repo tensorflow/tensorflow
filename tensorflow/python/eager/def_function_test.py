@@ -956,37 +956,17 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       self.assertLen(logs.output, 1)
       self.assertIn('Tracing is expensive', logs.output[0])
 
-  def test_experimental_get_tracing_count_function(self):
+  def test_retracing_warning_limits(self):
 
     @def_function.function
-    def double(a):
-      return a + a
+    def my_func(x):
+      return x
 
-    double(constant_op.constant(1))
-    double(constant_op.constant(2))
-    self.assertAllEqual(double.experimental_get_tracing_count(), 1)
-    double(constant_op.constant('a'))
-    self.assertAllEqual(double.experimental_get_tracing_count(), 2)
+    with self.assertLogs(level='WARN') as logs:
+      for i in range(10):
+        my_func(i)
 
-  def test_experimental_get_tracing_count_method(self):
-
-    class TestClass():
-
-      @def_function.function
-      def testDouble(self, a):
-        return a + a
-
-    obj1 = TestClass()
-    obj1.testDouble(constant_op.constant(1))
-    obj1.testDouble(constant_op.constant(2))
-    obj1.testDouble(constant_op.constant(1.1))
-    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
-    obj2 = TestClass()
-    obj2.testDouble(constant_op.constant(1))
-    obj2.testDouble(constant_op.constant(1.1))
-    obj2.testDouble(constant_op.constant('a'))
-    self.assertAllEqual(obj2.testDouble.experimental_get_tracing_count(), 3)
-    self.assertAllEqual(obj1.testDouble.experimental_get_tracing_count(), 2)
+      self.assertLen(logs.output, 2)
 
   def test_experimental_get_tracing_count_function(self):
 

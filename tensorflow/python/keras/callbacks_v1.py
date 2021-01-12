@@ -61,7 +61,7 @@ class TensorBoard(callbacks.TensorBoard):
   You can find more information about TensorBoard
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 
-  Arguments:
+  Args:
       log_dir: the path of the directory where to save the log files to be
         parsed by TensorBoard.
       histogram_freq: frequency (in epochs) at which to compute activation and
@@ -318,7 +318,7 @@ class TensorBoard(callbacks.TensorBoard):
   def _write_custom_summaries(self, step, logs=None):
     """Writes metrics out as custom scalar summaries.
 
-    Arguments:
+    Args:
         step: the global step to use for TensorBoard.
         logs: dict. Keys are scalar summary names, values are
             NumPy scalars.

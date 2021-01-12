@@ -155,7 +155,8 @@ FullyConnected CreateFullyConnected(const GpuInfo& gpu_info,
   result.UploadWeights(attr.weights, UseBufferForWeights(gpu_info));
 
   TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
+  desc.storage_type = gpu_info.SupportsImages() ? LinearStorageType::TEXTURE_2D
+                                                : LinearStorageType::BUFFER;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
   result.args_.AddObject(

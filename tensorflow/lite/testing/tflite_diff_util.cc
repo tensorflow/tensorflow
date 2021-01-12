@@ -30,8 +30,11 @@ bool SingleRunDiffTestWithProvidedRunner(::tflite::testing::DiffOptions options,
                                          int num_invocations,
                                          TestRunner* (*runner_factory)()) {
   std::stringstream tflite_stream;
+  std::string reference_tflite_model = options.reference_tflite_model.empty()
+                                           ? options.tflite_model
+                                           : options.reference_tflite_model;
   if (!GenerateTestSpecFromTFLiteModel(
-          tflite_stream, options.tflite_model, num_invocations,
+          tflite_stream, reference_tflite_model, num_invocations,
           options.input_layer, options.input_layer_type,
           options.input_layer_shape, options.output_layer)) {
     return false;

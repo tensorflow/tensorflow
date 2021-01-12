@@ -27,7 +27,6 @@ limitations under the License.
 
 namespace tflite {
 namespace gpu {
-namespace cl {
 namespace {
 bool UseBufferForWeights(const GpuInfo& gpu_info) {
   return gpu_info.IsAdreno() || gpu_info.IsAMD() || gpu_info.IsMali();
@@ -195,6 +194,5 @@ FCFCAdd CreateFCFCAdd(const GpuInfo& gpu_info, const OperationDef& definition,
   return result;
 }
 
-}  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

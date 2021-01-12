@@ -156,7 +156,7 @@ func @non_const_inputs(%arg0: tensor<2x2xf64>, %arg1: tensor<f64>, %arg2: tensor
 // CHECK-LABEL: dynamic_result_type
 func @dynamic_result_type(%arg0: tensor<2xf32>) -> tensor<*xf32> {
   // CHECK: %[[RESULT:.*]] = "mhlo.abs"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
-  // CHECK: tensor_cast %0 : tensor<2xf32> to tensor<*xf32>
+  // CHECK: tensor.cast %0 : tensor<2xf32> to tensor<*xf32>
   %0 = "tf.Abs"(%arg0) : (tensor<2xf32>) -> tensor<*xf32>
 
   // return %[[RESULT]]

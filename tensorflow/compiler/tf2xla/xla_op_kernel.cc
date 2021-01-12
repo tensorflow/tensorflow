@@ -177,7 +177,8 @@ Status XlaOpKernelContext::ConstantInputReshaped(
         "This error means that a shape or dimension argument could not be "
         "evaluated at compile time, usually because the value of the argument "
         "depends on a parameter to the computation, on a variable, or on a "
-        "stateful operation such as a random number generator.");
+        "stateful operation such as a random number generator.",
+        StackTrace());
   }
 
   Tensor temp(constant->dtype());
@@ -265,10 +266,13 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
-    Status status = dynamism_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
-                            " of ", context_->op_kernel().type_string());
-    return status;
+    // When failed to resolve dynamism, conservatively consider the value
+    // dynamic.
+    //
+    // TODO(b/176993339): Support resolving dynamism across computations so
+    // resolving dynamism will not fail.
+    *out = true;
+    return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 
@@ -292,10 +296,13 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
   auto* client = compiler() ? compiler()->client() : nullptr;
   xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
   if (!dynamism_or_status.ok()) {
-    Status status = dynamism_or_status.status();
-    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
-                            " of ", context_->op_kernel().type_string());
-    return status;
+    // When failed to resolve dynamism, conservatively consider the value
+    // dynamic.
+    //
+    // TODO(b/176993339): Support resolving dynamism across computations so
+    // resolving dynamism will not fail.
+    out->resize(InputShape(index).num_elements(), false);
+    return Status::OK();
   }
   Tensor dynamism = dynamism_or_status.ValueOrDie();
 
@@ -703,6 +710,20 @@ XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}
 void XlaOpKernel::Compute(OpKernelContext* context) {
   XlaOpKernelContext xla_context(context);
   Compile(&xla_context);
+}
+
+std::string XlaOpKernelContext::StackTrace() const {
+  if (const AbstractStackTrace* stack_trace =
+          xla_context()->StackTraceForNodeName(op_kernel().name())) {
+    AbstractStackTrace::TracePrintingOptions opts;
+    opts.show_line_contents = true;
+    opts.filter_common_prefix = true;
+    opts.drop_internal_frames = true;
+    return absl::StrCat("\nStack trace for op definition: \n",
+                        stack_trace->ToString(opts), "\n");
+  } else {
+    return "";
+  }
 }
 
 }  // namespace tensorflow

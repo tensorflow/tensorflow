@@ -370,7 +370,7 @@ LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
   if (perm.empty()) return failure();
 
   // Update data format attribute.
-  op->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+  (*op)->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
 
   // Update types for all layout sensitive results.
   auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
@@ -388,7 +388,7 @@ template <typename Op>
 LogicalResult FoldOperandsPermutation(
     ArrayRef<int64_t> permutation, Op *op,
     ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
-  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+  MLIRContext *context = (*op)->template getParentOfType<ModuleOp>().getContext();
 
   // We only support NHWC <-> NCHW permutations.
   static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
@@ -421,12 +421,12 @@ LogicalResult FoldOperandsPermutation(
       GetDataFormatPermutation(op->data_format(), target_data_format);
   if (reverse_permutation.empty()) return failure();
 
-  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+  (*op)->setAttr("data_format", StringAttr::get(target_data_format, context));
 
   for (auto pair : shuffle_attrs) {
     StringRef attr_name = pair.first;
     ArrayAttr attr_value = pair.second;
-    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+    (*op)->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
   }
 
   auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
@@ -581,8 +581,7 @@ struct DropAttributes : public OpRewritePattern<Op> {
   // Drop the "output_shapes" attribute.
   LogicalResult matchAndRewrite(Op op,
                                 PatternRewriter &rewriter) const override {
-    bool found = op.removeAttr("output_shapes") ==
-                 MutableDictionaryAttr::RemoveResult::Removed;
+    bool found = !!op.removeAttr("output_shapes");
     return success(found);
   }
 };

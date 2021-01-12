@@ -4,14 +4,17 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
         # CMSIS-NN optimizations not supported
     endif
 
-    # Setup CMSIS-NN lib and add required header files to microlite lib INCLUDE.
-    # Unless an external path is provided we force a download during the first phase of make so
-    # that the files exist prior to the call to recursive_find below. add_third_party_download
-    # prevents the use of wildcards and recursive_find in selecting which files to add to THIRD_PARTY_SRCS.
-    CMSIS_DEFAULT_DOWNLOAD_PATH := $(MAKEFILE_DIR)/downloads/cmsis
-    CMSIS_PATH := $(CMSIS_DEFAULT_DOWNLOAD_PATH)
-    ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))
-      $(call $(or $(shell $(DOWNLOAD_SCRIPT) $(CMSIS_URL) $(CMSIS_MD5) $(CMSIS_PATH) >&2 && echo SUCCESS), $(error $(DOWNLOAD_SCRIPT) failed)))
+    ifneq ($(DISABLE_DOWNLOADS), true)
+      # Unless an external path is provided we force a download during the first
+      # phase of make.
+      CMSIS_DEFAULT_DOWNLOAD_PATH := $(MAKEFILE_DIR)/downloads/cmsis
+      CMSIS_PATH := $(CMSIS_DEFAULT_DOWNLOAD_PATH)
+      ifeq ($(CMSIS_PATH), $(CMSIS_DEFAULT_DOWNLOAD_PATH))
+        DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/ext_libs/cmsis_download.sh ${MAKEFILE_DIR}/downloads)
+        ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+          $(error Something went wrong with the CMSIS download: $(DOWNLOAD_RESULT))
+        endif
+      endif
     endif
 
     THIRD_PARTY_CC_SRCS += \

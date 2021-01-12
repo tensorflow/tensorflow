@@ -90,7 +90,7 @@ def custom_gradient(f=None):
   all the layers or functions originating from this layer.
 
   By chain rule we know that
-  `dy/dx = dy/x_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
+  `dy/dx = dy/dx_0 * dx_0/dx_1 * ... * dx_i/dx_i+1 * ... * dx_n/dx`
 
   In this case the gradient of our current function defined as 
   `dx_i/dx_i+1 = (1 - 1 / (1 + e))`. The upstream gradient `dy` would be

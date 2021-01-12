@@ -163,6 +163,12 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 #endif
   void* lib_tf_internal =
       SharedLibrary::LoadLibrary(filename_pywrap_tensorflow_internal);
+#if defined(_WIN32)
+  if (lib_tf_internal == nullptr) {
+    lib_tf_internal = SharedLibrary::LoadLibrary(
+        "_pywrap_tensorflow_interpreter_wrapper.pyd");
+  }
+#endif
   if (lib_tf_internal) {
     acquire_flex_delegate_func =
         reinterpret_cast<Interpreter::TfLiteDelegatePtr (*)()>(
@@ -581,11 +587,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
       status = kTfLiteError;
     }
 
-    size_t dims_signature_rank = 0;
-    const int* dims_signature_data = nullptr;
+    std::vector<int> dims_signature = {};
     if (tensor->shape_signature()) {
-      dims_signature_rank = tensor->shape_signature()->size();
-      dims_signature_data = tensor->shape_signature()->data();
+      dims_signature = FlatBufferIntArrayToVector(tensor->shape_signature());
     }
 
     bool is_variable = tensor->is_variable();
@@ -617,7 +621,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     } else {
       if (subgraph->SetTensorParametersReadWrite(
               i, type, get_name(tensor), dims, quantization, is_variable,
-              dims_signature_rank, dims_signature_data) != kTfLiteOk) {
+              dims_signature) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;

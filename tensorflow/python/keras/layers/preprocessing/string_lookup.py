@@ -40,7 +40,7 @@ class StringLookup(index_lookup.IndexLookup):
   vocabulary size, the most frequent terms will be used to create the
   vocabulary (and the terms that don't make the cut will be treated as OOV).
 
-  Arguments:
+  Args:
     max_tokens: The maximum size of the vocabulary for this layer. If None,
       there is no cap on the size of the vocabulary. Note that this vocabulary
       includes the OOV and mask tokens, so the effective number of tokens is
@@ -65,9 +65,8 @@ class StringLookup(index_lookup.IndexLookup):
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
     output_mode: Specification for the output of the layer. Only applicable
-      when `invert` is False.
-      Defaults to "int". Values can
-      be "int", "binary", or "count", configuring the layer as follows:
+      when `invert` is False. Defaults to "int". Values can be "int", "binary",
+      or "count", configuring the layer as follows:
         "int": Return the raw integer indices of the input values.
         "binary": Outputs a single int array per batch, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped

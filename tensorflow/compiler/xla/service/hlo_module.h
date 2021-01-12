@@ -203,6 +203,11 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
 
+  // Same as MakeComputationPostOrder() but only returns the computations
+  // that are also found in the passed in allowList
+  std::vector<HloComputation*> MakeComputationPostOrder(
+      const absl::flat_hash_set<HloComputation*>& allow_list) const;
+
   // Same as MakeComputationPostOrder() but sorting the computations by their
   // contents. The order is longer post order.
   std::vector<HloComputation*> MakeComputationSorted() const;

@@ -119,7 +119,7 @@ void BreakUpIslands::runOnFunction(
     state.addOperands(operands);
     Operation* new_op = builder.createOperation(state);
     item.replaceAllUsesWith(new_op);
-    new_op->setAttrs(item.getMutableAttrDict());
+    new_op->setAttrs(item.getAttrDictionary());
     item.erase();
   }
 }
@@ -306,7 +306,7 @@ void BreakUpIslands::BreakUpIsland(
       if (auto other_island_op =
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
         (*new_control_inputs)[other_island_op].push_back(sink_island_control);
-      } else if (owner->getDialect() == island_op.getDialect() &&
+      } else if (owner->getDialect() == island_op->getDialect() &&
                  !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
                             tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
