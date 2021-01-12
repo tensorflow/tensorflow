@@ -695,7 +695,7 @@ constexpr bool TileSizeOnNonLongSideFrontier(int TileLongSide,
 }
 
 // Helper function to launch a batch narrow matirx transpose kernel.
-template <typename T, int TileLongSide, int TileShortSide>
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 void LaunchBatchNarrowMatrixTransposeKernel(
     const GPUDevice& d, int tile_size_i, int tile_size_j, int total_tiles_count,
     const T* input, const Dimension<3>& input_dims, T* output) {
@@ -703,13 +703,13 @@ void LaunchBatchNarrowMatrixTransposeKernel(
   if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
     TF_CHECK_OK(GpuLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
-                                              TileShortSide>,
+                                              TileShortSide, conjugate>,
         total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
         output));
   } else {
     TF_CHECK_OK(GpuLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
-                                              TileLongSide>,
+                                              TileLongSide, conjugate>,
         total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
         output));
   }
@@ -731,7 +731,7 @@ void LaunchBatchNarrowMatrixTransposeKernel(
 // can only increment the short side len.
 // - It lies on the long side frontier. We launch the kernel without checking if
 // the request is satisfied or not.
-template <typename T, int TileLongSide, int TileShortSide,
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate,
           typename dummy = void>
 struct BatchNarrowMatrixTransposeDispatcher {
   static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
@@ -745,7 +745,8 @@ struct BatchNarrowMatrixTransposeDispatcher {
         std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
-      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide,
+                                             conjugate>(
           d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
           output);
       return;
@@ -758,22 +759,26 @@ struct BatchNarrowMatrixTransposeDispatcher {
         std::max(tile_size_i, tile_size_j) > TileLongSide;
 
     if (long_side_request_not_satisfied) {
-      BatchNarrowMatrixTransposeDispatcher<
-          T, TileLongSide * 2, TileShortSide>::DoIt(d, tile_size_i, tile_size_j,
-                                                    total_tiles_count, input,
-                                                    input_dims, output);
+      BatchNarrowMatrixTransposeDispatcher<T, TileLongSide * 2, TileShortSide,
+                                           conjugate>::DoIt(d, tile_size_i,
+                                                            tile_size_j,
+                                                            total_tiles_count,
+                                                            input, input_dims,
+                                                            output);
     } else {
-      BatchNarrowMatrixTransposeDispatcher<
-          T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
-                                                    total_tiles_count, input,
-                                                    input_dims, output);
+      BatchNarrowMatrixTransposeDispatcher<T, TileLongSide, TileShortSide + 1,
+                                           conjugate>::DoIt(d, tile_size_i,
+                                                            tile_size_j,
+                                                            total_tiles_count,
+                                                            input, input_dims,
+                                                            output);
     }
   }
 };
 
-template <typename T, int TileLongSide, int TileShortSide>
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 struct BatchNarrowMatrixTransposeDispatcher<
-    T, TileLongSide, TileShortSide,
+    T, TileLongSide, TileShortSide, conjugate,
     typename std::enable_if<TileSizeOnNonLongSideFrontier(
                                 TileLongSide, TileShortSide, sizeof(T)),
                             void>::type> {
@@ -788,7 +793,8 @@ struct BatchNarrowMatrixTransposeDispatcher<
         std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
-      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide,
+                                             conjugate>(
           d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
           output);
       return;
@@ -797,16 +803,18 @@ struct BatchNarrowMatrixTransposeDispatcher<
     // If the execution reaches here, then the kernel was not launched; since
     // we are on the non long side frontier, we increment the short dimension
     // and try again.
-    BatchNarrowMatrixTransposeDispatcher<
-        T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
-                                                  total_tiles_count, input,
-                                                  input_dims, output);
+    BatchNarrowMatrixTransposeDispatcher<T, TileLongSide, TileShortSide + 1,
+                                         conjugate>::DoIt(d, tile_size_i,
+                                                          tile_size_j,
+                                                          total_tiles_count,
+                                                          input, input_dims,
+                                                          output);
   }
 };
 
-template <typename T, int TileLongSide, int TileShortSide>
+template <typename T, int TileLongSide, int TileShortSide, bool conjugate>
 struct BatchNarrowMatrixTransposeDispatcher<
-    T, TileLongSide, TileShortSide,
+    T, TileLongSide, TileShortSide, conjugate,
     typename std::enable_if<TileSizeOnLongSideFrontier(
                                 TileLongSide, TileShortSide, sizeof(T)),
                             void>::type> {
@@ -817,7 +825,8 @@ struct BatchNarrowMatrixTransposeDispatcher<
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
 
-    LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+    LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide,
+                                           conjugate>(
         d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
         output);
   }
@@ -890,7 +899,7 @@ struct TransposeElemType<4> {
 };
 template <>
 struct TransposeElemType<8> {
-  using type = uint64;
+  using type = float2;
 };
 template <>
 struct TransposeElemType<16> {
@@ -975,7 +984,7 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
 
   using ElemType = typename TransposeElemType<sizeof(T)>::type;
   static_assert(alignof(T) >= alignof(ElemType), "Unexpected data alignment.");
-  BatchNarrowMatrixTransposeDispatcher<ElemType, 32, 2>::DoIt(
+  BatchNarrowMatrixTransposeDispatcher<ElemType, 32, 2, conjugate>::DoIt(
       d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
       reinterpret_cast<const ElemType*>(input), input_dims,
       reinterpret_cast<ElemType*>(output));
