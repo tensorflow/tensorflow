@@ -124,6 +124,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/c/eager:immediate_execution_context",
             "//tensorflow/c/eager:immediate_execution_tensor_handle",
+            "//tensorflow/c/eager:immediate_execution_operation",
             "//tensorflow/core/lib/core:status",
         ],
     }),
@@ -228,6 +229,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
+        ":custom_device",
         ":context",
         ":eager_executor",
         ":kernel_and_device",
@@ -631,6 +633,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        ":custom_device",
         ":attr_builder",
         ":eager_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",

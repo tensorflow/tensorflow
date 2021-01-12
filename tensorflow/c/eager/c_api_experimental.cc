@@ -613,8 +613,23 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
   std::vector<tensorflow::TensorHandle*> tensor_handles;
   tensor_handles.reserve(*num_handles);
   for (int i = 0; i < *num_handles; ++i) {
+    tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
+        tensorflow::unwrap(handles[i]);
+    if (tensorflow::CustomDeviceTensorHandle::classof(unwrapped_handle)) {
+      // One of the inputs we're trying to pack is on a custom device. We'll let
+      // the first custom device we see handle all of the packing.
+      auto* custom_device_handle =
+          tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+              unwrapped_handle);
+      tensorflow::ImmediateExecutionTensorHandle* result;
+      status->status = custom_device_handle->device()->Pack(
+          absl::Span<tensorflow::ImmediateExecutionTensorHandle*>(
+              tensorflow::unwrap(handles), *num_handles),
+          &result);
+      return tensorflow::wrap(result);
+    }
     tensor_handles.push_back(
-        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(handles[i])));
+        tensorflow::TensorHandleFromInterface(unwrapped_handle));
   }
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
