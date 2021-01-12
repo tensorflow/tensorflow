@@ -199,8 +199,9 @@ StatusOr<llvm::Value*> EmitF32ToBF16(llvm::Value* f32_value,
       auto reduced_precision,
       EmitReducePrecisionIR(
           /*src_ty=*/F32, f32_value,
-          /*dest_exponent_bits=*/primitive_util::kBFloat16ExponentBits,
-          /*dest_mantissa_bits=*/primitive_util::kBFloat16MantissaBits, b));
+          /*dest_exponent_bits=*/primitive_util::ExponentWidth(BF16),
+          /*dest_mantissa_bits=*/primitive_util::SignificandWidth(BF16) - 1,
+          b));
   auto as_int32 = b->CreateBitCast(reduced_precision, b->getInt32Ty());
   auto shifted = b->CreateLShr(as_int32, 16);
   auto truncated = b->CreateTrunc(shifted, b->getInt16Ty());
