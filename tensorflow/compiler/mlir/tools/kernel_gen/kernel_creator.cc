@@ -47,6 +47,7 @@ limitations under the License.
 #include "mlir/Transforms/Bufferize.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
+#include "mlir/Transforms/LoopUtils.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
@@ -86,6 +87,22 @@ struct RemoveUnusedTensorToMemrefOperations
     });
   }
 };
+
+struct CollapseParallelLoopsTo1D
+    : public mlir::PassWrapper<CollapseParallelLoopsTo1D, mlir::FunctionPass> {
+  void runOnFunction() override {
+    getFunction().walk([&](mlir::scf::ParallelOp op) {
+      unsigned num_loops = op.getNumLoops();
+      if (num_loops == 1) return;
+      std::vector<unsigned> combinedLoops;
+      combinedLoops.reserve(num_loops);
+      for (unsigned i = 0; i < num_loops; ++i) {
+        combinedLoops.push_back(i);
+      }
+      mlir::collapseParallelLoops(op, {combinedLoops});
+    });
+  }
+};
 }  // end anonymous namespace
 
 Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
@@ -106,17 +123,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   pm.addNestedPass<mlir::FuncOp>(::mlir::mhlo::createLegalizeHloToLinalgPass());
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-  // We have to anticipate later unrolling in tiling to make sure that we get
-  // the requested tiling after unrolling. Compute the new tiling here if
-  // needed.
-  llvm::SmallVector<int64_t, 4> tiling_for_unrolling, inner_tile;
-  tiling_for_unrolling.reserve(tile_sizes.size());
-  for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
-    tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
-    inner_tile.push_back(std::get<1>(pair));
-  }
-  tiling_for_unrolling.append(
-      tile_sizes.drop_front(unroll_factors.size()).begin(), tile_sizes.end());
   // Fuse linalg operations.
   pm.addNestedPass<mlir::FuncOp>(mlir::createLinalgFusionOfTensorOpsPass());
 
@@ -134,8 +140,6 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   // equality can be determined based on `linalg.generic` operations.
   pm.addNestedPass<mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateBufferReusePass());
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::createLinalgTilingToParallelLoopsPass((tiling_for_unrolling)));
   // Transform the Linalg ops inside of the loop nest into parallel loops.
   pm.addNestedPass<mlir::FuncOp>(
       ::mlir::createConvertLinalgToParallelLoopsPass());
@@ -143,19 +147,32 @@ Status LowerTFtoGPU(mlir::ModuleOp module, llvm::ArrayRef<uint32_t> tile_sizes,
   // that loop bounds have the same value.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
-  // Fuse the inner-most loops.
-  pm.addNestedPass<mlir::FuncOp>(
-      mlir::kernel_gen::transforms::CreateFuseInnerParallelLoopsPass());
   // Run CSE to ensure that loads and stores to the same subview get
   // recognized as such.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+
+  // Collapse and tile parallel loops.
+  pm.addNestedPass<mlir::FuncOp>(std::make_unique<CollapseParallelLoopsTo1D>());
+  // We have to anticipate later unrolling in tiling to make sure that we get
+  // the requested tiling after unrolling. Compute the new tiling here if
+  // needed.
+  llvm::SmallVector<int64_t, 4> tiling_for_unrolling, inner_tile;
+  tiling_for_unrolling.reserve(tile_sizes.size());
+  for (auto pair : llvm::zip(tile_sizes, unroll_factors)) {
+    tiling_for_unrolling.push_back(std::get<0>(pair) * std::get<1>(pair));
+    inner_tile.push_back(std::get<1>(pair));
+  }
+  tiling_for_unrolling.append(
+      tile_sizes.drop_front(unroll_factors.size()).begin(), tile_sizes.end());
+  pm.addNestedPass<mlir::FuncOp>(
+      ::mlir::createParallelLoopTilingPass(tiling_for_unrolling));
   if (!unroll_factors.empty()) {
     pm.addNestedPass<mlir::FuncOp>(
         ::mlir::createParallelLoopTilingPass(inner_tile));
   }
-  // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+
   // Greedily map the remaining loop to GPU hardware dimensions.
   pm.addNestedPass<::mlir::FuncOp>(
       mlir::kernel_gen::transforms::CreateMapParallelLoopsPass());

@@ -394,8 +394,7 @@ gen_kernel_library(
             "f64",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "add_v2",
@@ -410,8 +409,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "2",
+    unroll_factors = "2",
 )
 
 gen_kernel_library(
@@ -424,8 +422,7 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 gen_kernel_library(
@@ -439,8 +436,7 @@ gen_kernel_library(
         "i16",
         "i64",
     ],
-    # TODO(b/174543802): Enable once fusion heuristics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 # Bitwise operations.
@@ -459,8 +455,7 @@ gen_kernel_library(
             # "ui32",
             # "ui64",
         ],
-        # TODO(b/174543802): Enable once fusion heursitics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "bitwise_and",
@@ -478,8 +473,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 # Logical operations.
@@ -490,8 +484,7 @@ gen_kernel_library(
         types = [
             "i1",
         ],
-        # TODO(b/174543802): Enable once fusion heursitics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "logical_and",
@@ -513,8 +506,7 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "equal",
@@ -535,8 +527,7 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "less",
@@ -558,8 +549,7 @@ gen_kernel_library(
             "i32",
             "i64",
         ],
-        # TODO(b/174543802): Enable once fusion heuristics is better.
-        # unroll_factors = "4",
+        unroll_factors = "4",
     )
     for name in [
         "maximum",
@@ -598,8 +588,7 @@ gen_kernel_library(
         "f32",
         "f64",
     ],
-    # TODO(b/174543802): Enable once fusion heursitics is better.
-    # unroll_factors = "4",
+    unroll_factors = "4",
 )
 
 # Kernels that support all floating-point types.
