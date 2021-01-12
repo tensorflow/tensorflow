@@ -261,7 +261,7 @@ class KerasClassifier(BaseWrapper):
             (instead of `(n_sample, 1)` as in Keras).
     """
     kwargs = self.filter_sk_params(Sequential.predict_proba, kwargs)
-    probs = self.model.predict_proba(x, **kwargs)
+    probs = self.model.predict(x, **kwargs)
 
     # check if binary classification
     if probs.shape[1] == 1:
