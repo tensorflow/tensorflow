@@ -499,7 +499,7 @@ absl::Status GPUOperationFromNode(const GpuInfo& gpu_info,
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::BATCHED_MATMUL:
-    case OperationType::CONST:
+    case OperationType::CONSTANT:
     case OperationType::LSTM:
     // TODO(b/162763635): implement MeanStddevNormalization for Metal.
     case OperationType::MEAN_STDDEV_NORMALIZATION:

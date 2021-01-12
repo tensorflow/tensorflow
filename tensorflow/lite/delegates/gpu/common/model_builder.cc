@@ -177,7 +177,7 @@ absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   attr.tensor = std::move(t);
   Node* node = graph->NewNode();
   node->operation.attributes = attr;
-  node->operation.type = ToString(OperationType::CONST);
+  node->operation.type = ToString(OperationType::CONSTANT);
   *value = graph->NewValue();
   RETURN_IF_ERROR(graph->SetProducer(node->id, (*value)->id));
   // Keep data inside this tensor.
