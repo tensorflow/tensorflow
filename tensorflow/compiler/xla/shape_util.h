@@ -246,6 +246,11 @@ class ShapeUtil {
   // Precondition: IsArray(lhs) && IsArray(rhs)
   static bool SameDimensions(const Shape& lhs, const Shape& rhs);
 
+  // Returns whether the LHS and RHS shapes have the same rank; note: does
+  // not check element type.
+  // Precondition: IsArray(lhs) && IsArray(rhs)
+  static bool SameRank(const Shape& lhs, const Shape& rhs);
+
   // Returns whether the lhs and rhs shapes have the same element type.
   static bool SameElementType(const Shape& lhs, const Shape& rhs) {
     return lhs.element_type() == rhs.element_type();
