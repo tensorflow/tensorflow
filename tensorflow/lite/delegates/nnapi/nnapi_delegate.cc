@@ -250,6 +250,16 @@ bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
       }
       return false;
     }
+    case kTfLiteBuiltinTransposeConv: {
+      // Transpose convolution has a different order of inputs:
+      // 0: output_shape, 1: filter, 2: input, 3: bias.
+      const int input_id = 2;
+      const TfLiteType input_type = context->tensors[input_id].type;
+      if (input_type == kTfLiteInt8) {
+        return true;
+      }
+      return false;
+    }
     case kTfLiteBuiltinSelect: {
       const auto value_type = context->tensors[node->inputs->data[1]].type;
       return value_type == kTfLiteInt8;
@@ -521,6 +531,7 @@ enum {
   NN_TENSOR_FLAG_SCALAR_AS_TENSOR = 1U << 0,
   NN_TENSOR_FLAG_INT8_CONVERSION = 1U << 1,
   NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED = 1U << 2,
+  NN_TENSOR_FLAG_FORCE_PER_CHANNEL = 1U << 3,
 };
 
 // Returns the SDK level to target when delegating to the given devices.
@@ -1248,6 +1259,8 @@ class NNAPIOpBuilder {
         tensor_flags & NN_TENSOR_FLAG_INT8_CONVERSION;
     const bool use_int8_asymm_signed =
         tensor_flags & NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED;
+    const bool force_per_channel =
+        tensor_flags & NN_TENSOR_FLAG_FORCE_PER_CHANNEL;
     int ann_tensor_index = operand_mapping_->lite_index_to_ann(tensor_index);
     if (ann_tensor_index != -1) {
       indices->push_back(ann_tensor_index);
@@ -1303,7 +1316,7 @@ class NNAPIOpBuilder {
           TfLiteAffineQuantization* quantization_params =
               static_cast<TfLiteAffineQuantization*>(
                   tensor->quantization.params);
-          if (quantization_params->scale->size > 1) {
+          if (quantization_params->scale->size > 1 || force_per_channel) {
             // Set up per-channel quantization.
             ann_perchannel_params = {
                 .channelDim = static_cast<uint32_t>(
@@ -3043,26 +3056,32 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       *nn_op_type = ANEURALNETWORKS_SIN;
     } break;
     case kTfLiteBuiltinTransposeConv: {
-      const bool hybrid_op = IsHybridOperator(
-          mapping_args.context, kTfLiteBuiltinTransposeConv, mapping_args.node);
       int input_tensor_flags = 0;
       const int input_tensor_id =
           mapping_args.node->inputs->data[/*kDataInputTensor*/ 2];
       const int weight_tensor_id =
           mapping_args.node->inputs->data[/*kWeightsTensor*/ 1];
-      if (context->tensors[input_tensor_id].type == kTfLiteInt8) {
-        const auto& weights_tensor = context->tensors[weight_tensor_id];
-        if ((weights_tensor.type == kTfLiteInt8 ||
-             weights_tensor.type == kTfLiteUInt8) &&
-            weights_tensor.quantization.type == kTfLiteAffineQuantization) {
-          input_tensor_flags |= NN_TENSOR_FLAG_SCALAR_AS_TENSOR;
-        }
-      }
 
-      mapping_args.builder->AddTensorInput(input_tensor_id, hybrid_op,
-                                           input_tensor_flags);
-      mapping_args.builder->AddTensorInput(weight_tensor_id, hybrid_op,
-                                           input_tensor_flags);
+      // Transpose convolution doesn't have hybrid variation.
+      const bool hybrid_op = false;
+
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+        mapping_args.builder->AddTensorInput(
+            input_tensor_id, hybrid_op,
+            input_tensor_flags | NN_TENSOR_FLAG_USE_INT8_ASYMM_SIGNED);
+
+      } else {
+        mapping_args.builder->AddTensorInput(
+            input_tensor_id, hybrid_op,
+            input_tensor_flags | NN_TENSOR_FLAG_INT8_CONVERSION);
+      }
+      // Transpose convlution uses per-channel quantization with int8 inputs
+      // even if the number of channels in quantization parameters is equal to 1
+      // (as opposed to conv2d, which uses per-tensor quantization in this
+      // case).
+      mapping_args.builder->AddTensorInput(
+          weight_tensor_id, hybrid_op,
+          input_tensor_flags | NN_TENSOR_FLAG_FORCE_PER_CHANNEL);
 
       // NNAPI requires a bias tensor, so we allocate a new tensor to fill
       // it with zeroes. It is deleted with other tensors in the context
@@ -4285,6 +4304,11 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     }
     // Map inputs to NN API tensor indices.
     for (int input_pos = 0; input_pos < node->inputs->size; ++input_pos) {
+      if (reg->builtin_code == kTfLiteBuiltinTransposeConv) {
+        // Everything is added during Map since input tensors
+        // have different order.
+        continue;
+      }
       const auto input_index = node->inputs->data[input_pos];
       if (need_int8_conversion &&
           (input_pos == 0 ||
@@ -4339,11 +4363,6 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
           (input_index == node->inputs->data[0])) {
         // Skip the axis input tensor; it will be added as a scalar operand
         // by the Map() mapping.
-        continue;
-      }
-      if (reg->builtin_code == kTfLiteBuiltinTransposeConv) {
-        // Everything is added during Map since input tensors
-        // have different order.
         continue;
       }
 
