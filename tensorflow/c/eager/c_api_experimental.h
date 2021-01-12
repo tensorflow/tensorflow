@@ -557,6 +557,13 @@ TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
 TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
                                                    TF_Status* status);
 
+// Get a comma-separated list of op names executed in graph functions dispatched
+// to `ctx`. This feature is currently only enabled for TFRT debug builds, for
+// performance and simplicity reasons.
+TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
+                                                  TF_Buffer* buf,
+                                                  TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
