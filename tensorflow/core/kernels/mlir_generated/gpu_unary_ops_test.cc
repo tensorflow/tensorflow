@@ -175,6 +175,17 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
     Abs, DT_INT64, DT_INT64, test::NearZeroAndExtremeInput<int64>(), std::abs,
     test::GpuOpsTestConfig().ExpectStrictlyEqual())
 
+/// Test `tf.Asin`.
+
+// Test only values in the function domain. The othweise returned nan value
+// fails comparison for equality.
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Asin, DT_FLOAT, DT_FLOAT, test::DefaultInputBetweenZeroAndOne<float>(),
+    std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Asin, DT_DOUBLE, DT_DOUBLE, test::DefaultInputBetweenZeroAndOne<double>(),
+    std::asin, test::GpuOpsTestConfig().ExpectStrictlyEqual())
+
 /// Test `tf.Atan`.
 
 GENERATE_DEFAULT_TEST(Atan, DT_FLOAT, DT_FLOAT, std::atan,
