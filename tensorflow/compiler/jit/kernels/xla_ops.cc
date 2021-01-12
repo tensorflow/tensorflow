@@ -245,7 +245,6 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   se::DeviceMemoryAllocator* allocator =
       GetAllocator(ctx->device(), stream, platform_info_).get();
   int device_ordinal = stream ? stream->parent()->device_ordinal()
