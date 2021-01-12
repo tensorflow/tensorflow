@@ -41,19 +41,6 @@ struct OpData {
 // Register_FULLY_CONNECTED).
 TfLiteRegistration fully_connected_registration;
 
-TfLiteStatus CalculateOpData(TfLiteContext* context,
-                             TfLiteFusedActivation activation,
-                             TfLiteType data_type, const TfLiteTensor* input,
-                             const TfLiteTensor* filter,
-                             const TfLiteTensor* bias, TfLiteTensor* output,
-                             OpData* data) {
-  // Set buffer index to a reset value
-  data->buffer_idx = -1;
-  return CalculateOpDataFullyConnected(context, activation, data_type, input,
-                                       filter, bias, output,
-                                       &(data->reference_op_data));
-}
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
@@ -77,9 +64,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
-  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params->activation,
-                                        input->type, input, filter, bias,
-                                        output, data));
+
+  // Set buffer index to a reset value
+  data->buffer_idx = -1;
+  TF_LITE_ENSURE_STATUS(CalculateOpDataFullyConnected(
+      context, params->activation, input->type, input, filter, bias, output,
+      &(data->reference_op_data)));
 
   if (input->type == kTfLiteInt8 && nullptr != GetTensorData<int32_t>(bias)) {
     RuntimeShape filter_shape = GetTensorShape(filter);
