@@ -3365,6 +3365,7 @@ cc_library(
     hdrs = ["logical_buffer_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":logical_buffer",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -3380,6 +3381,7 @@ cc_library(
     hdrs = ["tuple_points_to_analysis.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_dataflow_analysis",
         ":logical_buffer",
         ":logical_buffer_analysis",
@@ -3406,6 +3408,7 @@ tf_cc_test(
     srcs = ["tuple_points_to_analysis_test.cc"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_creation_utils",
         ":hlo_matchers",
         ":instruction_fusion",
