@@ -142,9 +142,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
   }
 }
 
-Backend::~Backend() {
-    CHECK_EQ(memory_allocator_.use_count(), 1);
-}
+Backend::~Backend() {}
 
 int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();

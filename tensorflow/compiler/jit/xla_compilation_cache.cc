@@ -189,13 +189,23 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  // compile_fn can be called asynchronously. Make sure all required arguments
-  // are passed by value.
-  auto compile_fn = [&, compile_options, function](
+  // Explicitly capture all required data by value for async compilation
+  struct AsyncCompileData {
+    const XlaCompiler::CompileOptions& compile_options;
+    const NameAttrList& function;
+  } async_compile_data = {
+    compile_options, function
+  };
+
+  // Do not add additional variables to the capture list,
+  // but add any additional ones to the AsyncCompileData struct above
+  auto compile_fn = [async_compile_data](
                         XlaCompiler* compiler,
                         const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result) {
-    return compiler->CompileFunction(compile_options, function, args, result);
+    return compiler->CompileFunction(async_compile_data.compile_options,
+                                     async_compile_data.function,
+                                     args, result);
   };
   return CompileImpl(options, function, args, compile_fn, compile_mode,
                      out_compilation_result, out_executable);
@@ -387,6 +397,19 @@ Status XlaCompilationCache::CompileAsynchronous(
     const std::function<Status(XlaCompiler* compiler,
                                const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn) {
+  // Explicitly capture all required data by value for async compilation.
+  struct AsyncCompileData {
+    Entry* entry;
+    const XlaCompiler::Options& options;
+    const std::vector<XlaCompiler::Argument>& args;
+    const string &function_name;
+    const std::function<Status(XlaCompiler* compiler,
+                               const std::vector<XlaCompiler::Argument>& args,
+                               XlaCompiler::CompilationResult*)>& compile_fn;
+  } async_compile_data = {
+    entry, options, args, function_name, compile_fn
+  };
+
   entry->compile_state = CompileState::kCompiling;
   {
     mutex_lock lock(async_compilation_.async_compilation_mu_);
@@ -394,23 +417,27 @@ Status XlaCompilationCache::CompileAsynchronous(
   }
   // Don't move the above code into the thread function!!!
 
-  // Passing everything by value to make sure nothing is deleted while the
-  // compilation is still ongoing. In particular, this increases the refcount on
-  // options.device_allocator, keeping it alive for the duration of the
-  // compilation.
-  async_compilation_.compiler_threads.Schedule([=] {
+  // Do not add additional variables to the capture list,
+  // but add any additional ones to the AsyncCompileData struct above
+  // When the ThreadPool for the compilation cache is destroyed, it waits for
+  // compilations to have finished. This means that 'async_compile_data.entry'
+  // and 'this' will be alive for the duration of the compilation.
+  async_compilation_.compiler_threads.Schedule([this, async_compile_data] {
       Entry local_entry;
       VLOG(2) << "Starting asynchronous compilation of cluster "
-              << function_name << '.';
-      (void)CompileStrict(&local_entry, options, args, function_name,
-                          compile_fn);
+              << async_compile_data.function_name << '.';
+      (void)CompileStrict(&local_entry, async_compile_data.options,
+                          async_compile_data.args,
+                          async_compile_data.function_name,
+                          async_compile_data.compile_fn);
       VLOG(2) << "Finished asynchronous compililation of cluster "
-              << function_name << '.';
+              << async_compile_data.function_name << '.';
       {
         mutex_lock lock(async_compilation_.async_compilation_mu_);
         async_compilation_.num_ongoing_compilations--;
       }
       { // Populate original entry with compilation result.
+        Entry* entry = async_compile_data.entry;
         mutex_lock entry_lock(entry->mu);
         entry->compilation_result = local_entry.compilation_result;
         entry->compile_state = local_entry.compile_state;
@@ -448,7 +475,7 @@ Status XlaCompilationCache::CompileImpl(
   if (compile_mode == CompileMode::kLazy) {
     compile_threshold = kDefaultCompilationThreshold;
   } else if (compile_mode == CompileMode::kAsync) {
-    compile_threshold = 0; // for now, always compile right away
+    compile_threshold = 0; // for now, always compile right away.
   }
 
   TF_ASSIGN_OR_RETURN(Signature signature, BuildSignature(function, args));

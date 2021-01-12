@@ -166,7 +166,8 @@ static Status CompileToLocalExecutable(
     const XlaPlatformInfo& platform_info,
     absl::Span<const Tensor* const> inputs,
     absl::Span<VariableInfo const> variable_infos,
-    absl::Span<const int> constants, XlaCompilationCache::CompileMode cmode,
+    absl::Span<const int> constants,
+    XlaCompilationCache::CompileMode compile_mode,
     bool may_alias_resource_update, xla::LocalClient** client,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable) {
@@ -209,8 +210,8 @@ static Status CompileToLocalExecutable(
           constants, inputs, variable_infos,
           static_cast<Device*>(ctx->device()));
   TF_RETURN_IF_ERROR(args.status());
-  return cache->Compile(options, function, *args, compile_options, cmode,
-                        compilation_result, executable);
+  return cache->Compile(options, function, *args, compile_options,
+                        compile_mode, compilation_result, executable);
 }
 
 void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
@@ -376,20 +377,12 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     mutex_lock guard(cannot_compile_cluster_mu_);
     cannot_compile_cluster = cannot_compile_cluster_;
   }
-  // If must_compile_ is true, there is no fallback path and therefore
-  // async and lazy must be false. If must_compile_ is false, and async
-  // compilation is enabled, async is true, and lazy is false. Otherwise
-  // lazy compilation is true.
-  bool async = !must_compile_ &&
-               GetXlaOpsCommonFlags().tf_xla_async_compilation;
-  // Possible future work:
-  //    disable async for small clusters.
-  //    disable async for cluster that have short compile time.
-  bool lazy = async ? false : !must_compile_;
-  XlaCompilationCache::CompileMode cmode =
-    lazy  ? XlaCompilationCache::CompileMode::kLazy :
-    async ? XlaCompilationCache::CompileMode::kAsync :
-            XlaCompilationCache::CompileMode::kStrict;
+  XlaCompilationCache::CompileMode compile_mode = [&] {
+    if (must_compile_) { return XlaCompilationCache::CompileMode::kStrict; }
+    return GetXlaOpsCommonFlags().tf_xla_async_compilation
+      ? XlaCompilationCache::CompileMode::kAsync
+      : XlaCompilationCache::CompileMode::kLazy;
+  }();
 
   if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
@@ -405,11 +398,12 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     // unlocking them in XlaRun may lead to deadlocks.
     Status status = CompileToLocalExecutable(
         ctx, function_, has_ref_vars_, platform_info_, inputs, variable_infos,
-        constants_, cmode, /*may_alias_resource_update=*/false, &client,
+        constants_, compile_mode, /*may_alias_resource_update=*/false, &client,
         &kernel, &executable);
     OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, resources_,
                                                   variable_infos, &variables));
-    if (must_compile_ || async || status.code() != error::UNIMPLEMENTED) {
+    if (compile_mode != XlaCompilationCache::CompileMode::kLazy ||
+        status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
     }
 
