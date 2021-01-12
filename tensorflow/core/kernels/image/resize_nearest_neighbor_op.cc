@@ -127,6 +127,22 @@ struct BoolToScaler<false> {
   typedef LegacyScaler Scaler;
 };
 
+template <bool half_pixel_centers, bool align_corners>
+void compute_indices(const Eigen::Index out_size, const Eigen::Index in_size,
+                     const float scale, Eigen::Index* indices) {
+  typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+  for (Eigen::Index i = 0; i < out_size; ++i) {
+    Eigen::Index x = std::min(
+        (align_corners) ? static_cast<Eigen::Index>(roundf(scaler(i, scale)))
+                        : static_cast<Eigen::Index>(floorf(scaler(i, scale))),
+        in_size - 1);
+    if (half_pixel_centers) {
+      x = std::max(static_cast<Eigen::Index>(0), x);
+    }
+    indices[i] = x;
+  }
+}
+
 // Partial specialization of ResizeNearestNeighbor functor for a CPUDevice.
 namespace functor {
 template <typename T, bool half_pixel_centers, bool align_corners>
@@ -313,9 +329,49 @@ namespace functor {
 template <typename T, bool half_pixel_centers, bool align_corners>
 struct ResizeNearestNeighborGrad<CPUDevice, T, half_pixel_centers,
                                  align_corners> {
+  static constexpr int64 kPacketSize = Eigen::internal::packet_traits<T>::size;
+  static constexpr bool kPacketAccess =
+      Eigen::internal::packet_traits<T>::HasAdd;
+
   bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
                   typename TTypes<T, 4>::Tensor output) {
+    const Eigen::Index channels = input.dimension(3);
+    // Only enable vectorization when channels > kPacketSize.
+    // There is a non-negligible overhead for non-vectorized sizes within
+    // Eigen::Map<Eigen::Vector>.
+    if (channels > kPacketSize && kPacketAccess) {
+      const auto accumulate = [](const T* input_ptr, T* output_ptr,
+                                 const Eigen::Index channels) {
+        // Use Eigen's vector class to vectorize summation along channel.
+        Eigen::Map<const Eigen::Vector<T, Eigen::Dynamic>> input(input_ptr,
+                                                                 channels);
+        Eigen::Map<Eigen::Vector<T, Eigen::Dynamic>> output(output_ptr,
+                                                            channels);
+        output += input;
+      };
+      Compute(d, input, height_scale, width_scale, output,
+              std::move(accumulate));
+    } else {
+      const auto accumulate = [](const T* input_ptr, T* output_ptr,
+                                 const Eigen::Index channels) {
+        for (Eigen::Index i = 0; i < channels; ++i) {
+          output_ptr[i] += input_ptr[i];
+        }
+      };
+      Compute(d, input, height_scale, width_scale, output,
+              std::move(accumulate));
+    }
+    return true;
+  }
+
+  template <typename F>
+  EIGEN_ALWAYS_INLINE void Compute(const CPUDevice& d,
+                                   typename TTypes<T, 4>::ConstTensor input,
+                                   const float height_scale,
+                                   const float width_scale,
+                                   typename TTypes<T, 4>::Tensor output,
+                                   F accumulate) {
     typename BoolToScaler<half_pixel_centers>::Scaler scaler;
     const Eigen::Index batch_size = input.dimension(0);
     const Eigen::Index in_height = input.dimension(1);
@@ -327,26 +383,34 @@ struct ResizeNearestNeighborGrad<CPUDevice, T, half_pixel_centers,
 
     output.setZero();
 
-    for (Eigen::Index y = 0; y < in_height; ++y) {
-      const Eigen::Index out_y = std::min(
-          (align_corners)
-              ? static_cast<Eigen::Index>(roundf(scaler(y, height_scale)))
-              : static_cast<Eigen::Index>(floorf(scaler(y, height_scale))),
-          out_height - 1);
-      for (Eigen::Index x = 0; x < in_width; ++x) {
-        const Eigen::Index out_x = std::min(
-            (align_corners)
-                ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
-                : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
-            out_width - 1);
-        for (Eigen::Index b = 0; b < batch_size; ++b) {
-          for (Eigen::Index c = 0; c < channels; ++c) {
-            output(b, out_y, out_x, c) += input(b, y, x, c);
+    std::vector<Eigen::Index> ys(in_height), xs(in_width);
+    compute_indices<half_pixel_centers, align_corners>(in_height, out_height,
+                                                       height_scale, ys.data());
+    compute_indices<half_pixel_centers, align_corners>(in_width, out_width,
+                                                       width_scale, xs.data());
+
+    const auto work = [&](Eigen::Index start, Eigen::Index end) {
+      for (Eigen::Index b = start; b < end; ++b) {
+        for (Eigen::Index y = 0; y < in_height; ++y) {
+          const Eigen::Index out_y = ys[y];
+          for (Eigen::Index x = 0; x < in_width; ++x) {
+            const Eigen::Index out_x = xs[x];
+            accumulate(&input(b, y, x, 0), &output(b, out_y, out_x, 0),
+                       channels);
           }
         }
       }
-    }
-    return true;
+    };
+
+    const double input_bytes = 2 * in_height * in_width * channels * sizeof(T);
+    const double output_bytes = in_height * in_width * channels * sizeof(T);
+    const double compute_cycles =
+        in_height * in_width * channels * Eigen::TensorOpCost::AddCost<T>();
+    const Eigen::TensorOpCost cost(
+        input_bytes, output_bytes, compute_cycles,
+        /*vectorized=*/channels > kPacketSize && kPacketAccess,
+        /*packet_size=*/kPacketSize);
+    d.parallelFor(batch_size, cost, std::move(work));
   }
 };
 }  // namespace functor
