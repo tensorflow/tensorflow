@@ -37,6 +37,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import sysconfig
@@ -417,6 +418,19 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     if _use_new_code():
       self._defun_wrapper = _DefunWrapper(time_major, go_backwards, 'gru')
+
+  def build(self, input_shape):
+    super(GRU, self).build(input_shape)
+
+    if not all(isinstance(v, resource_variable_ops.ResourceVariable)
+               for v in self.weights):
+      # Non-resource variables, such as DistributedVariables and
+      # AutoCastVariables, do not work properly with the implementation
+      # selector, which is used when cuDNN is used. However, by chance, such
+      # variables happen to work in LSTM, so this check is only needed for GRU.
+      # TODO(b/136512020): Make non-resource variables work with the
+      # implementation selector.
+      self._could_use_gpu_kernel = False
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
     # The input should be dense, padded with zeros. If a ragged input is fed

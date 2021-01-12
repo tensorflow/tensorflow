@@ -4,8 +4,4 @@ tf_module {
     name: "broadcast_weights"
     argspec: "args=[\'weights\', \'values\'], varargs=None, keywords=None, defaults=None"
   }
-  member_method {
-    name: "is_resource_variable"
-    argspec: "args=[\'var\'], varargs=None, keywords=None, defaults=None"
-  }
 }

@@ -39,6 +39,7 @@ from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.module import module
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
@@ -272,7 +273,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
       # Optimizer slot variables are created when the original variable is
       # restored.
       self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
-      dummy_var = variables_lib.Variable([1.])
+      dummy_var = resource_variable_ops.ResourceVariable([1.])
       on_create_optimizer.minimize(loss=dummy_var.read_value,
                                    var_list=[dummy_var])
       status.assert_existing_objects_matched()
@@ -458,8 +459,8 @@ class CheckpointingTests(keras_parameterized.TestCase):
 
       def __init__(self):
         super(Model, self).__init__()
-        self.w = variables_lib.Variable(0.0)
-        self.b = variables_lib.Variable(0.0)
+        self.w = resource_variable_ops.ResourceVariable(0.0)
+        self.b = resource_variable_ops.ResourceVariable(0.0)
         self.vars = [self.w, self.b]
 
       def call(self, x):
@@ -873,7 +874,8 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
         self._check_sentinels(root)
         # Check that there is no error when keys are missing from the name-based
         # checkpoint.
-        root.not_in_name_checkpoint = variables_lib.Variable([1.])
+        root.not_in_name_checkpoint = resource_variable_ops.ResourceVariable(
+            [1.])
         status = object_saver.restore(save_path)
         with self.assertRaises(AssertionError):
           status.assert_existing_objects_matched()
