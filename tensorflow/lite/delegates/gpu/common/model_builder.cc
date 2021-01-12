@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/object_reader.h"
+#include "tensorflow/lite/delegates/gpu/common/operation_parser.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -68,30 +69,6 @@ absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
   }
   return absl::OkStatus();
 }
-
-// A parser responsible for parsing TFLite operation and adding it to a graph.
-class TFLiteOperationParser {
- public:
-  virtual ~TFLiteOperationParser() = default;
-
-  // Parses TFLite operation. This method allows expanding fused operations
-  // into more than one node.
-  virtual absl::Status Parse(const TfLiteNode* tflite_node,
-                             const TfLiteRegistration* registration,
-                             GraphFloat32* graph, ObjectReader* reader) = 0;
-
-  // Verifies whether passed tflite node may be built by GPU delegate or not.
-  virtual absl::Status IsSupported(const TfLiteContext* context,
-                                   const TfLiteNode* tflite_node,
-                                   const TfLiteRegistration* registration) = 0;
-
-  // Return the value ids in the graph that correspond to the updated values of
-  // the variable input tensor.
-  virtual absl::flat_hash_map<int, ValueId>
-  GetNewValueIdsForVariableInputNodes() {
-    return absl::flat_hash_map<int, ValueId>();
-  }
-};
 
 HW ToHW(int32_t h, int32_t w) { return HW(h > 0 ? h : 1, w > 0 ? w : 1); }
 
@@ -1438,17 +1415,10 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
                            const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     const TfLitePoolParams* tf_options;
-    auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
-    if (status.ok()) {  // custom case with indices as a second output
-      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                         /*runtime_inputs=*/1,
-                                         /*outputs=*/2));
-    } else {  // common pooling with 1 output
-      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                         /*runtime_inputs=*/1,
-                                         /*outputs=*/1));
-    }
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1,
+                                       /*outputs=*/1));
     RETURN_IF_ERROR(CheckKernelsAndStrides(
         tf_options->filter_height, tf_options->filter_width,
         tf_options->stride_height, tf_options->stride_width));
@@ -1471,28 +1441,12 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
 
     auto input_shape = graph->FindInputs(node->id)[0]->tensor.shape;
 
-    // check whether there are custom options encoded. It happens if operation
-    // is MaxPoolingWithArgmax2D. There is no way to read
-    // tflite_node->builtin_code, so, simply check whether custom data is
-    // available.
     const TfLitePoolParams* tf_options;
-    if (!RetrieveCustomInitialData(tflite_node, &tf_options).ok()) {
-      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-    }
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
     RETURN_IF_ERROR(MaybeFuseActivation(tf_options->activation, graph, node));
-    // Second output is optional. It is not required, it but must be added after
-    // MaybeAddFusedActivation function is called
-    reader->AddOutput(node, 1).IgnoreError();
 
-    // First output is the result of pooling operation, while second output is
-    // indices used for pooling.
-    auto outputs = graph->FindOutputs(node->id);
-    attr.output_indices = outputs.size() == 2;
-    if (attr.output_indices) {
-      // Fix data type for output indices. In the model it is set as float32.
-      outputs[1]->tensor.type = DataType::INT32;
-    }
+    attr.output_indices = false;
     RETURN_IF_ERROR(ParsePoolingAttributes(tf_options, input_shape, &attr));
     node->operation.attributes = attr;
     return absl::OkStatus();
@@ -2205,45 +2159,6 @@ class TransposeConvBuiltinOperationParser : public TFLiteOperationParser {
   }
 };
 
-// Custom op version of TRANSPOSE_CONV.
-class TransposeConvCustomOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
-    const TfLiteTransposeConvParams* tf_options;
-    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(
-        CheckStrides(tf_options->stride_height, tf_options->stride_width));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    auto* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    const TfLiteTransposeConvParams* tf_options;
-    auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
-
-    ConvolutionTransposedAttributes attr;
-    attr.stride = status.ok()
-                      ? HW(tf_options->stride_height, tf_options->stride_width)
-                      : HW(1, 1);
-    RETURN_IF_ERROR(reader->ReadTensor(1, &attr.weights));
-    reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
-
-    UpdatePadding(status.ok() ? tf_options->padding : kTfLitePaddingUnknown,
-                  graph->FindInputs(node->id)[0]->tensor.shape, &attr);
-    node->operation.attributes = std::move(attr);
-    return absl::OkStatus();
-  }
-};
-
 class TransposeOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2291,47 +2206,6 @@ class TransposeOperationParser : public TFLiteOperationParser {
     }
 
     node->operation.attributes = attr;
-    return absl::OkStatus();
-  }
-};
-
-class Unpooling2DOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/2, /*outputs=*/1));
-    const TfLitePoolParams* tf_options;
-    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
-    RETURN_IF_ERROR(CheckKernelsAndStrides(
-        tf_options->filter_height, tf_options->filter_width,
-        tf_options->stride_height, tf_options->stride_width));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    node->operation.type = ToString(OperationType::MAX_UNPOOLING_2D);
-    RETURN_IF_ERROR(reader->AddInput(node, 0));
-    RETURN_IF_ERROR(reader->AddInput(node, 1));
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-    auto input_shape = graph->FindInputs(node->id)[0]->tensor.shape;
-    MaxUnpooling2DAttributes attr;
-
-    const TfLitePoolParams* tf_options;
-    RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
-
-    attr.kernel = ToHW(tf_options->filter_height, tf_options->filter_width);
-    attr.strides = ToHW(tf_options->stride_height, tf_options->stride_width);
-    UpdatePadding(tf_options->padding, input_shape, &attr);
-
-    node->operation.attributes = attr;
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-    output_value->tensor.shape = CalculateOutputShape(input_shape, attr);
     return absl::OkStatus();
   }
 };
@@ -2421,171 +2295,6 @@ class SpaceToBatchOperationParser : public TFLiteOperationParser {
     node->operation.attributes = std::move(sb_attr);
     return absl::OkStatus();
   }
-};
-
-class RoIToTransformMatrixOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/1, /*outputs=*/1));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // bbox
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    std::string op_name = "roi_to_transform_matrix";
-    node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-    output_value->tensor.shape = output_shape;
-    return absl::OkStatus();
-  }
-};
-
-class TransformTensorBilinearOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/2, /*outputs=*/1));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // data
-    RETURN_IF_ERROR(reader->AddInput(node, 1));  // bbox
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    std::string op_name = "transform_tensor_bilinear";
-    node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-
-    output_value->tensor.shape =
-        BHWC(1, output_shape.h, output_shape.w,
-             graph->FindInputs(node->id)[0]->tensor.shape.c);
-    return absl::OkStatus();
-  }
-};
-
-class TransformLandmarksOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/2, /*outputs=*/1));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // data
-    RETURN_IF_ERROR(reader->AddInput(node, 1));  // bbox
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-    std::string op_name = "transform_landmarks";
-    node->operation.type = op_name;
-    BHWC output_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-
-    output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
-    return absl::OkStatus();
-  }
-};
-
-class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
-                              /*outputs=*/1);
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // landmarks
-    RETURN_IF_ERROR(reader->AddOutputs(node));   // transform matrix
-
-    const std::string op_name = "landmarks_to_transform_matrix";
-    node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-    output_value->tensor.shape = output_shape;
-    return absl::OkStatus();
-  }
-};
-
-class AlignmentPointsToTransformMatrixOperationParser
-    : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
-                              /*outputs=*/1);
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // alignment points
-    RETURN_IF_ERROR(reader->AddOutputs(node));   // transform matrix
-
-    const std::string op_name = "alignment_points_to_transform_matrix";
-    node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-    output_value->tensor.shape = output_shape;
-    return absl::OkStatus();
-  }
-
- private:
 };
 
 class MeanOperationParser : public TFLiteOperationParser {
@@ -2763,37 +2472,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<TransposeOperationParser>();
     case kTfLiteBuiltinTransposeConv:
       return std::make_unique<TransposeConvBuiltinOperationParser>();
-
     case kTfLiteBuiltinCustom:
-      const absl::string_view custom_name = registration->custom_name;
-      if (custom_name == "Convolution2DTransposeBias") {
-        return std::make_unique<TransposeConvCustomOperationParser>();
-      }
-      if (custom_name == "MaxPoolingWithArgmax2D") {
-        return std::make_unique<Pooling2DOperationParser>(PoolingType::MAX);
-      }
-      if (custom_name == "MaxUnpooling2D") {
-        return std::make_unique<Unpooling2DOperationParser>();
-      }
-      if (custom_name == "RoIToTransformMatrix") {
-        return std::make_unique<RoIToTransformMatrixOperationParser>();
-      }
-      if (custom_name == "TransformTensor" /*for version 1*/ ||
-          custom_name == "TransformTensorBilinear" /*for version 2*/) {
-        return std::make_unique<TransformTensorBilinearOperationParser>();
-      }
-      if (custom_name == "TransformLandmarks") {
-        return std::make_unique<TransformLandmarksOperationParser>();
-      }
-      if (custom_name == "Landmarks2TransformMatrix" ||
-          custom_name == "Landmarks2TransformMatrixV2") {
-        return std::make_unique<Landmarks2TransformMatrixOperationParser>();
-      }
-      if (custom_name == "AlignmentPointsToTransformMatrix") {
-        return std::make_unique<
-            AlignmentPointsToTransformMatrixOperationParser>();
-      }
-      break;
+      return NewCustomOperationParser(registration->custom_name);
   }
   return std::make_unique<UnsupportedOperationParser>();
 }

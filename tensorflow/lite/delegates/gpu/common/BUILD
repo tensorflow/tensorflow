@@ -150,6 +150,7 @@ cc_library(
         ":model_builder_helper",
         ":model_transformer",
         ":object_reader",
+        ":operation_parser",
         ":operations",
         ":shape",
         ":status",
@@ -369,6 +370,19 @@ cc_test(
     deps = [
         ":memory_management",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "operation_parser",
+    hdrs = ["operation_parser.h"],
+    deps = [
+        ":model",
+        ":object_reader",
+        ":status",
+        "//tensorflow/lite/c:common",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
     ],
 )
 
