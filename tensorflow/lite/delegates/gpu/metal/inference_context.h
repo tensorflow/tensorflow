@@ -22,6 +22,7 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
@@ -89,11 +90,14 @@ class InferenceContext {
  private:
   struct CompiledModel {
     std::vector<NodeDescriptor> nodes;
-    std::map<ValueId, BHWC> tensor_shapes;
   };
+
   absl::Status Compile(const GraphFloat32& graph, const GpuInfo& gpu_info,
                        CalculationsPrecision precision,
                        CompiledModel* compiled_model);
+
+  void ReserveGraphTensors(const CreateInferenceInfo& create_info,
+                           const GpuInfo& gpu_info, const GraphFloat32& graph);
 
   absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
                                      const std::vector<ValueId>& output_buffers,
@@ -101,10 +105,7 @@ class InferenceContext {
                                      CompiledModel* output_model);
 
   absl::Status CompileModelWithDevice(id<MTLDevice> device,
-                                      const CompiledModel& compiled_model,
-                                      const std::vector<ValueId>& input_ids,
-                                      const std::vector<ValueId>& output_ids,
-                                      CalculationsPrecision precision);
+                                      const CompiledModel& compiled_model);
 
   absl::Status Merge(CompiledModel* model);
   absl::Status AllocateTensors(id<MTLDevice> device);
@@ -115,13 +116,66 @@ class InferenceContext {
   void UpdatePreallocatedTensors(
       const std::map<ValueId, id<MTLBuffer>>& preallocated);
 
+  struct DummyTensor {
+    BHWC shape;
+    TensorDescriptor descriptor;
+
+    bool operator==(const DummyTensor& b) const {
+      return shape == b.shape && descriptor == b.descriptor;
+    }
+  };
+
+  class TensorReserver {
+   public:
+    TensorReserver() : next_(0) {}
+    ValueId Add(const DummyTensor& dummy) {
+      reservations_[next_] = dummy;
+      return next_++;
+    }
+    void Add(ValueId id, const DummyTensor& dummy) {
+      reservations_[id] = dummy;
+    }
+    void SetNext(ValueId id) { next_ = id; }
+    DummyTensor Get(ValueId id) { return reservations_[id]; }
+
+    std::vector<std::pair<ValueId, TensorDescriptor>> GetTensorDescs() const {
+      std::vector<std::pair<ValueId, TensorDescriptor>> result;
+      for (auto& v : reservations_) {
+        TensorDescriptor desc = v.second.descriptor;
+        desc.shape.b = v.second.shape.b;
+        desc.shape.h = v.second.shape.h;
+        desc.shape.w = v.second.shape.w;
+        desc.shape.d = 1;
+        desc.shape.c = v.second.shape.c;
+        result.push_back({v.first, desc});
+      }
+      return result;
+    }
+
+    void Add(const std::vector<std::pair<ValueId, TensorDescriptor>>& tensors) {
+      for (auto& v : tensors) {
+        DummyTensor dummy;
+        dummy.descriptor = v.second;
+        dummy.shape.b = v.second.shape.b;
+        dummy.shape.h = v.second.shape.h;
+        dummy.shape.w = v.second.shape.w;
+        dummy.shape.c = v.second.shape.c;
+        Add(v.first, dummy);
+      }
+    }
+
+   private:
+    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
+    ValueId next_;
+  };
+  TensorReserver tensor_reserver_;
+
   std::vector<ComputeTask> compute_tasks_;
   // contains indexes of compute_tasks_
   std::vector<int> task_ids_with_preallocated_tensors_;
   std::vector<ValueId> input_ids_;
   std::vector<ValueId> output_ids_;
   CalculationsPrecision precision_;
-  std::map<ValueId, BHWC> tensor_shapes_;
   std::map<ValueId, MetalSpatialTensor> preallocated_tensors_;
 
   std::map<ValueId, int> graph_ids_to_shared_buffer_tensors_;

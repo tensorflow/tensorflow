@@ -52,8 +52,9 @@ class ComputeTask {
                                  CalculationsPrecision precision);
 
   /// Updates parameters for inputs/outputs/intermediate tensors
-  absl::Status UpdateParamsWithDevice(
-      id<MTLDevice> device, const std::map<ValueId, BHWC>& tensor_shapes);
+  absl::Status UpdateParamsWithDevice(id<MTLDevice> device,
+                                      const std::vector<BHWC>& src_shapes,
+                                      const std::vector<BHWC>& dst_shapes);
 
   bool HasInOutIds(const std::set<ValueId>& ids) const;
 
