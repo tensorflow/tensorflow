@@ -3329,9 +3329,12 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
   auto token = GetPartitionedHlo(hlo->operand(1)).hlo();
 
   if (EvenlyPartitions(shape, sharding)) {
+    Shape outfeed_shape = operand->shape();
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(hlo->outfeed_shape(),
+                                                           &outfeed_shape));
     SetPartitionedHlo(hlo, [&]() {
       return b_.AddInstruction(HloInstruction::CreateOutfeed(
-          operand->shape(), operand, token, hlo->outfeed_config()));
+          outfeed_shape, operand, token, hlo->outfeed_config()));
     });
     return Status::OK();
   }
@@ -3440,6 +3443,8 @@ Status SpmdPartitioningVisitor::HandleOutfeed(HloInstruction* hlo) {
       };
       outfeed_data = slice_outfeed({}, outfeed_data);
     }
+    TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+        hlo->outfeed_shape(), &per_branch_partitioned_shapes[i]));
     branch_b.AddInstruction(HloInstruction::CreateOutfeed(
         per_branch_partitioned_shapes[i], outfeed_data, outfeed_token,
         hlo->outfeed_config()));
