@@ -73,6 +73,7 @@ using xla::HloInfeedInstruction;
 using xla::HloInstruction;
 using xla::HloModule;
 using xla::HloModuleProto;
+using xla::HloOutfeedInstruction;
 using xla::HloProto;
 using xla::Shape;
 using xla::StatusOr;
@@ -304,6 +305,8 @@ StatusOr<mlir::Operation*> LhloDialectEmitter::EmitOp(HloInstruction* instr) {
       return CreateOpWithoutAttrs<lmhlo::NotOp>(instr);
     case HloOpcode::kOr:
       return CreateOpWithoutAttrs<lmhlo::OrOp>(instr);
+    case HloOpcode::kOutfeed:
+      return EmitOutfeedOp(instr);
     case HloOpcode::kPopulationCount:
       return CreateOpWithoutAttrs<lmhlo::PopulationCountOp>(instr);
     case HloOpcode::kPower:
@@ -1002,6 +1005,19 @@ StatusOr<lmhlo::InfeedOp> LhloDialectEmitter::EmitInfeedOp(
   auto infeed_op = CreateOpWithoutAttrs<lmhlo::InfeedOp>(instr, operands);
   infeed_op.configAttr(builder_.getStringAttr(infeed->infeed_config()));
   return infeed_op;
+}
+
+StatusOr<lmhlo::OutfeedOp> LhloDialectEmitter::EmitOutfeedOp(
+    HloInstruction* instr) {
+  HloOutfeedInstruction* outfeed = xla::Cast<HloOutfeedInstruction>(instr);
+  // HLO outfeed instruction has 2 operands, the source and a token, and a
+  // single token output. LMHLO Outfeed does not need the token operand and
+  // result, do drop it.
+  SmallVector<Value, 2> operands;
+  TF_RETURN_IF_ERROR(GetOrCreateView(instr->operand(0), &operands));
+  auto outfeed_op = CreateOpWithoutAttrs<lmhlo::OutfeedOp>(instr, operands);
+  outfeed_op.configAttr(builder_.getStringAttr(outfeed->outfeed_config()));
+  return outfeed_op;
 }
 
 StatusOr<Value> LhloDialectEmitter::GetOrCreateArrayView(
