@@ -35,22 +35,15 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifdef INTEL_MKL_DNN_ONLY
-// Temporarily copying some definitions from mkl_cblas.h so the same code can
-// be used when calling oneDNN or CBLAS batchmatmul in mkl_batch_matmul_op.cc.
-typedef enum { CblasRowMajor, CblasColumnMajor } CBLAS_LAYOUT;
-#define MKL_INT int
-#endif
-
 // This structure aggregates multiple inputs to MklDnnMatMul* methods.
 struct MklDnnMatMulFwdParams {
   memory::dims src_dims;
   memory::dims weight_dims;
   memory::dims bias_dims;
   memory::dims dst_dims;
-  MEMORY_FORMAT src_format;
-  MEMORY_FORMAT weight_format;
-  MEMORY_FORMAT dst_format;
+  memory::format_tag src_format;
+  memory::format_tag weight_format;
+  memory::format_tag dst_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -58,11 +51,12 @@ struct MklDnnMatMulFwdParams {
   };
   std::vector<PostOpParam> post_op_params;
 
-  MklDnnMatMulFwdParams(memory::dims src_dims, memory::dims weight_dims,
-                        memory::dims bias_dims, memory::dims dst_dims,
-                        MEMORY_FORMAT src_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT weight_format = MEMORY_FORMAT::any,
-                        MEMORY_FORMAT dst_format = MEMORY_FORMAT::any)
+  MklDnnMatMulFwdParams(
+      memory::dims src_dims, memory::dims weight_dims, memory::dims bias_dims,
+      memory::dims dst_dims,
+      memory::format_tag src_format = memory::format_tag::any,
+      memory::format_tag weight_format = memory::format_tag::any,
+      memory::format_tag dst_format = memory::format_tag::any)
       : src_dims(src_dims),
         weight_dims(weight_dims),
         bias_dims(bias_dims),
