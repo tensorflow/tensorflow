@@ -63,7 +63,7 @@ limitations under the License.
 // PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
 #if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed.h"
+#include "tensorflow/core/tfrt/eager/c_api_tfrt_distributed_impl.h"
 #endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE
 
 #if !defined(IS_MOBILE_PLATFORM)
@@ -120,7 +120,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
         opts->async);
 #if !defined(IS_MOBILE_PLATFORM)
     tfrt_context->SetDistributedManager(
-        std::make_unique<tfrt::tf::DistributedManagerContextInterface>(
+        tfrt::tf::CreateDistributedManagerContext(
             tfrt_context->GetCoreRuntime()->GetHostContext()));
 #endif  // !IS_MOBILE_PLATFORM
     return tensorflow::wrap(tfrt_context);
