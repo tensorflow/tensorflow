@@ -178,7 +178,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter._experimental_new_quantizer = mlir_quantizer
+    quantized_converter.experimental_new_quantizer = mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -418,11 +418,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.representative_dataset = calibration_gen
 
     # default quantizer
-    quantized_converter._experimental_new_quantizer = False
+    quantized_converter.experimental_new_quantizer = False
     old_tflite = quantized_converter.convert()
 
     # new quantizer
-    quantized_converter._experimental_new_quantizer = True
+    quantized_converter.experimental_new_quantizer = True
     new_tflite = quantized_converter.convert()
 
     for _ in range(5):
@@ -648,7 +648,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
-    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -681,7 +681,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     # Create a TFLite model with new quantizer.
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter._experimental_new_quantizer = True
+    quantized_converter.experimental_new_quantizer = True
     production_tflite = quantized_converter.convert()
     # Create a TFLite model with new quantizer and numeric verify ops.
     quantized_converter._experimental_calibrate_only = True

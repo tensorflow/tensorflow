@@ -367,7 +367,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
-    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_tflite_model = quantized_converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
 
@@ -1163,7 +1163,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [inp], [output])
     quantized_converter.experimental_new_converter = enable_mlir_converter
-    quantized_converter._experimental_new_quantizer = enable_mlir_quantizer
+    quantized_converter.experimental_new_quantizer = enable_mlir_quantizer
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [dtypes.float16]
     if include_int8:
@@ -1310,7 +1310,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     # trigger post-training quantization
     converter.optimizations = [lite.Optimize.DEFAULT]
     converter.representative_dataset = calibration_gen
-    converter._experimental_new_quantizer = True
+    converter.experimental_new_quantizer = True
     quantized_tflite_model = converter.convert()
     self.assertIsNotNone(quantized_tflite_model)
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
