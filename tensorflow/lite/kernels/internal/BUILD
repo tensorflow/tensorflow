@@ -449,7 +449,6 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
-        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
         "reference/binary_function.h",
@@ -483,7 +482,6 @@ cc_library(
         "reference/integer_ops/tanh.h",
         "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
-        "reference/leaky_relu.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -562,7 +560,6 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
-        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/binary_function.h",
         "reference/cast.h",
@@ -583,7 +580,6 @@ cc_library(
         "reference/gather.h",
         "reference/hard_swish.h",
         "reference/l2normalization.h",
-        "reference/leaky_relu.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
