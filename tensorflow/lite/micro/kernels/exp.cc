@@ -56,7 +56,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                               NumElements(op_context.input),              \
                               GetTensorData<data_type>(op_context.output))
 
-  // TODO(kanlig): supports half, bfloat16, float64, complex64, and complex128.
+  // OLDTODO(kanlig): supports half, bfloat16, float64, complex64, and complex128.
   if (kernel_type == kReference) {
     switch (op_context.input->type) {
       case kTfLiteFloat32:
@@ -81,7 +81,7 @@ TfLiteRegistration* Register_EXP_REF() {
   return &r;
 }
 
-// TODO(kanlig): add optimized implementation of Exp.
+// OLDTODO(kanlig): add optimized implementation of Exp.
 TfLiteRegistration* Register_EXP() { return Register_EXP_REF(); }
 
 }  // namespace builtin
