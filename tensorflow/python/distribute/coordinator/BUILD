@@ -98,6 +98,7 @@ tf_py_test(
     tags = [
         "noasan",  # Multi-process runner does not work with test sanitizers
         "notsan",  # Multi-process runner does not work with test sanitizers
+        "no_rocm", # Added SR 01/12/2021
     ],
     deps = [
         ":cluster_coordinator",
