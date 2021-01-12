@@ -78,7 +78,9 @@ cc_library(
 tf_cc_test(
     name = "mlir_sorting_test",
     srcs = ["mlir_sorting_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "no_rocm",
+    ],
     deps = [
         ":mlir_gpu_test_base",
         "//tensorflow/core:test",
