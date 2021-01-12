@@ -47,6 +47,7 @@ filegroup(
 filegroup(
     name = "experimental_unary_kernel_srcs",
     srcs = [
+        "gpu_op_atan.cc",
         "gpu_op_ceil.cc",
         "gpu_op_conj.cc",
         "gpu_op_cos.cc",
@@ -106,6 +107,7 @@ tf_kernel_library(
         # sure that those targets can be built, so it should not hurt to
         # link them in even if they are currently not needed yet.
         ":abs_kernels",
+        ":atan_kernels",
         ":ceil_kernels",
         ":conj_kernels",
         ":cos_kernels",
@@ -297,6 +299,16 @@ gen_kernel_library(
         "f64",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "atan",
+    tile_size = "256",
+    types = [
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )
