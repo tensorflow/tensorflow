@@ -29,11 +29,6 @@ limitations under the License.
 namespace xla {
 namespace hlo_sharding_util {
 
-struct GatherParallelDims {
-  absl::InlinedVector<int64, 1> indices_parallel_dims;
-  absl::InlinedVector<int64, 1> operand_parallel_dims;
-};
-
 // Given a map<device, occurrence_count>, selects the device with higher
 // occurrence count (if any). If top_count in not nullptr, it will receive the
 // count of the dominant device returned.
@@ -185,11 +180,6 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
 absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64 const> src_to_tgt,
     absl::Span<int64 const> tgt_to_src);
-
-// Returns identified parallel dimensions for Gather.
-absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
-    const HloSharding& operand_sharding, const HloSharding& indices_sharding,
-    const HloInstruction& hlo);
 
 }  // namespace hlo_sharding_util
 }  // namespace xla

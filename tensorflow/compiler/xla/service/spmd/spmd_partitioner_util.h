@@ -30,11 +30,6 @@ limitations under the License.
 namespace xla {
 namespace spmd {
 
-struct GatherParallelDimSharding {
-  HloSharding indices_sharding;
-  HloSharding operand_sharding;
-};
-
 // Returns true if the given sharding contains any replicated sharding.
 bool HasReplicatedSharding(const HloSharding& sharding);
 
@@ -328,14 +323,6 @@ GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
                                 const GroupedSharding& reference,
                                 bool ignore_group_order = false);
 
-// Align device groups between the two ahrdings. Equivalent in calling
-// GroupShardingOnDims on the two sharding AlignGroupsWith and then
-// UngroupSharding
-HloSharding AlignShardingOnDims(const HloSharding& sharding,
-                                absl::Span<const int64> sharding_dims,
-                                const HloSharding& reference,
-                                absl::Span<const int64> reference_dims);
-
 // Returns the per-group base shape, i.e., before applying the in-group
 // sharding.
 Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
@@ -397,25 +384,6 @@ absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
 absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
     const HloSharding& sharding,
     const std::vector<std::vector<int64>>& device_groups);
-
-// Create a sharding that matches the provided source sharding on the
-// specified dimensions. 'target_dims' and 'source_dims' represent the
-// dimensions for which the sharding should match in their respective shape.
-// If some devices from the source sharding are left over (because not all the
-// devices are allocated to 'source_dims' dimensions) then partial replication
-// is employed to make sure the number of devices for the two sharding match.
-HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
-                                         const HloSharding& source_sharding,
-                                         absl::Span<const int64> target_dims,
-                                         absl::Span<const int64> source_dims);
-
-// Returns if the sharding across operand and indices of a gather is across
-// parallel dimensions and matches what SPMD partitioner supports.
-absl::optional<GatherParallelDimSharding>
-GatherOperandsShardedAcrossParallelDims(
-    const HloInstruction& operand, const HloInstruction& indices,
-    absl::Span<const int64> indices_parallel_dims,
-    absl::Span<const int64> operand_parallel_dims);
 
 }  // namespace spmd
 }  // namespace xla

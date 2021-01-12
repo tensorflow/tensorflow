@@ -479,7 +479,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":hlo_casting_utils",
         "//tensorflow/compiler/xla:array",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

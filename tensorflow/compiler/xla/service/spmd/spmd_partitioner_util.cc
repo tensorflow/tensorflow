@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
@@ -1543,15 +1542,6 @@ GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
   return grouped_sharding;
 }
 
-HloSharding AlignShardingOnDims(const HloSharding& sharding,
-                                absl::Span<const int64> sharding_dims,
-                                const HloSharding& reference,
-                                absl::Span<const int64> reference_dims) {
-  auto sharding_grouped = GroupShardingOnDims(sharding, sharding_dims);
-  auto reference_grouped = GroupShardingOnDims(reference, reference_dims);
-  return UngroupSharding(AlignGroupsWith(sharding_grouped, reference_grouped));
-}
-
 Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
                            const Shape& original_base_shape) {
   auto result = original_base_shape;
@@ -1789,137 +1779,6 @@ absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
     }
   }
   return dims;
-}
-
-HloSharding CreateMatchingShardingOnDims(const Shape& target_shape,
-                                         const HloSharding& source_sharding,
-                                         absl::Span<const int64> target_dims,
-                                         absl::Span<const int64> source_dims) {
-  CHECK(target_dims.size() == source_dims.size())
-      << "Expected 1:1 match between parallel dimensions";
-  if (source_sharding.IsReplicated()) {
-    return HloSharding::Replicate();
-  }
-  absl::InlinedVector<int64, 4> tile_dims(target_shape.dimensions_size(), 1);
-  int num_tiles = 1;
-  for (int i = 0, end = target_dims.size(); i < end; ++i) {
-    num_tiles *= source_sharding.tile_assignment().dim(source_dims[i]);
-    tile_dims[target_dims[i]] =
-        source_sharding.tile_assignment().dim(source_dims[i]);
-  }
-  // If there is some partition across non-parallel dimensions in the
-  // other operand then partially replicate for the new
-  bool to_be_partially_replicated = false;
-  if (num_tiles != source_sharding.tile_assignment().num_elements()) {
-    CHECK_EQ(source_sharding.tile_assignment().num_elements() % num_tiles, 0);
-    to_be_partially_replicated = true;
-    tile_dims.push_back(source_sharding.tile_assignment().num_elements() /
-                        num_tiles);
-  }
-  auto tgt_tile_assignment = source_sharding.tile_assignment();
-  tgt_tile_assignment.Reshape(tile_dims);
-  if (to_be_partially_replicated) {
-    return AlignShardingOnDims(HloSharding::PartialTile(tgt_tile_assignment),
-                               target_dims, source_sharding, source_dims);
-  } else {
-    return AlignShardingOnDims(HloSharding::Tile(tgt_tile_assignment),
-                               target_dims, source_sharding, source_dims);
-  }
-}
-
-absl::optional<GatherParallelDimSharding>
-GatherOperandsShardedAcrossParallelDims(
-    const HloInstruction& operand, const HloInstruction& indices,
-    absl::Span<const int64> indices_parallel_dims,
-    absl::Span<const int64> operand_parallel_dims) {
-  if (indices_parallel_dims.size() != operand_parallel_dims.size()) {
-    return absl::nullopt;
-  }
-  auto new_index_shard = indices.sharding();
-  auto new_operand_shard = operand.sharding();
-  int idx_parallel_tiles_num = new_index_shard.NumTiles(indices_parallel_dims);
-  int op_parallel_tiles_num = new_operand_shard.NumTiles(operand_parallel_dims);
-  if (idx_parallel_tiles_num == 1 && op_parallel_tiles_num == 1) {
-    return absl::nullopt;
-  }
-  if (new_index_shard.IsReplicated()) {
-    return GatherParallelDimSharding{
-        CreateMatchingShardingOnDims(indices.shape(), new_operand_shard,
-                                     indices_parallel_dims,
-                                     operand_parallel_dims),
-        new_operand_shard};
-  }
-  if (new_operand_shard.IsReplicated()) {
-    return GatherParallelDimSharding{
-        new_index_shard, CreateMatchingShardingOnDims(
-                             operand.shape(), new_index_shard,
-                             operand_parallel_dims, indices_parallel_dims)};
-  }
-
-  // Parallel dimension distribution needs to be the same, so try to steal
-  // sharding from partial replication to compensate.
-  if (idx_parallel_tiles_num != op_parallel_tiles_num) {
-    auto to_adjust_dims = operand_parallel_dims;
-    auto target_dims = indices_parallel_dims;
-    HloSharding* target = &new_index_shard;
-    HloSharding* to_adjust = &new_operand_shard;
-    if (idx_parallel_tiles_num < op_parallel_tiles_num) {
-      std::swap(to_adjust_dims, target_dims);
-      std::swap(to_adjust, target);
-    }
-    if (!to_adjust->ReplicateOnLastTileDim()) {
-      return absl::nullopt;
-    }
-    auto new_tile_assignment_dims = to_adjust->tile_assignment().dimensions();
-    for (int i = 0; i < to_adjust_dims.size(); ++i) {
-      int64 target_dim = target->tile_assignment().dim(target_dims[i]);
-      int64 to_adjust_dim = to_adjust->tile_assignment().dim(to_adjust_dims[i]);
-      if (target_dim < to_adjust_dim) {
-        return absl::nullopt;
-      }
-      if (target_dim == to_adjust_dim) {
-        continue;
-      }
-      int64 ratio = target_dim / to_adjust_dim;
-      if (target_dim % to_adjust_dim != 0 ||
-          new_tile_assignment_dims.back() % ratio != 0) {
-        return absl::nullopt;
-      }
-      new_tile_assignment_dims[to_adjust_dims[i]] *= ratio;
-      new_tile_assignment_dims.back() /= ratio;
-    }
-    CHECK_GE(new_tile_assignment_dims.back(), 1);
-    bool to_partially_replicate = true;
-    if (new_tile_assignment_dims.back() == 1) {
-      new_tile_assignment_dims.pop_back();
-      to_partially_replicate = false;
-    }
-    auto new_tile_assignment = to_adjust->tile_assignment();
-    new_tile_assignment.Reshape(new_tile_assignment_dims);
-    if (to_partially_replicate) {
-      *to_adjust =
-          AlignShardingOnDims(HloSharding::PartialTile(new_tile_assignment),
-                              to_adjust_dims, *target, target_dims);
-    } else {
-      *to_adjust = AlignShardingOnDims(HloSharding::Tile(new_tile_assignment),
-                                       to_adjust_dims, *target, target_dims);
-    }
-  }
-  // Make sure that the parallel dimensions are aligned.
-  auto operand_shard_tile_dims =
-      new_operand_shard.tile_assignment().dimensions();
-  for (int i = 0; i < indices_parallel_dims.size(); ++i) {
-    operand_shard_tile_dims[operand_parallel_dims[i]] =
-        new_index_shard.tile_assignment().dim(indices_parallel_dims[i]);
-  }
-  auto operand_shard_tiles = new_operand_shard.tile_assignment();
-  operand_shard_tiles.Reshape(operand_shard_tile_dims);
-  new_operand_shard = AlignShardingOnDims(
-      new_operand_shard.ReplicateOnLastTileDim()
-          ? HloSharding::PartialTile(operand_shard_tiles)
-          : HloSharding::Tile(operand_shard_tiles),
-      operand_parallel_dims, new_index_shard, indices_parallel_dims);
-  return GatherParallelDimSharding{new_index_shard, new_operand_shard};
 }
 
 }  // namespace spmd

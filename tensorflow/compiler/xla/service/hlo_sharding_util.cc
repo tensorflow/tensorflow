@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -978,69 +977,6 @@ absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
   return source.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(reshape_tiles)
              : HloSharding::Tile(reshape_tiles);
-}
-
-absl::optional<GatherParallelDims> GetGatherBatchParallelDims(
-    const HloSharding& operand_sharding, const HloSharding& indices_sharding,
-    const HloInstruction& hlo) {
-  const auto& dnums = hlo.gather_dimension_numbers();
-  int64 index_dim = dnums.index_vector_dim();
-  // Try to identify if there's a dimension in the indices that is monotonically
-  // increasing with a Iota across a certain dimension. This would mean that the
-  // access in the relative dimension indexed by this index in the operand is
-  // parallelizable and that we can shard the operand (and the index/output)
-  // across such dimension.
-  // For example the pattern:
-  //   %iota.1 = iota()
-  //   %indices = concatenate(..., %iota.1, ...)
-  //   ... = gather(..., %indices)
-  // is common for tf.reverse_sequence and would match this case.
-  absl::InlinedVector<const HloIotaInstruction*, 4> iotas;
-  const HloInstruction* indices = hlo.operand(1);
-  // Handle cases where we concatenate pieces of the indices one at a time.
-  if (indices->opcode() == HloOpcode::kConcatenate &&
-      indices->concatenate_dimension() == index_dim) {
-    for (auto* op : indices->operands()) {
-      if (auto* iota = DynCast<HloIotaInstruction>(op)) {
-        if (iota->iota_dimension() != index_dim) {
-          iotas.push_back(iota);
-        }
-      }
-    }
-  } else if (auto* iota = DynCast<HloIotaInstruction>(indices);
-             iota != nullptr && iota->iota_dimension() != index_dim) {
-    // This is a case of a single iota with index_dim being out of bounds.
-    iotas.push_back(iota);
-  }
-  absl::InlinedVector<int64, 1> indices_parallel_dims;
-  absl::InlinedVector<int64, 1> operand_parallel_dims;
-  // Map the parallelizable dimension from the iota to the dimensions of the
-  // output and the operand. These dimensions are interconnected, but between
-  // operands and index they could have different spots in the shape because the
-  // position of the index dimension in the operand is determined by
-  // start_index_map.
-  int index_num = 0;
-  for (auto* iota : iotas) {
-    int64 num_indices_from_iota = iota->shape().dimensions_size() > index_dim
-                                      ? iota->shape().dimensions(index_dim)
-                                      : 1;
-    for (int i = 0; i < num_indices_from_iota; ++i) {
-      int64 index_dim = iota->iota_dimension();
-      int64 operand_dim = dnums.start_index_map(index_num + i);
-      // Uniquify multiple iotas concatenated on index_dim with the same
-      // iota_dimension
-      if (absl::c_linear_search(indices_parallel_dims, index_dim)) {
-        return absl::nullopt;
-      }
-      indices_parallel_dims.push_back(index_dim);
-      operand_parallel_dims.push_back(operand_dim);
-    }
-    index_num += num_indices_from_iota;
-  }
-  if (!indices_parallel_dims.empty()) {
-    return GatherParallelDims{indices_parallel_dims, operand_parallel_dims};
-  }
-  return absl::nullopt;
 }
 
 }  // namespace hlo_sharding_util
