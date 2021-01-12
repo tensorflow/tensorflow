@@ -198,8 +198,6 @@ class Layer(base_layer.Layer):
     self._use_resource_variables = False
     scope = kwargs.pop('_scope', None)
     self._reuse = kwargs.pop('_reuse', None)
-    #Added by Steven Reeves to pass pylint
-    self._always_reuse_variable_scope = False 
     # Avoid an incorrect lint error
     self._trainable_weights = []
     self.built = False
@@ -526,6 +524,7 @@ class Layer(base_layer.Layer):
       try:
         # Some classes which inherit from Layer do not use its constructor, so
         # rather than initializing to None we check for an AttributeError.
+        # pylint: disable=access-member-before-definition
         scope_context_manager = self._always_reuse_variable_scope
       except AttributeError:
         scope_context_manager = None
