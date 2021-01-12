@@ -185,10 +185,6 @@ void PortableCwiseClipping(T* vector, const int v_size,
 void PortableVectorBatchVectorAssign(const float* vector, int v_size,
                                      int n_batch, float* batch_vector);
 
-// Add another vector for each batch in the batch vector.
-void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                                  float* batch_vector);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
 

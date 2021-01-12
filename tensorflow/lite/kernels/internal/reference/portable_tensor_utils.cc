@@ -696,16 +696,6 @@ void PortableVectorBatchVectorCwiseProductAccumulate(
   }
 }
 
-void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                                  float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int i = 0; i < v_size; ++i) {
-      batch_vector[i] += vector[i];
-    }
-    batch_vector += v_size;
-  }
-}
-
 void PortableSub1Vector(const float* vector, int v_size, float* result) {
   for (int v = 0; v < v_size; v++) {
     *result++ = 1.0f - *vector++;
