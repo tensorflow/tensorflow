@@ -16,15 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 
 #include <algorithm>
-#include <any>
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
