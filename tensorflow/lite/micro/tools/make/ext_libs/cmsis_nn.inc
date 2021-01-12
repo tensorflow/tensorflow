@@ -45,7 +45,7 @@ THIRD_PARTY_CC_HDRS += \
   $(CMSIS_PATH)/CMSIS/DSP/Include/dsp/utils.h
 
 # We add -I$(CMSIS_PATH) to enable the code in the TFLM repo (mostly in the
-# tensorflow/lite/micro/kernels/cmsis-nn) to use include paths relative to
+# tensorflow/lite/micro/kernels/cmsis_nn) to use include paths relative to
 # the CMSIS code-base.
 #
 # The CMSIS code itself uses includes such as #include "arm_math.h" and so
