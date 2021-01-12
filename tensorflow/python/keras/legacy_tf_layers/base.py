@@ -198,7 +198,8 @@ class Layer(base_layer.Layer):
     self._use_resource_variables = False
     scope = kwargs.pop('_scope', None)
     self._reuse = kwargs.pop('_reuse', None)
-
+    #Added by Steven Reeves to pass pylint
+    self._always_reuse_variable_scope = False 
     # Avoid an incorrect lint error
     self._trainable_weights = []
     self.built = False
