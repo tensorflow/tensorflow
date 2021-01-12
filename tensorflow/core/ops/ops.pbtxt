@@ -51346,6 +51346,7 @@ op {
     name: "alg"
     type: DT_INT32
   }
+  is_stateful: true
 }
 op {
   name: "StatelessRandomGetKeyCounter"
@@ -51374,6 +51375,7 @@ op {
       }
     }
   }
+  is_stateful: true
 }
 op {
   name: "StatelessRandomGetKeyCounterAlg"
