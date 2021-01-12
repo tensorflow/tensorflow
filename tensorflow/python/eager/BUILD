@@ -254,6 +254,7 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
+        "no_tfrt",  # TFRT doesn't support custom device yet.
     ],
     deps = [
         ":context",
