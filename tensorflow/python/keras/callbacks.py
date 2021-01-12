@@ -1767,6 +1767,9 @@ class EarlyStopping(Callback):
     current = self.get_monitor_value(logs)
     if current is None:
       return
+    if self.restore_best_weights and self.best_weights is None:
+      # Restore the weights after first epoch if no progress is ever made.
+      self.best_weights = self.model.get_weights()
 
     self.wait += 1
     if self._is_improvement(current, self.best):
