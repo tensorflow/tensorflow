@@ -1785,10 +1785,6 @@ class EarlyStopping(Callback):
   def on_train_end(self, logs=None):
     if self.stopped_epoch > 0 and self.verbose > 0:
       print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
-    if self.restore_best_weights:
-      if self.verbose > 0:
-        print('Restoring model weights from the end of the best epoch.')
-      self.model.set_weights(self.best_weights)
 
   def get_monitor_value(self, logs):
     logs = logs or {}
