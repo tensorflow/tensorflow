@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add_n.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
+#include "tensorflow/lite/kernels/internal/reference/cast.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
 #include "tensorflow/lite/kernels/internal/reference/concatenation.h"
@@ -1147,17 +1148,6 @@ inline void FakeQuant(const tflite::FakeQuantParams& op_params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   FakeQuantizeArray(nudged_scale, nudged_min, nudged_max, input_data,
                     output_data, flat_size);
-}
-
-template <typename SrcT, typename DstT>
-inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
-                 const RuntimeShape& output_shape, DstT* output_data) {
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    int offset = i;
-    output_data[offset] = static_cast<DstT>(input_data[offset]);
-  }
 }
 
 template <typename T, typename CoordsT = int32>
