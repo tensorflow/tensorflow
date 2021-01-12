@@ -808,10 +808,13 @@ py_library(
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_combinations_lib",
+        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_decorator",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -826,6 +829,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
         "@absl_py//absl/testing:parameterized",
     ],
 )
