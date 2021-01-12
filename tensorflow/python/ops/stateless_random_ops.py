@@ -123,15 +123,8 @@ def fold_in(seed, data):
   return array_ops.stack([seed1, data])
 
 
-def _get_key_counter_alg(seed):
-  if compat.forward_compatible(2021, 2, 2):
-    key, counter = gen_stateless_random_ops_v2.stateless_random_get_key_counter(
-        seed)
-    alg = gen_stateless_random_ops_v2.stateless_random_get_alg()
-    return key, counter, alg
-  else:
-    return gen_stateless_random_ops_v2.stateless_random_get_key_counter_alg(
-        seed)
+_get_key_counter_alg = (gen_stateless_random_ops_v2
+                        .stateless_random_get_key_counter_alg)
 
 
 @tf_export("random.stateless_uniform")
@@ -515,12 +508,10 @@ def stateless_random_normal(shape,
     shape = tensor_util.shape_tensor(shape)
     mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
     stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-    if compat.forward_compatible(2021, 2, 2):
-      key, counter, alg = _get_key_counter_alg(seed)
-      rnd = gen_stateless_random_ops_v2.stateless_random_normal_v2(
-          shape, key=key, counter=counter, dtype=dtype, alg=alg)
-    else:
-      rnd = gen_stateless_random_ops.stateless_random_normal(shape, seed, dtype)
+    # TODO(b/171746875): stateless_random_normal([1024, 32000], dtype='float32')
+    #   OOM on TPU with StatelessRandomNormalV2 because of excessive padding.
+    #   Investigate and switch to StatelessRandomNormalV2.
+    rnd = gen_stateless_random_ops.stateless_random_normal(shape, seed, dtype)
     result = math_ops.add(rnd * stddev, mean, name=name)
     tensor_util.maybe_set_static_shape(result, shape)
     return result
