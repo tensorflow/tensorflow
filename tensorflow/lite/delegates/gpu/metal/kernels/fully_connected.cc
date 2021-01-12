@@ -100,13 +100,13 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
     temp[tid.x][0] = summa;
   }
   $0(mem_flags::mem_threadgroup);
-  const int linear_index = ugid.x / 4;
-  if (tid.y == 0 && tid.x % 4 == 0 && linear_index < args.dst_tensor.Slices()) {
+  int dst_s = ugid.x / 4;
+  if (tid.y == 0 && tid.x % 4 == 0 && dst_s < args.dst_tensor.Slices()) {
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
-      args.bias.Read(linear_index);
-    uint3 gid = uint3(0u, 0u, uint(linear_index));
+      args.bias.Read(dst_s);
+    uint3 gid = uint3(0u, 0u, uint(dst_s));
     $$2
-    args.dst_tensor.Write(value, 0, 0, linear_index);
+    args.dst_tensor.Write(value, 0, 0, dst_s);
   }
 }
   )";
@@ -118,7 +118,6 @@ ComputeTaskDescriptor FullyConnected(const OperationDef& definition,
                                      const FullyConnectedAttributes& attr,
                                      const GpuInfo& gpu_info) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetFullyConnectedCode(gpu_info, attr.weights.shape.i,
                                              attr.weights.shape.o);
 

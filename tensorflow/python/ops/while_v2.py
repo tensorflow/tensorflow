@@ -130,7 +130,7 @@ def while_loop(cond,
       # `orig_loop_vars` and `args`, converts flows in `args` to TensorArrays
       # and packs it into the structure of `orig_loop_vars`.
       pred = cond(*_pack_sequence_as(orig_loop_vars, args))
-      if (tensor_util.is_tensor(pred) and
+      if (tensor_util.is_tf_type(pred) and
           (pred.shape.dims is None or pred.shape.dims)):
         pred = array_ops.squeeze_v2(pred)
 

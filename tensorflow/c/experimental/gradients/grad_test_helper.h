@@ -26,6 +26,9 @@ void CompareNumericalAndAutodiffGradients(
     absl::Span<AbstractTensorHandle* const> inputs, bool use_function,
     double abs_error = 1e-2);
 
+void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
+                      absl::Span<const int64_t> dims, double abs_error = 1e-2);
+
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow

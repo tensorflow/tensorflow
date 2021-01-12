@@ -503,7 +503,7 @@ class Node {
                           bool collect_node(const std::shared_ptr<Node>)) const
       TF_SHARED_LOCKS_REQUIRED(mu_);
 
-  // Collect tunable parameters for the node.
+  // Collect tunable parameters on the nodes which have recorded elements.
   void CollectTunableParametersHelper(
       absl::flat_hash_map<string, std::shared_ptr<Parameter>>* parameters) const
       TF_SHARED_LOCKS_REQUIRED(mu_);

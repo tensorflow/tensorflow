@@ -222,7 +222,7 @@ output-value deviation) in two settings:
 
 To do so, the tool generates random Gaussian data and passes it through two
 TFLite Interpreters - one running single-threaded CPU kernels, and the other
-parametrized by the user's arguments.
+parameterized by the user's arguments.
 
 It measures the latency of both, as well as the absolute difference between the
 output tensors from each Interpreter, on a per-element basis.

@@ -219,6 +219,7 @@ py_library(
     srcs = ["multi_head_attention.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:platform",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
@@ -684,6 +685,7 @@ tf_py_test(
     size = "medium",
     srcs = ["merge_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",

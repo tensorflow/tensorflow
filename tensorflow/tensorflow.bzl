@@ -1245,7 +1245,9 @@ def tf_cc_test_mkl(
         cc_test(
             name = src_to_test_name(src),
             srcs = if_mkl([src]) + tf_binary_additional_srcs(),
-            copts = tf_copts(allow_exceptions = True) + tf_openmp_copts(),
+            # Adding an explicit `-fexceptions` because `allow_exceptions = True`
+            # in `tf_copts` doesn't work internally.
+            copts = tf_copts() + ["-fexceptions"] + tf_openmp_copts(),
             linkopts = select({
                 clean_dep("//tensorflow:android"): [
                     "-pie",
@@ -1519,7 +1521,9 @@ def tf_mkl_kernel_library(
         hdrs = None,
         deps = None,
         alwayslink = 1,
-        copts = tf_copts(allow_exceptions = True) + tf_openmp_copts()):
+        # Adding an explicit `-fexceptions` because `allow_exceptions = True`
+        # in `tf_copts` doesn't work internally.
+        copts = tf_copts() + ["-fexceptions"] + tf_openmp_copts()):
     """A rule to build MKL-based TensorFlow kernel libraries."""
 
     if not bool(srcs):
@@ -1823,6 +1827,14 @@ def py_strict_binary(name, **kwargs):
 
 # Placeholder to use until bazel supports py_strict_library.
 def py_strict_library(name, **kwargs):
+    native.py_library(name = name, **kwargs)
+
+# Placeholder to use until bazel supports pytype_strict_binary.
+def pytype_strict_binary(name, **kwargs):
+    native.py_binary(name = name, **kwargs)
+
+# Placeholder to use until bazel supports pytype_strict_library.
+def pytype_strict_library(name, **kwargs):
     native.py_library(name = name, **kwargs)
 
 # Placeholder to use until bazel supports py_strict_test.

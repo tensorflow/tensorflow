@@ -81,7 +81,7 @@ where applicable. For details about each parameter, please refer to
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
     Note this requires Android 10+.
-*   `disable_nnapi_cpu`: `bool` (default=false)
+*   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
 #### Hexagon delegate
@@ -107,7 +107,8 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 
 ### On Android:
 
-(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
+`WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
 

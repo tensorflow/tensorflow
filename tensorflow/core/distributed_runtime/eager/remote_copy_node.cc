@@ -58,7 +58,7 @@ Status CreateUncachedKernelAndDeviceOp(
                                       ctx.HostCPU()));
 
   const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
-  return kernel->get()->Init({ctx.LogDevicePlacement()}, ndef,
+  return kernel->get()->Init(ctx.LogDevicePlacement(), ndef,
                              /*graph_collector=*/nullptr);
 }
 

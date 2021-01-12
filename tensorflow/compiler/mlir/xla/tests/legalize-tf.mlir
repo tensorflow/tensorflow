@@ -2778,22 +2778,31 @@ func @dynamic_strided_slice_negative_indices(%input: tensor<?x8xf32>) -> tensor<
 }
 
 // CHECK-LABEL: strided_slice_range_clamping
-func @strided_slice_range_clamping(%input: tensor<4x8xf32>) -> tensor<0x3xf32> {
+func @strided_slice_range_clamping(%input: tensor<4x8xf32>) -> tensor<1x3xf32> {
   %begin = "tf.Const"() {value = dense<[-4, -10]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-  %end = "tf.Const"() {value = dense<[-1, 10]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-  %strides = "tf.Const"() {value = dense<[-1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
-
-  // CHECK: "mhlo.reverse"(%arg0) {dimensions = dense<0> : tensor<1xi64>}
+  %end = "tf.Const"() {value = dense<[1, 10]> : tensor<2xi32>} : () -> (tensor<2xi32>)
+  %strides = "tf.Const"() {value = dense<[1, 3]> : tensor<2xi32>} : () -> (tensor<2xi32>)
 
   // CHECK: mhlo.slice
-  // CHECK-DAG-SAME: start_indices = dense<[3, 0]>
-  // CHECK-DAG-SAME: limit_indices = dense<[3, 8]>
+  // CHECK-DAG-SAME: start_indices = dense<[0, 0]>
+  // CHECK-DAG-SAME: limit_indices = dense<[1, 8]>
   // CHECK-DAG-SAME: strides = dense<[1, 3]>
-  // CHECK-SAME: -> tensor<0x3xf32>
-
+  // CHECK-SAME: -> tensor<1x3xf32>
   %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
-      : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<0x3xf32>
-  return %output : tensor<0x3xf32>
+      : (tensor<4x8xf32>, tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<1x3xf32>
+  return %output : tensor<1x3xf32>
+}
+
+// CHECK-LABEL: strided_slice_empty
+func @strided_slice_empty(%input: tensor<4xf32>) -> tensor<0xf32> {
+  %begin = "tf.Const"() {value = dense<[-4]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+  %end = "tf.Const"() {value = dense<[-1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+  %strides = "tf.Const"() {value = dense<[-1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
+
+  // CHECK: mhlo.constant dense<> : tensor<0xf32>
+  %output = "tf.StridedSlice"(%input, %begin, %end, %strides)
+      : (tensor<4xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<0xf32>
+  return %output : tensor<0xf32>
 }
 
 // CHECK-LABEL: strided_slice_begin_end_mask
@@ -4977,8 +4986,7 @@ func @cumsum_exclusive_reverse(%arg0: tensor<4xf32>) -> tensor<4xf32> {
 func @cumsum_empty(%arg0: tensor<0xf32>) -> tensor<0xf32> {
   %0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 
-  // CHECK: "mhlo.reduce_window"
-  // CHECK: padding = dense<0> : tensor<1x2xi64>
+  // CHECK: mhlo.constant dense<> : tensor<0xf32>
   %1 = "tf.Cumsum"(%arg0, %0) : (tensor<0xf32>, tensor<i32>) -> tensor<0xf32>
   return %1 : tensor<0xf32>
 }

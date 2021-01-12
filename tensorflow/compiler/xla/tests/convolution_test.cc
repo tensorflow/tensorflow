@@ -1644,7 +1644,8 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
-XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU_ROCM(ConvolveF32ForwardReversed)) {
+XLA_TEST_F(ConvolutionHloTest,
+           DISABLED_ON_GPU_ROCM(ConvolveF32ForwardReversed)) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
 

@@ -128,10 +128,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:test",
     ] + if_cuda_is_configured([
-       "@local_config_cuda//cuda:cuda_headers",
-    ])
-    + if_rocm_is_configured([
-       "@local_config_rocm//rocm:rocm_headers",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
 
@@ -1415,6 +1414,7 @@ cc_library(
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
         "//tensorflow/compiler/mlir/xla:mhlo_to_lhlo_with_xla",
+        "//tensorflow/compiler/mlir/xla:type_to_shape",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -1447,10 +1447,10 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_util",
         "//tensorflow/compiler/xla/service:hlo_subcomputation_unification",
         "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/service:integral_upcaster",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service:logistic_expander",
         "//tensorflow/compiler/xla/service:loop_schedule_linearizer",
+        "//tensorflow/compiler/xla/service:operand_upcaster",
         "//tensorflow/compiler/xla/service:qr_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",

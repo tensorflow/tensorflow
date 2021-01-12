@@ -613,11 +613,18 @@ class WorkerPreemptionHandler(object):
     self._server_def = server_def
     self._cluster = cluster
     self._cluster_update_lock = threading.Lock()
-    self._cluster_due_for_update = threading.Event()
+    self._cluster_due_for_update_or_finish = threading.Event()
     self._worker_up_cond = threading.Condition(self._cluster_update_lock)
+    self._should_preemption_thread_run = True
     threading.Thread(target=self._preemption_handler,
                      name="WorkerPreemptionHandler",
                      daemon=True).start()
+
+  def _mark_finished(self):
+    """Ensure the worker preemption thread is closed."""
+    self._should_preemption_thread_run = False
+    with self._cluster_update_lock:
+      self._cluster_due_for_update_or_finish.set()
 
   def _validate_preemption_failure(self, e):
     """Validates that the given exception represents worker preemption."""
@@ -658,7 +665,7 @@ class WorkerPreemptionHandler(object):
         on_failure_fn()
 
       with self._cluster_update_lock:
-        self._cluster_due_for_update.set()
+        self._cluster_due_for_update_or_finish.set()
         self._worker_up_cond.wait(_WORKER_MAXIMUM_RECOVERY_SEC)
         logging.info("Worker %s has been recovered.", worker_device_name)
 
@@ -676,7 +683,10 @@ class WorkerPreemptionHandler(object):
     restarted workers.
     """
     while True:
-      self._cluster_due_for_update.wait()
+      self._cluster_due_for_update_or_finish.wait()
+      if not self._should_preemption_thread_run:
+        break
+
       with self._cluster_update_lock:
         try:
           # TODO(haoyuzhang): support partial cluster recovery
@@ -687,7 +697,7 @@ class WorkerPreemptionHandler(object):
           # all workers that they are recovered from failure.
           logging.info("Cluster successfully recovered.")
           self._worker_up_cond.notify_all()
-          self._cluster_due_for_update.clear()
+          self._cluster_due_for_update_or_finish.clear()
         except Exception as e:  # pylint: disable=broad-except
           self._validate_preemption_failure(e)
           # NOTE: Since the first RPC (GetStatus) of update_server_def is
@@ -995,6 +1005,10 @@ class ClusterCoordinator(object):
     self._strategy = strategy
     self._strategy.extended._used_with_coordinator = True
     self._cluster = Cluster(strategy)
+
+  def __del__(self):
+    # TODO(xingliu): Stop the worker threads.
+    self._cluster.failure_handler._mark_finished()
 
   @property
   def strategy(self):

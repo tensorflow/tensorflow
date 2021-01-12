@@ -48,7 +48,7 @@ TEST(EagerOpRewriteRegistryTest, RegisterRewritePass) {
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      false, &device_mgr, false, nullptr, nullptr);
+      &device_mgr, false, nullptr, nullptr);
   EagerOperation orig_op(ctx);
   std::unique_ptr<tensorflow::EagerOperation> out_op;
   EXPECT_EQ(Status::OK(),

@@ -162,6 +162,9 @@ class IrEmitterUnnested : public IrEmitter,
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter. It also mixes in some special handling for custom kernels
   // via the ThunkEmitter.
+  Status HandleConstant(HloInstruction* constant) override;
+  Status EmitConstant(MlirEmitterInput mlir_input);
+
   Status HandleCopy(HloInstruction* copy) override;
   Status EmitCopyForMlir(MlirEmitterInput input);
 
@@ -200,6 +203,8 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleCollectivePermute(HloInstruction* hlo) override;
+
+  Status EmitOp(MlirEmitterInput mlir_input);
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -715,16 +720,18 @@ class IrEmitterUnnested : public IrEmitter,
   // The thunk sequence this IrEmitter generates for the input computation.
   ThunkSequence thunk_sequence_;
 
-  // The HloComputation that this IrEmitter emits code for.
-  const HloComputation* hlo_computation_;
-
-  mlir::OwningModuleRef mlir_scratch_module_;
+  // Begin optional members for XLA HLO -> LMHLO:
+  // TODO(timshen): Once XLA HLO -> LMHLO converter is complete,
+  // IrEmitterUnnested should take LMHLO only, and won't require a scratch
+  // module.
+  absl::optional<mlir::OwningModuleRef> mlir_scratch_module_;
 
   // This is for cache-purpose only. It has no significant semantics.
-  mlir::LhloDialectEmitter lhlo_scratch_emitter_;
+  absl::optional<mlir::LhloDialectEmitter> lhlo_scratch_emitter_;
 
   absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
       scratch_nested_computations_;
+  // End optional members for XLA HLO -> LMHLO.
 };
 
 }  // namespace gpu

@@ -13,10 +13,10 @@ func @tensorlistConst(%arg0 : tensor<1xi32>) -> tensor<2x3xi32> {
 }
 
 func @emptyTensorlistConst(%arg0 : tensor<1xi32>) -> tensor<0x3xi32> {
-  // CHECK: %[[LIST:.*]] = "tf.Const"() {value = dense<> : tensor<0x3xi32>} : () -> tensor<0x3xi32>
   %0 = "tf.Const"() {value = opaque<"tf", "0x746674656E736F722464747970653A2044545F56415249414E542074656E736F725F7368617065207B207D2074656E736F725F636F6E74656E743A20222A5C6E5C30323674656E736F72666C6F773A3A54656E736F724C6973745C3032325C3032305C3030305C3030335C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3337375C3030315C3032325C3030325C3031305C30303322"> : tensor<!tf.variant>} : () -> tensor<!tf.variant<tensor<3xi32>>>
 
-  // CHECK: return %[[LIST]]
+  // CHECK: "tf.Const"() {value = dense<> : tensor<0x3xi32>} : () -> tensor<0x3xi32>
+  // CHECK-NOT: tf.TensorListStack
   %1 = "tf.TensorListStack"(%0, %arg0) : (tensor<!tf.variant<tensor<3xi32>>>, tensor<1xi32>) -> tensor<0x3xi32>
   return %1 : tensor<0x3xi32>
 }

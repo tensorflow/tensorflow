@@ -249,9 +249,8 @@ py_strict_library(
         "//tensorflow:__pkg__",
     ],
     deps = [
-        ":tf_decorator",
         "//tensorflow/python/types",
-        "//tensorflow/python/util:tf_stack",
+        "//tensorflow/python/util:core",
     ],
 )
 
@@ -5265,7 +5264,10 @@ pywrap_tensorflow_macro(
          tf_additional_plugin_deps() +
          tf_additional_profiler_deps()) + if_xla_available([
         "//tensorflow/compiler/aot:tfcompile_lib",
-    ]) + if_static(extra_deps = ["//tensorflow/core/platform:tensor_float_32_utils"]),
+    ]) + if_static(extra_deps = [
+        "//tensorflow/core/platform:tensor_float_32_utils",
+        "//tensorflow/core/platform:enable_tf2_utils",
+    ]),
 )
 
 # ** Targets for Windows build (start) **
@@ -6767,6 +6769,10 @@ py_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/platform:_pywrap_tf2",
+        "//tensorflow/python/util:tf_export",
+    ],
 )
 
 py_test(
@@ -6778,6 +6784,8 @@ py_test(
         ":client_testlib",
         ":framework_combinations",
         ":tf2",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )
 

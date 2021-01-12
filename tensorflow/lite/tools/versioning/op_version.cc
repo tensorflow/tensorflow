@@ -324,6 +324,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 5;
+      }
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 4;
       }
@@ -796,6 +799,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
     case BuiltinOperator_STRIDED_SLICE:
+    case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_TRANSPOSE: {

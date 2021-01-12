@@ -265,13 +265,14 @@ void FeedLLVMWithFlags(const std::vector<string>& cl_opts) {
 }
 
 // Returns whether the module could use any device bitcode library functions.
-// This function may have false positives -- the module might not use libdevice
-// on NVPTX or ROCm-Device-Libs on AMDGPU even if this function returns true.
 bool CouldNeedDeviceBitcode(const llvm::Module& module) {
   for (const llvm::Function& function : module.functions()) {
-    // This is a conservative approximation -- not all such functions are in
-    // libdevice or ROCm-Device-Libs.
-    if (!function.isIntrinsic() && function.isDeclaration()) {
+    // The list of prefixes should be in sync with library functions used in
+    // target_util.cc.
+    if (!function.isIntrinsic() && function.isDeclaration() &&
+        (function.getName().startswith("__nv_") ||
+         function.getName().startswith("__ocml_") ||
+         function.getName().startswith("__ockl_"))) {
       return true;
     }
   }
@@ -855,14 +856,25 @@ static std::string GetFeatureStrFromGCNArchName(
 }
 
 std::unique_ptr<llvm::TargetMachine> AMDGPUGetTargetMachine(
-    llvm::Triple target_triple, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config) {
+  llvm::Triple target_triple, GpuVersion gpu_version,
+  const HloModuleConfig& hlo_module_config) {
   auto amdgpu_version = absl::get_if<std::pair<int, std::string>>(&gpu_version);
+#if TF_ROCM_VERSION < 30900 
   int gcn_arch_value = amdgpu_version->first;
-  std::string gcn_arch_name = amdgpu_version->second;
+  auto gcn_arch_name = amdgpu_version->second; 
   std::string feature_str = GetFeatureStrFromGCNArchName(gcn_arch_name);
-  return GetTargetMachine(target_triple, absl::StrCat("gfx", gcn_arch_value),
+  return GetTargetMachine(target_triple, absl::StrCat("gfx", gcn_arch_name),
                           hlo_module_config, feature_str);
+#elif TF_ROCM_VERSION >= 30900
+  string feature_str = "+code-object-v3";
+  // code-object-v3 is default, so no need to expliticitly specify it
+  // in the feature string. Also, starting with ROCm 4.0, this feature string
+  // is deprecated, and we get a warning to that effect. So removing that
+  // feature string
+  feature_str = "";
+  return GetTargetMachine(target_triple, amdgpu_version->second,
+                          hlo_module_config, feature_str);
+#endif
 }
 
 void AMDGPUBackendInit(const HloModuleConfig& hlo_module_config) {

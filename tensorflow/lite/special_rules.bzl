@@ -70,7 +70,7 @@ def tflite_hexagon_nn_skel_libraries():
         name = "libhexagon_nn_skel",
         srcs = glob(["*.so"]),
     )
-    you need to modify this macro to specifiy the build target.
+    you need to modify this macro to specify the build target.
     return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
     """
     return []

@@ -190,9 +190,7 @@ std::string GenerateConvolution(const ConvParams& params) {
   ids_params.group_ids = {"group_id.x", "group_id.y", "group_id.z"};
   ids_params.global_ids = {"ugid.x", "ugid.y", "ugid.z"};
   ids_params.local_ids = {"tid3d.x", "tid3d.y", "tid3d.z"};
-  ids_params.local_sizes = {"params.work_group_size.x",
-                            "params.work_group_size.y",
-                            "params.work_group_size.z"};
+  ids_params.local_sizes = {"lsize.x", "lsize.y", "lsize.z"};
   ids_params.linear_wh = params.linear_wh;
   ids_params.task_size_w = "params.task_sizes.x";
   ids_params.task_size_wh = "params.task_sizes.y";
@@ -239,12 +237,7 @@ std::string GenerateConvolution(const ConvParams& params) {
 using namespace metal;
 
 struct uniforms {
-    int4 src_size;
-    int4 dst_size;
-    int4 stride_padding;
-    int4 kernel_dilation;
     int4 task_sizes;
-    uint4 work_group_size;
 };
 $0
 
@@ -253,16 +246,18 @@ kernel void ComputeFunction(
     uint tid[[thread_index_in_threadgroup]],
     uint3 group_id[[threadgroup_position_in_grid]],
     uint3 tid3d[[thread_position_in_threadgroup]],
+    uint3 lsize[[threads_per_threadgroup]],
 )";
   if (use_simd_broadcast) {
     c += "    uint simd_id[[thread_index_in_simdgroup]],\n";
   }
   c += "    uint3 ugid[[thread_position_in_grid]]){\n";
   c += GlobalIdsGen(ids_params);
-  c += "  if (Z >= params.dst_size.w) return;\n";
+  c += "  if (Z >= args.dst_tensor.Slices()) return;\n";
   bool late_xy_check = use_local_mem || use_simd_broadcast;
   if (!late_xy_check && !params.linear_whs) {
-    c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
+    c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+         "return;\n";
   }
   for (int z = 0; z < params.block_size.z; ++z) {
     for (int y = 0; y < params.block_size.y; ++y) {
@@ -288,24 +283,24 @@ kernel void ComputeFunction(
         }
       };
   if (!use_filters_constants) {
-    std::string kern_x =
-        params.x_kernel_is_1 ? "" : " * params.kernel_dilation.x";
-    std::string kern_y =
-        params.y_kernel_is_1 ? "" : " * params.kernel_dilation.y";
+    std::string kern_x = params.x_kernel_is_1 ? "" : " * args.kernel_size_x";
+    std::string kern_y = params.y_kernel_is_1 ? "" : " * args.kernel_size_y";
     std::string dst_offset =
-        params.need_dst_loop ? " + Z * 4 * params.src_size.w" : "";
+        params.need_dst_loop ? " + Z * 4 * args.src_tensor.Slices()" : "";
     if (!params.need_dst_loop) {
-      c += "  " + addr_space + " FLT4* tmp = filters;\n";
+      c += "  " + addr_space + " FLT4* tmp = args.weights.GetPtr();\n";
     } else {
       if (params.different_weights_for_height) {
         c += "  " + addr_space +
-             " FLT4* tmp = filters + (Z * params.src_size.y + Y * " +
+             " FLT4* tmp = args.weights.GetPtr() + (Z * "
+             "args.src_tensor.Height() + Y * " +
              std::to_string(params.block_size.z) +
-             ") * 4 * params.src_size.w;\n";
+             ") * 4 * args.src_tensor.Slices();\n";
       } else {
         c += "  " + addr_space +
-             " FLT4* tmp = filters + Z * 4 * params.src_size.w" + kern_x +
-             kern_y + ";\n";
+             " FLT4* tmp = args.weights.GetPtr() + Z * 4 * "
+             "args.src_tensor.Slices()" +
+             kern_x + kern_y + ";\n";
       }
     }
   }
@@ -313,14 +308,14 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       c += "  int x" + s_x + " = (X + " + s_x +
-           ") * params.stride_padding.x + params.stride_padding.z;\n";
+           ") * args.stride_x + args.padding_x;\n";
     }
   }
   if (!params.y_kernel_is_1) {
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       c += "  int y" + s_y + " = (Y + " + s_y +
-           ") * params.stride_padding.y + params.stride_padding.w;\n";
+           ") * args.stride_y + args.padding_y;\n";
     }
   }
   if (use_local_mem) {
@@ -332,18 +327,17 @@ kernel void ComputeFunction(
     c += "  do {\n";
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
-      c += "  int c_y" + s_y + " = y * params.kernel_dilation.w + y" + s_y +
-           ";\n";
+      c += "  int c_y" + s_y + " = y * args.dilation_y + y" + s_y + ";\n";
       c += "  bool y" + s_y + "_out = c_y" + s_y + " < 0 || c_y" + s_y +
-           " >= params.src_size.y;\n";
+           " >= args.src_tensor.Height();\n";
       c += "  c_y" + s_y + " = clamp(c_y" + s_y +
-           ", 0, params.src_size.y - 1);\n";
+           ", 0, args.src_tensor.Height() - 1);\n";
     }
   } else {
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       c += "  int c_y" + s_y + " = clamp(Y + " + s_y +
-           ", 0, params.src_size.y - 1);\n";
+           ", 0, args.src_tensor.Height() - 1);\n";
     }
   }
   if (!params.x_kernel_is_1) {
@@ -351,18 +345,17 @@ kernel void ComputeFunction(
     c += "  do {\n";
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
-      c += "  int c_x" + s_x + " = x * params.kernel_dilation.z + x" + s_x +
-           ";\n";
+      c += "  int c_x" + s_x + " = x * args.dilation_x + x" + s_x + ";\n";
       c += "  bool x" + s_x + "_out = c_x" + s_x + " < 0 || c_x" + s_x +
-           " >= params.src_size.x;\n";
+           " >= args.src_tensor.Width();\n";
       c += "  c_x" + s_x + " = clamp(c_x" + s_x +
-           ", 0, params.src_size.x - 1);\n";
+           ", 0, args.src_tensor.Width() - 1);\n";
     }
   } else {
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       c += "  int c_x" + s_x + " = clamp(X + " + s_x +
-           ", 0, params.src_size.x - 1);\n";
+           ", 0, args.src_tensor.Width() - 1);\n";
     }
   }
   for (int y = 0; y < params.block_size.y; ++y) {
@@ -384,8 +377,9 @@ kernel void ComputeFunction(
     for (int x = 0; x < params.block_size.x; ++x) {
       const std::string s_x = std::to_string(x);
       const std::string s_yx = s_y + s_x;
-      c += "  device FLT4* src_loc_" + s_yx + " = src_tensor + c_y" + s_y +
-           " * params.src_size.x + c_x" + s_x + ";\n";
+      c += "  device FLT4* src_loc_" + s_yx +
+           " = args.src_tensor.GetHandle() + args.src_tensor.GetWHOffset(c_x" +
+           s_x + ", c_y" + s_y + ");\n";
     }
   }
   c += "  int s = 0;\n";
@@ -438,14 +432,14 @@ kernel void ComputeFunction(
     for (int y = 0; y < params.block_size.y; ++y) {
       for (int x = 0; x < params.block_size.x; ++x) {
         const std::string s_yx = std::to_string(y) + std::to_string(x);
-        c += "    src_loc_" + s_yx + " += params.src_size.z;\n";
+        c += "    src_loc_" + s_yx + " += args.src_tensor.SliceStride();\n";
       }
     }
   };
   auto conv_core = [&](int offset) {
     std::string name = use_local_mem ? "weights_cache" : "tmp";
     if (use_filters_constants) {
-      name = "filters";
+      name = "args.weights.GetPtr()";
     }
     for (int z = 0; z < params.block_size.z; ++z) {
       for (int ch = 0; ch < 4; ++ch) {
@@ -491,30 +485,31 @@ kernel void ComputeFunction(
          ";\n";
   }
   if (params.need_src_loop) {
-    c += "  } while (s < params.src_size.w);\n";
+    c += "  } while (s < args.src_tensor.Slices());\n";
   }
   if (!params.x_kernel_is_1) {
     c += "  x++;\n";
-    c += "  } while (x < params.kernel_dilation.x);\n";
+    c += "  } while (x < args.kernel_size_x);\n";
   }
   if (!params.y_kernel_is_1) {
     c += "  y++;\n";
-    c += "  } while (y < params.kernel_dilation.y);\n";
+    c += "  } while (y < args.kernel_size_y);\n";
   }
 
   if (late_xy_check && !params.linear_whs) {
-    c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
+    c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
+         "return;\n";
   }
 
   for_every_yx([](const std::string& s_yx, const std::string& s_x,
                   const std::string& s_y, int x, int y) {
-    return "  const int offset_" + s_yx + " = Z * params.dst_size.z + (Y + " +
-           s_y + ") * params.dst_size.x + X + " + s_x + ";";
+    return "  args.dst_tensor.GetAddress(offset_" + s_yx + ", X + " + s_x +
+           ", Y + " + s_y + ", Z);";
   });
 
-  std::string bias_name = "biases";
+  std::string bias_name = "args.biases.GetPtr()";
   if (params.need_dst_loop) {
-    c += "  device FLT4* bias_loc = biases + Z;\n";
+    c += "  device FLT4* bias_loc = args.biases.GetPtr() + Z;\n";
     bias_name = "bias_loc";
   }
   for (int y = 0; y < params.block_size.y; ++y) {
@@ -529,7 +524,7 @@ kernel void ComputeFunction(
   }
   for (int z = 0; z < params.block_size.z; ++z) {
     const std::string s_z = std::to_string(z);
-    c += "  if (Z + " + s_z + " < params.dst_size.w) {\n";
+    c += "  if (Z + " + s_z + " < args.dst_tensor.Slices()) {\n";
     for (int y = 0; y < params.block_size.y; ++y) {
       const std::string s_y = std::to_string(y);
       for (int x = 0; x < params.block_size.x; ++x) {
@@ -540,11 +535,11 @@ kernel void ComputeFunction(
         bool need_check_y = y >= 1;
         std::string check;
         if (need_check_x) {
-          check += "(X + " + s_x + ") < params.dst_size.x";
+          check += "(X + " + s_x + ") < args.dst_tensor.Width()";
         }
         if (need_check_y) {
           check += check.empty() ? "" : " && ";
-          check += "(Y + " + s_y + ") < params.dst_size.y";
+          check += "(Y + " + s_y + ") < args.dst_tensor.Height()";
         }
         if (!check.empty()) {
           c += "    if (" + check + ") {\n";
@@ -553,11 +548,11 @@ kernel void ComputeFunction(
         }
         c += "      FLT4 value = FLT4(r" + s_zyx + ");\n";
         c += "      int linear_index = offset_" + s_yx +
-             " + params.dst_size.z * " + s_z + ";\n";
+             " + args.dst_tensor.SliceStride() * " + s_z + ";\n";
         c += "      uint3 gid = uint3(X + " + s_x + ", Y + " + s_y + ", Z + " +
              s_z + ");\n";
         c += "      $2\n";
-        c += "      dst_tensor[linear_index] = value;\n";
+        c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
         c += "    }\n";
       }
     }
@@ -612,70 +607,14 @@ std::vector<float> ReorderWeightsForConv(
   return weights_reordered;
 }
 
-std::vector<uint8_t> GetUniformBuffer(const BHWC& src_size,
-                                      const BHWC& dst_size,
-                                      const Convolution2DAttributes& attr,
+std::vector<uint8_t> GetUniformBuffer(const BHWC& dst_size,
                                       const ConvParams& params) {
   const int grid_x = DivideRoundUp(dst_size.w, params.block_size.x);
   const int grid_y = DivideRoundUp(dst_size.h, params.block_size.y);
   std::vector<int> uniform_params = {
-      src_size.w,
-      src_size.h,
-      src_size.w * src_size.h,
-      DivideRoundUp(src_size.c, 4),
-      dst_size.w,
-      dst_size.h,
-      dst_size.w * dst_size.h,
-      DivideRoundUp(dst_size.c, 4),
-      attr.strides.w,
-      attr.strides.h,
-      -attr.padding.prepended.w,
-      -attr.padding.prepended.h,
-      attr.weights.shape.w,
-      attr.weights.shape.h,
-      attr.dilations.w,
-      attr.dilations.h,
       grid_x,
       grid_x * grid_y,
       0,  // dummy, for alignment
-      0,  // dummy, for alignment
-      params.work_group_size.x,
-      params.work_group_size.y,
-      params.work_group_size.z,
-      0,  // dummy, for alignment
-  };
-  return GetByteBuffer(uniform_params);
-}
-
-std::vector<uint8_t> GetUniformBufferForWinograd(const BHWC& src_size,
-                                                 const BHWC& dst_size,
-                                                 const ConvParams& params) {
-  const int grid_x = DivideRoundUp(dst_size.w, params.block_size.x);
-  const int grid_y = DivideRoundUp(dst_size.h, params.block_size.y);
-  std::vector<int> uniform_params = {
-      src_size.w,
-      src_size.h,
-      src_size.w * src_size.h,
-      DivideRoundUp(src_size.c, 4),
-      dst_size.w,
-      dst_size.h,
-      dst_size.w * dst_size.h,
-      DivideRoundUp(dst_size.c, 4),
-      1,
-      1,
-      0,
-      0,
-      1,
-      1,
-      1,
-      1,
-      grid_x,
-      grid_x * grid_y,
-      0,  // dummy, for alignment
-      0,  // dummy, for alignment
-      params.work_group_size.x,
-      params.work_group_size.y,
-      params.work_group_size.z,
       0,  // dummy, for alignment
   };
   return GetByteBuffer(uniform_params);
@@ -1055,26 +994,48 @@ ComputeTaskDescriptor ConvolutionGeneric(const OperationDef& definition,
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
+  desc.args.AddInt("kernel_size_x", attr.weights.shape.w);
+  desc.args.AddInt("kernel_size_y", attr.weights.shape.h);
+  desc.args.AddInt("dilation_x", attr.dilations.w);
+  desc.args.AddInt("dilation_y", attr.dilations.h);
+  desc.args.AddInt("stride_x", attr.strides.w);
+  desc.args.AddInt("stride_y", attr.strides.h);
+  desc.args.AddInt("padding_x", -attr.padding.prepended.w);
+  desc.args.AddInt("padding_y", -attr.padding.prepended.h);
+
   auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
-  std::string addr_space =
-      params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
-                                                                    : "device";
-  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {addr_space + " FLT4* const filters",
-       GetByteBufferConverted(weights_reordered, data_type)},
-      {addr_space + " FLT4* const biases",
-       GetByteBufferConvertedResized(
-           attr.bias.data, data_type,
-           AlignByN(dst_depth, params.block_size.z) * 4)},
-  };
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+
+  MemoryType mem_type =
+      params.weights_upload_type == WeightsUploadType::CONSTANT_MEM
+          ? MemoryType::CONSTANT
+          : MemoryType::GLOBAL;
+
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = data_type;
+  weights_desc.element_size = 4;
+  weights_desc.memory_type = mem_type;
+  weights_desc.data = GetByteBufferConverted(weights_reordered, data_type);
+  weights_desc.size = weights_desc.data.size();
+  desc.args.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
+
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.memory_type = mem_type;
+  bias_desc.data = GetByteBufferConvertedResized(
+      attr.bias.data, data_type, AlignByN(dst_depth, params.block_size.z) * 4);
+  bias_desc.size = bias_desc.data.size();
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
-       [attr, params](const std::vector<BHWC>& src_shapes,
-                      const std::vector<BHWC>& dst_shapes) {
-         return GetUniformBuffer(src_shapes[0], dst_shapes[0], attr, params);
+       [params](const std::vector<BHWC>& src_shapes,
+                const std::vector<BHWC>& dst_shapes) {
+         return GetUniformBuffer(dst_shapes[0], params);
        }},
   };
 
@@ -1133,6 +1094,15 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
+  desc.args.AddInt("kernel_size_x", 1);
+  desc.args.AddInt("kernel_size_y", 1);
+  desc.args.AddInt("dilation_x", 1);
+  desc.args.AddInt("dilation_y", 1);
+  desc.args.AddInt("stride_x", 1);
+  desc.args.AddInt("stride_y", 1);
+  desc.args.AddInt("padding_x", 0);
+  desc.args.AddInt("padding_y", 0);
+
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
   auto weights_reordered = ReorderWeightsForConv(wino_weights, params);
@@ -1140,19 +1110,28 @@ ComputeTaskDescriptor ConvolutionWino4x4To6x6(
                                   0.0f);
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
-  desc.immutable_buffers = {
-      {"device FLT4* const filters",
-       GetByteBufferConverted(weights_reordered, data_type)},
-      {"device FLT4* const biases",
-       GetByteBufferConverted(dummy_biases, data_type)},
-  };
+
+  BufferDescriptor weights_desc;
+  weights_desc.element_type = data_type;
+  weights_desc.element_size = 4;
+  weights_desc.data = GetByteBufferConverted(weights_reordered, data_type);
+  weights_desc.size = weights_desc.data.size();
+  desc.args.AddObject(
+      "weights", absl::make_unique<BufferDescriptor>(std::move(weights_desc)));
+
+  BufferDescriptor bias_desc;
+  bias_desc.element_type = data_type;
+  bias_desc.element_size = 4;
+  bias_desc.data = GetByteBufferConverted(dummy_biases, data_type);
+  bias_desc.size = bias_desc.data.size();
+  desc.args.AddObject(
+      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.uniform_buffers = {
       {"constant uniforms& params",
        [params](const std::vector<BHWC>& src_shapes,
                 const std::vector<BHWC>& dst_shapes) {
-         return GetUniformBufferForWinograd(src_shapes[0], dst_shapes[0],
-                                            params);
+         return GetUniformBuffer(dst_shapes[0], params);
        }},
   };
 

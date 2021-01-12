@@ -825,7 +825,7 @@ def ngrams(data,
 
 def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   """Version of tf.strings.format that handles RaggedTensors."""
-  if tensor_util.is_tensor(inputs) or ragged_tensor.is_ragged(inputs):
+  if tensor_util.is_tf_type(inputs) or ragged_tensor.is_ragged(inputs):
     inputs = [inputs]
 
   split_template = template.split(placeholder)

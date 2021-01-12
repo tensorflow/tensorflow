@@ -48,7 +48,7 @@ def slice_arrays(arrays, indices, contiguous=True):
   if not isinstance(arrays, list):
     converted_to_list = True
     arrays = [arrays]
-  if any(tensor_util.is_tensor(x) for x in arrays):
+  if any(tensor_util.is_tf_type(x) for x in arrays):
     if not contiguous:
       entries = [[x[i:i + 1] for i in indices] for x in arrays]
       slices = [array_ops.concat(x, axis=0) for x in entries]

@@ -98,11 +98,13 @@ class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
 
 
 class TF_AllTypesMatchPred<list<string> values> :
-    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({"# StrJoin<values>.result #"}))">;
+    CPred<"TF::AreCastCompatible(llvm::makeArrayRef({" #
+      !interleave(values, ", ") # "}))">;
 
 class TF_AllTypesMatch<list<string> names> :
     PredOpTrait<
-        "all of {" # StrJoin<names>.result # "} have dynamically equal types ",
+        "all of {" # !interleave(names, ", ") #
+          "} have dynamically equal types ",
         TF_AllTypesMatchPred<
             !foreach(n, names, !subst("$_self", "$" # n, "$_self.getType()"))>>;
 

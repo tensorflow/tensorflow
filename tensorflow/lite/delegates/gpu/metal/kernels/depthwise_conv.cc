@@ -159,28 +159,24 @@ kernel void ComputeFunction(
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
 
   if (y0_in && x0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y, gid_z);
     FLT4 value = FLT4(r0);
     uint3 gid = uint3(gid_x, gid_y, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in && x0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y + 1, gid_z);
     FLT4 value = FLT4(l0);
     uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
   if (y0_in && x1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x + 1, gid_y, gid_z);
     FLT4 value = FLT4(t0);
     uint3 gid = uint3(gid_x + 1, gid_y, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y, gid_z);
   }
   if (y1_in && x1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x + 1, gid_y + 1, gid_z);
     FLT4 value = FLT4(b0);
     uint3 gid = uint3(gid_x + 1, gid_y + 1, gid_z);
     $2
@@ -333,14 +329,12 @@ kernel void ComputeFunction(
   bool y1_in = gid_y + 1 < args.dst_tensor.Height();
 
   if (y0_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y, gid_z);
     FLT4 value = FLT4(r0);
     uint3 gid = uint3(gid_x, gid_y, gid_z);
     $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in) {
-    args.dst_tensor.GetAddress(linear_index, gid_x, gid_y + 1, gid_z);
     FLT4 value = FLT4(l0);
     uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
     $2
@@ -460,14 +454,12 @@ kernel void ComputeFunction(
     }
   }
   FLT4 res = FLT4(sum0) + args.biases.Read(dst_z);
-  args.dst_tensor.GetAddress(linear_index, dst_x, dst_y, dst_z);
   FLT4 value = res;
   $2
   args.dst_tensor.Write(value, dst_x, dst_y, dst_z);
 }
 )";
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = shader_source;
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -484,6 +476,7 @@ kernel void ComputeFunction(
 
   auto data_type = DeduceDataTypeFromPrecision(definition.precision);
   const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
+  const int dst_ch_aligned = AlignByN(output_channels_count, 4);
   BufferDescriptor weights_desc;
   weights_desc.element_type = data_type;
   weights_desc.element_size = 4;
@@ -496,8 +489,8 @@ kernel void ComputeFunction(
   BufferDescriptor bias_desc;
   bias_desc.element_type = data_type;
   bias_desc.element_size = 4;
-  bias_desc.data = GetByteBufferConvertedResized(attr.bias.data, data_type,
-                                                 output_channels_count);
+  bias_desc.data =
+      GetByteBufferConvertedResized(attr.bias.data, data_type, dst_ch_aligned);
   bias_desc.size = bias_desc.data.size();
   desc.args.AddObject(
       "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
@@ -518,7 +511,6 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride1x1(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride1x1();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
@@ -567,7 +559,6 @@ ComputeTaskDescriptor DepthWiseConv3x3Stride2(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
-  desc.tensors_as_args = true;
   desc.shader_source = GetKernelDepthWiseConv3x3Stride2();
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);

@@ -1245,7 +1245,9 @@ ShapeUtil::ReshapeLeavesDimensionsUnmodified(
     return false;
   }
 
-  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape));
+  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape))
+      << "input_shape=" << input_shape.ShortDebugString()
+      << ", output_shape=" << output_shape.ShortDebugString();
   if (ElementsIn(input_shape) == 0) {
     return true;
   }
@@ -1711,13 +1713,11 @@ Shape ShapeUtil::DeviceShapeToHostShape(Shape s) {
   return s;
 }
 
-/*static*/ bool ShapeUtil::CanUpcastIntegral(const Shape& from,
-                                             const Shape& to) {
-  return ElementIsIntegral(from) && ElementIsIntegral(to) &&
+/*static*/ bool ShapeUtil::ElementCanUpcast(const Shape& from,
+                                            const Shape& to) {
+  return ElementIsFloating(from) == ElementIsFloating(to) &&
          ElementIsSigned(from) == ElementIsSigned(to) &&
-         primitive_util::BitWidth(from.element_type()) <=
-             primitive_util::BitWidth(to.element_type()) &&
-         CompatibleIgnoringElementType(from, to);
+         HigherPrecisionElementType(from, to) == to.element_type();
 }
 
 }  // namespace xla

@@ -442,7 +442,8 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
     results = {}
     for _ in range(elements_to_read):
       val = next(it).numpy()
-      if val not in results: results[val] = 0
+      if val not in results:
+        results[val] = 0
       results[val] += 1
     for i in range(num_elements):
       self.assertGreater(results[i], elements_to_read / num_elements / 2)
@@ -526,6 +527,37 @@ class DataServiceOpsTest(data_service_test_base.TestBase,
       ds = ds.apply(
           data_service_ops.distribute(
               processing_mode="invalid", service="grpc://localhost:5000"))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testZipDifferentProcessingModesDatasets(self):
+    cluster = self.create_cluster(num_workers=1)
+    num_elements = 100
+    ds1 = dataset_ops.Dataset.range(num_elements)
+    ds1 = self.make_distributed_dataset(
+        ds1, cluster, processing_mode="distributed_epoch")
+    ds2 = dataset_ops.Dataset.range(num_elements)
+    ds2 = self.make_distributed_dataset(
+        ds2, cluster, processing_mode="parallel_epochs")
+    ds = dataset_ops.Dataset.zip((ds1, ds2))
+    self.assertDatasetProduces(
+        ds,
+        list(zip(range(num_elements), range(num_elements))),
+        assert_items_equal=True)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testZipDifferentProcessingModesDatasetsSharedJobName(self):
+    cluster = self.create_cluster(num_workers=1)
+    num_elements = 100
+    ds1 = dataset_ops.Dataset.range(num_elements)
+    ds1 = self.make_distributed_dataset(
+        ds1, cluster, processing_mode="distributed_epoch", job_name="job_name")
+    ds2 = dataset_ops.Dataset.range(num_elements)
+    ds2 = self.make_distributed_dataset(
+        ds2, cluster, processing_mode="parallel_epochs", job_name="job_name")
+    ds = dataset_ops.Dataset.zip((ds1, ds2))
+    with self.assertRaisesRegex(errors.FailedPreconditionError,
+                                "but there is already an existing job"):
+      self.getDatasetOutput(ds)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testFromDatasetId(self):

@@ -89,7 +89,7 @@ def reduce_non_distributed_value(
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
   # TODO:(b/138823479): handle the tensor value properly.
-  if not tensor_util.is_tensor(value) and value == 0:
+  if not tensor_util.is_tf_type(value) and value == 0:
     return 0
   # If there is only a single value and the reduce op is MEAN,
   # that value should be on all destinations.

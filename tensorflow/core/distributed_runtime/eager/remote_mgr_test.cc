@@ -54,9 +54,7 @@ class RemoteMgrTest : public ::testing::Test {
     ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        /*async=*/false,
-        /*lazy_copy_function_remote_inputs=*/false, device_mgr.release(), true,
-        rendezvous, nullptr);
+        /*async=*/false, device_mgr.release(), true, rendezvous, nullptr);
   }
 
   ~RemoteMgrTest() override { ctx_->Unref(); }

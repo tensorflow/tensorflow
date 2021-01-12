@@ -787,9 +787,9 @@ class ShapeUtil {
   // information, from a shape.
   static Shape DeviceShapeToHostShape(Shape s);
 
-  // Returns true iff integral shape `from` can be safely upcasted to integral
-  // shape `to`.
-  static bool CanUpcastIntegral(const Shape& from, const Shape& to);
+  // Returns true iff element type of shape `from` can be safely upcasted to
+  // element type of shape `to`.
+  static bool ElementCanUpcast(const Shape& from, const Shape& to);
 
  private:
   // Fills *shape. Returns true on success.

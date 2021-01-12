@@ -91,6 +91,7 @@ class DirectBinaryPat<Op FromOp, Op ToOp>
         (ToOp $l, $r, (BinBroadcastDimensions $l, $r))>;
 
 foreach fromToBinPair = [[TF_AddV2Op, HLOClient_BroadcastAddOp],
+                         [TF_Atan2Op, HLOClient_BroadcastAtan2Op],
                          [TF_DivOp, HLOClient_BroadcastDivOp],
                          [TF_LeftShiftOp, HLOClient_BroadcastShiftLeftOp],
                          [TF_MaximumOp, HLOClient_BroadcastMaxOp],
@@ -189,7 +190,17 @@ def : Pat<(TF_FloorModOp AnyTensor:$l, AnyTensor:$r),
        (HLOClient_BroadcastAddOp $r,
         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
+
+def Get2DTransposePerm: NativeCodeCall<
+  "Get2DTransposePerm($0, &$_builder)">;
+
 def : Pat<(TF_RiscAddOp $l, $r), (HLO_AddOp $l, $r)>;
+
+def : Pat<(TF_RiscDotOp $a, $b, $transpose_a, $transpose_b),
+          (HLO_DotOp
+          (TF_TransposeOp $a, (TF_ConstOp (Get2DTransposePerm $transpose_a))),
+          (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
+          /*precision_config=*/(NullArrayAttr))>;
 
 //===----------------------------------------------------------------------===//
 // Logical & bitwise binary op patterns.
@@ -352,9 +363,6 @@ foreach src = [TF_PreventGradientOp, TF_CheckNumericsOp] in
 //===----------------------------------------------------------------------===//
 // MatMul op patterns.
 //===----------------------------------------------------------------------===//
-
-def Get2DTransposePerm: NativeCodeCall<
-  "Get2DTransposePerm($0, &$_builder)">;
 
 def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (HLO_DotOp

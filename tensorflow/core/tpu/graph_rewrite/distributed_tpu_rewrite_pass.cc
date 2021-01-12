@@ -90,6 +90,8 @@ const char kShardingAttribute[] = "_XlaSharding";
 const char kTPUPartitionedInput[] = "TPUPartitionedInput";
 const char kTPUPartitionedOutput[] = "TPUPartitionedOutput";
 
+const char kVarHandleOp[] = "VarHandleOp";
+
 static const char* const kTPUCompilationResultAttr = "_tpu_compilation_status";
 static const char* const kPostDeviceRewriteAttr = "_post_device_rewrite";
 
@@ -1940,6 +1942,21 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       }
     }
 
+    if (params_info.IsVariableArg(i)) {
+      Node* input_node;
+      TF_RETURN_IF_ERROR(replicate_node->input_node(i, &input_node));
+      if (input_node->type_string() == kVarHandleOp) {
+        TF_ASSIGN_OR_RETURN(absl::optional<xla::OpSharding> parsed_sharding,
+                            GetShardingFromNodeDef(input_node->def()));
+        if (parsed_sharding.has_value()) {
+          sharding = parsed_sharding;
+          VLOG(1) << "Arg " << i << " parsed sharding information from "
+                  << input_node->name() << " : "
+                  << parsed_sharding->DebugString();
+        }
+      }
+    }
+
     if (sharding.has_value() && enable_automatic_model_parallelism_) {
       return tensorflow::errors::InvalidArgument(
           "Specifying manual sharding is not allowed when automatic "
@@ -2374,7 +2391,7 @@ Status DistributedTPURewritePass::FindVariableInputs(
         }
       }
     }
-    if (node->type_string() == "VarHandleOp") {
+    if (node->type_string() == kVarHandleOp) {
       DataType dtype;
       TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "dtype", &dtype));
       variables->push_back(VariableInput{input_edges[i]->src(),
