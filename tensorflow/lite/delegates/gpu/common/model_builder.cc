@@ -59,30 +59,6 @@ namespace tflite {
 namespace gpu {
 namespace {
 
-absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
-                                    const TfLiteNode* tflite_node, int idx) {
-  // If tensor id is in range, it's guaranteed that it'll be available.
-  if (idx >= tflite_node->inputs->size) {
-    return absl::OutOfRangeError(
-        absl::StrCat("Requested index goes beyond array size: ", idx, " vs ",
-                     idx, tflite_node->inputs->size));
-  }
-  return absl::OkStatus();
-}
-
-HW ToHW(int32_t h, int32_t w) { return HW(h > 0 ? h : 1, w > 0 ? w : 1); }
-
-template <typename AttrT>
-void UpdatePadding(const TfLitePadding& padding, const BHWC& input_shape,
-                   AttrT* attr) {
-  if (padding == kTfLitePaddingSame) {
-    attr->padding = CalculateSamePadding(input_shape, *attr);
-  } else {
-    attr->padding.prepended = HW(0, 0);
-    attr->padding.appended = HW(0, 0);
-  }
-}
-
 absl::Status GetFullyConnectedAttributes(int weights_tensor_id,
                                          int bias_tensor_id,
                                          ObjectReader* reader,
@@ -109,45 +85,6 @@ absl::Status RetrieveBuiltinData(const TfLiteNode* tflite_node,
   return absl::OkStatus();
 }
 
-template <typename ParamsT>
-absl::Status RetrieveCustomInitialData(const TfLiteNode* tflite_node,
-                                       const ParamsT** tf_options) {
-  *tf_options = static_cast<const ParamsT*>(tflite_node->custom_initial_data);
-  if (!*tf_options) {
-    return absl::InternalError("Unable to retrieve custom_initial_data.");
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckMaxSupportedOpVersion(const TfLiteRegistration* registration,
-                                        int max_version) {
-  const int op_version = registration->version;
-  if (op_version > max_version) {
-    return absl::UnimplementedError(
-        absl::StrCat("Max version supported: ", max_version,
-                     ". Requested version ", op_version, "."));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckKernels(int kernel_h, int kernel_w) {
-  if (kernel_h <= 0 || kernel_w <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Incorrect kernel values: kernel_height = ", kernel_h,
-                     ", kernel_width = ", kernel_w));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckStrides(int strides_h, int strides_w) {
-  if (strides_h <= 0 || strides_w <= 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Incorrect stride values: stride_height = ", strides_h,
-                     ", stride_width = ", strides_w));
-  }
-  return absl::OkStatus();
-}
-
 absl::Status CheckDilation(int dilation_h, int dilation_w) {
   if (dilation_h <= 0 || dilation_w <= 0) {
     return absl::InvalidArgumentError(absl::StrCat(
@@ -164,13 +101,6 @@ absl::Status CheckStridesAndDilation(int strides_h, int strides_w,
   return absl::OkStatus();
 }
 
-absl::Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
-                                    int strides_w) {
-  RETURN_IF_ERROR(CheckKernels(kernel_h, kernel_w));
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
-  return absl::OkStatus();
-}
-
 // Creates a simple node that holds tensor value.
 absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   ConstTensorAttributes attr;
@@ -184,15 +114,6 @@ absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   (*value)->tensor.ref = attr.tensor.id;
   (*value)->tensor.type = attr.tensor.kType;
   (*value)->tensor.shape = attr.tensor.shape;
-  return absl::OkStatus();
-}
-
-absl::Status ParsePoolingAttributes(const TfLitePoolParams* tf_options,
-                                    const BHWC& input_shape,
-                                    Pooling2DAttributes* attr) {
-  attr->kernel = ToHW(tf_options->filter_height, tf_options->filter_width);
-  attr->strides = ToHW(tf_options->stride_height, tf_options->stride_width);
-  UpdatePadding(tf_options->padding, input_shape, attr);
   return absl::OkStatus();
 }
 
