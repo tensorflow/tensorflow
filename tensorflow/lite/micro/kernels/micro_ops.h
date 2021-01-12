@@ -54,6 +54,7 @@ TfLiteRegistration Register_CONCATENATION();
 TfLiteRegistration Register_COS();
 TfLiteRegistration Register_DEQUANTIZE();
 TfLiteRegistration Register_EQUAL();
+TfLiteRegistration Register_EXP();
 TfLiteRegistration Register_FLOOR();
 TfLiteRegistration Register_GREATER();
 TfLiteRegistration Register_GREATER_EQUAL();

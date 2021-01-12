@@ -192,6 +192,11 @@ class MicroMutableOpResolver : public MicroOpResolver {
     return kTfLiteOk;
   }
 
+  TfLiteStatus AddExp() {
+    return AddBuiltin(BuiltinOperator_EXP, tflite::ops::micro::Register_EXP(),
+                      ParseExp);
+  }
+
   TfLiteStatus AddFloor() {
     return AddBuiltin(BuiltinOperator_FLOOR,
                       tflite::ops::micro::Register_FLOOR(), ParseFloor);

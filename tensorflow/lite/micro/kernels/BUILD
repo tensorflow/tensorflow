@@ -114,6 +114,7 @@ cc_library(
         "dequantize.cc",
         "detection_postprocess.cc",
         "elementwise.cc",
+        "exp.cc",
         "floor.cc",
         "l2norm.cc",
         "logical.cc",
