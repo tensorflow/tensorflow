@@ -372,6 +372,186 @@ std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
 }  // namespace
 
 namespace {
+
+using ToArgSignatureHandler =
+    std::function<StatusOr<ArgSignature>(py::handle, bool)>;
+}
+
+StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
+                                           bool jax_enable_x64) {
+  static const absl::flat_hash_map<PyObject*,
+                                   ToArgSignatureHandler>* const handlers = [] {
+    auto p = new absl::flat_hash_map<PyObject*, ToArgSignatureHandler>();
+
+    const auto xla_module = py::module::import("jax.interpreters.xla");
+    const auto& device_array = xla_module.attr("_DeviceArray");
+
+    const NumpyScalarTypes& dtypes = GetNumpyScalarTypes();
+
+    // The 4 Python native types.
+    ToArgSignatureHandler bool_handler = [](py::handle,
+                                            bool) -> StatusOr<ArgSignature> {
+      return ArgSignature(PrimitiveType::PRED, {}, true);
+    };
+    ToArgSignatureHandler int_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      if (jax_enable_x64) {
+        return ArgSignature(PrimitiveType::S64, {}, true);
+      } else {
+        return ArgSignature(PrimitiveType::S32, {}, true);
+      }
+    };
+    ToArgSignatureHandler float_handler =
+        [&dtypes](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      // Only Python native types has a True weak_type.
+      bool weak_type = !py::isinstance(h, dtypes.np_float64);
+      if (jax_enable_x64) {
+        return ArgSignature(PrimitiveType::F64, {}, weak_type);
+      } else {
+        return ArgSignature(PrimitiveType::F32, {}, weak_type);
+      }
+    };
+    ToArgSignatureHandler complex_handler =
+        [&dtypes](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      // Note that this branch is also taken  for np.complex128:
+      // isinstance(np.complex128(3), complex) returns True
+      // isinstance(np.complex64(3), complex) returns False
+      bool weak_type = !py::isinstance(h, dtypes.np_complex128);
+      if (jax_enable_x64) {
+        return ArgSignature(PrimitiveType::C128, {}, weak_type);
+      } else {
+        return ArgSignature(PrimitiveType::C64, {}, weak_type);
+      }
+    };
+
+    (*p)[reinterpret_cast<PyObject*>(&PyBool_Type)] = bool_handler;
+    (*p)[reinterpret_cast<PyObject*>(&PyLong_Type)] = int_handler;
+    (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] = float_handler;
+    (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] = complex_handler;
+
+    // The Buffer types
+    // PyBuffer necessarily has a trivial LazyExpr, no need to check it.
+    ToArgSignatureHandler buffer_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      PyBuffer* buffer = py::cast<xla::PyBuffer*>(h);
+      bool weak_type = py::cast<py::bool_>(h.attr("aval").attr("weak_type"));
+      return ArgSignature(buffer->buffer()->on_host_shape().element_type(),
+                          buffer->buffer()->on_host_shape().dimensions(),
+                          weak_type);
+    };
+    (*p)[py::type::handle_of<DeviceArrayBase>().ptr()] = buffer_handler;
+    ToArgSignatureHandler device_array_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      py::handle aval = h.attr("aval");
+      TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(aval.attr("dtype")));
+      return ArgSignature(dtype,
+                          py::cast<std::vector<int64>>(aval.attr("shape")),
+                          py::cast<py::bool_>(aval.attr("weak_type")));
+    };
+    // ShardedDeviceArray is covered by the MRO fallback on _DeviceArray.
+    (*p)[device_array.ptr()] = device_array_handler;
+
+    ToArgSignatureHandler numpy_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      py::array numpy_array = py::cast<py::array>(h);
+      if (IsFloat0(numpy_array)) {
+        return InvalidArgument(
+            "float0 numpy arrays not supported in C++. "
+            "Falling back to Python.");
+      }
+      if (!jax_enable_x64) {
+        const py::dtype raw_dtype = numpy_array.dtype();
+        const py::dtype* to_dtype = DtypeTo32BitDtype(raw_dtype);
+
+        PrimitiveType dtype;
+        if (to_dtype) {
+          TF_ASSIGN_OR_RETURN(dtype, DtypeToPrimitiveType(*to_dtype));
+        } else {
+          TF_ASSIGN_OR_RETURN(dtype, DtypeToPrimitiveType(raw_dtype));
+        }
+        return ArgSignature(
+            dtype, absl::MakeConstSpan(numpy_array.shape(), numpy_array.ndim()),
+            /*weak_type=*/false);
+      }
+      TF_ASSIGN_OR_RETURN(auto dtype,
+                          DtypeToPrimitiveType(numpy_array.dtype()));
+      return ArgSignature(
+          dtype, absl::MakeConstSpan(numpy_array.shape(), numpy_array.ndim()),
+          /*weak_type=*/false);
+    };
+    const auto numpy = py::module::import("numpy");
+    const auto& ndarray = numpy.attr("ndarray");
+    (*p)[ndarray.ptr()] = numpy_handler;
+
+    ToArgSignatureHandler np_uint64_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      if (jax_enable_x64) {
+        return ArgSignature(PrimitiveType::U64, {}, /*weak_type=*/false);
+      } else {
+        return ArgSignature(PrimitiveType::U32, {}, /*weak_type=*/false);
+      }
+    };
+    ToArgSignatureHandler np_int_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      if (jax_enable_x64) {
+        return ArgSignature(PrimitiveType::S64, {}, /*weak_type=*/false);
+      } else {
+        return ArgSignature(PrimitiveType::S32, {}, /*weak_type=*/false);
+      }
+    };
+    ToArgSignatureHandler numpy_array_handler =
+        [](py::handle h, bool jax_enable_x64) -> StatusOr<ArgSignature> {
+      // This block deals with all numpy scalar types, except for int64_dt,
+      // float64_dt and complex128_dt which are taken care of in previous if
+      // blocks.
+      TF_ASSIGN_OR_RETURN(auto dtype, DtypeToPrimitiveType(h.attr("dtype")));
+      return ArgSignature(dtype, {}, /*weak_type=*/false);
+    };
+
+    // This block deals with all numpy scalar types, except for int64_dt,
+    // float64_dt and complex128_dt which are taken care of in previous if
+    // blocks.
+    (*p)[dtypes.np_bool.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int8.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int32.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_int64.ptr()] = np_int_handler;
+    (*p)[dtypes.np_uint8.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_uint16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
+    (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_float32.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_float64.ptr()] = float_handler;
+    (*p)[dtypes.np_complex64.ptr()] = numpy_array_handler;
+    (*p)[dtypes.np_complex128.ptr()] = complex_handler;
+    (*p)[dtypes.np_longlong.ptr()] = np_int_handler;
+    (*p)[dtypes.np_intc.ptr()] = numpy_array_handler;
+
+    return p;
+  }();
+
+  auto res = handlers->find(arg.get_type().ptr());
+  if (res == handlers->end()) {
+    // We attempt to look at the MRO classes
+    for (auto base_class : arg.get_type().attr("mro")()) {
+      res = handlers->find(base_class.ptr());
+      if (res != handlers->end()) {
+        return res->second(arg, jax_enable_x64);
+      }
+    }
+    return InvalidArgument(
+        "%s", absl::StrCat("Not supported: The C++ ToArgSignature only accepts "
+                           "Buffer/DeviceArray/ShardedDeviceArray, Numpy "
+                           "arrays scalars of supported types "
+                           "(see implementation), or Python scalars. Got type ",
+                           py::cast<std::string>(py::str(arg.get_type()))));
+  } else {
+    return res->second(arg, jax_enable_x64);
+  }
+}
+
+namespace {
 using DevicePutFunc = std::function<StatusOr<DevicePutResult>(
     py::handle, PjRtDevice*, bool, xla::PyClient&)>;
 
@@ -1056,6 +1236,18 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
       return py::cast<py::object>(obj);
     }
   });
+
+  py::class_<ArgSignature> arg_signature(jitlib, "ArgSignature");
+  arg_signature
+      .def_property_readonly("dtype",
+                             [](const ArgSignature& sig) {
+                               return PrimitiveTypeToDtype(sig.dtype);
+                             })
+      .def_property_readonly(
+          "shape",
+          [](const ArgSignature& sig) { return IntSpanToTuple(sig.shape); })
+      .def_readonly("weak_type", &ArgSignature::weak_type);
+  jitlib.def("_ArgSignatureOfValue", &ArgSignatureOfValue);
 
   // All private members are only for testing purposes
   cfun.def("_cache_size", &CompiledFunction::cache_size);

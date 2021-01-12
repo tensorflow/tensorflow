@@ -150,6 +150,11 @@ struct DevicePutResult {
   std::unique_ptr<PjRtBuffer> owned_buffer;
 };
 
+// Returns the ArgSignature associated with an argument. Returns an error if
+// the argument is not supported.
+StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
+                                           bool jax_enable_x64);
+
 // Moves a device-like object to be on device.
 // - If the object is already on device, `owned_buffer` will be nullptr.
 // - If it's not, a new buffer will be created and returned using
