@@ -117,8 +117,6 @@ kernel void ComputeFunction($1
   if (dst_s < args.src_tensor.Slices()) {
     float4 src = float4(args.src_tensor.Read(0, 0, dst_s)) - float4(maximum);
     FLT4 value = FLT4(exp(src) * sum);
-    uint3 gid = uint3(0, 0, dst_s);
-    $2
     args.dst_tensor.Write(value, 0, 0, dst_s);
   }
 })";
@@ -161,7 +159,6 @@ kernel void ComputeFunction(
   for (int d = 0; d < args.dst_tensor.Slices(); ++d) {
     float4 src = float4(args.src_tensor.Read(gid.x, gid.y, d)) - float4(maximum);
     FLT4 value = FLT4(exp(src) / sum);
-    $2
     args.dst_tensor.Write(value, gid.x, gid.y, d);
   }
 }

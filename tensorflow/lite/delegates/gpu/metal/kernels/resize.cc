@@ -65,7 +65,6 @@ kernel void ComputeFunction(
   // bilinear interpolation
   FLT4 value = mix(mix(tex11, tex21, static_cast<FLT>(t.x)),
                    mix(tex12, tex22, static_cast<FLT>(t.x)), static_cast<FLT>(t.y));
-  $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }
 )";
@@ -106,8 +105,6 @@ kernel void ComputeFunction(
   c += "  coord.y = min(coord.y, args.src_tensor.Height() - 1);\n";
   c += R"(
   FLT4 value = args.src_tensor.Read(coord.x, coord.y, gid.z);
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
-  $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }
 )";

@@ -86,7 +86,6 @@ std::string GetMeanCode(const int3& work_group_size) {
   }
   c += "  FLT4 value = FLT4(sum * args.inv_multiplier_y);\n";
   c += R"(
-  $2
   args.dst_tensor.Write(value, 0, 0, gid.z);
 }
 )";

@@ -45,7 +45,6 @@ kernel void ComputeFunction($1
     return;
   }
   FLT4 value = args.src_tensor.Read(X, Y, Z);
-  $2
   args.dst_tensor.Write(value, X, Y, Z);
 }
 )";
@@ -148,7 +147,6 @@ void ComputeTaskDescriptor::AssembleCode() {
       return std::make_pair(groups_size, groups_count);
     };
   }
-  shader_source = absl::Substitute(shader_source, "$0", "$1", "");
 }
 
 }  // namespace metal
