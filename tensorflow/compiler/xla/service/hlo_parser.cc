@@ -406,6 +406,8 @@ class HloParserImpl : public HloParser {
   bool ParseConvolutionDimensionNumbers(ConvolutionDimensionNumbers* dnums);
   bool ParsePaddingConfig(PaddingConfig* padding);
   bool ParseMetadata(OpMetadata* metadata);
+  bool ParseSingleOrListMetadata(
+      tensorflow::protobuf::RepeatedPtrField<OpMetadata>* metadata);
   bool ParseSharding(OpSharding* sharding);
   bool ParseFrontendAttributes(FrontendAttributes* frontend_attributes);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
@@ -2703,9 +2705,13 @@ bool HloParserImpl::ParseFrontendAttributes(
                     "expects '}' at the end of frontend attributes");
 }
 
-//  ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
-//          ('devices=' ('[' dims ']')* device_list)? '}'
+// ::= '{' 'replicated'? 'manual'? 'maximal'? ('device=' int)? shape?
+//         ('devices=' ('[' dims ']')* device_list)?
+//         ('metadata=' metadata)* '}'
+//
 // dims ::= int_list device_list ::= int_list
+// metadata ::= single_metadata |
+//              ('{' [single_metadata (',' single_metadata)*] '}')
 bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
                                         bool lbrace_pre_lexed) {
   if (!lbrace_pre_lexed &&
@@ -2768,9 +2774,15 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
             }
             devices.push_back(device);
           } while (EatIfPresent(TokKind::kComma));
+        } else if (lexer_.GetStrVal() == "metadata") {
+          lexer_.Lex();
+          if (!ParseSingleOrListMetadata(sharding->mutable_metadata())) {
+            return false;
+          }
         } else {
           return TokenError(
-              "unknown attribute in sharding: expected device= or devices=");
+              "unknown attribute in sharding: expected device=, devices= or "
+              "metadata=");
         }
         break;
       }
@@ -4739,6 +4751,29 @@ bool HloParserImpl::ParseMetadata(OpMetadata* metadata) {
     }
   }
   return true;
+}
+
+// ::= single_metadata | ('{' [single_metadata (',' single_metadata)*] '}')
+bool HloParserImpl::ParseSingleOrListMetadata(
+    tensorflow::protobuf::RepeatedPtrField<OpMetadata>* metadata) {
+  if (lexer_.GetKind() == TokKind::kLbrace &&
+      lexer_.LookAhead() == TokKind::kLbrace) {
+    if (!ParseToken(TokKind::kLbrace, "expected '{' to start metadata list")) {
+      return false;
+    }
+
+    if (lexer_.GetKind() != TokKind::kRbrace) {
+      do {
+        if (!ParseMetadata(metadata->Add())) {
+          return false;
+        }
+      } while (EatIfPresent(TokKind::kComma));
+    }
+
+    return ParseToken(TokKind::kRbrace, "expected '}' to end metadata list");
+  }
+
+  return ParseMetadata(metadata->Add());
 }
 
 bool HloParserImpl::ParseOpcode(HloOpcode* result) {

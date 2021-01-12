@@ -2165,7 +2165,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
 string PaddingConfigToString(const PaddingConfig& padding);
 string FrontendAttributesToString(
     const FrontendAttributes& frontend_attributes);
-string OpMetadataToString(const OpMetadata& metadata);
 string RandomAlgorithmToString(const RandomAlgorithm& algorithm);
 string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
