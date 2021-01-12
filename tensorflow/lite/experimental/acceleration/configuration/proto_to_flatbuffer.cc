@@ -120,10 +120,10 @@ EdgeTpuPowerState ConvertEdgeTpuPowerState(proto::EdgeTpuPowerState state) {
       return EdgeTpuPowerState_TPU_CORE_OFF;
     case proto::EdgeTpuPowerState::READY:
       return EdgeTpuPowerState_READY;
-    case proto::EdgeTpuPowerState::READY_WITH_RETENTION:
-      return EdgeTpuPowerState_READY_WITH_RETENTION;
     case proto::EdgeTpuPowerState::ACTIVE_MIN_POWER:
       return EdgeTpuPowerState_ACTIVE_MIN_POWER;
+    case proto::EdgeTpuPowerState::ACTIVE_VERY_LOW_POWER:
+      return EdgeTpuPowerState_ACTIVE_VERY_LOW_POWER;
     case proto::EdgeTpuPowerState::ACTIVE_LOW_POWER:
       return EdgeTpuPowerState_ACTIVE_LOW_POWER;
     case proto::EdgeTpuPowerState::ACTIVE:

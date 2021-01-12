@@ -96,7 +96,7 @@ std::unique_ptr<std::map<std::string, std::string>> DeviceDescription::ToMap()
   result["CUDA Compute Capability"] = absl::StrCat(
       cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
 
-  result["AMDGPU GCN Arch Name"] = absl::StrCat(rocm_amdgpu_gcn_arch_name_);
+  result["AMDGPU GCN Arch Name"] = rocm_amdgpu_gcn_arch_name_;
 
   result["NUMA Node"] = absl::StrCat(numa_node());
   result["Core Count"] = absl::StrCat(core_count());

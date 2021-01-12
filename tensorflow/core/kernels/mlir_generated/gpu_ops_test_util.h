@@ -134,7 +134,14 @@ absl::InlinedVector<T, 10> DefaultInputNonZero() {
       {-18, -9, -1, 1, 3, 4, 5, 7, 9, 10, 18});
 }
 
-/// Helper functions to get default input data.
+template <typename T, std::enable_if_t<
+                          llvm::is_one_of<T, Eigen::half, float, double>::value,
+                          bool> = true>
+absl::InlinedVector<T, 10> DefaultInputBetweenZeroAndOne() {
+  return test::InputAsVector<T, double>({-0.999, -0.9, -0.8, -0.5, -0.1, -0.001,
+                                         -0, 0, 0.001, 0.1, 0.5, 0.8, 0.9,
+                                         0.999});
+}
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
@@ -145,6 +152,8 @@ absl::InlinedVector<T, 10> DefaultInputLessThanBitwidth() {
   for (auto i = 0; i < max_shift; ++i) v.push_back(i);
   return v;
 }
+
+/// Helper functions to get default input data.
 
 template <typename T,
           std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,

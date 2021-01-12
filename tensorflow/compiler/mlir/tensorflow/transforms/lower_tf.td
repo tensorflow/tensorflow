@@ -259,9 +259,8 @@ def : Pat<(TF_RsqrtGradOp $lhs, $rhs),
 
 // grad = dy * (1 - y**2)
 
-// TODO(hinsu): Support complex input types.
 def LowerTanhGradOp :
-  Pat<(TF_TanhGradOp TF_FloatTensor:$y, TF_FloatTensor:$dy),
+  Pat<(TF_TanhGradOp $y, $dy),
       (TF_MulOp $dy,
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;

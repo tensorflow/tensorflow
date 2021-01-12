@@ -304,7 +304,7 @@ class DeviceDescriptionBuilder {
     device_description_->rocm_amdgpu_isa_version_ = version;
   }
 
-  void set_rocm_amdgpu_gcn_arch_name(const std::string& gcn_arch_name) {
+  void set_rocm_amdgpu_gcn_arch_name(const std::string &gcn_arch_name) {
     device_description_->rocm_amdgpu_gcn_arch_name_ = gcn_arch_name;
   }
 

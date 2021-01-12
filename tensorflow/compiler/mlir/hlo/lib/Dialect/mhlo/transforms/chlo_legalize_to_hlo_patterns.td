@@ -60,6 +60,25 @@ def : Pat<(HLOClient_AcosOp NonComplexElementType:$input),
     (HLO_ConstantLike<"M_PI"> $input)
   )>;
 
+// Expand asin to MHLO dialect as follows:
+//   asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+def : Pat<(HLOClient_AsinOp $input),
+  (HLO_MulOp
+    (HLO_ConstantLike<"2"> $input),
+    (HLO_Atan2Op
+      $input,
+      (HLO_AddOp
+        (HLO_ConstantLike<"1"> $input),
+        (HLO_SqrtOp
+          (HLO_SubOp
+            (HLO_ConstantLike<"1"> $input),
+            (HLO_MulOp $input, $input)
+          )
+        )
+      )
+    )
+  )>;
+
 // Express `atan` as
 //   atan(x) = atan2(x, 1)
 def : Pat<(HLOClient_AtanOp $input),

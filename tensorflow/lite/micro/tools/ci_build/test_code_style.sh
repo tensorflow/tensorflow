@@ -26,8 +26,9 @@ source tensorflow/lite/micro/tools/ci_build/helper_functions.sh
 # and clang-format checks.
 make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
 
-# Explicitly disable exit on error so that we can properly clean up the
-# temporary git repository even when one of the scripts fail with an error code.
+# Explicitly disable exit on error so that we can report all the style errors in
+# one pass and clean up the temporary git repository even when one of the
+# scripts fail with an error code.
 set +e
 
 # The pigweed scripts only work from a git repository and the Tensorflow CI
@@ -42,7 +43,9 @@ if [[ ${1} == "PRESUBMIT" ]]; then
   git commit -a -m "Commit for a temporary repository." > /dev/null
 fi
 
-# Check for license with the necessary exclusions.
+############################################################
+# License Check
+############################################################
 micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmit.py \
   kernels/internal/reference/ \
   micro/ \
@@ -65,10 +68,12 @@ micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/pigweed_presubmi
 
 LICENSE_CHECK_RESULT=$?
 
-# Check that the TFLM-only code is clang-formatted We are currently ignoring
-# Python files (with yapf as the formatter) because that needs additional setup.
-# We are also ignoring the markdown files to allow for a more gradual rollout of
-# this presubmit check.
+############################################################
+# Formatting Check
+############################################################
+# We are currently ignoring Python files (with yapf as the formatter) because
+# that needs additional setup.  We are also ignoring the markdown files to allow
+# for a more gradual rollout of this presubmit check.
 micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
   kernels/internal/reference/ \
   micro/ \
@@ -80,6 +85,44 @@ micro/tools/make/downloads/pigweed/pw_presubmit/py/pw_presubmit/format_code.py \
 
 CLANG_FORMAT_RESULT=$?
 
+#############################################################################
+# Avoided specific-code snippets for TFLM
+#############################################################################
+
+CHECK_CONTENTS_PATHSPEC=\
+"micro "\
+":(exclude)micro/tools/ci_build/test_code_style.sh"
+
+# See https://github.com/tensorflow/tensorflow/issues/46297 for more context.
+check_contents "gtest|gmock" "${CHECK_CONTENTS_PATHSPEC}" \
+  "These matches can likely be deleted."
+GTEST_RESULT=$?
+
+# See http://b/175657165 for more context.
+ERROR_REPORTER_MESSAGE=\
+"TF_LITE_REPORT_ERROR should be used instead, so that log strings can be "\
+"removed to save space, if needed."
+
+check_contents "error_reporter.*Report\(|context->ReportError\(" \
+  "${CHECK_CONTENTS_PATHSPEC}" "${ERROR_REPORTER_MESSAGE}"
+ERROR_REPORTER_RESULT=$?
+
+# See http://b/175657165 for more context.
+ASSERT_PATHSPEC=\
+"${CHECK_CONTENTS_PATHSPEC}"\
+" :(exclude)micro/examples/micro_speech/esp/ringbuf.c"\
+" :(exclude)*\.ipynb"\
+" :(exclude)*\.py"\
+" :(exclude)*zephyr_riscv/Makefile.inc"
+
+check_contents "\<assert\>" "${ASSERT_PATHSPEC}" \
+  "assert should not be used in TFLM code.."
+ASSERT_RESULT=$?
+
+###########################################################################
+# All checks are complete, clean up.
+###########################################################################
+
 popd
 if [[ ${1} == "PRESUBMIT" ]]; then
   rm -rf tensorflow/lite/.git
@@ -88,7 +131,12 @@ fi
 # Re-enable exit on error now that we are done with the temporary git repo.
 set -e
 
-if [[ ${LICENSE_CHECK_RESULT} != 0 || ${CLANG_FORMAT_RESULT} != 0 ]]
+if [[ ${LICENSE_CHECK_RESULT}  != 0 || \
+      ${CLANG_FORMAT_RESULT}   != 0 || \
+      ${GTEST_RESULT}          != 0 || \
+      ${ERROR_REPORTER_RESULT} != 0 || \
+      ${ASSERT_RESULT}         != 0    \
+   ]]
 then
   exit 1
 fi

@@ -66,6 +66,7 @@
                 directly.
     *  16 bits quantization
         *   Added int16x8 support for ABS, REDUCE_MAX and REDUCE_MIN operators.
+        *   Additional tests and fixes for ADD and SUB operators.
     *  Added support for saved model's session initializer through
          `TFLiteConverter.from_saved_model`.
     *  Added DEPTH_TO_SPACE support in Post training quantization.
@@ -78,7 +79,8 @@
         * TFLiteConverter exports models with SignatureDef
         * Interpreter supports getting a list of signatures and getting callable
           function for a given signaturedef.
-    * Add int8 support for `ReshapeV2`.
+    *  Add int8 support for `ReshapeV2`.
+    *  Add experimental support for optimization with sparsity.
 *   TF Core:
     *   Corrected higher-order gradients of control flow constructs (`tf.cond`,
         `tf.while_loop`, and compositions like `tf.foldl`) computed with

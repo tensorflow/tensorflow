@@ -328,6 +328,7 @@ class HloParserImpl : public HloParser {
     kDistribution,
     kDomain,
     kPrecisionList,
+    kShape,
     kShapeList,
     kEnum,
     kRandomAlgorithm,
@@ -2099,14 +2100,20 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kOutfeed: {
       optional<std::string> config;
+      optional<Shape> outfeed_shape;
       attrs["outfeed_config"] = {/*required=*/false, AttrTy::kString, &config};
+      attrs["outfeed_shape"] = {/*required=*/false, AttrTy::kShape,
+                                &outfeed_shape};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateOutfeed(operands[0]->shape(), operands[0],
-                                        operands[1], config ? *config : ""));
+      HloInstruction* const outfeed_input = operands[0];
+      HloInstruction* const outfeed_token = operands[1];
+      const Shape shape =
+          outfeed_shape.has_value() ? *outfeed_shape : outfeed_input->shape();
+      instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
+          shape, outfeed_input, outfeed_token, config ? *config : ""));
       break;
     }
     case HloOpcode::kRng: {
@@ -3762,6 +3769,14 @@ bool HloParserImpl::ParseAttributeHelper(
         static_cast<optional<std::vector<PrecisionConfig::Precision>>*>(
             attr_out_ptr)
             ->emplace(result);
+        return true;
+      }
+      case AttrTy::kShape: {
+        Shape result;
+        if (!ParseShape(&result)) {
+          return false;
+        }
+        static_cast<optional<Shape>*>(attr_out_ptr)->emplace(result);
         return true;
       }
       case AttrTy::kShapeList: {

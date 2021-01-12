@@ -104,6 +104,18 @@ class Optimize(enum.Enum):
 
   OPTIMIZE_FOR_LATENCY
       Deprecated. Does the same as DEFAULT.
+
+  EXPERIMENTAL_SPARSITY
+      Experimental flag, subject to change.
+
+      Enable optimization by taking advantage of the sparse model weights
+      trained with pruning.
+
+      The converter will inspect the sparsity pattern of the model weights and
+      do its best to improve size and latency.
+      The flag can be used alone to optimize float32 models with sparse weights.
+      It can also be used together with the DEFAULT optimization mode to
+      optimize quantized models with sparse weights.
   """
 
   # Default optimization strategy that quantizes model weights. Enhanced
@@ -118,6 +130,18 @@ class Optimize(enum.Enum):
 
   # Deprecated. Does the same as DEFAULT.
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
+
+  # Experimental flag, subject to change.
+  # Enable optimization by taking advantage of the sparse model weights trained
+  # with pruning.
+  #
+  # The converter will inspect the sparsity pattern of the model weights and do
+  # its best to improve size and latency.
+  # The flag can be used alone to optimize float32 models with sparse weights.
+  # It can also be used together with the DEFAULT optimization mode to optimize
+  # quantized models with sparse weights.
+  # TODO(b/161560631): Add log message when this optimization is applied.
+  EXPERIMENTAL_SPARSITY = "EXPERIMENTAL_SPARSITY"
 
   def __str__(self):
     return str(self.value)
@@ -538,6 +562,9 @@ class TFLiteConverterBase(object):
         raise ValueError("SavedModel file format({0}) is not supported".format(
             self._saved_model_version))
 
+  def _sparsify_model(self):
+    return Optimize.EXPERIMENTAL_SPARSITY in self.optimizations
+
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
   """Converter subclass to share functionality between V2 converters."""
@@ -643,7 +670,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
     if flags_modify_model_io_type:
       result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
-    if self._experimental_sparsify_model:
+    if self._sparsify_model():
       result = _mlir_sparsify(result)
 
     return result
@@ -752,7 +779,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     if flags_modify_model_io_type:
       result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
-    if self._experimental_sparsify_model:
+    if self._sparsify_model():
       result = _mlir_sparsify(result)
 
     return result
@@ -1337,7 +1364,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       if flags_modify_model_io_type:
         result = _modify_model_io_type(result, **flags_modify_model_io_type)
 
-    if self._experimental_sparsify_model:
+    if self._sparsify_model():
       result = _mlir_sparsify(result)
 
     return result

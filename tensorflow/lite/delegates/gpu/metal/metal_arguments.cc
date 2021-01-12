@@ -144,17 +144,19 @@ absl::Status CreateMetalObject(id<MTLDevice> device, GPUObjectDescriptor* desc,
 // Static
 constexpr char MetalArguments::kArgsPrefix[];
 
-absl::Status MetalArguments::Init(id<MTLDevice> device, int buffer_offset,
-                                  Arguments* args, std::string* code) {
+absl::Status MetalArguments::Init(
+    id<MTLDevice> device, const std::map<std::string, std::string>& linkables,
+    Arguments* args, std::string* code) {
   RETURN_IF_ERROR(AllocateObjects(*args, device));
   RETURN_IF_ERROR(AddObjectArgs(args));
-  RETURN_IF_ERROR(ResolveSelectorsPass(*args, {}, code));
+  RETURN_IF_ERROR(ResolveSelectorsPass(*args, linkables, code));
   object_refs_ = std::move(args->object_refs_);
   args->GetActiveArguments(kArgsPrefix, *code);
   std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   ResolveArgsPass(code);
-  *code = absl::Substitute(*code, struct_desc, GetListOfArgs(buffer_offset));
+  *code =
+      absl::Substitute(*code, struct_desc, GetListOfArgs(/*buffer_offset*/ 0));
   return absl::OkStatus();
 }
 
@@ -314,14 +316,7 @@ absl::Status MetalArguments::SetObjectRef(const std::string& name,
   }
   GPUResourcesWithValue resources;
   RETURN_IF_ERROR(object.GetGPUResources(it->second.get(), &resources));
-  for (const auto& r : resources.ints) {
-    RETURN_IF_ERROR(SetInt(absl::StrCat(name, "_", r.first), r.second));
-  }
-  for (const auto& r : resources.floats) {
-    RETURN_IF_ERROR(SetFloat(absl::StrCat(name, "_", r.first), r.second));
-  }
-  return absl::OkStatus();
-  // return SetGPUResources(name, resources);
+  return SetGPUResources(name, resources);
 }
 
 void MetalArguments::Encode(id<MTLComputeCommandEncoder> encoder,
@@ -353,14 +348,7 @@ absl::Status MetalArguments::AddObjectArgs(Arguments* args) {
     AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   for (auto& t : args->object_refs_) {
-    auto resources = t.second->GetGPUResources();
-    for (const auto& r : resources.ints) {
-      args->AddInt(absl::StrCat(t.first, "_", r));
-    }
-    for (const auto& r : resources.floats) {
-      args->AddFloat(absl::StrCat(t.first, "_", r));
-    }
-    // AddGPUResources(t.first, t.second->GetGPUResources(), args);
+    AddGPUResources(t.first, t.second->GetGPUResources(), args);
   }
   return absl::OkStatus();
 }
@@ -503,6 +491,31 @@ absl::Status MetalArguments::ResolveSelector(
         absl::StrCat("No object with name - ", object_name));
   }
   auto names = desc_ptr->GetGPUResources().GetNames();
+  const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
+  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
+    auto it = linkables.find(object_name);
+    if (it != linkables.end()) {
+      if (desc_ptr->GetAccess() != AccessType::WRITE &&
+          desc_ptr->GetAccess() != AccessType::READ_WRITE) {
+        return absl::FailedPreconditionError(absl::StrCat(
+            "Object with name - ", object_name, " should have Write access."));
+      }
+      std::string value_name, x_coord, y_coord, s_coord;
+      RETURN_IF_ERROR(tensor_desc->GetLinkingContextFromWriteSelector(
+          function_args, &value_name, &x_coord, &y_coord, &s_coord));
+      // x_coord can have batch size property of link_object
+      ResolveObjectNames(object_name, names, &x_coord);
+      *result = it->second;
+      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("X_COORD", x_coord, result);
+      ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("S_COORD", s_coord, result);
+      RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, result));
+      if (selector == "Linking") {
+        return absl::OkStatus();
+      }
+    }
+  }
   std::string patch;
   RETURN_IF_ERROR(desc_ptr->PerformSelector(selector, function_args,
                                             template_args, &patch));

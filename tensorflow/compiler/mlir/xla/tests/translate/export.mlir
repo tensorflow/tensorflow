@@ -554,7 +554,7 @@ func @main(%data: tensor<3xi32>, %token: !mhlo.token) -> !mhlo.token {
 // CHECK:  ENTRY
 // CHECK:  [[DATA:%.*]] = s32[3] parameter(0)
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(1)
-// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_config="foobar"
+// CHECK:  ROOT %[[RESULT:.*]] = token[] outfeed(s32[3] [[DATA]], token[] [[TOKEN]]), outfeed_shape=s32[3]{0}, outfeed_config="foobar"
 
 // -----
 

@@ -782,10 +782,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
-  @test_util.disable_mlir_bridge(
-      "TF_PopulationCount is missing and is required to translate to "
-      "xla::PopulationCount."
-  )
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(

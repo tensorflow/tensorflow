@@ -84,6 +84,10 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     with ops.device('/job:worker/replica:0/task:0/cpu:0'):
       variable_b = variables.Variable(1)
 
+    # Add a sync point to avoid the out-of-order issue of eager async execution
+    # (b/155789951).
+    context.async_wait()
+
     @def_function.function
     def with_variable(i):
       return i + variable_b

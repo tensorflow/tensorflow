@@ -59,9 +59,7 @@ kernel void ComputeFunction(
       maximum = max(maximum, src_color);
     }
   }
-  FLT4 value = maximum;
-  $2
-  args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
+  args.dst_tensor.Write(maximum, gid.x, gid.y, gid.z);
 }
   )";
   return shader_source;
@@ -110,9 +108,7 @@ kernel void ComputeFunction(
       index_counter++;
     }
   }
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
   FLT4 value = static_cast<FLT4>(indexes);
-  $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }
   )";
@@ -147,11 +143,9 @@ kernel void ComputeFunction(
       sum += src_color;
     }
   }
-  args.dst_tensor.GetAddress(linear_index, gid.x, gid.y, gid.z);
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
   FLT4 value = FLT4(sum / window_size);
-  $2
   args.dst_tensor.Write(value, gid.x, gid.y, gid.z);
 }
 )";

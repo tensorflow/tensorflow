@@ -5,6 +5,7 @@
 load(
     "//tensorflow/security/fuzzing:tf_fuzzing.bzl",
     "tf_fuzz_target",
+    "tf_py_fuzz_target",
 )
 
 package(
@@ -125,5 +126,14 @@ tf_fuzz_target(
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_py_fuzz_target(
+    name = "constant_fuzz",
+    srcs = ["constant_fuzz.py"],
+    tags = ["notap"],  # Run in OSS only.
+    deps = [
+        "//tensorflow/python:constant_op",
     ],
 )

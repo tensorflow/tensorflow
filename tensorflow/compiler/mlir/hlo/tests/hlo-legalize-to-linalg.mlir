@@ -808,3 +808,66 @@ func @integer_pow(%lhs: tensor<2x2xi32>,
                                    tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0) -> ()>
+// CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0) -> (d0)>
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim(
+// CHECK-SAME: [[SHAPE:%.*]]: tensor<1xindex>
+func @dynamic_broadcast_in_dim(%shape: tensor<1xindex>) -> tensor<?xf32> {
+  %cst = mhlo.constant dense<0x7F800000> : tensor<f32>
+  %result = "mhlo.dynamic_broadcast_in_dim"(%cst, %shape) {
+     broadcast_dimensions = dense<> : tensor<0xi64>
+  } : (tensor<f32>, tensor<1xindex>) -> tensor<?xf32>
+  return %result : tensor<?xf32>
+}
+// CHECK: [[CST:%.*]] = constant
+// CHECK: [[INIT:%.*]] = linalg.init_tensor
+// CHECK: linalg.generic
+// CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-SAME: ins([[CST]] : tensor<f32>) outs([[INIT]] : tensor<?xf32>)
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+func @dot_matmul(%arg0: tensor<2x3xf32>,
+                 %arg1: tensor<3x?xf32>) -> tensor<2x?xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<2x3xf32>,
+                                   tensor<3x?xf32>) -> tensor<2x?xf32>
+  return %0 : tensor<2x?xf32>
+}
+// CHECK: func @dot_matmul(%[[ARG0:.*]]: tensor<2x3xf32>, %[[ARG1:.*]]: tensor<3x?xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.matmul
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<2x3xf32>, tensor<3x?xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<2x?xf32>)
+
+// -----
+
+func @dot_matvec(%arg0: tensor<?x3xf32>,
+                 %arg1: tensor<3xf32>) -> tensor<?xf32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?x3xf32>,
+                                   tensor<3xf32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+// CHECK: func @dot_matvec(%[[ARG0:.*]]: tensor<?x3xf32>, %[[ARG1:.*]]: tensor<3xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.matvec
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x3xf32>, tensor<3xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<?xf32>)
+
+// -----
+
+func @dot_dot(%arg0: tensor<?xf32>,
+              %arg1: tensor<?xf32>) -> tensor<f32> {
+  %0 = "mhlo.dot"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+// CHECK: func @dot_dot(%[[ARG0:.*]]: tensor<?xf32>, %[[ARG1:.*]]: tensor<?xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.dot
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?xf32>, tensor<?xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<f32>)
