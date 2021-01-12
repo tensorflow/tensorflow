@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/hard_swish.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
+#include "tensorflow/lite/kernels/internal/reference/leaky_relu.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
@@ -210,48 +211,6 @@ inline void ReluX(const tflite::ActivationParams& params,
                       : val < min_value ? min_value
                                         : val;
     output_data[i] = clamped;
-  }
-}
-
-inline void LeakyRelu(const tflite::LeakyReluParams& params,
-                      const RuntimeShape& input_shape, const float* input_data,
-                      const RuntimeShape& output_shape, float* output_data) {
-  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    // Note that alpha might be > 1 or < 0, so we don't use std::max here.
-    output_data[i] = val > 0 ? val : val * params.alpha;
-  }
-}
-
-template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParams& params,
-                              const RuntimeShape& input_shape,
-                              const T* input_data,
-                              const RuntimeShape& output_shape,
-                              T* output_data) {
-  ruy::profiler::ScopeLabel label("Quantized LeakyRelu (not fused)");
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  static const int32 quantized_min = std::numeric_limits<T>::min();
-  static const int32 quantized_max = std::numeric_limits<T>::max();
-  for (int i = 0; i < flat_size; ++i) {
-    const int32 input_value = input_data[i] - params.input_offset;
-    int32 unclamped_output;
-    if (input_value >= 0) {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_identity,
-                             params.output_shift_identity);
-    } else {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_alpha,
-                             params.output_shift_alpha);
-    }
-    const T clamped_output =
-        std::min(quantized_max, std::max(quantized_min, unclamped_output));
-    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
