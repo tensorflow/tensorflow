@@ -1388,8 +1388,7 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64 bytes) {
       "Feature not supported on CUDA platform (GetGpuISAVersion)"};
 }
 
-/* static */ port::Status GpuDriver::GetGpuGCNArchName(
-    CUdevice device, std::string* gcnArchName) {
+/* static */ port::Status GpuDriver::GetGpuGCNArchName(CUdevice, std::string*) {
   return port::Status{
       port::error::INTERNAL,
       "Feature not supported on CUDA platform (GetGpuGCNArchName)"};

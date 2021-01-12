@@ -53,7 +53,7 @@ class GpuDummyCompiler : public GpuCompiler {
     return Status::OK();
   }
 
-  GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) {
+  GpuVersion GetGpuVersion(se::StreamExecutor*) override {
     return std::make_pair(0, 0);
   }
 
