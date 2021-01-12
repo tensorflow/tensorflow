@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <Availability.h>
 
+#include <map>
 #include <string>
 #include <tuple>
 
@@ -37,8 +38,10 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
                                             const NodeDescriptor& desc,
                                             CalculationsPrecision precision) {
   desc.task->AssembleCode();
-  RETURN_IF_ERROR(
-      metal_args_.Init(device, 0, &desc.task->args, &desc.task->shader_source));
+  const std::map<std::string, std::string> linkables = {
+      {desc.task->dst_tensors_names[0], desc.task->elementwise_code}};
+  RETURN_IF_ERROR(metal_args_.Init(device, linkables, &desc.task->args,
+                                   &desc.task->shader_source));
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language
   // version 2.0

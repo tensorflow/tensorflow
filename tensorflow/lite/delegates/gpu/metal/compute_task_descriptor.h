@@ -96,6 +96,7 @@ struct ComputeTaskDescriptor {
   void AssembleCode();
 
  private:
+  friend class ComputeTask;
   int linkable_count = 0;        // temporary, used during op construction
   std::string elementwise_code;  // temporary, used during op construction
 };

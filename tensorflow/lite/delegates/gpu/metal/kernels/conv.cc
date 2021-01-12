@@ -552,6 +552,8 @@ kernel void ComputeFunction(
         c += "      uint3 gid = uint3(X + " + s_x + ", Y + " + s_y + ", Z + " +
              s_z + ");\n";
         c += "      $2\n";
+        c += "      args.dst_tensor.Linking(value, X + " + s_x + ", Y + " +
+             s_y + ", Z + " + s_z + ");\n";
         c += "      args.dst_tensor.WriteLinear(value, linear_index);\n";
         c += "    }\n";
       }

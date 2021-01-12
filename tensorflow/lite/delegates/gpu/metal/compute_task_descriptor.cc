@@ -148,8 +148,7 @@ void ComputeTaskDescriptor::AssembleCode() {
       return std::make_pair(groups_size, groups_count);
     };
   }
-  shader_source = absl::Substitute(shader_source, "$0", "$1",
-                                   "{\n" + elementwise_code + "\n}\n");
+  shader_source = absl::Substitute(shader_source, "$0", "$1", "");
 }
 
 }  // namespace metal
