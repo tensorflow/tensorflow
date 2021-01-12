@@ -726,38 +726,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
   }
 }
 
-void PortableReductionSumVector(const float* input_vector, float* output_vector,
-                                int output_size, int reduction_size) {
-  const float* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
-void PortableReductionSumVector(const int32_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size) {
-  const int32_t* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
-void PortableReductionSumVector(const int8_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size) {
-  const int8_t* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
 void PortableMeanStddevNormalization(const float* input_vector,
                                      float* output_vector, int v_size,
                                      int n_batch) {
