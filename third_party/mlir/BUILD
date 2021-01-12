@@ -1579,11 +1579,13 @@ cc_library(
             "lib/Dialect/StandardOps/IR/*.cpp",
             "lib/Dialect/StandardOps/IR/*.h",
             "lib/Dialect/StandardOps/EDSC/*.cpp",
+            "lib/Dialect/StandardOps/Utils/*.cpp",
         ],
     ),
     hdrs = glob([
         "include/mlir/Dialect/StandardOps/IR/*.h",
         "include/mlir/Dialect/StandardOps/EDSC/*.h",
+        "include/mlir/Dialect/StandardOps/Utils/*.h",
     ]) + ["include/mlir/Transforms/InliningUtils.h"],
     includes = ["include"],
     deps = [
