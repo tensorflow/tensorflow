@@ -506,10 +506,10 @@ absl::Status MetalArguments::ResolveSelector(
       // x_coord can have batch size property of link_object
       ResolveObjectNames(object_name, names, &x_coord);
       *result = it->second;
-      ReplaceAllWords("value", value_name, result);
-      ReplaceAllWords("gid.x", x_coord, result);
-      ReplaceAllWords("gid.y", y_coord, result);
-      ReplaceAllWords("gid.z", s_coord, result);
+      ReplaceAllWords("in_out_value", value_name, result);
+      ReplaceAllWords("X_COORD", x_coord, result);
+      ReplaceAllWords("Y_COORD", y_coord, result);
+      ReplaceAllWords("S_COORD", s_coord, result);
       RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, result));
       if (selector == "Linking") {
         return absl::OkStatus();
