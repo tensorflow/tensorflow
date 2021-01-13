@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 #include "tensorflow/lite/kernels/internal/reference/add_n.h"
 #include "tensorflow/lite/kernels/internal/reference/arg_min_max.h"
+#include "tensorflow/lite/kernels/internal/reference/batch_to_space_nd.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/cast.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
@@ -66,6 +67,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/space_to_batch_nd.h"
 #include "tensorflow/lite/kernels/internal/reference/space_to_depth.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 #include "tensorflow/lite/kernels/internal/reference/string_comparisons.h"
@@ -1399,144 +1401,6 @@ inline void ResizeBilinearInteger(
               static_cast<T>((output_20 + round) / (1 << 20));
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
-      }
-    }
-  }
-}
-
-template <typename T>
-inline void SpaceToBatchND(
-    const SpaceToBatchParams& params,
-    const RuntimeShape& unextended_input1_shape, const T* input1_data,
-    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
-    const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
-    const RuntimeShape& unextended_output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("SpaceToBatchND");
-  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
-                   unextended_output_shape.DimensionsCount());
-
-  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  auto extend_shape = [](const RuntimeShape& shape) {
-    if (shape.DimensionsCount() == 4) {
-      return shape;
-    }
-    RuntimeShape new_shape(4, 1);
-    new_shape.SetDim(0, shape.Dims(0));
-    new_shape.SetDim(1, shape.Dims(1));
-    new_shape.SetDim(3, shape.Dims(2));
-    return new_shape;
-  };
-  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
-  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
-
-  const int depth = input1_shape.Dims(3);
-  const int input_width = input1_shape.Dims(2);
-  const int input_height = input1_shape.Dims(1);
-  const int input_batch_size = input1_shape.Dims(0);
-
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch_size = output_shape.Dims(0);
-
-  const int block_shape_height = block_shape_data[0];
-  const int block_shape_width =
-      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
-  const int padding_top = paddings_data[0];
-  const int padding_left =
-      unextended_input1_shape.DimensionsCount() == 4 ? paddings_data[2] : 0;
-
-  // For uint8 quantized, the correct padding "zero value" is the output offset.
-  const int32_t pad_value = params.output_offset;
-  for (int out_b = 0; out_b < output_batch_size; ++out_b) {
-    int input_batch = out_b % input_batch_size;
-    int shift_w = (out_b / input_batch_size) % block_shape_width;
-    int shift_h = (out_b / input_batch_size) / block_shape_width;
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        T* out = output_data + Offset(output_shape, out_b, out_h, out_w, 0);
-        if (out_h * block_shape_height + shift_h < padding_top ||
-            out_h * block_shape_height + shift_h >=
-                padding_top + input_height ||
-            out_w * block_shape_width + shift_w < padding_left ||
-            out_w * block_shape_width + shift_w >= padding_left + input_width) {
-          // This may not execute correctly when pad_value != 0 and T != uint8.
-          memset(out, pad_value, depth * sizeof(T));
-        } else {
-          const T* in =
-              input1_data +
-              Offset(input1_shape, input_batch,
-                     (out_h * block_shape_height + shift_h) - padding_top,
-                     (out_w * block_shape_width + shift_w) - padding_left, 0);
-          memcpy(out, in, depth * sizeof(T));
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-inline void BatchToSpaceND(
-    const RuntimeShape& unextended_input1_shape, const T* input1_data,
-    const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
-    const RuntimeShape& unextended_input3_shape, const int32* crops_data,
-    const RuntimeShape& unextended_output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("BatchToSpaceND");
-  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
-                   unextended_output_shape.DimensionsCount());
-
-  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
-  auto extend_shape = [](const RuntimeShape& shape) {
-    if (shape.DimensionsCount() == 4) {
-      return shape;
-    }
-    RuntimeShape new_shape(4, 1);
-    new_shape.SetDim(0, shape.Dims(0));
-    new_shape.SetDim(1, shape.Dims(1));
-    new_shape.SetDim(3, shape.Dims(2));
-    return new_shape;
-  };
-  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
-  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
-
-  const int output_width = output_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_batch_size = output_shape.Dims(0);
-
-  const int depth = input1_shape.Dims(3);
-  const int input_width = input1_shape.Dims(2);
-  const int input_height = input1_shape.Dims(1);
-  const int input_batch_size = input1_shape.Dims(0);
-
-  const int block_shape_height = block_shape_data[0];
-  const int block_shape_width =
-      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
-  const int crops_top = crops_data[0];
-  const int crops_left =
-      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
-  for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
-    const int out_batch = in_batch % output_batch_size;
-    const int spatial_offset = in_batch / output_batch_size;
-    for (int in_h = 0; in_h < input_height; ++in_h) {
-      const int out_h = in_h * block_shape_height +
-                        spatial_offset / block_shape_width - crops_top;
-      if (out_h < 0 || out_h >= output_height) {
-        continue;
-      }
-      for (int in_w = 0; in_w < input_width; ++in_w) {
-        const int out_w = in_w * block_shape_width +
-                          spatial_offset % block_shape_width - crops_left;
-
-        if (out_w < 0 || out_w >= output_width) {
-          continue;
-        }
-        T* out = output_data + Offset(output_shape, out_batch, out_h, out_w, 0);
-        const T* in =
-            input1_data + Offset(input1_shape, in_batch, in_h, in_w, 0);
-        memcpy(out, in, depth * sizeof(T));
       }
     }
   }
