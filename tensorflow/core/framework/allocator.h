@@ -446,6 +446,10 @@ class SubAllocator {
                       size_t* bytes_received) = 0;
   virtual void Free(void* ptr, size_t num_bytes) = 0;
 
+  // Returns true if the BFC allocator can safely coalesce adjacent regions
+  // returned by this allocator.
+  virtual bool SupportsCoalescing() const = 0;
+
  protected:
   // Implementation of Alloc() method must call this on newly allocated
   // value.

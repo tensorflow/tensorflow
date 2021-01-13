@@ -68,6 +68,8 @@ class DeviceMemAllocator : public SubAllocator {
     }
   }
 
+  bool SupportsCoalescing() const override { return false; }
+
  private:
   se::StreamExecutor* stream_exec_;  // not owned, non-null
   const PlatformDeviceId device_id_;
