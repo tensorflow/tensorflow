@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {
@@ -203,6 +204,28 @@ TEST(TensorShapeTest, ostream) {
   std::stringstream ss;
   ss << s;
   EXPECT_EQ(ss.str(), "[10,5,4]");
+}
+
+TEST(TensorShapeTest, AddDimWithStatus) {
+  TensorShape s({10, 5, 20});
+  Status status = s.AddDimWithStatus(400);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(400000, s.num_elements());
+  ASSERT_EQ(4, s.dims());
+
+  status = s.AddDimWithStatus(-1);
+  EXPECT_EQ(tensorflow::error::INTERNAL, status.code());
+}
+
+TEST(TensorShapeTest, Factory) {
+  TensorShape s;
+  Status status = TensorShape::BuildTensorShapeBase({10, 5, 20}, &s);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(1000, s.num_elements());
+  ASSERT_EQ(3, s.dims());
+
+  status = TensorShape::BuildTensorShapeBase({-10, 5, 20}, &s);
+  EXPECT_EQ(tensorflow::error::INTERNAL, status.code());
 }
 
 // -----------------------------------------------------------------------
@@ -684,22 +707,38 @@ static std::vector<int64> MakeSizes(int arg) {
   return sizes;
 }
 
-static void BM_TensorShape_Init(int iters, int arg) {
+void BM_TensorShape_Init(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
   auto sizes = MakeSizes(arg);
-  while (--iters > 0) {
+  for (auto s : state) {
     TensorShape shape(sizes);
     tensorflow::testing::DoNotOptimize(shape.num_elements());
   }
 }
 BENCHMARK(BM_TensorShape_Init)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
-static void BM_TensorShape_Assign(int iters, int arg) {
-  TensorShape s(MakeSizes(arg));
-  while (--iters > 0) {
-    TensorShape s2 = s;
+void BM_TensorShape_Assign(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
+  TensorShape shape(MakeSizes(arg));
+  for (auto s : state) {
+    const TensorShape s2 = shape;
+    tensorflow::testing::DoNotOptimize(s2);
   }
 }
 BENCHMARK(BM_TensorShape_Assign)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
+
+void BM_TensorShape_SetDim(::testing::benchmark::State& state) {
+  const int arg = state.range(0);
+
+  TensorShape shape(MakeSizes(arg));
+  tensorflow::testing::DoNotOptimize(shape);
+  for (auto s : state) {
+    shape.set_dim(0, 8);
+  }
+}
+BENCHMARK(BM_TensorShape_SetDim)->Arg(0)->Arg(1)->Arg(2)->Arg(3)->Arg(4);
 
 }  // namespace
 }  // namespace tensorflow

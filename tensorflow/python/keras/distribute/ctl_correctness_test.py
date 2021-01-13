@@ -26,15 +26,15 @@ from tensorflow.python import keras
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_combinations as combinations
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import optimizer_combinations
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
@@ -250,9 +250,6 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
     # TODO(anjs): Identify why this particular V1 optimizer needs a higher tol.
     if 'FtrlV1' in optimizer_fn._name and 'TPU' in type(distribution).__name__:
       self.skipTest('Reduced tolerance of the order of 1e-1 required.')
-    if ('CollectiveAllReduce' in type(distribution).__name__ and
-        test_util.is_xla_enabled()):
-      self.skipTest('XLA tests fail with MWMS.')
     self.dnn_correctness(distribution, optimizer_fn, iteration_type,
                          inside_func, sync_batchnorm)
 
@@ -278,4 +275,4 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
 
 if __name__ == '__main__':
-  ds_combinations.main()
+  multi_process_runner.test_main()

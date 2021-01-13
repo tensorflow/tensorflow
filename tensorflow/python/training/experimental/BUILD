@@ -15,7 +15,6 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -23,6 +22,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -37,9 +37,9 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:smart_cond",
-        "//tensorflow/python:tf_export",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/training:optimizer",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -107,7 +107,6 @@ cuda_py_test(
     size = "small",
     srcs = ["mixed_precision_test.py"],
     python_version = "PY3",
-    tfrt_enabled = True,
     deps = [
         ":mixed_precision",
         "//tensorflow/python:client_testlib",

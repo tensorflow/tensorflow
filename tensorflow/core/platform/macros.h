@@ -93,6 +93,15 @@ limitations under the License.
 #define TF_ATTRIBUTE_ANNOTATE(str)
 #endif
 
+// A variable declaration annotated with the `TF_CONST_INIT` attribute will
+// not compile (on supported platforms) unless the variable has a constant
+// initializer.
+#if TF_HAS_CPP_ATTRIBUTE(clang::require_constant_initialization)
+#define TF_CONST_INIT [[clang::require_constant_initialization]]
+#else
+#define TF_CONST_INIT
+#endif
+
 // Compilers can be told that a certain branch is not likely to be taken
 // (for instance, a CHECK failure), and use that information in static
 // analysis. Giving it this information can help it optimize for the

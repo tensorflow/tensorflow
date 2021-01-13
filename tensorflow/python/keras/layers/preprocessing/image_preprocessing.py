@@ -39,7 +39,6 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import stateless_random_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import keras_export
 
 ResizeMethod = image_ops.ResizeMethod
@@ -76,7 +75,7 @@ class Resizing(PreprocessingLayer):
   Resize the batched image input to target height and width. The input should
   be a 4-D tensor in the format of NHWC.
 
-  Arguments:
+  Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     interpolation: String, the interpolation method. Defaults to `bilinear`.
@@ -97,7 +96,7 @@ class Resizing(PreprocessingLayer):
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
     super(Resizing, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Resizing')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Resizing').set(True)
 
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
@@ -136,7 +135,7 @@ class CenterCrop(PreprocessingLayer):
   If the input height/width is even and the target height/width is odd (or
   inversely), the input image is left-padded by 1 pixel.
 
-  Arguments:
+  Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     name: A string, the name of the layer.
@@ -147,7 +146,7 @@ class CenterCrop(PreprocessingLayer):
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
     super(CenterCrop, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('CenterCrop')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('CenterCrop').set(True)
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -208,7 +207,7 @@ class RandomCrop(PreprocessingLayer):
     4D tensor with shape:
     `(samples, target_height, target_width, channels)`.
 
-  Arguments:
+  Args:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     seed: Integer. Used to create a random seed.
@@ -222,7 +221,7 @@ class RandomCrop(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomCrop, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomCrop')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomCrop').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -317,7 +316,7 @@ class Rescaling(PreprocessingLayer):
   Output shape:
     Same as input.
 
-  Arguments:
+  Args:
     scale: Float, the scale to apply to the inputs.
     offset: Float, the offset to apply to the inputs.
     name: A string, the name of the layer.
@@ -327,7 +326,7 @@ class Rescaling(PreprocessingLayer):
     self.scale = scale
     self.offset = offset
     super(Rescaling, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Rescaling')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Rescaling').set(True)
 
   def call(self, inputs):
     dtype = self._compute_dtype
@@ -383,7 +382,7 @@ class RandomFlip(PreprocessingLayer):
                name=None,
                **kwargs):
     super(RandomFlip, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomFlip')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomFlip').set(True)
     self.mode = mode
     if mode == HORIZONTAL:
       self.horizontal = True
@@ -437,7 +436,7 @@ class RandomFlip(PreprocessingLayer):
 class RandomTranslation(PreprocessingLayer):
   """Randomly translate each image during training.
 
-  Arguments:
+  Args:
     height_factor: a float represented as fraction of value, or a tuple
       of size 2 representing lower and upper bound for shifting vertically.
       A negative value means shifting image up, while a positive value
@@ -532,7 +531,8 @@ class RandomTranslation(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomTranslation, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomTranslation')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomTranslation').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -840,7 +840,8 @@ class RandomRotation(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomRotation, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomRotation')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomRotation').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -887,7 +888,7 @@ class RandomRotation(PreprocessingLayer):
 class RandomZoom(PreprocessingLayer):
   """Randomly zoom each image during training.
 
-  Arguments:
+  Args:
     height_factor: a float represented as fraction of value, or a tuple
       of size 2 representing lower and upper bound for zooming vertically.
       When represented as a single float, this value is used for both the
@@ -987,7 +988,7 @@ class RandomZoom(PreprocessingLayer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
     super(RandomZoom, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomZoom')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomZoom').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1127,7 +1128,8 @@ class RandomContrast(PreprocessingLayer):
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomContrast')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell(
+        'RandomContrast').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1163,7 +1165,7 @@ class RandomHeight(PreprocessingLayer):
 
   By default, this layer is inactive during inference.
 
-  Arguments:
+  Args:
     factor: A positive float (fraction of original height), or a tuple of size 2
       representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
@@ -1211,7 +1213,7 @@ class RandomHeight(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomHeight, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomHeight')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomHeight').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1262,7 +1264,7 @@ class RandomWidth(PreprocessingLayer):
 
   By default, this layer is inactive during inference.
 
-  Arguments:
+  Args:
     factor: A positive float (fraction of original height), or a tuple of size 2
       representing lower and upper bound for resizing vertically. When
       represented as a single float, this value is used for both the upper and
@@ -1311,7 +1313,7 @@ class RandomWidth(PreprocessingLayer):
     self.seed = seed
     self._rng = make_generator(self.seed)
     super(RandomWidth, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('RandomWidth')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('RandomWidth').set(True)
 
   def call(self, inputs, training=True):
     if training is None:
@@ -1353,44 +1355,20 @@ class RandomWidth(PreprocessingLayer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-# TODO(b/147877541, b/158339556): This class is added to temporarily enable
-# creating generators within distribution strategies. Remove it when the proper
-# API is in place.
-class _RandomGenerator(stateful_random_ops.Generator):
-  """A subclass that allows creation inside distribution strategies.
-
-  This is a temporary solution to allow creating tf.random.Generator inside
-  distribution strategies. It will be removed when proper API is in place.
-
-  All replicas will have the same RNG state and generate the same random
-  numbers.
-  """
-
-  # TODO(b/157995497): Temporarily use primary variable handle inside cross
-  # replica context.
-  @property
-  def state(self):
-    """The internal state of the RNG."""
-    state_var = self._state_var
-    try:
-      _ = getattr(state_var, 'handle')
-      return state_var
-    except ValueError:
-      return state_var.values[0]
-
-  def _create_variable(self, *args, **kwargs):
-    # This function does the same thing as the base class's namesake, except
-    # that it skips the distribution-strategy check. When we are inside a
-    # distribution-strategy scope, variables.Variable will pick a proper
-    # variable class (e.g. MirroredVariable).
-    return variables.Variable(*args, **kwargs)
-
-
 def make_generator(seed=None):
+  """Creates a random generator.
+
+  Args:
+    seed: the seed to initialize the generator. If None, the generator will be
+      initialized non-deterministically.
+
+  Returns:
+    A generator object.
+  """
   if seed:
-    return _RandomGenerator.from_seed(seed)
+    return stateful_random_ops.Generator.from_seed(seed)
   else:
-    return _RandomGenerator.from_non_deterministic_state()
+    return stateful_random_ops.Generator.from_non_deterministic_state()
 
 
 def get_interpolation(interpolation):

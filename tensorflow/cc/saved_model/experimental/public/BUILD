@@ -1,6 +1,8 @@
 # Experimental C++ SavedModel Header Only APIs. See RFC
 # https://github.com/tensorflow/community/pull/207
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
+
 package(
     # This is intentionally public
     default_visibility = [

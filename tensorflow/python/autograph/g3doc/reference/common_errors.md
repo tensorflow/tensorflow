@@ -10,6 +10,11 @@ This warning is output when AutoGraph could not convert a function, for an
 unexpected reason. The error message contains the reason why the function could
 not be converted, as well as guidance on how to proceed next.
 
+The exact error message may vary from version to version but in general, the
+cause of the failure appears somewhere in the text, for example as
+"Cause: could not get source code" or "Original error: could not get source
+code".
+
 Note: AutoGraph does not always output a warning. For example, constructors
 are silently called without conversion.
 
@@ -23,6 +28,16 @@ supported in AutoGraph, expect subsequent exceptions.
 Note: the warning is output to the [abseil](https://github.com/abseil/abseil-py)
 logger, with `WARNING` severity. To direct these warnings to `stdout`, use
 `tf.autograph.set_verbosity(0, True)`.
+
+### "Unable to locate the source code" or "Source not found" errors
+
+Newer versions of AutoGraph raise a `ConversionError`. Older versions print a
+warning. In both cases, a similar message about finding the source code is
+included.
+
+These errors are raised when AutoGraph is unable to find the source code of
+functions it needs to transform. See [Limitations](limitations.md) for more
+details.
 
 ### "WARNING: Large unrolled loop detected"
 
@@ -67,16 +82,39 @@ logger, with `WARNING` severity. To direct these warnings to `stdout`, use
 This exception is raised whenever a `tf.Tensor` is type-cast as a Python `bool`,
 in a context where eager execution is not active. The exception is only raised
 when graph execution is active, for example inside a `@tf.function` with
-AutoGraph turned off. It can be caused by using a `tf.Tensor` value as:
+AutoGraph turned off.
+
+**When AutoGraph is on**, it can be caused by:
+  * placing a Tensor-dependent `break`, `continue` or `return` inside a Python
+    loop (see example below)
+  * attempting to use a `tf.Tensor` in a list comprehension, by iterating over
+    it or using it in a condition)
+
+A typical example of mixing Python and TF control flow in an incompatible way
+is:
+
+```
+for i in range(3):  # Python loop
+  if i > tf.constant(0):  # TF conditional
+    break  # raises OperatorNotAllowedInGraphError
+```
+
+The way these errors are typically fixed is by ensuring all control flow is
+TF control flow:
+
+```
+for i in tf.range(3):  # TF loop
+  if i > tf.constant(0):  # TF conditional
+    break  # works
+```
+
+**When AutoGraph is off**, it can be caused by using a `tf.Tensor` value as:
 
   * the condition of an `if` or `while` statement: `if <tensor>:`
   * the argument in a logical expression: `tensor and another_tensor`
   * the argument to the `bool` built-in: `bool(tensor)`
 
 Note: These operations are allowed when executing eagerly.
-
-Within the context of AutoGraph, it usually indicates eager-style control
-flow that has not been converted by AutoGraph, for any reason.
 
 When encountering this error, make sure that the function is either decorated
 with `@tf.function`, or called from another function decorated in this way. Also

@@ -924,8 +924,8 @@ static int TryToReadNumaNode(const std::string& pci_bus_id,
   // could use the file::* utilities).
   FILE* file = fopen(filename.c_str(), "r");
   if (file == nullptr) {
-    LOG(ERROR) << "could not open file to read NUMA node: " << filename
-               << "\nYour kernel may have been built without NUMA support.";
+    LOG(INFO) << "could not open file to read NUMA node: " << filename
+              << "\nYour kernel may have been built without NUMA support.";
     return kUnknownNumaNode;
   }
 

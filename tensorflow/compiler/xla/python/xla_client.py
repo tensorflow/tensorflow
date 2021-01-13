@@ -28,6 +28,8 @@ import inspect
 import os
 from typing import List, Sequence, Tuple, Union
 
+from . import xla_extension as _xla
+
 from absl import logging
 import numpy as np
 
@@ -35,8 +37,6 @@ import numpy as np
 # Python bindings are currently packaged both as part of jaxlib and as part
 # of TensorFlow. If we use protocol buffers here, then importing both jaxlib
 # and TensorFlow may fail with duplicate protocol buffer message definitions.
-
-from tensorflow.compiler.xla.python import xla_extension as _xla
 
 # Most functions are snake_case for consistency with other modules, some
 # method names are CamelCase for consistency with XLA.
@@ -48,6 +48,9 @@ from tensorflow.compiler.xla.python import xla_extension as _xla
 ops = _xla.ops
 profiler = _xla.profiler
 
+# Just an internal arbitrary increasing number to help with backward-compatible
+# changes.
+_version = 2
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -83,11 +86,15 @@ def _gpu_backend_factory(distributed_client=None, node_id=0):
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  return _xla.get_nvidia_gpu_client(
+  return _xla.get_gpu_client(
       asynchronous=True,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id)
+
+
+def _tpu_backend_factory():
+  return _xla.get_tpu_client(asynchronous=True)
 
 
 # Backend factories, keyed by user-visible name, in increasing priority order.
@@ -95,6 +102,7 @@ _local_backend_factories = collections.OrderedDict([
     ('interpreter', _interpreter_backend_factory),
     ('cpu', _cpu_backend_factory),
     ('gpu', _gpu_backend_factory),
+    ('tpu', _tpu_backend_factory),
 ])
 
 
@@ -145,7 +153,8 @@ def get_local_backend(name=None):
     try:
       return backends[name]
     except KeyError:
-      raise RuntimeError('Unknown backend {}'.format(name))
+      raise RuntimeError(
+          'Unknown backend %s. Available: %s' % (name, list(backends.keys())))
 
   return list(backends.values())[-1]
 
@@ -192,8 +201,8 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.F64: np.dtype('float64'),
     PrimitiveType.C64: np.dtype('complex64'),
     PrimitiveType.C128: np.dtype('complex128'),
-    PrimitiveType.TUPLE: np.dtype(np.object),
-    PrimitiveType.TOKEN: np.dtype(np.object),
+    PrimitiveType.TUPLE: np.dtype(np.object_),
+    PrimitiveType.TOKEN: np.dtype(np.object_),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
@@ -346,7 +355,7 @@ def execute_with_python_values(executable, arguments, backend):
 def execute_with_python_values_replicated(executable, arguments, backend):
   """Execute on many replicas with Python values as arguments and output.
 
-  Arguments:
+  Args:
     executable: the program to run.
     arguments: a list of lists of Python values indexed by `[replica][arg_num]`
       to pass as inputs.
@@ -413,6 +422,7 @@ XlaComputation = _xla.XlaComputation
 FftType = _xla.FftType
 Client = _xla.Client
 Buffer = _xla.Buffer
+DeviceArrayBase = _xla.DeviceArrayBase
 Executable = _xla.Executable
 
 
@@ -424,7 +434,10 @@ def register_custom_call_target(name, fn, platform='cpu'):
     fn: a PyCapsule object containing the function pointer.
     platform: the target platform.
   """
-  _xla.register_custom_call_target(name, fn, xla_platform_names[platform])
+  # To support AMD GPUs, we need to have xla_platform_names["gpu"] == "ROCM"
+  # Since that is hardcoded to CUDA, we are using the following as workaround.
+  _xla.register_custom_call_target(name, fn,
+                                   xla_platform_names.get(platform, platform))
 
 
 # Deprecated. Use register_custom_call_target instead.
@@ -601,7 +614,7 @@ def make_convolution_dimension_numbers(
 class OpSharding(object):
   """Python representation of a xla.OpSharding protobuf."""
   __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
-               'tuple_shardings')
+               'tuple_shardings', 'replicate_on_last_tile_dim')
 
   Type = _xla.OpSharding_Type
 
@@ -610,6 +623,7 @@ class OpSharding(object):
     self.tile_assignment_dimensions = []
     self.tile_assignment_devices = []
     self.tuple_shardings = []
+    self.replicate_on_last_tile_dim = False
 
 
 class PrecisionConfig(object):

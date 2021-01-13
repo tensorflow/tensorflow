@@ -272,7 +272,8 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 // If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
 // of "-no-opt.ll" is used.
 void DumpIrIfEnabled(const HloModule& hlo_module,
-                     const llvm::Module& llvm_module, bool optimized);
+                     const llvm::Module& llvm_module, bool optimized,
+                     absl::string_view filename_suffix = "");
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
                                   llvm::GlobalValue::LinkageTypes linkage,

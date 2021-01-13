@@ -22,7 +22,7 @@ MKL_SHORT_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core/kernels:bounds_check",
+    "//tensorflow/core/framework:bounds_check",
     "//tensorflow/core/kernels:ops_util",
 ] + mkl_deps()
 
@@ -61,7 +61,10 @@ tf_mkl_kernel_library(
     hdrs = [
         "mkl_matmul_ops_common.h",
     ],
-    deps = ["//tensorflow/core/kernels:batch_matmul_op"] + MKL_DEPS,
+    deps = [
+        "//tensorflow/core/kernels:batch_matmul_op",
+        "//tensorflow/core/kernels:matmul_op",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(
@@ -78,6 +81,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_conv_ops_perchannel_test",
     size = "small",
     srcs = ["mkl_quantized_conv_ops_perchannel_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_conv_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -92,6 +96,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_conv_ops_test",
     size = "small",
     srcs = ["mkl_quantized_conv_ops_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_conv_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -106,6 +111,7 @@ tf_cc_test_mkl(
     name = "mkl_qmatmul_op_test",
     size = "small",
     srcs = ["mkl_qmatmul_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_qmatmul_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -123,7 +129,7 @@ tf_mkl_kernel_library(
     srcs = ["mkl_quantize_op.cc"],
     deps = [
         "//tensorflow/core/kernels:quantized_ops",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
         "@gemmlowp",
     ] + MKL_DEPS,
 )
@@ -132,6 +138,7 @@ tf_cc_test_mkl(
     name = "mkl_quantize_op_test",
     size = "small",
     srcs = ["mkl_quantize_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_quantize_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -144,6 +151,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_pooling_ops_test",
     size = "small",
     srcs = ["mkl_quantized_pooling_ops_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_pooling_ops",
         "//tensorflow/core:array_ops_op_lib",
@@ -158,6 +166,7 @@ tf_cc_test_mkl(
     name = "mkl_quantized_concat_op_test",
     size = "small",
     srcs = ["mkl_quantized_concat_op_test.cc"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_concat_op",
         "//tensorflow/core:array_ops_op_lib",
@@ -193,6 +202,7 @@ tf_mkl_kernel_library(
     prefix = "mkl_conv",
     deps = [
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/kernels:conv_grad_shape_utils",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:no_op",
     ] + MKL_DEPS,
@@ -249,12 +259,13 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:mkl_graph_util",
+        "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core/kernels:concat_lib_hdrs",
         "//tensorflow/core/kernels:conv_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:eigen_helpers",
+        "//tensorflow/core/kernels:meta_support",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:quantization_utils",
@@ -268,11 +279,7 @@ tf_cc_test_mkl(
     name = "mkl_dequantize_op_test",
     size = "small",
     srcs = ["mkl_dequantize_op_test.cc"],
-    # TODO(b/149940073): Re-enable.
-    tags = [
-        "no_oss",
-        "notap",
-    ],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_dequantize_op",
         ":mkl_tfconv_op",
@@ -292,7 +299,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_softmax_op",
     prefix = "mkl_softmax",
-    deps = MKL_SHORT_DEPS,
+    deps = MKL_SHORT_DEPS + ["//third_party/eigen3"],
 )
 
 tf_mkl_kernel_library(
@@ -307,6 +314,8 @@ tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = [
+        "//third_party/eigen3",
+        "//tensorflow/core:framework",
         "//tensorflow/core/kernels:fused_batch_norm_op",
         "//tensorflow/core/kernels:no_op",
     ] + mkl_deps(),
@@ -318,6 +327,7 @@ tf_cc_test_mkl(
     srcs = ["mkl_fused_batch_norm_op_test.cc"],
     linkstatic = 1,
     deps = [
+        ":mkl_conv_op",
         ":mkl_fused_batch_norm_op",
         "//tensorflow/core:direct_session",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
@@ -408,6 +418,7 @@ tf_cc_test_mkl(
         ":mkl_conv_op",
         ":mkl_matmul_op",
         ":mkl_tfconv_op",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core/kernels:bias_op",
         "//tensorflow/core/kernels:conv_ops",
@@ -416,6 +427,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:pad_op",
         "//tensorflow/core/kernels:relu_op",
         "//tensorflow/core/kernels/image:image",
+        "//tensorflow/core:tensorflow",
     ] + MKL_TEST_DEPS,
 )
 

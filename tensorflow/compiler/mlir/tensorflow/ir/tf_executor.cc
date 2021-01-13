@@ -30,14 +30,14 @@ limitations under the License.
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -61,9 +61,14 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation *call, Operation *callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
   // Override the inlining hook to determine if 'src' can be inlined into
   // 'dest'.
-  bool isLegalToInline(Region *dest, Region *src,
+  bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
                        BlockAndValueMapping &value_mapping) const final {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.
@@ -158,7 +163,7 @@ FetchOp GraphOp::GetFetch() { return llvm::cast<FetchOp>(GetBody().back()); }
 namespace {
 
 LogicalResult Verify(GraphOp graph) {
-  auto *executorDialect = graph.getDialect();
+  auto *executorDialect = graph->getDialect();
 
   if (graph.GetBody().empty())
     return graph.emitOpError() << "expects a non-empty body";
@@ -456,7 +461,7 @@ void Print(SwitchOp switch_op, OpAsmPrinter &p) {
 namespace {
 
 LogicalResult Verify(SwitchNOp switchn) {
-  IntegerAttr num_outs = switchn.getAttrOfType<IntegerAttr>("num_outs");
+  IntegerAttr num_outs = switchn->getAttrOfType<IntegerAttr>("num_outs");
   if (!num_outs)
     return switchn.emitOpError() << "expects a `num_outs` integer attribute";
 
@@ -672,7 +677,7 @@ ParseResult ParseMergeOp(OpAsmParser &parser, OperationState &result) {
   } else {
     // In case of the short form, use the parsed type for both the operands and
     // the remaining operands are expected to be control inputs.
-    types.push_back(types.front());
+    types.push_back(Type(types.front()));
     Type control_type = ControlType::get(parser.getBuilder().getContext());
     types.append(op_infos.size() - 2, control_type);
 
@@ -823,6 +828,10 @@ LogicalResult Verify(NextIterationSinkOp sink) {
 }
 
 }  // anonymous namespace
+
+NextIterationSourceOp NextIterationSinkOp::GetSource() {
+  return cast<NextIterationSourceOp>(token().getDefiningOp());
+}
 
 //===----------------------------------------------------------------------===//
 // tf_executor.Exit
@@ -1121,12 +1130,12 @@ LogicalResult IslandOp::fold(llvm::ArrayRef<Attribute> operands,
   return success();
 }
 
+}  // namespace tf_executor
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
-
-}  // namespace tf_executor
-}  // namespace mlir

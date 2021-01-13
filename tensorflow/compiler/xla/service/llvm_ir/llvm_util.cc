@@ -169,7 +169,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
     case F64:
       return llvm::Type::getDoubleTy(module->getContext());
     case C64: {
-      auto cplx_t = module->getTypeByName("complex64");
+      auto cplx_t =
+          llvm::StructType::getTypeByName(module->getContext(), "complex64");
       if (cplx_t == nullptr) {
         // C++ standard dictates the memory layout of std::complex is contiguous
         // real followed by imaginary. C++11 section 26.4 [complex.numbers]:
@@ -186,7 +187,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       return cplx_t;
     }
     case C128: {
-      auto cplx_t = module->getTypeByName("complex128");
+      auto cplx_t =
+          llvm::StructType::getTypeByName(module->getContext(), "complex128");
       if (cplx_t == nullptr) {
         return llvm::StructType::create(
             {llvm::Type::getDoubleTy(module->getContext()),
@@ -574,7 +576,8 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
 }
 
 void DumpIrIfEnabled(const HloModule& hlo_module,
-                     const llvm::Module& llvm_module, bool optimized) {
+                     const llvm::Module& llvm_module, bool optimized,
+                     absl::string_view filename_suffix) {
   const auto& debug_opts = hlo_module.config().debug_options();
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
@@ -583,8 +586,11 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
-                          DumpModuleToString(llvm_module));
+  DumpToFileInDirOrStdout(
+      hlo_module, "",
+      absl::StrCat(suffix, filename_suffix.empty() ? "" : ".", filename_suffix,
+                   ".ll"),
+      DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
   // with the constants stripped to get IR that is easier to manipulate.  Skip

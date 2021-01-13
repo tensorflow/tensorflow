@@ -50,6 +50,7 @@ from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.util import _pywrap_utils
 
 
 def _input(shape):
@@ -371,6 +372,10 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
       self.skipTest('No GPU is available')
     if mode == 'mkl' and not test_util.IsMklEnabled():
       self.skipTest('MKL is not enabled')
+    # Test will fail on machines without AVX512f, e.g., Broadwell
+    isAVX512f = _pywrap_utils.IsBF16SupportedByOneDNNOnThisCPU()
+    if mode == 'mkl' and not isAVX512f:
+      self.skipTest('Skipping test due to non-AVX512f machine')
 
   def _run_simple_loop_test(self, mode, inp, body, out):
     """Runs a test of a simple loop.
@@ -512,9 +517,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     tol = 5e-2 if mode == 'mkl' else 1e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
-  # TODO(reedwm): Fix and enable this test with MKL. Currently this crashes with
-  # MKL
-  @parameterized.parameters(['cuda'])
+  @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
   def test_conv_bn_dropout(self, mode):
@@ -545,6 +548,7 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     # The default tolerance (1e-3) results in a tiny fraction (<1%) of
     # miscompares on ROCm platform, and hence the tolerance bump
     tol = 2e-3 if test.is_built_with_rocm else 1e-3
+    tol = 5e-2 if mode == 'mkl' else tol
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   # TODO(reedwm): Fix and enable this test with MKL. Currently this crashes with

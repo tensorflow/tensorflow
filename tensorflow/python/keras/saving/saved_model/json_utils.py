@@ -25,29 +25,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections.abc as collections_abc
 import json
 import numpy as np
 import wrapt
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.util import serialization
-
-try:
-  # This import only works on python 3.3 and above.
-  import collections.abc as collections_abc  # pylint: disable=unused-import, g-import-not-at-top
-except ImportError:
-  import collections as collections_abc  # pylint: disable=unused-import, g-import-not-at-top
+from tensorflow.python.framework import type_spec
 
 
 class Encoder(json.JSONEncoder):
   """JSON encoder and decoder that handles TensorShapes and tuples."""
 
   def default(self, obj):
+    """Encodes objects for types that aren't handled by the default encoder."""
     if isinstance(obj, tensor_shape.TensorShape):
       items = obj.as_list() if obj.rank is not None else None
       return {'class_name': 'TensorShape', 'items': items}
-    return serialization.get_json_type(obj)
+    return get_json_type(obj)
 
   def encode(self, obj):
     return super(Encoder, self).encode(_encode_tuple(obj))
@@ -74,6 +70,9 @@ def _decode_helper(obj):
   if isinstance(obj, dict) and 'class_name' in obj:
     if obj['class_name'] == 'TensorShape':
       return tensor_shape.TensorShape(obj['items'])
+    elif obj['class_name'] == 'TypeSpec':
+      return type_spec.lookup(obj['type_spec'])._deserialize(  # pylint: disable=protected-access
+          _decode_helper(obj['serialized']))
     elif obj['class_name'] == '__tuple__':
       return tuple(_decode_helper(i) for i in obj['items'])
     elif obj['class_name'] == '__ellipsis__':
@@ -84,7 +83,7 @@ def _decode_helper(obj):
 def get_json_type(obj):
   """Serializes any object to a JSON-serializable structure.
 
-  Arguments:
+  Args:
       obj: the object to serialize
 
   Returns:
@@ -130,5 +129,15 @@ def get_json_type(obj):
 
   if isinstance(obj, wrapt.ObjectProxy):
     return obj.__wrapped__
+
+  if isinstance(obj, type_spec.TypeSpec):
+    try:
+      type_spec_name = type_spec.get_name(type(obj))
+      return {'class_name': 'TypeSpec', 'type_spec': type_spec_name,
+              'serialized': obj._serialize()}  # pylint: disable=protected-access
+    except ValueError:
+      raise ValueError('Unable to serialize {} to JSON, because the TypeSpec '
+                       'class {} has not been registered.'
+                       .format(obj, type(obj)))
 
   raise TypeError('Not JSON Serializable:', obj)

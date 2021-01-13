@@ -29,7 +29,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -192,7 +192,7 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
             if (auto device = result->DeviceForResource(output)) {
               LLVM_DEBUG(llvm::dbgs()
                          << " Setting device = " << *device << "\n");
-              identity.setAttr(kDeviceAttr, builder.getStringAttr(*device));
+              identity->setAttr(kDeviceAttr, builder.getStringAttr(*device));
             }
           }
         } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
@@ -283,12 +283,13 @@ void ResourceDeviceInference::runOnOperation() {
       if (auto while_op = dyn_cast<WhileOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
                 while_op, while_op.getOperands(),
-                {while_op.body_func(), while_op.cond_func()}, func_res)))
+                {while_op.body_function(), while_op.cond_function()},
+                func_res)))
           return WalkResult::interrupt();
       } else if (auto if_op = dyn_cast<IfOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
-                if_op, if_op.input(), {if_op.then_func(), if_op.else_func()},
-                func_res)))
+                if_op, if_op.input(),
+                {if_op.then_function(), if_op.else_function()}, func_res)))
           return WalkResult::interrupt();
       } else if (auto call = dyn_cast<CallOpInterface>(op)) {
         auto func = dyn_cast<FuncOp>(call.resolveCallable());

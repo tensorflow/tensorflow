@@ -32,7 +32,7 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
-XEventBuilder AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
+XEventBuilder AddTensorFlowOpEvent(std::string&& tf_op_fullname,
                                    int64 start_timestamp_ns, int64 duration_ns,
                                    bool on_device,
                                    absl::string_view kernel_name,
@@ -42,12 +42,13 @@ XEventBuilder AddTensorFlowOpEvent(absl::string_view tf_op_fullname,
   event.SetTimestampNs(start_timestamp_ns);
   event.SetDurationNs(duration_ns);
   if (!on_device) return event;
-  event.ParseAndAddStatValue(*plane->GetOrCreateStatMetadata("level 0"),
-                             tf_op_fullname);
+  event.AddStatValue(
+      *plane->GetOrCreateStatMetadata("level 0"),
+      *plane->GetOrCreateStatMetadata(std::move(tf_op_fullname)));
   return event;
 }
 
-void AddTensorFlowOpEventWithKernelDetails(absl::string_view tf_op_fullname,
+void AddTensorFlowOpEventWithKernelDetails(std::string&& tf_op_fullname,
                                            int64 start_timestamp_ns,
                                            int64 duration_ns, bool on_device,
                                            absl::string_view kernel_name,
@@ -55,8 +56,8 @@ void AddTensorFlowOpEventWithKernelDetails(absl::string_view tf_op_fullname,
                                            XPlaneBuilder* plane,
                                            XLineBuilder* line) {
   XEventBuilder event =
-      AddTensorFlowOpEvent(tf_op_fullname, start_timestamp_ns, duration_ns,
-                           on_device, kernel_name, plane, line);
+      AddTensorFlowOpEvent(std::move(tf_op_fullname), start_timestamp_ns,
+                           duration_ns, on_device, kernel_name, plane, line);
   if (!on_device) return;
   event.ParseAndAddStatValue(*plane->GetOrCreateStatMetadata("kernel_details"),
                              kernel_details);
@@ -86,15 +87,12 @@ TEST(OpStatsToTfStats, GpuTfStats) {
   constexpr int64 kKernel5DurationNs = 10000;
 
   // Mock kernel details for both kernel4 and kernel5.
-  const std::string kKernelDetails = R"MULTI(registers_per_thread:32
-static_shared_memory_usage:0
-dynamic_shared_memory_usage:16384
-grid_x:2
-grid_y:1
-grid_z:1
-block_x:32
-block_y:1
-block_z:1)MULTI";
+  const std::string kKernelDetails = R"MULTI(regs:32
+static_shared:0
+dynamic_shared:16384
+grid:2,1,1
+block:32,1,1
+occ_pct:100)MULTI";
 
   XSpace space;
   XPlaneBuilder device_plane(
@@ -123,8 +121,10 @@ block_z:1)MULTI";
       absl::StrCat(kTfOp3, ":", kTfOp3), kKernel5StartNs, kKernel5DurationNs,
       /*on_device=*/true, kKernel5, kKernelDetails, &device_plane, &stream2);
 
-  const OpStats op_stats =
-      ConvertXSpaceToOpStats(space, {OP_METRICS_DB, KERNEL_STATS_DB});
+  OpStatsOptions options;
+  options.generate_kernel_stats_db = true;
+  options.generate_op_metrics_db = true;
+  const OpStats op_stats = ConvertXSpaceToOpStats(space, options);
   const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
   EXPECT_EQ(tf_stats.device_type(), op_stats.run_environment().device_type());

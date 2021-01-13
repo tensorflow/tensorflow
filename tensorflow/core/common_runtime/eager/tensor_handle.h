@@ -60,7 +60,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // TensorHandle for dtype == DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
                EagerContext* ctx);
-  TensorHandle(tensorflow::Tensor&& t, CustomDevice* d, EagerContext* ctx);
   TensorHandle(Device* d, Device* op_device, Device* resource_device,
                tensorflow::DataType dtype, EagerContext* ctx);
 
@@ -81,8 +80,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
                                          Device* op_device,
                                          Device* resource_device,
                                          EagerContext* ctx);
-  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t,
-                                         CustomDevice* d, EagerContext* ctx);
   static TensorHandle* CreateEmptyLocalHandle(Device* d, Device* op_device,
                                               Device* resource_device,
                                               tensorflow::DataType dtype,
@@ -91,6 +88,10 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // Create a handle which packs the given handles of the same dtype and shape.
   // If handles are on different devices, assign the packed handle to a
   // CompositeDevice.
+  //
+  // The new tensor handle shares ownership of the given handle: their reference
+  // count will be increased by one after a call to `CreatePackedHandle`.
+  // TODO(b/170414377): Use `TensorHandlePtr` instead.
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    const tensorflow::DataType dtype,
                                    const tensorflow::TensorShape& shape,
@@ -121,12 +122,15 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   void Release() override;
 
   tensorflow::DataType DataType() const override;
+  Status Shape(tensorflow::PartialTensorShape* shape) const override;
   Status NumDims(int* num_dims) const override;
   Status NumElements(int64* num_elements) const override;
   Status Dim(int dim_index, int64* dim) const override;
 
   const char* DeviceName(Status* status) const override;
   const char* BackingDeviceName(Status* status) const override;
+  const char* DeviceType(Status* status) const override;
+  int DeviceId(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
 
   ImmediateExecutionTensorHandle* Copy() override;
@@ -143,7 +147,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // requesting the HostCPU.
   Status TensorValue(const Device* d, tensorflow::TensorValue* t);
 
-  VariantDevice device() const { return device_; }
+  Device* device() const { return device_; }
   Device* op_device() const { return op_device_; }
   Device* resource_device() const { return resource_device_; }
   int64 resource_remote_device_incarnation() const {
@@ -154,7 +158,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // are set (data is ready).
   Status WaitUnknownDevice() const;
 
-  VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
+  Device* DeviceOrHostCPU(const EagerContext& ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
 
@@ -221,8 +225,9 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   void Poison(Status status, const Device* d);
 
   // TODO(b/154282629): Consider moving it to EagerContext.
+  // Copies to the tensor on the given device `d`, or to host iff `d` is null.
   Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
-                      tensorflow::Tensor* output);
+                      tensorflow::Tensor* output) const;
 
   Status InferenceShape(
       shape_inference::InferenceContext* const inference_context,
@@ -278,7 +283,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   bool IsReady() const;
   Status WaitReady(const char* caller) const;
 
-  VariantDevice device_;
+  tensorflow::Device* device_;
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
@@ -336,6 +341,11 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
   // shape.
   class PackedTensorHandleData {
    public:
+    // Initialize handle data from list of tensor handles.
+    // Ownership of the tensor handles is shared between the
+    // `PackedTensorHandleData` and the caller (the reference count for the
+    // given handles is incremented).
+    // TODO(b/170414377): Use `TensorHandlePtr` instead.
     PackedTensorHandleData(std::vector<TensorHandle*>&& handles,
                            const TensorShape& shape);
 
@@ -357,6 +367,7 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
     Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
 
    private:
+    // TODO(b/170414377): Use `TensorHandlePtr` instead.
     const std::vector<TensorHandle*> handles_;
     const TensorShape shape_;
 
@@ -376,19 +387,6 @@ class TensorHandle : public ImmediateExecutionTensorHandle {
 
   PartialTensorShape inference_shape_;
 };
-
-// Checks whether a VariantDevice contains a custom device.
-bool VariantDeviceIsCustom(VariantDevice device);
-
-// Wraps device->name() or CustomDevice->name().
-string VariantDeviceName(VariantDevice device);
-
-// Wraps device->DebugString() or CustomDevice->name().
-string VariantDeviceDebugString(VariantDevice device);
-
-// Indicates either HostCPU or an unset physical device. We never set a null
-// CustomDevice*.
-const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

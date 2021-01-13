@@ -32,6 +32,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
+#include "mlir/ExecutionEngine/OptUtils.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
@@ -62,7 +63,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
   }
 
   llvm::TargetOptions target_options =
-      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags(llvm::Triple());
   return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
       triple.str(), "generic", "", target_options, llvm::Reloc::Model::PIC_));
 }
@@ -74,6 +75,16 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   std::unique_ptr<llvm::Module> llvm_module =
       mlir::translateModuleToLLVMIR(module, llvm_context);
 
+  auto target_machine = GetTargetMachine(llvm_module.get());
+  llvm_module->setDataLayout(target_machine->createDataLayout());
+
+  // Run LLVM's mid-level optimizer to clean up the IR.
+  if (mlir::makeOptimizingTransformer(
+          /*optLevel=*/2, /*sizeLevel=*/0,
+          target_machine.get())(llvm_module.get())) {
+    return xla::InternalError("Failed to run LLVM optimizer passess");
+  }
+
   // Set up the output stream.
   llvm::SmallString<8> outstr;
   llvm::raw_svector_ostream ostream(outstr);
@@ -83,9 +94,6 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(llvm_module->getTargetTriple())));
 
-  // TODO(b/163818770): Apply optimizations before dumping .a file.
-  auto target_machine = GetTargetMachine(llvm_module.get());
-  llvm_module->setDataLayout(target_machine->createDataLayout());
   if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
                                           llvm::CGFT_ObjectFile, false)) {
     return xla::InternalError("Failed add passes to emit file");
@@ -95,11 +103,10 @@ xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
 }
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
-                int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
-                llvm::ArrayRef<uint32_t> same_shape,
-                llvm::ArrayRef<uint32_t> unroll_factors) {
-  std::pair<int32_t, int32_t> compute_capability(architecture / 10,
-                                                 architecture % 10);
+                llvm::ArrayRef<std::string> architectures,
+                llvm::ArrayRef<uint32_t> tile_sizes,
+                llvm::ArrayRef<uint32_t> unroll_factors,
+                bool embed_memref_prints, bool print_ptx, bool enable_ftz) {
   // Read TF code.
   std::string tf_code;
   TF_RETURN_IF_ERROR(
@@ -108,9 +115,9 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GenerateKernelForTfCode(context, tf_code, /*gpu_binary_only=*/false,
-                              compute_capability, tile_sizes, same_shape,
-                              unroll_factors));
+      GenerateKernelForTfCode(context, tf_code, architectures, tile_sizes,
+                              unroll_factors, embed_memref_prints,
+                              /*generate_fatbin=*/true, print_ptx, enable_ftz));
   // Get binary.
   TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
@@ -131,19 +138,28 @@ int main(int argc, char** argv) {
   llvm::cl::opt<std::string> output_file(
       "output", llvm::cl::desc("output file"), llvm::cl::value_desc("filename"),
       llvm::cl::init("foo.bin"));
-  llvm::cl::opt<int32_t> architecture(
-      "arch", llvm::cl::desc("target architecture (e.g. 50 for sm_50)"),
-      llvm::cl::init(50));
+  llvm::cl::opt<bool> embed_memref_prints(
+      "embed_memref_prints",
+      llvm::cl::desc("embeds memref prints at the end of their lifetime"),
+      llvm::cl::init(false));
+  llvm::cl::opt<bool> print_ptx(
+      "print-ptx",
+      llvm::cl::desc("Print generated PTX code per target architecture."),
+      llvm::cl::init(false));
+  llvm::cl::opt<bool> enable_ftz(
+      "enable_ftz",
+      llvm::cl::desc(
+          "Enable the denormal flush to zero mode when generating code."),
+      llvm::cl::init(false));
+  llvm::cl::list<std::string> architectures(
+      "arch", llvm::cl::desc("target architectures (e.g. sm_70 or compute_75)"),
+      llvm::cl::OneOrMore, llvm::cl::CommaSeparated);
   llvm::cl::list<uint32_t> tile_sizes(
       "tile_sizes", llvm::cl::desc("tile sizes to use"), llvm::cl::ZeroOrMore,
       llvm::cl::CommaSeparated);
   llvm::cl::list<uint32_t> unroll_factors(
       "unroll_factors",
       llvm::cl::desc("factors to unroll by, separated by commas"),
-      llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
-  llvm::cl::list<uint32_t> same_shape(
-      "same_shape",
-      llvm::cl::desc("arguments with same shape, separated by commas"),
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
   tensorflow::InitMlir y(&argc, &argv);
@@ -152,9 +168,9 @@ int main(int argc, char** argv) {
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
-  auto status =
-      tensorflow::kernel_gen::Run(input_file, output_file, architecture,
-                                  tile_sizes, same_shape, unroll_factors);
+  auto status = tensorflow::kernel_gen::Run(
+      input_file, output_file, architectures, tile_sizes, unroll_factors,
+      embed_memref_prints, print_ptx, enable_ftz);
   if (!status.ok()) {
     LOG(ERROR) << status;
     return 1;

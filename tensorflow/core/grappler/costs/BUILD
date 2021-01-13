@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -5,7 +7,6 @@ load(
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
-    "tf_additional_all_protos",
     "tf_proto_library",
     "tf_protos_grappler",
     "tf_pyclif_proto_library",
@@ -15,12 +16,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-filegroup(
+alias(
     name = "graph_properties_testdata",
-    srcs = glob([
-        "graph_properties_testdata/*.pbtxt",
-        "graph_properties_testdata/*.pbtxt.html",
-    ]),
+    actual = "//tensorflow/core/grappler/costs/graph_properties_testdata:graph_properties_testdata",
     visibility = ["//visibility:public"],
 )
 
@@ -29,7 +27,14 @@ tf_proto_library(
     srcs = ["op_performance_data.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    protodeps = tf_additional_all_protos(),
+    protodeps = [
+        "//tensorflow/core/framework:attr_value_proto",
+        "//tensorflow/core/framework:resource_handle_proto",
+        "//tensorflow/core/framework:tensor_proto",
+        "//tensorflow/core/framework:tensor_shape_proto",
+        "//tensorflow/core/framework:types_proto",
+        "//tensorflow/core/protobuf:for_core_protos",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -329,6 +334,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler/clusters:utils",
     ] + tf_protos_grappler(),

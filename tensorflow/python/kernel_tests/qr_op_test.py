@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
@@ -112,12 +111,12 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
     else:
       tol = 1e-14
     # Tests that a ~= q*r.
-    a_recon = math_ops.matmul(q, r)
+    a_recon = test_util.matmul_without_tf32(q, r)
     self.assertAllClose(a_recon, a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
-    xx = math_ops.matmul(x, x, adjoint_a=True)
+    xx = test_util.matmul_without_tf32(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
     if is_single:
       tol = 1e-5
@@ -296,11 +295,10 @@ if __name__ == "__main__":
                        _GetQrOpTest(dtype, shape, full_matrices,
                                     use_static_shape))
 
-  # TODO(pfau): Get working with complex types.
   # TODO(pfau): Get working with full_matrices when rows > cols
   # TODO(pfau): Get working with shapeholders (dynamic shapes)
   for full_matrices in False, True:
-    for dtype in np.float32, np.float64:
+    for dtype in np.float32, np.float64, np.complex64, np.complex128:
       for rows in 1, 2, 5, 10:
         for cols in 1, 2, 5, 10:
           if rows <= cols or (not full_matrices and rows > cols):

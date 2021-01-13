@@ -17,6 +17,8 @@
 // Version 1: Add subgraphs to schema.
 // Version 2: Rename operators to conform to NN API.
 // Version 3: Move buffer data from Model.Subgraph.Tensors to Model.Buffers.
+// Version 3a: Add new builtin op code field. Has backward compatibility with
+//             version 3.
 
 namespace tflite;
 
@@ -42,6 +44,7 @@ enum TensorType : byte {
   INT8 = 9,
   FLOAT64 = 10,
   COMPLEX128 = 11,
+  UINT64 = 12,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -215,7 +218,7 @@ table Tensor {
 // object containing configuration parameters, builtins have a predetermined
 // set of acceptable options.
 
-enum BuiltinOperator : byte {
+enum BuiltinOperator : int32 {
   ADD = 0,
   AVERAGE_POOL_2D = 1,
   CONCATENATION = 2,
@@ -248,7 +251,6 @@ enum BuiltinOperator : byte {
   SPACE_TO_DEPTH = 26,
   SVDF = 27,
   TANH = 28,
-  // TODO(aselle): Consider rename to CONCATENATE_EMBEDDINGS
   CONCAT_EMBEDDINGS = 29,
   SKIP_GRAM = 30,
   CALL = 31,
@@ -349,7 +351,12 @@ enum BuiltinOperator : byte {
   SELECT_V2 = 123,
   DENSIFY = 124,
   SEGMENT_SUM = 125,
-  BATCH_MATMUL = 126
+  BATCH_MATMUL = 126,
+  PLACEHOLDER_FOR_GREATER_OP_CODES = 127,
+  CUMSUM = 128,
+  CALL_ONCE = 129,
+  BROADCAST_TO = 130,
+  RFFT2D = 131,
 }
 
 
@@ -455,7 +462,11 @@ union BuiltinOptions {
   SelectV2Options,
   DensifyOptions,
   SegmentSumOptions,
-  BatchMatMulOptions
+  BatchMatMulOptions,
+  CumsumOptions,
+  CallOnceOptions,
+  BroadcastToOptions,
+  Rfft2dOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -583,7 +594,7 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
-  // Parameters supported by version 4.
+  // Parameters supported by version 3.
   pot_scale_int16:bool = true;
 }
 
@@ -951,6 +962,10 @@ table IfOptions {
   else_subgraph_index:int;
 }
 
+table CallOnceOptions {
+  init_subgraph_index:int;
+}
+
 table WhileOptions {
   cond_subgraph_index:int;
   body_subgraph_index:int;
@@ -977,17 +992,41 @@ table SegmentSumOptions {
 table BatchMatMulOptions {
   adj_x:bool;
   adj_y:bool;
+  // Parameters for BatchMatMul version 4 or above.
+  // If set to true, then weights-only op will use asymmetric quantization for
+  // inputs.
+  asymmetric_quantize_inputs: bool;
+}
+
+table CumsumOptions {
+  exclusive:bool;
+  reverse:bool;
+}
+
+table BroadcastToOptions {
+}
+
+table Rfft2dOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
-  builtin_code:BuiltinOperator;
+  // This field is for backward compatibility. This field will be used when
+  // the value of the extended builtin_code field has less than
+  // BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+  deprecated_builtin_code:byte;
   custom_code:string;
 
   // The version of the operator. The version need to be bumped whenever new
   // parameters are introduced into an op.
   version:int = 1;
+
+  // This field is introduced for resolving op builtin code shortage problem
+  // (the original BuiltinOperator enum field was represented as a byte).
+  // This field will be used when the value of the extended builtin_code field
+  // has greater than BulitinOperator_PLACEHOLDER_FOR_GREATER_OP_CODES.
+  builtin_code:BuiltinOperator;
 }
 
 enum CustomOptionsFormat : byte {
@@ -1066,6 +1105,32 @@ table Metadata {
   buffer:uint;
 }
 
+// Map from an alias name of tensor to tensor index in the graph.
+// This is used in Signature def.
+table TensorMap {
+  // Represents the alias to use for this tensor.
+  name:string;
+
+  // The actual tensor index in the primary graph, that 'name' corresponds to.
+  tensor_index:uint;
+}
+
+// This corresponds to SignatureDef in Tensorflow SavedModel.
+// The SignatureDef will be part of the SavedModel provided for conversion.
+table SignatureDef {
+  // Named inputs for this signature.
+  inputs:[TensorMap];
+
+  // Named outputs for this signature.
+  outputs:[TensorMap];
+
+  // Exported method name for this signature.
+  method_name:string;
+
+  // Key value which was in the Tensorflow SavedModel SignatureDef map.
+  key:string;
+}
+
 table Model {
   // Version of the schema.
   version:uint;
@@ -1094,6 +1159,9 @@ table Model {
 
   // Metadata about the model.
   metadata:[Metadata];
+
+  // Optional SignatureDefs for the model.
+  signature_defs:[SignatureDef];
 }
 
 root_type Model;

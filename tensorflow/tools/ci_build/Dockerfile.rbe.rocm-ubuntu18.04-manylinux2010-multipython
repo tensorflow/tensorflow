@@ -16,8 +16,8 @@ ARG DEBIAN_FRONTEND=noninteractive
 # Install ROCm packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl libnuma-dev gnupg sudo libelf1 build-essential \
-  && curl -sL http://repo.radeon.com/rocm/apt/debian/rocm.gpg.key | apt-key add - \
-  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/debian/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
+  && curl -sL http://repo.radeon.com/rocm/apt/4.0/rocm.gpg.key | apt-key add - \
+  && printf "deb [arch=amd64] http://repo.radeon.com/rocm/apt/4.0/ xenial main" | tee /etc/apt/sources.list.d/rocm.list \
   && apt-get update && apt-get install -y --no-install-recommends \
     rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
     rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl \
@@ -34,7 +34,7 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 
 # Set target file to help determine which device(s) to build for
 RUN bash -c "ls -al /opt/roc*"
-RUN bash -c "echo -e 'gfx803\ngfx900\ngfx906' > $ROCM_PATH/bin/target.lst"
+RUN bash -c "echo -e 'gfx803\ngfx900\ngfx906\ngfx908' > $ROCM_PATH/bin/target.lst"
 
 # Copy and run the install scripts.
 COPY install/install_bootstrap_deb_packages.sh /install/
@@ -44,9 +44,11 @@ COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
 
 # Install additional packages needed for this image:
+# - bsdmainutils (hexdump) for MLIR generated GPU kernels
 # - dependencies to build Python from source
 # - patchelf, as it is required by auditwheel
 RUN apt-get update && apt-get install -y \
+    bsdmainutils \
     libbz2-dev \
     libffi-dev \
     libgdbm-dev \

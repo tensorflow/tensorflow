@@ -13,11 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -25,15 +28,14 @@ namespace TF {
 namespace {
 
 // -------------------------------------------------------------------------- //
-// Fuse ContractionFusableInterface operations into MatMul operation.
+// Fuse ContractionFusableInterface operations into contraction operation.
 // -------------------------------------------------------------------------- //
 
-// TODO(ezhulenev): Parametrize this pattern by `BaseOp` and `FusedOp` to fuse
-// different kinds of contractions (MatMul, Conv2D, etc...).
-
-class FuseIntoMatMulOp : public RewritePattern {
+template <typename BaseOp, typename FusedOp>
+class FuseIntoContractionOp : public RewritePattern {
  public:
-  FuseIntoMatMulOp() : RewritePattern(PatternBenefit(1), MatchAnyOpTypeTag()) {}
+  FuseIntoContractionOp()
+      : RewritePattern(PatternBenefit(1), MatchAnyOpTypeTag()) {}
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
@@ -50,43 +52,77 @@ class FuseIntoMatMulOp : public RewritePattern {
       return failed("returned empty contraction fusion specification");
     }
 
-    // Check if preceeding operation is a MatMul that we can use for fusion.
-    // TODO(ezhulenev): Support fusing into _JitFusedMatMul.
-    MatMulOp matmul = op->getOperand(0).getDefiningOp<MatMulOp>();
-    if (!matmul) {
-      return failed("input to the fusable op must be a MatMul");
+    // Check if preceeding operation is a BaseOp or FusedOp that we can use for
+    // fusion.
+    Operation *fuse_into = nullptr;
+    Value operand = op->getOperand(0);
+
+    if (BaseOp base_op = operand.getDefiningOp<BaseOp>()) {
+      fuse_into = base_op.getOperation();
+    } else if (FusedOp fused_op = operand.getDefiningOp<FusedOp>()) {
+      fuse_into = fused_op.getOperation();
+    } else {
+      return failed("input to the fusable op must be a " +
+                    BaseOp::getOperationName() + " or a " +
+                    FusedOp::getOperationName());
     }
-    if (!matmul.getResult().hasOneUse()) {
-      return failed("MatMul result must have one use");
+
+    // Operand result must have one use, because we do not want to compute
+    // tensor contraction twice.
+    if (!fuse_into->getResult(0).hasOneUse()) {
+      return failed("fused into op result must have one use");
     }
 
     MLIRContext *ctx = op->getContext();
 
     // Build a fused MatMul operation from a base MatMul and a fusion.
-    SmallVector<Location, 3> locations = {matmul.getLoc(), op->getLoc()};
+    SmallVector<Location, 3> locations = {fuse_into->getLoc(), op->getLoc()};
     Location loc = rewriter.getFusedLoc(locations);
 
-    // Fusion can't change the type of a base operation.
-    Type result_ty = matmul.getType();
+    // Fusion can't change the type of a fused operation.
+    Type result_ty = fuse_into->getResult(0).getType();
 
-    // Copy all operands from a matmul and add additional fusion arguments.
-    SmallVector<Value, 3> operands(matmul.getOperands());
+    // Copy all operands from a base op and add additional fusion arguments.
+    SmallVector<Value, 3> operands(fuse_into->getOperands());
     for (int idx : fusion->additional_arguments) {
       operands.push_back(op->getOperand(idx));
     }
 
-    // Copy attributes from a MatMul operation.
-    SmallVector<NamedAttribute, 4> attrs(matmul.getAttrs().begin(),
-                                         matmul.getAttrs().end());
+    // Copy attributes from a base op that we fuse into (e.g. copy all
+    // MatMul or Conv attributes to the fused operation).
+    SmallVector<NamedAttribute, 4> attrs(fuse_into->getAttrs().begin(),
+                                         fuse_into->getAttrs().end());
+
+    // Add fusion specific additional attributes.
+    for (auto attr : fusion->additional_attributes) {
+      attrs.push_back(attr);
+    }
 
     // Add a fused output kernel name to the list of fusions.
-    NamedAttribute fusion_attr(
-        Identifier::get("fusion", ctx),
-        ArrayAttr::get({StringAttr::get(fusion->output_kernel, ctx)}, ctx));
-    attrs.push_back(fusion_attr);
+    Identifier fusion_id = Identifier::get("fusion", ctx);
+    StringAttr fusion_name = StringAttr::get(fusion->output_kernel, ctx);
+
+    auto is_fusion = [&](const NamedAttribute &attr) -> bool {
+      return attr.first == fusion_id;
+    };
+
+    if (isa<BaseOp>(fuse_into)) {
+      NamedAttribute fusion_attr(fusion_id, ArrayAttr::get({fusion_name}, ctx));
+      attrs.push_back(fusion_attr);
+
+    } else {
+      ArrayAttr arr =
+          llvm::find_if(attrs, is_fusion)->second.template cast<ArrayAttr>();
+      llvm::erase_if(attrs, is_fusion);
+
+      auto rng = arr.getAsRange<Attribute>();
+      SmallVector<Attribute, 4> updated(rng.begin(), rng.end());
+      updated.push_back(fusion_name);
+
+      attrs.push_back(NamedAttribute(fusion_id, ArrayAttr::get(updated, ctx)));
+    }
 
     // Update all uses of a fusable op with a new fused operation.
-    using FusedOp = _JitFusedMatMulOp;
     Value fused = rewriter.create<FusedOp>(loc, result_ty, operands, attrs);
     rewriter.replaceOp(op, {fused});
 
@@ -95,6 +131,8 @@ class FuseIntoMatMulOp : public RewritePattern {
 };
 
 // -------------------------------------------------------------------------- //
+
+using FuseIntoMatMulOp = FuseIntoContractionOp<MatMulOp, _JitFusedMatMulOp>;
 
 struct ContractionFusionPass
     : public PassWrapper<ContractionFusionPass, FunctionPass> {
@@ -106,7 +144,7 @@ void ContractionFusionPass::runOnFunction() {
 
   OwningRewritePatternList patterns;
   patterns.insert<FuseIntoMatMulOp>();
-  applyPatternsAndFoldGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, std::move(patterns));
 }
 
 }  // namespace

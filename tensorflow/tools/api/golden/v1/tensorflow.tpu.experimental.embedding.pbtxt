@@ -24,4 +24,8 @@ tf_module {
     name: "TableConfig"
     mtype: "<type \'type\'>"
   }
+  member_method {
+    name: "serving_embedding_lookup"
+    argspec: "args=[\'inputs\', \'weights\', \'tables\', \'feature_config\'], varargs=None, keywords=None, defaults=None"
+  }
 }

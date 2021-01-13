@@ -258,6 +258,19 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>)  {
 
 // -----
 
+// Tests removal of dead local variables.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<2xf32>) {
+  // CHECK-NOT: tf.MlirLocalVarOp
+  // CHECK-NOT: tf.AssignVariableOp
+  %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<2xf32>>>
+  "tf.AssignVariableOp"(%0, %arg0) : (tensor<!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  return
+}
+
+// -----
+
 // Tests first read of one resource is used as a value to write to another
 // resource.
 
@@ -271,6 +284,26 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<!tf.resource<
   // CHECK-NEXT: return %[[ARG_1]] : tensor<f32>
   return
 }
+
+// -----
+
+// Tests if local variables that are dead after resource op lifting are removed.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<i32>) -> tensor<2xf32> {
+  // CHECK-NOT: tf.MlirLocalVarOp
+  // CHECK-NOT: tf.AssignVariableOp
+  %0 = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<2xf32>>>
+  %1 = "tf._SomeOp"() : () -> tensor<2xf32>
+  "tf.AssignVariableOp"(%0, %1) : (tensor<!tf.resource<tensor<2xf32>>>, tensor<2xf32>) -> ()
+  %2 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @callee} : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  return %2 : tensor<2xf32>
+}
+func private @callee(%arg0: tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32> {
+  %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<2xf32>>>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 
 // -----
 
@@ -307,7 +340,7 @@ func @main(%arg0: tensor<!tf.resource>) {
 // Tests main function with invalid VarHandleOp resource subtype.
 
 func @main() {
-  // expected-error@+1 {{expects resource type to have one subtype, got '!tf.resource'}}
+  // expected-error @+1 {{must have exactly one subtype in the result resource type}}
   %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource>
   return
 }

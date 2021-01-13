@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -72,7 +73,8 @@ LogicalResult ConstantFoldFallbackHook(
     SmallVectorImpl<OpFoldResult>& results) {  // NOLINT
   // Instructions with side effects should not be constant folded to preserve
   // the original semantics.
-  if (inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
+  if (inst->hasTrait<OpTrait::TF::NoConstantFold>() ||
+      inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
     return failure();
 
   // If any of the result types are variants, don't try to constant fold them.
@@ -86,8 +88,29 @@ LogicalResult ConstantFoldFallbackHook(
     }
   }
 
+  // If all the results are empty and has numerical element types, set results
+  // to empty elements attribute. This is restricted to the numerical element
+  // types as the DenseElementsAttr only supports numerical and string types.
+  // TODO(hinsu): Handle ops that have one of the results empty for constant
+  // propagation.
+  bool has_empty_numerical_results =
+      llvm::all_of(inst->getResultTypes(), [](Type ty) {
+        ShapedType shaped_ty = ty.cast<ShapedType>();
+        Type element_ty = shaped_ty.getElementType();
+        return shaped_ty.hasStaticShape() && shaped_ty.getNumElements() == 0 &&
+               element_ty.isIntOrFloat();
+      });
+  if (has_empty_numerical_results) {
+    for (Type ty : inst->getResultTypes()) {
+      auto shaped_ty = ty.cast<ShapedType>();
+      results.push_back(
+          DenseElementsAttr::get(shaped_ty, llvm::ArrayRef<Attribute>()));
+    }
+    return success();
+  }
+
   // Do not execute function calls.
-  if (llvm::isa<TF::WhileOp, TF::IfOp, CallOpInterface>(inst)) {
+  if (llvm::isa<TF::WhileOp, TF::CaseOp, TF::IfOp, CallOpInterface>(inst)) {
     return failure();
   }
 
@@ -104,6 +127,10 @@ LogicalResult ConstantFoldFallbackHook(
     // The TFE_Context is created without an accompanying delete due to current
     // lifetime. This does not result in memory leaks reported (see totw/110).
     TFE_ContextOptions* opts = TFE_NewContextOptions();
+    // Input tensors are placed on the host CPU so use the explicit device
+    // policy to fail if no CPU kernels are available for the op.
+    TFE_ContextOptionsSetDevicePlacementPolicy(opts,
+                                               TFE_DEVICE_PLACEMENT_EXPLICIT);
     auto ctx = TFE_NewContext(opts, status);
     TFE_DeleteContextOptions(opts);
     TF_DeleteStatus(status);

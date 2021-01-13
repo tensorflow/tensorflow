@@ -719,7 +719,7 @@ Status InferenceContext::MakeShapeFromShapeTensorTreatScalarAsUnknownShape(
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(WithRankAtMost(input(input_idx), 1, &input_shape));
 
-  requested_input_tensor_as_partial_shape_[input_idx] = true;
+  request_input_tensor_as_partial_shape(input_idx);
   const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
   if (input_idx < input_tensors_as_shapes_size &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
@@ -738,7 +738,7 @@ Status InferenceContext::MakeShapeFromShapeTensor(int input_idx,
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(WithRank(input(input_idx), 1, &input_shape));
 
-  requested_input_tensor_as_partial_shape_[input_idx] = true;
+  request_input_tensor_as_partial_shape(input_idx);
   const int input_tensors_as_shapes_size = input_tensors_as_shapes_.size();
   if (input_idx < input_tensors_as_shapes_size &&
       input_tensors_as_shapes_[input_idx].IsSet() &&
@@ -896,14 +896,43 @@ Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64* val) {
     return errors::InvalidArgument("Input must be scalar but has rank ", rank);
   }
 
-  if (t->dtype() == DT_INT32) {
+  if (t->dtype() == DataType::DT_INT32) {
     *val = t->scalar<int32>()();
     return Status::OK();
-  } else if (t->dtype() == DT_INT64) {
+  } else if (t->dtype() == DataType::DT_INT64) {
     *val = t->scalar<int64>()();
     return Status::OK();
   } else {
     return errors::InvalidArgument("Scalar input must be int32 or int64.");
+  }
+}
+
+Status InferenceContext::GetScalarFromTensor(const Tensor* t, int64 idx,
+                                             int64* val) {
+  // Caller must ensure that <t> is not NULL.
+  const int rank = t->dims();
+  if (rank != 1) {
+    return errors::InvalidArgument("Input must be 1D but has rank ", rank);
+  }
+
+  if (t->dtype() == DataType::DT_INT32) {
+    auto flat_t = t->flat<int32>();
+    if (idx < 0 || idx >= flat_t.size()) {
+      return errors::InvalidArgument("Invalid index ", idx,
+                                     " for Tensor of size ", flat_t.size());
+    }
+    *val = flat_t(idx);
+    return Status::OK();
+  } else if (t->dtype() == DataType::DT_INT64) {
+    auto flat_t = t->flat<int64>();
+    if (idx < 0 || idx >= flat_t.size()) {
+      return errors::InvalidArgument("Invalid index ", idx,
+                                     " for Tensor of size ", flat_t.size());
+    }
+    *val = flat_t(idx);
+    return Status::OK();
+  } else {
+    return errors::InvalidArgument("Tensor input must be int32 or int64.");
   }
 }
 

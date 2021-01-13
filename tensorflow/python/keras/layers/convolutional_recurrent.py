@@ -40,7 +40,7 @@ from tensorflow.python.util.tf_export import keras_export
 class ConvRNN2D(RNN):
   """Base class for convolutional-recurrent layers.
 
-  Arguments:
+  Args:
     cell: A RNN cell instance. A RNN cell is a class that has:
       - a `call(input_at_t, states_at_t)` method, returning
         `(output_at_t, states_at_t_plus_1)`. The call method of the
@@ -424,7 +424,7 @@ class ConvRNN2D(RNN):
 class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
   """Cell class for the ConvLSTM2D layer.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of n integers, specifying the
@@ -703,7 +703,7 @@ class ConvLSTM2D(ConvRNN2D):
   It is similar to an LSTM layer, but the input transformations
   and recurrent transformations are both convolutional.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space
       (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of n integers, specifying the
@@ -884,7 +884,6 @@ class ConvLSTM2D(ConvRNN2D):
     self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(ConvLSTM2D, self).call(inputs,
                                         mask=mask,
                                         training=training,

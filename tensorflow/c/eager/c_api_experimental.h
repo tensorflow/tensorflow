@@ -265,10 +265,6 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
-// Sets whether to copy the remote inputs of a function lazily.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
-    TFE_ContextOptions*, bool lazy_copy);
-
 // Sets whether to use TFRT
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
@@ -439,16 +435,16 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
 // to have a non-string representation of devices (TF_Device) extracted from
 // tensors/ops/etc. and usable in APIs like OpSetDevice/ResetOp/etc.
 
-#define TFE_CUSTOM_DEVICE_VERSION 3
+#define TFE_CUSTOM_DEVICE_VERSION 4
 
-// Struct to be filled in
+// Struct to be filled in. Functions are required except where indicated.
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
   TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
                                              TFE_TensorHandle* tensor,
                                              TF_Status* status,
-                                             void* device_info) = nullptr;
+                                             void* device_info);
 
   // Method to copy a tensor from the custom device to a target device.
   TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
@@ -472,6 +468,16 @@ typedef struct TFE_CustomDevice {
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
+
+  // Implements TFE_CreatePackedTensorHandle when one of `handles` is on this
+  // custom device.
+  //
+  // Many devices will want to simply return an "unimplemented" status
+  // here. This is the default behavior if `pack` is null when passed to
+  // TFE_RegisterCustomDevice.
+  TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
+                            int num_handles, TF_Status* s,
+                            void* device_info) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.
@@ -481,7 +487,7 @@ typedef struct TFE_CustomDevice {
 // "/job:localhost/replica:0/task:0/device:CUSTOM:0".
 //
 // The custom device defines copy operations for moving TensorHandles on and
-// off, and an an execution operation for named operations. Often execution will
+// off, and an execution operation for named operations. Often execution will
 // simply wrap op execution on one or more physical devices.
 //
 // device_info is an opaque caller-defined type stored with the custom device
@@ -552,6 +558,21 @@ TF_CAPI_EXPORT void TFE_ContextSetSoftDevicePlacement(TFE_Context* ctx,
 TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
                                                      unsigned char enable,
                                                      TF_Status* status);
+
+// Returns the device type of the operation that produced `h`.
+TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceType(
+    TFE_TensorHandle* h, TF_Status* status);
+
+// Returns the device ID of the operation that produced `h`.
+TF_CAPI_EXPORT extern int TFE_TensorHandleDeviceID(TFE_TensorHandle* h,
+                                                   TF_Status* status);
+
+// Get a comma-separated list of op names executed in graph functions dispatched
+// to `ctx`. This feature is currently only enabled for TFRT debug builds, for
+// performance and simplicity reasons.
+TF_CAPI_EXPORT extern void TFE_GetExecutedOpNames(TFE_Context* ctx,
+                                                  TF_Buffer* buf,
+                                                  TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

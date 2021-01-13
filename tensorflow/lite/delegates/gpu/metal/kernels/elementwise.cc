@@ -83,142 +83,86 @@ std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
 
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
-    int id, std::vector<ValueId> input_ids, ValueId output_id,
-    const BHWC& second_shape, OperationType op_type) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  const std::string x_coord = second_shape.w == 1 ? "0" : "int(gid.x)";
-  const std::string y_coord = second_shape.h == 1 ? "0" : "int(gid.y)";
-  const std::string s_coord = second_shape.c == 1 ? "0" : "int(gid.z)";
-  std::string code =
-      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* "
-      "const second_tensor, int2 second_size) {\n";
-  code += "  int second_index = (" + s_coord + " * second_size.y + " + y_coord +
-          ") * second_size.x + " + x_coord + ";\n";
-  code += "  FLT4 src_1 = second_tensor[second_index];\n";
+ComputeTaskDescriptor ElementwiseWithTwoInputs(const OperationDef& definition,
+                                               const BHWC& second_shape,
+                                               OperationType op_type) {
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
+  const std::string x_coord = second_shape.w == 1 ? "0" : "X_COORD";
+  const std::string y_coord = second_shape.h == 1 ? "0" : "Y_COORD";
+  const std::string s_coord = second_shape.c == 1 ? "0" : "S_COORD";
+  std::string code;
+  code = "  FLT4 src_1 = args.second_tensor.Read(" + x_coord + ", " + y_coord +
+         ", " + s_coord + ");\n";
   if (second_shape.c == 1) {
     code += "  src_1.y = src_1.x;\n";
     code += "  src_1.z = src_1.x;\n";
     code += "  src_1.w = src_1.x;\n";
   }
-  code += "  return " + TwoInputFunctor(op_type, "value", "src_1") + ";\n";
-  code += "}\n";
+  code +=
+      "  in_out_value = " + TwoInputFunctor(op_type, "in_out_value", "src_1") +
+      ";\n";
 
-  desc->shader_source = code;
+  desc.shader_source = code;
 
-  desc->input_buffers = {
-      {input_ids[0], "device FLT4* const"},
-      {input_ids[1], "device FLT4* const"},
-  };
-  desc->output_buffer = {output_id};
-
-  desc->uniform_buffers = {
-      {"constant int2&",
-       [input_ids](const std::map<ValueId, BHWC>& buffers) {
-         const auto& input_dim_1 = buffers.find(input_ids[1])->second;
-         std::vector<int> uniform_params{
-             input_dim_1.w,
-             input_dim_1.h,
-         };
-         return GetByteBuffer(uniform_params);
-       }},
-  };
-  return {desc};
+  desc.AddSrcTensor("second_tensor", definition.src_tensors[1]);
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
-    int id, ValueId input_id, ValueId output_id, OperationType op_type) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
-  desc->shader_source =
-      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {\n";
-  desc->shader_source +=
-      "    return " + OneInputFunctor(op_type, "value") + ";\n";
-  desc->shader_source += "  }";
-
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  return {desc};
+ComputeTaskDescriptor ElementwiseWithOneInput(const OperationDef& definition,
+                                              OperationType op_type) {
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
+  desc.shader_source =
+      "    in_out_value = " + OneInputFunctor(op_type, "in_out_value") + ";\n";
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
-    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
-    OperationType op_type, const TensorOrScalar& attr) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
+ComputeTaskDescriptor ElementwiseWithOneInputAndConstantArguent(
+    const OperationDef& definition, OperationType op_type,
+    const TensorOrScalar& attr) {
   auto scalar = absl::get_if<float>(&attr);
   auto linear_buf = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr);
   auto hwc_buf = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr);
-  std::string param_desc;
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
   if (scalar) {
-    param_desc += ", float scalar_val";
-  }
-  if (linear_buf) {
-    param_desc += ", device FLT4* const linear_buf";
-  }
-  if (hwc_buf) {
-    param_desc += ", device FLT4* const hwc_buf, int2 hwc_size";
-  }
-  desc->shader_source =
-      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid" + param_desc +
-      ") {\n";
-  if (scalar) {
-    desc->shader_source += "     FLT4 second_arg = FLT4(scalar_val);\n";
+    desc.args.AddFloat("scalar_val", *scalar);
+    desc.shader_source += "  FLT4 second_arg = FLT4(args.scalar_val);\n";
   } else if (linear_buf) {
-    desc->shader_source += "     FLT4 second_arg = linear_buf[gid.z];\n";
+    auto data_type = DeduceDataTypeFromPrecision(definition.precision);
+    const int dst_channels_aligned = AlignByN(linear_buf->shape.v, 4);
+    BufferDescriptor linear_desc;
+    linear_desc.element_type = data_type;
+    linear_desc.element_size = 4;
+    linear_desc.data = GetByteBufferConvertedResized(
+        linear_buf->data, data_type, dst_channels_aligned);
+    linear_desc.size = linear_desc.data.size();
+    desc.args.AddObject(
+        "linear", absl::make_unique<BufferDescriptor>(std::move(linear_desc)));
+    desc.shader_source += "  FLT4 second_arg = args.linear.Read(S_COORD);\n";
   } else if (hwc_buf) {
-    const std::string x_coord = hwc_buf->shape.w == 1 ? "0" : "int(gid.x)";
-    const std::string y_coord = hwc_buf->shape.h == 1 ? "0" : "int(gid.y)";
-    const std::string s_coord = hwc_buf->shape.c == 1 ? "0" : "int(gid.z)";
-    std::string index = "(" + s_coord + " * hwc_size.y + " + y_coord +
-                        ") * hwc_size.x + " + x_coord;
-    desc->shader_source += "  FLT4 second_arg = hwc_buf[" + index + "];\n";
+    TensorDescriptor hwc_desc{definition.GetDataType(),
+                              TensorStorageType::BUFFER, Layout::HWC};
+    hwc_desc.UploadData(*hwc_buf);
+    desc.args.AddObject(
+        "hwc", absl::make_unique<TensorDescriptor>(std::move(hwc_desc)));
+
+    const std::string x_coord = hwc_buf->shape.w == 1 ? "0" : "X_COORD";
+    const std::string y_coord = hwc_buf->shape.h == 1 ? "0" : "Y_COORD";
+    const std::string s_coord = hwc_buf->shape.c == 1 ? "0" : "S_COORD";
+    desc.shader_source += "  FLT4 second_arg = args.hwc.Read(" + x_coord +
+                          ", " + y_coord + ", " + s_coord + ");\n";
     if (hwc_buf->shape.c == 1) {
-      desc->shader_source += "  second_arg.y = second_arg.x;\n";
-      desc->shader_source += "  second_arg.z = second_arg.x;\n";
-      desc->shader_source += "  second_arg.w = second_arg.x;\n";
+      desc.shader_source += "  second_arg.y = second_arg.x;\n";
+      desc.shader_source += "  second_arg.z = second_arg.x;\n";
+      desc.shader_source += "  second_arg.w = second_arg.x;\n";
     }
   }
-  desc->shader_source +=
-      "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
-  desc->shader_source += "  }";
-
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  if (scalar) {
-    std::vector<uint8_t> scalar_bits =
-        GetByteBuffer(std::vector<float>{*scalar});
-    desc->uniform_buffers = {
-        {"constant float&",
-         [scalar_bits](const std::map<ValueId, BHWC>& buffers) {
-           return scalar_bits;
-         }},
-    };
-  } else if (linear_buf) {
-    desc->immutable_buffers = {
-        {"device FLT4* const",
-         GetByteBufferConverted(linear_buf->data, options.storage_precision)},
-    };
-  } else if (hwc_buf) {
-    std::vector<uint8_t> size_bits =
-        GetByteBuffer(std::vector<int>{hwc_buf->shape.w, hwc_buf->shape.h});
-    desc->uniform_buffers = {
-        {"constant int2&",
-         [size_bits](const std::map<ValueId, BHWC>& buffers) {
-           return size_bits;
-         }},
-    };
-    desc->immutable_buffers = {
-        {"device FLT4* const",
-         GetByteBufferConverted(ConvertToPHWC4(*hwc_buf),
-                                options.storage_precision)},
-    };
-  }
-  return {desc};
+  desc.shader_source += "  in_out_value = " +
+                        TwoInputFunctor(op_type, "in_out_value", "second_arg") +
+                        ";\n";
+  return desc;
 }
 
 }  // namespace metal

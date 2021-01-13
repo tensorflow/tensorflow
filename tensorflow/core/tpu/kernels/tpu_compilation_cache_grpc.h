@@ -17,25 +17,25 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_GRPC_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_GRPC_H_
 
-#include <grpcpp/impl/codegen/async_generic_service.h>
-#include <grpcpp/impl/codegen/async_stream.h>
-#include <grpcpp/impl/codegen/async_unary_call.h>
-#include <grpcpp/impl/codegen/client_callback.h>
-#include <grpcpp/impl/codegen/client_context.h>
-#include <grpcpp/impl/codegen/completion_queue.h>
-#include <grpcpp/impl/codegen/method_handler.h>
-#include <grpcpp/impl/codegen/proto_utils.h>
-#include <grpcpp/impl/codegen/rpc_method.h>
-#include <grpcpp/impl/codegen/server_callback.h>
-#include <grpcpp/impl/codegen/server_context.h>
-#include <grpcpp/impl/codegen/service_type.h>
-#include <grpcpp/impl/codegen/status.h>
-#include <grpcpp/impl/codegen/stub_options.h>
-#include <grpcpp/impl/codegen/sync_stream.h>
-
 #include <functional>
 
-#if defined(LIBTFTPU)
+#include "grpcpp/impl/codegen/async_generic_service.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/client_callback.h"
+#include "grpcpp/impl/codegen/client_context.h"
+#include "grpcpp/impl/codegen/completion_queue.h"
+#include "grpcpp/impl/codegen/method_handler.h"
+#include "grpcpp/impl/codegen/proto_utils.h"
+#include "grpcpp/impl/codegen/rpc_method.h"
+#include "grpcpp/impl/codegen/server_callback.h"
+#include "grpcpp/impl/codegen/server_context.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/status.h"
+#include "grpcpp/impl/codegen/stub_options.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
+
+#if defined(LIBTPU_ON_GCE)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #else
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"  // copybara"
@@ -48,7 +48,7 @@ namespace grpc {
 class TpuCompilationCacheService final {
  public:
   using RequestType = ::tensorflow::tpu::GetTpuProgramRequest;
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
   using ResponseType = ::tensorflow::tpu::GetTpuProgramResponseExternal;
 #else
   using ResponseType = ::tensorflow::tpu::GetTpuProgramResponse;
@@ -59,7 +59,7 @@ class TpuCompilationCacheService final {
   enum class MethodId { kGetTpuProgram = 0 };
 
   static constexpr char const* service_full_name() {
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
     return "tensorflow.tpu.TpuCompilationCacheServiceExternal";
 #else
     return "tensorflow.tpu.TpuCompilationCacheService";

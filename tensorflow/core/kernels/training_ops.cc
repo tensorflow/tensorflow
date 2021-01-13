@@ -27,15 +27,10 @@ limitations under the License.
 #include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/util/util.h"
 
-#ifdef TENSORFLOW_USE_SYCL
-#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
-#endif  // TENSORFLOW_USE_SYCL
-
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
-using SYCLDevice = Eigen::SyclDevice;
 using Index = Eigen::Index;
 
 namespace {
@@ -56,16 +51,6 @@ struct ApplyGradientDescent<CPUDevice, T> {
     var.device(d) -= grad * lr();
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct ApplyGradientDescentSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var, T lr,
-                  typename TTypes<T>::ConstFlat grad) {
-    var.device(d) -= grad * lr;
-  }
-};
-#endif
 
 template <typename T>
 struct ApplyAdadelta<CPUDevice, T> {
@@ -177,6 +162,86 @@ struct ApplyAdagradV2<CPUDevice, T> {
   }
 };
 
+template <typename T, typename Tindex, bool has_epsilon>
+struct SparseApplyAdagrad<CPUDevice, T, Tindex, has_epsilon> {
+  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar epsilon,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,
+                    bool update_slots) {
+    const Tindex N = static_cast<Tindex>(indices.dimension(0));
+    if (N == 0) return Status::OK();
+    const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
+    const T lr_scalar = lr();
+    const int in_bytes = inner_dim * sizeof(T) * 3;
+    const int out_bytes = inner_dim * sizeof(T) * 2;
+    const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
+                                    Eigen::TensorOpCost::MulCost<T>() * 2);
+    const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
+
+    if (inner_dim > 1) {
+      for (Tindex i = 0; i < N; ++i) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+      }
+
+      const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
+        for (Tindex i = start_idx; i < end_idx; ++i) {
+          const Tindex index = internal::SubtleMustCopy(indices(i));
+          auto a = accum.template chip<0>(index);
+          auto g = grad.template chip<0>(i);
+          auto v = var.template chip<0>(index);
+          if (update_slots) {
+            a += g.square();
+          }
+          if (has_epsilon) {
+            v -= g.constant(lr_scalar) * g / (a.sqrt() + a.constant(epsilon()));
+          } else {
+            v -= g.constant(lr_scalar) * g * a.rsqrt();
+          }
+        }
+      };
+
+      d.parallelFor(N, cost, shard);
+    } else {
+      for (Tindex i = 0; i < N; ++i) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+      }
+
+      const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
+        for (Tindex i = start_idx; i < end_idx; ++i) {
+          const Tindex index = internal::SubtleMustCopy(indices(i));
+          T& a = accum(index);
+          const T& g = grad(i);
+          if (update_slots) {
+            a += g * g;
+          }
+          if (has_epsilon) {
+            var(index) -= lr_scalar * g / (Eigen::numext::sqrt(a) + epsilon());
+          } else {
+            var(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
+          }
+        }
+      };
+
+      d.parallelFor(N, cost, shard);
+    }
+
+    return Status::OK();
+  }
+};
+
 template <typename T>
 struct ApplyProximalAdagrad<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -202,6 +267,78 @@ struct ApplyProximalAdagrad<CPUDevice, T> {
       var.device(d) =
           prox_var / (var.constant(1.0) + var.constant(l2()) * learning_rate);
     }
+  }
+};
+
+template <typename T, typename Tindex>
+struct SparseApplyProximalAdagrad<CPUDevice, T, Tindex> {
+  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar l1,
+                    typename TTypes<T>::ConstScalar l2,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstVec indices,
+                    int64 inner_dim) {
+    const Tindex N = static_cast<Tindex>(indices.dimension(0));
+    if (N == 0) return Status::OK();
+    const Tindex first_dim_size = static_cast<Tindex>(var.dimension(0));
+    const T lr_scalar = lr();
+    const T l1_scalar = l1();
+    const T l2_scalar = l2();
+    if (inner_dim > 1) {
+      for (Tindex i = 0; i < N; i++) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+        auto a = accum.template chip<0>(index);
+        auto g = grad.template chip<0>(i);
+        auto v = var.template chip<0>(index);
+        a += g.square();
+        // compute learning_rate for current step.
+        auto learning_rate = a.constant(lr_scalar) * a.rsqrt();
+        auto prox_v = v;
+        // v = w - g * learning_rate.
+        prox_v -= g * learning_rate;
+        if (l1_scalar > 0) {
+          // compute sign(v) * max(|v|, 0)
+          v = prox_v.sign() *
+              (prox_v.abs() - learning_rate * prox_v.constant(l1_scalar))
+                  .cwiseMax(static_cast<T>(0.0)) /
+              (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
+        } else {
+          v = prox_v /
+              (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
+        }
+      }
+    } else {
+      for (Tindex i = 0; i < N; i++) {
+        const Tindex index = internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, first_dim_size)) {
+          return errors::InvalidArgument(
+              strings::StrCat("Index ", index, " at offset ", i,
+                              " in indices is out of range"));
+        }
+        T& a = accum(index);
+        const T& g = grad(i);
+        a += g * g;
+        auto learning_rate = lr_scalar / std::sqrt(a);
+        auto prox_v = var(index);
+        prox_v -= learning_rate * g;
+        if (l1_scalar > 0) {
+          var(index) = sgn(prox_v) *
+                       std::max(std::abs(prox_v) - learning_rate * l1_scalar,
+                                static_cast<T>(0.0)) /
+                       (1.0 + l2_scalar * learning_rate);
+        } else {
+          var(index) = prox_v / (1.0 + l2_scalar * learning_rate);
+        }
+      }
+    }
+    return Status::OK();
   }
 };
 
@@ -363,6 +500,189 @@ struct ApplyFtrlMultiplyLinearByLr<CPUDevice, T> {
   }
 };
 
+namespace {
+
+template <typename T>
+inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
+                     const T& l2, const T& lr_power,
+                     const bool multiply_linear_by_lr) {
+  T quadratic;
+  if (multiply_linear_by_lr) {
+    if (lr_power == static_cast<T>(-0.5)) {
+      quadratic = Eigen::numext::sqrt(accum) + static_cast<T>(2) * l2 * lr;
+    } else {
+      quadratic =
+          Eigen::numext::pow(accum, -lr_power) + static_cast<T>(2) * l2 * lr;
+    }
+    auto l1_reg_adjust = std::max(std::min(linear, l1 * lr), -l1 * lr);
+    return (l1_reg_adjust - linear) / quadratic;
+  } else {
+    if (lr_power == static_cast<T>(-0.5)) {
+      quadratic = Eigen::numext::sqrt(accum) / lr + static_cast<T>(2) * l2;
+    } else {
+      quadratic =
+          Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
+    }
+    auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
+    return (l1_reg_adjust - linear) / quadratic;
+  }
+}
+
+template <typename T, typename GradTy, typename GradeMaybeWithShrinkageTy,
+          typename AccumTy, typename LinearTy, typename VarTy>
+void ComputeFtrl(GradTy grad,
+                 GradeMaybeWithShrinkageTy grad_maybe_with_shrinkage,
+                 AccumTy accum, LinearTy linear, VarTy var, T l1_scalar,
+                 T l2_scalar, bool multiply_linear_by_lr, T lr_power_scalar,
+                 T lr_scalar) {
+  auto new_accum = accum + grad.square();
+  if (multiply_linear_by_lr) {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      linear += grad_maybe_with_shrinkage * lr_scalar -
+                (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear +=
+          grad_maybe_with_shrinkage * lr_scalar -
+          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) * var;
+    }
+  } else {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      linear += grad_maybe_with_shrinkage -
+                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;
+    } else {
+      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -
+                                             accum.pow(-lr_power_scalar)) /
+                                                lr_scalar * var;
+    }
+  }
+  auto l1_reg_adjust =
+      (multiply_linear_by_lr ? linear.cwiseMin(l1_scalar * lr_scalar)
+                                   .cwiseMax(-l1_scalar * lr_scalar)
+                             : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));
+  auto x = l1_reg_adjust - linear;
+  if (multiply_linear_by_lr) {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() +
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);
+      var = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);
+      var = x / y;
+    }
+  } else {
+    if (lr_power_scalar == static_cast<T>(-0.5)) {
+      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar);
+      var = x / y;
+    } else {
+      auto y = new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +
+               linear.constant(static_cast<T>(2) * l2_scalar);
+      var = x / y;
+    }
+  }
+  accum += grad.square();
+}
+}  // namespace
+
+template <typename T, typename Tindex, bool has_l2_shrinkage>
+struct SparseApplyFtrl<CPUDevice, T, Tindex, has_l2_shrinkage> {
+  Status operator()(const CPUDevice& d, typename TTypes<T>::Matrix var_flat,
+                    typename TTypes<T>::Matrix accum_flat,
+                    typename TTypes<T>::Matrix linear_flat,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstScalar l1,
+                    typename TTypes<T>::ConstScalar l2,
+                    typename TTypes<T>::ConstScalar l2_shrinkage,
+                    typename TTypes<T>::ConstScalar lr_power,
+                    typename TTypes<T>::ConstMatrix grad_flat,
+                    typename TTypes<Tindex>::ConstVec indices_vec,
+                    int64 inner_dim, bool multiply_linear_by_lr) {
+    const Tindex N = static_cast<Tindex>(indices_vec.dimension(0));
+    if (N > 0) {
+      T lr_scalar = lr();
+      T l1_scalar = l1();
+      T l2_scalar = l2();
+      T l2_shrinkage_scalar;
+      if (has_l2_shrinkage) {
+        l2_shrinkage_scalar = l2_shrinkage();
+      }
+      T lr_power_scalar = lr_power();
+      if (inner_dim > 1) {
+        const Tindex first_dim_size =
+            static_cast<Tindex>(var_flat.dimension(0));
+
+        for (Tindex i = 0; i < N; i++) {
+          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+          if (!FastBoundsCheck(index, first_dim_size)) {
+            return errors::InvalidArgument(
+                strings::StrCat("Index ", index, " at offset ", i,
+                                " in indices is out of range"));
+          }
+          auto accum = accum_flat.template chip<0>(index);
+          auto linear = linear_flat.template chip<0>(index);
+          auto grad = grad_flat.template chip<0>(i);
+          auto var = var_flat.template chip<0>(index);
+
+          if (has_l2_shrinkage) {
+            auto grad_with_shrinkage =
+                grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
+            ComputeFtrl(/*grad=*/grad,
+                        /*grad_maybe_with_shrinkage=*/grad_with_shrinkage,
+                        /*accum=*/accum, /*linear=*/linear, /*var=*/var,
+                        /*l1_scalar=*/l1_scalar, /*l2_scalar=*/l2_scalar,
+                        /*multiply_linear_by_lr=*/multiply_linear_by_lr,
+                        /*lr_power_scalar=*/lr_power_scalar,
+                        /*lr_scalar=*/lr_scalar);
+          } else {
+            ComputeFtrl(/*grad=*/grad, /*grad_maybe_with_shrinkage=*/grad,
+                        /*accum=*/accum, /*linear=*/linear, /*var=*/var,
+                        /*l1_scalar=*/l1_scalar, /*l2_scalar=*/l2_scalar,
+                        /*multiply_linear_by_lr=*/multiply_linear_by_lr,
+                        /*lr_power_scalar=*/lr_power_scalar,
+                        /*lr_scalar=*/lr_scalar);
+          }
+        }
+      } else {
+        const Tindex first_dim_size = accum_flat.size();
+
+        for (Tindex i = 0; i < N; i++) {
+          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
+          if (!FastBoundsCheck(index, first_dim_size)) {
+            return errors::InvalidArgument(
+                strings::StrCat("Index ", index, " at offset ", i,
+                                " in indices is out of range"));
+          }
+          T& a = accum_flat(index);
+          T& l = linear_flat(index);
+          T& v = var_flat(index);
+          T g;
+          if (has_l2_shrinkage) {
+            g = grad_flat(i) +
+                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(index));
+          } else {
+            g = grad_flat(i);
+          }
+
+          T updated_a = a + grad_flat(i) * grad_flat(i);
+          using Eigen::numext::pow;
+          T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
+          if (!multiply_linear_by_lr) {
+            sigma /= lr_scalar;
+          }
+          T updated_l = (multiply_linear_by_lr ? l + g * lr_scalar - sigma * v
+                                               : l + g - sigma * v);
+          v = FtrlCompute(updated_a, updated_l, lr_scalar, l1_scalar, l2_scalar,
+                          lr_power_scalar, multiply_linear_by_lr);
+          a = updated_a;
+          l = updated_l;
+        }
+      }
+    }
+    return Status::OK();
+  }
+};
+
 template <typename T>
 struct ApplyMomentum<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -495,22 +815,6 @@ struct ApplyAdamNonCuda {
     d.parallelFor(length, cost, shard);
   }
 };
-
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-struct ApplyAdamSYCL {
-  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
-                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
-                  T beta1_power, T beta2_power, T lr, T beta1, T beta2,
-                  T epsilon, typename TTypes<T>::ConstFlat grad) {
-    const T alpha =
-        lr * Eigen::numext::sqrt(T(1) - beta2_power) / (T(1) - beta1_power);
-    m.device(d) += (grad - m) * (T(1) - beta1);
-    v.device(d) += (grad.square() - v) * (T(1) - beta2);
-    var.device(d) -= (m * alpha) / (v.sqrt() + epsilon);
-  }
-};
-#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
@@ -666,54 +970,6 @@ class ApplyGradientDescentOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyGradientDescentOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const bool sparse = false;
-    auto locks = MaybeLockVariableInputMutexesInOrder<SYCLDevice, T>(
-        ctx, use_exclusive_lock_, sparse, {0});
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, sparse, &var));
-
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_dev.shape()),
-                errors::InvalidArgument("alpha is not a scalar: ",
-                                        alpha_dev.shape().DebugString()));
-    const Tensor& delta = ctx->input(2);
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(delta.shape()),
-        errors::InvalidArgument("var and delta do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                delta.shape().DebugString()));
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    T alpha = T(0);
-    auto src_ptr = GetBase(&alpha_dev);
-    device.memcpyDeviceToHost(&alpha, static_cast<const T*>(src_ptr), size);
-
-    functor::ApplyGradientDescentSYCL<T>()(device, var.flat<T>(), alpha,
-                                           delta.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
-
 #define REGISTER_KERNELS(D, T)                                                \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ApplyGradientDescent").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -757,13 +1013,6 @@ REGISTER_KERNELS(GPU, complex128);
 #endif
 #endif
 
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-TF_CALL_float(REGISTER_SYCL_KERNELS);
-TF_CALL_double(REGISTER_SYCL_KERNELS);
-#undef REGISTER_SYCL_KERNELS
-#endif  // TENSORFLOW_USE_SYCL
-
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
@@ -775,24 +1024,12 @@ class ApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    Var* resource;
     const bool sparse = false;
-    mutex* mu = GetTrainingVariableMutex<Device, T>(ctx, 0, sparse, &resource);
-    core::ScopedUnref scoped_unref(resource);
-    if (use_exclusive_lock_ && mu != nullptr) {
-      mutex_lock l1(*mu);
-      // Don't try to acquire a lock on the second ref as they share the same
-      // mutex.
-      //
-      // mutex_lock l2(*ctx->input_ref_mutex(1));
-      DoValidate(ctx);
-      if (!ctx->status().ok()) return;
-      DoCompute(ctx);
-    } else {
-      DoValidate(ctx);
-      if (!ctx->status().ok()) return;
-      DoCompute(ctx);
-    }
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
+    DoValidate(ctx);
+    if (!ctx->status().ok()) return;
+    DoCompute(ctx);
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
 
@@ -937,20 +1174,10 @@ class SparseApplyAdadeltaOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    Var* var;
     const bool sparse = true;
-    mutex* mu = GetTrainingVariableMutex<CPUDevice, T>(ctx, 0, sparse, &var);
-    core::ScopedUnref scoped_unref(var);
-    // mu_accum is actually the same mutex as mu_var since currently we use a
-    // global mutex.
-    //
-    // mutex* mu_accum = ctx->input_ref_mutex(1);
-    if (use_exclusive_lock_ && mu != nullptr) {
-      mutex_lock ml(*mu);
-      DoCompute(ctx);
-    } else {
-      DoCompute(ctx);
-    }
+    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
+    DoCompute(ctx);
   }
 
   void DoCompute(OpKernelContext* ctx) {
@@ -1542,20 +1769,23 @@ class ApplyProximalAdagradOp : public OpKernel {
     const Tensor& lr = ctx->input(2);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     lr.scalar<T>()() > static_cast<T>(0)),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l1.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l2.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -1591,39 +1821,32 @@ class ApplyProximalAdagradOp : public OpKernel {
 
 REGISTER_KERNELS(CPU, float);
 REGISTER_KERNELS(CPU, double);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                                   \
+  template <>                                                                 \
+  void ApplyProximalAdagrad<GPUDevice, T>::operator()(                        \
+      const GPUDevice& d, typename TTypes<T>::Flat var,                       \
+      typename TTypes<T>::Flat accum, typename TTypes<T>::ConstScalar lr,     \
+      typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
+      typename TTypes<T>::ConstFlat grad);                                    \
+  extern template struct ApplyProximalAdagrad<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half);
+REGISTER_KERNELS(GPU, float);
+REGISTER_KERNELS(GPU, double);
+#endif
+#undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-namespace {
-
-template <typename T>
-inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
-                     const T& l2, const T& lr_power,
-                     const bool multiply_linear_by_lr) {
-  T quadratic;
-  if (multiply_linear_by_lr) {
-    if (lr_power == static_cast<T>(-0.5)) {
-      quadratic = Eigen::numext::sqrt(accum) + static_cast<T>(2) * l2 * lr;
-    } else {
-      quadratic =
-          Eigen::numext::pow(accum, -lr_power) + static_cast<T>(2) * l2 * lr;
-    }
-    auto l1_reg_adjust = std::max(std::min(linear, l1 * lr), -l1 * lr);
-    return (l1_reg_adjust - linear) / quadratic;
-  } else {
-    if (lr_power == static_cast<T>(-0.5)) {
-      quadratic = Eigen::numext::sqrt(accum) / lr + static_cast<T>(2) * l2;
-    } else {
-      quadratic =
-          Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
-    }
-    auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
-    return (l1_reg_adjust - linear) / quadratic;
-  }
-}
-}  // namespace
-
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex>
 class SparseApplyAdagradOp : public OpKernel {
  public:
   explicit SparseApplyAdagradOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -1633,13 +1856,13 @@ class SparseApplyAdagradOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -1683,78 +1906,14 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
-    // This op is implemented only for CPU device.
-    const auto& d = ctx->eigen_cpu_device();
-
-    if (N > 0) {
-      const int in_bytes = inner_dim * sizeof(T) * 3;
-      const int out_bytes = inner_dim * sizeof(T) * 2;
-      const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
-                                      Eigen::TensorOpCost::MulCost<T>() * 2);
-      const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
-
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        T lr_scalar = lr.scalar<T>()();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            auto a = accum_flat.template chip<0>(index);
-            auto g = grad_flat.template chip<0>(i);
-            auto v = var_flat.template chip<0>(index);
-            if (update_slots_) {
-              a += g.square();
-            }
-            v -= g.constant(lr_scalar) * g * a.rsqrt();
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-
-      } else {
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            T& a = accum_flat(index);
-            const T& g = grad_flat(i);
-            if (update_slots_) {
-              a += g * g;
-            }
-            var_flat(index) -= lr_scalar * g / Eigen::numext::sqrt(a);
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyAdagrad<Device, T, Tindex,
+                                         /*has_epsilon = */ false>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 // Note: Passing lr as a placeholder for unused epsilon.
+                 lr.scalar<T>(), lr.scalar<T>(), grad.flat_outer_dims<T>(),
+                 indices.vec<Tindex>(), inner_dim, update_slots_));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -1764,29 +1923,60 @@ class SparseApplyAdagradOp : public OpKernel {
   bool update_slots_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagrad")                 \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradOp<T, Tindices>);        \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagrad")         \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradOp<T, Tindices>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+#define REGISTER_KERNELS(D, T, Tindices)                                 \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagrad")                     \
+                              .Device(DEVICE_##D)                        \
+                              .TypeConstraint<T>("T")                    \
+                              .TypeConstraint<Tindices>("Tindices"),     \
+                          SparseApplyAdagradOp<D##Device, T, Tindices>); \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagrad")             \
+                              .Device(DEVICE_##D)                        \
+                              .TypeConstraint<T>("T")                    \
+                              .TypeConstraint<Tindices>("Tindices"),     \
+                          SparseApplyAdagradOp<D##Device, T, Tindices>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                            \
+  template <>                                                                  \
+  Status                                                                       \
+  SparseApplyAdagrad<GPUDevice, T, Tindex, /*has_epsilon=*/false>::operator()( \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                      \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::ConstScalar lr,    \
+      typename TTypes<T>::ConstScalar epsilon,                                 \
+      typename TTypes<T>::ConstMatrix grad,                                    \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,              \
+      bool update_slots);                                                      \
+  extern template struct SparseApplyAdagrad<GPUDevice, T, Tindex,              \
+                                            /*has_epsilon=*/false>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex>
 class SparseApplyAdagradV2Op : public OpKernel {
  public:
   explicit SparseApplyAdagradV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -1796,13 +1986,13 @@ class SparseApplyAdagradV2Op : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -1850,82 +2040,13 @@ class SparseApplyAdagradV2Op : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
-    // This op is implemented only for CPU device.
-    const auto& d = ctx->eigen_cpu_device();
-
-    if (N > 0) {
-      const int in_bytes = inner_dim * sizeof(T) * 3;
-      const int out_bytes = inner_dim * sizeof(T) * 2;
-      const int cycles = inner_dim * (Eigen::TensorOpCost::AddCost<T>() * 2 +
-                                      Eigen::TensorOpCost::MulCost<T>() * 2);
-      const Eigen::TensorOpCost cost(in_bytes, out_bytes, cycles);
-
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        const T lr_scalar = lr.scalar<T>()();
-        const T epsilon_scalar = epsilon.scalar<T>()();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            auto a = accum_flat.template chip<0>(index);
-            auto g = grad_flat.template chip<0>(i);
-            auto v = var_flat.template chip<0>(index);
-            if (update_slots_) {
-              a += g.square();
-            }
-            v -= g.constant(lr_scalar) * g /
-                 (a.sqrt() + a.constant(epsilon_scalar));
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-
-      } else {
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        const T epsilon_scalar = epsilon.scalar<T>()();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; ++i) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-        }
-
-        const auto shard = [&](Tindex start_idx, Tindex end_idx) -> void {
-          for (Tindex i = start_idx; i < end_idx; ++i) {
-            const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-            T& a = accum_flat(index);
-            const T& g = grad_flat(i);
-            if (update_slots_) {
-              a += g * g;
-            }
-            var_flat(index) -=
-                lr_scalar * g / (Eigen::numext::sqrt(a) + epsilon_scalar);
-          }
-        };
-
-        d.parallelFor(N, cost, shard);
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyAdagrad<Device, T, Tindex,
+                                         /*has_epsilon = */ true>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 lr.scalar<T>(), epsilon.scalar<T>(), grad.flat_outer_dims<T>(),
+                 indices.vec<Tindex>(), inner_dim, update_slots_));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -1935,29 +2056,60 @@ class SparseApplyAdagradV2Op : public OpKernel {
   bool update_slots_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagradV2")               \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradV2Op<T, Tindices>);      \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagradV2")       \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<Tindices>("Tindices"), \
-                          SparseApplyAdagradV2Op<T, Tindices>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+#define REGISTER_KERNELS(D, T, Tindices)                                   \
+  REGISTER_KERNEL_BUILDER(Name("SparseApplyAdagradV2")                     \
+                              .Device(DEVICE_##D)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<Tindices>("Tindices"),       \
+                          SparseApplyAdagradV2Op<D##Device, T, Tindices>); \
+  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyAdagradV2")             \
+                              .Device(DEVICE_##D)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .TypeConstraint<Tindices>("Tindices"),       \
+                          SparseApplyAdagradV2Op<D##Device, T, Tindices>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                           \
+  template <>                                                                 \
+  Status                                                                      \
+  SparseApplyAdagrad<GPUDevice, T, Tindex, /*has_epsilon=*/true>::operator()( \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                     \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::ConstScalar lr,   \
+      typename TTypes<T>::ConstScalar epsilon,                                \
+      typename TTypes<T>::ConstMatrix grad,                                   \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,             \
+      bool update_slots);                                                     \
+  extern template struct SparseApplyAdagrad<GPUDevice, T, Tindex,             \
+                                            /*has_epsilon=*/true>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
-template <typename T, typename Tindex>
+template <typename Device, typename T, typename Tindex>
 class SparseApplyProximalAdagradOp : public OpKernel {
  public:
   explicit SparseApplyProximalAdagradOp(OpKernelConstruction* ctx)
@@ -1967,13 +2119,13 @@ class SparseApplyProximalAdagradOp : public OpKernel {
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
-    auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
+    auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 0, use_exclusive_lock_, sparse, &var));
     Tensor accum;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<CPUDevice, T>(
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<Device, T>(
                             ctx, 1, use_exclusive_lock_, sparse, &accum));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
@@ -1994,20 +2146,23 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     const Tensor& lr = ctx->input(2);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     lr.scalar<T>()() > static_cast<T>(0)),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l1.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l2.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -2034,77 +2189,12 @@ class SparseApplyProximalAdagradOp : public OpKernel {
                 errors::InvalidArgument(
                     "Inner dimension should be greater than zero."));
 
-    if (N > 0) {
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-          auto a = accum_flat.template chip<0>(index);
-          auto g = grad_flat.template chip<0>(i);
-          auto v = var_flat.template chip<0>(index);
-          a += g.square();
-          // compute learning_rate for current step.
-          auto learning_rate = a.constant(lr_scalar) * a.rsqrt();
-          auto prox_v = v;
-          // v = w - g * learning_rate.
-          prox_v -= g * learning_rate;
-          if (l1_scalar > 0) {
-            // compute sign(v) * max(|v|, 0)
-            v = prox_v.sign() *
-                (prox_v.abs() - learning_rate * prox_v.constant(l1_scalar))
-                    .cwiseMax(static_cast<T>(0.0)) /
-                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
-          } else {
-            v = prox_v /
-                (v.constant(1.0) + v.constant(l2_scalar) * learning_rate);
-          }
-        }
-      } else {
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-          T& a = accum_flat(index);
-          const T& g = grad_flat(i);
-          a += g * g;
-          auto learning_rate = lr_scalar / std::sqrt(a);
-          auto prox_v = var_flat(index);
-          prox_v -= learning_rate * g;
-          if (l1_scalar > 0) {
-            var_flat(index) =
-                sgn(prox_v) *
-                std::max(std::abs(prox_v) - learning_rate * l1_scalar,
-                         static_cast<T>(0.0)) /
-                (1.0 + l2_scalar * learning_rate);
-          } else {
-            var_flat(index) = prox_v / (1.0 + l2_scalar * learning_rate);
-          }
-        }
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyProximalAdagrad<Device, T, Tindex>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+                 grad.flat_outer_dims<T>(), indices.vec<Tindex>(), inner_dim));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2113,22 +2203,53 @@ class SparseApplyProximalAdagradOp : public OpKernel {
   bool use_exclusive_lock_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                 \
-  REGISTER_KERNEL_BUILDER(Name("SparseApplyProximalAdagrad")          \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<T>("T")                 \
-                              .TypeConstraint<Tindices>("Tindices"),  \
-                          SparseApplyProximalAdagradOp<T, Tindices>); \
-  REGISTER_KERNEL_BUILDER(Name("ResourceSparseApplyProximalAdagrad")  \
-                              .Device(DEVICE_CPU)                     \
-                              .TypeConstraint<T>("T")                 \
-                              .TypeConstraint<Tindices>("Tindices"),  \
-                          SparseApplyProximalAdagradOp<T, Tindices>);
+#define REGISTER_KERNELS(D, T, Tindices)                     \
+  REGISTER_KERNEL_BUILDER(                                   \
+      Name("SparseApplyProximalAdagrad")                     \
+          .Device(DEVICE_##D)                                \
+          .TypeConstraint<T>("T")                            \
+          .TypeConstraint<Tindices>("Tindices"),             \
+      SparseApplyProximalAdagradOp<D##Device, T, Tindices>); \
+  REGISTER_KERNEL_BUILDER(                                   \
+      Name("ResourceSparseApplyProximalAdagrad")             \
+          .Device(DEVICE_##D)                                \
+          .TypeConstraint<T>("T")                            \
+          .TypeConstraint<Tindices>("Tindices"),             \
+      SparseApplyProximalAdagradOp<D##Device, T, Tindices>);
 
-REGISTER_KERNELS(float, int32);
-REGISTER_KERNELS(float, int64);
-REGISTER_KERNELS(double, int32);
-REGISTER_KERNELS(double, int64);
+REGISTER_KERNELS(CPU, float, int32);
+REGISTER_KERNELS(CPU, float, int64);
+REGISTER_KERNELS(CPU, double, int32);
+REGISTER_KERNELS(CPU, double, int64);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                           \
+  template <>                                                                 \
+  Status SparseApplyProximalAdagrad<GPUDevice, T, Tindex>::operator()(        \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                     \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::ConstScalar lr,   \
+      typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
+      typename TTypes<T>::ConstMatrix grad,                                   \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim);            \
+  extern template struct SparseApplyProximalAdagrad<GPUDevice, T, Tindex>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -2642,7 +2763,6 @@ REGISTER_KERNELS(GPU, double);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-// Note, this op works on cpu only.
 template <typename Device, typename T, typename Tindex, bool has_l2_shrinkage>
 class SparseApplyFtrlOp : public OpKernel {
  public:
@@ -2695,24 +2815,34 @@ class SparseApplyFtrlOp : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices must be one-dimensional"));
 
+    // Note: The range checks on lr, l1, l2, and lr_power below are disabled
+    // for non-CPU devices because their values cannot be accessed directly from
+    // the host. The GPU kernel will not crash if these conditions are not met,
+    // it will simply produce a bogus answer (possibly inf/nan).
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
-                errors::InvalidArgument("lr is not a positive scalar: ",
-                                        lr.shape().DebugString()));
+    OP_REQUIRES(
+        ctx,
+        TensorShapeUtils::IsScalar(lr.shape()) &&
+            (!std::is_same<Device, CPUDevice>::value ||
+             lr.scalar<T>()() > static_cast<T>(0) ||
+             (multiply_linear_by_lr_ && lr.scalar<T>()() >= static_cast<T>(0))),
+        errors::InvalidArgument("lr is not a positive scalar (or zero if "
+                                "multiply_linear_by_lr is set): ",
+                                lr.shape().DebugString()));
 
     const Tensor& l1 = ctx->input(6);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l1.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(7);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     l2.scalar<T>()() >= static_cast<T>(0)),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -2720,7 +2850,8 @@ class SparseApplyFtrlOp : public OpKernel {
     const Tensor& lr_power = ctx->input(lr_power_index);
     OP_REQUIRES(ctx,
                 TensorShapeUtils::IsScalar(lr_power.shape()) &&
-                    lr_power.scalar<T>()() <= static_cast<T>(0),
+                    (!std::is_same<Device, CPUDevice>::value ||
+                     lr_power.scalar<T>()() <= static_cast<T>(0)),
                 errors::InvalidArgument("lr_power is not a "
                                         "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
@@ -2747,152 +2878,25 @@ class SparseApplyFtrlOp : public OpKernel {
       OP_REQUIRES(
           ctx,
           TensorShapeUtils::IsScalar(l2_shrinkage->shape()) &&
-              l2_shrinkage->scalar<T>()() >= static_cast<T>(0),
+              (!std::is_same<Device, CPUDevice>::value ||
+               l2_shrinkage->scalar<T>()() >= static_cast<T>(0)),
           errors::InvalidArgument("l2 shrinkage regularization strength "
                                   "is not a non-negative scalar: ",
                                   l2_shrinkage->shape().DebugString()));
     }
 
-    if (N > 0) {
-      if (inner_dim > 1) {
-        const Tindex first_dim_size = var.dim_size(0);
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat_outer_dims<T>();
-        auto accum_flat = accum.flat_outer_dims<T>();
-        auto linear_flat = linear.flat_outer_dims<T>();
-        auto grad_flat = grad.flat_outer_dims<T>();
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-        T l2_shrinkage_scalar;
-        if (has_l2_shrinkage) {
-          l2_shrinkage_scalar = l2_shrinkage->scalar<T>()();
-        }
-        T lr_power_scalar = lr_power.scalar<T>()();
-
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-          auto accum = accum_flat.template chip<0>(index);
-          auto linear = linear_flat.template chip<0>(index);
-          auto grad = grad_flat.template chip<0>(i);
-          auto var = var_flat.template chip<0>(index);
-
-// Use a macro to implement the computation here due to the templating of the
-// eigen tensor library.
-#define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
-  auto new_accum = accum + grad.square();                                      \
-  if (multiply_linear_by_lr_) {                                                \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      linear += grad_maybe_with_shrinkage * lr_scalar -                        \
-                (new_accum.sqrt() - accum.sqrt()) * var;                       \
-    } else {                                                                   \
-      linear +=                                                                \
-          grad_maybe_with_shrinkage * lr_scalar -                              \
-          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) *    \
-              var;                                                             \
-    }                                                                          \
-  } else {                                                                     \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      linear += grad_maybe_with_shrinkage -                                    \
-                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;           \
-    } else {                                                                   \
-      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) - \
-                                             accum.pow(-lr_power_scalar)) /    \
-                                                lr_scalar * var;               \
-    }                                                                          \
-  }                                                                            \
-  auto l1_reg_adjust =                                                         \
-      (multiply_linear_by_lr_                                                  \
-           ? linear.cwiseMin(l1_scalar * lr_scalar)                            \
-                 .cwiseMax(-l1_scalar * lr_scalar)                             \
-           : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));                 \
-  auto x = l1_reg_adjust - linear;                                             \
-  if (multiply_linear_by_lr_) {                                                \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      auto y = new_accum.sqrt() +                                              \
-               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
-      var = x / y;                                                             \
-    } else {                                                                   \
-      auto y = new_accum.pow(-lr_power_scalar) +                               \
-               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
-      var = x / y;                                                             \
-    }                                                                          \
-  } else {                                                                     \
-    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
-      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +              \
-               linear.constant(static_cast<T>(2) * l2_scalar);                 \
-      var = x / y;                                                             \
-    } else {                                                                   \
-      auto y =                                                                 \
-          new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +    \
-          linear.constant(static_cast<T>(2) * l2_scalar);                      \
-      var = x / y;                                                             \
-    }                                                                          \
-  }                                                                            \
-  accum += grad.square();
-
-          if (has_l2_shrinkage) {
-            auto grad_with_shrinkage =
-                grad + static_cast<T>(2) * l2_shrinkage_scalar * var;
-            COMPUTE_FTRL(grad, grad_with_shrinkage);
-          } else {
-            COMPUTE_FTRL(grad, grad);
-          }
-        }
-#undef COMPUTE_FTRL
-      } else {
-        T lr_scalar = lr.scalar<T>()();
-        T l1_scalar = l1.scalar<T>()();
-        T l2_scalar = l2.scalar<T>()();
-        T lr_power_scalar = lr_power.scalar<T>()();
-        T l2_shrinkage_scalar;
-        if (has_l2_shrinkage) {
-          l2_shrinkage_scalar = l2_shrinkage->scalar<T>()();
-        }
-
-        auto indices_vec = indices.vec<Tindex>();
-        auto var_flat = var.flat<T>();
-        auto accum_flat = accum.flat<T>();
-        auto linear_flat = linear.flat<T>();
-        auto grad_flat = grad.flat<T>();
-        const Tindex first_dim_size = accum_flat.size();
-
-        for (Tindex i = 0; i < N; i++) {
-          const Tindex index = internal::SubtleMustCopy(indices_vec(i));
-          OP_REQUIRES(ctx, FastBoundsCheck(index, first_dim_size),
-                      errors::InvalidArgument(
-                          strings::StrCat("Index ", index, " at offset ", i,
-                                          " in indices is out of range")));
-          T& a = accum_flat(index);
-          T& l = linear_flat(index);
-          T& v = var_flat(index);
-          T g;
-          if (has_l2_shrinkage) {
-            g = grad_flat(i) +
-                (static_cast<T>(2) * l2_shrinkage_scalar * var_flat(index));
-          } else {
-            g = grad_flat(i);
-          }
-
-          T updated_a = a + grad_flat(i) * grad_flat(i);
-          using Eigen::numext::pow;
-          T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
-          if (!multiply_linear_by_lr_) {
-            sigma /= lr_scalar;
-          }
-          T updated_l = (multiply_linear_by_lr_ ? l + g * lr_scalar - sigma * v
-                                                : l + g - sigma * v);
-          v = FtrlCompute(updated_a, updated_l, lr_scalar, l1_scalar, l2_scalar,
-                          lr_power_scalar, multiply_linear_by_lr_);
-          a = updated_a;
-          l = updated_l;
-        }
-      }
-    }
+    const Device& device = ctx->template eigen_device<Device>();
+    auto indices_vec = indices.vec<Tindex>();
+    OP_REQUIRES_OK(
+        ctx, functor::SparseApplyFtrl<Device, T, Tindex, has_l2_shrinkage>()(
+                 device, var.flat_outer_dims<T>(), accum.flat_outer_dims<T>(),
+                 linear.flat_outer_dims<T>(), lr.scalar<T>(), l1.scalar<T>(),
+                 l2.scalar<T>(),
+                 // Note: Passing l2 as a placeholder when not has_l2_shrinkage
+                 // (it will not be used).
+                 has_l2_shrinkage ? l2_shrinkage->scalar<T>() : l2.scalar<T>(),
+                 lr_power.scalar<T>(), grad.flat_outer_dims<T>(), indices_vec,
+                 inner_dim, multiply_linear_by_lr_));
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2902,22 +2906,22 @@ class SparseApplyFtrlOp : public OpKernel {
   bool multiply_linear_by_lr_;
 };
 
-#define REGISTER_KERNELS(T, Tindices)                                         \
+#define REGISTER_KERNELS(D, T, Tindices)                                      \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("SparseApplyFtrl")                                                 \
-          .Device(DEVICE_CPU)                                                 \
+          .Device(DEVICE_##D)                                                 \
           .TypeConstraint<T>("T")                                             \
           .TypeConstraint<Tindices>("Tindices"),                              \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/false>); \
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/false>); \
   REGISTER_KERNEL_BUILDER(                                                    \
       Name("ResourceSparseApplyFtrl")                                         \
-          .Device(DEVICE_CPU)                                                 \
+          .Device(DEVICE_##D)                                                 \
           .TypeConstraint<T>("T")                                             \
           .TypeConstraint<Tindices>("Tindices"),                              \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/false>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/false>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
@@ -2925,24 +2929,59 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                           \
+  template <>                                                                 \
+  Status SparseApplyFtrl<GPUDevice, T, Tindex, /*has_l2_shrinkage=*/false>::  \
+  operator()(                                                                 \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                     \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::Matrix linear,    \
+      typename TTypes<T>::ConstScalar lr, typename TTypes<T>::ConstScalar l1, \
+      typename TTypes<T>::ConstScalar l2,                                     \
+      typename TTypes<T>::ConstScalar l2_shrinkage,                           \
+      typename TTypes<T>::ConstScalar lr_power,                               \
+      typename TTypes<T>::ConstMatrix grad,                                   \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,             \
+      bool multiply_linear_by_lr);                                            \
+  extern template struct SparseApplyFtrl<GPUDevice, T, Tindex,                \
+                                         /*has_l2_shrinkage=*/false>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
-#define REGISTER_KERNELS(T, Tindices)                                        \
+#define REGISTER_KERNELS(D, T, Tindices)                                     \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("SparseApplyFtrlV2")                                              \
-          .Device(DEVICE_CPU)                                                \
+          .Device(DEVICE_##D)                                                \
           .TypeConstraint<T>("T")                                            \
           .TypeConstraint<Tindices>("Tindices"),                             \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/true>); \
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/true>); \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("ResourceSparseApplyFtrlV2")                                      \
-          .Device(DEVICE_CPU)                                                \
+          .Device(DEVICE_##D)                                                \
           .TypeConstraint<T>("T")                                            \
           .TypeConstraint<Tindices>("Tindices"),                             \
-      SparseApplyFtrlOp<CPUDevice, T, Tindices, /*has_l2_shrinkage=*/true>);
-#define REGISTER_CPU_KERNELS(T) \
-  REGISTER_KERNELS(T, int32);   \
-  REGISTER_KERNELS(T, int64);
+      SparseApplyFtrlOp<D##Device, T, Tindices, /*has_l2_shrinkage=*/true>);
+#define REGISTER_CPU_KERNELS(T)    \
+  REGISTER_KERNELS(CPU, T, int32); \
+  REGISTER_KERNELS(CPU, T, int64);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
@@ -2950,6 +2989,41 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T, Tindex)                                           \
+  template <>                                                                 \
+  Status SparseApplyFtrl<GPUDevice, T, Tindex, /*has_l2_shrinkage=*/true>::   \
+  operator()(                                                                 \
+      const GPUDevice& d, typename TTypes<T>::Matrix var,                     \
+      typename TTypes<T>::Matrix accum, typename TTypes<T>::Matrix linear,    \
+      typename TTypes<T>::ConstScalar lr, typename TTypes<T>::ConstScalar l1, \
+      typename TTypes<T>::ConstScalar l2,                                     \
+      typename TTypes<T>::ConstScalar l2_shrinkage,                           \
+      typename TTypes<T>::ConstScalar lr_power,                               \
+      typename TTypes<T>::ConstMatrix grad,                                   \
+      typename TTypes<Tindex>::ConstVec indices, int64 inner_dim,             \
+      bool multiply_linear_by_lr);                                            \
+  extern template struct SparseApplyFtrl<GPUDevice, T, Tindex,                \
+                                         /*has_l2_shrinkage=*/true>;
+DECLARE_GPU_SPEC(Eigen::half, int32);
+DECLARE_GPU_SPEC(Eigen::half, int64);
+DECLARE_GPU_SPEC(float, int32);
+DECLARE_GPU_SPEC(float, int64);
+DECLARE_GPU_SPEC(double, int32);
+DECLARE_GPU_SPEC(double, int64);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+REGISTER_KERNELS(GPU, Eigen::half, int32);
+REGISTER_KERNELS(GPU, Eigen::half, int64);
+REGISTER_KERNELS(GPU, float, int32);
+REGISTER_KERNELS(GPU, float, int64);
+REGISTER_KERNELS(GPU, double, int32);
+REGISTER_KERNELS(GPU, double, int64);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
@@ -3523,124 +3597,6 @@ class ApplyAdamOp : public OpKernel {
   bool use_nesterov_;
 };
 
-#ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
- public:
-  explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
-  }
-
-  void Compute(OpKernelContext* ctx) override {
-    const bool sparse = false;
-    auto locks = MaybeLockVariableInputMutexesInOrder<SYCLDevice, T>(
-        ctx, use_exclusive_lock_, sparse, {0, 1, 2});
-
-    Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 0, use_exclusive_lock_, sparse, &var));
-    Tensor m;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 1, use_exclusive_lock_, sparse, &m));
-    Tensor v;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable<SYCLDevice, T>(
-                            ctx, 2, use_exclusive_lock_, sparse, &v));
-    OP_REQUIRES(
-        ctx, var.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(0)));
-    OP_REQUIRES(
-        ctx, m.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(1)));
-    OP_REQUIRES(
-        ctx, v.IsInitialized(),
-        errors::FailedPrecondition(
-            "Attempting to use uninitialized variables: ", requested_input(2)));
-
-    const Tensor& beta1_power_dev = ctx->input(3);
-    const Tensor& beta2_power_dev = ctx->input(4);
-    const Tensor& lr_dev = ctx->input(5);
-    const Tensor& beta1_dev = ctx->input(6);
-    const Tensor& beta2_dev = ctx->input(7);
-    const Tensor& epsilon_dev = ctx->input(8);
-
-    T beta1_power = 0;
-    T beta2_power = 0;
-    T lr = 0;
-    T beta1 = 0;
-    T beta2 = 0;
-    T epsilon = 0;
-
-    auto device = ctx->eigen_sycl_device();
-    auto size = sizeof(T);
-    auto src_ptr = GetBase(&beta1_power_dev);
-    device.memcpyDeviceToHost(&beta1_power, static_cast<const T*>(src_ptr),
-                              size);
-
-    src_ptr = GetBase(&beta2_power_dev);
-    device.memcpyDeviceToHost(&beta2_power, static_cast<const T*>(src_ptr),
-                              size);
-
-    src_ptr = GetBase(&lr_dev);
-    device.memcpyDeviceToHost(&lr, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&beta1_dev);
-    device.memcpyDeviceToHost(&beta1, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&beta2_dev);
-    device.memcpyDeviceToHost(&beta2, static_cast<const T*>(src_ptr), size);
-
-    src_ptr = GetBase(&epsilon_dev);
-    device.memcpyDeviceToHost(&epsilon, static_cast<const T*>(src_ptr), size);
-
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_power_dev.shape()),
-                errors::InvalidArgument("beta1_power is not a scalar: ",
-                                        beta1_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_power_dev.shape()),
-                errors::InvalidArgument("beta2_power is not a scalar: ",
-                                        beta2_power_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_dev.shape()),
-                errors::InvalidArgument("lr is not a scalar : ",
-                                        lr_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta1_dev.shape()),
-                errors::InvalidArgument("beta1 is not a scalar: ",
-                                        beta1_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(beta2_dev.shape()),
-                errors::InvalidArgument("beta2 is not a scalar: ",
-                                        beta2_dev.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(epsilon_dev.shape()),
-                errors::InvalidArgument("epsilon is not a scalar: ",
-                                        epsilon_dev.shape().DebugString()));
-
-    const Tensor& grad = ctx->input(9);
-
-    OP_REQUIRES(ctx, var.shape().IsSameSize(m.shape()),
-                errors::InvalidArgument("var and m do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        m.shape().DebugString()));
-    OP_REQUIRES(ctx, var.shape().IsSameSize(v.shape()),
-                errors::InvalidArgument("var and v do not have the same shape",
-                                        var.shape().DebugString(), " ",
-                                        v.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, var.shape().IsSameSize(grad.shape()),
-        errors::InvalidArgument("var and grad do not have the same shape",
-                                var.shape().DebugString(), " ",
-                                grad.shape().DebugString()));
-
-    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-                                beta1_power, beta2_power, lr, beta1, beta2,
-                                epsilon, grad.flat<T>());
-
-    MaybeForwardRefInputToRefOutput(ctx, 0, 0);
-  }
-
- private:
-  bool use_exclusive_lock_;
-};
-#endif  // TENSORFLOW_USE_SYCL
-
 #define REGISTER_KERNELS(D, T)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
@@ -3656,13 +3612,6 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 
 TF_CALL_FLOAT_TYPES(REGISTER_CPU_KERNELS);
 TF_CALL_COMPLEX_TYPES(REGISTER_CPU_KERNELS);
-
-#ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
-TF_CALL_float(REGISTER_SYCL_KERNELS);
-TF_CALL_double(REGISTER_SYCL_KERNELS);
-#endif
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.

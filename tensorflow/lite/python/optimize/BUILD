@@ -16,6 +16,7 @@ cc_library(
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/lite/tools/optimize:quantization_wrapper_utils",
         "//tensorflow/lite/tools/optimize:quantize_model",
         "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
         "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
@@ -50,6 +51,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
@@ -67,8 +69,8 @@ py_test(
     tags = ["no_oss"],
     deps = [
         ":calibrator",
-        "//tensorflow/lite/python:lite_constants",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//third_party/py/numpy",

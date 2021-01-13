@@ -109,6 +109,7 @@ cc_library(
         ":hiprand",
         ":miopen",
         ":hipsparse",
+        ":rocsolver",
     ],
 )
 
@@ -143,11 +144,16 @@ cc_library(
     data = ["rocm/lib/%{hipsparse_lib}"],
 )
 
+cc_library(
+    name = "rocsolver",
+    srcs = ["rocm/lib/%{rocsolver_lib}"],
+    data = ["rocm/lib/%{rocsolver_lib}"],
+)
+
 filegroup(
     name = "rocm_root",
     srcs = [
         "rocm/bin/clang-offload-bundler",
-        "rocm/bin/bin2c.py",
     ],
 )
 

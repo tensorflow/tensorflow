@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h"
 #include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
+#include "tensorflow/lite/micro/kernels/fully_connected.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
@@ -31,25 +32,40 @@ limitations under the License.
 
 namespace {
 
-// Create an area of memory to use for input, output, and intermediate arrays.
-// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
-constexpr int tensor_arena_size = 21 * 1024;
-alignas(16) uint8_t tensor_arena[tensor_arena_size];
-// A random number generator seed to generate input values.
+using KeywordBenchmarkRunner = MicroBenchmarkRunner<int16_t>;
+using KeywordOpResolver = tflite::MicroMutableOpResolver<6>;
+
 constexpr int kRandomSeed = 42;
 
-MicroBenchmarkRunner<int16_t>* benchmark_runner = nullptr;
+// Create an area of memory to use for input, output, and intermediate arrays.
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
+constexpr int kTensorArenaSize = 21 * 1024;
+alignas(16) uint8_t tensor_arena[kTensorArenaSize];
 
-void InitializeBenchmarkRunner() {
-  // NOLINTNEXTLINE
-  static MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
-                                              tensor_arena, tensor_arena_size);
-  benchmark_runner = &runner;
+uint8_t benchmark_runner_buffer[sizeof(KeywordBenchmarkRunner)];
+uint8_t op_resolver_buffer[sizeof(KeywordOpResolver)];
+KeywordBenchmarkRunner* benchmark_runner = nullptr;
+
+// Initialize benchmark runner instance explicitly to avoid global init order
+// issues on Sparkfun. Use new since static variables within a method
+// are automatically surrounded by locking, which breaks bluepill and stm32f4.
+void CreateBenchmarkRunner() {
+  // We allocate the KeywordOpResolver from a global buffer because the object's
+  // lifetime must exceed that of the KeywordBenchmarkRunner object.
+  KeywordOpResolver* op_resolver = new (op_resolver_buffer) KeywordOpResolver();
+  op_resolver->AddFullyConnected(tflite::Register_FULLY_CONNECTED_INT8());
+  op_resolver->AddQuantize();
+  op_resolver->AddSoftmax();
+  op_resolver->AddSvdf();
+
+  benchmark_runner = new (benchmark_runner_buffer)
+      KeywordBenchmarkRunner(g_keyword_scrambled_model_data, op_resolver,
+                             tensor_arena, kTensorArenaSize);
 }
 
 // Initializes keyword runner and sets random inputs.
 void InitializeKeywordRunner() {
-  InitializeBenchmarkRunner();
+  CreateBenchmarkRunner();
   benchmark_runner->SetRandomInput(kRandomSeed);
 }
 

@@ -119,7 +119,7 @@ void BreakUpIslands::runOnFunction(
     state.addOperands(operands);
     Operation* new_op = builder.createOperation(state);
     item.replaceAllUsesWith(new_op);
-    new_op->setAttrs(item.getMutableAttrDict());
+    new_op->setAttrs(item.getAttrDictionary());
     item.erase();
   }
 }
@@ -130,18 +130,15 @@ void PopulateEmptyIsland(tf_executor::IslandOp island) {
   OpBuilder builder(&island.GetBody(), island.GetBody().begin());
   tf_executor::YieldOp yield = island.GetYield();
   if (yield.getNumOperands() == 0) {
-    builder.create<TF::NoOp>(island.getLoc(), llvm::ArrayRef<mlir::Type>{},
-                             llvm::ArrayRef<mlir::Value>{},
-                             llvm::ArrayRef<mlir::NamedAttribute>{});
+    builder.create<TF::NoOp>(island.getLoc(), TypeRange{}, ValueRange{});
   } else if (yield.getNumOperands() == 1) {
     Value operand = yield.getOperand(0);
     auto identity = builder.create<TF::IdentityOp>(island.getLoc(),
                                                    operand.getType(), operand);
     yield.setOperand(0, identity.output());
   } else {
-    auto types = llvm::to_vector<4>(yield.getOperandTypes());
-    auto identity_n = builder.create<TF::IdentityNOp>(island.getLoc(), types,
-                                                      yield.getOperands());
+    auto identity_n = builder.create<TF::IdentityNOp>(
+        island.getLoc(), yield.getOperandTypes(), yield.getOperands());
     for (auto it : llvm::enumerate(identity_n.getResults()))
       yield.setOperand(it.index(), it.value());
   }
@@ -149,8 +146,8 @@ void PopulateEmptyIsland(tf_executor::IslandOp island) {
 
 // Helper that creates an island. If `sub_op` is not nullptr, it will be moved
 // to the island. Otherwise a NoOp will be added to the island.
-tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
-                                   ArrayRef<Value> control_inputs,
+tf_executor::IslandOp CreateIsland(TypeRange result_types,
+                                   ValueRange control_inputs,
                                    const tf_executor::ControlType& control_type,
                                    const Location& loc, Operation* sub_op,
                                    tf_executor::IslandOp original_island) {
@@ -166,10 +163,8 @@ tf_executor::IslandOp CreateIsland(ArrayRef<Type> result_types,
     sub_op->moveBefore(block, block->begin());
     island_builder.create<tf_executor::YieldOp>(loc, sub_op->getResults());
   } else {
-    island_builder.create<TF::NoOp>(
-        island.getLoc(), llvm::ArrayRef<mlir::Type>{},
-        llvm::ArrayRef<mlir::Value>{}, llvm::ArrayRef<mlir::NamedAttribute>{});
-    island_builder.create<tf_executor::YieldOp>(loc, ArrayRef<Value>{});
+    island_builder.create<TF::NoOp>(island.getLoc(), TypeRange{}, ValueRange{});
+    island_builder.create<tf_executor::YieldOp>(loc, ValueRange{});
   }
   return island;
 }
@@ -282,8 +277,8 @@ void BreakUpIslands::BreakUpIsland(
                                   ? island_control_inputs
                                   : predecessor_controls;
     auto new_island =
-        CreateIsland(llvm::to_vector<4>(sub_op.getResultTypes()), control,
-                     control_type, sub_op.getLoc(), &sub_op, island_op);
+        CreateIsland(sub_op.getResultTypes(), control, control_type,
+                     sub_op.getLoc(), &sub_op, island_op);
     new_control_for_sub_ops[&sub_op] = new_island.control();
     if (sources_and_sinks.sinks.count(&sub_op)) {
       sink_island_controls.push_back(new_island.control());
@@ -311,7 +306,7 @@ void BreakUpIslands::BreakUpIsland(
       if (auto other_island_op =
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
         (*new_control_inputs)[other_island_op].push_back(sink_island_control);
-      } else if (owner->getDialect() == island_op.getDialect() &&
+      } else if (owner->getDialect() == island_op->getDialect() &&
                  !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
                             tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);

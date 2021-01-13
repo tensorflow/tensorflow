@@ -23,14 +23,12 @@ from abc import abstractmethod
 from contextlib import closing
 import errno
 import functools
-import gc
 import hashlib
 import multiprocessing
 import multiprocessing.dummy
 import os
 import random
 import shutil
-import signal
 import sys
 import tarfile
 import threading
@@ -45,11 +43,9 @@ from six.moves.urllib.error import URLError
 
 from tensorflow.python.framework import ops
 from six.moves.urllib.request import urlopen
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.io_utils import path_to_string
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import deprecation
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -74,7 +70,7 @@ if sys.version_info[0] == 2:
     Under Python 2, `urlretrieve` relies on `FancyURLopener` from legacy
     `urllib` module, known to have issues with proxy management.
 
-    Arguments:
+    Args:
         url: url to retrieve.
         filename: where to store the retrieved data locally.
         reporthook: a hook function that will be called once on establishment of
@@ -119,7 +115,7 @@ def is_generator_or_sequence(x):
 def _extract_archive(file_path, path='.', archive_format='auto'):
   """Extracts an archive if it matches tar, tar.gz, tar.bz, or zip formats.
 
-  Arguments:
+  Args:
       file_path: path to the archive file
       path: path to extract the archive file
       archive_format: Archive format to try for extracting the file.
@@ -196,7 +192,7 @@ def get_file(fname,
       untar=True)
   ```
 
-  Arguments:
+  Args:
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location.
       origin: Original URL of the file.
@@ -319,7 +315,7 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
   'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
   ```
 
-  Arguments:
+  Args:
       fpath: path to the file being validated
       algorithm: hash algorithm, one of `'auto'`, `'sha256'`, or `'md5'`.
           The default `'auto'` detects the hash algorithm in use.
@@ -343,7 +339,7 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
 def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
   """Validates a file against a sha256 or md5 hash.
 
-  Arguments:
+  Args:
       fpath: path to the file being validated
       file_hash:  The expected hash string of the file.
           The sha256 and md5 hash algorithms are both supported.
@@ -459,7 +455,7 @@ class Sequence(object):
   def __getitem__(self, index):
     """Gets batch at position `index`.
 
-    Arguments:
+    Args:
         index: position of the batch in the Sequence.
 
     Returns:
@@ -490,7 +486,7 @@ class Sequence(object):
 def iter_sequence_infinite(seq):
   """Iterates indefinitely over a Sequence.
 
-  Arguments:
+  Args:
     seq: `Sequence` instance.
 
   Yields:
@@ -533,10 +529,6 @@ def get_pool_class(use_multiprocessing):
   global _FORCE_THREADPOOL
   if not use_multiprocessing or _FORCE_THREADPOOL:
     return multiprocessing.dummy.Pool  # ThreadPool
-  logging.warning(
-      'multiprocessing can interact badly with TensorFlow, causing '
-      'nondeterministic deadlocks. For high performance data pipelines tf.data '
-      'is recommended.')
   return multiprocessing.Pool
 
 
@@ -553,115 +545,6 @@ def init_pool(seqs):
   _SHARED_SEQUENCES = seqs
 
 
-@deprecation.deprecated('2020-06-07', 'Please manage pools using the standard '
-                        'Python lib.')
-@keras_export('keras.experimental.terminate_keras_multiprocessing_pools')
-def terminate_keras_multiprocessing_pools(grace_period=0.1, use_sigkill=False):
-  """Destroy Keras' multiprocessing pools to prevent deadlocks.
-
-  In general multiprocessing.Pool can interact quite badly with other, seemingly
-  unrelated, parts of a codebase due to Pool's reliance on fork. This method
-  cleans up all pools which are known to belong to Keras (and thus can be safely
-  terminated).
-
-  Args:
-    grace_period: Time (in seconds) to wait for process cleanup to propagate.
-    use_sigkill: Boolean of whether or not to perform a cleanup pass using
-      SIGKILL.
-
-  Returns:
-    A list of human readable strings describing all issues encountered. It is up
-    to the caller to decide whether to treat this as an error condition.
-  """
-  errors = []
-
-  # First cleanup the pools spawned by Keras. If we start killing workers and
-  # a parent pool is still alive it will just spawn replacements which we don't
-  # want.
-  gc.collect()
-  for pool in _DATA_POOLS:
-    pool.close()
-    pool.terminate()
-    # We do not join the pool, because that would wait forever if a worker
-    # refused to exit.
-
-    # Finally, delete our reference to the pool so that we do not block garbage
-    # collection.
-    del pool
-
-  # If there were any pools, sleep for a small grace period to allow everything
-  # to finalize.
-  if _DATA_POOLS:
-    time.sleep(grace_period)
-
-  # Now we kill any workers which are still alive. However we must compare
-  # the worker identifier to the set of identifiers which are known to have been
-  # spawned by pools belonging to Keras to avoid deleting unrelated workers.
-  # First we call the .terminate() method of a worker, and then if it still
-  # persists we directly send a signal to the process.  Certain worker tasks may
-  # be able to gracefully handle shutdown, so we send a SIGTERM and then
-  # optionally follow up with a SIGKILL.
-  visited_workers = set()
-  cleanup_passes = ['.terminate', 'SIGTERM']
-  if use_sigkill:
-    cleanup_passes.append('SIGKILL')
-  cleanup_passes.append('log')
-
-  for cleanup_pass in cleanup_passes:
-    while True:
-      # In rare cases, queue.qsize() overestimates the number of elements. This
-      # loop is designed to be more robust.
-      try:
-        _WORKER_IDS.add(get_worker_id_queue().get_nowait())
-      except queue.Empty:
-        break
-
-    gc.collect()
-    workers_terminated_this_pass = False
-    for worker in multiprocessing.active_children():
-      ident = worker.ident
-      if ident in _WORKER_IDS and worker.is_alive():
-        try:
-          if cleanup_pass == '.terminate':
-            # First we ask nicely.
-            worker.terminate()
-            worker.join(timeout=grace_period)
-            visited_workers.add(ident)
-            workers_terminated_this_pass = True
-          elif cleanup_pass in ('SIGTERM', 'SIGKILL'):
-            # Then we ask increasingly tersely.
-            os.kill(worker.pid, signal.SIGKILL if cleanup_pass == 'SIGKILL'
-                    else signal.SIGTERM)
-            workers_terminated_this_pass = True
-
-          elif cleanup_pass == 'log':
-            # And finally we give up and log the failure.
-            errors.append('worker still alive: {}, pid={}, hash={}'
-                          .format(worker.name, worker.pid, hash(worker)))
-
-        except OSError:
-          # Worker exited since the start of this loop.
-          pass
-
-    if workers_terminated_this_pass:
-      # There can be a small propagation delay between worker destruction and
-      # workers reporting False for is_alive and no longer appearing in the
-      # list of active children. Once again, we sleep for a small grace period.
-      # This prevents false positives from workers which are simply still in the
-      # process of spinning down.
-      time.sleep(grace_period)
-
-  # Finally we remove the visited worker ids to handle the edge case that a
-  # pid is reused.
-  _WORKER_IDS.difference_update(visited_workers)
-
-  gc.collect()
-  for pool in _DATA_POOLS:
-    errors.append('pool still exists: {}, hash={}'.format(pool, hash(pool)))
-
-  return errors
-
-
 def get_index(uid, i):
   """Get the value from the Sequence `uid` at index `i`.
 
@@ -669,7 +552,7 @@ def get_index(uid, i):
   get a specific one. A single Sequence would cause the validation to
   overwrite the training Sequence.
 
-  Arguments:
+  Args:
       uid: int, Sequence identifier
       i: index
 
@@ -737,7 +620,7 @@ class SequenceEnqueuer(object):
   def start(self, workers=1, max_queue_size=10):
     """Starts the handler's workers.
 
-    Arguments:
+    Args:
         workers: Number of workers.
         max_queue_size: queue size
             (when full, workers could block on `put()`)
@@ -764,7 +647,7 @@ class SequenceEnqueuer(object):
 
     Should be called by the same thread which called `start()`.
 
-    Arguments:
+    Args:
         timeout: maximum time to wait on `thread.join()`
     """
     self.stop_signal.set()
@@ -788,7 +671,7 @@ class SequenceEnqueuer(object):
   def _get_executor_init(self, workers):
     """Gets the Pool initializer for multiprocessing.
 
-    Arguments:
+    Args:
         workers: Number of workers.
 
     Returns:
@@ -814,7 +697,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
   Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
 
-  Arguments:
+  Args:
       sequence: A `tf.keras.utils.data_utils.Sequence` object.
       use_multiprocessing: use multiprocessing if True, otherwise threading
       shuffle: whether to shuffle the data at the beginning of each epoch
@@ -827,7 +710,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
   def _get_executor_init(self, workers):
     """Gets the Pool initializer for multiprocessing.
 
-    Arguments:
+    Args:
         workers: Number of workers.
 
     Returns:
@@ -934,7 +817,7 @@ def next_sample(uid):
   get a specific one. A single generator would cause the validation to
   overwrite the training generator.
 
-  Arguments:
+  Args:
       uid: int, generator identifier
 
   Returns:
@@ -952,7 +835,7 @@ class GeneratorEnqueuer(SequenceEnqueuer):
 
   Used in `fit_generator`, `evaluate_generator`, `predict_generator`.
 
-  Arguments:
+  Args:
       generator: a generator function which yields data
       use_multiprocessing: use multiprocessing if True, otherwise threading
       wait_time: time to sleep in-between calls to `put()`
@@ -969,7 +852,7 @@ class GeneratorEnqueuer(SequenceEnqueuer):
   def _get_executor_init(self, workers):
     """Gets the Pool initializer for multiprocessing.
 
-    Arguments:
+    Args:
       workers: Number of works.
 
     Returns:

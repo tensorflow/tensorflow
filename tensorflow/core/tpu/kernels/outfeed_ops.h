@@ -25,7 +25,8 @@ namespace tensorflow {
 
 // The OutfeedDequeue op is used to retrieve a single tensor from the device
 // outfeed queue.
-class TpuOutfeedDequeueOp : public TpuTransferAsyncOpKernel {
+template <class T>
+class TpuOutfeedDequeueOp : public T {
  public:
   explicit TpuOutfeedDequeueOp(OpKernelConstruction* ctx);
 
@@ -45,7 +46,8 @@ class TpuOutfeedDequeueOp : public TpuTransferAsyncOpKernel {
 
 // The OutfeedDequeueTuple op is used to retrieve multiple tensors from the
 // device outfeed queue.
-class TpuOutfeedDequeueTupleOp : public TpuTransferAsyncOpKernel {
+template <class T>
+class TpuOutfeedDequeueTupleOp : public T {
  public:
   explicit TpuOutfeedDequeueTupleOp(OpKernelConstruction* ctx);
 

@@ -21,10 +21,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSet.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
+#include "tensorflow/compiler/mlir/utils/string_container_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -84,22 +87,12 @@ Status SetShapeAttribute(absl::string_view name, ContainerT shapes,
   return Status::OK();
 }
 
-// Include the auto generated derived attribute populator function taking
-// TensorFlow dialect operation as an argument. This file contains the function
-// definitions and isn't a header file.
-#include "tensorflow/compiler/mlir/tensorflow/translate/derived_attr_populator.inc"
-
 // Collects all the unregistered attributes for an TF dialect operation.
 // Attributes "name" and "device" are not included because they are not part
 // of an TF op attributes.
 Status GetUnregisteredAttrs(
-    mlir::Operation* inst,
+    mlir::Operation* inst, const tensorflow::OpRegistrationData* op_reg_data,
     absl::flat_hash_set<absl::string_view>* attrs_to_ignore) {
-  TF_ASSIGN_OR_RETURN(auto op_name,
-                      GetTensorFlowOpName(inst->getName().getStringRef()));
-
-  const tensorflow::OpRegistrationData* op_reg_data =
-      tensorflow::OpRegistry::Global()->LookUp(std::string(op_name));
   if (!op_reg_data) {
     // This is likely a function call node, so we should continue.
     return Status::OK();
@@ -125,19 +118,24 @@ Status GetUnregisteredAttrs(
 // Collects all attribute names to ignore in an MLIR operation when exporting to
 // a TensorFlow NodeDef.
 StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
-    mlir::Operation* inst, bool ignore_unregistered_attrs) {
+    mlir::Operation* inst, mlir::DictionaryAttr derived_attrs,
+    const tensorflow::OpRegistrationData* op_reg_data,
+    bool ignore_unregistered_attrs) {
   // The elements are owned by the MLIRContext.
   absl::flat_hash_set<absl::string_view> attrs_to_ignore;
-  if (inst->isRegistered()) {
-    // We ignore attributes attached to the operation when there is already a
-    // derived attribute defined in ODS.
-    llvm::SmallDenseSet<llvm::StringRef> derived_attrs;
-    CollectDerivedAttrsName(inst, &derived_attrs);
-    for (auto name : derived_attrs) attrs_to_ignore.insert(name.data());
+
+  // We ignore attributes attached to the operation when there is already a
+  // derived attribute defined in ODS.
+  if (derived_attrs) {
+    for (auto derived_attr : derived_attrs) {
+      attrs_to_ignore.insert(
+          mlir::StringRefToView(derived_attr.first.strref()));
+    }
   }
 
   if (ignore_unregistered_attrs) {
-    TF_RETURN_IF_ERROR(GetUnregisteredAttrs(inst, &attrs_to_ignore));
+    TF_RETURN_IF_ERROR(
+        GetUnregisteredAttrs(inst, op_reg_data, &attrs_to_ignore));
   }
 
   if (inst->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
@@ -154,25 +152,27 @@ StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
     attrs_to_ignore.insert(attr_name.data());
   }
 
+  if (llvm::isa<mlir::TF::CaseOp, mlir::TF::IfOp, mlir::TF::WhileOp>(inst))
+    attrs_to_ignore.insert("is_stateless");
+
+  if (llvm::isa<mlir::TF::WhileOp>(inst))
+    attrs_to_ignore.insert("shape_invariant");
+
   return attrs_to_ignore;
 }
 
 // Populates all derived attributes of a MLIR operation in a proto
 // map<string, AttrValue>.
-Status PopulateDerivedAttributes(mlir::Operation* inst,
+Status PopulateDerivedAttributes(mlir::Operation* inst, llvm::StringRef name,
+                                 mlir::DictionaryAttr derived_attrs,
                                  bool ignore_unregistered_attrs,
                                  AttrValueMap* attributes) {
-  // Use auto generated function to populate derived attribute.
-  //
-  // Note: This only populates derived attributes for TensorFlow ops that are
-  // generated using the TableGen. Manually defined ops should have all the
-  // attributes present as native MLIR op attributes.
-
-  // If the operation is not registered, we won't be able to infer any attribute
-  if (inst->isRegistered()) {
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(PopulateDerivedAttrs(inst, attributes),
-                                    "When populating derived attrs for ",
-                                    inst->getName().getStringRef().str());
+  if (derived_attrs) {
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        ConvertAttributes(derived_attrs.getValue(), /*attrs_to_ignore=*/{},
+                          /*remove_ref_type=*/true, attributes),
+        "while converting derived attributes for node: ",
+        mlir::StringRefToView(name));
   }
 
   // Here we only add the shapes for the leading values with ShapedType,
@@ -197,28 +197,36 @@ Status PopulateDerivedAttributes(mlir::Operation* inst,
 
 }  // namespace
 
-Status GetAttrValuesFromOperation(mlir::Operation* inst, llvm::StringRef name,
-                                  bool ignore_unregistered_attrs,
-                                  AttrValueMap* attributes) {
+Status GetAttrValuesFromOperation(
+    mlir::Operation* inst, llvm::StringRef name,
+    const tensorflow::OpRegistrationData* op_reg_data,
+    bool ignore_unregistered_attrs, AttrValueMap* attributes) {
+  mlir::DictionaryAttr derived_attrs = nullptr;
+  if (auto interface = llvm::dyn_cast<mlir::DerivedAttributeOpInterface>(inst))
+    derived_attrs = interface.materializeDerivedAttributes();
   TF_ASSIGN_OR_RETURN(auto attrs_to_ignore,
-                      GetAttributesToIgnore(inst, ignore_unregistered_attrs));
+                      GetAttributesToIgnore(inst, derived_attrs, op_reg_data,
+                                            ignore_unregistered_attrs));
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertAttributes(inst->getAttrs(), attrs_to_ignore, attributes),
-      "while converting attributes for node: ", name.str());
-  TF_RETURN_IF_ERROR(
-      PopulateDerivedAttributes(inst, ignore_unregistered_attrs, attributes));
+      ConvertAttributes(inst->getAttrs(), attrs_to_ignore,
+                        /*remove_ref_type=*/false, attributes),
+      "while converting attributes for node: ", mlir::StringRefToView(name));
+  TF_RETURN_IF_ERROR(PopulateDerivedAttributes(
+      inst, name, derived_attrs, ignore_unregistered_attrs, attributes));
   return Status::OK();
 }
 
 StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     mlir::Operation* inst, llvm::StringRef name,
     bool ignore_unregistered_attrs) {
-  TF_ASSIGN_OR_RETURN(auto attrs_to_ignore,
-                      GetAttributesToIgnore(inst, ignore_unregistered_attrs));
-  TF_ASSIGN_OR_RETURN(auto node_def,
-                      GetOperationNodeDef(attrs_to_ignore, inst, name));
-  TF_RETURN_IF_ERROR(PopulateDerivedAttributes(inst, ignore_unregistered_attrs,
-                                               node_def->mutable_attr()));
+  TF_ASSIGN_OR_RETURN(auto node_def, GetOperationNodeDef(inst, name));
+  TF_ASSIGN_OR_RETURN(auto op_name,
+                      GetTensorFlowOpName(inst->getName().getStringRef()));
+  const tensorflow::OpRegistrationData* op_reg_data =
+      tensorflow::OpRegistry::Global()->LookUp(op_name.str());
+  TF_RETURN_IF_ERROR(GetAttrValuesFromOperation(inst, name, op_reg_data,
+                                                ignore_unregistered_attrs,
+                                                node_def->mutable_attr()));
   return node_def;
 }
 

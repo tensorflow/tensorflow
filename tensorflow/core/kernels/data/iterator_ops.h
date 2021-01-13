@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -33,22 +34,12 @@ class IteratorResource : public ResourceBase {
  public:
   IteratorResource(Env* env, const DataTypeVector& output_dtypes,
                    const std::vector<PartialTensorShape>& output_shapes,
-                   const int /*unused: graph_def_version*/,
                    std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-                   FunctionLibraryRuntime* flr)
-      : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
-        device_mgr_(std::move(device_mgr)),
-        iterator_state_(std::make_shared<State>(std::move(flib_def),
-                                                std::move(pflr), flr,
-                                                /*iterator=*/nullptr)),
-        output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes) {
-    VLOG(2) << "constructor";
-  }
+                   FunctionLibraryRuntime* flr);
 
-  ~IteratorResource() override { VLOG(2) << "destructor"; }
+  ~IteratorResource() override;
 
   // Gets the next output from the iterator managed by this iterator resource.
   //
@@ -82,63 +73,68 @@ class IteratorResource : public ResourceBase {
   }
 
  private:
-  // TODO(aaudibert): convert to a class for better encapsulation.
-  struct State {
+  class State {
+   public:
     State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
           std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
           FunctionLibraryRuntime* flr,
           std::unique_ptr<DatasetBaseIterator> iterator)
-        : flib_def(std::move(flib_def)),
-          flr(flr),
-          pflr(std::move(pflr)),
-          function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
-          iterator(std::move(iterator)),
-          last_get_next_end_time_us(0) {}
+        : flib_def_(std::move(flib_def)),
+          flr_(flr),
+          pflr_(std::move(pflr)),
+          function_handle_cache_(absl::make_unique<FunctionHandleCache>(flr)),
+          iterator_(std::move(iterator)) {}
 
-    ~State() { cancellation_manager.StartCancel(); }
+    ~State() { cancellation_manager_.StartCancel(); }
 
     // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
     // it to set the `iterator` field.
     void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
-      iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
+      iterator_.reset(static_cast<DatasetBaseIterator*>(it.release()));
     }
 
-    std::shared_ptr<FunctionLibraryDefinition> flib_def;
-    FunctionLibraryRuntime* flr = nullptr;  // not owned.
-    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
-    std::unique_ptr<FunctionHandleCache> function_handle_cache;
-    ResourceMgr resource_mgr;
-    CancellationManager cancellation_manager;
-    std::unique_ptr<DatasetBaseIterator> iterator;
-    uint64 last_get_next_end_time_us;
+    std::shared_ptr<FunctionLibraryDefinition> flib_def() { return flib_def_; }
+
+    FunctionLibraryRuntime* flr() { return flr_; }
+
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr() { return pflr_; }
+
+    FunctionHandleCache* function_handle_cache() {
+      return function_handle_cache_.get();
+    }
+
+    ResourceMgr* resource_mgr() { return &resource_mgr_; }
+
+    CancellationManager* cancellation_manager() {
+      return &cancellation_manager_;
+    }
+
+    DatasetBaseIterator* iterator() { return iterator_.get(); }
+
+   private:
+    std::shared_ptr<FunctionLibraryDefinition> flib_def_;
+    FunctionLibraryRuntime* flr_ = nullptr;  // not owned
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr_;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache_;
+    ResourceMgr resource_mgr_;
+    CancellationManager cancellation_manager_;
+    std::unique_ptr<DatasetBaseIterator> iterator_;
   };
-
-  // For thread-local record-keeping state
-  struct RecordCtx {
-    RecordCtx() : get_next_start_time_us(0), last_get_next_end_time_us(0) {}
-
-    uint64 get_next_start_time_us;
-    uint64 last_get_next_end_time_us;
-  };
-
-  // Copies relevant state to the RecordCtx
-  // Intended to be followed by RecordGetNextStart and RecordGetNextEnd.
-  // Recorded times must be measured after this call to enforce ordering.
-  RecordCtx CreateRecordCtx() TF_LOCKS_EXCLUDED(mu_);
-
-  // Records that GetNext() has started work.
-  void RecordGetNextStart(RecordCtx& record_ctx, const uint64 start_time_us);
-
-  // Records that GetNext() has ended work.
-  void RecordGetNextEnd(const RecordCtx& record_ctx, const uint64 end_time_us)
-      TF_LOCKS_EXCLUDED(mu_);
 
   UnboundedThreadPool unbounded_thread_pool_;
   mutex mu_;
+  // Records the number of currently active `GetNext()` calls.
+  uint64 num_get_next_calls_ TF_GUARDED_BY(mu_) = 0;
+  // Records the start time (in microseconds) of the first `GetNext()` call that
+  // followed the last period of inactivity.
+  uint64 get_next_start_time_us_ TF_GUARDED_BY(mu_) = 0;
+  // Records the end time (in microseconds) of the most recent `GetNext()` call.
+  uint64 get_next_end_time_us_ TF_GUARDED_BY(mu_) = 0;
   const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
+  const bool collect_metrics_;
 };
 
 class IteratorHandleOp : public OpKernel {

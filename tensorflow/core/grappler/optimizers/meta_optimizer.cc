@@ -93,10 +93,6 @@ bool IsRunOnceOptimizer(const string& name) {
          name == "auto_mixed_precision_mkl";
 }
 
-bool IsTFDataFunction(const FunctionDef& func) {
-  return func.attr().contains(data::kTFDataFunction);
-}
-
 // Creates a function library stub from a real function library: copy only
 // signatures and attributes of all the function defined in fdef_lib. This stub
 // can be swapped with real function library in a graph, before passing it to
@@ -174,17 +170,22 @@ bool MemoryOptimizerEnabled(
 #define MK_OPT(NAME, VALUE) \
   if (optimizer == NAME) return std::unique_ptr<GraphOptimizer>(VALUE)
 
-bool MetaOptimizer::IsSingleThreadedExecutor() const {
-  return config_proto_.experimental().executor_type() ==
-         "SINGLE_THREADED_EXECUTOR";
+bool MetaOptimizer::LowerControlFlow() const {
+  if (config_proto_.experimental().executor_type() ==
+      "SINGLE_THREADED_EXECUTOR")
+    return false;
+
+  if (config_proto_.experimental().use_tfrt()) return false;
+
+  return true;
 }
 
 std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     const string& optimizer) const {
   MK_OPT("pruning", new ModelPruner());
-  MK_OPT("function", new FunctionOptimizer(
-                         cfg_.function_optimization(),
-                         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+  MK_OPT("function",
+         new FunctionOptimizer(cfg_.function_optimization(),
+                               /*lower_control_flow=*/LowerControlFlow()));
   MK_OPT("constfold",
          new ConstantFolding(
              cpu_device_,
@@ -239,7 +240,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
-        /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+        /*lower_control_flow=*/LowerControlFlow()));
   }
   if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
       cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -268,6 +269,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
+  if (cfg_.remapping() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
@@ -276,9 +280,6 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
         /*optimization level*/ cfg_.layout_optimizer(),
         /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
-  }
-  if (cfg_.remapping() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
@@ -615,6 +616,63 @@ Status MetaOptimizer::RunOptimizer(
   return Status::OK();
 }
 
+// Propagates `_tf_data_function` attributes from functions to their callees.
+void PropagateTFDataAttrs(const FunctionLibraryDefinition& flib,
+                          FunctionDefLibrary& fdef_lib) {
+  // Collect functions that need the attribute in this set.
+  absl::flat_hash_set<std::string> tf_data_functions;
+  std::function<void(const std::string&)> collect_tf_data_functions_dfs =
+      [&](const std::string& func_name) -> void {
+    const FunctionDef* func_def = flib.Find(func_name);
+    // Skip functions that are not reachable from the optimized graph.
+    if (func_def == nullptr) return;
+
+    // Return if we already found and added this function.
+    if (tf_data_functions.contains(func_name)) return;
+
+    // We only get here if the function is (directly or indirectly) called from
+    // a tf.data function, so add it to the set.
+    tf_data_functions.insert(func_name);
+
+    // Proceed with DFS for functions called from current function.
+    for (const NodeDef& node : func_def->node_def()) {
+      if (flib.Contains(node.op())) {
+        // This is a function call node.
+        collect_tf_data_functions_dfs(node.op());
+      }
+      // Check if there are functions in attributes.
+      for (const auto& attr : node.attr()) {
+        const AttrValue& attr_value = attr.second;
+        if (attr_value.has_func()) {
+          collect_tf_data_functions_dfs(attr_value.func().name());
+        }
+        if (attr_value.has_list()) {
+          for (const auto& func : attr_value.list().func()) {
+            collect_tf_data_functions_dfs(func.name());
+          }
+        }
+      }
+    }
+  };
+  // Perform DFS for all tf.data functions in `fdef_lib`.
+  for (const auto& func_def : fdef_lib.function()) {
+    const std::string& func_name = func_def.signature().name();
+    if (data::IsTFDataFunction(func_def))
+      collect_tf_data_functions_dfs(func_name);
+  }
+  // Set attribute for tf.data functions. We cannot do this in the DFS directly
+  // because `FunctionLibraryDefinition` does not seem to provide mutable access
+  // to a `FunctionDef`.
+  for (FunctionDef& func_def : *fdef_lib.mutable_function()) {
+    const std::string& func_name = func_def.signature().name();
+    if (tf_data_functions.contains(func_name) &&
+        !data::IsTFDataFunction(func_def)) {
+      VLOG(2) << "Marking " << func_name << " as tf.data function";
+      (*func_def.mutable_attr())[data::kTFDataFunction].set_b(true);
+    }
+  }
+}
+
 Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
                                           GraphDef* optimized_graph) {
   const uint64 start_us = Env::Default()->NowMicros();
@@ -636,13 +694,13 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // remove all the unreachable functions.
   // TODO(ezhulenev): Construct reachable function library definition directly
   // from the proto without constructing temporary FunctionLibraryDefinition.
+  int old_library_size = item.graph.library().function_size();
   *item.graph.mutable_library() = minimized_flib(item.graph).ToProto();
+  int new_library_size = item.graph.library().function_size();
 
   VLOG(1) << absl::Substitute(
       "Deleted $0 unreachable functions from the graph (library size = $1)",
-      item.graph.library().function_size() -
-          item.graph.library().function_size(),
-      item.graph.library().function_size());
+      old_library_size - new_library_size, new_library_size);
 
   // Save a few small fields from item before we move it.
   bool optimize_function_library =
@@ -722,6 +780,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   for (const FunctionDef& function : optimized_graph->library().function()) {
     find_xla_compiled_functions(function.node_def());
   }
+  // Propagate `_tf_data_function` attributes from functions to their callees.
+  PropagateTFDataAttrs(flib, *optimized_graph->mutable_library());
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
@@ -747,8 +807,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
 
-      // Skip tf.data functions as they are optimized by tf.data meta optimizer.
-      if (IsTFDataFunction(func)) continue;
+      // Skip tf.data functions as they are optimized by tf.data meta optimizer
+      // and in function instantiation.
+      if (data::IsTFDataFunction(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name << " ["
               << function_idx++ << " of "

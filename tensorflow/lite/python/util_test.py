@@ -24,7 +24,6 @@ import numpy as np
 from six.moves import range
 import tensorflow as tf
 
-from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
@@ -231,7 +230,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([None, 3, 5], tensor.shape)
 
 
-def _generate_integer_tflite_model():
+def _generate_integer_tflite_model(quantization_type=dtypes.int8):
   """Define an integer post-training quantized tflite model."""
   # Load MNIST dataset
   n = 10  # Number of samples
@@ -277,7 +276,13 @@ def _generate_integer_tflite_model():
               np.float32)
       ]
   converter.representative_dataset = representative_dataset_gen
-  converter.target_spec.supported_ops = {tf.lite.OpsSet.TFLITE_BUILTINS_INT8}
+  if quantization_type == dtypes.int8:
+    converter.target_spec.supported_ops = {tf.lite.OpsSet.TFLITE_BUILTINS_INT8}
+  else:
+    converter.target_spec.supported_ops = {
+        tf.lite.OpsSet
+        .EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+    }
   tflite_model = converter.convert()
 
   return tflite_model
@@ -286,22 +291,24 @@ def _generate_integer_tflite_model():
 def _test_param_modify_integer_model_io_type():
   """Function to generate parameterized inputs for testing."""
   params = []
-  str_template = "_{}{}{}"
+  str_template = "_{}{}{}{}"
   map_model_type = {
       "PostTraining": True,
       # "DuringTraining": False,
   }
-  map_types = {
-      "": lite_constants.FLOAT,
-      "INT8": lite_constants.INT8,
-      "UINT8": lite_constants.QUANTIZED_UINT8
+  map_quantize_type_to_io_types = {
+      tf.int8: {tf.float32, tf.int8, tf.uint8},
+      tf.int16: {tf.float32, tf.int16}
   }
   for k1, v1 in map_model_type.items():
-    for k2, v2 in map_types.items():
-      istr = "_Input{}".format(k2) if k2 else ""
-      for k3, v3 in map_types.items():
-        ostr = "_Output{}".format(k3) if k3 else "" if istr else "_NoUpdate"
-        params.append((str_template.format(k1, istr, ostr), v1, v2, v3))
+    for qtype, v2 in map_quantize_type_to_io_types.items():
+      qstr = "_IntegerQuantize{}".format(qtype.name.capitalize())
+      for itype in v2:
+        istr = "_Input{}".format(itype.name.capitalize())
+        for otype in v2:
+          ostr = "_Output{}".format(otype.name.capitalize())
+          params.append((str_template.format(k1, qstr, istr, ostr),
+                         v1, qtype, itype, otype))
   return params
 
 
@@ -312,10 +319,12 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(
   @classmethod
   def setUpClass(cls):
     super(UtilModifyIntegerQuantizedModelIOTypeTest, cls).setUpClass()
-    cls.post_train_integer_model = _generate_integer_tflite_model()
+    cls.post_train_int8_model = _generate_integer_tflite_model()
+    cls.post_train_int16_model = _generate_integer_tflite_model(
+        quantization_type=dtypes.int16)
 
   @parameterized.named_parameters(_test_param_modify_integer_model_io_type())
-  def test(self, is_post_train, in_tftype, out_tftype):
+  def test(self, is_post_train, quantization_type, in_tftype, out_tftype):
     """Modify the float input/output type of an integer quantized model."""
 
     def _run_tflite_inference(model, in_tftype, out_tftype):
@@ -354,15 +363,26 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(
 
       return output_data
 
-    model = self.__class__.post_train_integer_model if is_post_train else None
+    if is_post_train and quantization_type == tf.int8:
+      model = self.__class__.post_train_int8_model
+    elif is_post_train and quantization_type == tf.int16:
+      model = self.__class__.post_train_int16_model
+    else:
+      model = None
     # Run model inference with float input output type
     output_data = _run_tflite_inference(model, tf.float32, tf.float32)
+    # Modify the model io types to the target input/output types.
+    model_io = util.modify_model_io_type(model, in_tftype, out_tftype)
     # Run model inference with modified integer input output type
-    model_io = util.modify_integer_quantized_model_io_type(
-        model, in_tftype, out_tftype)
     output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
+    # Validate that both the outputs are the same
+    self.assertAllClose(output_data, output_io_data, atol=1.0)
 
-     # Validate that both the outputs are the same
+    # Modify the model with the target input/output types should be a no op.
+    model_io = util.modify_model_io_type(model_io, in_tftype, out_tftype)
+    # Run model inference with modified integer input output type
+    output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
+    # Validate that both the outputs are the same
     self.assertAllClose(output_data, output_io_data, atol=1.0)
 
 

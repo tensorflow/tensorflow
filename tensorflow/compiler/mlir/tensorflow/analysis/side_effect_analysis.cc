@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 
-#include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
@@ -31,11 +30,11 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -43,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -95,20 +95,37 @@ struct SideEffects {
 
 using ResourceSideEffectsByValue = llvm::SmallDenseMap<Value, SideEffects>;
 
+bool MustExecute(const MemoryEffects::EffectInstance& effect) {
+  if (llvm::isa<ResourceEffects::TPUEmbedding>(effect.getResource())) {
+    assert(!effect.getValue() && !effect.getParameters() &&
+           isa<MemoryEffects::Write>(effect.getEffect()));
+    return true;
+  }
+  return false;
+}
+
 // Collects memory side effects for an operation by value (operands and
 // results).
-ResourceSideEffectsByValue GetResourceInfoForOp(Operation* op) {
-  ResourceSideEffectsByValue resource_info;
-
+void GetResourceInfoForOp(Operation* op,
+                          ResourceSideEffectsByValue& resource_info,
+                          bool& must_execute) {
   auto interface = dyn_cast<MemoryEffectOpInterface>(op);
-  if (!interface) return resource_info;
+  if (!interface) return;
 
   llvm::SmallVector<MemoryEffects::EffectInstance, 4> effects;
   interface.getEffects(effects);
 
   for (auto& effect : effects) {
+    if (MustExecute(effect)) {
+      must_execute = true;
+      continue;
+    }
     // TODO(lyandy): Support effects with no value defined.
-    if (!effect.getValue()) return ResourceSideEffectsByValue();
+    if (!effect.getValue()) {
+      resource_info.clear();
+      must_execute = false;
+      return;
+    }
     auto it = resource_info.try_emplace(effect.getValue());
     auto& side_effect = it.first->getSecond();
     auto* resource_effect = effect.getEffect();
@@ -121,11 +138,11 @@ ResourceSideEffectsByValue GetResourceInfoForOp(Operation* op) {
     } else if (isa<MemoryEffects::Write>(resource_effect)) {
       side_effect.write = true;
     } else {
-      return ResourceSideEffectsByValue();
+      resource_info.clear();
+      must_execute = false;
+      return;
     }
   }
-
-  return resource_info;
 }
 
 // Checks if a value is a result of `op`.
@@ -329,6 +346,7 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
   // We explicitly iterates through the regions and blocks, in order to handle
   // different nested regions separately.
   for (auto& block : *region) {
+    llvm::SmallPtrSet<Operation*, 8> non_resource_control_predecessors;
     for (auto& op : block) {
       for (Region& child : op.getRegions()) {
         SideEffectAnalysisInfo child_analysis(&child, alias_analysis);
@@ -341,9 +359,20 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       // We do not need explicit control edges for declaration ops.
       if (OpIsDeclaration(&op, alias_analysis)) continue;
 
-      auto resource_op_info = GetResourceInfoForOp(&op);
+      ResourceSideEffectsByValue resource_op_info;
+      bool must_execute = false;
+      GetResourceInfoForOp(&op, resource_op_info, must_execute);
+
       if (resource_op_info.empty() && OpIsKnownToHaveNoSideEffect(&op))
         continue;
+
+      if (resource_op_info.empty() && must_execute) {
+        // Add unknown resource ops as predecessors of the op that must execute,
+        // to guarantee ordering between unknown resource ops.
+        AddPredecessorsForAccess(kUnknownResourceId, &op, /*read_only=*/false);
+        non_resource_control_predecessors.insert(&op);
+        continue;
+      }
 
       if (IsResourceOpAllocOnly(&op, resource_op_info)) continue;
 
@@ -400,6 +429,14 @@ void SideEffectAnalysisInfo::AnalyzeRegion(
       if (!resource_ids_by_value.hasValue()) {
         // Update access info for unknown resource.
         TrackAccess(kUnknownResourceId, &op, read_only);
+        // Add ops that must execute to unknown resource op predecessors.
+        auto& control_predecessors = control_predecessors_[&op];
+        control_predecessors.insert(non_resource_control_predecessors.begin(),
+                                    non_resource_control_predecessors.end());
+        // Ops that must execute currently tracked are cleared as transitively
+        // unknown resource ops will allow for such ops to be transitively
+        // reachable.
+        non_resource_control_predecessors.clear();
       }
     }
   }

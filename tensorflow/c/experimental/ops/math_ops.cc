@@ -16,22 +16,21 @@ limitations under the License.
 
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
+#include "tensorflow/c/eager/tracing_utils.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/errors.h"
+
+using tensorflow::tracing::MaybeSetOpName;
+
 namespace tensorflow {
 namespace ops {
-using tensorflow::tracing::TracingOperation;
 
 Status Mul(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr mul_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(mul_op->Reset("Mul", /*raw_device_name=*/nullptr));
-  if (isa<TracingOperation>(mul_op.get())) {
-    TF_RETURN_IF_ERROR(
-        dyn_cast<TracingOperation>(mul_op.get())->SetOpName(name));
-  }
+  TF_RETURN_IF_ERROR(MaybeSetOpName(mul_op.get(), name));
   TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[0]));
   TF_RETURN_IF_ERROR(mul_op->AddInput(inputs[1]));
   int num_retvals = 1;
@@ -45,8 +44,18 @@ Status Conj(AbstractContext* ctx,
   if (DataTypeIsFloating(BaseType(dtype)) ||
       DataTypeIsInteger(BaseType(dtype))) {
     TF_RETURN_IF_ERROR(Identity(ctx, inputs, outputs, name));
+  } else if (DataTypeIsComplex(BaseType(dtype)) ||
+             BaseType(dtype) == DT_VARIANT) {
+    AbstractOperationPtr conj_op(ctx->CreateOperation());
+    TF_RETURN_IF_ERROR(conj_op->Reset("Conj", /*raw_device_name=*/nullptr));
+    TF_RETURN_IF_ERROR(MaybeSetOpName(conj_op.get(), name));
+    TF_RETURN_IF_ERROR(conj_op->AddInput(inputs[0]));
+
+    int num_retvals = 1;
+    TF_RETURN_IF_ERROR(conj_op->Execute(outputs, &num_retvals));
   } else {
-    return errors::Unimplemented("Conj does not support complex types yet.");
+    return errors::InvalidArgument(
+        "Expected numeric or variant tensor, got dtype ", dtype);
   }
   return Status::OK();
 }
@@ -55,17 +64,25 @@ Status Add(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr add_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(add_op->Reset("AddV2", /*raw_device_name=*/nullptr));
-
-  if (isa<tracing::TracingOperation>(add_op.get())) {
-    TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName(name));
-  }
-
+  TF_RETURN_IF_ERROR(MaybeSetOpName(add_op.get(), name));
   TF_RETURN_IF_ERROR(add_op->AddInput(inputs[0]));
   TF_RETURN_IF_ERROR(add_op->AddInput(inputs[1]));
 
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(add_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr sub_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(sub_op->Reset("Sub", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(sub_op.get(), name));
+  TF_RETURN_IF_ERROR(sub_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(sub_op->AddInput(inputs[1]));
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(sub_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
 
@@ -75,12 +92,7 @@ Status MatMul(AbstractContext* ctx,
               bool transpose_a = false, bool transpose_b = false) {
   AbstractOperationPtr matmul_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(matmul_op->Reset("MatMul", /*raw_device_name=*/nullptr));
-
-  if (isa<tracing::TracingOperation>(matmul_op.get())) {
-    TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(matmul_op.get())->SetOpName(name));
-  }
-
+  TF_RETURN_IF_ERROR(MaybeSetOpName(matmul_op.get(), name));
   TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[0]));
   TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[1]));
 
@@ -96,14 +108,104 @@ Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr neg_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(neg_op->Reset("Neg", /*raw_device_name=*/nullptr));
-  if (isa<TracingOperation>(neg_op.get())) {
-    TF_RETURN_IF_ERROR(
-        dyn_cast<TracingOperation>(neg_op.get())->SetOpName(name));
-  }
+  TF_RETURN_IF_ERROR(MaybeSetOpName(neg_op.get(), name));
   TF_RETURN_IF_ERROR(neg_op->AddInput(inputs[0]));
 
   int num_retvals = 1;
   return neg_op->Execute(outputs, &num_retvals);
+}
+
+Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr sum_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(sum_op->Reset("Sum", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(sum_op.get(), name));
+  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[0]));  // input_vals
+  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[1]));  // reduction_indices
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(sum_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status Div(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr div_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(div_op->Reset("Div", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(div_op.get(), name));
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[0]));  // x
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[1]));  // y
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(div_op->Execute(outputs, &num_retvals));  // z = x / y
+  return Status::OK();
+}
+
+Status DivNoNan(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr div_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(div_op->Reset("DivNoNan", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(div_op.get(), name));
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[0]));  // x
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[1]));  // y
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(div_op->Execute(
+      outputs, &num_retvals));  // z = x / y, (z_i = 0 if y_i = 0)
+  return Status::OK();
+}
+
+Status Exp(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr exp_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(exp_op->Reset("Exp", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(exp_op.get(), name));
+  TF_RETURN_IF_ERROR(exp_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  return exp_op->Execute(outputs, &num_retvals);
+}
+
+Status Sqrt(AbstractContext* ctx,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr sqrt_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(sqrt_op->Reset("Sqrt", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(sqrt_op.get(), name));
+  TF_RETURN_IF_ERROR(sqrt_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  Status s = sqrt_op->Execute(outputs, &num_retvals);
+  return s;
+}
+
+Status SqrtGrad(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr sqrt_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      sqrt_grad_op->Reset("SqrtGrad", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(sqrt_grad_op.get(), name));
+  TF_RETURN_IF_ERROR(sqrt_grad_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(sqrt_grad_op->AddInput(inputs[1]));
+
+  int num_retvals = 1;
+  Status s = sqrt_grad_op->Execute(outputs, &num_retvals);
+  return s;
+}
+
+Status Log1p(AbstractContext* ctx,
+             absl::Span<AbstractTensorHandle* const> inputs,
+             absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr log1p_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(log1p_op->Reset("Log1p", /*raw_device_name=*/nullptr));
+  TF_RETURN_IF_ERROR(MaybeSetOpName(log1p_op.get(), name));
+  TF_RETURN_IF_ERROR(log1p_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  Status s = log1p_op->Execute(outputs, &num_retvals);
+  return s;
 }
 
 }  // namespace ops

@@ -14,27 +14,28 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_grpc.h"
 
-#include <grpcpp/impl/codegen/async_stream.h>
-#include <grpcpp/impl/codegen/async_unary_call.h>
-#include <grpcpp/impl/codegen/channel_interface.h>
-#include <grpcpp/impl/codegen/client_callback.h>
-#include <grpcpp/impl/codegen/client_unary_call.h>
-#include <grpcpp/impl/codegen/method_handler.h>
-#include <grpcpp/impl/codegen/rpc_service_method.h>
-#include <grpcpp/impl/codegen/server_callback.h>
-#include <grpcpp/impl/codegen/service_type.h>
-#include <grpcpp/impl/codegen/sync_stream.h>
-
 #include <functional>
+
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/channel_interface.h"
+#include "grpcpp/impl/codegen/client_callback.h"
+#include "grpcpp/impl/codegen/client_unary_call.h"
+#include "grpcpp/impl/codegen/method_handler.h"
+#include "grpcpp/impl/codegen/rpc_service_method.h"
+#include "grpcpp/impl/codegen/server_callback.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
+
 namespace tensorflow {
 namespace tpu {
 
 static const char* grpcTpuCompilationCacheService_method_names[] = {
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
     "/tensorflow.tpu.TpuCompilationCacheServiceExternal/GetTpuProgram",
-#else  // LIBTFTPU
+#else  // LIBTPU_ON_GCE
     "/tensorflow.tpu.TpuCompilationCacheService/GetTpuProgram",
-#endif  // LIBTFTPU
+#endif  // LIBTPU_ON_GCE
 };
 
 std::unique_ptr<grpc::TpuCompilationCacheService::Stub>

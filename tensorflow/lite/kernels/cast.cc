@@ -32,8 +32,11 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
 
   // TODO(ahentz): these two checks would make the new implementation
   // incompatible with some existing models, where params is not specified. It
@@ -77,6 +80,9 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
     case kTfLiteInt32:
       copyCast(in, out->data.i32, num_elements);
       break;
+    case kTfLiteInt16:
+      copyCast(in, out->data.i16, num_elements);
+      break;
     case kTfLiteUInt8:
       copyCast(in, out->data.uint8, num_elements);
       break;
@@ -98,8 +104,11 @@ TfLiteStatus copyToTensor(TfLiteContext* context, const FromT* in,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
+  TfLiteTensor* output;
+  TF_LITE_ENSURE_OK(context,
+                    GetOutputSafe(context, node, kOutputTensor, &output));
   const int num_elements = NumElements(input);
   TF_LITE_ENSURE_EQ(context, num_elements, NumElements(output));
   switch (input->type) {
@@ -107,6 +116,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(context, input->data.i64, output, num_elements);
     case kTfLiteInt32:
       return copyToTensor(context, input->data.i32, output, num_elements);
+    case kTfLiteInt16:
+      return copyToTensor(context, input->data.i16, output, num_elements);
     case kTfLiteUInt8:
       return copyToTensor(context, input->data.uint8, output, num_elements);
     case kTfLiteFloat32:

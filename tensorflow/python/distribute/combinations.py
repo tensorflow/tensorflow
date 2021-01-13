@@ -37,15 +37,16 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_combinations as combinations_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
-FLAGS = flags.FLAGS
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(rchao): Rename `distribution` parameter to `strategy` or
@@ -87,20 +88,46 @@ class ClusterParameters(combinations_lib.ParameterModifier):
           raise ValueError("Only support one NamedDistribution for multi worker"
                            "tests.")
         strategy = v
+
+    if strategy:
+      has_chief = strategy.has_chief
+      num_workers = strategy.num_workers
+      runner = strategy.runner
+      if "has_chief" in kwargs and kwargs["has_chief"] != has_chief:
+        raise ValueError(
+            "both has_chief and strategy specified but are not compatible")
+      if "num_workers" in kwargs and kwargs["num_workers"] != num_workers:
+        raise ValueError(
+            "both num_workers and strategy specified but are not compatible")
+    else:
+      has_chief = kwargs.get("has_chief", False)
+      num_workers = kwargs.get("num_workers", 1)
+      runner = kwargs.get("runner", None)
+
     # Always set cluster parameters if they're requested. So that generate()
     # works when there's no startegy in the combinations.
     update = {}
     if "has_chief" in requested_parameters:
-      update["has_chief"] = strategy.has_chief if strategy else False
+      update["has_chief"] = has_chief
     if "num_workers" in requested_parameters:
-      update["num_workers"] = strategy.num_workers if strategy else 1
+      update["num_workers"] = num_workers
     if "runner" in requested_parameters:
-      update["runner"] = strategy.runner if strategy else None
+      update["runner"] = runner
     return update
 
 
 class DistributionCombination(combinations_lib.TestCombination):
   """Sets up distribution strategy for tests."""
+
+  def should_execute_combination(self, kwargs):
+    distributions = [
+        v for v in kwargs.values() if isinstance(v, NamedDistribution)
+    ]
+    if test_util.is_xla_enabled() and any(d.no_xla for d in distributions):
+      return (
+          False,
+          "n/a: skipping strategy combination with no_xla=True in XLA tests")
+    return (True, None)
 
   def parameter_modifiers(self):
     return [
@@ -200,7 +227,7 @@ class TPUCombination(combinations_lib.TestCombination):
                                   [d.required_tpu or 0 for d in distributions])
     use_cloud_tpu = any([kwargs.get("use_cloud_tpu")] +
                         [d.use_cloud_tpu for d in distributions])
-    tpu = hasattr(FLAGS, "tpu") and FLAGS.tpu or ""
+    tpu = hasattr(flags.FLAGS, "tpu") and flags.FLAGS.tpu or ""
 
     if not number_of_required_tpus and TPUCombination.TPU_TEST:
       return (False, "Test that doesn't require TPUs.")
@@ -231,7 +258,8 @@ class NamedDistribution(object):
                use_cloud_tpu=False,
                has_chief=False,
                num_workers=1,
-               use_pool_runner=False):
+               pool_runner_fn=None,
+               no_xla=False):
     """Initialize NamedDistribution.
 
     Args:
@@ -242,8 +270,9 @@ class NamedDistribution(object):
       use_cloud_tpu: Whether the strategy requires cloud TPU.
       has_chief: Whether the strategy requires a chief worker.
       num_workers: The number of workers that the strategy requires.
-      use_pool_runner: Whether to use a pool runner so that workers are re-used
-        each time.
+      pool_runner_fn: An optional callable that returns a MultiProcessPoolRunner
+        to run the test.
+      no_xla: Whether to skip in XLA tests.
     """
     object.__init__(self)
     self._name = name
@@ -253,23 +282,14 @@ class NamedDistribution(object):
     self.use_cloud_tpu = use_cloud_tpu
     self.has_chief = has_chief
     self.num_workers = num_workers
-    self._runner = None
-
-    if _num_total_workers(self.has_chief, self.num_workers) > 1:
-      cluster_spec = multi_worker_test_base.create_cluster_spec(
-          has_chief=has_chief,
-          num_workers=num_workers,
-          num_ps=0,
-          has_eval=False)
-      if use_pool_runner:
-        # Need to create the strategy in the initializer so that collectives are
-        # configured before eager context initialization.
-        self._runner = multi_process_runner.MultiProcessPoolRunner(
-            cluster_spec, initializer=self._distribution_fn)
+    self._pool_runner_fn = pool_runner_fn
+    self.no_xla = no_xla
 
   @property
   def runner(self):
-    return self._runner
+    if self._pool_runner_fn is not None:
+      return self._pool_runner_fn()
+    return None
 
   @property
   def strategy(self):
@@ -277,6 +297,24 @@ class NamedDistribution(object):
 
   def __repr__(self):
     return self._name
+
+
+# This is to allow adding combinations that runs a function both as a
+# tf.function and eagerly.
+#
+# @combinations.generate(
+#   combinations.combine(
+#     tf_function = [combinations.tf_function, combinations.no_tf_function]
+#   )
+# )
+# def testXXX(tf_function):
+#   @tf_function
+#   def foo():
+#     tf.add(1., 1.)
+#
+#   foo()
+tf_function = combinations_lib.NamedObject("TfFunction", def_function.function)
+no_tf_function = combinations_lib.NamedObject("NoTfFunction", lambda f: f)
 
 
 def concat(*combined):
@@ -287,15 +325,16 @@ def concat(*combined):
   return result
 
 
+@tf_export("__internal__.distribute.combinations.generate", v1=[])
 def generate(combinations, test_combinations=()):
   # pylint: disable=g-doc-args,g-doc-return-or-yield
-  """Distributed adapter of `framework.combinations_lib.generate`.
+  """Distributed adapter of `tf.__internal__.test.combinations.generate`.
 
   All tests with distributed strategy should use this one instead of
-  `framework.test_combinations.generate`. This function has support of strategy
-  combinations, GPU/TPU and multi worker support.
+  `tf.__internal__.test.combinations.generate`. This function has support of
+  strategy combinations, GPU/TPU and multi worker support.
 
-  See `framework.test_combinations_lib.generate` for usage.
+  See `tf.__internal__.test.combinations.generate` for usage.
   """
   # pylint: enable=g-doc-args,g-doc-return-or-yield
   default_combinations = (
@@ -333,21 +372,56 @@ times = combinations_lib.times
 NamedObject = combinations_lib.NamedObject
 
 
-def main():
-  """Tests must call this main()."""
-  return multi_process_runner.test_main()
-
-
 # Identifies whether we're in the main process or worker processes.
 # `_multi_worker_test` decoration behaves differently in the main processs and
 # the worker processes. See the documentation of _multi_worker_test for detail.
 _running_in_worker = False
 
 
+def in_main_process():
+  """Whether it's in the main test process.
+
+  This is normally used to prepare the test environment which should only happen
+  in the main process.
+
+  Returns:
+    A boolean.
+  """
+  return not _running_in_worker
+
+
+class TestEnvironment(object):
+
+  def __init__(self):
+    self.tf_data_service_dispatcher = None
+
+  def __setattr__(self, name, value):
+    if not in_main_process():
+      raise ValueError(
+          "combinations.env() should only be modified in the main process. "
+          "Condition your code on combinations.in_main_process().")
+    super().__setattr__(name, value)
+
+
+_env = TestEnvironment()
+
+
+def env():
+  """Returns the object holds the test environment information.
+
+  Tests should modifies this in the main process if needed, and it will be
+  passed to the worker processes each time a test case is ran.
+
+  Returns:
+    a TestEnvironment object.
+  """
+  return _env
+
+
 _TestResult = collections.namedtuple("_TestResult", ["status", "message"])
 
 
-def _test_runner(test_id):
+def _test_runner(test_id, test_env):
   """Executes the test with the given test_id.
 
   This is a simple wrapper around TestRunner to be used with
@@ -357,14 +431,16 @@ def _test_runner(test_id):
 
   Args:
     test_id: TestCase.id()
+    test_env: a TestEnvironment object.
 
   Returns:
     A boolean indicates whether the test succeeds.
   """
-  global _running_in_worker
+  global _running_in_worker, _env
   # No need to restore the value of _running_in_worker since it should always be
   # True in worker processes.
   _running_in_worker = True
+  _env = test_env
   test = unittest.defaultTestLoader.loadTestsFromName(test_id)
   runner = unittest.TextTestRunner()
   result = runner.run(test)
@@ -438,7 +514,7 @@ def _multi_worker_test(test_method):
     #                   [sub process]test_method()
     test_id = self.id()
     if runner:
-      results = runner.run(_test_runner, args=(test_id,))
+      results = runner.run(_test_runner, args=(test_id, _env))
     else:
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
@@ -446,7 +522,7 @@ def _multi_worker_test(test_method):
           num_ps=0,
           has_eval=False)
       results = multi_process_runner.run(
-          _test_runner, cluster_spec, args=(test_id,)).return_value
+          _test_runner, cluster_spec, args=(test_id, _env)).return_value
 
     skip_reason = None
     for result in results:

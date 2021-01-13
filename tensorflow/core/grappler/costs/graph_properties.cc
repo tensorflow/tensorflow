@@ -854,6 +854,15 @@ class SymbolicShapeRefiner {
       }
     }
 
+    // ReplaceInputWithConst() may break GraphView's internal node mapping
+    // structure; hence, we separately build node name to NodeDef* map, for the
+    // output nodes (before GraphView becomes invalid). Note that we use string,
+    // not string_view.
+    absl::flat_hash_map<std::string, NodeDef*> output_nodes;
+    for (const auto& output_arg : grappler_function_item.outputs()) {
+      output_nodes[output_arg.node_name] = gv.GetNode(output_arg.node_name);
+    }
+
     // Replace input nodes with Consts, if values are known. Note that
     // we don't check exceptions here as it's done in the above loop.
     auto* ctx = GetNodeContext(function_node);
@@ -884,11 +893,13 @@ class SymbolicShapeRefiner {
                                           &grappler_function_item));
       }
     }
+    // node_name to NodeDef* map in GraphView gv can be broken due to
+    // ReplaceInputWithConst(). gv should not be used after this.
 
     // Replace output _Retval nodes with Identity nodes. _Retval is a system op
     // without outputs and registered shape function.
     for (const auto& output_arg : grappler_function_item.outputs()) {
-      NodeDef* output_node = gv.GetNode(output_arg.node_name);
+      NodeDef* output_node = output_nodes[output_arg.node_name];
       DCHECK_EQ(output_node->op(), "_Retval");
       output_node->set_op("Identity");
       output_node->mutable_attr()->erase("index");
@@ -911,12 +922,12 @@ class SymbolicShapeRefiner {
       // inputs, so port_id >= 0.
       TensorId out_tensor = ParseTensorName(out_arg.node_name);
 
-      const NodeDef* retnode = gv.GetNode(out_tensor.node());
-      if (retnode == nullptr) {
+      if (output_nodes.count(out_tensor.node()) <= 0) {
         return errors::FailedPrecondition(
             "Unable to find return function_node ", out_tensor.node(), " for ",
             function_node->name());
       }
+      const NodeDef* retnode = output_nodes[out_tensor.node()];
 
       auto output_properties = gp.GetOutputProperties(retnode->name());
       int output_properties_size = output_properties.size();
@@ -1738,7 +1749,8 @@ class SymbolicShapeRefiner {
             }
             int64 size = t->dtype() == DT_INT32 ? t->scalar<int32>()()
                                                 : t->scalar<int64>()();
-            dims.push_back(size < 0 ? ic->UnknownDim() : ic->MakeDim(size));
+            dims.push_back(size < 0 ? ic->MakeDim(kUnknownDimFromConst)
+                                    : ic->MakeDim(size));
           } else {
             // Don't have tensor value, but use input_tensors_as_shapes, if
             // possible.
@@ -1748,7 +1760,9 @@ class SymbolicShapeRefiner {
                 ic->ValueKnown(ic->Dim(shape_handle, 0))) {
               dims.push_back(ic->Dim(shape_handle, 0));
             } else {
-              dims.push_back(ic->UnknownDim());
+              // This is not from Const, but as it shouldn'be used as symbolic
+              // unknown dim for different ops, we use kUnknownDimFromConst.
+              dims.push_back(ic->MakeDim(kUnknownDimFromConst));
             }
           }
         }

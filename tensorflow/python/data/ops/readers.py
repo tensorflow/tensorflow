@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
@@ -27,9 +29,15 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
+
+
+def _normalise_fspath(path):
+  """Convert pathlib-like objects to str (__fspath__ compatibility, PEP 519)."""
+  return os.fspath(path) if isinstance(path, os.PathLike) else path
 
 
 def _create_or_validate_filenames_dataset(filenames):
@@ -52,6 +60,7 @@ def _create_or_validate_filenames_dataset(filenames):
           "`filenames` must be a `tf.data.Dataset` of scalar `tf.string` "
           "elements.")
   else:
+    filenames = nest.map_structure(_normalise_fspath, filenames)
     filenames = ops.convert_to_tensor(filenames, dtype_hint=dtypes.string)
     if filenames.dtype != dtypes.string:
       raise TypeError(
@@ -139,7 +148,11 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
                compression_type=None,
                buffer_size=None,
                num_parallel_reads=None):
-    """Creates a `TextLineDataset`.
+    r"""Creates a `TextLineDataset`.
+
+    The elements of the dataset will be the lines of the input files, using
+    the newline character '\n' to denote line splits. The newline characters
+    will be stripped off of each element.
 
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or
@@ -296,6 +309,8 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
                buffer_size=None,
                num_parallel_reads=None):
     """Creates a `TFRecordDataset` to read one or more TFRecord files.
+
+    Each element of the dataset will contain a single TFRecord.
 
     Args:
       filenames: A `tf.string` tensor or `tf.data.Dataset` containing one or

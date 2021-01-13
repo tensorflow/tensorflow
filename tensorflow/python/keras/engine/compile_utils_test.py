@@ -29,6 +29,8 @@ from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -338,6 +340,53 @@ class LossesContainerTest(keras_parameterized.TestCase):
     self.assertEqual(loss_metric.name, 'loss')
     self.assertAlmostEqual(loss_metric.result().numpy(), .125)
 
+  def test_custom_loss_callables(self):
+
+    def custom_loss_fn(y_true, y_pred):
+      return math_ops.reduce_sum(y_true - y_pred)
+
+    class CustomLossClass(object):
+
+      def __call__(self, y_true, y_pred):
+        return math_ops.reduce_sum(y_true - y_pred)
+
+    loss_container = compile_utils.LossesContainer(
+        [custom_loss_fn, CustomLossClass()])
+    y_t, y_p = array_ops.ones((10, 5)), array_ops.zeros((10, 5))
+    loss_container(y_t, y_p)
+
+    self.assertEqual(loss_container._losses[0].name, 'custom_loss_fn')
+    self.assertEqual(loss_container._losses[1].name, 'custom_loss_class')
+
+  def test_ragged_tensor_output(self):
+    """ Ensure that ragged tensors can be passed as targets and predictions."""
+
+    def custom_loss_fn(y_true, y_pred):
+      losses = ragged_functional_ops.map_flat_values(losses_mod.mse, y_true,
+                                                     y_pred)
+      return math_ops.reduce_mean(losses)
+
+    class CustomLossClass(object):
+
+      def __call__(self, y_true, y_pred):
+        losses = ragged_functional_ops.map_flat_values(losses_mod.mse, y_true,
+                                                       y_pred)
+        return math_ops.reduce_mean(losses)
+
+    loss_container = compile_utils.LossesContainer(
+        [custom_loss_fn, CustomLossClass()])
+
+    v_t = constant_op.constant([[3., 4.], [1., 2.], [3., 5.]])
+    v_p = constant_op.constant([[3.1, 4.], [1., 2.], [3., 5.]])
+
+    y_t = array_ops.expand_dims(
+        ragged_tensor.RaggedTensor.from_row_splits(v_t, [0, 2, 3]), 0)
+    y_p = array_ops.expand_dims(
+        ragged_tensor.RaggedTensor.from_row_splits(v_p, [0, 2, 3]), 0)
+    loss_container(y_t, y_p)
+
+    self.assertEqual(loss_container._losses[0].name, 'custom_loss_fn')
+
 
 class MetricsContainerTest(keras_parameterized.TestCase):
 
@@ -401,6 +450,18 @@ class MetricsContainerTest(keras_parameterized.TestCase):
     self.assertEqual(acc_metric_2.name, 'output_2_accuracy')
     self.assertEqual(acc_metric_2.result().numpy(), 0.)
     self.assertEqual(acc_metric_2._fn, metrics_mod.binary_accuracy)
+
+    weighted_metrics = metric_container.weighted_metrics
+    self.assertLen(weighted_metrics, 2)
+    self.assertEqual(weighted_metrics[0].name, 'output_1_accuracy')
+    self.assertEqual(weighted_metrics[1].name, 'output_2_accuracy')
+
+    unweighted_metrics = metric_container.unweighted_metrics
+    self.assertLen(unweighted_metrics, 4)
+    self.assertEqual(unweighted_metrics[0].name, 'output_1_mse')
+    self.assertEqual(unweighted_metrics[1].name, 'output_1_mae')
+    self.assertEqual(unweighted_metrics[2].name, 'output_2_mse')
+    self.assertEqual(unweighted_metrics[3].name, 'output_2_mae')
 
   def test_metric_dict(self):
     metric_container = compile_utils.MetricsContainer(
@@ -684,6 +745,24 @@ class MetricsContainerTest(keras_parameterized.TestCase):
       metric = metric_container.metrics[0]
       self.assertEqual(metric.name, 'mean_squared_error')
       self.assertEqual(metric.result().numpy(), 1.)
+
+  def test_custom_metric_callables(self):
+
+    def custom_metric_fn(y_true, y_pred):
+      return math_ops.reduce_sum(y_true - y_pred)
+
+    class CustomMetricClass(object):
+
+      def __call__(self, y_true, y_pred):
+        return math_ops.reduce_sum(y_true - y_pred)
+
+    metric_container = compile_utils.MetricsContainer(
+        [custom_metric_fn, CustomMetricClass()])
+    y_t, y_p = array_ops.ones((10, 5)), array_ops.zeros((10, 5))
+    metric_container.update_state(y_t, y_p)
+
+    self.assertEqual(metric_container.metrics[0].name, 'custom_metric_fn')
+    self.assertEqual(metric_container.metrics[1].name, 'custom_metric_class')
 
 
 if __name__ == '__main__':

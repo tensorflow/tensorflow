@@ -610,6 +610,11 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
       executor->GetDeviceDescription().threads_per_block_limit();
   gpu_device_info.threads_per_warp =
       executor->GetDeviceDescription().threads_per_warp();
+  gpu_device_info.shared_memory_per_block =
+      executor->GetDeviceDescription().shared_memory_per_block();
+  gpu_device_info.threads_per_core_limit =
+      executor->GetDeviceDescription().threads_per_core_limit();
+  gpu_device_info.core_count = executor->GetDeviceDescription().core_count();
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 

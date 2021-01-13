@@ -27,7 +27,7 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=0
-export CC_OPT_FLAGS='-mavx'
+export CC_OPT_FLAGS='-mavx -march=native'
 export PYTHON_BIN_PATH=$(which python3.7)
 export TF2_BEHAVIOR=1
 yes "" | "$PYTHON_BIN_PATH" configure.py
@@ -42,6 +42,7 @@ bazel test --test_output=errors --config=opt --test_lang_filters=py \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
+  --local_test_jobs=8 \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \
   ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...

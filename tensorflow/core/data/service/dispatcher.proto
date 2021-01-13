@@ -3,6 +3,7 @@ syntax = "proto3";
 package tensorflow.data;
 
 import "tensorflow/core/data/service/common.proto";
+import "tensorflow/core/framework/tensor.proto";
 
 message TaskProgress {
   // The task that this message is about.
@@ -36,6 +37,16 @@ message GetDatasetDefResponse {
   DatasetDef dataset_def = 1;
 }
 
+message GetSplitRequest {
+  int64 job_id = 1;
+  int64 repetition = 2;
+}
+
+message GetSplitResponse {
+  TensorProto split = 1;
+  bool end_of_splits = 2;
+}
+
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
@@ -46,29 +57,28 @@ message GetOrRegisterDatasetResponse {
   int64 dataset_id = 1;
 }
 
-message CreateJobRequest {
-  // The id of the dataset to create a job for.
-  int64 dataset_id = 1;
-  // A mode controlling how the tf.data service produces data for the job.
-  ProcessingModeDef processing_mode = 2;
-}
-
-message CreateJobResponse {
-  // An id for the client that will read from the job. When the client is done
-  // with the job, they should call ReleaseJobClient with this id.
-  int64 job_client_id = 1;
+message JobKey {
+  // A name for the job.
+  string job_name = 1;
+  // An index for the job. Multiple jobs can be created for the same name, if
+  // they have different indices.
+  int64 job_name_index = 2;
 }
 
 message GetOrCreateJobRequest {
+  reserved 3, 4;
   // The id of the dataset to create a job for.
   int64 dataset_id = 1;
   // A mode controlling how the tf.data service produces data for the job.
   ProcessingModeDef processing_mode = 2;
-  // A name for the job.
-  string job_name = 3;
-  // An index for the job. Multiple jobs can be created for the same name, if
-  // they have different indices.
-  int64 job_name_index = 4;
+  // Optional job key identifying a shared job. If not set, the RPC will always
+  // create a new job.
+  JobKey job_key = 5;
+  // Optional number of consumers. If set, the job's tasks will provide their
+  // elements to consumers round-robin.
+  oneof optional_num_consumers {
+    int64 num_consumers = 7;
+  }
 }
 
 message GetOrCreateJobResponse {
@@ -119,6 +129,9 @@ service DispatcherService {
   // Gets a dataset defintion.
   rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
 
+  // Gets the next split for a given job.
+  rpc GetSplit(GetSplitRequest) returns (GetSplitResponse);
+
   // Registers a dataset with the server, or returns its id if it is already
   // registered.
   //
@@ -129,9 +142,6 @@ service DispatcherService {
 
   // Gets a job if it already exists, otherwise creates it.
   rpc GetOrCreateJob(GetOrCreateJobRequest) returns (GetOrCreateJobResponse);
-
-  // Creates a job for reading from the tf.data service.
-  rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
 
   // Releases a job client so that a job may eventually be cleaned up.
   rpc ReleaseJobClient(ReleaseJobClientRequest)

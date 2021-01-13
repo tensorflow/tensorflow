@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -32,7 +31,7 @@ from tensorflow.python.platform import test
 class ConvLSTMTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
-      *test_util.generate_combinations_with_testcase_name(
+      *testing_utils.generate_combinations_with_testcase_name(
           data_format=['channels_first', 'channels_last'],
           return_sequences=[True, False]))
   def test_conv_lstm(self, data_format, return_sequences):

@@ -443,7 +443,7 @@ Stream &Stream::ThenBatchNormalizationBackward(
   return *this;
 }
 
-Stream &Stream::ThenFusedConvolveWithAlgorithm(
+port::Status Stream::FusedConvolveWithAlgorithm(
     const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<double> &conv_input_data, double conv_input_scale,
     const dnn::FilterDescriptor &filter_descriptor,
@@ -464,22 +464,17 @@ Stream &Stream::ThenFusedConvolveWithAlgorithm(
             PARAM(algorithm_config));
 
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    auto status = dnn->DoFusedConvolve(
+    return dnn->DoFusedConvolve(
         this, conv_input_descriptor, conv_input_data, conv_input_scale,
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale, bias_descriptor, biases, activation_mode,
         output_descriptor, output, scratch_allocator, algorithm_config,
         output_profile_result);
-    if (!status.ok() && !output_profile_result) {
-      CheckStatus(status);
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
   }
-  return *this;
+  return port::UnimplementedError("DNN library is not found.");
 }
 
-Stream &Stream::ThenFusedConvolveWithAlgorithm(
+port::Status Stream::FusedConvolveWithAlgorithm(
     const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<float> &conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor &filter_descriptor,
@@ -500,22 +495,17 @@ Stream &Stream::ThenFusedConvolveWithAlgorithm(
             PARAM(algorithm_config));
 
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    auto status = dnn->DoFusedConvolve(
+    return dnn->DoFusedConvolve(
         this, conv_input_descriptor, conv_input_data, conv_input_scale,
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale, bias_descriptor, biases, activation_mode,
         output_descriptor, output, scratch_allocator, algorithm_config,
         output_profile_result);
-    if (!status.ok() && !output_profile_result) {
-      CheckStatus(status);
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
   }
-  return *this;
+  return port::UnimplementedError("DNN library is not found.");
 }
 
-Stream &Stream::ThenFusedConvolveWithAlgorithm(
+port::Status Stream::FusedConvolveWithAlgorithm(
     const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<Eigen::half> &conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor &filter_descriptor,
@@ -537,22 +527,17 @@ Stream &Stream::ThenFusedConvolveWithAlgorithm(
             PARAM(output_descriptor), PARAM(output), PARAM(algorithm_config));
 
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    auto status = dnn->DoFusedConvolve(
+    return dnn->DoFusedConvolve(
         this, conv_input_descriptor, conv_input_data, conv_input_scale,
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale, bias_descriptor, biases, activation_mode,
         output_descriptor, output, scratch_allocator, algorithm_config,
         output_profile_result);
-    if (!status.ok() && !output_profile_result) {
-      CheckStatus(status);
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
   }
-  return *this;
+  return port::UnimplementedError("DNN library is not found.");
 }
 
-Stream &Stream::ThenFusedConvolveWithAlgorithm(
+port::Status Stream::FusedConvolveWithAlgorithm(
     const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor &filter_descriptor,
@@ -573,22 +558,17 @@ Stream &Stream::ThenFusedConvolveWithAlgorithm(
             PARAM(output_descriptor), PARAM(output), PARAM(algorithm_config));
 
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    auto status = dnn->DoFusedConvolve(
+    return dnn->DoFusedConvolve(
         this, conv_input_descriptor, conv_input_data, conv_input_scale,
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale, bias_descriptor, biases, activation_mode,
         output_descriptor, output, scratch_allocator, algorithm_config,
         output_profile_result);
-    if (!status.ok() && !output_profile_result) {
-      CheckStatus(status);
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
   }
-  return *this;
+  return port::UnimplementedError("DNN library is not found.");
 }
 
-Stream &Stream::ThenFusedConvolveWithAlgorithm(
+port::Status Stream::FusedConvolveWithAlgorithm(
     const dnn::BatchDescriptor &conv_input_descriptor,
     const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
     const dnn::FilterDescriptor &filter_descriptor,
@@ -609,219 +589,14 @@ Stream &Stream::ThenFusedConvolveWithAlgorithm(
             PARAM(output_descriptor), PARAM(output), PARAM(algorithm_config));
 
   if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    auto status = dnn->DoFusedConvolve(
+    return dnn->DoFusedConvolve(
         this, conv_input_descriptor, conv_input_data, conv_input_scale,
         filter_descriptor, filter_data, convolution_descriptor, side_input_data,
         side_input_scale, bias_descriptor, biases, activation_mode,
         output_descriptor, output, scratch_allocator, algorithm_config,
         output_profile_result);
-    if (!status.ok() && !output_profile_result) {
-      CheckStatus(status);
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
   }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<double> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<double> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<double> *output,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output), PARAM(algorithm_config));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::FORWARD, this, input_descriptor,
-               input_data, filter_descriptor, filter_data, output_descriptor,
-               *output, convolution_descriptor, algorithm_config,
-               scratch_allocator, &algorithm_desc, &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolve(
-          this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output, algorithm_desc,
-          &scratch_memory, output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<float> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output), PARAM(algorithm_config));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::FORWARD, this, input_descriptor,
-               input_data, filter_descriptor, filter_data, output_descriptor,
-               *output, convolution_descriptor, algorithm_config,
-               scratch_allocator, &algorithm_desc, &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolve(
-          this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output, algorithm_desc,
-          &scratch_memory, output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<Eigen::half> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<Eigen::half> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output), PARAM(algorithm_config));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::FORWARD, this, input_descriptor,
-               input_data, filter_descriptor, filter_data, output_descriptor,
-               *output, convolution_descriptor, algorithm_config,
-               scratch_allocator, &algorithm_desc, &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolve(
-          this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output, algorithm_desc,
-          &scratch_memory, output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<int8> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<int8> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<float> *output,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output), PARAM(algorithm_config));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::FORWARD, this, input_descriptor,
-               input_data, filter_descriptor, filter_data, output_descriptor,
-               *output, convolution_descriptor, algorithm_config,
-               scratch_allocator, &algorithm_desc, &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolve(
-          this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output, algorithm_desc,
-          &scratch_memory, output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<int8> &input_data,
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<int8> &filter_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(convolution_descriptor), PARAM(output_descriptor),
-            PARAM(output), PARAM(algorithm_config));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::FORWARD, this, input_descriptor,
-               input_data, filter_descriptor, filter_data, output_descriptor,
-               *output, convolution_descriptor, algorithm_config,
-               scratch_allocator, &algorithm_desc, &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolve(
-          this, input_descriptor, input_data, filter_descriptor, filter_data,
-          convolution_descriptor, output_descriptor, output, algorithm_desc,
-          &scratch_memory, output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
+  return port::UnimplementedError("DNN library is not found.");
 }
 
 Stream &Stream::ThenConvolve(
@@ -832,11 +607,15 @@ Stream &Stream::ThenConvolve(
     const dnn::ConvolutionDescriptor &convolution_descriptor,
     const dnn::BatchDescriptor &output_descriptor,
     DeviceMemory<float> *output) {
-  return ThenConvolveWithAlgorithm(
-      input_descriptor, input_data, filter_descriptor, filter_data,
-      convolution_descriptor, output_descriptor, output,
-      /*scratch_allocator=*/nullptr, dnn::AlgorithmConfig(),
-      /*output_profile_result=*/nullptr);
+  if (ok()) {
+    CheckError(ConvolveWithAlgorithm(
+                   input_descriptor, input_data, filter_descriptor, filter_data,
+                   convolution_descriptor, output_descriptor, output,
+                   /*scratch_allocator=*/nullptr, dnn::AlgorithmConfig(),
+                   /*output_profile_result=*/nullptr)
+                   .ok());
+  }
+  return *this;
 }
 
 Stream &Stream::ThenConvolveQuantized(
@@ -912,264 +691,6 @@ Stream &Stream::ThenSeparableConvolve(
         this, batch_descriptor, input_data, filter_descriptor, depth_multiplier,
         first_weights, second_weights, convolution_descriptor,
         output_descriptor, output));
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<double> &filter_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<double> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &input_descriptor,
-    DeviceMemory<double> *backward_input_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(output_descriptor), PARAM(backward_output_data),
-            PARAM(convolution_descriptor), PARAM(input_descriptor),
-            PARAM(backward_input_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::BACKWARD_DATA, this, input_descriptor,
-               *backward_input_data, filter_descriptor, filter_data,
-               output_descriptor, backward_output_data, convolution_descriptor,
-               algorithm_config, scratch_allocator, &algorithm_desc,
-               &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolveBackwardData(
-          this, filter_descriptor, filter_data, output_descriptor,
-          backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, algorithm_desc, &scratch_memory,
-          output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<float> &filter_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<float> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &input_descriptor,
-    DeviceMemory<float> *backward_input_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(output_descriptor), PARAM(backward_output_data),
-            PARAM(convolution_descriptor), PARAM(input_descriptor),
-            PARAM(backward_input_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::BACKWARD_DATA, this, input_descriptor,
-               *backward_input_data, filter_descriptor, filter_data,
-               output_descriptor, backward_output_data, convolution_descriptor,
-               algorithm_config, scratch_allocator, &algorithm_desc,
-               &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolveBackwardData(
-          this, filter_descriptor, filter_data, output_descriptor,
-          backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, algorithm_desc, &scratch_memory,
-          output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardDataWithAlgorithm(
-    const dnn::FilterDescriptor &filter_descriptor,
-    const DeviceMemory<Eigen::half> &filter_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<Eigen::half> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::BatchDescriptor &input_descriptor,
-    DeviceMemory<Eigen::half> *backward_input_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(filter_descriptor), PARAM(filter_data),
-            PARAM(output_descriptor), PARAM(backward_output_data),
-            PARAM(convolution_descriptor), PARAM(input_descriptor),
-            PARAM(backward_input_data), PARAM(algorithm_config));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::BACKWARD_DATA, this, input_descriptor,
-               *backward_input_data, filter_descriptor, filter_data,
-               output_descriptor, backward_output_data, convolution_descriptor,
-               algorithm_config, scratch_allocator, &algorithm_desc,
-               &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolveBackwardData(
-          this, filter_descriptor, filter_data, output_descriptor,
-          backward_output_data, convolution_descriptor, input_descriptor,
-          backward_input_data, algorithm_desc, &scratch_memory,
-          output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<double> &input_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<double> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::FilterDescriptor &filter_descriptor,
-    DeviceMemory<double> *backward_filter_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(output_descriptor), PARAM(backward_output_data),
-            PARAM(convolution_descriptor), PARAM(filter_descriptor),
-            PARAM(backward_filter_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::BACKWARD_FILTER, this, input_descriptor,
-               input_data, filter_descriptor, *backward_filter_data,
-               output_descriptor, backward_output_data, convolution_descriptor,
-               algorithm_config, scratch_allocator, &algorithm_desc,
-               &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolveBackwardFilter(
-          this, input_descriptor, input_data, output_descriptor,
-          backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, algorithm_desc, &scratch_memory,
-          output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<float> &input_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<float> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::FilterDescriptor &filter_descriptor,
-    DeviceMemory<float> *backward_filter_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(output_descriptor), PARAM(backward_output_data),
-            PARAM(convolution_descriptor), PARAM(filter_descriptor),
-            PARAM(backward_filter_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::BACKWARD_FILTER, this, input_descriptor,
-               input_data, filter_descriptor, *backward_filter_data,
-               output_descriptor, backward_output_data, convolution_descriptor,
-               algorithm_config, scratch_allocator, &algorithm_desc,
-               &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolveBackwardFilter(
-          this, input_descriptor, input_data, output_descriptor,
-          backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, algorithm_desc, &scratch_memory,
-          output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
-  } else {
-    SetErrorAndLogNoDnnSupport();
-  }
-  return *this;
-}
-
-Stream &Stream::ThenConvolveBackwardFilterWithAlgorithm(
-    const dnn::BatchDescriptor &input_descriptor,
-    const DeviceMemory<Eigen::half> &input_data,
-    const dnn::BatchDescriptor &output_descriptor,
-    DeviceMemory<Eigen::half> backward_output_data,
-    const dnn::ConvolutionDescriptor &convolution_descriptor,
-    const dnn::FilterDescriptor &filter_descriptor,
-    DeviceMemory<Eigen::half> *backward_filter_data,
-    ScratchAllocator *scratch_allocator,
-    const dnn::AlgorithmConfig &algorithm_config,
-    dnn::ProfileResult *output_profile_result) {
-  VLOG_CALL(PARAM(input_descriptor), PARAM(input_data),
-            PARAM(output_descriptor), PARAM(backward_output_data),
-            PARAM(convolution_descriptor), PARAM(filter_descriptor),
-            PARAM(backward_filter_data));
-
-  if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-    DeviceMemory<uint8> scratch_memory;
-    dnn::AlgorithmDesc algorithm_desc;
-    auto status =
-        dnn->PrepareForConvolution(
-               dnn::ConvolutionKind::BACKWARD_FILTER, this, input_descriptor,
-               input_data, filter_descriptor, *backward_filter_data,
-               output_descriptor, backward_output_data, convolution_descriptor,
-               algorithm_config, scratch_allocator, &algorithm_desc,
-               &scratch_memory)
-            .ok();
-    if (status) {
-      status = dnn->DoConvolveBackwardFilter(
-          this, input_descriptor, input_data, output_descriptor,
-          backward_output_data, convolution_descriptor, filter_descriptor,
-          backward_filter_data, algorithm_desc, &scratch_memory,
-          output_profile_result);
-    }
-    if (!status && !output_profile_result) {
-      SetError();
-    }
   } else {
     SetErrorAndLogNoDnnSupport();
   }
@@ -4800,6 +4321,80 @@ Stream &Stream::ThenBlasGemmStridedBatched(
               transb, m, n, k, alpha, a, lda, stride_a, b, ldb, stride_b, beta,
               c, ldc, stride_c, batch_count);
 }
+
+template <typename ABType, typename CType>
+Stream &Stream::ThenBlasLtMatmulImpl(
+    const blas::IBlasLtMatmulPlan *plan, const HostOrDeviceScalar<CType> &alpha,
+    const DeviceMemory<ABType> &a, const DeviceMemory<ABType> &b,
+    const HostOrDeviceScalar<CType> &beta, DeviceMemory<CType> *c,
+    ScratchAllocator *scratch_allocator,
+    const blas::IBlasLtMatmulAlgorithm *algorithm,
+    const DeviceMemory<CType> &bias,
+    blas::ProfileResult *output_profile_result) {
+  VLOG_CALL(PARAM(plan), PARAM(alpha), PARAM(a), PARAM(b), PARAM(beta),
+            PARAM(c), PARAM(algorithm), PARAM(bias));
+
+  ThenBlasWithProfileImpl<
+      const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<CType> &,
+      const DeviceMemory<ABType> &, const DeviceMemory<ABType> &,
+      const HostOrDeviceScalar<CType> &, DeviceMemory<CType> *,
+      ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
+      const DeviceMemory<CType> &>
+      impl;
+  return impl(this, &blas::BlasSupport::DoBlasLtMatmul, plan, alpha, a, b, beta,
+              c, scratch_allocator, algorithm, bias, output_profile_result);
+}
+
+// Explicit template instantiations for each supported type combination.
+template Stream &Stream::ThenBlasLtMatmulImpl<int8, int32>(
+    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<int32> &,
+    const DeviceMemory<int8> &, const DeviceMemory<int8> &,
+    const HostOrDeviceScalar<int32> &, DeviceMemory<int32> *,
+    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
+    const DeviceMemory<int32> &, blas::ProfileResult *);
+
+template Stream &Stream::ThenBlasLtMatmulImpl<Eigen::half, Eigen::half>(
+    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<Eigen::half> &,
+    const DeviceMemory<Eigen::half> &, const DeviceMemory<Eigen::half> &,
+    const HostOrDeviceScalar<Eigen::half> &, DeviceMemory<Eigen::half> *,
+    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
+    const DeviceMemory<Eigen::half> &, blas::ProfileResult *);
+
+template Stream &Stream::ThenBlasLtMatmulImpl<float, float>(
+    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<float> &,
+    const DeviceMemory<float> &, const DeviceMemory<float> &,
+    const HostOrDeviceScalar<float> &, DeviceMemory<float> *,
+    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
+    const DeviceMemory<float> &, blas::ProfileResult *);
+
+template Stream &Stream::ThenBlasLtMatmulImpl<double, double>(
+    const blas::IBlasLtMatmulPlan *, const HostOrDeviceScalar<double> &,
+    const DeviceMemory<double> &, const DeviceMemory<double> &,
+    const HostOrDeviceScalar<double> &, DeviceMemory<double> *,
+    ScratchAllocator *, const blas::IBlasLtMatmulAlgorithm *,
+    const DeviceMemory<double> &, blas::ProfileResult *);
+
+template Stream &
+Stream::ThenBlasLtMatmulImpl<std::complex<float>, std::complex<float>>(
+    const blas::IBlasLtMatmulPlan *,
+    const HostOrDeviceScalar<std::complex<float>> &,
+    const DeviceMemory<std::complex<float>> &,
+    const DeviceMemory<std::complex<float>> &,
+    const HostOrDeviceScalar<std::complex<float>> &,
+    DeviceMemory<std::complex<float>> *, ScratchAllocator *,
+    const blas::IBlasLtMatmulAlgorithm *,
+    const DeviceMemory<std::complex<float>> &, blas::ProfileResult *);
+
+template Stream &
+Stream::ThenBlasLtMatmulImpl<std::complex<double>, std::complex<double>>(
+    const blas::IBlasLtMatmulPlan *,
+    const HostOrDeviceScalar<std::complex<double>> &,
+    const DeviceMemory<std::complex<double>> &,
+    const DeviceMemory<std::complex<double>> &,
+    const HostOrDeviceScalar<std::complex<double>> &,
+    DeviceMemory<std::complex<double>> *, ScratchAllocator *,
+    const blas::IBlasLtMatmulAlgorithm *,
+    const DeviceMemory<std::complex<double>> &, blas::ProfileResult *);
 
 Stream &Stream::ThenSetRngSeed(const uint8 *seed, uint64 seed_bytes) {
   VLOG_CALL(PARAM(seed), PARAM(seed_bytes));

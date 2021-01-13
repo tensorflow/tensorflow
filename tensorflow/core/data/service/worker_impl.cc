@@ -20,11 +20,14 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
+#include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/split_provider.h"
+#include "tensorflow/core/data/service/task_runner.h"
 #include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -32,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -70,6 +74,10 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address) {
 
   Status s = Heartbeat();
   while (!s.ok()) {
+    if (!errors::IsUnavailable(s) && !errors::IsAborted(s) &&
+        !errors::IsCancelled(s)) {
+      return s;
+    }
     LOG(WARNING) << "Failed to register with dispatcher at "
                  << config_.dispatcher_address() << ": " << s;
     Env::Default()->SleepForMicroseconds(kRetryIntervalMicros);
@@ -96,7 +104,7 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 }
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::unique_ptr<Task>& task = tasks_[task_def.task_id()];
   if (task) {
     VLOG(1) << "Received request to process already-processed task "
@@ -104,7 +112,8 @@ Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     return Status::OK();
   }
   task = absl::make_unique<Task>(task_def);
-  VLOG(3) << "Began processing for task " << task_def.task_id();
+  VLOG(3) << "Began processing for task " << task_def.task_id()
+          << " with processing mode " << task_def.processing_mode();
   return Status::OK();
 }
 
@@ -115,11 +124,13 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
     return Status::OK();
   }
   standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> dataset;
+  std::unique_ptr<standalone::Iterator> iterator;
 
   switch (task.task_def.dataset_case()) {
     case TaskDef::kDatasetDef:
       TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-          params, task.task_def.dataset_def().graph(), &task.dataset));
+          params, task.task_def.dataset_def().graph(), &dataset));
       break;
     case TaskDef::kPath: {
       DatasetDef def;
@@ -131,14 +142,34 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
             dispatcher_->GetDatasetDef(task.task_def.dataset_id(), def));
       }
       TF_RETURN_IF_ERROR(
-          standalone::Dataset::FromGraph(params, def.graph(), &task.dataset));
+          standalone::Dataset::FromGraph(params, def.graph(), &dataset));
       break;
     }
     case TaskDef::DATASET_NOT_SET:
       return errors::Internal("Unrecognized dataset case: ",
                               task.task_def.dataset_case());
   }
-  TF_RETURN_IF_ERROR(task.dataset->MakeIterator(&task.iterator));
+  switch (task.task_def.processing_mode()) {
+    case DISTRIBUTED_EPOCH: {
+      auto split_provider = absl::make_unique<DataServiceSplitProvider>(
+          config_.dispatcher_address(), config_.protocol(),
+          task.task_def.job_id(), config_.dispatcher_timeout_ms());
+      TF_RETURN_IF_ERROR(
+          dataset->MakeIterator(std::move(split_provider), &iterator));
+      break;
+    }
+    case PARALLEL_EPOCHS:
+      TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
+      break;
+    default:
+      return errors::InvalidArgument("Unrecognized processing mode: ",
+                                     task.task_def.processing_mode());
+  }
+  auto task_iterator = absl::make_unique<StandaloneTaskIterator>(
+      std::move(dataset), std::move(iterator));
+  TF_RETURN_IF_ERROR(TaskRunner::Create(task.task_def, std::move(task_iterator),
+                                        task.task_runner));
+
   task.initialized = true;
   VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
@@ -160,15 +191,31 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
     }
     auto it = tasks_.find(request->task_id());
     if (it == tasks_.end()) {
-      response->set_end_of_sequence(true);
-      return Status::OK();
+      if (finished_tasks_.contains(request->task_id())) {
+        VLOG(3) << "Task is already finished";
+        response->set_end_of_sequence(true);
+        return Status::OK();
+      } else {
+        // Perhaps the workers hasn't gotten the task from the dispatcher yet.
+        // Return Unavailable so that the client knows to continue retrying.
+        return errors::Unavailable("Task ", request->task_id(), " not found");
+      }
     }
     auto& task = it->second;
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-    TF_RETURN_IF_ERROR(task->iterator->GetNext(&outputs, &end_of_sequence));
+    TaskRunner::Request get_next_request;
+    if (request->optional_consumer_index_case() ==
+        GetElementRequest::kConsumerIndex) {
+      get_next_request.consumer_index = request->consumer_index();
+    }
+    if (request->optional_round_index_case() ==
+        GetElementRequest::kRoundIndex) {
+      get_next_request.round_index = request->round_index();
+    }
+    TF_RETURN_IF_ERROR(
+        task->task_runner->GetNext(get_next_request, outputs, end_of_sequence));
     if (end_of_sequence) {
       VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      tasks_.erase(request->task_id());
       pending_completed_tasks_.insert(request->task_id());
       task_completion_cv_.notify_one();
     }
@@ -222,7 +269,7 @@ Status DataServiceWorkerImpl::GetWorkerTasks(
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::TaskCompletionThread() LOCKS_EXCLUDED(mu_) {
+void DataServiceWorkerImpl::TaskCompletionThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     {
       mutex_lock l(mu_);
@@ -246,7 +293,7 @@ void DataServiceWorkerImpl::TaskCompletionThread() LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::SendTaskUpdates() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
@@ -269,7 +316,7 @@ Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::HeartbeatThread() LOCKS_EXCLUDED(mu_) {
+void DataServiceWorkerImpl::HeartbeatThread() TF_LOCKS_EXCLUDED(mu_) {
   while (true) {
     int64 next_heartbeat_micros =
         Env::Default()->NowMicros() + (config_.heartbeat_interval_ms() * 1000);
@@ -298,7 +345,7 @@ void DataServiceWorkerImpl::HeartbeatThread() LOCKS_EXCLUDED(mu_) {
   }
 }
 
-Status DataServiceWorkerImpl::Heartbeat() LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::Heartbeat() TF_LOCKS_EXCLUDED(mu_) {
   std::vector<int64> current_tasks;
   {
     mutex_lock l(mu_);
@@ -322,6 +369,7 @@ Status DataServiceWorkerImpl::Heartbeat() LOCKS_EXCLUDED(mu_) {
     VLOG(3) << "Deleting task " << task_id
             << " at the request of the dispatcher";
     tasks_.erase(task_id);
+    finished_tasks_.insert(task_id);
   }
   return Status::OK();
 }

@@ -186,7 +186,7 @@ Status AddOpRetvalsToResponse(
     for (int i = 0; i < num_retvals; i++) {
       TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
       if (add_device_fn) {
-        Device* device = absl::get<Device*>(retvals[i]->device());
+        Device* device = retvals[i]->device();
         *add_device_fn() = device ? device->name() : "";
       }
       if (retvals[i]->Type() == TensorHandle::REMOTE) {
@@ -274,8 +274,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   opts.config = request->server_def().default_session_config();
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       opts, tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      request->async(), request->lazy_copy_remote_function_inputs(), device_mgr,
-      false, r, GetDefaultCustomKernelCreator(), worker_session->cluster_flr());
+      request->async(), device_mgr, false, r, worker_session->cluster_flr());
   // Ownership will be transferred to the ServerContext, or else in an error
   // case ctx will be deleted by this unref.
   core::ScopedUnref unref_ctx(ctx);
@@ -752,7 +751,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
   auto iter = contexts_.find(context_id);
   if (iter == contexts_.end()) {
     *server_context = nullptr;
-    return errors::InvalidArgument(strings::Printf(
+    return errors::Unavailable(strings::Printf(
         "Unable to find a context_id matching the specified one "
         "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
         static_cast<unsigned long long>(context_id)));

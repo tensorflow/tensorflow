@@ -72,6 +72,7 @@ patch_am_sdk() {
 patch_kissfft() {
   sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
+  sed -i -E '/^#include <sys\/types.h>/d' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   # Fix for https://github.com/mborgerding/kissfft/issues/20
   sed -i -E $'s@#ifdef FIXED_POINT@#ifdef FIXED_POINT\\\n#include <stdint.h> /* Patched. */@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
 
@@ -80,50 +81,6 @@ patch_kissfft() {
   sed -ir -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
   sed -ir -E "s@(exit.*\);)@return; /* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
   echo "Finished patching kissfft"
-}
-
-# Fixes issues with CMSIS.
-patch_cmsis() {
-  # See the RFC at https://docs.google.com/document/d/14GRxeVEgSKgKBKAijO7oxnI49nLoTYBFQmPok-rG0cw
-  # for full details on the path qualification changes we have to make below to enable the CMSIS-NN
-  # library source files to compile in an environment like the Arduino IDE that doesn't suppport
-  # custom include paths.
-  # These include changes were found through trial and error while trying to get the Arduino
-  # library compiling with the CMSIS-NN kernels included.
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nnfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnfunctions.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nnsupportfunctions.h"@#include "cmsis/CMSIS/NN/Include/arm_nnsupportfunctions.h"@g' {} \; 
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.c' -exec \
-    sed -i -E $'s@#include "arm_nn_types.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_types.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_math.h"@#include "cmsis/CMSIS/DSP/Include/arm_math.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_common_tables.h"@#include "cmsis/CMSIS/DSP/Include/arm_common_tables.h"@g' {} \;
-
-  find tensorflow/lite/micro/tools/make/downloads/cmsis \
-    -iname '*.*' -exec \
-    sed -i -E $'s@#include "arm_nn_tables.h"@#include "cmsis/CMSIS/NN/Include/arm_nn_tables.h"@g' {} \;
-
-  # Until the fix for https://github.com/ARMmbed/mbed-os/issues/12568 is
-  # rolled into Mbed version used on the Arduino IDE, we have to replace
-  # one intrinsic with a patched equivalent.
-  sed -i -E 's@__SXTB16_RORn@__patched_SXTB16_RORn@g' \
-    tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/NNSupportFunctions/arm_nn_mat_mult_nt_t_s8.c
-
-  sed -i -E $'33 a \\\n\\\n// Work around for https://github.com/ARMmbed/mbed-os/issues/12568\\\n__STATIC_FORCEINLINE uint32_t __patched_SXTB16_RORn(uint32_t op1, uint32_t rotate) {\\\n  uint32_t result;\\\n  __ASM ("sxtb16 %0, %1, ROR %2" : "=r" (result) : "r" (op1), "i" (rotate) );\\\n  return result;\\\n}' \
-    tensorflow/lite/micro/tools/make/downloads/cmsis/CMSIS/NN/Source/NNSupportFunctions/arm_nn_mat_mult_nt_t_s8.c
-
-  echo "Finished patching CMSIS"
 }
 
 # Create a header file containing an array with the first 10 images from the
@@ -159,7 +116,12 @@ download_and_extract() {
   local tempdir=$(mktemp -d)
   local tempdir2=$(mktemp -d)
   local tempfile=${tempdir}/temp_file
-  local curl_retries=3
+  local curl_retries=5
+
+  # Destionation already downloaded.
+  if [ -d ${dir} ]; then
+      exit 0
+  fi
 
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
@@ -169,24 +131,21 @@ download_and_extract() {
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
-  for (( i=1; i<=$curl_retries; ++i ))
-  do
+  for (( i=1; i<=$curl_retries; ++i )); do
     # We have to use this approach because we normally halt the script when
     # there's an error, and instead we want to catch errors so we can retry.
-    set +e
-    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+    set +ex
+    curl -LsS --fail --retry 5 "${url}" > ${tempfile}
     CURL_RESULT=$?
-    set -e
+    set -ex
 
     # Was the command successful? If so, continue.
-    if [[ $CURL_RESULT -eq 0 ]]
-    then
+    if [[ $CURL_RESULT -eq 0 ]]; then
       break
     fi
 
     # Keep trying if we see the '56' error code.
-    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
-    then
+    if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]; then
       echo "Error $CURL_RESULT downloading '${url}'"
       exit 1
     fi
@@ -223,6 +182,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 
@@ -235,8 +195,6 @@ download_and_extract() {
     patch_kissfft ${dir}
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
-  elif [[ ${action} == "patch_cmsis" ]]; then
-    patch_cmsis ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
     if [[ "${action_param1}" == *.tcf ]]; then
       cp ${action_param1} ${dir}/hw/arc.tcf

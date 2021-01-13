@@ -25,7 +25,9 @@ import unittest
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations as framework_combinations
 from tensorflow.python.platform import test
 
@@ -88,6 +90,31 @@ class ClusterCombinationTest(test.TestCase, parameterized.TestCase):
     # If combinations library doesn't raise an exception, the test is passed.
     pass
 
+  @combinations.generate(combinations.combine(num_workers=2,))
+  def testUseWithoutStrategy(self):
+    # There's no perfect way to check if the test runs in a subprocess. We
+    # approximate by checking the presence of TF_CONFIG, which is normally not
+    # set to the main process.
+    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
+
+
+@combinations.generate(combinations.combine(num_workers=2))
+class ClusterCombinationTestEnvTest(test.TestCase, parameterized.TestCase):
+
+  def setUp(self):
+    # Note that test case fixtures are executed in both the main process and
+    # worker processes.
+    super().setUp()
+    if combinations.in_main_process():
+      combinations.env().tf_data_service_dispatcher = "localhost"
+
+  def testTfDataServiceDispatcher(self):
+    self.assertEqual(combinations.env().tf_data_service_dispatcher, "localhost")
+
+  def testUpdateEnvInWorker(self):
+    with self.assertRaises(ValueError):
+      combinations.env().tf_data_service_dispatcher = "localhost"
+
 
 # unittest.expectedFailure doesn't work with parameterized test methods, so we
 # have to decorate the class instead.
@@ -105,14 +132,6 @@ class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
   def testMultipleDistributionMultiWorker(self, ds1, ds2):
     # combinations library should raise an exception.
     pass
-
-  @combinations.generate(combinations.combine(num_workers=2,))
-  def testUseWithoutStrategy(self):
-    # There's no perfect way to check if the test runs in a subprocess. We
-    # approximate by checking the presence of TF_CONFIG, which is normally not
-    # set to the main process.
-    self.assertNotEqual(os.getenv("TF_CONFIG"), "")
-    raise ValueError("actually run")
 
 
 # Tests that we *actually* run the test method in multiple workers instead of
@@ -156,5 +175,27 @@ class CombinationsOnClassMultiWorkerExpectedFailureTest(test.TestCase,
     self.assertIsNone(resolver.task_id)
 
 
+class TfFunctionTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          tf_function_1=combinations.tf_function,
+          tf_function_2=combinations.no_tf_function,
+          mode="eager",
+      ))
+  def testFunc(self, tf_function_1, tf_function_2):
+
+    @tf_function_1
+    def foo():
+      self.assertFalse(context.executing_eagerly())
+
+    @tf_function_2
+    def bar():
+      self.assertTrue(context.executing_eagerly())
+
+    foo()
+    bar()
+
+
 if __name__ == "__main__":
-  combinations.main()
+  test_util.main()

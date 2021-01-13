@@ -28,6 +28,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -201,6 +202,18 @@ class BinaryOpsTest(xla_test.XLATestCase):
                         [-0.367941, -0.212856, 0.036883, 0.543914]],
                        dtype=dtype),
           ],
+          equality_test=self.ListsAreClose,
+          rtol=1e-4,
+          atol=1e-8)
+
+      # Check -inf logits doesn't create NaNs.
+      self._testBinary(
+          gen_nn_ops.sparse_softmax_cross_entropy_with_logits,
+          np.array([[-np.inf, 0.]], dtype=dtype),
+          np.array([1], dtype=np.int32),
+          expected=[
+              np.array([0.], dtype=dtype),
+              np.array([[0., 0.]], dtype=dtype)],
           equality_test=self.ListsAreClose,
           rtol=1e-4,
           atol=1e-8)
@@ -474,7 +487,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
                             dtype=np.int64))
 
-  @test_util.disable_mlir_bridge("Enable tf.NextAfter Compilation")
   def testNextAfter(self):
     for dtype in self.numeric_types:
       if dtype in [np.float32, np.float64]:
@@ -502,8 +514,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=expected,
             equality_test=NextAfterEqualityTest)
 
-  @test_util.disable_mlir_bridge(
-      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
       ctypes = {np.complex64: np.float32, np.complex128: np.float64}
@@ -1329,6 +1339,40 @@ class BinaryOpsTest(xla_test.XLATestCase):
                   ]
               ],
               dtype=dtype))
+
+  def testSymmetricMirrorPadGrad(self):
+    mirror_pad_grad = lambda t, paddings: gen_array_ops.mirror_pad_grad(
+        t, paddings, "SYMMETRIC")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad_grad,
+          np.broadcast_to(np.arange(0, 7, dtype=dtype), (3, 2, 1, 7)),
+          np.array([
+              [1, 1],
+              [0, 0],
+              [0, 0],
+              [2, 2],
+          ], dtype=np.int32),
+          expected=np.broadcast_to(
+              np.array([9, 27, 27], dtype=dtype), (1, 2, 1, 3)))
+
+  def testReflectMirrorPadGrad(self):
+    mirror_pad_grad = lambda t, paddings: gen_array_ops.mirror_pad_grad(
+        t, paddings, "REFLECT")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad_grad,
+          np.broadcast_to(
+              np.reshape(np.arange(0, 7, dtype=dtype), (7, 1)), (1, 4, 7, 1)),
+          np.array([
+              [0, 0],
+              [1, 1],
+              [2, 2],
+              [0, 0],
+          ], dtype=np.int32),
+          expected=np.broadcast_to(
+              np.reshape(np.array([16, 18, 8], dtype=dtype), (3, 1)),
+              (1, 2, 3, 1)))
 
   def testReshape(self):
     for dtype in self.numeric_types:

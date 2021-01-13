@@ -115,10 +115,10 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
     # pylint: disable=protected-access
     assert not isinstance(v0, values_lib.MirroredVariable), (
         "ids = %s, values = %s" % ([id(v) for v in values], values))
-    distributed_container = v0._distributed_container
+    distributed_container = v0._distributed_container()
     assert distributed_container is not None
     for v in values[1:]:
-      assert distributed_container is v._distributed_container
+      assert distributed_container is v._distributed_container()
     return distributed_container
   # pylint: enable=protected-access
 
@@ -178,7 +178,7 @@ def update_regroup(extended, updates, group):
     # If values is just ops, the grouping is enough. Everything in values
     # should have the same type, since we expect every replica to be performing
     # the same computation.
-    if not all(tensor_util.is_tensor(v) for v in values):
+    if not all(tensor_util.is_tf_type(v) for v in values):
       return g
 
     # Otherwise we need tensors with the same values as `values`, but
@@ -209,7 +209,7 @@ def value_container(val):
       # DistributedVariable has _distributed_container defined
       # but we don't want to return it.
       not isinstance(val, values_lib.DistributedVariable)):
-    container = val._distributed_container  # pylint: disable=protected-access
+    container = val._distributed_container()  # pylint: disable=protected-access
     if container is not None:
       return container
   return val
@@ -318,13 +318,6 @@ def create_mirrored_variable(strategy, real_mirrored_creator, class_mapping,
     else:
       var_cls = class_mapping.get(synchronization)
       result = var_cls(strategy, value_list, aggregation)
-    # Install the created DistributedVariable as _distributed_container property
-    # of the underlying variables, to make it easy to map back to the container.
-    for v in result.values:
-      # Hold a strong reference to avoid the container from being GC-ed. After
-      # v = v.assign(), the user code may no longer holds references to the
-      # original container, since v.assign() returns a new DistributedVariable.
-      v._distributed_container = result  # pylint: disable=protected-access
 
   # Add the wrapped variable to the requested collections.
   # The handling of eager mode and the global step matches

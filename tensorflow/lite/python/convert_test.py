@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.lite.python import convert
-from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python.client import session
@@ -59,7 +58,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
 
     tflite_model = convert.toco_convert(
         sess.graph_def, [in_tensor], [out_tensor],
-        inference_type=lite_constants.QUANTIZED_UINT8,
+        inference_type=dtypes.uint8,
         quantized_input_stats=[(0., 1.)])
     self.assertTrue(tflite_model)
 
@@ -73,7 +72,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     tflite_model = convert.toco_convert_graph_def(
         sess.graph_def, [("input", [1, 16, 16, 3])], ["add"],
         enable_mlir_converter=False,
-        inference_type=lite_constants.FLOAT)
+        inference_type=dtypes.float32)
     self.assertTrue(tflite_model)
 
     # Check values from converted model.
@@ -111,7 +110,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
         input_arrays_map,
         output_arrays,
         enable_mlir_converter=False,
-        inference_type=lite_constants.QUANTIZED_UINT8,
+        inference_type=dtypes.uint8,
         quantized_input_stats=[(0., 1.), (0., 1.)])
     self.assertTrue(tflite_model)
 
@@ -138,7 +137,7 @@ class ConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual("output", output_details[0]["name"])
     self.assertEqual(np.uint8, output_details[0]["dtype"])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]["shape"]).all())
-    self.assertTrue(output_details[0]["quantization"][0] > 0)  # scale
+    self.assertGreater(output_details[0]["quantization"][0], 0)  # scale
 
   def testGraphDefQuantizationInvalid(self):
     with ops.Graph().as_default():
@@ -158,11 +157,11 @@ class ConvertTest(test_util.TensorFlowTestCase):
           input_arrays_map,
           output_arrays,
           enable_mlir_converter=False,
-          inference_type=lite_constants.QUANTIZED_UINT8)
+          inference_type=dtypes.uint8)
     self.assertEqual(
-        "std_dev and mean must be defined when inference_type or "
-        "inference_input_type is QUANTIZED_UINT8 or INT8.",
-        str(error.exception))
+        "The `quantized_input_stats` flag must be defined when either "
+        "`inference_type` flag or `inference_input_type` flag is set to "
+        "tf.int8 or tf.uint8.", str(error.exception))
 
 
 class ConvertTestOpHint(test_util.TensorFlowTestCase):

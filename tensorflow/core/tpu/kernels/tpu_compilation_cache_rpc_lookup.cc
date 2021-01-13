@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 
-#include <grpcpp/security/credentials.h>
-
+#include "grpcpp/security/credentials.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
@@ -25,7 +24,7 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 
-#if defined(LIBTFTPU)
+#if defined(LIBTPU_ON_GCE)
 using ResponseType = GetTpuProgramResponseExternal;
 #else
 using ResponseType = GetTpuProgramResponse;

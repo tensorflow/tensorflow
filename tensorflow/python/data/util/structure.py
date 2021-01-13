@@ -492,6 +492,7 @@ class NoneTensor(composite_tensor.CompositeTensor):
 
 # TODO(b/149584798): Move this to framework and add tests for non-tf.data
 # functionality.
+@type_spec.register("tf.NoneTensorSpec")
 class NoneTensorSpec(type_spec.BatchableTypeSpec):
   """Type specification for `None` value."""
 
@@ -535,6 +536,12 @@ class NoneTensorSpec(type_spec.BatchableTypeSpec):
     return self
 
   def _to_legacy_output_classes(self):
+    return self
+
+  def most_specific_compatible_shape(self, other):
+    if type(self) is not type(other):
+      raise ValueError("No TypeSpec is compatible with both %s and %s" %
+                       (self, other))
     return self
 
 

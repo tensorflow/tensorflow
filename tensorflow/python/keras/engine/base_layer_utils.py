@@ -30,15 +30,14 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
+from tensorflow.python.util import keras_deps
 from tensorflow.python.util import nest
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
@@ -77,7 +76,7 @@ def make_variable(name,
 
   TODO(fchollet): remove this method when no longer needed.
 
-  Arguments:
+  Args:
     name: Variable name.
     shape: Variable shape.
     dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
@@ -146,7 +145,7 @@ def make_variable(name,
 def collect_previous_mask(input_tensors):
   """Retrieves the output mask(s) of the previous node.
 
-  Arguments:
+  Args:
       input_tensors: An arbitrary structure of Tensors.
 
   Returns:
@@ -178,7 +177,7 @@ def create_keras_history(tensors):
   Any Tensors not originating from a Keras `Input` Layer will be treated as
   constants when constructing `TensorFlowOpLayer` instances.
 
-  Arguments:
+  Args:
     tensors: A structure of Tensors, some of which come from raw TensorFlow
       operations and need to have Keras metadata assigned to them.
 
@@ -190,10 +189,23 @@ def create_keras_history(tensors):
   return created_layers
 
 
+# Unsafe Internal attribute.
+# If True, Keras will not evaluate the constant-foldable inputs to tf op
+# layers in TF1 graphs. This *might* speed up model construction time in
+# certain settings, but it means
+# the models will not be serializable/deserializable via get_config
+# (Only via Savedmodels). It may also change the semantics of whether
+# generated random numbers are generated once and re-used, or recomputed
+# each time.
+# Note: This path triggers for TPUEstimators / xla compiled graphs regardless
+# of this setting.
+_UNSAFE_GRAPH_OP_LAYER_CREATION = False
+
+
 def _create_keras_history_helper(tensors, processed_ops, created_layers):
   """Helper method for `create_keras_history`.
 
-  Arguments:
+  Args:
     tensors: A structure of Tensors for which to create Keras metadata.
     processed_ops: Set. TensorFlow operations that have already been wrapped in
       `TensorFlowOpLayer` instances.
@@ -214,7 +226,8 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    if sparse_tensor.is_sparse(tensor):
+    if isinstance(
+        tensor, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
       sparse_ops.append(tensor.op)
       continue
     if tf_utils.is_ragged(tensor):
@@ -238,7 +251,7 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
               not ops.executing_eagerly_outside_functions())
           using_xla = control_flow_util.GraphOrParentsInXlaContext(
               ops.get_default_graph())
-          if ds_with_session or using_xla:
+          if ds_with_session or using_xla or _UNSAFE_GRAPH_OP_LAYER_CREATION:
             # In Legacy Graph mode, evaluating here makes Session be
             # configured improperly. The downside of this is that saving
             # via `get_config` breaks, but SavedModel still works.
@@ -299,7 +312,7 @@ def needs_keras_history(tensors, ignore_call_context=False):
   if one or more of `tensors` originates from a `keras.Input` and
   does not have `_keras_history` set.
 
-  Arguments:
+  Args:
     tensors: An arbitrary nested structure of Tensors.
     ignore_call_context: Whether to ignore the check of if currently
       outside of a `call` context. This is `True` when creating
@@ -357,7 +370,7 @@ def uses_keras_history(tensors):
   already been checked to not originate from a `keras.Input`
   are marked as `_keras_history_checked`.
 
-  Arguments:
+  Args:
     tensors: An arbitrary nested structure of Tensors.
 
   Returns:
@@ -399,7 +412,7 @@ def mark_checked(tensors):
   This prevents Layers from attempting to create TensorFlowOpLayers
   for these Tensors.
 
-  Arguments:
+  Args:
     tensors: An arbitrary structure of Tensors.
   """
 
@@ -418,7 +431,9 @@ def call_context():
   return call_ctx
 
 
-control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
+# Inject the call_context function to keras_deps to remove the dependency
+# from TFLite to Keras.
+keras_deps.register_call_context_function(call_context)
 
 
 class CallContext(object):
@@ -454,7 +469,7 @@ class CallContext(object):
   def enter(self, layer, inputs, build_graph, training, saving=None):
     """Push a Layer and its inputs and state onto the current call context.
 
-    Arguments:
+    Args:
       layer: The `Layer` whose `call` is currently active.
       inputs: The inputs to the currently active `Layer`.
       build_graph: Whether currently inside a Graph or FuncGraph.
@@ -569,7 +584,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   the underlying tensor gets created in a FuncGraph managed by control_flow_v2.
   We need to raise clear error messages in such cases.
 
-  Arguments:
+  Args:
     tensor: Tensor to check, or `False` if it is known that an error
       should be raised.
     method: Caller method, one of {'add_metric', 'add_loss', 'add_update'}.
@@ -580,11 +595,7 @@ def check_graph_consistency(tensor=None, method='add_loss', force_raise=False):
   """
   if (force_raise or
       (ops.executing_eagerly_outside_functions() and
-       hasattr(tensor, 'graph') and
-       isinstance(tensor.graph,
-                  (control_flow_v2_func_graphs.CondBranchFuncGraph,
-                   control_flow_v2_func_graphs.WhileCondFuncGraph,
-                   control_flow_v2_func_graphs.WhileBodyFuncGraph)))):
+       hasattr(tensor, 'graph') and tensor.graph.is_control_flow_graph)):
     if method == 'activity_regularizer':
       bad_example = """
       class TestModel(tf.keras.Model):
@@ -695,7 +706,7 @@ def mark_as_return(outputs, acd):
 
   def _mark_as_return(tensor):
     """Marks `tensor` as the return value for automatic control deps."""
-    if not tensor_util.is_tensor(tensor):
+    if not tensor_util.is_tf_type(tensor):
       return tensor
 
     # pylint: disable=protected-access
@@ -746,9 +757,9 @@ def enable_v2_dtype_behavior():
   autocasting part of the V2 behavior for that layer, but not the defaulting to
   floatx part of the V2 behavior.
 
-  When a global `tf.keras.mixed_precision.experimental.Policy` is set, a Keras
-  layer's dtype will default to the global policy instead of floatx. Layers
-  will automatically cast inputs to the policy's compute_dtype.
+  When a global `tf.keras.mixed_precision.Policy` is set, a Keras layer's dtype
+  will default to the global policy instead of floatx. Layers will automatically
+  cast inputs to the policy's compute_dtype.
   """
   global V2_DTYPE_BEHAVIOR
   V2_DTYPE_BEHAVIOR = True
@@ -852,7 +863,7 @@ def no_ragged_support(inputs, layer_name):
 
 
 def is_split_variable(v):
-  """Returns True if `v` is either a PartionedVariable or a SharedVariable."""
+  """Returns True if `v` is either a PartionedVariable or a ShardedVariable."""
   return hasattr(v, '_variable_list') or hasattr(v, '_variables')
 
 

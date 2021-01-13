@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental impl for gen_*_ops.py using unified APIs, for testing only."""
+"""Experimental impl for gen_math_ops.py using unified APIs, for testing."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,12 +20,38 @@ from __future__ import print_function
 
 from tensorflow.python.framework.experimental import _math_ops
 from tensorflow.python.framework.experimental import context_stack as context
-from tensorflow.python.framework.experimental import gradient_registry
-from tensorflow.python.framework.experimental import tape_stack
 
 
 def add(a, b, name=None):
   ctx = context.get_default()
-  tape = tape_stack.get_default()
-  grad_registry = gradient_registry.get_global_registry()
-  return _math_ops.add(ctx, a, b, name, tape, grad_registry)
+  return _math_ops.add(ctx, a, b, name)
+
+
+def mat_mul(a, b, name=None):
+  ctx = context.get_default()
+  return _math_ops.mat_mul(ctx, a, b, name)
+
+
+def neg(a, name=None):
+  ctx = context.get_default()
+  return _math_ops.neg(ctx, a, name)
+
+
+def sub(a, b, name=None):
+  ctx = context.get_default()
+  return _math_ops.sub(ctx, a, b, name)
+
+
+def mul(a, b, name=None):
+  ctx = context.get_default()
+  return _math_ops.mul(ctx, a, b, name)
+
+
+def log1p(a, name=None):
+  ctx = context.get_default()
+  return _math_ops.log1p(ctx, a, name)
+
+
+def div_no_nan(a, b, name=None):
+  ctx = context.get_default()
+  return _math_ops.div_no_nan(ctx, a, b, name)

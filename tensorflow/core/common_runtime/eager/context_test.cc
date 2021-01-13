@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
+
+typedef FunctionDefHelper FDH;
 
 // Return a fake device.
 static Device* CreateDevice(const string& type, int n) {
@@ -54,13 +58,11 @@ class EagerContextTest : public ::testing::Test {
                    ContextDevicePlacementPolicy policy) {
     ASSERT_EQ(context_, nullptr);
     InitDeviceManager();
-    context_ = new EagerContext(
-        opts, policy,
-        /* async */ false,
-        /* lazy_copy_function_remote_inputs */ false, device_manager_,
-        /* device_mgr_owned */ false, /* rendezvous */ nullptr,
-        /* custom_kernel_creator */ nullptr,
-        /* cluster_flr */ nullptr);
+    context_ =
+        new EagerContext(opts, policy,
+                         /* async */ false, device_manager_,
+                         /* device_mgr_owned */ false, /* rendezvous */ nullptr,
+                         /* cluster_flr */ nullptr);
   }
 
  protected:
@@ -141,6 +143,104 @@ TEST_F(EagerContextTest, CompositeDeviceWithGivenName) {
   TF_ASSERT_OK(context()->FindOrCreateCompositeDevice(
       underlying_devices_1, composite_device_0->name(), &composite_device_1));
   EXPECT_EQ(composite_device_1, composite_device_0);
+}
+
+TEST_F(EagerContextTest, AddFunctionDef) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  const FunctionDef x_times_two = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+  TF_EXPECT_OK(context()->AddFunctionDef(x_times_two));
+}
+
+TEST_F(EagerContextTest, AddFunctionDefRepeatSame) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  const FunctionDef x_times_two = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+  TF_EXPECT_OK(context()->AddFunctionDef(x_times_two));
+  const FunctionDef x_times_two_copy = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+  TF_EXPECT_OK(context()->AddFunctionDef(x_times_two_copy));
+}
+
+TEST_F(EagerContextTest, AddFunctionDefRepeatDifferent) {
+  InitContext(SessionOptions(), DEVICE_PLACEMENT_EXPLICIT);
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  const FunctionDef x_times_two = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+  TF_EXPECT_OK(context()->AddFunctionDef(x_times_two));
+  const Tensor kThree = test::AsScalar<int64>(3);
+  // Same function name but body is different. This should error out.
+  const FunctionDef x_times_two_copy = FDH::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kThree}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+  Status s = context()->AddFunctionDef(x_times_two_copy);
+  EXPECT_FALSE(s.ok());
 }
 
 }  // namespace

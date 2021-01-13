@@ -70,27 +70,45 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
 
     auto& d = context->eigen_device<CPUDevice>();
 
+    // Executes Eigen contraction with output kernel wrapped into type erased
+    // wrapper to reduce the number of unique template instantiations.
+    auto executeWithOutputKernel = [&](auto output_kernel) {
+      OutputKernelWrapper output_kernel_wrapper(
+          [&output_kernel](
+              const ContractionOutputMapper<T, Eigen::Index>& output_mapper,
+              const Eigen::TensorContractionParams& params, Eigen::Index i,
+              Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) {
+            output_kernel(output_mapper, params, i, j, num_rows, num_cols);
+          });
+
+      out.device(d) = lhs.contract(rhs, dim_pair, output_kernel_wrapper);
+    };
+
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
-      OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+      if (fusion == FusedComputationType::kBiasAddWithLeakyRelu) {
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args,
+                                                &fusion_args.leakyrelu_alpha));
+      } else {
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+      }
     }
 
     switch (fusion) {
       case FusedComputationType::kBiasAdd:
-        out.device(d) =
-            lhs.contract(rhs, dim_pair, WithBiasAdd<T>(bias_add_args));
+        executeWithOutputKernel(WithBiasAdd<T>(bias_add_args));
         break;
       case FusedComputationType::kBiasAddWithRelu:
-        out.device(d) =
-            lhs.contract(rhs, dim_pair, WithBiasAddAndRelu<T>(bias_add_args));
+        executeWithOutputKernel(WithBiasAddAndRelu<T>(bias_add_args));
         break;
       case FusedComputationType::kBiasAddWithRelu6:
-        out.device(d) =
-            lhs.contract(rhs, dim_pair, WithBiasAddAndRelu6<T>(bias_add_args));
+        executeWithOutputKernel(WithBiasAddAndRelu6<T>(bias_add_args));
         break;
       case FusedComputationType::kBiasAddWithElu:
-        out.device(d) =
-            lhs.contract(rhs, dim_pair, WithBiasAddAndElu<T>(bias_add_args));
+        executeWithOutputKernel(WithBiasAddAndElu<T>(bias_add_args));
+        break;
+      case FusedComputationType::kBiasAddWithLeakyRelu:
+        executeWithOutputKernel(WithBiasAddAndLeakyRelu<T>(bias_add_args));
         break;
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
@@ -100,6 +118,31 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
                        errors::Internal("Fusion type is not supported"));
     }
   }
+
+ private:
+  // Wrap output_kernel into type erased struct to reduce the number of unique
+  // template instantiations for Eigen Tensor contraction expressions.
+  //
+  // We do not pass std::function directly as an output kernel because it blows
+  // up the binary size in debug mode with super long symbol names.
+  struct OutputKernelWrapper {
+    using OutputKernelFn =
+        std::function<void(const ContractionOutputMapper<T, Eigen::Index>&,
+                           const Eigen::TensorContractionParams&, Eigen::Index,
+                           Eigen::Index, Eigen::Index, Eigen::Index)>;
+
+    explicit OutputKernelWrapper(OutputKernelFn fn)
+        : output_kernel_fn(std::move(fn)) {}
+
+    void operator()(
+        const ContractionOutputMapper<T, Eigen::Index>& output_mapper,
+        const Eigen::TensorContractionParams& params, Eigen::Index i,
+        Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) const {
+      output_kernel_fn(output_mapper, params, i, j, num_rows, num_cols);
+    }
+
+    OutputKernelFn output_kernel_fn;
+  };
 };
 
 template <typename Device, typename T>
@@ -113,10 +156,13 @@ class FusedMatMulOp : public OpKernel {
 
     using FCT = FusedComputationType;
     if (std::is_same<Device, CPUDevice>::value) {
-      patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
-                  {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
-                  {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
-                  {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}}};
+      patterns = {
+          {FCT::kBiasAdd, {"BiasAdd"}},
+          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+          {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
+          {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
+          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
+      };
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(

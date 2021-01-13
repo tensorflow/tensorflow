@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 
-#include <fstream>
 #include <memory>
 #include <sstream>
 #include <unordered_set>
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 
 namespace tflite {
@@ -66,7 +66,7 @@ std::vector<TensorOpTensor> GetInputTensors(const TensorType& input_type,
          op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       TensorT* input_tensor = subgraph->tensors[op->inputs[0]].get();
       if (input_tensors.find(input_tensor) == input_tensors.end()) {
         continue;
@@ -141,7 +141,7 @@ std::vector<TensorOpTensor> GetOutputTensors(const TensorType& output_type,
          op_idx--) {
       OperatorT* op = subgraph->operators[op_idx].get();
       const BuiltinOperator op_code =
-          model->operator_codes[op->opcode_index]->builtin_code;
+          GetBuiltinCode(model->operator_codes[op->opcode_index].get());
       TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (output_tensors.find(output_tensor) == output_tensors.end()) {
         continue;
@@ -217,7 +217,8 @@ TfLiteStatus SetOutputTypeToUINT8(ModelT* model,
   // Find Quant op code index.
   size_t quant_op_index = 0;
   for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (model->operator_codes[i]->builtin_code == BuiltinOperator_QUANTIZE) {
+    if (GetBuiltinCode(model->operator_codes[i].get()) ==
+        BuiltinOperator_QUANTIZE) {
       quant_op_index = i;
     }
   }
@@ -294,33 +295,6 @@ TfLiteStatus RemoveOutputTensor(ModelT* model,
   return kTfLiteOk;
 }
 
-void WriteFile(const std::string& out_file, const uint8_t* bytes,
-               size_t num_bytes) {
-  std::fstream stream(out_file, std::ios::binary | std::ios::out);
-  for (size_t i = 0; i < num_bytes; i++) {
-    stream << bytes[i];
-  }
-  TFLITE_DCHECK(!stream.bad() && !stream.fail());
-}
-
-std::unique_ptr<flatbuffers::FlatBufferBuilder> FinishModel(
-    const tflite::ModelT* model) {
-  std::unique_ptr<flatbuffers::FlatBufferBuilder> builder(
-      new flatbuffers::FlatBufferBuilder());
-  auto packed_model = tflite::Model::Pack(*builder, model);
-  tflite::FinishModelBuffer(*builder, packed_model);
-  return builder;
-}
-
-std::unique_ptr<tflite::ModelT> CreateMutableModelFromFile(
-    const string& model_filepath) {
-  auto fb_model =
-      tflite::FlatBufferModel::BuildFromFile(model_filepath.c_str());
-  auto tflite_model = fb_model->GetModel();
-  auto copied_model = absl::make_unique<tflite::ModelT>();
-  tflite_model->UnPackTo(copied_model.get(), nullptr);
-  return copied_model;
-}
 
 int GetOriginalNumberOfTensors(const TensorType& input_type,
                                const TensorType& output_type, ModelT* model,
@@ -398,9 +372,9 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
   }
 
   // Create model.
-  auto tflite_model = CreateMutableModelFromFile(input_file);
+  auto tflite_model = utils::CreateMutableModelFromFile(input_file);
 
-  auto model_builder = FinishModel(tflite_model.get());
+  auto model_builder = utils::FinishModel(tflite_model.get());
 
   auto fixed_point_model_builder =
       absl::make_unique<flatbuffers::FlatBufferBuilder>();
@@ -410,7 +384,7 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
                                      output_type);
   TFLITE_DCHECK_EQ(status, kTfLiteOk);
 
-  WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
+  utils::WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
 
   return kTfLiteOk;
 }

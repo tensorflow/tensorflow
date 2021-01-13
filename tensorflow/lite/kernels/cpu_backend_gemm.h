@@ -27,25 +27,48 @@ limitations under the License.
 #ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_x86.h"
 #endif
 
 namespace tflite {
 
 namespace cpu_backend_gemm {
 
+// The main entry point for CpuBackendGemm::Gemm.
+//
+// If TFLITE_WITH_RUY is set, CpuBackendGemm::Gemm will always go to Ruy aka
+// GemmImplUsingRuy. Other cases are as follows:
+//
+//                    |Quantized (uint8)|Quantized (int8)| Float |
+// TFLITE_WITH_RUY    |      Ruy        |      Ruy       | Ruy   |
+// !TFLITE_WITH_RUY   |      gemmlowp   |  Ruy/gemmlowp* | eigen |
+// * - Ruy if NEON is not available.
+
+//  On x86 platforms:
+//  (default)         |      gemmlowp   |     Ruy        | eigen |
+//  TFLITE_X86_RUY_\  |      Ruy        |     Ruy        | Ruy   |
+//  ENABLED && (AVX
+//  or above available)
+
+#if !defined(TFLITE_WITH_RUY) && defined(TFLITE_X86_PLATFORM)
+/* GEMM dispatch implementation for x86.
+ */
+template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
+          typename DstScalar, QuantizationFlavor quantization_flavor>
+struct GemmImpl : detail::GemmImplX86<LhsScalar, RhsScalar, AccumScalar,
+                                      DstScalar, quantization_flavor> {};
+#else
 /* Generic implementation using ruy.
  * Non-ruy implementation will be partial specializations of this template.
  */
-
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar, QuantizationFlavor quantization_flavor>
 struct GemmImpl : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar,
                                            DstScalar, quantization_flavor> {};
 
-#ifndef TFLITE_WITH_RUY
+#if !defined(TFLITE_WITH_RUY)
 
 /* Specializations using gemmlowp */
-
 template <typename SrcScalar, typename DstScalar,
           QuantizationFlavor quantization_flavor>
 struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, DstScalar,
@@ -56,7 +79,7 @@ struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, DstScalar,
 // When SrcScalar=int8 or DstScalar=int8, gemmlowp fails to compile
 // outside of NEON. We avoid the compilation failure by subspecializing these
 // cases, rerouting it back to ruy.
-#ifndef GEMMLOWP_NEON
+#if !defined(GEMMLOWP_NEON)
 template <typename SrcScalar, QuantizationFlavor quantization_flavor>
 struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, std::int8_t,
                 quantization_flavor>
@@ -83,6 +106,8 @@ struct GemmImpl<float, float, float, float, QuantizationFlavor::kFloatingPoint>
     : detail::GemmImplUsingEigen {};
 
 #endif  // not TFLITE_WITH_RUY
+
+#endif  // not TFLITE_WITH_RUY and TFLITE_X86_PLATFORM
 
 /* Public entry point */
 

@@ -1,8 +1,8 @@
 # Description:
 #   Contains the Keras layers (internal TensorFlow version).
 
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
     # TODO(scottzhu): Remove non-keras deps from TF.
@@ -15,8 +15,6 @@ package(
     ],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 filegroup(
     name = "all_py_srcs",
@@ -54,7 +52,9 @@ py_library(
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
+        "//tensorflow/python/keras/feature_column",
         "//tensorflow/python/keras/layers/preprocessing",
+        "//tensorflow/python/keras/premade",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )
@@ -219,6 +219,7 @@ py_library(
     srcs = ["multi_head_attention.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:platform",
         "//tensorflow/python:special_math_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:util",
@@ -421,7 +422,6 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:platform",
-        "//tensorflow/python:platform_build_info",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:util",
@@ -439,8 +439,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":recurrent",
-        "//tensorflow/python:rnn_cell",
         "//tensorflow/python:util",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
     ],
 )
 
@@ -513,6 +513,9 @@ cuda_py_test(
     srcs = ["convolutional_test.py"],
     python_version = "PY3",
     shard_count = 8,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -526,6 +529,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["convolutional_transpose_test.py"],
     python_version = "PY3",
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -541,8 +547,10 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_cuda11",
         "no_windows_gpu",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -677,6 +685,7 @@ tf_py_test(
     size = "medium",
     srcs = ["merge_test.py"],
     python_version = "PY3",
+    shard_count = 4,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -688,7 +697,7 @@ tf_py_test(
 
 tf_py_test(
     name = "noise_test",
-    size = "small",
+    size = "medium",
     srcs = ["noise_test.py"],
     python_version = "PY3",
     deps = [
@@ -707,6 +716,9 @@ cuda_py_test(
     tags = [
         "no_rocm",
         "notsan",
+    ],
+    xla_tags = [
+        "no_cuda_asan",  # times out
     ],
     deps = [
         "//tensorflow/python:client_testlib",
@@ -740,7 +752,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "notsan",  # http://b/62136390
     ],
     deps = [
@@ -759,7 +770,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
-        "no_rocm",
         "noasan",  # times out b/63678675
         "notsan",  # http://b/62189182
     ],
@@ -777,7 +787,10 @@ tf_py_test(
     srcs = ["recurrent_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        "notsan",  # TODO(b/170870794)
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -821,8 +834,11 @@ cuda_py_test(
     shard_count = 12,
     tags = [
         "no_oss",
+        "notsan",  # TODO(b/170954246)
     ],
-    xla_enable_strict_auto_jit = False,
+    xla_tags = [
+        "no_cuda_asan",  # times out
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -837,11 +853,6 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = [
-        "no_cuda11",
-        "no_oss",
-    ],
-    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -926,6 +937,8 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
+        "//tensorflow/python/keras/legacy_tf_layers:layers_base",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

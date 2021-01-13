@@ -52,13 +52,18 @@ load(
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "filegroup")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = [
+        "//visibility:public",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -89,10 +94,6 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/cpu_utils.cc",
-        "profile_utils/cpu_utils.h",
-        "profile_utils/i_cpu_utils_helper.h",
         "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
@@ -176,6 +177,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
+        "@com_google_absl//absl/strings:cord",
     ] + tf_platform_deps("cord"),
 )
 
@@ -202,6 +204,7 @@ cc_library(
 cc_library(
     name = "cuda",
     hdrs = ["cuda.h"],
+    compatible_with = [],
     deps = [
         ":platform",
         "//tensorflow/stream_executor/cuda:cuda_activation_header",
@@ -244,6 +247,11 @@ cc_library(
         "threadpool.h",
     ],
     deps = tf_windows_aware_platform_deps("env"),
+)
+
+cc_library(
+    name = "env_impl",
+    deps = tf_windows_aware_platform_deps("env_impl"),
 )
 
 cc_library(
@@ -376,9 +384,8 @@ filegroup(
 
 cc_library(
     name = "mutex",
+    compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["mutex.h"],
-    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -439,6 +446,7 @@ cc_library(
         ":strcat",
         ":stringpiece",
         ":types",
+        "@com_google_absl//absl/algorithm:container",
     ],
     alwayslink = True,
 )
@@ -617,10 +625,6 @@ filegroup(
     srcs = [
         "stacktrace_handler.h",
     ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
 )
 
 cc_library(
@@ -696,12 +700,12 @@ cc_library(
 
 cc_library(
     name = "strong_hash",
-    hdrs = ["strong_hash.h"],
-    visibility = ["//visibility:public"],
+    textual_hdrs = ["strong_hash.h"],
     deps = [
         ":platform",
         ":types",
-    ] + tf_platform_deps("strong_hash"),
+        "@highwayhash//:sip_hash",
+    ],
 )
 
 cc_library(
@@ -798,11 +802,6 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     compatible_with = get_compatible_with_portable(),
-    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = [
-        "//tensorflow:__subpackages__",
-        "//tensorflow_text:__subpackages__",
-    ],
     deps = [
         ":platform",
         ":bfloat16",
@@ -935,7 +934,6 @@ tf_cuda_library(
         "stream_executor.h",
     ],
     features = ["-parse_headers"],
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor",
     ],
@@ -950,7 +948,6 @@ cc_library(
         "stream_executor_no_cuda.h",
     ],
     features = ["-parse_headers"],
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         "//tensorflow/core/platform/default/build_config:stream_executor_no_cuda",
     ],
@@ -965,7 +962,6 @@ cc_library(
         "//tensorflow:windows": [],
         "//conditions:default": ["-lm"],
     }),
-    visibility = ["//tensorflow/core:__pkg__"],
     deps = [
         ":platform",
         ":stacktrace_handler",
@@ -986,28 +982,31 @@ cc_library(
 )
 
 cc_library(
-    name = "profile_utils_cpu_utils",
-    srcs = [
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/cpu_utils.cc",
-        "profile_utils/i_cpu_utils_helper.h",
-    ],
-    hdrs = [
-        "profile_utils/cpu_utils.h",
-    ],
+    name = "enable_tf2_utils",
+    srcs = ["enable_tf2_utils.cc"],
+    hdrs = ["enable_tf2_utils.h"],
     copts = tf_copts(),
     deps = [
-        ":logging",
-        ":macros",
-        ":types",
-        "@com_google_absl//absl/base",
+        "//tensorflow/core/util:env_var",
     ],
     alwayslink = 1,
+)
+
+alias(
+    name = "profile_utils_cpu_utils",
+    actual = "//tensorflow/core/platform/profile_utils:profile_utils_cpu_utils",
 )
 
 filegroup(
     name = "tensor_float_32_hdr",
     srcs = ["tensor_float_32_utils.h"],
+    compatible_with = get_compatible_with_portable(),
+)
+
+filegroup(
+    name = "enable_tf2_hdr",
+    srcs = ["enable_tf2_utils.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 tf_cc_tests(
@@ -1020,13 +1019,13 @@ tf_cc_tests(
         "mutex_test.cc",
         "net_test.cc",
         "port_test.cc",
-        "profile_utils/cpu_utils_test.cc",
         "scanner_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
         "stringpiece_test.cc",
         "stringprintf_test.cc",
         "vmodule_benchmark_test.cc",
+        "//tensorflow/core/platform/profile_utils:cpu_utils_test.cc",
     ],
     create_named_test_suite = True,
     deps = [
@@ -1062,6 +1061,20 @@ tf_cc_test(
         ":stacktrace",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "enable_tf2_utils_test",
+    size = "small",
+    srcs = [
+        "enable_tf2_utils_test.cc",
+    ],
+    deps = [
+        ":enable_tf2_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/util:env_var",
     ],
 )
 
@@ -1288,7 +1301,7 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_gpu(
+tf_cuda_cc_test(
     name = "rocm_rocdl_path_test",
     size = "small",
     srcs = ["rocm_rocdl_path_test.cc"],
@@ -1299,7 +1312,9 @@ tf_cc_test_gpu(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-    ],
+    ] + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+    ]),
 )
 
 # --------------------------------------------------------------------------
@@ -1367,10 +1382,10 @@ filegroup(
         "numa.h",
         "path.h",
         "prefetch.h",
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/clock_cycle_profiler.h",
-        "profile_utils/cpu_utils.h",
-        "profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "protobuf.h",
         "ram_file_system.h",
         "random.h",
@@ -1482,7 +1497,10 @@ filegroup(
     srcs = [
         "jpeg.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1490,7 +1508,7 @@ filegroup(
     srcs = [
         "gif.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = ["//tensorflow/core/lib/gif:__pkg__"],
 )
 
 filegroup(
@@ -1505,7 +1523,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1523,7 +1544,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/jpeg:__pkg__",
+    ],
 )
 
 filegroup(
@@ -1540,7 +1564,10 @@ filegroup(
         "tstring.h",
         "types.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/gif:__pkg__",
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.
@@ -1646,11 +1673,11 @@ filegroup(
         "platform_strings.cc",
         "platform_strings.h",
         "platform_strings_computed.h",
-        "profile_utils/android_armv7a_cpu_utils_helper.cc",
-        "profile_utils/android_armv7a_cpu_utils_helper.h",
-        "profile_utils/cpu_utils.cc",
-        "profile_utils/cpu_utils.h",
-        "profile_utils/i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.cc",
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.cc",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
         "protobuf_internal.h",
         "random.cc",
         "random.h",
@@ -1668,7 +1695,6 @@ filegroup(
     srcs = glob(
         [
             "*.h",
-            "profile_utils/**/*.h",
         ],
         exclude = [
             "dynamic_annotations.h",
@@ -1685,16 +1711,18 @@ filegroup(
             "**/rocm.h",
             "**/stream_executor.h",
         ],
-    ),
+    ) + [
+        "//tensorflow/core/platform/profile_utils:android_armv7a_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:cpu_utils.h",
+        "//tensorflow/core/platform/profile_utils:i_cpu_utils_helper.h",
+        "//tensorflow/core/platform/profile_utils:clock_cycle_profiler.h",
+    ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
-filegroup(
+alias(
     name = "legacy_lib_internal_srcs",
-    srcs = [
-        "profile_utils/android_armv7a_cpu_utils_helper.cc",
-        "profile_utils/clock_cycle_profiler.cc",
-    ],
+    actual = "//tensorflow/core/platform/profile_utils:legacy_lib_internal_srcs",
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
@@ -1709,6 +1737,12 @@ bzl_library(
     srcs = [
         "build_config_root.bzl",
     ] + tf_platform_alias("build_config_root.bzl"),
+    visibility = [
+        "//learning/brain/google/xla/tests:__pkg__",
+        "//learning/brain/tfrc/runtime/tpu_driver:__subpackages__",
+        "//nlp/deleuze:__pkg__",
+        "//tensorflow:__subpackages__",
+    ],
 )
 
 bzl_library(

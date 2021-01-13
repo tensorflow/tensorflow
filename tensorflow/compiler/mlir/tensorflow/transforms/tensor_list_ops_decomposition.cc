@@ -22,9 +22,8 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -72,10 +71,9 @@ struct TensorListOpsDecompositionPass
 void UpdateFuncType(FuncOp func) {
   llvm::SmallVector<Type, 8> arg_types;
   for (auto arg : func.getArguments()) arg_types.push_back(arg.getType());
-  func.setType(FunctionType::get(
-      arg_types,
-      llvm::to_vector<8>(func.front().getTerminator()->getOperandTypes()),
-      func.getContext()));
+  func.setType(
+      FunctionType::get(func.getContext(), arg_types,
+                        func.front().getTerminator()->getOperandTypes()));
 }
 
 // Holds the size value of a tensor list and whether the size is statically
@@ -125,26 +123,39 @@ LogicalResult DecomposeTensorListOpsInternal(
     Block*, ModuleOp, llvm::SmallDenseMap<Value, SizeInfo>*,
     llvm::StringMap<PartitionedCallDecompositionInfo>*);
 
+// Adds the corresponding sizes of tensor list buffers in block's terminator
+// to the list of return values. Returns the mapping from the buffer
+// indices to the added size indices, which is a list of tuples
+// (buffer_return_index, size_return_index, fixed_size).
+template <class TerminatorOp>
+llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8>
+AddTensorListSizesToTerminator(
+    Block& block, const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
+  auto old_terminator = block.getTerminator();
+  auto new_outputs = llvm::to_vector<8>(old_terminator->getOperands());
+  llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8>
+      output_buffer_to_size;
+  for (auto retval : llvm::enumerate(old_terminator->getOperands())) {
+    auto it = buffer_to_size.find(retval.value());
+    if (it == buffer_to_size.end()) continue;
+    output_buffer_to_size.emplace_back(retval.index(), new_outputs.size(),
+                                       it->getSecond().fixed);
+    new_outputs.push_back(it->getSecond().size);
+  }
+  OpBuilder(old_terminator)
+      .create<TerminatorOp>(old_terminator->getLoc(), new_outputs);
+  old_terminator->erase();
+  return output_buffer_to_size;
+}
+
 // Adds the corresponding sizes of tensor list buffers in func's return values
 // to the list of return values. Returns the mapping from the buffer indices to
 // the added size indices, which is a list of tuples (buffer_return_index,
 // size_return_index, fixed_size).
-llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8>
-AddTensorListSizesToReturn(
+llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8> ModifyFunctionReturn(
     FuncOp func, const llvm::SmallDenseMap<Value, SizeInfo>& buffer_to_size) {
-  auto old_return = func.front().getTerminator();
-  auto new_returns = llvm::to_vector<8>(old_return->getOperands());
-  llvm::SmallVector<std::tuple<int64_t, int64_t, bool>, 8>
-      output_buffer_to_size;
-  for (auto retval : llvm::enumerate(old_return->getOperands())) {
-    auto it = buffer_to_size.find(retval.value());
-    if (it == buffer_to_size.end()) continue;
-    output_buffer_to_size.emplace_back(retval.index(), new_returns.size(),
-                                       it->getSecond().fixed);
-    new_returns.push_back(it->getSecond().size);
-  }
-  OpBuilder(old_return).create<ReturnOp>(old_return->getLoc(), new_returns);
-  old_return->erase();
+  auto output_buffer_to_size =
+      AddTensorListSizesToTerminator<ReturnOp>(func.front(), buffer_to_size);
   UpdateFuncType(func);
   return output_buffer_to_size;
 }
@@ -155,7 +166,7 @@ LogicalResult HandleWhileOp(
     llvm::StringMap<PartitionedCallDecompositionInfo>*
         decomposed_partitioned_call_callees) {
   // Rewrite body.
-  auto body = while_op.body_func();
+  auto body = while_op.body_function();
   llvm::SmallDenseMap<Value, SizeInfo> body_map;
   auto find_arg_tensor_list_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(while_op.getOperand(index));
@@ -173,10 +184,10 @@ LogicalResult HandleWhileOp(
           decomposed_partitioned_call_callees))) {
     return failure();
   }
-  auto output_buffer_to_size = AddTensorListSizesToReturn(body, body_map);
+  auto output_buffer_to_size = ModifyFunctionReturn(body, body_map);
 
   // Rewrite cond.
-  auto cond = while_op.cond_func();
+  auto cond = while_op.cond_function();
   llvm::SmallDenseMap<Value, SizeInfo> cond_map;
   ModifyFunctionSignature(cond, cutil::GetSizeType(builder), &cond_map,
                           find_arg_tensor_list_type, arg_buffer_size_is_fixed);
@@ -241,9 +252,9 @@ LogicalResult HandleCaseOrIfOp(
 
   const bool arg_no_changed = branch_maps.front().empty();
   auto output_buffer_to_size =
-      AddTensorListSizesToReturn(branches.front(), branch_maps.front());
+      ModifyFunctionReturn(branches.front(), branch_maps.front());
   for (const auto& pair : llvm::drop_begin(llvm::zip(branches, branch_maps), 1))
-    AddTensorListSizesToReturn(std::get<0>(pair), std::get<1>(pair));
+    ModifyFunctionReturn(std::get<0>(pair), std::get<1>(pair));
 
   if (output_buffer_to_size.empty() && arg_no_changed) return success();
 
@@ -264,6 +275,158 @@ LogicalResult HandleCaseOrIfOp(
   }
   op.replaceAllUsesWith(new_op.getResults().take_front(op.getNumResults()));
   op.erase();
+  return success();
+}
+
+LogicalResult HandleWhileRegionOp(
+    TF::WhileRegionOp while_op, ModuleOp module,
+    llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
+    llvm::StringMap<PartitionedCallDecompositionInfo>*
+        decomposed_partitioned_call_callees) {
+  OpBuilder builder(while_op);
+  auto modify_region_arguments = [&](Region& region) {
+    int64_t original_arg_count = region.getNumArguments();
+    for (int64_t i = 0; i < original_arg_count; ++i) {
+      auto operand = while_op.getOperand(i);
+      auto it = buffer_to_size->find(operand);
+      if (it == buffer_to_size->end()) continue;
+      auto buffer_type = it->getFirst().getType();
+      region.getArgument(i).setType(buffer_type);
+      auto size_arg = region.addArgument(cutil::GetSizeType(builder));
+      (*buffer_to_size)[region.getArgument(i)] = {size_arg,
+                                                  it->getSecond().fixed};
+    }
+  };
+
+  // Rewrite body.
+  Region& body_region = while_op.body();
+  modify_region_arguments(body_region);
+  if (failed(DecomposeTensorListOpsInternal(
+          &body_region.front(), module, buffer_to_size,
+          decomposed_partitioned_call_callees))) {
+    return failure();
+  }
+  auto output_buffer_to_size = AddTensorListSizesToTerminator<TF::YieldOp>(
+      body_region.front(), *buffer_to_size);
+
+  // Rewrite cond.
+  Region& cond_region = while_op.cond();
+  modify_region_arguments(cond_region);
+  if (failed(DecomposeTensorListOpsInternal(
+          &cond_region.front(), module, buffer_to_size,
+          decomposed_partitioned_call_callees))) {
+    return failure();
+  }
+
+  if (output_buffer_to_size.empty()) return success();
+
+  // Create the new while op.
+  auto new_while_operands = llvm::to_vector<8>(while_op.getOperands());
+  for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
+    auto it = buffer_to_size->find(while_op.getOperand(i));
+    if (it == buffer_to_size->end()) continue;
+    new_while_operands.push_back(it->getSecond().size);
+  }
+  auto new_while = builder.create<TF::WhileRegionOp>(
+      while_op.getLoc(), body_region.front().getTerminator()->getOperandTypes(),
+      new_while_operands, while_op.getAttrs());
+  new_while.body().takeBody(body_region);
+  new_while.cond().takeBody(cond_region);
+  for (const auto& entry : output_buffer_to_size) {
+    (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
+        new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
+  }
+  while_op.replaceAllUsesWith(
+      new_while.getResults().take_front(while_op.getNumResults()));
+  while_op.erase();
+  return success();
+}
+
+LogicalResult HandleIfRegionOp(
+    TF::IfRegionOp if_op, ModuleOp module,
+    llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
+    llvm::StringMap<PartitionedCallDecompositionInfo>*
+        decomposed_partitioned_call_callees) {
+  // Rewrite the branches.
+  Region& then_branch = if_op.then_branch();
+  Region& else_branch = if_op.else_branch();
+  if (failed(DecomposeTensorListOpsInternal(
+          &then_branch.front(), module, buffer_to_size,
+          decomposed_partitioned_call_callees)))
+    return failure();
+  if (failed(DecomposeTensorListOpsInternal(
+          &else_branch.front(), module, buffer_to_size,
+          decomposed_partitioned_call_callees)))
+    return failure();
+
+  auto output_buffer_to_size = AddTensorListSizesToTerminator<TF::YieldOp>(
+      then_branch.front(), *buffer_to_size);
+  AddTensorListSizesToTerminator<TF::YieldOp>(else_branch.front(),
+                                              *buffer_to_size);
+
+  if (output_buffer_to_size.empty()) return success();
+
+  // Recreate the op.
+  auto new_op = OpBuilder(if_op).create<TF::IfRegionOp>(
+      if_op.getLoc(), then_branch.front().getTerminator()->getOperandTypes(),
+      if_op.getOperand(), if_op.getAttrs());
+  for (const auto& entry : output_buffer_to_size) {
+    (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
+        new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
+  }
+
+  new_op.then_branch().takeBody(if_op.then_branch());
+  new_op.else_branch().takeBody(if_op.else_branch());
+
+  if_op.replaceAllUsesWith(
+      new_op.getResults().take_front(if_op.getNumResults()));
+  if_op.erase();
+  return success();
+}
+
+LogicalResult HandleCaseRegionOp(
+    TF::CaseRegionOp case_op, ModuleOp module,
+    llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
+    llvm::StringMap<PartitionedCallDecompositionInfo>*
+        decomposed_partitioned_call_callees) {
+  // Rewrite the branches.
+  RegionRange branches = case_op.getRegions();
+
+  for (Region* branch : branches) {
+    if (failed(DecomposeTensorListOpsInternal(
+            &branch->front(), module, buffer_to_size,
+            decomposed_partitioned_call_callees)))
+      return failure();
+  }
+
+  // Get the output buffer index to size index mapping one of the branches. It
+  // should be same for all the branches so we only get it for the first branch.
+  Region* first_branch = branches.front();
+  auto output_buffer_to_size = AddTensorListSizesToTerminator<TF::YieldOp>(
+      first_branch->front(), *buffer_to_size);
+  for (Region* branch : branches.drop_front()) {
+    AddTensorListSizesToTerminator<TF::YieldOp>(branch->front(),
+                                                *buffer_to_size);
+  }
+
+  if (output_buffer_to_size.empty()) return success();
+
+  // Recreate the op.
+  auto new_op = OpBuilder(case_op).create<TF::CaseRegionOp>(
+      case_op.getLoc(),
+      first_branch->front().getTerminator()->getOperandTypes(),
+      case_op.getOperand(), case_op.getAttrs(), case_op.getNumRegions());
+  for (const auto& entry : output_buffer_to_size) {
+    (*buffer_to_size)[new_op.getResult(std::get<0>(entry))] = {
+        new_op.getResult(std::get<1>(entry)), std::get<2>(entry)};
+  }
+
+  for (auto pair : llvm::zip(new_op.getRegions(), case_op.getRegions())) {
+    std::get<0>(pair)->takeBody(*std::get<1>(pair));
+  }
+  case_op.replaceAllUsesWith(
+      new_op.getResults().take_front(case_op.getNumResults()));
+  case_op.erase();
   return success();
 }
 
@@ -294,7 +457,7 @@ LogicalResult HandlePartitionedCallOp(
     auto new_call = builder.create<CallOp>(
         call.getLoc(), info.decomposed_callee.getType().getResults(),
         new_operands, call.getAttrs());
-    new_call.setAttr(
+    new_call->setAttr(
         "f", builder.getSymbolRefAttr(
                  const_cast<FuncOp&>(info.decomposed_callee).getName()));
     for (const auto& entry : info.buffer_ret_to_size_ret) {
@@ -317,7 +480,7 @@ LogicalResult HandlePartitionedCallOp(
   if (!callee.isPrivate()) {
     // Clone non-private callee in case of signature change.
     lowered_callee = callee.clone();
-    lowered_callee.setVisibility(SymbolTable::Visibility::Private);
+    lowered_callee.setPrivate();
   }
   auto find_arg_buffer_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(call.getOperand(index));
@@ -337,7 +500,7 @@ LogicalResult HandlePartitionedCallOp(
     return failure();
   }
   info.buffer_ret_to_size_ret =
-      AddTensorListSizesToReturn(lowered_callee, callee_map);
+      ModifyFunctionReturn(lowered_callee, callee_map);
   info.decomposed_callee = lowered_callee;
   if (args_no_changed && info.buffer_ret_to_size_ret.empty()) {
     // Signature is not modified. We do not need to keep two copies.
@@ -376,8 +539,23 @@ LogicalResult GetConstShapeValue(Value shape_value,
   auto shape_const_op = llvm::dyn_cast<TF::ConstOp>(shape_op);
   if (!shape_const_op) return failure();
   for (const auto& v : shape_const_op.value().getValues<APInt>()) {
-    shape->push_back(v.getSExtValue());
+    int64_t dim_size = v.getSExtValue();
+    if (dim_size == ShapedType::kDynamicSize) return failure();
+    shape->push_back(dim_size);
   }
+  return success();
+}
+
+// Checks the result Variant type to infer the element shape if fully defined.
+// If the Variant type has multiple subtypes or does not have static shape,
+// return error.
+LogicalResult GetElementShapeFromResultType(
+    Type type, llvm::SmallVector<int64_t, 8>* shape) {
+  auto variant_type = getElementTypeOrSelf(type).dyn_cast<TF::VariantType>();
+  if (!variant_type || variant_type.getSubtypes().size() != 1) return failure();
+  TensorType tensor_type = variant_type.getSubtypes().front();
+  if (!tensor_type.hasStaticShape()) return failure();
+  for (auto d : tensor_type.getShape()) shape->push_back(d);
   return success();
 }
 
@@ -387,8 +565,14 @@ LogicalResult HandleEmptyTensorListOp(
   Value buffer;
   OpBuilder builder(list);
   llvm::SmallVector<int64_t, 8> element_shape;
-  if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
-    return list.emitOpError("unknown tensor list element shape");
+  // Infer TensorList element shape from the return type first, and then from
+  // the const element shape operand. We first check the return type because
+  // shape inference might have successfully inferred the element shape from
+  // write operations on the TensorList.
+  if (failed(GetElementShapeFromResultType(list.getType(), &element_shape))) {
+    if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
+      return list.emitOpError("unknown tensor list element shape");
+    }
   }
   if (failed(cutil::CreateInitBufferValue(
           element_shape, list.max_num_elements(), list, list.element_dtype(),
@@ -408,8 +592,14 @@ LogicalResult HandleTensorListReserveOp(
   Value buffer;
   OpBuilder builder(list);
   llvm::SmallVector<int64_t, 8> element_shape;
-  if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
-    return list.emitOpError("unknown tensor list element shape");
+  // Infer TensorList element shape from the return type first, and then from
+  // the const element shape operand. We first check the return type because
+  // shape inference might have successfully inferred the element shape from
+  // write operations on the TensorList.
+  if (failed(GetElementShapeFromResultType(list.getType(), &element_shape))) {
+    if (failed(GetConstShapeValue(list.element_shape(), &element_shape))) {
+      return list.emitOpError("unknown tensor list element shape");
+    }
   }
   if (failed(cutil::CreateInitBufferValue(element_shape, list.num_elements(),
                                           list, list.element_dtype(), builder,
@@ -701,17 +891,14 @@ LogicalResult DecomposeTensorListOpsInternal(
         return failure();
       }
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      if (failed(HandleCaseOrIfOp(if_op, {if_op.then_func(), if_op.else_func()},
-                                  module, buffer_to_size,
-                                  decomposed_partitioned_call_callees))) {
+      if (failed(HandleCaseOrIfOp(
+              if_op, {if_op.then_function(), if_op.else_function()}, module,
+              buffer_to_size, decomposed_partitioned_call_callees))) {
         return failure();
       }
     } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
       SmallVector<FuncOp, 2> branches;
-      for (auto branch_symbol : case_op.branches()) {
-        branches.push_back(module.lookupSymbol<FuncOp>(
-            branch_symbol.cast<FlatSymbolRefAttr>()));
-      }
+      case_op.get_branch_functions(branches);
       if (failed(HandleCaseOrIfOp(case_op, branches, module, buffer_to_size,
                                   decomposed_partitioned_call_callees))) {
         return failure();
@@ -732,6 +919,21 @@ LogicalResult DecomposeTensorListOpsInternal(
       if (failed(HandlePartitionedCallOp(
               spcall, spcall.func(), module, buffer_to_size,
               decomposed_partitioned_call_callees))) {
+        return failure();
+      }
+    } else if (auto while_op = llvm::dyn_cast<TF::WhileRegionOp>(&op)) {
+      if (failed(HandleWhileRegionOp(while_op, module, buffer_to_size,
+                                     decomposed_partitioned_call_callees))) {
+        return failure();
+      }
+    } else if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(&op)) {
+      if (failed(HandleIfRegionOp(if_op, module, buffer_to_size,
+                                  decomposed_partitioned_call_callees))) {
+        return failure();
+      }
+    } else if (auto case_op = llvm::dyn_cast<TF::CaseRegionOp>(&op)) {
+      if (failed(HandleCaseRegionOp(case_op, module, buffer_to_size,
+                                    decomposed_partitioned_call_callees))) {
         return failure();
       }
     }

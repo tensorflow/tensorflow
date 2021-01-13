@@ -18,8 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import functools
+import itertools
 import threading
 
 import numpy as np
@@ -44,9 +46,9 @@ from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
-from tensorflow.python.util import tf_contextlib
+from tensorflow.python.keras.utils import tf_contextlib
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 
 
 def string_test(actual, expected):
@@ -64,7 +66,7 @@ def get_test_data(train_samples,
                   random_seed=None):
   """Generates test data to train a model on.
 
-  Arguments:
+  Args:
     train_samples: Integer, how many training samples to generate.
     test_samples: Integer, how many test samples to generate.
     input_shape: Tuple of integers, shape of the inputs.
@@ -98,10 +100,11 @@ def layer_test(layer_cls,
                validate_training=True,
                adapt_data=None,
                custom_objects=None,
-               test_harness=None):
+               test_harness=None,
+               supports_masking=None):
   """Test routine for a layer with a single input and single output.
 
-  Arguments:
+  Args:
     layer_cls: Layer class object.
     kwargs: Optional dictionary of keyword arguments for instantiating the
       layer.
@@ -120,6 +123,8 @@ def layer_test(layer_cls,
       in the layer class. This is helpful for testing custom layers.
     test_harness: The Tensorflow test, if any, that this function is being
       called in.
+    supports_masking: Optional boolean to check the `supports_masking` property
+      of the layer. If None, the check will not be performed.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -162,6 +167,13 @@ def layer_test(layer_cls,
   # instantiation
   kwargs = kwargs or {}
   layer = layer_cls(**kwargs)
+
+  if (supports_masking is not None
+      and layer.supports_masking != supports_masking):
+    raise AssertionError(
+        'When testing layer %s, the `supports_masking` property is %r'
+        'but expected to be %r.\nFull kwargs: %s' %
+        (layer_cls.__name__, layer.supports_masking, supports_masking, kwargs))
 
   # Test adapt, if data was passed.
   if adapt_data is not None:
@@ -302,6 +314,7 @@ _thread_local_data = threading.local()
 _thread_local_data.model_type = None
 _thread_local_data.run_eagerly = None
 _thread_local_data.saved_model_format = None
+_thread_local_data.save_kwargs = None
 
 
 @tf_contextlib.contextmanager
@@ -310,7 +323,7 @@ def model_type_scope(value):
 
   The model type gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: model type value
 
   Yields:
@@ -331,7 +344,7 @@ def run_eagerly_scope(value):
 
   The boolean gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: Bool specifying if we should run models eagerly in the active test.
      Should be True or False.
 
@@ -353,7 +366,7 @@ def use_keras_tensors_scope(value):
 
   The boolean gets restored to its original value upon exiting the scope.
 
-  Arguments:
+  Args:
      value: Bool specifying if we should build functional models
       using KerasTensors in the active test.
      Should be True or False.
@@ -381,25 +394,29 @@ def should_run_eagerly():
 
 
 @tf_contextlib.contextmanager
-def saved_model_format_scope(value):
+def saved_model_format_scope(value, **kwargs):
   """Provides a scope within which the savde model format to test is `value`.
 
   The saved model format gets restored to its original value upon exiting the
   scope.
 
-  Arguments:
+  Args:
      value: saved model format value
+     **kwargs: optional kwargs to pass to the save function.
 
   Yields:
     The provided value.
   """
-  previous_value = _thread_local_data.saved_model_format
+  previous_format = _thread_local_data.saved_model_format
+  previous_kwargs = _thread_local_data.save_kwargs
   try:
     _thread_local_data.saved_model_format = value
-    yield value
+    _thread_local_data.save_kwargs = kwargs
+    yield
   finally:
     # Restore saved model format to initial value.
-    _thread_local_data.saved_model_format = previous_value
+    _thread_local_data.saved_model_format = previous_format
+    _thread_local_data.save_kwargs = previous_kwargs
 
 
 def get_save_format():
@@ -409,6 +426,15 @@ def get_save_format():
         '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
         'decorator.')
   return _thread_local_data.saved_model_format
+
+
+def get_save_kwargs():
+  if _thread_local_data.save_kwargs is None:
+    raise ValueError(
+        'Cannot call `get_save_kwargs()` outside of a '
+        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
+        'decorator.')
+  return _thread_local_data.save_kwargs or {}
 
 
 def get_model_type():
@@ -1040,3 +1066,44 @@ def run_v2_only(func=None):
     return decorator(func)
 
   return decorator
+
+
+def generate_combinations_with_testcase_name(**kwargs):
+  """Generate combinations based on its keyword arguments using combine().
+
+  This function calls combine() and appends a testcase name to the list of
+  dictionaries returned. The 'testcase_name' key is a required for named
+  parameterized tests.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]` or
+      `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  sort_by_key = lambda k: k[0]
+  combinations = []
+  for key, values in sorted(kwargs.items(), key=sort_by_key):
+    if not isinstance(values, list):
+      values = [values]
+    combinations.append([(key, value) for value in values])
+
+  combinations = [collections.OrderedDict(result)
+                  for result in itertools.product(*combinations)]
+  named_combinations = []
+  for combination in combinations:
+    assert isinstance(combination, collections.OrderedDict)
+    name = ''.join([
+        '_{}_{}'.format(''.join(filter(str.isalnum, key)),
+                        ''.join(filter(str.isalnum, str(value))))
+        for key, value in combination.items()
+    ])
+    named_combinations.append(
+        collections.OrderedDict(
+            list(combination.items()) +
+            [('testcase_name', '_test{}'.format(name))]))
+
+  return named_combinations

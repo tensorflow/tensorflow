@@ -19,10 +19,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.keras.legacy_tf_layers import base
 from tensorflow.python.ops import init_ops
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -36,7 +37,7 @@ class Conv1D(keras_layers.Conv1D, base.Layer):
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of a single integer, specifying the
@@ -118,9 +119,6 @@ class Conv1D(keras_layers.Conv1D, base.Layer):
         name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.Conv1D` instead.')
 @tf_export(v1=['layers.conv1d'])
 def conv1d(inputs,
            filters,
@@ -149,7 +147,7 @@ def conv1d(inputs,
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -201,6 +199,9 @@ def conv1d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.conv1d` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.Conv1D` instead.')
   layer = Conv1D(
       filters=filters,
       kernel_size=kernel_size,
@@ -234,7 +235,7 @@ class Conv2D(keras_layers.Conv2D, base.Layer):
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 2 integers, specifying the
@@ -323,9 +324,6 @@ class Conv2D(keras_layers.Conv2D, base.Layer):
         name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.Conv2D` instead.')
 @tf_export(v1=['layers.conv2d'])
 def conv2d(inputs,
            filters,
@@ -354,7 +352,7 @@ def conv2d(inputs,
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -413,6 +411,9 @@ def conv2d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.conv2d` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.Conv2D` instead.')
   layer = Conv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -446,7 +447,7 @@ class Conv3D(keras_layers.Conv3D, base.Layer):
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the
@@ -536,9 +537,6 @@ class Conv3D(keras_layers.Conv3D, base.Layer):
         name=name, **kwargs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.Conv3D` instead.')
 @tf_export(v1=['layers.conv3d'])
 def conv3d(inputs,
            filters,
@@ -567,7 +565,7 @@ def conv3d(inputs,
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
-  Arguments:
+  Args:
     inputs: Tensor input.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -627,6 +625,9 @@ def conv3d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.conv3d` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.Conv3D` instead.')
   layer = Conv3D(
       filters=filters,
       kernel_size=kernel_size,
@@ -660,7 +661,7 @@ class SeparableConv1D(keras_layers.SeparableConv1D, base.Layer):
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A single integer specifying the spatial
@@ -770,7 +771,7 @@ class SeparableConv2D(keras_layers.SeparableConv2D, base.Layer):
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 integers specifying the spatial
@@ -875,9 +876,6 @@ class SeparableConv2D(keras_layers.SeparableConv2D, base.Layer):
         **kwargs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.SeparableConv1D` instead.')
 @tf_export(v1=['layers.separable_conv1d'])
 def separable_conv1d(inputs,
                      filters,
@@ -910,7 +908,7 @@ def separable_conv1d(inputs,
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     inputs: Input tensor.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -971,6 +969,9 @@ def separable_conv1d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.separable_conv1d` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.SeparableConv1D` instead.')
   layer = SeparableConv1D(
       filters=filters,
       kernel_size=kernel_size,
@@ -998,9 +999,6 @@ def separable_conv1d(inputs,
   return layer.apply(inputs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.SeparableConv2D` instead.')
 @tf_export(v1=['layers.separable_conv2d'])
 def separable_conv2d(inputs,
                      filters,
@@ -1033,7 +1031,7 @@ def separable_conv2d(inputs,
   it adds a bias vector to the output.
   It then optionally applies an activation function to produce the final output.
 
-  Arguments:
+  Args:
     inputs: Input tensor.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1099,6 +1097,9 @@ def separable_conv2d(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.separable_conv2d` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.SeparableConv2D` instead.')
   layer = SeparableConv2D(
       filters=filters,
       kernel_size=kernel_size,
@@ -1137,7 +1138,7 @@ class Conv2DTranspose(keras_layers.Conv2DTranspose, base.Layer):
   while maintaining a connectivity pattern that is compatible with
   said convolution.
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: A tuple or list of 2 positive integers specifying the spatial
@@ -1214,9 +1215,6 @@ class Conv2DTranspose(keras_layers.Conv2DTranspose, base.Layer):
         **kwargs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.Conv2DTranspose` instead.')
 @tf_export(v1=['layers.conv2d_transpose'])
 def conv2d_transpose(inputs,
                      filters,
@@ -1245,7 +1243,7 @@ def conv2d_transpose(inputs,
   while maintaining a connectivity pattern that is compatible with
   said convolution.
 
-  Arguments:
+  Args:
     inputs: Input tensor.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1293,6 +1291,9 @@ def conv2d_transpose(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.conv2d_transpose` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.Conv2DTranspose` instead.')
   layer = Conv2DTranspose(
       filters=filters,
       kernel_size=kernel_size,
@@ -1319,7 +1320,7 @@ def conv2d_transpose(inputs,
 class Conv3DTranspose(keras_layers.Conv3DTranspose, base.Layer):
   """Transposed 3D convolution layer (sometimes called 3D Deconvolution).
 
-  Arguments:
+  Args:
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
     kernel_size: An integer or tuple/list of 3 integers, specifying the
@@ -1400,9 +1401,6 @@ class Conv3DTranspose(keras_layers.Conv3DTranspose, base.Layer):
         **kwargs)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions='Use `tf.keras.layers.Conv3DTranspose` instead.')
 @tf_export(v1=['layers.conv3d_transpose'])
 def conv3d_transpose(inputs,
                      filters,
@@ -1424,7 +1422,7 @@ def conv3d_transpose(inputs,
                      reuse=None):
   """Functional interface for transposed 3D convolution layer.
 
-  Arguments:
+  Args:
     inputs: Input tensor.
     filters: Integer, the dimensionality of the output space (i.e. the number
       of filters in the convolution).
@@ -1473,6 +1471,9 @@ def conv3d_transpose(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
+  warnings.warn('`tf.layers.conv3d_transpose` is deprecated and '
+                'will be removed in a future version. '
+                'Please Use `tf.keras.layers.Conv3DTranspose` instead.')
   layer = Conv3DTranspose(
       filters=filters,
       kernel_size=kernel_size,

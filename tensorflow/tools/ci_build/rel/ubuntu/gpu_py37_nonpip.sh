@@ -31,7 +31,7 @@ export TF_CUDA_VERSION=11
 export TF_CUDNN_VERSION=8
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
-export CC_OPT_FLAGS='-mavx'
+export CC_OPT_FLAGS='-mavx -march=native'
 export PYTHON_BIN_PATH=$(which python3.7)
 export TF2_BEHAVIOR=1
 export PROJECT_NAME="tensorflow_gpu"
@@ -43,7 +43,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
-tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py37"
+tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py37,-no_cuda11"
 
 set +e
 bazel test --config=cuda --config=opt \

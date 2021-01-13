@@ -34,6 +34,12 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `run_frequency`: `float` (default=-1.0) \
+    The frequency of running a benchmark run as the number of prorated runs per
+    second. If the targeted rate per second cannot be reached, the benchmark
+    would start the next run immediately, trying its best to catch up. If set,
+    this will override the `run_delay` parameter. A non-positive value means
+    there is no delay between subsequent runs.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `profiling_output_csv_file`: `str` (default="") \
@@ -68,12 +74,14 @@ where applicable. For details about each parameter, please refer to
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
-*   `nnapi_execution_preference`: `str` (default="")
+*   `nnapi_execution_preference`: `str` (default="") \
+    Should be one of: `fast_single_answer`, `sustained_speed`, `low_power`,
+    `undefined`.
 *   `nnapi_execution_priority`: `str` (default="") \
     Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
     Note this requires Android 10+.
-*   `disable_nnapi_cpu`: `bool` (default=false)
+*   `disable_nnapi_cpu`: `bool` (default=true)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
 #### Hexagon delegate
@@ -99,7 +107,8 @@ the reported data on hexagon is in cycles, not in ms like on cpu.
 
 ### On Android:
 
-(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+(0) Refer to https://www.tensorflow.org/lite/guide/build_android to edit the
+`WORKSPACE` to configure the android NDK/SDK.
 
 (1) Build for your specific platform, e.g.:
 

@@ -43,8 +43,6 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import _pywrap_stacktrace_handler
-from tensorflow.python import _pywrap_util_port
 from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
@@ -66,6 +64,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import tfrt_utils
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
@@ -78,9 +77,11 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_tensor_value
+from tensorflow.python.platform import _pywrap_stacktrace_handler
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
+from tensorflow.python.util import _pywrap_util_port
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -104,36 +105,32 @@ except Exception:  # pylint: disable=broad-except
   pass
 
 
-# Uses the same mechanism as above to selectively enable MLIR compilation.
+# Uses the same mechanism as above to selectively enable/disable MLIR
+# compilation.
 def is_mlir_bridge_enabled():
-  return False
+  return None
 
 
 try:
-  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
+  from tensorflow.python.framework.is_mlir_bridge_test_false import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except ImportError:
+  try:
+    from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+  except ImportError:
+    pass
 
 
-# Uses the same mechanism as above to selectively enable TFRT.
-def is_tfrt_enabled():
-  return False
+def _get_object_count_by_type(exclude=()):
+  return (
+      collections.Counter([type(obj).__name__ for obj in gc.get_objects()]) -
+      collections.Counter([type(obj).__name__ for obj in exclude]))
 
-
-try:
-  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
-except Exception:  # pylint: disable=broad-except
-  pass
-
-
-def _get_object_count_by_type():
-  return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
 
 @tf_export("test.gpu_device_name")
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
-    if x.device_type == "GPU" or x.device_type == "SYCL":
+    if x.device_type == "GPU":
       return compat.as_str(x.name)
   return ""
 
@@ -286,7 +283,8 @@ def _strip_checkpoint_v2_randomized(graph_def):
       if attr_tensor_value and len(attr_tensor_value.string_val) == 1:
         attr_tensor_string_value = attr_tensor_value.string_val[0]
         if (attr_tensor_string_value and
-            re.match(_SHARDED_SAVE_OP_PATTERN, str(attr_tensor_string_value))):
+            re.match(compat.as_bytes(_SHARDED_SAVE_OP_PATTERN),
+                     attr_tensor_string_value)):
           delete_keys.append(attr_key)
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -299,7 +297,8 @@ def _strip_hash_table_shared_name(graph_def):
   for node in graph_def.node:
     delete_keys = []
     if node.op == "HashTableV2" and "shared_name" in node.attr:
-      if re.match(_TABLE_SHARED_NAME_PATTERN, str(node.attr["shared_name"].s)):
+      if re.match(compat.as_bytes(_TABLE_SHARED_NAME_PATTERN),
+                  node.attr["shared_name"].s):
         delete_keys.append("shared_name")
     for attr_key in delete_keys:
       del node.attr[attr_key]
@@ -661,12 +660,20 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         # versions of python2.7.x.
         for _ in range(warmup_iters):
           f(self, *args, **kwargs)
+        # Since we aren't in the normal test lifecylce, we need to manually run
+        # cleanups to clear out their object references.
+        self.doCleanups()
 
         # Some objects are newly created by _get_object_count_by_type().  So
         # create and save as a dummy variable to include it as a baseline.
         obj_count_by_type = _get_object_count_by_type()
         gc.collect()
-        obj_count_by_type = _get_object_count_by_type()
+        # unittest.doCleanups adds to self._outcome with each unwound call.
+        # These objects are retained across gc collections so we exclude them
+        # from the object count calculation.
+        obj_count_by_type = _get_object_count_by_type(
+            exclude=gc.get_referents(self._outcome.errors,
+                                     self._outcome.skipped))
 
         if ops.has_default_graph():
           collection_sizes_before = {
@@ -675,6 +682,9 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
           }
         for _ in range(3):
           f(self, *args, **kwargs)
+        # Since we aren't in the normal test lifecylce, we need to manually run
+        # cleanups to clear out their object references.
+        self.doCleanups()
         # Note that gc.get_objects misses anything that isn't subject to garbage
         # collection (C types). Collections are a common source of leaks, so we
         # test for collection sizes explicitly.
@@ -696,7 +706,11 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
         gc.collect()
 
         # There should be no new Python objects hanging around.
-        obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
+        obj_count_by_type = (
+            _get_object_count_by_type(
+                exclude=gc.get_referents(self._outcome.errors,
+                                         self._outcome.skipped)) -
+            obj_count_by_type)
         # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
@@ -1090,21 +1104,6 @@ def run_in_async_and_sync_mode(f):
     else:
       with context.execution_mode(context.SYNC):
         f(self, *args, **kwargs)
-  return decorator
-
-
-def eager_lazy_remote_copy_on_and_off(f):
-  """Execute the test method w/o lazy tensor copy for function remote inputs."""
-
-  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
-  @functools.wraps(f)
-  def decorator(self, lazily_remote_copy, *args, **kwargs):
-    if lazily_remote_copy:
-      context.context().lazy_remote_inputs_copy = True
-    else:
-      context.context().lazy_remote_inputs_copy = False
-    f(self, *args, **kwargs)
-
   return decorator
 
 
@@ -1540,6 +1539,11 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   also return False. Use `tf.test.is_built_with_cuda` to validate if TensorFlow
   was build with CUDA support.
 
+  For example,
+  >>> gpu_available = tf.test.is_gpu_available()
+  >>> is_cuda_gpu_available = tf.test.is_gpu_available(cuda_only=True)
+  >>> is_cuda_gpu_min_3 = tf.test.is_gpu_available(True, (3,0))
+
   Args:
     cuda_only: limit the search to CUDA GPUs.
     min_cuda_compute_capability: a (major,minor) pair that indicates the minimum
@@ -1563,6 +1567,10 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   Returns:
     True if a GPU device of the requested kind is available.
   """
+
+  # This was needed earlier when we had support for SYCL in TensorFlow.
+  del cuda_only
+
   try:
     for local_device in device_lib.list_local_devices():
       if local_device.device_type == "GPU":
@@ -1570,8 +1578,6 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         cc = gpu_info.compute_capability or (0, 0)
         if not min_cuda_compute_capability or cc >= min_cuda_compute_capability:
           return True
-      if local_device.device_type == "SYCL" and not cuda_only:
-        return True
     return False
   except errors_impl.NotFoundError as e:
     if not all(x in str(e) for x in ["CUDA", "not find"]):
@@ -1823,7 +1829,7 @@ def disable_tfrt(unused_description):
     """Execute the test only if tfrt is not enabled."""
 
     if tf_inspect.isclass(cls_or_func):
-      if is_tfrt_enabled():
+      if tfrt_utils.enabled():
         return None
       else:
         return cls_or_func
@@ -1831,7 +1837,7 @@ def disable_tfrt(unused_description):
       def decorator(func):
 
         def decorated(self, *args, **kwargs):
-          if is_tfrt_enabled():
+          if tfrt_utils.enabled():
             return
           else:
             return func(self, *args, **kwargs)
@@ -1961,6 +1967,9 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   If a matmul itself is being tested, or some other op which uses matmul, use
   `run_without_tensor_float_32` instead.
 
+  This also casts complex64 inputs to complex128, since TensorFloat-32 can also
+  be used with complex64
+
   Args:
     a: First input to tf.linalg.matmul
     b: Second input to tf.linalg.matmul
@@ -1973,6 +1982,11 @@ def matmul_without_tf32(a, b, *args, **kwargs):
   if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
     a = math_ops.cast(a, "float64")
     b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  elif config.tensor_float_32_execution_enabled() and a.dtype == "complex64":
+    a = math_ops.cast(a, "complex128")
+    b = math_ops.cast(b, "complex128")
     ret = math_ops.matmul(a, b, *args, **kwargs)
     return math_ops.cast(ret, a.dtype)
   else:
@@ -2006,15 +2020,25 @@ class TensorFlowTestCase(googletest.TestCase):
       # disable it here.
       pywrap_tf_session.TF_SetXlaConstantFoldingDisabled(True)
 
+    # Check if the mlir bridge has been explicitly enabled or disabled. If
+    # is_mlir_bridge_enabled() returns None, the user did not explictly enable
+    # or disable the bridge so do not update enable_mlir_bridge.
     if is_mlir_bridge_enabled():
       context.context().enable_mlir_bridge = True
+    elif is_mlir_bridge_enabled() is not None:
+      context.context().enable_mlir_bridge = False
 
     self._threads = []
     self._tempdir = None
     self._cached_session = None
     self._test_start_time = None
+    # This flag provides the ability to control whether the graph mode gets
+    # initialized for TF1 or not. Initializing for TF1, which is what was
+    # happening earlier, was preventing enablement of 'eager mode' in the test.
+    self._set_default_seed = True
 
   def setUp(self):
+    super(TensorFlowTestCase, self).setUp()
     self._ClearCachedSession()
     random.seed(random_seed.DEFAULT_GRAPH_SEED)
     np.random.seed(random_seed.DEFAULT_GRAPH_SEED)
@@ -2026,7 +2050,8 @@ class TensorFlowTestCase(googletest.TestCase):
     # cleared first.
     ops._default_graph_stack.reset()  # pylint: disable=protected-access
     ops.reset_default_graph()
-    random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
+    if self._set_default_seed:
+      random_seed.set_random_seed(random_seed.DEFAULT_GRAPH_SEED)
     # Reset summary writer in case another test used set_as_default() with their
     # summary writer.
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
@@ -2049,6 +2074,7 @@ class TensorFlowTestCase(googletest.TestCase):
       thread.check_termination()
 
     self._ClearCachedSession()
+    super(TensorFlowTestCase, self).tearDown()
 
   def _ClearCachedSession(self):
     if self._cached_session is not None:
@@ -2145,10 +2171,9 @@ class TensorFlowTestCase(googletest.TestCase):
       message: the message to validate.
       msg: Optional message to report on failure.
     """
-    msg = msg if msg else ""
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
-      self._AssertProtoEquals(expected_message, message)
+      self._AssertProtoEquals(expected_message, message, msg=msg)
     elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
@@ -2157,8 +2182,8 @@ class TensorFlowTestCase(googletest.TestCase):
           descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message, msg=msg)
     else:
-      assert False, ("Can't compare protos of type %s and %s. %s" %
-                     (type(expected_message_maybe_ascii), type(message), msg))
+      assert False, ("Can't compare protos of type %s and %s." %
+                     (type(expected_message_maybe_ascii), type(message)))
 
   def assertProtoEqualsVersion(
       self,
@@ -2520,7 +2545,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   def _GetNdArray(self, a):
     # If a is tensor-like then convert it to ndarray
-    if tensor_util.is_tensor(a):
+    if tensor_util.is_tf_type(a):
       if isinstance(a, ops._EagerTensorBase):
         a = a.numpy()
       else:
@@ -2544,6 +2569,12 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
     msgs = [msg]
+    # np.allclose does not always work for our custom bfloat16 extension type
+    # when type promotions are involved, so we first cast any bfloat16 arrays
+    # to float32.
+    a_dtype = a.dtype
+    a = a.astype(np.float32) if a.dtype == dtypes.bfloat16.as_numpy_dtype else a
+    b = b.astype(np.float32) if b.dtype == dtypes.bfloat16.as_numpy_dtype else b
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Adds more details to np.testing.assert_allclose.
       #
@@ -2567,7 +2598,7 @@ class TensorFlowTestCase(googletest.TestCase):
       msgs.append("not close rhs = {}".format(y))
       msgs.append("not close dif = {}".format(np.abs(x - y)))
       msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
-      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
+      msgs.append("dtype = {}, shape = {}".format(a_dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
@@ -2728,23 +2759,29 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
   @py_func_if_in_function
-  def assertNotAllClose(self, a, b, **kwargs):
+  def assertNotAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
-      a: the first value to compare.
-      b: the second value to compare.
-      **kwargs: additional keyword arguments to be passed to the underlying
-        `assertAllClose` call.
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+        numpy `ndarray` (including Tensor), or any arbitrarily nested of
+        structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      msg: Optional message to report on failure.
 
     Raises:
       AssertionError: If `a` and `b` are unexpectedly close at all elements.
     """
     try:
-      self.assertAllClose(a, b, **kwargs)
+      self.assertAllClose(a, b,  rtol=rtol, atol=atol, msg=msg)
     except AssertionError:
       return
-    raise AssertionError("The two values are close at all elements")
+    msg = msg or ""
+    raise AssertionError("The two values are close at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllEqual(self, a, b, msg=None):
@@ -2898,6 +2935,8 @@ class TensorFlowTestCase(googletest.TestCase):
     lines = []
     subscripts = np.transpose(subscripts)
     prefix = " " * indent
+    if np.ndim(value) == 0:
+      return [prefix + "[0] : " + str(value)]
     for subscript in itertools.islice(subscripts, limit):
       lines.append(prefix + str(subscript) + " : " +
                    str(value[tuple(subscript)]))

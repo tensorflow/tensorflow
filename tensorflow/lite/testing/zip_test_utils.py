@@ -342,6 +342,7 @@ def make_zip_of_tests(options,
   if options.multi_gen_state:
     label_base_path = options.multi_gen_state.label_base_path
 
+  i = 1
   for parameters in test_parameters:
     keys = parameters.keys()
     for curr in itertools.product(*parameters.values()):
@@ -349,6 +350,12 @@ def make_zip_of_tests(options,
           "%s=%r" % z for z in sorted(zip(keys, curr))).replace(" ", ""))
       if label[0] == "/":
         label = label[1:]
+
+      zip_path_label = label
+      if len(os.path.basename(zip_path_label)) > 245:
+        zip_path_label = label_base_path.replace(".zip", "_") + str(i)
+
+      i += 1
       if label in processed_labels:
         # Do not populate data for the same label more than once. It will cause
         # errors when unzipping.
@@ -397,13 +404,14 @@ def make_zip_of_tests(options,
 
         return input_values, output_values
 
-      def build_example(label, param_dict_real):
+      def build_example(label, param_dict_real, zip_path_label):
         """Build the model with parameter values set in param_dict_real.
 
         Args:
-          label: Label of the model (i.e. the filename in the zip).
+          label: Label of the model
           param_dict_real: Parameter dictionary (arguments to the factories
             make_graph and make_test_inputs)
+          zip_path_label: Filename in the zip
 
         Returns:
           (tflite_model_binary, report) where tflite_model_binary is the
@@ -414,11 +422,11 @@ def make_zip_of_tests(options,
         """
 
         np.random.seed(RANDOM_SEED)
-        report = {"toco": report_lib.NOTRUN, "tf": report_lib.FAILED}
+        report = {"converter": report_lib.NOTRUN, "tf": report_lib.FAILED}
 
         # Build graph
         report["tf_log"] = ""
-        report["toco_log"] = ""
+        report["converter_log"] = ""
         tf.reset_default_graph()
 
         with tf.Graph().as_default():
@@ -438,7 +446,7 @@ def make_zip_of_tests(options,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
-          report["toco"] = report_lib.FAILED
+          report["converter"] = report_lib.FAILED
           report["tf"] = report_lib.SUCCESS
           # Convert graph to toco
           input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
@@ -460,13 +468,13 @@ def make_zip_of_tests(options,
             output_tensors,
             extra_toco_options=extra_toco_options,
             test_params=param_dict_real)
-        report["toco"] = (
+        report["converter"] = (
             report_lib.SUCCESS
             if tflite_model_binary is not None else report_lib.FAILED)
-        report["toco_log"] = toco_log
+        report["converter_log"] = toco_log
 
         if options.save_graphdefs:
-          archive.writestr(label + ".pbtxt",
+          archive.writestr(zip_path_label + ".pbtxt",
                            text_format.MessageToString(graph_def),
                            zipfile.ZIP_DEFLATED)
 
@@ -475,27 +483,31 @@ def make_zip_of_tests(options,
             # Set proper min max values according to input dtype.
             baseline_inputs, baseline_outputs = generate_inputs_outputs(
                 tflite_model_binary, min_value=0, max_value=255)
-          archive.writestr(label + ".bin", tflite_model_binary,
+          archive.writestr(zip_path_label + ".bin", tflite_model_binary,
                            zipfile.ZIP_DEFLATED)
           example = {"inputs": baseline_inputs, "outputs": baseline_outputs}
 
           example_fp = StringIO()
           write_examples(example_fp, [example])
-          archive.writestr(label + ".inputs", example_fp.getvalue(),
+          archive.writestr(zip_path_label + ".inputs", example_fp.getvalue(),
                            zipfile.ZIP_DEFLATED)
 
           example_fp2 = StringIO()
-          write_test_cases(example_fp2, label + ".bin", [example])
-          archive.writestr(label + "_tests.txt", example_fp2.getvalue(),
-                           zipfile.ZIP_DEFLATED)
+          write_test_cases(example_fp2, zip_path_label + ".bin", [example])
+          archive.writestr(zip_path_label + "_tests.txt",
+                           example_fp2.getvalue(), zipfile.ZIP_DEFLATED)
 
-          zip_manifest.append(label + "\n")
+          zip_manifest_label = zip_path_label + " " + label
+          if zip_path_label == label:
+            zip_manifest_label = zip_path_label
+
+          zip_manifest.append(zip_manifest_label + "\n")
 
         return tflite_model_binary, report
 
-      _, report = build_example(label, param_dict)
+      _, report = build_example(label, param_dict, zip_path_label)
 
-      if report["toco"] == report_lib.FAILED:
+      if report["converter"] == report_lib.FAILED:
         ignore_error = False
         if not options.known_bugs_are_errors:
           for pattern, bug_number in options.known_bugs.items():
@@ -505,7 +517,7 @@ def make_zip_of_tests(options,
         if not ignore_error:
           toco_errors += 1
           print("-----------------\nconverter error!\n%s\n-----------------\n" %
-                report["toco_log"])
+                report["converter_log"])
 
       convert_report.append((param_dict, report))
 
@@ -529,7 +541,7 @@ def make_zip_of_tests(options,
   tf_success = sum(
       1 for x in convert_report if x[1]["tf"] == report_lib.SUCCESS)
   toco_success = sum(
-      1 for x in convert_report if x[1]["toco"] == report_lib.SUCCESS)
+      1 for x in convert_report if x[1]["converter"] == report_lib.SUCCESS)
   percent = 0
   if tf_success > 0:
     percent = float(toco_success) / float(tf_success) * 100.

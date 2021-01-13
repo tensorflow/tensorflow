@@ -24,6 +24,12 @@ def ios_visibility_whitelist():
     """This is a no-op outside of Google."""
     pass
 
+def internal_visibility_allowlist():
+    """Grant public visibility to internal targets so that other repos can depend on them."""
+    return [
+        "//visibility:public",
+    ]
+
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
     return []
@@ -64,7 +70,29 @@ def tflite_hexagon_nn_skel_libraries():
         name = "libhexagon_nn_skel",
         srcs = glob(["*.so"]),
     )
-    you need to modify this macro to specifiy the build target.
+    you need to modify this macro to specify the build target.
     return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
     """
     return []
+
+def tflite_schema_utils_friends():
+    """This is a no-op outside of Google.
+
+    Return the package group declaration to which targets for Flatbuffer schema utilities."""
+
+    # Its usage should be rare, and is often abused by tools that are doing
+    # Flatbuffer creation/manipulation in unofficially supported ways."
+    return ["//..."]
+
+def flex_portable_tensorflow_deps():
+    """Returns dependencies for building portable tensorflow in Flex delegate."""
+
+    return [
+        "//third_party/fft2d:fft2d_headers",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/strings:str_format",
+        "@gemmlowp",
+        "@icu//:common",
+        "//third_party/icu/data:conversion_data",
+    ]

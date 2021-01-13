@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "filegroup")
+
 # Tensorflow windows-specific implementations of tensorflow/core/platform libraries.
 load(
     "//tensorflow:tensorflow.bzl",
@@ -18,7 +20,6 @@ package(
 cc_library(
     name = "env",
     srcs = [
-        "env.cc",
         "windows_file_system.cc",
         "windows_file_system.h",
         "//tensorflow/core/platform:env.cc",
@@ -72,6 +73,21 @@ cc_library(
         "//third_party/eigen3",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "env_impl",
+    srcs = [
+        "env.cc",
+    ],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        ":env",
     ],
 )
 

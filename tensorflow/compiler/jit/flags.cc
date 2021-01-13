@@ -167,8 +167,17 @@ void AllocateAndParseFlags() {
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
 
-  mlir_flags = new MlirCommonFlags;
-  mlir_flags->tf_mlir_enable_mlir_bridge = false;
+  // The `enable_mlir_bridge` flag allows the user to explicitly request that
+  // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
+  //
+  // The `enable_mlir_bridge_is_explicit` variable tracks whether or not the
+  // user has made an explicit request. That is, if this variable is set to
+  // true, the program honors the user's request as per `enable_mlir_bridge`; if
+  // it's set to false, the default behavior is used (which may run either
+  // bridge, on a per-graph basis).
+  bool enable_mlir_bridge = false;
+  bool enable_mlir_bridge_is_explicit = false;
+  bool mlir_bridge_safe_mode = false;
 
   auto setter_for_jitter_tensor_names = [](string sequence) {
     jitter_flags->tensor_names = absl::StrSplit(sequence, ',');
@@ -184,11 +193,11 @@ void AllocateAndParseFlags() {
             "XLA clusters."),
        Flag("tf_xla_check_cluster_input_numerics",
             &build_ops_flags->tf_xla_check_cluster_input_numerics,
-            "If true then insert CheckNumerics nodes to to check all cluster "
+            "If true then insert CheckNumerics nodes to check all cluster "
             "inputs."),
        Flag("tf_xla_check_cluster_output_numerics",
             &build_ops_flags->tf_xla_check_cluster_output_numerics,
-            "If true then insert CheckNumerics nodes to to check all cluster "
+            "If true then insert CheckNumerics nodes to check all cluster "
             "outputs."),
        Flag("tf_xla_disable_constant_folding",
             &build_ops_flags->tf_xla_disable_constant_folding,
@@ -217,12 +226,32 @@ void AllocateAndParseFlags() {
             "The amount of jitter to introduce.  This amount is added to each "
             "element in the tensors named in `tensor_names."),
 
-       Flag("tf_mlir_enable_mlir_bridge",
-            &mlir_flags->tf_mlir_enable_mlir_bridge,
-            "Enables experimental MLIR-Based TensorFlow Compiler Bridge.")});
+       Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
+            "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
+            &enable_mlir_bridge_is_explicit),
+       Flag(
+           "tf_mlir_bridge_safe_mode", &mlir_bridge_safe_mode,
+           "When tf_mlir_enable_mlir_bridge is true, this field can enable "
+           "the MLIR bridge's safe mode. When the MLIR bridge is in safe mode, "
+           "it only runs for graphs that use features MLIR bridge currently "
+           "supports.")});
 
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
+
+  mlir_flags = new MlirCommonFlags;
+  if (!enable_mlir_bridge_is_explicit) {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_UNSPECIFIED;
+  } else if (enable_mlir_bridge) {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        (mlir_bridge_safe_mode)
+            ? ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED
+            : ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  } else {
+    mlir_flags->tf_mlir_enable_mlir_bridge =
+        ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_DISABLED;
+  }
 }
 
 }  // namespace

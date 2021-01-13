@@ -29,9 +29,6 @@ namespace concat_split_util {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 // Concatenates 'inputs' into a single tensor along the zeroth dimension.
 // Requires that all elements of 'inputs' have element type T. Writes to
@@ -74,8 +71,10 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
 
   TensorShape output_shape(input_shape);
   output_shape.set_dim(0, output_dim0);
-  TF_RETURN_IF_ERROR(
-      context->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
+  AllocatorAttributes attr;
+  attr.set_on_host(true);
+  TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<T>::value,
+                                            output_shape, output, attr));
   if (output->NumElements() > 0) {
     auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
@@ -170,8 +169,10 @@ Status SplitCPU(OpKernelContext* context, const Tensor& input,
     TensorShape output_shape = input.shape();
     output_shape.set_dim(0, size);
     Tensor output;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
     TF_RETURN_IF_ERROR(
-        context->allocate_temp(input.dtype(), output_shape, &output));
+        context->allocate_temp(input.dtype(), output_shape, &output, attr));
     auto output_shaped = output.shaped<T, 2>({size, suffix_dim_size});
 
     Eigen::DSizes<Eigen::DenseIndex, 2> slice_indices{

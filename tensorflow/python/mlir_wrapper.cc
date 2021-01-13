@@ -22,14 +22,28 @@ limitations under the License.
 
 PYBIND11_MODULE(_pywrap_mlir, m) {
   m.def("ImportGraphDef",
-        [](const std::string &graphdef, const std::string &pass_pipeline) {
+        [](const std::string &graphdef, const std::string &pass_pipeline,
+           bool show_debug_info) {
           tensorflow::Safe_TF_StatusPtr status =
               tensorflow::make_safe(TF_NewStatus());
-          std::string output =
-              tensorflow::ImportGraphDef(graphdef, pass_pipeline, status.get());
+          std::string output = tensorflow::ImportGraphDef(
+              graphdef, pass_pipeline, show_debug_info, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });
+
+  m.def("ImportFunction", [](const std::string &functiondef,
+                             const std::string &functiondef_library,
+                             const std::string &pass_pipeline,
+                             bool show_debug_info) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    std::string output = tensorflow::ImportFunction(
+        functiondef, functiondef_library, pass_pipeline, show_debug_info,
+        status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    return output;
+  });
 
   m.def("ExperimentalConvertSavedModelToMlir",
         [](const std::string &saved_model_path,
@@ -38,6 +52,19 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
               tensorflow::make_safe(TF_NewStatus());
           std::string output = tensorflow::ExperimentalConvertSavedModelToMlir(
               saved_model_path, exported_names, show_debug_info, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        });
+
+  m.def("ExperimentalConvertSavedModelV1ToMlirLite",
+        [](const std::string &saved_model_path, const std::string &tags,
+           bool upgrade_legacy, bool show_debug_info) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          std::string output =
+              tensorflow::ExperimentalConvertSavedModelV1ToMlirLite(
+                  saved_model_path, tags, upgrade_legacy, show_debug_info,
+                  status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
           return output;
         });

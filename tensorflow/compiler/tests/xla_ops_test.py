@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.python import xla
 from tensorflow.compiler.xla import xla_data_pb2
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
@@ -248,6 +251,92 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
               [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
               dtype=dtype))
 
+  def testPadShapeInference(self):
+    a = array_ops.placeholder(np.float32, shape=(2, 3))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 2],
+        padding_interior=[1, 4])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 14]))
+
+    c = xla.pad(
+        a,
+        padding_value=7,
+        padding_low=[2, -2],
+        padding_high=[1, -2],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 3]))
+
+    # 0-sized input dimension and interior padding
+    c = xla.pad(
+        array_ops.placeholder(np.float32, shape=(2, 0)),
+        padding_value=7,
+        padding_low=[2, 1],
+        padding_high=[1, 1],
+        padding_interior=[1, 2])
+
+    self.assertEqual(c.shape, tensor_shape.TensorShape([6, 2]))
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_value input must be scalar, found rank 1 '):
+      xla.pad(
+          a,
+          padding_value=[0, 1],
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_low must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(ValueError,
+                                'padding_high must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0, 0],
+          padding_interior=[0, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'padding_interior must be a 1D tensor of size 2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[0])
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'padding_interior must contain only non-negative values, found -2 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[0, 0],
+          padding_high=[0, 0],
+          padding_interior=[-2, 0])
+
+    with self.assertRaisesRegex(
+        ValueError, 'resulting padded dimension has negative size -1 '):
+      xla.pad(
+          a,
+          padding_value=7,
+          padding_low=[-3, 0],
+          padding_high=[0, 0],
+          padding_interior=[0, 0])
+
   @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
@@ -298,6 +387,78 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           mul_reduction(dims=[0]),
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
+
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testVariadicReduce(self):
+    for dtype in set(self.numeric_types).intersection(
+        set([np.float32, np.complex64])):
+
+      @def_function.function
+      def kahan_sum_reducer(t0, t1):
+        (s0, c0), (s1, c1) = t0, t1
+        s0minusc = s0 - (c0 + c1)
+        t = s1 + s0minusc
+        c = (t - s1) - s0minusc
+        s = t
+        return s, c
+
+      def kahan_sum_reduction(dims, output_idx):
+
+        def fn(x):
+          arg = array_ops.zeros([], dtype)  # pylint: disable=cell-var-from-loop
+          reducer = kahan_sum_reducer.get_concrete_function(
+              (arg, arg), (arg, arg))
+
+          return xla.variadic_reduce(
+              (x, array_ops.zeros_like(x)),
+              init_value=(arg, arg),
+              dimensions_to_reduce=dims,
+              reducer=reducer)[output_idx]
+
+        return fn
+
+      xs = np.array([1e5, np.pi, -1e5, np.exp(1.)])
+      xs = np.array([xs, xs[::-1] / 3, xs / 7], dtype)
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[], output_idx=0),
+          args=(xs,), expected=xs)
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[], output_idx=1),
+          args=(xs,), expected=np.zeros_like(xs))
+      shuffle_indices = np.argsort(np.random.randn(xs.shape[0]))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0], output_idx=0),
+          args=(xs[shuffle_indices],),
+          expected=np.array([np.exp(1) / 3 + 1e5 * 8 / 7,
+                             np.pi * 8 / 7 - 1e5 / 3,
+                             -1e5 * 8 / 7 + np.pi / 3,
+                             np.exp(1) * 8 / 7 + 1e5 / 3], dtype=dtype))
+      error_term_equality = functools.partial(self.assertAllClose, atol=.005)
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0], output_idx=1),
+          args=(xs[shuffle_indices],), expected=np.zeros_like(xs[0]),
+          equality_fn=error_term_equality)
+      shuffle_indices = np.argsort(np.random.randn(xs.shape[1]))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[1], output_idx=0),
+          args=(xs[:, shuffle_indices],),
+          expected=np.array([np.pi + np.exp(1.),
+                             (np.pi + np.exp(1.)) / 3,
+                             (np.pi + np.exp(1.)) / 7], dtype=dtype))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[1], output_idx=1),
+          args=(xs[:, shuffle_indices],), expected=np.zeros_like(xs[:, 0]),
+          equality_fn=error_term_equality)
+      # Now, shuffle both dims.
+      xs = xs[np.argsort(np.random.randn(xs.shape[0]))]
+      xs = xs[:, np.argsort(np.random.randn(xs.shape[1]))]
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0, 1], output_idx=0),
+          args=(xs,), expected=dtype((np.pi + np.exp(1.)) * 31 / 21))
+      self._assertOpOutputMatchesExpected(
+          kahan_sum_reduction(dims=[0, 1], output_idx=1),
+          args=(xs,), expected=dtype(0),
+          equality_fn=error_term_equality)
 
   @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):

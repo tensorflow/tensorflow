@@ -139,7 +139,9 @@ TfLiteStatus ReluPrepare(TfLiteContext* context, TfLiteNode* node) {
   ReluOpData* data = static_cast<ReluOpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   if (input->type == kTfLiteInt8) {
     CalculateReluOpData<int8_t>(input, output, data);
@@ -200,14 +202,15 @@ TfLiteStatus Relu6Prepare(TfLiteContext* context, TfLiteNode* node) {
   Relu6OpData* data = static_cast<Relu6OpData*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TF_LITE_ENSURE(context, input != nullptr);
 
   if (input->type == kTfLiteInt8) {
-    data->six_int8 = FloatToAsymmetricQuantizedInt8(6.0f, input->params.scale,
-                                                    input->params.zero_point);
+    data->six_int8 = FloatToQuantizedType<int8_t>(6.0f, input->params.scale,
+                                                  input->params.zero_point);
     data->zero_int8 = input->params.zero_point;
   } else if (input->type == kTfLiteUInt8) {
-    data->six_uint8 = FloatToAsymmetricQuantizedUInt8(6.0f, input->params.scale,
-                                                      input->params.zero_point);
+    data->six_uint8 = FloatToQuantizedType<uint8_t>(6.0f, input->params.scale,
+                                                    input->params.zero_point);
     data->zero_uint8 = input->params.zero_point;
   }
 

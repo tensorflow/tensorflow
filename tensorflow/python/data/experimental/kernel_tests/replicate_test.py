@@ -248,16 +248,22 @@ class EagerClusterReplicateTest(test_base.DatasetTestBase,
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(EagerClusterReplicateTest, self).__init__(methodName)
     self._job_name = "remove_device"
-    self._cached_server1 = server_lib.Server.create_local_server()
-    self._cached_server2 = server_lib.Server.create_local_server()
-    self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
-    self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
     self._device0 = "/job:%s/replica:0/task:0/device:CPU:0" % self._job_name
     self._device1 = "/job:%s/replica:0/task:1/device:CPU:0" % self._job_name
     self._device2 = "/job:%s/replica:0/task:2/device:CPU:0" % self._job_name
 
   def setUp(self):
     super(EagerClusterReplicateTest, self).setUp()
+
+    if context.context().use_tfrt:
+      self.skipTest("b/171412104: This test requires distributed support.")
+
+    # TODO(b/171412104): Move create server to __init__ once tfrt support it.
+    self._cached_server1 = server_lib.Server.create_local_server()
+    self._cached_server2 = server_lib.Server.create_local_server()
+    self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
+    self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
+
     # Start the local server.
     local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(

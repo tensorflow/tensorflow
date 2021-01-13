@@ -43,6 +43,8 @@ add_mlir_library(MhloInferFusibilityOpInterface
 
 add_mlir_dialect_library(MhloDialect
   hlo_ops.cc
+  hlo_ops_base_structs.cc
+  hlo_ops_base_enums.cc
 
   DEPENDS
   MLIRhlo_opsIncGen
@@ -66,6 +68,16 @@ add_mlir_dialect_library(LmhloDialect
 )
 target_link_libraries(LmhloDialect PUBLIC MLIRIR)
 
+add_mlir_dialect_library(LmhloGPUDialect
+  lhlo_gpu_ops.cc
+  lhlo_gpu_ops_structs.cc
+  lhlo_gpu_ops_enums.cc
+
+  DEPENDS
+  MLIRlhlo_gpu_opsIncGen
+)
+target_link_libraries(LmhloGPUDialect PUBLIC MLIRIR)
+
 
 add_mlir_dialect_library(MhloRegisterDialects
   init.cc
@@ -73,10 +85,12 @@ DEPENDS
   MLIRchlo_opsIncGen
   MLIRhlo_opsIncGen
   MLIRlhlo_opsIncGen
+  MLIRlhlo_gpu_opsIncGen
 )
 target_link_libraries(MhloRegisterDialects
   PUBLIC
   ChloDialect
   MhloDialect
   LmhloDialect
+  LmhloGPUDialect
 )

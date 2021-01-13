@@ -25,9 +25,6 @@ import weakref
 import numpy as np
 import six
 
-from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.utils.conv_utils import convert_kernel
-from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -39,7 +36,7 @@ def get_source_inputs(tensor, layer=None, node_index=None):
   Output will always be a list of tensors
   (potentially with 1 element).
 
-  Arguments:
+  Args:
       tensor: The tensor to start from.
       layer: Origin layer of the tensor. Will be
           determined via tensor._keras_history if not provided.
@@ -89,15 +86,15 @@ def validate_string_arg(input_data,
     allowed_args = '`None`, ' if allow_none else ''
     allowed_args += 'a `Callable`, ' if allow_callables else ''
     allowed_args += 'or one of the following values: %s' % (allowable_strings,)
-    raise ValueError(("%s's %s arg received an invalid value %s. " +
-                      'Allowed values are %s.') %
-                     (layer_name, arg_name, input_data, allowed_args))
+    raise ValueError(('The %s argument of layer %s received an invalid '
+                      'value %s. Allowed values are: %s.') %
+                     (arg_name, layer_name, input_data, allowed_args))
 
 
 def count_params(weights):
   """Count the total number of scalars composing the weights.
 
-  Arguments:
+  Args:
       weights: An iterable containing the weights on which to compute params
 
   Returns:
@@ -114,7 +111,7 @@ def count_params(weights):
 def print_summary(model, line_length=None, positions=None, print_fn=None):
   """Prints a summary of a model.
 
-  Arguments:
+  Args:
       model: Keras model instance.
       line_length: Total length of printed lines
           (e.g. set this to adapt the display to different
@@ -199,7 +196,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   def print_layer_summary(layer):
     """Prints a summary for a single layer.
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -210,13 +207,19 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       output_shape = '?'
     name = layer.name
     cls_name = layer.__class__.__name__
-    fields = [name + ' (' + cls_name + ')', output_shape, layer.count_params()]
+    if not layer.built and not getattr(layer, '_is_graph_network', False):
+      # If a subclassed model has a layer that is not called in Model.call, the
+      # layer will not be built and we cannot call layer.count_params().
+      params = '0 (unused)'
+    else:
+      params = layer.count_params()
+    fields = [name + ' (' + cls_name + ')', output_shape, params]
     print_row(fields, positions)
 
   def print_layer_summary_with_connections(layer):
     """Prints a summary for a single layer (including topological connections).
 
-    Arguments:
+    Args:
         layer: target layer.
     """
     try:
@@ -328,37 +331,6 @@ def gather_non_trainable_weights(trainable, sub_layers, extra_variables):
   return weights + non_trainable_extra_variables
 
 
-@deprecation.deprecated('2020-06-23',
-                        'The Theano kernel format is legacy; '
-                        'this utility will be removed.')
-@keras_export('keras.utils.convert_all_kernels_in_model')
-def convert_all_kernels_in_model(model):
-  """Converts all convolution kernels in a model from Theano to TensorFlow.
-
-  Also works from TensorFlow to Theano.
-
-  This is used for converting legacy Theano-saved model files.
-
-  Arguments:
-      model: target model for the conversion.
-  """
-  # Note: SeparableConvolution not included
-  # since only supported by TF.
-  conv_classes = {
-      'Conv1D',
-      'Conv2D',
-      'Conv3D',
-      'Conv2DTranspose',
-  }
-  to_assign = []
-  for layer in model.layers:
-    if layer.__class__.__name__ in conv_classes:
-      original_kernel = K.get_value(layer.kernel)
-      converted_kernel = convert_kernel(original_kernel)
-      to_assign.append((layer.kernel, converted_kernel))
-  K.batch_set_value(to_assign)
-
-
 def convert_dense_weights_data_format(dense,
                                       previous_feature_map_shape,
                                       target_data_format='channels_first'):
@@ -370,7 +342,7 @@ def convert_dense_weights_data_format(dense,
   followed by a `Dense` layer, the weights of that `Dense` layer
   should be updated to reflect the new dimension ordering.
 
-  Arguments:
+  Args:
       dense: The target `Dense` layer.
       previous_feature_map_shape: A shape tuple of 3 integers,
           e.g. `(512, 7, 7)`. The shape of the convolutional
@@ -501,3 +473,23 @@ def cached_per_instance(f):
 
   wrapped.cache = cache
   return wrapped
+
+
+def filter_empty_layer_containers(layer_list):
+  """Filter out empty Layer-like containers and uniquify."""
+  # TODO(b/130381733): Make this an attribute in base_layer.Layer.
+  existing = set()
+  to_visit = layer_list[::-1]
+  while to_visit:
+    obj = to_visit.pop()
+    if id(obj) in existing:
+      continue
+    existing.add(id(obj))
+    if hasattr(obj, '_is_layer') and not isinstance(obj, type):
+      yield obj
+    else:
+      sub_layers = getattr(obj, 'layers', None) or []
+
+      # Trackable data structures will not show up in ".layers" lists, but
+      # the layers they contain will.
+      to_visit.extend(sub_layers[::-1])

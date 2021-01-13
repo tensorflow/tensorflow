@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <tuple>
 
 #include "absl/base/macros.h"
 #include "absl/container/inlined_vector.h"
@@ -266,21 +267,35 @@ class ShapeUtil {
   // and returns it.
   static PrimitiveType HigherPrecisionElementType(const Shape& a,
                                                   const Shape& b) {
-    if (SameElementType(a, b)) {
+    // Returns a tuple where the elements are lexicographically ordered in terms
+    // of importance.
+    auto type_properties = [](const Shape& shape) {
+      return std::make_tuple(
+          // Prefer floating point types with more range over other
+          // floating-point types or non-floating point types.
+          ElementIsFloating(shape)
+              ? primitive_util::OverflowExponent(shape.element_type())
+              : -1,
+          // Prefer floating point types with more precision over less precise
+          // types.
+          ElementIsFloating(shape)
+              ? primitive_util::SignificandWidth(shape.element_type())
+              : -1,
+          // Prefer wider types over narrower types.
+          primitive_util::BitWidth(shape.element_type()),
+          // Prefer signed integer types over unsigned integer types.
+          primitive_util::IsSignedIntegralType(shape.element_type()));
+    };
+    auto a_properties = type_properties(a);
+    auto b_properties = type_properties(b);
+    if (a_properties > b_properties) {
       return a.element_type();
     }
-    // If only one of A and B are floating use the floating point type.
-    if (ElementIsFloating(a) && !ElementIsFloating(b)) {
-      return a.element_type();
-    }
-    if (ElementIsFloating(b) && !ElementIsFloating(a)) {
+    if (b_properties > a_properties) {
       return b.element_type();
     }
-    // Use the higher precision type.
-    return primitive_util::BitWidth(a.element_type()) <
-                   primitive_util::BitWidth(b.element_type())
-               ? b.element_type()
-               : a.element_type();
+    CHECK(SameElementType(a, b));
+    return a.element_type();
   }
 
   // Returns true if the rank, dimension sizes, and element type are
@@ -783,7 +798,20 @@ class ShapeUtil {
   static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
                                                              const Shape& b);
 
+  // Strips device-specific information, namely tiling and memory-space
+  // information, from a shape.
+  static Shape DeviceShapeToHostShape(Shape s);
+
+  // Returns true iff element type of shape `from` can be safely upcasted to
+  // element type of shape `to`.
+  static bool ElementCanUpcast(const Shape& from, const Shape& to);
+
  private:
+  // Fills *shape. Returns true on success.
+  // REQUIRES: *shape is empty.
+  static bool FillNewShape(PrimitiveType element_type,
+                           absl::Span<const int64> dimensions, Shape* shape);
+
   // Validates the shape size is sane. This makes sure it's safe to do
   // calculations in int64 without overflowing.
   static Status ValidateShapeSize(const Shape& shape);

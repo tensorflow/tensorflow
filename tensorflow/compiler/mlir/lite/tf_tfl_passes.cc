@@ -17,8 +17,7 @@ limitations under the License.
 
 #include "llvm/ADT/Optional.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
@@ -38,21 +37,28 @@ CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
 namespace tensorflow {
+namespace {
+// Data layout supported by TFLite.
+const char kTFLiteDataLayout[] = "NHWC";
+}  // namespace
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
                            mlir::OpPassManager* pass_manager) {
-  pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   if (quant_specs.default_ranges.first.hasValue() ||
       quant_specs.default_ranges.second.hasValue()) {
-    pass_manager->addPass(mlir::TFL::CreateDefaultQuantParamsPass(
-        quant_specs.default_ranges.first.getValueOr(0.0),
-        quant_specs.default_ranges.second.getValueOr(0.0),
-        quant_specs.IsSignedInferenceType()));
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateDefaultQuantParamsPass(
+            quant_specs.default_ranges.first.getValueOr(0.0),
+            quant_specs.default_ranges.second.getValueOr(0.0),
+            quant_specs.IsSignedInferenceType()));
   }
-  pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFL::CreateQuantizePass(quant_specs.verify_numeric));
   bool emit_quant_adaptor_ops =
       quant_specs.inference_type != quant_specs.inference_input_type;
-  pass_manager->addPass(
+  pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
@@ -63,7 +69,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   standard_pipeline_options.enable_inliner = false;
   standard_pipeline_options.form_clusters = pass_config.form_clusters;
   mlir::TF::CreateTFStandardPipeline(*pass_manager, standard_pipeline_options);
-  pass_manager->addPass(mlir::TF::CreateDeviceIndexSelectorPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateDeviceIndexSelectorPass());
 
   // Add canonicalize pass to remove no-op session initializer pass.
   pass_manager->addPass(mlir::createCanonicalizerPass());
@@ -117,6 +124,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
+  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
+
   pass_manager->addPass(mlir::createInlinerPass());
   pass_manager->addPass(mlir::createSymbolDCEPass());
 
@@ -135,8 +144,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
   }
 
-  pass_manager->addPass(mlir::TF::CreateTFRegionControlFlowToFunctional());
-
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
   // after the legalize below, for now it needs to be below the above passes
@@ -151,7 +158,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   pass_manager->addPass(mlir::createInlinerPass());
 
   // TODO(jpienaar): Revise post dialect constants.
-  pass_manager->addPass(mlir::TF::CreateDecodeConstantPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TF::CreateDecodeConstantPass());
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
@@ -170,10 +178,18 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     if (pass_config.shape_inference) {
       pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
     }
+    // Force layout supported by TFLite, this will transpose the data
+    // to match 'kTFLiteDataLayout'
+    mlir::TF::LayoutOptimizationPipelineOptions layout_optimization_options;
+    layout_optimization_options.force_data_format = kTFLiteDataLayout;
+    layout_optimization_options.skip_fold_transpose_in_ops = true;
+    mlir::TF::CreateLayoutOptimizationPipeline(
+        pass_manager->nest<mlir::FuncOp>(), layout_optimization_options);
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
-    pass_manager->addPass(
-        mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreatePrepareTFPass(
+        pass_config.unfold_batch_matmul,
+        /*allow_bf16_type_legalization=*/!pass_config.runtime_verification));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     if (pass_config.shape_inference) {
       // Add a shape inference pass to optimize away the unnecessary casts.
@@ -188,33 +204,42 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::createInlinerPass());
 
     // This pass removes the asset file dependencies in hash table use cases.
-    pass_manager->addPass(mlir::TF::CreateInitTextFileToImportPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TF::CreateInitTextFileToImportPass());
 
-    pass_manager->addPass(
+    pass_manager->addNestedPass<mlir::FuncOp>(
         mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
-    pass_manager->addPass(mlir::TFL::CreateOptimizePass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
-    pass_manager->addPass(mlir::TFL::CreateRaiseCustomOpsPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateRaiseCustomOpsPass());
     pass_manager->addPass(mlir::createSymbolDCEPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
-    // This pass should be always at the end of the floating point model
-    // conversion. Some TFL ops like unidirectional
-    // sequence lstm will have stateful operands and some optimization passes
-    // will merge those operands if they have identical values & types. However,
-    // it's not desired by TFL. This pass serves as a "fix" pass to split the
-    // merged inputs until we have 1st class variable support or reuse
-    // tf.variable to model this.
-    pass_manager->addPass(mlir::TFL::CreateSplitMergedOperandsPass());
 
     // Run quantization after all the floating point model conversion is
     // completed.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
       AddQuantizationPasses(pass_config.quant_specs, pass_manager);
     }
+
+    // This pass should be always at the end of the model
+    // conversion (even after quantization). Some TFL ops like unidirectional
+    // sequence lstm will have stateful operands and some optimization passes
+    // will merge those operands if they have identical values & types. However,
+    // it's not desired by TFL. This pass serves as a "fix" pass to split the
+    // merged inputs until we have 1st class variable support or reuse
+    // tf.variable to model this.
+    pass_manager->addNestedPass<mlir::FuncOp>(
+        mlir::TFL::CreateSplitMergedOperandsPass());
+
+    // Add CallOnceOp when there is a session initializer function in tf saved
+    // model dialect.
+    pass_manager->addPass(
+        mlir::TFL::CreateInsertCallOnceOpFromSessionInitializerPass());
   }
 }
 
@@ -265,7 +290,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   pm.addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
   // TFLite dialect passes.
-  pm.addPass(mlir::TFL::CreatePrepareTFPass(true));
+  pm.addPass(mlir::TFL::CreatePrepareTFPass(
+      /*unfold_batch_matmul=*/true, /*allow_bf16_type_legalization=*/false));
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   pm.addPass(
       mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
@@ -284,7 +310,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   pm.addPass(mlir::TFL::CreateWhileOutlinePass());
 
-  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
+  pm.addNestedPass<mlir::FuncOp>(mlir::TFL::CreateRuntimeVerifyPass());
 }
 
 // Registers a pass pipeline for the standard TFL passes.

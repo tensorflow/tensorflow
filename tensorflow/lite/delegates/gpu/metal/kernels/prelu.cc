@@ -28,97 +28,71 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-std::vector<ComputeTaskDescriptorPtr> PReLU(int id, ValueId input_id,
-                                            ValueId output_id,
-                                            const PReLUAttributes& attr,
-                                            const RuntimeOptions& options) {
+ComputeTaskDescriptor PReLU(const OperationDef& definition,
+                            const PReLUAttributes& attr) {
   auto alpha_buffer =
       absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (!alpha_buffer) {
     return {};
   }
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
   if (attr.clip != 0) {
-    desc->shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas, float clip) {
-        return FLT4(clamp(value, FLT4(0.0f), FLT4(clip)) + alphas[gid.z] * min(FLT4(0.0f), value));
-    })";
+    desc.args.AddFloat("clip", attr.clip);
+    desc.shader_source =
+        R"(
+  in_out_value = FLT4(clamp(in_out_value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   } else {
-    desc->shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas) {
-        return FLT4(max(FLT4(0.0f), value) + alphas[gid.z] * min(FLT4(0.0f), value));
-    })";
+    desc.shader_source =
+        R"(
+  in_out_value = FLT4(max(FLT4(0.0f), in_out_value) + args.alpha.Read(S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   }
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  desc->immutable_buffers = {
-      {"device FLT4* const",
-       GetByteBufferConverted(alpha_buffer->data, options.storage_precision)},
-  };
-  if (attr.clip != 0) {
-    desc->uniform_buffers = {
-        {"constant float&",
-         [attr](const std::map<ValueId, BHWC>& buffers) {
-           std::vector<uint8_t> attr_clip =
-               GetByteBuffer(std::vector<float>{attr.clip});
-           return attr_clip;
-         }},
-    };
-  }
-  return {desc};
+  auto data_type = DeduceDataTypeFromPrecision(definition.precision);
+  const int dst_channels_aligned = AlignByN(alpha_buffer->shape.v, 4);
+  BufferDescriptor alpha_desc;
+  alpha_desc.element_type = data_type;
+  alpha_desc.element_size = 4;
+  alpha_desc.data = GetByteBufferConvertedResized(alpha_buffer->data, data_type,
+                                                  dst_channels_aligned);
+  alpha_desc.size = alpha_desc.data.size();
+  desc.args.AddObject(
+      "alpha", absl::make_unique<BufferDescriptor>(std::move(alpha_desc)));
+  return desc;
 }
 
-std::vector<ComputeTaskDescriptorPtr> PReLUFull(int id, ValueId input_id,
-                                                ValueId output_id,
-                                                const PReLUAttributes& attr,
-                                                const RuntimeOptions& options) {
+ComputeTaskDescriptor PReLUFull(const OperationDef& definition,
+                                const PReLUAttributes& attr) {
   auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
   if (!alpha) {
     return {};
   }
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
-  desc->is_linkable = true;
+  ComputeTaskDescriptor desc(definition);
+  desc.is_linkable = true;
   if (attr.clip != 0) {
-    desc->shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas, float clip) {
-        return FLT4(clamp(value, FLT4(0.0f), FLT4(clip)) + alphas[linear_index] * min(FLT4(0.0f), value));
-    })";
+    desc.args.AddFloat("clip", attr.clip);
+    desc.shader_source =
+        R"(
+  in_out_value = FLT4(clamp(in_out_value, FLT4(0.0f), FLT4(args.clip)) + args.alpha.Read(X_COORD, Y_COORD, S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   } else {
-    desc->shader_source =
-        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-      device FLT4* const alphas) {
-        return FLT4(max(FLT4(0.0f), value) + alphas[linear_index] * min(FLT4(0.0f), value));
-    })";
+    desc.shader_source =
+        R"(
+  in_out_value = FLT4(max(FLT4(0.0f), in_out_value) + args.alpha.Read(X_COORD, Y_COORD, S_COORD) * min(FLT4(0.0f), in_out_value));
+)";
   }
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  desc->immutable_buffers = {
-      {"device FLT4* const", GetByteBufferConverted(ConvertToPHWC4(*alpha),
-                                                    options.storage_precision)},
-  };
-  if (attr.clip != 0) {
-    desc->uniform_buffers = {
-        {"constant float&",
-         [attr](const std::map<ValueId, BHWC>& buffers) {
-           std::vector<uint8_t> attr_clip =
-               GetByteBuffer(std::vector<float>{attr.clip});
-           return attr_clip;
-         }},
-    };
-  }
-  return {desc};
+  TensorDescriptor alpha_desc{definition.GetDataType(),
+                              TensorStorageType::BUFFER, Layout::HWC};
+  alpha_desc.UploadData(*alpha);
+  desc.args.AddObject(
+      "alpha", absl::make_unique<TensorDescriptor>(std::move(alpha_desc)));
+  return desc;
 }
 
 }  // namespace metal

@@ -140,6 +140,10 @@ TF_LITE_MICRO_TEST(TestTypeSizeOf) {
   TF_LITE_MICRO_EXPECT_EQ(sizeof(int64_t), size);
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
+                          tflite::TfLiteTypeSizeOf(kTfLiteUInt64, &size));
+  TF_LITE_MICRO_EXPECT_EQ(sizeof(uint64_t), size);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk,
                           tflite::TfLiteTypeSizeOf(kTfLiteBool, &size));
   TF_LITE_MICRO_EXPECT_EQ(sizeof(bool), size);
 
@@ -180,11 +184,11 @@ TF_LITE_MICRO_TEST(TestAllocateOutputDimensionsFromInput) {
   const int input1_dims[] = {1, 1};
   const int input2_dims[] = {kDimsLen, 5, 5, 5, 5};
   int output_dims[] = {0, 0, 0, 0, 0};
-  TfLiteTensor input_tensor1 = tflite::testing::CreateInt32Tensor(
+  TfLiteTensor input_tensor1 = tflite::testing::CreateTensor<int32_t>(
       nullptr, tflite::testing::IntArrayFromInts(input1_dims));
-  TfLiteTensor input_tensor2 = tflite::testing::CreateInt32Tensor(
+  TfLiteTensor input_tensor2 = tflite::testing::CreateTensor<int32_t>(
       nullptr, tflite::testing::IntArrayFromInts(input2_dims));
-  TfLiteTensor output_tensor = tflite::testing::CreateInt32Tensor(
+  TfLiteTensor output_tensor = tflite::testing::CreateTensor<int32_t>(
       nullptr, tflite::testing::IntArrayFromInts(output_dims));
   TfLiteContext context;
   // Only need to allocate space for output_tensor.dims.  Use a simple

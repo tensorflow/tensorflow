@@ -14,11 +14,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -43,6 +44,11 @@ class CppGradients
     TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
     Status s = StatusFromTF_Status(status.get());
     CHECK_EQ(errors::OK, s.code()) << s.error_message();
+
+    // Computing numerical gradients with TensorFloat-32 is numerically
+    // unstable. Some forward pass tests also fail with TensorFloat-32 due to
+    // low tolerances
+    enable_tensor_float_32_execution(false);
   }
 };
 
@@ -53,88 +59,9 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Relu", ReluRegisterer));
   TF_RETURN_IF_ERROR(
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
-                         SparseSoftmaxCrossEntropyLossRegisterer));
+                         SparseSoftmaxCrossEntropyWithLogitsRegisterer));
   return Status::OK();
 }
-
-// ========================= Test Util Functions ==============================
-
-// Get a scalar TensorHandle with given value
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a Matrix TensorHandle with given float values and dimensions
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                     int64_t dims[], int num_dims,
-                                     AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a Matrix TensorHandle with given int values and dimensions
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-  return Status::OK();
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
-                                                 float vals[], int64_t dims[],
-                                                 int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsFloat(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
-                                               int64_t dims[], int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-// =========================== Start Tests ================================
 
 TEST_P(CppGradients, TestMatMulGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -415,128 +342,13 @@ TEST_P(CppGradients, TestMatMulTranspose) {
   }
 }
 
-TEST_P(CppGradients, TestReluGrad) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
-  }
-
-  // X = data
-  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 0.0f, -1.0f};
-  int64_t X_dims[] = {3, 3};
-  int num_dims = 2;
-  AbstractTensorHandlePtr X =
-      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
-
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  /* Pseudo-code:
-   *
-   * tape.watch(X)
-   * Y = Relu(X)
-   * outputs = tape.gradient(Y, [X])
-   */
-  std::vector<AbstractTensorHandle*> outputs(1);
-  s = RunModel(ReluGradModel, ctx.get(), {X.get()}, absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  TF_Tensor* dX_tensor;
-  s = GetValue(outputs[0], &dX_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  float result_data[9] = {0};
-  memcpy(&result_data[0], TF_TensorData(dX_tensor),
-         TF_TensorByteSize(dX_tensor));
-
-  float expected_dX[9] = {1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
-  float tolerance = 1e-3;
-  for (int j = 0; j < 9; j++) {
-    ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
-  }
-
-  outputs[0]->Unref();
-  TF_DeleteTensor(dX_tensor);
-}
-
-TEST_P(CppGradients, TestSoftmaxLossGrad) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
-  }
-
-  // X = scores
-  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 0.0f, -1.0f};
-  int64_t X_dims[] = {3, 3};
-  int num_dims = 2;
-  AbstractTensorHandlePtr X =
-      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
-
-  // y = labels
-  int y_vals[] = {1, 0, 1};
-  int64_t y_dims[] = {3};
-  num_dims = sizeof(y_dims) / sizeof(y_dims[0]);
-  AbstractTensorHandlePtr y =
-      GetTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
-
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  /* Pseudo-code:
-   *
-   * tape.watch(X)
-   * tape.watch(labels)
-   * loss = SoftmaxLoss(X, labels)
-   * outputs = tape.gradient(loss, [X, labels])
-   *
-   *
-   */
-
-  std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(SoftmaxLossGradModel, ctx.get(), {X.get(), y.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
-
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  TF_Tensor* dX_tensor;
-  s = GetValue(outputs[0], &dX_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  float result_data[9] = {0};
-  memcpy(&result_data[0], TF_TensorData(dX_tensor),
-         TF_TensorByteSize(dX_tensor));
-
-  float expected_dX[9] = {0.090f,  -0.7553f, 0.6652f,  -0.9099f, 0.2447f,
-                          0.6652f, 0.8437f,  -0.8858f, 0.0420f};
-  float tolerance = 1e-3;
-  for (int j = 0; j < 9; j++) {
-    ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
-  }
-
-  // Only Unref() first output as 2nd is nullptr grad for labels
-  outputs[0]->Unref();
-  TF_DeleteTensor(dX_tensor);
-}
-
 TEST_P(CppGradients, TestMNISTGrad) {
+  bool use_function = !std::get<2>(GetParam());
+  if (use_function) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   AbstractContextPtr ctx;
@@ -607,7 +419,6 @@ TEST_P(CppGradients, TestMNISTGrad) {
          TF_TensorByteSize(dW1_tensor));
 
   float expected_dW1[4] = {0.0f, 3.2f, 0.0f, 4.8f};
-  ;  // dLoss
   for (int j = 0; j < 4; j++) {
     ASSERT_NEAR(result_data[j], expected_dW1[j], tolerance);
   }
@@ -647,7 +458,7 @@ TEST_P(CppGradients, TestScalarMul) {
   AbstractTensorHandlePtr eta;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 1.5f, &x_raw);
+    Status s = ScalarTensorHandle(ctx.get(), 1.5f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     eta.reset(x_raw);
   }
@@ -685,6 +496,12 @@ TEST_P(CppGradients, TestScalarMul) {
 }
 
 TEST_P(CppGradients, TestMNIST_Training) {
+  bool use_function = !std::get<2>(GetParam());
+  if (use_function) {
+    // TODO(b/168850692): Enable this.
+    GTEST_SKIP() << "Can't take gradient of "
+                    "SparseSoftmaxCrossEntropyWithLogits in tracing mode.";
+  }
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
 
@@ -737,7 +554,7 @@ TEST_P(CppGradients, TestMNIST_Training) {
 
   // Set learning rate to be 1e-1
   AbstractTensorHandle* learning_rate = nullptr;
-  s = TestScalarTensorHandle(ctx.get(), 1e-1, &learning_rate);
+  s = ScalarTensorHandle(ctx.get(), 1e-1, &learning_rate);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Train

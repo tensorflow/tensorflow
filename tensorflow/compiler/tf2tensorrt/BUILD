@@ -3,13 +3,13 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
+load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
     "tf_custom_op_library_additional_deps",
-    "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
 
@@ -21,6 +21,9 @@ load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_libs")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -32,8 +35,6 @@ package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-exports_files(["LICENSE"])
 
 cc_library(
     name = "tensorrt_stub",
@@ -52,8 +53,8 @@ cc_library(
 alias(
     name = "tensorrt_lib",
     actual = select({
-        "//tensorflow:oss": ":tensorrt_stub",
-        "//conditions:default": "@local_config_tensorrt//:tensorrt",
+        "@local_config_tensorrt//:use_static_tensorrt": "@local_config_tensorrt//:tensorrt",
+        "//conditions:default": ":tensorrt_stub",
     }),
     visibility = ["//visibility:private"],
 )
@@ -69,7 +70,7 @@ tf_cuda_cc_test(
     deps = [
         "//tensorflow/core/common_runtime/gpu:gpu_init",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + if_tensorrt([
@@ -107,18 +108,20 @@ cc_library(
         ":common_utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/stream_executor/lib",
-    ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
+    ] + if_tensorrt([
+        ":tensorrt_lib",
+        "@local_config_cuda//cuda:cuda_headers",
+    ]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -414,6 +417,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
@@ -480,7 +484,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -492,15 +496,32 @@ tf_cuda_cc_test(
 
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
-    name = "segment",
-    srcs = ["segment/segment.cc"],
+    name = "union_find",
+    srcs = ["segment/union_find.cc"],
     hdrs = [
-        "segment/segment.h",
         "segment/union_find.h",
     ],
     copts = tf_copts(),
     deps = [
+        ":utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "segment",
+    srcs = ["segment/segment.cc"],
+    hdrs = [
+        "segment/segment.h",
+    ],
+    copts = tf_copts(),
+    deps = [
         ":common_utils",
+        ":union_find",
         ":utils",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -575,6 +596,10 @@ cc_library(
     srcs = ["utils/py_utils.cc"],
     hdrs = ["utils/py_utils.h"],
     copts = tf_copts(),
+    local_defines = select({
+        "@local_config_tensorrt//:use_static_tensorrt": ["TF_USE_TENSORRT_STATIC=1"],
+        "//conditions:default": [],
+    }),
     deps = if_tensorrt([
         ":common_utils",
         ":tensorrt_lib",

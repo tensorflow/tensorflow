@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
-#include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
 namespace testing {
@@ -62,7 +61,7 @@ void TestDequantizeToFloat(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims, scale,
                             zero_point),
-      CreateFloatTensor(output_data, output_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   ValidateDequantizeGoldens(tensors, tensors_size, expected_output_data,
@@ -85,7 +84,7 @@ void TestDequantizeToInt32(const int* input_dims_data, const float* input_data,
   TfLiteTensor tensors[tensors_size] = {
       CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
                             input_scale, input_zero_point),
-      CreateInt32Tensor(output_data, output_dims),
+      CreateTensor(output_data, output_dims),
   };
 
   tensors[1].params.scale = output_scale;
@@ -138,42 +137,6 @@ TF_LITE_MICRO_TEST(DequantizeOpTestInt16) {
   float output[length];
   tflite::testing::TestDequantizeToFloat(dims, values, input_quantized, scale,
                                          zero_point, dims, values, output);
-}
-
-TF_LITE_MICRO_TEST(DequantizeOpTestInt8ToInt32) {
-  const int length = 10;
-  const int dims[] = {2, 5, 2};
-  const float input_float[] = {-63.5, -63,  -62.5, -62,  -61.5,
-                               62,    62.5, 63,    63.5, 64};
-  const int32_t golden[] = {-630, -625, -620, -615, -610,
-                            625,  630,  635,  640,  645};
-  const float input_scale = 0.5f;
-  const int input_zero_point = -1;
-  const float output_scale = 0.1f;
-  const int output_zero_point = 5;
-  int8_t input_quantized[length];
-  int32_t output[length];
-  tflite::testing::TestDequantizeToInt32(
-      dims, input_float, input_quantized, input_scale, input_zero_point, dims,
-      golden, output_scale, output_zero_point, output);
-}
-
-TF_LITE_MICRO_TEST(DequantizeOpTestInt16ToInt32) {
-  const int length = 10;
-  const int dims[] = {2, 5, 2};
-  const float input_float[] = {-63.5, -63,  -62.5, -62,  -61.5,
-                               62,    62.5, 63,    63.5, 64};
-  const int32_t golden[] = {-630, -625, -620, -615, -610,
-                            625,  630,  635,  640,  645};
-  const float input_scale = 0.5f;
-  const int input_zero_point = -1;
-  const float output_scale = 0.1f;
-  const int output_zero_point = 5;
-  int16_t input_quantized[length];
-  int32_t output[length];
-  tflite::testing::TestDequantizeToInt32(
-      dims, input_float, input_quantized, input_scale, input_zero_point, dims,
-      golden, output_scale, output_zero_point, output);
 }
 
 TF_LITE_MICRO_TESTS_END

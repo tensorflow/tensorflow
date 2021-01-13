@@ -48,7 +48,8 @@ namespace test {
 // TODO(hongm): Convert `g` and `init` to using std::unique_ptr.
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
-                     Rendezvous* rendez, const char* executor_type) {
+                     Rendezvous* rendez, const char* executor_type,
+                     bool old_benchmark_api) {
   auto cleanup = gtl::MakeCleanup([g, init]() {
     delete g;
     delete init;
@@ -59,7 +60,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
     options = &default_options;
   }
 
-  testing::StopTiming();
+  old_benchmark_api_ = old_benchmark_api;
+  if (old_benchmark_api_) testing::StopTiming();
   string t = absl::AsciiStrToUpper(device);
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
@@ -90,7 +92,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
   pflr_ = std::unique_ptr<ProcessFunctionLibraryRuntime>(
       new ProcessFunctionLibraryRuntime(
           device_mgr_.get(), Env::Default(), nullptr, graph_def_version,
-          flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr, nullptr,
+          flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr,
           Rendezvous::Factory()));
 
   flr_ = pflr_->GetFLR(device_->name());
@@ -120,6 +122,9 @@ Benchmark::Benchmark(const string& device, Graph* g,
   TF_CHECK_OK(NewExecutor(executor_type, params, *g, &exec_));
 }
 
+Benchmark::Benchmark(const string& device, Graph* g, bool old_benchmark_api)
+    : Benchmark(device, g, nullptr, nullptr, nullptr, "", old_benchmark_api) {}
+
 Benchmark::~Benchmark() {
   if (device_) {
     rendez_->Unref();
@@ -134,6 +139,10 @@ Benchmark::~Benchmark() {
 }
 
 void Benchmark::Run(int iters) { RunWithRendezvousArgs({}, {}, iters); }
+
+void Benchmark::Run(::testing::benchmark::State& state) {
+  RunWithRendezvousArgs({}, {}, state);
+}
 
 string GetRendezvousKey(const Node* node) {
   string send_device;
@@ -151,7 +160,61 @@ string GetRendezvousKey(const Node* node) {
 
 void Benchmark::RunWithRendezvousArgs(
     const std::vector<std::pair<string, Tensor>>& inputs,
+    const std::vector<string>& outputs, ::testing::benchmark::State& state) {
+  CHECK(!old_benchmark_api_)
+      << "This method should only be called with new benchmark API";
+  if (!device_ || state.max_iterations == 0) {
+    return;
+  }
+  Tensor unused;  // In benchmark, we don't care the return value.
+  bool is_dead;
+
+  // Warm up
+  Executor::Args args;
+  args.rendezvous = rendez_;
+  args.runner = [this](std::function<void()> closure) {
+    pool_->Schedule(closure);
+  };
+  static const int kWarmupRuns = 3;
+  for (int i = 0; i < kWarmupRuns; ++i) {
+    for (const auto& p : inputs) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
+    }
+    TF_CHECK_OK(exec_->Run(args));
+    for (const string& key : outputs) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
+    }
+  }
+  TF_CHECK_OK(device_->Sync());
+  VLOG(3) << kWarmupRuns << " warmup runs done.";
+
+  // Benchmark loop. Timer starts automatically at the beginning of the loop
+  // and ends automatically after the last iteration.
+  for (auto s : state) {
+    for (const auto& p : inputs) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
+    }
+    TF_CHECK_OK(exec_->Run(args));
+    for (const string& key : outputs) {
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
+    }
+  }
+  TF_CHECK_OK(device_->Sync());
+}
+
+void Benchmark::RunWithRendezvousArgs(
+    const std::vector<std::pair<string, Tensor>>& inputs,
     const std::vector<string>& outputs, int iters) {
+  CHECK(old_benchmark_api_) << "This method should only be called when running "
+                               "with old benchmark API";
   if (!device_ || iters == 0) {
     return;
   }

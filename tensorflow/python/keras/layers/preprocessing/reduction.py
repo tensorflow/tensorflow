@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras categorical preprocessing layers."""
+"""Keras reduction layer."""
 # pylint: disable=g-classes-have-attributes
 
 from __future__ import absolute_import
@@ -48,7 +48,7 @@ class Reduction(Layer):
   This layer performs a reduction across one axis of its input data. This
   data may optionally be weighted by passing in an identical float tensor.
 
-  Arguments:
+  Args:
     reduction: The type of reduction to perform. Can be one of the following:
       "max", "mean", "min", "prod", or "sum". This layer uses the Tensorflow
       reduce op which corresponds to that reduction (so, for "mean", we use

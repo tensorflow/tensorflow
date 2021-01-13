@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_data_optimization.h"
 
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
@@ -58,7 +58,7 @@ struct FuseParallelMapAndBatch : public OpRewritePattern<BatchDatasetV2Op> {
 void PopulateTFDataOptimizationPatterns(MLIRContext *context,
                                         OwningRewritePatternList *patterns) {
   patterns->insert<FuseParallelMapAndBatch>(context);
-  populateWithGenerated(context, patterns);
+  populateWithGenerated(context, *patterns);
 }
 
 }  // namespace TF

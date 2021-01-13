@@ -89,6 +89,8 @@ class DataAdapterTestBase(keras_parameterized.TestCase):
     self.iterator_input = data_utils.threadsafe_generator(generator)()
     self.sequence_input = TestSequence(batch_size=self.batch_size,
                                        feature_shape=10)
+    self.text_input = [['abc']]
+    self.bytes_input = [[b'abc']]
     self.model = keras.models.Sequential(
         [keras.layers.Dense(8, input_shape=(10,), activation='softmax')])
 
@@ -121,6 +123,8 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.text_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.bytes_input))
 
   def test_size_numpy(self):
     adapter = self.adapter_cls(
@@ -251,6 +255,8 @@ class TensorLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.text_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.bytes_input))
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_training(self):
@@ -420,6 +426,8 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.text_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.bytes_input))
 
   def test_size(self):
     adapter = self.adapter_cls(
@@ -666,6 +674,8 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertTrue(self.adapter_cls.can_handle(self.generator_input))
     self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.text_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.bytes_input))
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_training(self):
@@ -733,6 +743,8 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
     self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
     self.assertTrue(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.text_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.bytes_input))
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_training(self):
@@ -941,6 +953,25 @@ class DataHandlerTest(keras_parameterized.TestCase):
     self.assertEqual(returned_data, [[([0],), ([1],),
                                       ([2],)], [([0],), ([1],), ([2],)]])
 
+  def test_iterator(self):
+    def generator():
+      for _ in range(2):
+        for step in range(3):
+          yield (ops.convert_to_tensor_v2_with_dispatch([step]),)
+
+    it = iter(dataset_ops.Dataset.from_generator(
+        generator, output_types=('float32',)))
+    data_handler = data_adapter.DataHandler(it, epochs=2, steps_per_epoch=3)
+    returned_data = []
+    for _, iterator in data_handler.enumerate_epochs():
+      epoch_data = []
+      for _ in data_handler.steps():
+        epoch_data.append(next(iterator))
+      returned_data.append(epoch_data)
+    returned_data = self.evaluate(returned_data)
+    self.assertEqual(returned_data, [[([0],), ([1],), ([2],)],
+                                     [([0],), ([1],), ([2],)]])
+
   def test_list_of_scalars(self):
     data_handler = data_adapter.DataHandler([[0], [1], [2]],
                                             epochs=2,
@@ -1048,6 +1079,24 @@ class TestValidationSplit(keras_parameterized.TestCase):
         (np.ones((10, 1)), None), validation_split=0.2)
     self.assertIsNone(train_sw)
     self.assertIsNone(val_sw)
+
+
+class ListsOfScalarsDataAdapterTest(DataAdapterTestBase):
+
+  def setUp(self):
+    super(ListsOfScalarsDataAdapterTest, self).setUp()
+    self.adapter_cls = data_adapter.ListsOfScalarsDataAdapter
+
+  def test_can_list_inputs(self):
+    self.assertTrue(self.adapter_cls.can_handle(self.text_input))
+    self.assertTrue(self.adapter_cls.can_handle(self.bytes_input))
+
+    self.assertFalse(self.adapter_cls.can_handle(self.numpy_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.tensor_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.dataset_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.generator_input))
+    self.assertFalse(self.adapter_cls.can_handle(self.sequence_input))
+    self.assertFalse(self.adapter_cls.can_handle([]))
 
 
 class TestUtils(keras_parameterized.TestCase):

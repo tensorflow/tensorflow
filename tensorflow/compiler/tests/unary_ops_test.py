@@ -542,7 +542,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for dtype in self.float_types:
 
       def quantize_and_dequantize_v2(x):
-        return array_ops.quantize_and_dequantize_v2(
+        return array_ops.quantize_and_dequantize(
             x, -127, 127, signed_input=True, num_bits=8)
 
       self._assertOpOutputMatchesExpected(
@@ -551,7 +551,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_up(x):
-        return array_ops.quantize_and_dequantize_v2(
+        return array_ops.quantize_and_dequantize(
             x,
             -1,
             1.0,
@@ -575,7 +575,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
                             dtype=dtype))
 
       def quantize_and_dequantize_v2_round_half_to_even(x):
-        return array_ops.quantize_and_dequantize_v2(
+        return array_ops.quantize_and_dequantize(
             x,
             -1.0,
             1.0,
@@ -782,10 +782,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
-  @test_util.disable_mlir_bridge(
-      "TF_PopulationCount is missing and is required to translate to "
-      "xla::PopulationCount."
-  )
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
@@ -891,8 +887,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
         expected=np.array([14., 22.], dtype=np.float32))
 
-  @test_util.disable_mlir_bridge("TODO(b/153812660): Handle tf.Cast compilation"
-                                )
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
@@ -940,8 +934,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             src,
             expected=dst)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.Bitcast compilation")
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),

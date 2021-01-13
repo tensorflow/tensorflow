@@ -21,26 +21,59 @@ from __future__ import unicode_literals
 
 import abc
 import math
+import typing
+from typing import Any, Dict, Callable, List, Optional, Text, Tuple, TypeVar, Union
+
+from absl import logging
 import six
 
 from tensorflow.core.protobuf.tpu import optimization_parameters_pb2
+from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
+from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import init_ops_v2
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.tpu.ops import tpu_ops
+from tensorflow.python.types import core
 from tensorflow.python.util.tf_export import tf_export
+
+
+TableVariable = TypeVar("TableVariable", sharded_variable.ShardedVariable,
+                        tf_variables.Variable)
+SlotVarCreationFnType = Callable[
+    [TableVariable, List[Text], List[init_ops_v2.Initializer]],
+    Dict[Text, TableVariable]]
+ClipValueType = Union[Tuple[float, float], float]
 
 
 @six.add_metaclass(abc.ABCMeta)
 class _Optimizer(object):
   """Base class for all optimizers, with common parameters."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation, clip_weight_min,
-               clip_weight_max, weight_decay_factor,
-               multiply_weight_decay_factor_by_learning_rate,
-               slot_variable_creation_fn=None):
+  def __init__(
+      self,
+      learning_rate: Union[float, Callable[[], float]],
+      use_gradient_accumulation: bool,
+      clip_weight_min: Optional[float],
+      clip_weight_max: Optional[float],
+      weight_decay_factor: Optional[float],
+      multiply_weight_decay_factor_by_learning_rate: bool,
+      clipvalue: Optional[ClipValueType] = None,
+      slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
     self.clip_weight_min = clip_weight_min
     self.clip_weight_max = clip_weight_max
+    if not use_gradient_accumulation and clipvalue is not None:
+      raise ValueError("Received non-None gradient clipping limit {} but "
+                       "use_gradient_accumulation is not set to True.".format(
+                           clipvalue))
+    if clipvalue is None:
+      clipvalue = (None, None)
+    elif not isinstance(clipvalue, tuple):
+      clipvalue = (-1. * clipvalue, clipvalue)
+    self.clip_gradient_min, self.clip_gradient_max = clipvalue
+
     self.weight_decay_factor = weight_decay_factor
     self.multiply_weight_decay_factor_by_learning_rate = (
         multiply_weight_decay_factor_by_learning_rate)
@@ -52,7 +85,7 @@ class _Optimizer(object):
     self.slot_variable_creation_fn = slot_variable_creation_fn
 
   @abc.abstractmethod
-  def _slot_names(self):
+  def _slot_names(self) -> List[Text]:
     """Returns the name of all the slot variables.
 
     This does not include the 'parameters' variable and these names must match
@@ -62,14 +95,15 @@ class _Optimizer(object):
     raise NotImplementedError
 
   @abc.abstractmethod
-  def _slot_initializers(self):
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     """Returns initializers for slot variables.
 
     This returns a parallel list to self._slot_names().
     """
     raise NotImplementedError
 
-  def _set_optimization_parameters(self, parameters):
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
     """Sets the optimizer fields in the OptimizationParameters."""
     if self.use_gradient_accumulation:
       parameters.gradient_accumulation_status = (
@@ -84,22 +118,32 @@ class _Optimizer(object):
     if self.clip_weight_max is not None:
       parameters.clipping_limits.upper.value = self.clip_weight_max
 
+    if self.clip_gradient_min is not None:
+      parameters.gradient_clipping_limits.lower.value = self.clip_gradient_min
+
+    if self.clip_gradient_max is not None:
+      parameters.gradient_clipping_limits.upper.value = self.clip_gradient_max
+
     if self.weight_decay_factor:
       parameters.weight_decay_factor = self.weight_decay_factor
       if self.multiply_weight_decay_factor_by_learning_rate:
         parameters.multiply_weight_decay_factor_by_learning_rate = True
 
   @abc.abstractmethod
-  def _load(self):
+  def _load(self) -> Callable[..., ops.Operation]:
     """Returns the load function for the optimizer."""
     raise NotImplementedError
 
   @abc.abstractmethod
-  def _retrieve(self):
+  def _retrieve(self) -> Callable[..., core.Tensor]:
     """Returns the retrieve function for the optimizer."""
     raise NotImplementedError
 
-  def _create_slots(self, table, variable_creator):
+  def _create_slots(
+      self, table: "TableConfig",
+      variable_creator: Callable[[Text, init_ops_v2.Initializer],
+                                 tf_variables.Variable]
+  ) -> Dict[Text, tf_variables.Variable]:
     """Creates slot variables for table.
 
     Args:
@@ -117,7 +161,7 @@ class _Optimizer(object):
       slots = {}
       for slot, initializer in zip(self._slot_names(),
                                    self._slot_initializers()):
-        slots[slot] = variable_creator(name=slot, initializer=initializer)
+        slots[slot] = variable_creator(slot, initializer)
       return slots
 
 
@@ -169,11 +213,12 @@ class SGD(_Optimizer):
   """
 
   def __init__(self,
-               learning_rate=0.01,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None):
+               learning_rate: Union[float, Callable[[], float]] = 0.01,
+               clip_weight_min: Optional[float] = None,
+               clip_weight_max: Optional[float] = None,
+               weight_decay_factor: Optional[float] = None,
+               multiply_weight_decay_factor_by_learning_rate: bool = None,
+               clipvalue: Optional[ClipValueType] = None):
     """Optimization parameters for stochastic gradient descent.
 
     Args:
@@ -186,25 +231,38 @@ class SGD(_Optimizer):
         by this factor each step.
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tiple of scalar values (min,
+        max) to set a separate maximum or minimum. If one of the two entries is
+        None, then there will be no clipping that direction. Note if this is
+        set, you may see a decrease in performance as  gradient accumulation
+        will be enabled (it is normally off for SGD as it has no affect on
+        accuracy). See
+        'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for more
+        information on gradient accumulation and its impact on tpu embeddings.
     """
+    use_gradient_accumulation = clipvalue is not None
+
     super(SGD, self).__init__(
-        learning_rate, False, clip_weight_min, clip_weight_max,
-        weight_decay_factor, multiply_weight_decay_factor_by_learning_rate)
+        learning_rate, use_gradient_accumulation, clip_weight_min,
+        clip_weight_max, weight_decay_factor,
+        multiply_weight_decay_factor_by_learning_rate, clipvalue)
 
-  def _slot_names(self):
+  def _slot_names(self) -> List[Text]:
     return []
 
-  def _slot_initializers(self):
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     return []
 
-  def _set_optimization_parameters(self, parameters):
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
     super(SGD, self)._set_optimization_parameters(parameters)
     parameters.stochastic_gradient_descent.SetInParent()
 
-  def _load(self):
+  def _load(self) -> Callable[..., ops.Operation]:
     return tpu_ops.load_tpu_embedding_stochastic_gradient_descent_parameters
 
-  def _retrieve(self):
+  def _retrieve(self) -> Callable[..., core.Tensor]:
     return tpu_ops.retrieve_tpu_embedding_stochastic_gradient_descent_parameters
 
 
@@ -255,15 +313,17 @@ class Adagrad(_Optimizer):
   algorithm.
   """
 
-  def __init__(self,
-               learning_rate=0.001,
-               initial_accumulator_value=0.1,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None,
-               slot_variable_creation_fn=None):
+  def __init__(
+      self,
+      learning_rate: float = 0.001,
+      initial_accumulator_value: float = 0.1,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
+      clipvalue: Optional[ClipValueType] = None):
     """Optimization parameters for Adagrad.
 
     Args:
@@ -278,36 +338,42 @@ class Adagrad(_Optimizer):
         weights are not decayed.
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
-      slot_variable_creation_fn: Defaults to `None`. If you wish do directly
-        control the creation of the slot variables, set this to a callable
-        taking two parameters, a variable and a list of slot names to create for
-        it. This function should return a dict with the slot names as keys and
-        the created variables as values. When set to None (the default), uses
-        the built-in variable creation.
+      slot_variable_creation_fn: If you wish do directly control the creation of
+        the slot variables, set this to a callable taking three parameters: a
+          table variable, a list of slot names to create for it, and a list of
+          initializers. This function should return a dict with the slot names
+          as keys and the created variables as values with types matching the
+          table variable. When set to None (the default), uses the built-in
+          variable creation.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tuple of scalar values (min,
+        max) to set a separate maximum or minimum. If one of the two entries is
+        None, then there will be no clipping that direction.
     """
     super(Adagrad, self).__init__(
         learning_rate, use_gradient_accumulation, clip_weight_min,
         clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if initial_accumulator_value <= 0:
       raise ValueError("Adagrad initial_accumulator_value must be positive")
     self.initial_accumulator_value = initial_accumulator_value
 
-  def _slot_names(self):
+  def _slot_names(self) -> List[Text]:
     return ["accumulators"]
 
-  def _slot_initializers(self):
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     return [init_ops_v2.Constant(self.initial_accumulator_value)]
 
-  def _set_optimization_parameters(self, parameters):
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
     super(Adagrad, self)._set_optimization_parameters(parameters)
     parameters.adagrad.SetInParent()
 
-  def _load(self):
+  def _load(self) -> Callable[..., ops.Operation]:
     return tpu_ops.load_tpu_embedding_adagrad_parameters
 
-  def _retrieve(self):
+  def _retrieve(self) -> Callable[..., core.Tensor]:
     return tpu_ops.retrieve_tpu_embedding_adagrad_parameters
 
 
@@ -362,19 +428,21 @@ class Adam(_Optimizer):
   algorithm.
   """
 
-  def __init__(self,
-               learning_rate=0.001,
-               beta_1=0.9,
-               beta_2=0.999,
-               epsilon=1e-07,
-               lazy_adam=True,
-               sum_inside_sqrt=True,
-               use_gradient_accumulation=True,
-               clip_weight_min=None,
-               clip_weight_max=None,
-               weight_decay_factor=None,
-               multiply_weight_decay_factor_by_learning_rate=None,
-               slot_variable_creation_fn=None):
+  def __init__(
+      self,
+      learning_rate: Union[float, Callable[[], float]] = 0.001,
+      beta_1: float = 0.9,
+      beta_2: float = 0.999,
+      epsilon: float = 1e-07,
+      lazy_adam: bool = True,
+      sum_inside_sqrt: bool = True,
+      use_gradient_accumulation: bool = True,
+      clip_weight_min: Optional[float] = None,
+      clip_weight_max: Optional[float] = None,
+      weight_decay_factor: Optional[float] = None,
+      multiply_weight_decay_factor_by_learning_rate: bool = None,
+      slot_variable_creation_fn: Optional[SlotVarCreationFnType] = None,
+      clipvalue: Optional[ClipValueType] = None):
     """Optimization parameters for Adam.
 
     See 'tensorflow/core/protobuf/tpu/optimization_parameters.proto' for a
@@ -384,10 +452,10 @@ class Adam(_Optimizer):
     Args:
       learning_rate: The learning rate. It should be a floating point value or a
         callable taking no arguments for a dynamic learning rate.
-      beta_1: A float value.
-        The exponential decay rate for the 1st moment estimates.
-      beta_2: A float value.
-        The exponential decay rate for the 2nd moment estimates.
+      beta_1: A float value. The exponential decay rate for the 1st moment
+        estimates.
+      beta_2: A float value. The exponential decay rate for the 2nd moment
+        estimates.
       epsilon: A small constant for numerical stability.
       lazy_adam: Use lazy Adam instead of Adam. Lazy Adam trains faster.
       sum_inside_sqrt: When this is true, the Adam update formula is changed
@@ -402,15 +470,22 @@ class Adam(_Optimizer):
         weights are not decayed.
       multiply_weight_decay_factor_by_learning_rate: if true,
         `weight_decay_factor` is multiplied by the current learning rate.
-      slot_variable_creation_fn: a callable taking two parameters, a variable
-        and a list of slot names to create for it. This function should return
-        a dict with the slot names as keys and the created variables as values.
-        When set to None (the default), uses the built-in variable creation.
+      slot_variable_creation_fn: If you wish do directly control the creation of
+        the slot variables, set this to a callable taking three parameters: a
+          table variable, a list of slot names to create for it, and a list of
+          initializers. This function should return a dict with the slot names
+          as keys and the created variables as values with types matching the
+          table variable. When set to None (the default), uses the built-in
+          variable creation.
+      clipvalue: Controls clipping of the gradient. Set to either a single
+        positive scalar value to get clipping or a tiple of scalar values (min,
+        max) to set a separate maximum or minimum. If one of the two entries is
+        None, then there will be no clipping that direction.
     """
     super(Adam, self).__init__(
         learning_rate, use_gradient_accumulation, clip_weight_min,
         clip_weight_max, weight_decay_factor,
-        multiply_weight_decay_factor_by_learning_rate,
+        multiply_weight_decay_factor_by_learning_rate, clipvalue,
         slot_variable_creation_fn)
     if beta_1 < 0. or beta_1 >= 1.:
       raise ValueError("beta1 must be in the range [0, 1), but received {}."
@@ -430,13 +505,14 @@ class Adam(_Optimizer):
     self.lazy_adam = lazy_adam
     self.sum_inside_sqrt = sum_inside_sqrt
 
-  def _slot_names(self):
+  def _slot_names(self) -> List[Text]:
     return ["momenta", "velocities"]
 
-  def _slot_initializers(self):
+  def _slot_initializers(self) -> List[init_ops_v2.Initializer]:
     return [init_ops_v2.Constant(), init_ops_v2.Constant()]
 
-  def _set_optimization_parameters(self, parameters):
+  def _set_optimization_parameters(
+      self, parameters: optimization_parameters_pb2.OptimizationParameters):
     super(Adam, self)._set_optimization_parameters(parameters)
     parameters.adam.beta1 = self.beta_1
     parameters.adam.beta2 = self.beta_2
@@ -444,10 +520,10 @@ class Adam(_Optimizer):
     parameters.adam.use_non_lazy_adam = not self.lazy_adam
     parameters.adam.use_sum_inside_sqrt = self.sum_inside_sqrt
 
-  def _load(self):
+  def _load(self) -> Callable[..., ops.Operation]:
     return tpu_ops.load_tpu_embedding_adam_parameters
 
-  def _retrieve(self):
+  def _retrieve(self) -> Callable[..., core.Tensor]:
     return tpu_ops.retrieve_tpu_embedding_adam_parameters
 
 
@@ -488,8 +564,13 @@ class TableConfig(object):
 
   """
 
-  def __init__(self, vocabulary_size, dim, initializer, optimizer=None,
-               combiner="mean", name=None):
+  def __init__(self,
+               vocabulary_size: int,
+               dim: int,
+               initializer: Optional[Callable[[Any], None]],
+               optimizer: Optional[_Optimizer] = None,
+               combiner: Text = "mean",
+               name: Optional[Text] = None):
     """Embedding table configuration.
 
     Args:
@@ -506,10 +587,10 @@ class TableConfig(object):
         `tf.tpu.experimental.embedding.Adam`. It set will override the global
         optimizer passed to `tf.tpu.experimental.embedding.TPUEmbedding`.
       combiner: A string specifying how to reduce if there are multiple entries
-        in a single row. Currently 'mean', 'sqrtn', 'sum' are
-        supported, with 'mean' the default. 'sqrtn' often achieves good
-        accuracy, in particular with bag-of-words columns. For more information,
-        see `tf.nn.embedding_lookup_sparse`.
+        in a single row. Currently 'mean', 'sqrtn', 'sum' are supported, with
+        'mean' the default. 'sqrtn' often achieves good accuracy, in particular
+        with bag-of-words columns. For more information, see
+        `tf.nn.embedding_lookup_sparse`.
       name: An optional string used to name the table. Useful for debugging.
 
     Returns:
@@ -542,6 +623,29 @@ class TableConfig(object):
     self.optimizer = optimizer
     self.combiner = combiner
     self.name = name
+
+  def __repr__(self):
+    # If using the default initializer, just print "None" for clarity.
+    initializer = self.initializer
+
+    if isinstance(initializer, init_ops_v2.TruncatedNormal):
+      # PY2 type checking can't infer type of initializer even after if.
+      initializer = typing.cast(init_ops_v2.TruncatedNormal, initializer)
+      if (initializer.mean == 0.0
+          and math.isclose(initializer.stddev, 1/math.sqrt(self.dim))):  # pytype: disable=module-attr (math.isclose not in PY2)
+        initializer = None
+
+    return (
+        "TableConfig(vocabulary_size={vocabulary_size!r}, dim={dim!r}, "
+        "initializer={initializer!r}, optimizer={optimizer!r}, "
+        "combiner={combiner!r}, name={name!r})".format(
+            vocabulary_size=self.vocabulary_size,
+            dim=self.dim,
+            initializer=initializer,
+            optimizer=self.optimizer,
+            combiner=self.combiner,
+            name=self.name,)
+    )
 
 
 @tf_export("tpu.experimental.embedding.FeatureConfig")
@@ -585,7 +689,10 @@ class FeatureConfig(object):
   will be `(batch_size, max_sequence_length, dim)`.
   """
 
-  def __init__(self, table, max_sequence_length=0, name=None):
+  def __init__(self,
+               table: TableConfig,
+               max_sequence_length: int = 0,
+               name: Optional[Text] = None):
     """Feature configuration.
 
     Args:
@@ -617,3 +724,28 @@ class FeatureConfig(object):
     self.table = table
     self.max_sequence_length = max_sequence_length
     self.name = name
+
+  def __repr__(self):
+    return (
+        "FeatureConfig(table={table!r}, "
+        "max_sequence_length={max_sequence_length!r}, name={name!r})"
+        .format(
+            table=self.table,
+            max_sequence_length=self.max_sequence_length,
+            name=self.name)
+    )
+
+
+def log_tpu_embedding_configuration(
+    config: tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration) -> None:
+  """Logs a TPUEmbeddingConfiguration proto across multiple statements.
+
+  Args:
+    config: TPUEmbeddingConfiguration proto to log.  Necessary because
+      logging.info has a maximum length to each log statement, which
+      particularly large configs can exceed.
+  """
+  logging.info("Beginning log of TPUEmbeddingConfiguration.")
+  for line in str(config).splitlines():
+    logging.info(line)
+  logging.info("Done with log of TPUEmbeddingConfiguration.")

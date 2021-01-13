@@ -33,10 +33,11 @@ namespace gradients {
 //  public:
 //   Status Compute(Context* ctx,
 //                  absl::Span<AbstractTensorHandle* const> grad_inputs,
-//                  std::vector<AbstractTensorHandle*>* grad_outputs) override {
-//     grad_outputs->resize(2);
-//     (*grad_outputs)[0] = grad_inputs[0];
-//     (*grad_outputs)[1] = grad_inputs[0];
+//                  absl::Span<AbstractTensorHandle*> grad_outputs) override {
+//     grad_outputs[0] = grad_inputs[0];
+//     grad_outputs[1] = grad_inputs[0];
+//     grad_outputs[0]->Ref();
+//     grad_outputs[1]->Ref();
 //     return Status::OK();
 //   }
 //   ~AddGradientFunction() override {}
@@ -51,124 +52,41 @@ namespace gradients {
 // Status RegisterGradients(GradientRegistry* registry) {
 //   return registry->Register("Add", AddRegisterer);
 // }
-struct Context {
- public:
-  AbstractContext* ctx;
-};
-
-class IncomingGradients {
- public:
-  virtual AbstractTensorHandle* operator[](int i) const = 0;
-  virtual size_t size() const = 0;
-  virtual ~IncomingGradients() {}
-};
-
 class GradientFunction {
  public:
-  // TODO(srbs): How we support CompositeTensors e.g. IndexedSlices in
-  // `grad_inputs`.
-  virtual Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                         std::vector<AbstractTensorHandle*>* grad_outputs) = 0;
+  virtual Status Compute(AbstractContext* ctx,
+                         absl::Span<AbstractTensorHandle* const> grad_outputs,
+                         absl::Span<AbstractTensorHandle*> grad_inputs) = 0;
   virtual ~GradientFunction() {}
 };
 
 // Metadata from the forward operation that is made available to the
-// gradient registerer to instantiate a BackwardFunction.
+// gradient registerer to instantiate a GradientFunction.
 struct ForwardOperation {
  public:
   string op_name;
   std::vector<AbstractTensorHandle*> inputs;
   std::vector<AbstractTensorHandle*> outputs;
+  std::vector<int64> skip_input_indices;
   AttrBuilder attrs;
-  AbstractContext* ctx;
 };
 
-// Interface for building default zeros gradients for op outputs which are
-// missing incoming gradients. Custom implementations of this can be used to
-// control which of the forward op's output tensors/their metadata needs to
-// be kept around in memory to build the default zeros grad.
-//
-// Some common helper implementations are provided below.
-class DefaultGradientFunction {
- public:
-  virtual AbstractTensorHandle* get(
-      Context* ctx, absl::Span<AbstractTensorHandle* const> grad_inputs,
-      int i) = 0;
-  virtual ~DefaultGradientFunction() {}
-};
+using GradientFunctionFactory =
+    std::function<GradientFunction*(const ForwardOperation& op)>;
 
-// Returns zeros for any `nullptr` in `grad_inputs`.
-//
-// This may require keeping track of all of forward op's output
-// tensors and hence may incur a higher memory footprint. Use sparingly.
-//
-// Multiple calls to `AllZerosDefaultGradients::get` return the same tensor
-// handle.
-//
-// The destructor of this class `Unref`'s any cached tensor handles so users of
-// those tensor handles should `Ref` them in order to keep them alive if needed.
-class AllZerosDefaultGradients : public DefaultGradientFunction {
- public:
-  explicit AllZerosDefaultGradients(const ForwardOperation& op);
-  AbstractTensorHandle* get(Context* ctx,
-                            absl::Span<AbstractTensorHandle* const> grad_inputs,
-                            int i) override;
-
- private:
-  // TODO(srbs): We do not always need to keep the tensors around. In immediate
-  // execution mode we just need to store the shape and dtype. During tracing
-  // we may need to keep the tensor around if the shape is not full defined.
-  std::vector<AbstractTensorHandle*> outputs_;
-  std::vector<AbstractTensorHandlePtr> cached_default_grads_;
-};
-
-// Passes through `grad_inputs` as-is. The `GradientFunction`
-// will be expected to deal with nullptr in `grad_inputs` if any.
-class PassThroughDefaultGradients : public DefaultGradientFunction {
- public:
-  explicit PassThroughDefaultGradients(const ForwardOperation& op);
-  AbstractTensorHandle* get(Context* ctx,
-                            absl::Span<AbstractTensorHandle* const> grad_inputs,
-                            int i) override;
-};
-
-// A `BackwardFunction` wraps a `GradientFunction` and a
-// `DefaultGradientFunction`. Both are owned by this class' instance.
-class BackwardFunction {
- public:
-  BackwardFunction(GradientFunction* gradient_function,
-                   DefaultGradientFunction* default_gradients)
-      : gradient_function_(gradient_function),
-        default_gradients_(default_gradients) {}
-  GradientFunction* GetGradientFunction() { return gradient_function_.get(); }
-  DefaultGradientFunction* GetDefaultGradientFunction() {
-    return default_gradients_.get();
-  }
-
- private:
-  std::unique_ptr<GradientFunction> gradient_function_;
-  std::unique_ptr<DefaultGradientFunction> default_gradients_;
-};
-
-using BackwardFunctionFactory =
-    std::function<BackwardFunction*(const ForwardOperation& op)>;
-
-// Map from op name to a `BackwardFunctionFactory`.
+// Map from op name to a `GradientFunctionFactory`.
 class GradientRegistry {
  public:
   Status Register(const string& op,
-                  BackwardFunctionFactory backward_function_factory);
+                  GradientFunctionFactory gradient_function_factory);
   Status Lookup(const ForwardOperation& op,
-                std::unique_ptr<BackwardFunction>* backward_function) const;
+                std::unique_ptr<GradientFunction>* gradient_function) const;
 
  private:
-  absl::flat_hash_map<string, BackwardFunctionFactory> registry_;
+  absl::flat_hash_map<string, GradientFunctionFactory> registry_;
 };
 
-// Returns a unique id for the tensor which is used by the tape to build
-// the gradient graph. See documentation of `TapeTensor` for more details.
-int64 ToId(AbstractTensorHandle* t);
-
+// TODO(srbs): Figure out if we can avoid declaring this in the public header.
 // Wrapper for a tensor output of an operation executing under a tape.
 //
 // `GetID` returns a unique id for the wrapped tensor which is used to maintain
@@ -181,10 +99,6 @@ int64 ToId(AbstractTensorHandle* t);
 // allow us to trace the data dependencies between operations and hence compute
 // gradients.
 //
-// This also implements `OnesLike` to create the default
-// incoming gradients for tensors which do not already have an incoming
-// gradient.
-//
 // `ZerosLike` is not expected to be called and returns a nullptr. The creation
 // of default zeros grads is handled by the `DefaultGradientFunction` registered
 // for each op.
@@ -193,71 +107,68 @@ int64 ToId(AbstractTensorHandle* t);
 // TODO(srbs): Should ZerosLike check-fail instead of returning nullptr?
 class TapeTensor {
  public:
-  TapeTensor(AbstractTensorHandle* handle, AbstractContext* ctx);
+  explicit TapeTensor(AbstractTensorHandle* handle);
   TapeTensor(const TapeTensor& other);
   ~TapeTensor();
 
   tensorflow::int64 GetID() const;
   tensorflow::DataType GetDType() const;
 
-  AbstractTensorHandle* OnesLike() const;
   AbstractTensorHandle* ZerosLike() const;
+
+  AbstractTensorHandle* GetHandle() const;
 
  private:
   AbstractTensorHandle* handle_;
-  // The context where OnesLike ops are to be created.
-  AbstractContext* ctx_;
-};
-
-// Vector space for actually computing gradients. Implements methods for calling
-// the backward function with incoming gradients and returning the outgoing
-// gradient and for performing gradient aggregation.
-// See `tensorflow::eager::VSpace` for more details.
-class TapeVSpace
-    : public eager::VSpace<AbstractTensorHandle, BackwardFunction, TapeTensor> {
- public:
-  explicit TapeVSpace(AbstractContext* ctx) : ctx_(ctx) {}
-  ~TapeVSpace() override {}
-
-  // Returns the number of elements in the gradient tensor.
-  int64 NumElements(AbstractTensorHandle* tensor) const override;
-
-  // Consumes references to the tensors in the gradient_tensors list and returns
-  // a tensor with the result.
-  AbstractTensorHandle* AggregateGradients(
-      gtl::ArraySlice<AbstractTensorHandle*> gradient_tensors) const override;
-
-  // Calls the passed-in backward function.
-  Status CallBackwardFunction(
-      BackwardFunction* backward_function,
-      const std::vector<int64>& unneeded_gradients,
-      gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
-      std::vector<AbstractTensorHandle*>* result) const override;
-
-  // Looks up the ID of a Gradient.
-  int64 TensorId(AbstractTensorHandle* tensor) const override;
-
-  // Converts a Gradient to a TapeTensor.
-  TapeTensor TapeTensorFromGradient(AbstractTensorHandle* g) const override;
-
-  void MarkAsResult(AbstractTensorHandle* gradient) const override;
-
-  void DeleteGradient(AbstractTensorHandle* gradient) const override;
-
- private:
-  // The context where the aggregation op `Add` is to be created.
-  AbstractContext* ctx_;
 };
 
 // A tracing/immediate-execution agnostic tape.
 //
-// Gradient functions defined for this library support handling null incoming
-// gradients. `Tape::ComputeGradient` should be called with
-// `build_default_zeros_grads=false`. Calling with
-// `build_default_zeros_grads=true` (the default) is equivalent but just results
-// in extra work because `TapeTensor::ZerosLike` returns a `nullptr` anyway.
-using Tape = tensorflow::eager::GradientTape<AbstractTensorHandle,
-                                             BackwardFunction, TapeTensor>;
+// Gradient functions defined for this tape must support handling null incoming
+// gradients.
+class Tape : protected eager::GradientTape<AbstractTensorHandle,
+                                           GradientFunction, TapeTensor> {
+ public:
+  using GradientTape<AbstractTensorHandle, GradientFunction,
+                     TapeTensor>::GradientTape;
+  // Returns whether the tape is persistent, i.e., whether the tape will hold
+  // onto its internal state after a call to `ComputeGradient`.
+  using GradientTape<AbstractTensorHandle, GradientFunction,
+                     TapeTensor>::IsPersistent;
+
+  // Adds this tensor to the list of watched tensors.
+  //
+  // This is a no-op if the tensor is already being watched either from an
+  // earlier call to `GradientTape::Watch` or being an output of an op with
+  // watched inputs.
+  void Watch(const AbstractTensorHandle*);
+  // Records an operation with given inputs and outputs
+  // on the tape and marks all its outputs as watched if at
+  // least one input of the op is watched and has a trainable dtype.
+  // op_name is optional and is used for debugging only.
+  void RecordOperation(absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle* const> outputs,
+                       GradientFunction* gradient_function,
+                       const string& op_name = "");
+  // Returns whether any tensor in a list of tensors is being watched and has
+  // a trainable dtype.
+  bool ShouldRecord(
+      absl::Span<const AbstractTensorHandle* const> tensors) const;
+  // Unwatches this tensor on the tape. Mainly used for cleanup when deleting
+  // eager tensors.
+  void DeleteTrace(const AbstractTensorHandle*);
+
+  // Consumes the internal state of the tape (so cannot be called more than
+  // once unless the tape is persistent) and produces the gradient of the target
+  // tensors with respect to the source tensors. The output gradients are used
+  // if not empty and not null. The result is populated with one tensor per
+  // target element.
+  Status ComputeGradient(
+      AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> targets,
+      absl::Span<AbstractTensorHandle* const> sources,
+      absl::Span<AbstractTensorHandle* const> output_gradients,
+      absl::Span<AbstractTensorHandle*> result);
+};
 
 }  // namespace gradients
 }  // namespace tensorflow

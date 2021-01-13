@@ -240,6 +240,10 @@ ObjectType GetType(const TensorObject& object);
 // @return true if corresponding object is set for the given type
 bool IsObjectPresent(ObjectType type, const TensorObject& obj);
 
+// @return true if corresponding object has already been initialized and
+// assigned with a specific ObjectType.
+bool IsObjectInitialized(const TensorObject& obj);
+
 class InferenceRunner;
 
 // Allows to inspect and change input and output definitions before a graph is
@@ -364,7 +368,7 @@ struct InferenceOptions {
 };
 
 // Returns a position number for the priority. If priority is missing,
-// then it it would return 'max num priorities + 1'.
+// then it would return 'max num priorities + 1'.
 int GetPosition(const InferenceOptions& options, InferencePriority p);
 
 // Return true if options are valid.

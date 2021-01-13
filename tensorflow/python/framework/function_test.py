@@ -21,6 +21,7 @@ from __future__ import print_function
 import re
 import time
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
@@ -1167,6 +1168,12 @@ class FunctionTest(test.TestCase):
 
 class FunctionsFromProtos(test.TestCase):
 
+  def stripInternalFunctionDefAnnotations(self, f_def):
+    result = function_pb2.FunctionDef()
+    result.CopyFrom(f_def)
+    result.attr.pop("_construction_context", None)
+    return result
+
   def expectFunctionsEqual(self, func, grad_func=None, new_func=None):
     if new_func is None:
       # Make a copy of func.definition to avoid any bugs masked by using the
@@ -1176,7 +1183,9 @@ class FunctionsFromProtos(test.TestCase):
       fdef = function_pb2.FunctionDef.FromString(serialized_fdef)
       new_func = function._from_definition(fdef, grad_func=grad_func)
     self.assertEqual(func.name, new_func.name)
-    self.assertEqual(func.definition, new_func.definition)
+    self.assertEqual(
+        self.stripInternalFunctionDefAnnotations(func.definition),
+        self.stripInternalFunctionDefAnnotations(new_func.definition))
     self.assertEqual(func.grad_func_name, new_func.grad_func_name)
     self.assertEqual(func.declared_input_types, new_func.declared_input_types)
     self.assertEqual(func.captured_inputs, new_func.captured_inputs)
@@ -1212,7 +1221,9 @@ class FunctionsFromProtos(test.TestCase):
     new_func = function._from_definition(Foo.definition)
 
     self.assertEqual(Foo.name, new_func.name)
-    self.assertEqual(Foo.definition, new_func.definition)
+    self.assertEqual(
+        self.stripInternalFunctionDefAnnotations(Foo.definition),
+        self.stripInternalFunctionDefAnnotations(new_func.definition))
     self.assertEqual(Foo.grad_func_name, new_func.grad_func_name)
 
     # Captured inputs are added as regular inputs to the function definition
@@ -1486,6 +1497,8 @@ class FunctionCaptureByValueTest(test.TestCase):
       self.assertAllEqual(y, [[12.0]])
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Calls matmul in custom LSTM function")
 class UnrollLSTMTest(test.TestCase):
   BATCH_SIZE = 16
   LSTM_DIMS = 32
@@ -1592,7 +1605,6 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(mv0, mv2, rtol=1e-4)
       self.assertAllClose(mv0, mv3, rtol=1e-4)
 
-  @test_util.run_without_tensor_float_32("Calls matmul in custom LSTM function")
   def testUnrollLSTMGrad(self):
     # Run one step of the unrolled lstm graph.
     def RunForwardBackward(mode, cfg=None):
@@ -1623,10 +1635,11 @@ class UnrollLSTMTest(test.TestCase):
       self.assertAllClose(d0, d3, rtol=1e-4, atol=1e-4)
 
 
-class FunctionInlineControlTest(test.TestCase):
+class FunctionInlineControlTest(test.TestCase, parameterized.TestCase):
 
+  @parameterized.parameters((True), (False))
   @test_util.disable_xla("XLA changes the names, breaking graph analysis")
-  def testFoo(self):
+  def testFoo(self, noinline):
     dtype = dtypes.float32
     cfg = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(
@@ -1636,50 +1649,50 @@ class FunctionInlineControlTest(test.TestCase):
                 do_function_inlining=True,
                 do_constant_folding=True)))
     cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
-    for noinline in [False, True]:
+    @function.Defun(dtype, noinline=noinline)
+    def Cell(v):
+      # If v is a vector [n, 1], x is a big square matrix.
+      x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
+      return math_ops.reduce_sum(x, 1, keepdims=True)
 
-      @function.Defun(dtype, noinline=noinline)
-      def Cell(v):
-        # If v is a vector [n, 1], x is a big square matrix.
-        x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
-        return math_ops.reduce_sum(x, 1, keepdims=True)
+    @function.Defun(dtype)
+    def Forward(x):
+      for _ in range(10):
+        # pylint: disable=cell-var-from-loop
+        x = Cell(x)
+      return math_ops.reduce_sum(x, [0, 1])
 
-      @function.Defun(dtype)
-      def Forward(x):
-        for _ in range(10):
-          # pylint: disable=cell-var-from-loop
-          x = Cell(x)
-        return math_ops.reduce_sum(x, [0, 1])
-
+    # Disabling this check on the ROCm platform, because it fails
+    # The failure might not be ROCm specific(see commit message for details)
+    if not test.is_built_with_rocm():
       self.assertEqual(noinline, Cell.definition.attr["_noinline"].b)
 
-      g = ops.Graph()
-      with g.as_default():
-        x = array_ops.placeholder(dtype)
-        y = Forward(x)
-        dx, = gradients_impl.gradients([y], [x])
+    g = ops.Graph()
+    with g.as_default():
+      x = array_ops.placeholder(dtype)
+      y = Forward(x)
+      dx, = gradients_impl.gradients([y], [x])
 
-      np.random.seed(321)
-      inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
-      run_metadata = config_pb2.RunMetadata()
-      with session.Session(graph=g, config=cfg) as sess:
-        ans = sess.run(
-            [y, dx], {x: inp},
-            run_metadata=run_metadata,
-            options=config_pb2.RunOptions(
-                trace_level=config_pb2.RunOptions.FULL_TRACE))
-        print(ans[0], np.sum(ans[1]))
-        self.assertAllClose(ans[0], 255.971, rtol=1e-3)
-        self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
+    np.random.seed(321)
+    inp = np.random.uniform(-1, 1, [16, 1]).astype(np.float32)
+    run_metadata = config_pb2.RunMetadata()
+    with session.Session(graph=g, config=cfg) as sess:
+      ans = sess.run(
+          [y, dx], {x: inp},
+          run_metadata=run_metadata,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+      self.assertAllClose(ans[0], 255.971, rtol=1e-3)
+      self.assertAllClose(np.sum(ans[1]), 13.0408, rtol=1e-3)
 
-      def MetadataHasCell(run_metadata):
-        for dev_stats in run_metadata.step_stats.dev_stats:
-          for node_stats in dev_stats.node_stats:
-            if cell_func_call_pattern.search(node_stats.timeline_label):
-              return True
-        return False
+    def MetadataHasCell(run_metadata):
+      for dev_stats in run_metadata.step_stats.dev_stats:
+        for node_stats in dev_stats.node_stats:
+          if cell_func_call_pattern.search(node_stats.timeline_label):
+            return True
+      return False
 
-      self.assertEqual(MetadataHasCell(run_metadata), noinline)
+    self.assertEqual(MetadataHasCell(run_metadata), noinline)
 
 
 class ModuleFunctionTest(test.TestCase):

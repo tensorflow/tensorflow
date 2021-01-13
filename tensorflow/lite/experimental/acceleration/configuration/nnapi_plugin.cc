@@ -96,6 +96,7 @@ class NnapiPlugin : public DelegatePluginInterface {
         !nnapi_settings->allow_nnapi_cpu_on_android_10_plus();
     options_.execution_priority =
         ConvertExecutionPriority(nnapi_settings->execution_priority());
+    options_.allow_fp16 = nnapi_settings->allow_fp16_precision_for_fp32();
   }
 
  private:

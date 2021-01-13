@@ -137,6 +137,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return n / batch_size_ + (n % batch_size_ == 0 || drop_remainder_ ? 0 : 1);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
@@ -522,6 +527,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
               "Failed to allocate memory for the batch of component ", i);
         }
       }
+      RecordBufferEnqueue(ctx.get(), result->output);
       result->output_allocated = true;
       return Status::OK();
     }
@@ -531,6 +537,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) {
       mutex_lock l(result->mu);
+      if (result->output_allocated) {
+        RecordBufferDequeue(ctx, result->output);
+      }
       if (result->num_elements == 0) {
         if (result->status.ok() || errors::IsOutOfRange(result->status)) {
           *end_of_sequence = true;

@@ -189,15 +189,15 @@ template std::vector<uint3> GenerateWorkGroupSizes(
 template <typename T>
 void GenerateWorkGroupSizesAlignedToGrid(const T& grid,
                                          const T& max_work_group_size,
-                                         const int max_work_group_invocations,
+                                         const int max_work_group_total_size,
                                          std::vector<T>* work_groups) {
   auto alignment = WorkGroupSizeAlignment::PRECISE;
   *work_groups = GenerateWorkGroupSizes<T>(
-      grid, /*min_work_group_total_size = */ 32, max_work_group_invocations,
+      grid, /*min_work_group_total_size = */ 32, max_work_group_total_size,
       max_work_group_size, alignment, alignment, alignment);
   // If the grid parameter too small, method below cannot generate workgroups.
   if (work_groups->empty()) {
-    AddCornerCases(grid, max_work_group_invocations, max_work_group_size,
+    AddCornerCases(grid, max_work_group_total_size, max_work_group_size,
                    alignment, alignment, alignment, work_groups);
   }
 }
@@ -206,11 +206,11 @@ void GenerateWorkGroupSizesAlignedToGrid(const T& grid,
 
 template void GenerateWorkGroupSizesAlignedToGrid(
     const int3& grid, const int3& max_work_group_size,
-    const int max_work_group_invocations, std::vector<int3>* work_groups);
+    const int max_work_group_total_size, std::vector<int3>* work_groups);
 
 template void GenerateWorkGroupSizesAlignedToGrid(
     const uint3& grid, const uint3& max_work_group_size,
-    const int max_work_group_invocations, std::vector<uint3>* work_groups);
+    const int max_work_group_total_size, std::vector<uint3>* work_groups);
 
 }  // namespace gpu
 }  // namespace tflite

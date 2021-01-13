@@ -19,10 +19,10 @@ required as compiler as well.
      | tensor1
      |
      v
-+---------+
-| softmax |
-|         |
-+----|----+
++-----------+
+| transpose |
+|           |
++----|------+
      |
      | tensor2
      |

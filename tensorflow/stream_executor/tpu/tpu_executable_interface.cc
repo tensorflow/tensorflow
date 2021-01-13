@@ -90,8 +90,7 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
     }
   }
 
-  ExecutionOutput result(host_shape, std::move(device_shape), allocator,
-                         device_ordinal);
+  ExecutionOutput result(std::move(device_shape), allocator, device_ordinal);
   // Iterate through and allocate a buffer for each shape index, checking for
   // possible input buffer reuse.
   int64 reused_buffer_bytes = 0;
@@ -189,8 +188,6 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
           shape, alias_config, run_options->allocator(), &arguments, stream,
           run_options->run_options().host_to_device_stream()));
 
-  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
-
   // Address of the buffer in TPU memory that is being speculated.
   absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
   if (hlo_module_) {
@@ -204,6 +201,7 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       // data from fast memory instead of fresh data in large memory.
       auto it = arguments[parameter].MutableBuffers()->find({index});
       CHECK(it != arguments[parameter].MutableBuffers()->end());
+      CHECK(!it->second.AsDeviceMemoryBase().is_null());
       if (absl::c_none_of(result.Result().buffers(), [&](auto index_addr_pair) {
             return index_addr_pair.second.IsSameAs(
                 it->second.AsDeviceMemoryBase());
@@ -213,6 +211,11 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
       }
     }
   }
+
+  // MarkToBeReleasedArguments may std::move some elements of arguments, so it
+  // must run after the cross program prefetch address is calculated from the
+  // arguments.
+  MarkToBeReleasedArguments(absl::MakeSpan(arguments), result);
 
   TF_RETURN_IF_ERROR(LoadProgramAndEnqueueToStream(
       *run_options, memory_bases, result.Result().root_buffer(),

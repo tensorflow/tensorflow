@@ -21,7 +21,7 @@ from __future__ import print_function
 import collections
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
-from tensorflow.core.protobuf.data.experimental import service_config_pb2
+from tensorflow.core.protobuf import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.util.tf_export import tf_export
@@ -39,7 +39,7 @@ class DispatcherConfig(
     port: Specifies the port to bind to. A value of 0 indicates that the server
       may bind to any available port.
     protocol: The protocol to use for communicating with the tf.data service.
-      Acceptable values include `"grpc" and "grpc+local"`.
+      Defaults to `"grpc"`.
     work_dir: A directory to store dispatcher state in. This
       argument is required for the dispatcher to be able to recover from
       restarts.
@@ -88,7 +88,8 @@ class DispatchServer(object):
 
   >>> dispatcher = tf.data.experimental.service.DispatchServer()
   >>> dispatcher_address = dispatcher.target.split("://")[1]
-  >>> worker = tf.data.experimental.service.WorkerServer(WorkerConfig(
+  >>> worker = tf.data.experimental.service.WorkerServer(
+  ...     tf.data.experimental.service.WorkerConfig(
   ...     dispatcher_address=dispatcher_address))
   >>> dataset = tf.data.Dataset.range(10)
   >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
@@ -122,10 +123,10 @@ class DispatchServer(object):
 
     Args:
       config: (Optional.) A `tf.data.experimental.service.DispatcherConfig`
-        configration. If `None`, the dispatcher will be use default
+        configration. If `None`, the dispatcher will use default
         configuration values.
       start: (Optional.) Boolean, indicating whether to start the server after
-        creating it.
+        creating it. Defaults to True.
     """
     config = config or DispatcherConfig()
     if config.fault_tolerant_mode and not config.work_dir:
@@ -217,7 +218,7 @@ class DispatchServer(object):
 class WorkerConfig(
     collections.namedtuple("WorkerConfig", [
         "dispatcher_address", "worker_address", "port", "protocol",
-        "heartbeat_interval_ms"
+        "heartbeat_interval_ms", "dispatcher_timeout_ms"
     ])):
   """Configuration class for tf.data service dispatchers.
 
@@ -228,13 +229,15 @@ class WorkerConfig(
       connect to this worker.
     port: Specifies the port to bind to. A value of 0 indicates that the worker
       can bind to any available port.
-    protocol: Specifies the protocol to be used by the server.
-      Acceptable values include `"grpc" and "grpc+local"`.
+    protocol: (Optional.) Specifies the protocol to be used by the server.
+      Defaults to `"grpc"`.
     heartbeat_interval_ms: How often the worker should heartbeat to the
       dispatcher, in milliseconds. If not set, the runtime will select a
       reasonable default. A higher value will reduce the load on the dispatcher,
       while a lower value will reduce the time it takes to reclaim resources
       from finished jobs.
+    dispatcher_timeout_ms: How long, in milliseconds, to retry requests to the
+      dispatcher before giving up and reporting an error. Defaults to 1 hour.
   """
 
   def __new__(cls,
@@ -242,15 +245,19 @@ class WorkerConfig(
               worker_address=None,
               port=0,
               protocol="grpc",
-              heartbeat_interval_ms=None):
+              heartbeat_interval_ms=None,
+              dispatcher_timeout_ms=None):
     if worker_address is None:
       worker_address = "localhost:%port%"
     if heartbeat_interval_ms is None:
       heartbeat_interval_ms = 30 * 1000  # 30 seconds
+    if dispatcher_timeout_ms is None:
+      dispatcher_timeout_ms = 60 * 60 * 1000  # 1 hour
 
     return super(WorkerConfig,
                  cls).__new__(cls, dispatcher_address, worker_address, port,
-                              protocol, heartbeat_interval_ms)
+                              protocol, heartbeat_interval_ms,
+                              dispatcher_timeout_ms)
 
 
 @tf_export("data.experimental.service.WorkerServer", v1=[])
@@ -289,16 +296,18 @@ class WorkerServer(object):
     Args:
       config: A `tf.data.experimental.service.WorkerConfig` configration.
       start: (Optional.) Boolean, indicating whether to start the server after
-        creating it.
+        creating it. Defaults to True.
     """
     if config.dispatcher_address is None:
       raise ValueError("must specify a dispatcher_address")
+    self._config = config
     config_proto = service_config_pb2.WorkerConfig(
         dispatcher_address=config.dispatcher_address,
         worker_address=config.worker_address,
         port=config.port,
         protocol=config.protocol,
-        heartbeat_interval_ms=config.heartbeat_interval_ms)
+        heartbeat_interval_ms=config.heartbeat_interval_ms,
+        dispatcher_timeout_ms=config.dispatcher_timeout_ms)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
         config_proto.SerializeToString())
     if start:

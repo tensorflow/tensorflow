@@ -19,11 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
+from tensorflow.core.framework import types_pb2
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_list_ops
+from tensorflow.python.ops import handle_data_util
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_list_ops import *
@@ -56,19 +62,45 @@ def empty_tensor_list(element_shape,
       name=name)
 
 
+def _set_handle_data(list_handle, element_shape, element_dtype):
+  """Sets type information on `list_handle` for consistency with graphs."""
+  # TODO(b/169968286): It would be better if we had a consistent story for
+  # creating handle data from eager operations (shared with VarHandleOp).
+  if isinstance(list_handle, ops.EagerTensor):
+    if tensor_util.is_tf_type(element_shape):
+      element_shape = tensor_shape.TensorShape(None)
+    elif not isinstance(element_shape, tensor_shape.TensorShape):
+      element_shape = tensor_shape.TensorShape(element_shape)
+    handle_data = cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData()
+    handle_data.is_set = True
+    handle_data.shape_and_type.append(
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+            shape=element_shape.as_proto(),
+            dtype=element_dtype.as_datatype_enum,
+            specialized_type=types_pb2.ST_TENSOR_LIST))
+    list_handle._handle_data = handle_data  # pylint: disable=protected-access
+
+
 def tensor_list_reserve(element_shape, num_elements, element_dtype, name=None):
-  return gen_list_ops.tensor_list_reserve(
+  result = gen_list_ops.tensor_list_reserve(
       element_shape=_build_element_shape(element_shape),
       num_elements=num_elements,
       element_dtype=element_dtype,
       name=name)
+  # TODO(b/169968286): gen_ops needs to ensure the metadata is properly
+  # populated for eager operations.
+  _set_handle_data(result, element_shape, element_dtype)
+  return result
 
 
 def tensor_list_from_tensor(tensor, element_shape, name=None):
-  return gen_list_ops.tensor_list_from_tensor(
+  tensor = ops.convert_to_tensor(tensor)
+  result = gen_list_ops.tensor_list_from_tensor(
       tensor=tensor,
       element_shape=_build_element_shape(element_shape),
       name=name)
+  _set_handle_data(result, tensor.shape, tensor.dtype)
+  return result
 
 
 def tensor_list_get_item(input_handle, index, element_dtype, element_shape=None,
@@ -107,16 +139,22 @@ def tensor_list_scatter(tensor,
                         element_shape=None,
                         input_handle=None,
                         name=None):
+  """Returns a TensorList created or updated by scattering `tensor`."""
+  tensor = ops.convert_to_tensor(tensor)
   if input_handle is not None:
-    return gen_list_ops.tensor_list_scatter_into_existing_list(
+    output_handle = gen_list_ops.tensor_list_scatter_into_existing_list(
         input_handle=input_handle, tensor=tensor, indices=indices, name=name)
+    handle_data_util.copy_handle_data(input_handle, output_handle)
+    return output_handle
   else:
-    return gen_list_ops.tensor_list_scatter_v2(
+    output_handle = gen_list_ops.tensor_list_scatter_v2(
         tensor=tensor,
         indices=indices,
         element_shape=_build_element_shape(element_shape),
         num_elements=-1,
         name=name)
+    _set_handle_data(output_handle, element_shape, tensor.dtype)
+    return output_handle
 
 
 def tensor_list_stack(input_handle,
@@ -167,8 +205,10 @@ def tensor_list_set_item(input_handle,
         lambda: gen_list_ops.tensor_list_resize(  # pylint: disable=g-long-lambda
             input_handle, index + 1),
         lambda: input_handle)
-  return gen_list_ops.tensor_list_set_item(
+  output_handle = gen_list_ops.tensor_list_set_item(
       input_handle=input_handle, index=index, item=item, name=name)
+  handle_data_util.copy_handle_data(input_handle, output_handle)
+  return output_handle
 
 
 @ops.RegisterGradient("TensorListPushBack")
@@ -357,8 +397,8 @@ def _build_element_shape(shape):
   # Shape is unknown.
   if shape is None:
     return -1
-  # Shape is a scalar.
-  if not shape:
+  # Shape is numpy array or a scalar.
+  if isinstance(shape, (np.ndarray, np.generic)) or not shape:
     return ops.convert_to_tensor(shape, dtype=dtypes.int32)
   # Shape is a sequence of dimensions. Convert None dims to -1.
   def convert(val):

@@ -222,6 +222,7 @@ cc_library(
     name = "common",
     srcs = [],
     hdrs = ["common.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cppmath",
@@ -256,6 +257,7 @@ cc_library(
         "optimized/optimized_ops.h",
         "optimized/sparse_ops/fully_connected.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
@@ -314,7 +316,6 @@ cc_library(
         ":tensor_utils",
         ":transpose_utils",
         ":types",
-        ":legacy_types",
         ":legacy_reference_base",
         ":cppmath",
         "//third_party/eigen3",
@@ -345,14 +346,13 @@ cc_library(
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":optimized_base",
-        ":tensor",
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
-        "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
@@ -385,11 +385,14 @@ cc_library(
     hdrs = ["quantization_util.h"],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":compatibility",
         ":cppmath",
         ":types",
-        "//tensorflow/lite/kernels:op_macros",
     ],
 )
 
@@ -411,6 +414,7 @@ cc_library(
     hdrs = [
         "transpose_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -432,6 +436,7 @@ cc_library(
     hdrs = [
         "strided_slice_logic.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -444,18 +449,27 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
         "reference/batch_matmul.h",
+        "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/broadcast_to.h",
+        "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/densify.h",
+        "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
+        "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
         "reference/integer_ops/add.h",
@@ -468,7 +482,9 @@ cc_library(
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
+        "reference/integer_ops/transpose_conv.h",
         "reference/l2normalization.h",
+        "reference/leaky_relu.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -484,22 +500,33 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_depth.h",
+        "reference/space_to_batch_nd.h",
         "reference/strided_slice.h",
         "reference/sub.h",
         "reference/svdf.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ] + select({
         ":tf_lite_static_memory": [],
         "//conditions:default": [
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
-            "reference/integer_ops/transpose_conv.h",
             "reference/reference_ops.h",
             "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
         ],
     }),
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -515,6 +542,7 @@ cc_library(
         "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
@@ -536,20 +564,29 @@ cc_library(
     srcs = [],
     hdrs = [
         "reference/add.h",
+        "reference/add_n.h",
         "reference/arg_min_max.h",
+        "reference/batch_to_space_nd.h",
         "reference/binary_function.h",
+        "reference/cast.h",
         "reference/ceil.h",
         "reference/comparisons.h",
         "reference/concatenation.h",
         "reference/conv.h",
         "reference/densify.h",
+        "reference/depth_to_space.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/dequantize.h",
+        "reference/div.h",
+        "reference/exp.h",
+        "reference/fill.h",
         "reference/floor.h",
+        "reference/floor_mod.h",
         "reference/fully_connected.h",
         "reference/hard_swish.h",
         "reference/l2normalization.h",
+        "reference/leaky_relu.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -566,12 +603,23 @@ cc_library(
         "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/space_to_batch_nd.h",
+        "reference/space_to_depth.h",
         "reference/strided_slice.h",
         "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
+        "reference/transpose_conv.h",
     ],
     copts = tflite_copts(),
+    # We are disabling parse_headers for this header-only target so that the
+    # external and internal builds are consistent. The primary issue here is
+    # that parse_headers is not supported with bazel and the TFLM team would
+    # really like to have all build errors in shared Micro/Lite code be
+    # reproducible from the OSS build as well.
+    #
+    # See b/175817116 for more details.
+    features = ["-parse_headers"],
     deps = [
         ":common",
         ":compatibility",
@@ -651,13 +699,12 @@ cc_library(
         "reference/portable_tensor_utils.h",
         "reference/portable_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":common",
         ":compatibility",
         ":cppmath",
-        "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
         "@gemmlowp",
     ],
 )
@@ -671,6 +718,7 @@ cc_library(
         "optimized/neon_tensor_utils.h",
         "optimized/neon_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE + HARD_FP_FLAGS_IF_APPLICABLE,
     deps = [
         ":common",
@@ -678,7 +726,6 @@ cc_library(
         ":cppmath",
         ":cpu_check",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
@@ -695,6 +742,7 @@ cc_library(
         "optimized/sse_tensor_utils.h",
         "optimized/sse_tensor_utils_impl.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         ":cpu_check",
@@ -712,6 +760,7 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
         ":tensor_utils",
@@ -734,6 +783,7 @@ cc_library(
         "mfcc_mel_filterbank.h",
         "spectrogram.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
         "//third_party/fft2d:fft2d_headers",
@@ -749,6 +799,7 @@ cc_library(
     hdrs = [
         "tensor_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
         ":cpu_check",
@@ -883,7 +934,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -900,7 +950,6 @@ cc_test(
     shard_count = 2,
     deps = [
         ":common",
-        ":optimized_base",
         ":quantization_util",
         ":reference_base",
         ":test_util",
@@ -994,10 +1043,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1011,10 +1058,8 @@ cc_test(
     shard_count = 1,
     deps = [
         ":optimized_base",
-        ":quantization_util",
         ":reference_base",
         ":test_util",
-        "//tensorflow/lite:string",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1042,6 +1087,7 @@ cc_library(
         "optimized/neon_check.h",
         "optimized/sse_check.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = select({
         ":haswell": tflite_deps_intel,

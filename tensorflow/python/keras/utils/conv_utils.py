@@ -51,7 +51,7 @@ def convert_data_format(data_format, ndim):
 def normalize_tuple(value, n, name):
   """Transforms a single integer or iterable of integers into an integer tuple.
 
-  Arguments:
+  Args:
     value: The value to validate and convert. Could an int, or any iterable of
       ints.
     n: The size of the tuple to be returned.
@@ -90,7 +90,7 @@ def normalize_tuple(value, n, name):
 def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
   """Determines output length of a convolution given input length.
 
-  Arguments:
+  Args:
       input_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full", "causal"
@@ -116,7 +116,7 @@ def conv_output_length(input_length, filter_size, padding, stride, dilation=1):
 def conv_input_length(output_length, filter_size, padding, stride):
   """Determines input length of a convolution given output length.
 
-  Arguments:
+  Args:
       output_length: integer.
       filter_size: integer.
       padding: one of "same", "valid", "full".
@@ -145,7 +145,7 @@ def deconv_output_length(input_length,
                          dilation=1):
   """Determines output length of a transposed convolution given input length.
 
-  Arguments:
+  Args:
       input_length: Integer.
       filter_size: Integer.
       padding: one of `"same"`, `"valid"`, `"full"`.
@@ -206,31 +206,6 @@ def normalize_padding(value):
                      '"valid", "same" (or "causal", only for `Conv1D). '
                      'Received: ' + str(padding))
   return padding
-
-
-def convert_kernel(kernel):
-  """Converts a Numpy kernel matrix from Theano format to TensorFlow format.
-
-  Also works reciprocally, since the transformation is its own inverse.
-
-  This is used for converting legacy Theano-saved model files.
-
-  Arguments:
-      kernel: Numpy array (3D, 4D or 5D).
-
-  Returns:
-      The converted kernel.
-
-  Raises:
-      ValueError: in case of invalid kernel shape or invalid data_format.
-  """
-  kernel = np.asarray(kernel)
-  if not 3 <= kernel.ndim <= 5:
-    raise ValueError('Invalid kernel shape:', kernel.shape)
-  slices = [slice(None, None, -1) for _ in range(kernel.ndim)]
-  no_flip = (slice(None, None), slice(None, None))
-  slices[-2:] = no_flip
-  return np.copy(kernel[slices])
 
 
 def conv_kernel_mask(input_shape, kernel_shape, strides, padding):

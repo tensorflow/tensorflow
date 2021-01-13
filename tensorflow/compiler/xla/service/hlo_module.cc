@@ -44,7 +44,10 @@ namespace xla {
 HloModule::HloModule(const string& name, HloModuleConfig config)
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(std::move(config)),
-      unique_id_(next_unique_module_id_++) {}
+      unique_id_(next_unique_module_id_++),
+      metadata_(tensorflow::Env::Default()) {
+  metadata_.set_canonical_module_id(unique_id_);
+}
 
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
@@ -590,6 +593,22 @@ int64 HloModule::instruction_count() const {
     n += computation->instruction_count();
   }
   return n;
+}
+
+std::vector<HloComputation*> HloModule::MakeComputationPostOrder(
+    const absl::flat_hash_set<HloComputation*>& allow_list) const {
+  std::vector<HloComputation*> filtered_post_order(allow_list.size());
+  auto post_order = this->MakeComputationPostOrder();
+
+  int filtered_idx = 0;
+  for (auto& computation : post_order) {
+    if (allow_list.contains(computation)) {
+      filtered_post_order[filtered_idx] = computation;
+      filtered_idx += 1;
+    }
+  }
+
+  return filtered_post_order;
 }
 
 std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {

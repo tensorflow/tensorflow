@@ -59,17 +59,6 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
     return self.BuildParams(self.GraphFn, dtypes.float32, [[1, 12, 5]],
                             [[12, 5]])
 
-  def GetConversionParams(self, run_params, implicit_batch=False):
-    """Return a TrtConversionParams for test."""
-
-    conversion_params = super(TrtModeTestBase,
-                              self).GetConversionParams(run_params)
-    rewriter_config = self.GetTrtRewriterConfig(
-        run_params=run_params,
-        conversion_params=conversion_params,
-        use_implicit_batch=implicit_batch)
-    return conversion_params._replace(rewriter_config_template=rewriter_config)
-
   @classmethod
   def setUpClass(cls):
     if cls is TrtModeTestBase:
@@ -79,9 +68,13 @@ class TrtModeTestBase(trt_test.TfTrtIntegrationTestBase):
 
 class ImplicitBatchTest(TrtModeTestBase):
 
-  def GetConversionParams(self, run_params):
-    """Return a TrtConversionParams for test using implicit batch mdoe."""
-    return super(ImplicitBatchTest, self).GetConversionParams(run_params, True)
+  def GetMaxBatchSize(self, run_params):
+    if run_params.dynamic_engine:
+      return None
+
+    # The first dimension of the input is squeezed and the batch size for the
+    # rest OPs is 12.
+    return 12
 
   def ExpectedEnginesToBuild(self, run_params):
     """Check that the expected engine is built.
@@ -112,10 +105,6 @@ class ExplicitBatchTest(TrtModeTestBase):
         extra_inputs=[],
         extra_outputs=[])
 
-  def GetConversionParams(self, run_params):
-    """Return a TrtConversionParams for test that enables explicit batch."""
-    return super(ExplicitBatchTest, self).GetConversionParams(run_params, False)
-
   def ExpectedEnginesToBuild(self, run_params):
     """Check that the expected engine is built.
 
@@ -133,6 +122,11 @@ class ExplicitBatchTest(TrtModeTestBase):
     # Only run for TRT 6 and above.
     return run_params.is_v2 and trt_test.IsTensorRTVersionGreaterEqual(6) and (
         not run_params.use_calibration), "test v2, >=TRT6 and non-calibration"
+
+  def setUp(self):
+    super().setUp()
+    # Diable implicit batch mode for testing explicit batch mode.
+    self.DisableImplicitBatchMode()
 
 
 class DynamicShapesTest(TrtModeTestBase):
@@ -157,10 +151,6 @@ class DynamicShapesTest(TrtModeTestBase):
         input_mask=[[False, False, False]],
         output_mask=[[False, False]])
 
-  def GetConversionParams(self, run_params):
-    """Return a TrtConversionParams for test that enables explicit batch."""
-    return super(DynamicShapesTest, self).GetConversionParams(run_params, False)
-
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
@@ -170,6 +160,9 @@ class DynamicShapesTest(TrtModeTestBase):
     return run_params.is_v2 and trt_test.IsTensorRTVersionGreaterEqual(6) and (
         not run_params.use_calibration), "test v2 >=TRT6 and non-calibration"
 
+  def setUp(self):
+    super().setUp()
+    self.DisableImplicitBatchMode()
 
 if __name__ == "__main__":
   test.main()

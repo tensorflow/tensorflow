@@ -27,6 +27,11 @@ limitations under the License.
 
 namespace tensorflow {
 namespace testing {
+namespace internal {
+
+void UseCharPointer(char const volatile*) {}
+
+}  // namespace internal
 
 static std::vector<Benchmark*>* all_benchmarks = nullptr;
 static std::string label;
@@ -52,15 +57,45 @@ Benchmark::Benchmark(const char* name, void (*fn)(int, int, int))
   Register();
 }
 
+Benchmark::Benchmark(const char* name, void (*fn)(::testing::benchmark::State&))
+    : name_(name),
+      // -1 because the number of parameters is not part of the benchmark
+      // routine signature.
+      num_args_(-1),
+      fn_state_(fn) {
+  Register();
+}
+
+void Benchmark::CheckArgCount(int expected) {
+  if (num_args_ == expected) return;
+
+  // Number of args is not part of function signature.
+  // Verify that if benchmark instantiation has previously provided args, they
+  // match "args".
+  if (num_args_ < 0) {
+    if (args_.empty() || instantiated_num_args_ == expected) return;
+  }
+  CHECK(false) << "Expected " << expected << " args for benchmark, but got "
+               << instantiated_num_args_;
+}
+
 Benchmark* Benchmark::Arg(int x) {
-  CHECK_EQ(num_args_, 1);
+  CheckArgCount(/*expected=*/1);
   args_.push_back(std::make_pair(x, -1));
+  instantiated_num_args_ = 1;
   return this;
 }
 
 Benchmark* Benchmark::ArgPair(int x, int y) {
-  CHECK_EQ(num_args_, 2);
+  CheckArgCount(/*expected=*/2);
+  instantiated_num_args_ = 2;
   args_.push_back(std::make_pair(x, y));
+  return this;
+}
+
+Benchmark* Benchmark::UseRealTime() {
+  // Do nothing.
+  // This only exists for API compatibility with internal benchmarks.
   return this;
 }
 
@@ -146,6 +181,14 @@ void Benchmark::Run(const char* pattern) {
   printf("%s\n", string(width + 22, '-').c_str());
   for (auto b : *all_benchmarks) {
     name = b->name_;
+    if (b->instantiated_num_args_ == -1 && b->args_.empty()) {
+      // The BM_*(int) interface (ie, benchmark without params) automatically
+      // adds a default (-1, -1) arg pair to b->args_.
+      // The BM_(benchmark::State&) interface does not do this because it does
+      // not know how many parameters are going to be registered.
+      // So we just add the place holder here.
+      b->args_.push_back(std::make_pair(-1, -1));
+    }
     for (auto arg : b->args_) {
       name.resize(b->name_.size());
       if (arg.first >= 0) {
@@ -166,12 +209,12 @@ void Benchmark::Run(const char* pattern) {
       char buf[100];
       std::string full_label = label;
       if (bytes_processed > 0) {
-        snprintf(buf, sizeof(buf), " %.1fMB/s",
+        snprintf(buf, sizeof(buf), " %.5fMB/s",
                  (bytes_processed * 1e-6) / seconds);
         full_label += buf;
       }
       if (items_processed > 0) {
-        snprintf(buf, sizeof(buf), " %.1fM items/s",
+        snprintf(buf, sizeof(buf), " %.5fM items/s",
                  (items_processed * 1e-6) / seconds);
         full_label += buf;
       }
@@ -210,6 +253,7 @@ void Benchmark::Run(int arg1, int arg2, int* run_count, double* run_seconds) {
   static const int64 kMaxIters = 1000000000;
   static const double kMinTime = 0.5;
   int64 iters = kMinIters;
+
   while (true) {
     accum_time = 0;
     start_time = env->NowMicros();
@@ -220,8 +264,13 @@ void Benchmark::Run(int arg1, int arg2, int* run_count, double* run_seconds) {
       (*fn0_)(iters);
     } else if (fn1_) {
       (*fn1_)(iters, arg1);
-    } else {
+    } else if (fn2_) {
       (*fn2_)(iters, arg1, arg2);
+    } else if (fn_state_) {
+      std::vector<int> arg_list = {arg1, arg2};
+      ::testing::benchmark::State state(iters, instantiated_num_args_,
+                                        std::move(arg_list));
+      (*fn_state_)(state);
     }
     StopTiming();
     const double seconds = accum_time * 1e-6;
@@ -261,3 +310,40 @@ void UseRealTime() {}
 
 }  // namespace testing
 }  // namespace tensorflow
+
+namespace testing {
+namespace benchmark {
+State::State(size_t max_iterations, int formal_arg_count, std::vector<int> args)
+    : max_iterations(max_iterations),
+      formal_arg_count_(formal_arg_count),
+      args_(std::move(args)) {
+  completed_iterations_ = 0;
+}
+
+void State::PauseTiming() { ::tensorflow::testing::StopTiming(); }
+
+void State::ResumeTiming() { ::tensorflow::testing::StartTiming(); }
+
+void State::SetBytesProcessed(::tensorflow::int64 bytes) {
+  ::tensorflow::testing::BytesProcessed(bytes);
+}
+
+void State::SetItemsProcessed(::tensorflow::int64 items) {
+  ::tensorflow::testing::ItemsProcessed(items);
+}
+
+void State::SetLabel(absl::string_view label) {
+  ::tensorflow::testing::SetLabel(std::string(label));
+}
+
+int State::range(size_t i) const {
+  if (i >= formal_arg_count_) {
+    LOG(FATAL) << "argument for range " << i << " is not set";
+  }
+  return args_[i];
+}
+
+void RunSpecifiedBenchmarks() { ::tensorflow::testing::Benchmark::Run("all"); }
+
+}  // namespace benchmark
+}  // namespace testing

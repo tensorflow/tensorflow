@@ -36,20 +36,20 @@ index 985274e..7ebb1e1 100644
 @@ -10,12 +10,12 @@
  #include <cuda_runtime.h>
  #include <cuda_fp16.h>
- 
+
 -#define NCCL_MAJOR ${nccl:Major}
 -#define NCCL_MINOR ${nccl:Minor}
 -#define NCCL_PATCH ${nccl:Patch}
 -#define NCCL_SUFFIX "${nccl:Suffix}"
 +#define NCCL_MAJOR 2
 +#define NCCL_MINOR 7
-+#define NCCL_PATCH 3
++#define NCCL_PATCH 6
 +#define NCCL_SUFFIX ""
- 
+
 -#define NCCL_VERSION_CODE ${nccl:Version}
-+#define NCCL_VERSION_CODE 2703
++#define NCCL_VERSION_CODE 2706
  #define NCCL_VERSION(X,Y,Z) ((X) * 1000 + (Y) * 100 + (Z))
- 
+
  #ifdef __cplusplus
 See https://github.com/NVIDIA/nccl/pull/322.patch
 From 410d341bd4569f60282576daa5c991717dbd560e Mon Sep 17 00:00:00 2001
@@ -127,7 +127,7 @@ index 550cfcd0c..8fea91950 100644
    if (parent == NULL) {
 -    if (path == NULL) NCCLCHECK(getPciPath(busId, &path));
 +    NCCLCHECK(getPciPath(busId, path));
- 
+
      // Save that for later in case next step is a CPU
      char numaIdStr[MAX_STR_LEN];
 @@ -544,7 +546,6 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml*
@@ -137,7 +137,7 @@ index 550cfcd0c..8fea91950 100644
 -  free(path);
    return ncclSuccess;
  }
- 
+
 @@ -644,8 +644,8 @@ ncclResult_t ncclTopoGetXmlFromGpu(struct ncclXmlNode* pciNode, nvmlDevice_t nvm
          // Remote NVLink device is not visible inside this VM. Assume NVSwitch.
          NCCLCHECK(xmlSetAttr(sub, "tclass", "0x068000"));
@@ -169,7 +169,7 @@ index 8fea91950..42eb68a4b 100644
 @@ -460,20 +460,21 @@ int checkBDFFormat(char* bdf) {
    return 1;
  }
- 
+
 -ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* xml) {
 +ncclResult_t ncclTopoGetXmlNodeFromSys(struct ncclXmlNode* pciNode,
 +                                       struct ncclXml* xml,

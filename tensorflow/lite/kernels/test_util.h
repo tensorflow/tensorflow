@@ -225,8 +225,8 @@ class SingleOpModel {
         t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
     converter.DenseToSparse(dense_data.data());
 
-    const auto dim_metadata = converter.GetDimMetadata();
-    const auto sparse_data = converter.GetData();
+    const auto& dim_metadata = converter.GetDimMetadata();
+    const auto& sparse_data = converter.GetData();
 
     // Build sparsity parameter.
     std::vector<flatbuffers::Offset<DimensionMetadata>> fb_dim_metadata(
@@ -485,6 +485,10 @@ class SingleOpModel {
 
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
+  // Note: 'apply_delegate' also serves to tell whether default TfLite delegates
+  // should be applied implicitly for a test case. For example, when testing the
+  // specific implementation of a TfLite delegate, it might be necessary to set
+  // this to false.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
                         bool apply_delegate, bool allocate_and_delegate = true);

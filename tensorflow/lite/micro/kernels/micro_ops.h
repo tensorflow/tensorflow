@@ -17,10 +17,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 
-namespace tflite {
-namespace ops {
-namespace micro {
-
 // Forward declaration of all micro op kernel registration methods. These
 // registrations are included with the standard `BuiltinOpResolver`.
 //
@@ -28,6 +24,23 @@ namespace micro {
 // needed. In such cases, the client can selectively add only the registrations
 // their model requires, using a custom `(Micro)MutableOpResolver`. Selective
 // registration in turn allows the linker to strip unused kernels.
+
+namespace tflite {
+
+// TFLM is incrementally moving towards a flat tflite namespace
+// (https://abseil.io/tips/130). Any new ops (or cleanup of existing ops should
+// have their Register function declarations in the tflite namespace.
+
+TfLiteRegistration Register_CONV_2D();
+TfLiteRegistration Register_DEPTHWISE_CONV_2D();
+TfLiteRegistration Register_QUANTIZE();
+TfLiteRegistration Register_SHAPE();
+TfLiteRegistration Register_SOFTMAX();
+TfLiteRegistration Register_SVDF();
+TfLiteRegistration Register_TRANSPOSE_CONV_2D();
+
+namespace ops {
+namespace micro {
 
 TfLiteRegistration Register_ABS();
 TfLiteRegistration Register_ADD();
@@ -37,14 +50,11 @@ TfLiteRegistration Register_AVERAGE_POOL_2D();
 TfLiteRegistration Register_CEIL();
 // TODO(b/160234179): Change custom OPs to also return by value.
 TfLiteRegistration* Register_CIRCULAR_BUFFER();
-TfLiteRegistration Register_CONV_2D();
 TfLiteRegistration Register_CONCATENATION();
 TfLiteRegistration Register_COS();
-TfLiteRegistration Register_DEPTHWISE_CONV_2D();
 TfLiteRegistration Register_DEQUANTIZE();
 TfLiteRegistration Register_EQUAL();
 TfLiteRegistration Register_FLOOR();
-TfLiteRegistration Register_FULLY_CONNECTED();
 TfLiteRegistration Register_GREATER();
 TfLiteRegistration Register_GREATER_EQUAL();
 TfLiteRegistration Register_HARD_SWISH();
@@ -66,7 +76,7 @@ TfLiteRegistration Register_PACK();
 TfLiteRegistration Register_PAD();
 TfLiteRegistration Register_PADV2();
 TfLiteRegistration Register_PRELU();
-TfLiteRegistration Register_QUANTIZE();
+TfLiteRegistration Register_REDUCE_MAX();
 TfLiteRegistration Register_RELU();
 TfLiteRegistration Register_RELU6();
 TfLiteRegistration Register_RESHAPE();
@@ -74,14 +84,12 @@ TfLiteRegistration Register_RESIZE_NEAREST_NEIGHBOR();
 TfLiteRegistration Register_ROUND();
 TfLiteRegistration Register_RSQRT();
 TfLiteRegistration Register_SIN();
-TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPLIT();
 TfLiteRegistration Register_SPLIT_V();
 TfLiteRegistration Register_SQRT();
 TfLiteRegistration Register_SQUARE();
 TfLiteRegistration Register_STRIDED_SLICE();
 TfLiteRegistration Register_SUB();
-TfLiteRegistration Register_SVDF();
 TfLiteRegistration Register_UNPACK();
 TfLiteRegistration Register_L2_NORMALIZATION();
 TfLiteRegistration Register_TANH();

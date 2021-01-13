@@ -31,8 +31,9 @@ import flatbuffers
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
-from tensorflow.lite.python import lite_constants as _lite_constants
 from tensorflow.lite.python import schema_py_generated as schema_fb
+from tensorflow.lite.python import schema_util
+from tensorflow.lite.python import tflite_keras_util as _tflite_keras_util
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.lite.toco import types_pb2 as _types_pb2
@@ -44,6 +45,10 @@ from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 
+# Keras functions used by TFLite
+model_input_signature = _tflite_keras_util.model_input_signature
+trace_model_call = _tflite_keras_util.trace_model_call
+
 # Map of tf.dtypes to TFLite types_flag_pb2.
 _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.float32: _types_pb2.FLOAT,
@@ -51,6 +56,7 @@ _MAP_TF_TO_TFLITE_TYPES = {
     dtypes.int32: _types_pb2.INT32,
     dtypes.uint8: _types_pb2.QUANTIZED_UINT8,
     dtypes.int64: _types_pb2.INT64,
+    dtypes.uint64: _types_pb2.UINT64,
     dtypes.string: _types_pb2.STRING,
     dtypes.bool: _types_pb2.BOOL,
     dtypes.int16: _types_pb2.QUANTIZED_INT16,
@@ -77,8 +83,10 @@ _MAP_TFLITE_ENUM_TO_TF_TYPES = {
 
 _TFLITE_FILE_IDENTIFIER = b"TFL3"
 
-_TFLITE_MODEL_INPUT_OUTPUT_TYPES = (_lite_constants.FLOAT, _lite_constants.INT8,
-                                    _lite_constants.QUANTIZED_UINT8)
+_MAP_QUANT_TO_IO_TYPES = {
+    dtypes.int8: {dtypes.int8, dtypes.uint8},
+    dtypes.int16: {dtypes.int16},
+}
 
 
 def convert_dtype_to_tflite_type(tf_dtype):
@@ -119,9 +127,9 @@ def _convert_tflite_enum_type_to_tf_type(tflite_enum_type):
   return tf_type
 
 
-def _get_dtype_name(tf_type):
+def get_tf_type_name(tf_type):
   """Converts tf.dtype (eg: tf.float32) to str (eg: "tf.float32")."""
-  return "tf." + tf_type.name
+  return "tf." + tf_type.name if tf_type else None
 
 
 def get_tensor_name(tensor):
@@ -375,7 +383,7 @@ def build_debug_info_func(original_graph):
                 (func, sub_func.graph.get_operation_by_name(name)))
           else:
             sys.stderr.write(
-                "Use '@tf.function' or '@defun' to decorate the function.")
+                "Use '@tf.function' or '@defun' to decorate the function.\n")
             continue
       except KeyError:
         # New node created by graph optimizer. No stack trace from source code.
@@ -627,118 +635,76 @@ def _remove_tensors_from_model(model, remove_tensors_idxs):
     logging.debug("Removed tensors marked for deletion")
 
 
-def _validate_and_find_int8_quantized_inputs_outputs(model):
-  """Validate that model input is quantized and output is dequantized."""
-  if len(model.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model.subgraphs)))
+def _modify_model_input_type(model, inference_input_type=dtypes.float32):
+  """Modify model input type."""
+
+  if inference_input_type == dtypes.float32:
+    return
+
   subgraph = model.subgraphs[0]
   tensors = subgraph.tensors
   operators = subgraph.operators
 
-  # Ensure model has atleast one quantize and dequantize operator
-  quant_opcode_idx, dequant_opcode_idx = None, None
+  # Find all quantize operators
+  quant_opcode_idxs = []
   for idx, opcode in enumerate(model.operatorCodes):
-    if opcode.builtinCode == schema_fb.BuiltinOperator.QUANTIZE:
-      quant_opcode_idx = idx
-    elif opcode.builtinCode == schema_fb.BuiltinOperator.DEQUANTIZE:
-      dequant_opcode_idx = idx
-    if quant_opcode_idx is not None and dequant_opcode_idx is not None:
-      break
-  if quant_opcode_idx is None and dequant_opcode_idx is None:
-    raise ValueError("Model is not integer quantized as it does not "
-                     "contain quantize/dequantize operators.")
+    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+    if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
+      quant_opcode_idxs.append(idx)
+  if operators and not quant_opcode_idxs:
+    for input_idx in subgraph.inputs:
+      input_type = _convert_tflite_enum_type_to_tf_type(tensors[input_idx].type)
+      if input_type == dtypes.float32:
+        raise ValueError("Model input is not dequantized.")
+    # None of the inputs have float32, then they must be int16, int8, or bool
+    return
 
-  # Ensure model inputs and outputs are integer quantized
-  input_quant_ops, output_dequant_ops = [], []
+  # Validate that the model input is quantized
+  input_quant_ops = []
   for op in operators:
-    # Find input quantize operator
-    if op.opcodeIndex == quant_opcode_idx and op.inputs[0] in subgraph.inputs:
-      pos, float_tensor, int_tensor = \
-          "input", tensors[op.inputs[0]], tensors[op.outputs[0]]
+    # Find operators that quantize model input
+    if op.opcodeIndex in quant_opcode_idxs and op.inputs[0] in subgraph.inputs:
+      float_tensor, quant_tensor = tensors[op.inputs[0]], tensors[op.outputs[0]]
+      # If found, validate that the operator's input type is float
+      float_type = _convert_tflite_enum_type_to_tf_type(float_tensor.type)
+      if float_type != dtypes.float32:
+        if float_type == inference_input_type:
+          continue
+        else:
+          raise ValueError(
+              "Initial model input type must be tf.float32. Expected type for "
+              "tensor with name '{}' is tf.float32, instead type is {}".format(
+                  float_tensor.name, get_tf_type_name(float_type)))
+      # If found, validate that the operator output is quantized and compatible
+      # with the final model input type
+      quant_type = _convert_tflite_enum_type_to_tf_type(quant_tensor.type)
+      if quant_type not in _MAP_QUANT_TO_IO_TYPES:
+        raise ValueError(
+            "Initial model input is not quantized. Expected type for "
+            "tensor with name '{}' should be in {}, instead type is {}".format(
+                quant_tensor.name,
+                tuple(get_tf_type_name(t) for t in
+                      _MAP_QUANT_TO_IO_TYPES.keys()),
+                get_tf_type_name(quant_type)))
+      else:
+        inference_io_types = _MAP_QUANT_TO_IO_TYPES[quant_type]
+        if inference_input_type not in inference_io_types:
+          raise ValueError(
+              "Unsupported `inference_input_type` value. Expected to be in "
+              "{}, instead got {}.".format(
+                  tuple(get_tf_type_name(t) for t in inference_io_types),
+                  get_tf_type_name(inference_input_type)))
       input_quant_ops.append(op)
-    # Find output dequantize operator
-    elif op.opcodeIndex == dequant_opcode_idx and \
-        op.outputs[0] in subgraph.outputs:
-      pos, float_tensor, int_tensor = \
-          "output", tensors[op.outputs[0]], tensors[op.inputs[0]]
-      output_dequant_ops.append(op)
-    # Otherwise, ignore
-    else:
-      continue
-    # If found, validate the input/output tensor type
-    if float_tensor.type != schema_fb.TensorType.FLOAT32:
-      raise ValueError(
-          "Model {} type must be tf.float32. Expected type for tensor with "
-          "name '{}' is tf.float32, instead type is tf.{}".format(
-              pos, float_tensor.name,
-              _convert_tflite_enum_type_to_tf_type(float_tensor.type).name))
-    if int_tensor.type != schema_fb.TensorType.INT8:
-      raise ValueError(
-          "Model is not integer quantized. Expected type for tensor with "
-          "name '{}' is tf.int8, instead type is tf.{}".format(
-              int_tensor.name,
-              _convert_tflite_enum_type_to_tf_type(int_tensor.type).name))
 
-  return input_quant_ops, output_dequant_ops
-
-
-def modify_integer_quantized_model_io_type(
-    model, inference_input_type=_lite_constants.FLOAT,
-    inference_output_type=_lite_constants.FLOAT):
-  """Modify the float input/output type of an integer quantized model.
-
-  Args:
-    model: An int8 quantized tflite model with float input and output.
-    inference_input_type: tf.DType representing final input type.
-      (default tf.float32)
-    inference_output_type: tf.DType representing final output type.
-      (default tf.float32)
-
-  Returns:
-    An int8 quantized tflite model with modified input and/or output type.
-
-  Raises:
-    ValueError: If the model is not int8 quantized or the inference_input_type
-      and/or inference_input_type is unsupported.
-    RuntimeError: If the modification was unsuccessful.
-
-  """
-  # Return if input and output types default to float
-  if inference_input_type == _lite_constants.FLOAT and \
-      inference_output_type == _lite_constants.FLOAT:
-    return model
-
-  # Validate input and output types
-  if inference_input_type not in _TFLITE_MODEL_INPUT_OUTPUT_TYPES:
-    raise ValueError("The `inference_input_type` should be in {}".format(
-        tuple(_get_dtype_name(t) for t in _TFLITE_MODEL_INPUT_OUTPUT_TYPES)))
-  if inference_output_type not in _TFLITE_MODEL_INPUT_OUTPUT_TYPES:
-    raise ValueError("The `inference_output_type` should be in {}".format(
-        tuple(_get_dtype_name(t) for t in _TFLITE_MODEL_INPUT_OUTPUT_TYPES)))
-
-  logging.debug(("Attempting to modify the model input from tf.float32 to %s "
-                 "and output from tf.float32 to %s"),
-                _get_dtype_name(inference_input_type),
-                _get_dtype_name(inference_output_type))
-  # Convert the model to an object
-  model = _convert_model_from_bytearray_to_object(model)
-
-  # Validate the integer quantized model
-  input_quant_ops, output_dequant_ops = \
-      _validate_and_find_int8_quantized_inputs_outputs(model)
-
-  # Initialize references and variables
-  if len(model.subgraphs) > 1:
-    raise ValueError("Model must only have one subgraph. Instead, it has "
-                     "{} subgraphs.".format(len(model.subgraphs)))
-  subgraph = model.subgraphs[0]
-  tensors = subgraph.tensors
-  operators = subgraph.operators
-  remove_tensors_idxs = set()
+  if len(subgraph.inputs) != len(input_quant_ops):
+    logging.warning(
+        "For model inputs containing unsupported operations which cannot be "
+        "quantized, the `inference_input_type` attribute will default to the "
+        "original type."
+        )
 
   # Modify model input type
-  if inference_input_type == _lite_constants.QUANTIZED_UINT8:
+  if inference_input_type == dtypes.uint8:
     # Change quant op (float to int8) to quant op (uint8 to int8)
     for op in input_quant_ops:
       int8_quantization = tensors[op.outputs[0]].quantization
@@ -747,35 +713,167 @@ def modify_integer_quantized_model_io_type(
       uint8_quantization.zeroPoint = [int8_quantization.zeroPoint[0] + 128]
       tensors[op.inputs[0]].quantization = uint8_quantization
       tensors[op.inputs[0]].type = schema_fb.TensorType.UINT8
-  elif inference_input_type == _lite_constants.INT8:
+  elif inference_input_type in _MAP_QUANT_TO_IO_TYPES:
     # Remove the inputs and the quant operator
+    remove_tensors_idxs = set()
     for op in input_quant_ops:
       subgraph.inputs[subgraph.inputs == op.inputs[0]] = op.outputs[0]
       remove_tensors_idxs.add(op.inputs[0])
       operators.remove(op)
+    # Remove tensors marked for deletion.
+    _remove_tensors_from_model(model, remove_tensors_idxs)
+  else:
+    raise ValueError(
+        "Unsupported `inference_input_type` value {}.".format(
+            get_tf_type_name(inference_input_type)))
+
+
+def _modify_model_output_type(model, inference_output_type=dtypes.float32):
+  """Modify model output type."""
+
+  if inference_output_type == dtypes.float32:
+    return
+
+  subgraph = model.subgraphs[0]
+  tensors = subgraph.tensors
+  operators = subgraph.operators
+
+  # Find all dequantize operators
+  dequant_opcode_idxs = []
+  for idx, opcode in enumerate(model.operatorCodes):
+    builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+    if builtin_code == schema_fb.BuiltinOperator.DEQUANTIZE:
+      dequant_opcode_idxs.append(idx)
+  if operators and not dequant_opcode_idxs:
+    for output in subgraph.outputs:
+      output_type = _convert_tflite_enum_type_to_tf_type(tensors[output].type)
+      if output_type == dtypes.float32:
+        raise ValueError("Model output is not dequantized.")
+    # None of the outputs have float32, then they must be int16, int8, or bool
+    return
+
+  # Validate that the model output is dequantized
+  output_dequant_ops = []
+  for op in operators:
+    # Find operators that dequantize model output
+    if op.opcodeIndex in dequant_opcode_idxs and \
+        op.outputs[0] in subgraph.outputs:
+      # If found, validate that the operator's output type is float
+      quant_tensor, float_tensor = tensors[op.inputs[0]], tensors[op.outputs[0]]
+      float_type = _convert_tflite_enum_type_to_tf_type(float_tensor.type)
+      if float_type != dtypes.float32:
+        if float_type == inference_output_type:
+          continue
+        else:
+          raise ValueError(
+              "Initial model output type must be tf.float32. Expected type for "
+              "tensor with name '{}' is tf.float32, instead type is {}".format(
+                  float_tensor.name, get_tf_type_name(float_type)))
+      # If found, validate that the operator input is quantized and compatible
+      # with the final model output type
+      quant_type = _convert_tflite_enum_type_to_tf_type(quant_tensor.type)
+      if quant_type not in _MAP_QUANT_TO_IO_TYPES:
+        raise ValueError(
+            "Initial model output is not dequantized. Expected type for "
+            "tensor with name '{}' should be in {}, instead type is {}".format(
+                quant_tensor.name,
+                tuple(get_tf_type_name(t) for t in
+                      _MAP_QUANT_TO_IO_TYPES.keys()),
+                get_tf_type_name(quant_type)))
+      else:
+        inference_io_types = _MAP_QUANT_TO_IO_TYPES[quant_type]
+        if inference_output_type not in inference_io_types:
+          raise ValueError(
+              "Unsupported `inference_output_type` value. Expected to be in "
+              "{}, instead got {}.".format(
+                  tuple(get_tf_type_name(t) for t in inference_io_types),
+                  get_tf_type_name(inference_output_type)))
+      output_dequant_ops.append(op)
+
+  if len(subgraph.outputs) != len(output_dequant_ops):
+    logging.warning(
+        "For model outputs containing unsupported operations which cannot be "
+        "quantized, the `inference_output_type` attribute will default to the "
+        "original type."
+        )
 
   # Modify model output type
-  if inference_output_type == _lite_constants.QUANTIZED_UINT8:
+  if inference_output_type == dtypes.uint8:
+    # Find a quantize operator
+    quant_opcode_idx = -1
+    for idx, opcode in enumerate(model.operatorCodes):
+      builtin_code = schema_util.get_builtin_code_from_operator_code(opcode)
+      if builtin_code == schema_fb.BuiltinOperator.QUANTIZE:
+        quant_opcode_idx = idx
+        break
+    # Create a quantize operator, if none exist
+    if quant_opcode_idx == -1:
+      quant_op = schema_fb.OperatorCodeT()
+      quant_op.builtinCode = schema_fb.BuiltinOperator.QUANTIZE
+      quant_op.deprecatedBuiltinCode = schema_fb.BuiltinOperator.QUANTIZE
+      model.operatorCodes.append(quant_op)
+      quant_opcode_idx = len(model.operatorCodes) - 1
     # Change dequant op (int8 to float) to quant op (int8 to uint8)
     for op in output_dequant_ops:
-      op.opcodeIndex = input_quant_ops[0].opcodeIndex
+      op.opcodeIndex = quant_opcode_idx
       int8_quantization = tensors[op.inputs[0]].quantization
       uint8_quantization = schema_fb.QuantizationParametersT()
       uint8_quantization.scale = [int8_quantization.scale[0]]
       uint8_quantization.zeroPoint = [int8_quantization.zeroPoint[0] + 128]
       tensors[op.outputs[0]].quantization = uint8_quantization
       tensors[op.outputs[0]].type = schema_fb.TensorType.UINT8
-  elif inference_output_type == _lite_constants.INT8:
+  elif inference_output_type in _MAP_QUANT_TO_IO_TYPES:
     # Remove the outputs and the dequant operator
+    remove_tensors_idxs = set()
     for op in output_dequant_ops:
       subgraph.outputs[subgraph.outputs == op.outputs[0]] = op.inputs[0]
       remove_tensors_idxs.add(op.outputs[0])
       operators.remove(op)
+    # Remove tensors marked for deletion.
+    _remove_tensors_from_model(model, remove_tensors_idxs)
+  else:
+    raise ValueError(
+        "Unsupported `inference_output_type` value {}.".format(
+            get_tf_type_name(inference_output_type)))
 
-  # Remove tensors marked for deletion.
-  _remove_tensors_from_model(model, remove_tensors_idxs)
 
-  # Convert the model to a bytearray
-  model = _convert_model_from_object_to_bytearray(model)
+def modify_model_io_type(
+    model, inference_input_type=dtypes.float32,
+    inference_output_type=dtypes.float32):
+  """Modify the input/output type of a tflite model.
 
-  return model
+  Args:
+    model: A tflite model.
+    inference_input_type: tf.DType representing modified input type.
+      (default tf.float32. If model input is int8 quantized, it must be in
+      {tf.float32, tf.int8,tf.uint8}, else if model input is int16 quantized,
+      it must be in {tf.float32, tf.int16}, else it must be tf.float32)
+    inference_output_type: tf.DType representing modified output type.
+      (default tf.float32. If model output is int8 dequantized, it must be in
+      {tf.float32, tf.int8,tf.uint8}, else if model output is int16 dequantized,
+      it must be in {tf.float32, tf.int16}, else it must be tf.float32)
+  Returns:
+    A tflite model with modified input/output type.
+
+  Raises:
+    ValueError: If `inference_input_type`/`inference_output_type` is unsupported
+      or a supported integer type is specified for a model whose input/output is
+      not quantized/dequantized.
+    RuntimeError: If the modification was unsuccessful.
+
+  """
+  if inference_input_type == dtypes.float32 and \
+      inference_output_type == dtypes.float32:
+    return model
+
+  model_object = _convert_model_from_bytearray_to_object(model)
+
+  if len(model_object.subgraphs) > 1:
+    raise ValueError("Model must only have one subgraph. Instead, it has "
+                     "{} subgraphs.".format(len(model_object.subgraphs)))
+
+  _modify_model_input_type(model_object, inference_input_type)
+
+  _modify_model_output_type(model_object, inference_output_type)
+
+  return _convert_model_from_object_to_bytearray(model_object)

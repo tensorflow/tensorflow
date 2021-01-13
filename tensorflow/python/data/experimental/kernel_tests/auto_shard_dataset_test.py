@@ -103,6 +103,43 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     ]
     self.assertDatasetProducesWithShuffle(dataset, expected, 5, 4, shuffle)
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(batch_size=[1, 3, 10])))
+  def testDatasetOfReaderDatasetsPipeline(self, batch_size):
+    # This tests a scenario where a list_files main return multiple files
+    # due to the glob containing wildcards.
+    def batch(iterator, n):
+      l = len(iterator)
+      for i in range(0, l, n):
+        yield iterator[i:min(i + n, l)]
+
+    datasets = []
+    for files in batch(self.test_filenames, batch_size):
+      datasets.append(
+          dataset_ops.Dataset.list_files(files, shuffle=False).map(
+              core_readers.TFRecordDataset))
+    dataset = dataset_ops.Dataset.from_tensor_slices(datasets)
+    dataset = dataset.flat_map(lambda x: x)
+
+    # Simulate additional ops in between flat_map and interleave. This should be
+    # a no-op since if ShardDataset is placed right after flat_map, we will only
+    # have two datasets left at this point.
+    dataset = dataset.prefetch(1)
+    dataset = dataset.prefetch(1)
+
+    dataset = dataset.interleave(
+        lambda x: x, cycle_length=1, num_parallel_calls=1)
+
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+
+    self.assertDatasetProduces(dataset, expected)
+
   @combinations.generate(test_base.default_test_combinations())
   def testZipReaderPipeline(self):
     dataset1 = dataset_ops.Dataset.list_files(
@@ -447,6 +484,36 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
     dataset = dataset.flat_map(core_readers.TFRecordDataset)
     dataset = dataset.batch(5)
     dataset = dataset.apply(cardinality.assert_cardinality(42))
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMaxIntraOpParallelism(self):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = dataset_ops._MaxIntraOpParallelismDataset(dataset, 1)
+    dataset = distribute._AutoShardDataset(dataset, 5, 0)
+
+    expected = [
+        b"Record %d of file %d" % (r, f)  # pylint:disable=g-complex-comprehension
+        for f in (0, 5)
+        for r in range(0, 10)
+    ]
+    self.assertDatasetProduces(dataset, list(chunk(expected, 5)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPrivateThreadpool(self):
+    dataset = dataset_ops.Dataset.list_files(self.test_filenames, shuffle=False)
+    dataset = dataset.flat_map(core_readers.TFRecordDataset)
+    dataset = dataset.batch(5)
+    dataset = dataset_ops._PrivateThreadPoolDataset(dataset, 1)
     dataset = distribute._AutoShardDataset(dataset, 5, 0)
 
     expected = [

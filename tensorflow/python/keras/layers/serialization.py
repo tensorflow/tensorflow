@@ -61,7 +61,7 @@ from tensorflow.python.keras.layers.preprocessing import string_lookup_v1 as pre
 from tensorflow.python.keras.layers.preprocessing import text_vectorization as preprocessing_text_vectorization
 from tensorflow.python.keras.layers.preprocessing import text_vectorization_v1 as preprocessing_text_vectorization_v1
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.util import tf_inspect as inspect
+from tensorflow.python.keras.utils import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -161,7 +161,7 @@ def serialize(layer):
 def deserialize(config, custom_objects=None):
   """Instantiates a layer from a config dictionary.
 
-  Arguments:
+  Args:
       config: dict of the form {'class_name': str, 'config': dict}
       custom_objects: dict mapping class names (or function names)
           of custom (non-Keras) objects to class/functions

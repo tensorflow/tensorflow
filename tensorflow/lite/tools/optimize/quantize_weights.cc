@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
@@ -79,7 +80,7 @@ std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
 // the provided op.
 std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
                                            const CustomOpMap& custom_op_map) {
-  const BuiltinOperator builtin_op_code = op_code->builtin_code;
+  const BuiltinOperator builtin_op_code = GetBuiltinCode(op_code);
   if (builtin_op_code == BuiltinOperator_CUSTOM) {
     const std::string custom_code = op_code->custom_code;
     const auto& custom_op_info = custom_op_map.find(custom_code);
@@ -89,6 +90,7 @@ std::vector<int32_t> GetWeightInputIndices(const OperatorCodeT* op_code,
   } else if (builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
              builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
              builtin_op_code == BuiltinOperator_EMBEDDING_LOOKUP) {
     return {1};
   } else if (builtin_op_code == BuiltinOperator_SVDF) {
@@ -132,7 +134,7 @@ bool IsQuantizedInput(const OperatorCodeT* op_code,
 bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
                           const CustomOpMap& custom_op_map,
                           bool use_updated_hybrid_scheme) {
-  const BuiltinOperator builtin_op_code = op_code->builtin_code;
+  const BuiltinOperator builtin_op_code = GetBuiltinCode(op_code);
   // Operations that support hybrid evaluation.
   bool eval_hybrid = false;
   if (builtin_op_code == BuiltinOperator_CUSTOM) {
@@ -144,6 +146,7 @@ bool IsHybridEvaluationOp(const OperatorT* op, const OperatorCodeT* op_code,
       return custom_op_info->second.is_hybrid;
     }
   } else if (builtin_op_code == BuiltinOperator_FULLY_CONNECTED ||
+             builtin_op_code == BuiltinOperator_BATCH_MATMUL ||
              builtin_op_code == BuiltinOperator_CONV_2D ||
              builtin_op_code == BuiltinOperator_SVDF ||
              builtin_op_code == BuiltinOperator_RNN ||
@@ -196,6 +199,7 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     int subgraph_index, bool use_updated_hybrid_scheme) {
   SubGraphT* subgraph = model->subgraphs.at(subgraph_index).get();
   const OperatorCodeT* op_code = model->operator_codes[op->opcode_index].get();
+  auto builtin_code = GetBuiltinCode(op_code);
 
   std::vector<int32_t> op_input_indices =
       GetWeightInputIndices(op_code, custom_op_map);
@@ -203,8 +207,7 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
     int32_t tensor_idx = op->inputs[op_input_idx];
     if (tensor_idx == -1) {
       LOG(INFO) << "Skipping optional tensor input " << op_input_idx
-                << " of operation "
-                << EnumNameBuiltinOperator(op_code->builtin_code);
+                << " of operation " << EnumNameBuiltinOperator(builtin_code);
       continue;
     }
 
@@ -232,16 +235,16 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
       continue;
     }
 
-    if (op_code->builtin_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
+    if (builtin_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
       tensor_map->insert({tensor_idx,
                           {tensor, /*is_per_channel=*/use_updated_hybrid_scheme,
                            /*dim=*/3}});
-    } else if (op_code->builtin_code == BuiltinOperator_CONV_2D) {
+    } else if (builtin_code == BuiltinOperator_CONV_2D) {
       tensor_map->insert({tensor_idx,
                           {tensor, /*is_per_channel=*/use_updated_hybrid_scheme,
                            /*dim=*/0}});
     } else {
-      switch (op_code->builtin_code) {
+      switch (builtin_code) {
         case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM:
           op->builtin_options.AsBidirectionalSequenceLSTMOptions()
               ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
@@ -252,6 +255,10 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
           break;
         case BuiltinOperator_FULLY_CONNECTED:
           op->builtin_options.AsFullyConnectedOptions()
+              ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
+          break;
+        case BuiltinOperator_BATCH_MATMUL:
+          op->builtin_options.AsBatchMatMulOptions()
               ->asymmetric_quantize_inputs = use_updated_hybrid_scheme;
           break;
         case BuiltinOperator_LSTM:
@@ -288,13 +295,16 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
 // If a Dequantize op_code doesn't exist, adds it and returns its index.
 int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
   for (size_t i = 0; i < model->operator_codes.size(); ++i) {
-    if (model->operator_codes[i]->builtin_code == BuiltinOperator_DEQUANTIZE) {
+    if (GetBuiltinCode(model->operator_codes[i].get()) ==
+        BuiltinOperator_DEQUANTIZE) {
       return i;
     }
   }
   model->operator_codes.push_back(absl::make_unique<OperatorCodeT>());
   int op_code_idx = model->operator_codes.size() - 1;
   model->operator_codes[op_code_idx]->builtin_code = BuiltinOperator_DEQUANTIZE;
+  model->operator_codes[op_code_idx]->deprecated_builtin_code =
+      static_cast<int8_t>(BuiltinOperator_DEQUANTIZE);
   // Version 2 and onwards supports INT8 inputs.
   model->operator_codes[op_code_idx]->version = 2;
 
@@ -330,7 +340,8 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 // Updates operator code versions for the operators with INT8 inputs.
 void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
   for (int i = 0, end = model->operator_codes.size(); i < end; ++i) {
-    const BuiltinOperator& op_code = model->operator_codes[i]->builtin_code;
+    const BuiltinOperator& op_code =
+        GetBuiltinCode(model->operator_codes[i].get());
     if (op_code == BuiltinOperator_RNN ||
         op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN ||
         op_code == BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM ||
@@ -345,6 +356,8 @@ void UpdateInt8OperatorVersions(ModelT* model, bool use_updated_hybrid_scheme) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 5 : 2;
     } else if (op_code == BuiltinOperator_FULLY_CONNECTED) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 9 : 3;
+    } else if (op_code == BuiltinOperator_BATCH_MATMUL) {
+      model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 1;
     } else if (op_code == BuiltinOperator_SVDF) {
       model->operator_codes[i]->version = use_updated_hybrid_scheme ? 4 : 2;
     } else if (op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
@@ -361,7 +374,7 @@ bool IsQuantizationPassThroughOps(
   }
   const OperatorT* consumer_op = consumer_op_infos.front().op;
   const BuiltinOperator op_code =
-      model->operator_codes[consumer_op->opcode_index]->builtin_code;
+      GetBuiltinCode(model->operator_codes[consumer_op->opcode_index].get());
   return op_code == BuiltinOperator_GATHER ||
          op_code == BuiltinOperator_EMBEDDING_LOOKUP;
 }

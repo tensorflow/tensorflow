@@ -8,8 +8,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
-
 py_library(
     name = "public_api",
     srcs = ["public_api.py"],
@@ -50,7 +48,7 @@ py_test(
         ":test_module1",
         ":test_module2",
         ":traverse",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 

@@ -33,11 +33,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 random_rotation = image.random_rotation
@@ -62,7 +62,7 @@ def smart_resize(x, size, interpolation='bilinear'):
 
   You could simply do:
 
-  ````python
+  ```python
   size = (200, 200)
   ds = ds.map(lambda img: tf.image.resize(img, size))
   ```
@@ -95,7 +95,7 @@ def smart_resize(x, size, interpolation='bilinear'):
   2. Resize the cropped image to the target size. In the example above,
   we resize the `(340, 340)` crop to `(200, 200)`.
 
-  Arguments:
+  Args:
     x: Input image (as a tensor or NumPy array). Must be in format
       `(height, width, channels)`.
     size: Tuple of `(height, width)` integer. Target size.
@@ -161,7 +161,7 @@ def array_to_img(x, data_format=None, scale=True, dtype=None):
   ```
 
 
-  Arguments:
+  Args:
       x: Input Numpy array.
       data_format: Image data format, can be either "channels_first" or
         "channels_last". Defaults to `None`, in which case the global setting
@@ -205,7 +205,7 @@ def img_to_array(img, data_format=None, dtype=None):
   ```
 
 
-  Arguments:
+  Args:
       img: Input PIL Image instance.
       data_format: Image data format, can be either "channels_first" or
         "channels_last". Defaults to `None`, in which case the global setting
@@ -241,7 +241,7 @@ def save_img(path,
              **kwargs):
   """Saves an image stored as a Numpy array to a path or file object.
 
-  Arguments:
+  Args:
       path: Path or file object.
       x: Numpy array.
       data_format: Image data format,
@@ -275,7 +275,7 @@ def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
   predictions = model.predict(input_arr)
   ```
 
-  Arguments:
+  Args:
       path: Path to image file.
       grayscale: DEPRECATED use `color_mode="grayscale"`.
       color_mode: One of "grayscale", "rgb", "rgba". Default: "rgb".
@@ -309,7 +309,7 @@ class Iterator(image.Iterator, data_utils.Sequence):
 class DirectoryIterator(image.DirectoryIterator, Iterator):
   """Iterator capable of reading images from a directory on disk.
 
-  Arguments:
+  Args:
       directory: Path to the directory to read images from.
           Each subdirectory in this directory will be
           considered to contain images from one class,
@@ -400,7 +400,7 @@ class DirectoryIterator(image.DirectoryIterator, Iterator):
 class NumpyArrayIterator(image.NumpyArrayIterator, Iterator):
   """Iterator yielding data from a Numpy array.
 
-  Arguments:
+  Args:
       x: Numpy array of input data or tuple.
           If tuple, the second elements is either
           another numpy array or a list of numpy arrays,
@@ -463,7 +463,7 @@ class NumpyArrayIterator(image.NumpyArrayIterator, Iterator):
 class DataFrameIterator(image.DataFrameIterator, Iterator):
   """Iterator capable of reading images from a directory on disk as a dataframe.
 
-  Arguments:
+  Args:
       dataframe: Pandas dataframe containing the filepaths relative to
         `directory` (or absolute paths if `directory` is None) of the images in
         a string column. It should include other column/s
@@ -583,7 +583,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
 
    The data will be looped over (in batches).
 
-  Arguments:
+  Args:
       featurewise_center: Boolean.
           Set input mean to 0 over the dataset, feature-wise.
       samplewise_center: Boolean. Set each sample mean to 0.
@@ -654,28 +654,38 @@ class ImageDataGenerator(image.ImageDataGenerator):
       validation_split: Float. Fraction of images reserved for validation
           (strictly between 0 and 1).
       dtype: Dtype to use for the generated arrays.
-
-  Examples:
+      
+  Raises:
+    ValueError: If the value of the argument, `data_format` is other than
+          `"channels_last"` or `"channels_first"`.
+    ValueError: If the value of the argument, `validation_split` > 1
+          or `validation_split` < 0.
+    
+  Examples: 
 
   Example of using `.flow(x, y)`:
 
   ```python
   (x_train, y_train), (x_test, y_test) = cifar10.load_data()
-  y_train = np_utils.to_categorical(y_train, num_classes)
-  y_test = np_utils.to_categorical(y_test, num_classes)
+  y_train = utils.to_categorical(y_train, num_classes)
+  y_test = utils.to_categorical(y_test, num_classes)
   datagen = ImageDataGenerator(
       featurewise_center=True,
       featurewise_std_normalization=True,
       rotation_range=20,
       width_shift_range=0.2,
       height_shift_range=0.2,
-      horizontal_flip=True)
+      horizontal_flip=True,
+      validation_split=0.2)
   # compute quantities required for featurewise normalization
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit(datagen.flow(x_train, y_train, batch_size=32),
-            steps_per_epoch=len(x_train) / 32, epochs=epochs)
+  model.fit(datagen.flow(x_train, y_train, batch_size=32, 
+           subset='training'), 
+           validation_data=datagen.flow(x_train, y_train, 
+           batch_size=8, subset='validation'),
+           steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
       print('Epoch', e)
@@ -817,7 +827,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
            subset=None):
     """Takes data & label arrays, generates batches of augmented data.
 
-    Arguments:
+    Args:
         x: Input data. Numpy array of rank 4 or a tuple. If tuple, the first
           element should contain the images and the second element another numpy
           array or a list of numpy arrays that gets passed to the output without
@@ -835,7 +845,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str (default: `''`). Prefix to use for filenames of saved
           pictures (only relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+            "tif", "jpg"
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.
@@ -849,6 +860,10 @@ class ImageDataGenerator(image.ImageDataGenerator):
             of corresponding labels. If 'sample_weight' is not None,
             the yielded tuples are of the form `(x, y, sample_weight)`.
             If `y` is None, only the numpy array `x` is returned.
+    Raises:
+      ValueError: If the Value of the argument, `subset` is other than 
+            "training" or "validation".
+
     """
     return NumpyArrayIterator(
         x,
@@ -881,7 +896,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
                           interpolation='nearest'):
     """Takes the path to a directory & generates batches of augmented data.
 
-    Arguments:
+    Args:
         directory: string, path to the target directory. It should contain one
           subdirectory per class. Any PNG, JPG, BMP, PPM or TIF images inside
           each of the subdirectories directory tree will be included in the
@@ -920,7 +935,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: Str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: One of "png", "jpeg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+            "tif", "jpg" 
             (only relevant if `save_to_dir` is set). Default: "png".
         follow_links: Whether to follow symlinks inside
             class subdirectories (default: False).
@@ -984,7 +1000,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
     **A simple tutorial can be found **[here](
                                 http://bit.ly/keras_flow_from_dataframe).
 
-    Arguments:
+    Args:
         dataframe: Pandas dataframe containing the filepaths relative to
           `directory` (or absolute paths if `directory` is None) of the images
           in a string column. It should include other column/s
@@ -1035,7 +1051,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
           generated (useful for visualizing what you are doing).
         save_prefix: str. Prefix to use for filenames of saved pictures (only
           relevant if `save_to_dir` is set).
-        save_format: one of "png", "jpeg"
+        save_format: one of "png", "jpeg", "bmp", "pdf", "ppm", "gif", 
+            "tif", "jpg" 
             (only relevant if `save_to_dir` is set). Default: "png".
         subset: Subset of data (`"training"` or `"validation"`) if
           `validation_split` is set in `ImageDataGenerator`.

@@ -49,15 +49,11 @@ void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetShouldStoreGraphs(true);
+  tensorflow::unwrap(ctx)->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetShouldStoreGraphs(false);
+  tensorflow::unwrap(ctx)->SetShouldStoreGraphs(false);
 }
 
 uint64_t TFE_GetContextId(TFE_Context* ctx) {
@@ -486,11 +482,6 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
 }
 
-void TFE_ContextOptionsSetLazyRemoteInputsCopy(TFE_ContextOptions* options,
-                                               bool lazy_copy) {
-  options->lazy_remote_inputs_copy = lazy_copy;
-}
-
 void TFE_ContextOptionsSetTfrt(TFE_ContextOptions* options, bool use_tfrt) {
   options->use_tfrt = use_tfrt;
 }
@@ -544,22 +535,16 @@ void TFE_ExecutorClearError(TFE_Executor* executor) {
 }
 
 void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetExecutorForThread(executor->executor());
+  tensorflow::unwrap(ctx)->SetExecutorForThread(executor->executor());
 }
 
 TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  return new TFE_Executor(&context->Executor());
+  return new TFE_Executor(&tensorflow::unwrap(ctx)->Executor());
 }
 
 void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   auto address_space = tensorflow::DeviceNameUtils::AddressSpace(
-      context->HostCPU()->parsed_name());
+      tensorflow::unwrap(ctx)->HostCPUParsedName());
   auto str = tensorflow::DeviceNameUtils::ParsedNameToString(address_space);
   void* data = tensorflow::port::Malloc(str.length());
   str.copy(static_cast<char*>(data), str.length(), 0);
@@ -572,9 +557,7 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
 
 void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
                                TF_Buffer* buf, TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  auto* function_def = context->FindFunctionDef(function_name);
+  auto* function_def = tensorflow::unwrap(ctx)->FindFunctionDef(function_name);
   if (function_def == nullptr) {
     status->status = tensorflow::errors::NotFound(
         "Unable to find FunctionDef with name: ", function_name);
@@ -630,8 +613,23 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
   std::vector<tensorflow::TensorHandle*> tensor_handles;
   tensor_handles.reserve(*num_handles);
   for (int i = 0; i < *num_handles; ++i) {
+    tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
+        tensorflow::unwrap(handles[i]);
+    if (tensorflow::CustomDeviceTensorHandle::classof(unwrapped_handle)) {
+      // One of the inputs we're trying to pack is on a custom device. We'll let
+      // the first custom device we see handle all of the packing.
+      auto* custom_device_handle =
+          tensorflow::down_cast<tensorflow::CustomDeviceTensorHandle*>(
+              unwrapped_handle);
+      tensorflow::ImmediateExecutionTensorHandle* result;
+      status->status = custom_device_handle->device()->Pack(
+          absl::Span<tensorflow::ImmediateExecutionTensorHandle*>(
+              tensorflow::unwrap(handles), *num_handles),
+          &result);
+      return tensorflow::wrap(result);
+    }
     tensor_handles.push_back(
-        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(handles[i])));
+        tensorflow::TensorHandleFromInterface(unwrapped_handle));
   }
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
@@ -643,14 +641,46 @@ TFE_TensorHandle* TFE_CreatePackedTensorHandle(TFE_Context* ctx,
 
 void TFE_ContextSetSoftDevicePlacement(TFE_Context* ctx, unsigned char enable,
                                        TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetAllowSoftPlacement(enable);
+  tensorflow::unwrap(ctx)->SetAllowSoftPlacement(enable);
 }
 
 void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx, unsigned char enable,
                                       TF_Status* status) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetLogDevicePlacement(enable);
+  tensorflow::unwrap(ctx)->SetLogDevicePlacement(enable);
+}
+
+const char* TFE_TensorHandleDeviceType(TFE_TensorHandle* h, TF_Status* status) {
+  if (h == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    return nullptr;
+  }
+  return tensorflow::unwrap(h)->DeviceType(&status->status);
+}
+
+int TFE_TensorHandleDeviceID(TFE_TensorHandle* h, TF_Status* status) {
+  if (h == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    return -1;
+  }
+  return tensorflow::unwrap(h)->DeviceId(&status->status);
+}
+
+void TFE_GetExecutedOpNames(TFE_Context* ctx, TF_Buffer* buf,
+                            TF_Status* status) {
+  const std::vector<std::string>& op_names =
+      tensorflow::unwrap(ctx)->GetLoggedOpsTestonly();
+
+  std::ostringstream op_names_oss;
+  for (const auto& op : op_names) {
+    op_names_oss << op << ", ";
+  }
+  const std::string& op_names_str = op_names_oss.str();
+  void* data = tensorflow::port::Malloc(op_names_str.length());
+  op_names_str.copy(static_cast<char*>(data), op_names_str.length(), 0);
+  buf->data = data;
+  buf->length = op_names_str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  status->status = tensorflow::Status::OK();
 }

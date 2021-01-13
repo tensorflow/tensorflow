@@ -18,17 +18,29 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
+// Returns a Timespan from an XEvent.
+// WARNING: This should only be used when comparing events from the same XLine.
+inline Timespan XEventTimespan(const XEvent& event) {
+  return Timespan(event.offset_ps(), event.duration_ps());
+}
+
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
 XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Returns the planes with the given names, if found.
+std::vector<const XPlane*> FindPlanesWithNames(
+    const XSpace& space, const std::vector<absl::string_view>& names);
 
 // Returns the plane with the given name in the container. If necessary, adds a
 // new plane to the container.
@@ -40,17 +52,17 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
-// Returns true if event is nested by parent.
-bool IsNested(const tensorflow::profiler::XEvent& event,
-              const tensorflow::profiler::XEvent& parent);
+// Returns the plane with the given id or nullptr if not found.
+const XLine* FindLineWithId(const XPlane& plane, int64 id);
 
-void AddOrUpdateIntStat(int64 metadata_id, int64 value,
-                        tensorflow::profiler::XEvent* event);
+XStat* FindOrAddMutableStat(const XStatMetadata& stat_metadata, XEvent* event);
 
-void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
-                        tensorflow::profiler::XEvent* event);
+void RemovePlane(XSpace* space, const XPlane* plane);
+void RemovePlanes(XSpace* space, const std::vector<const XPlane*>& planes);
+void RemoveLine(XPlane* plane, const XLine* line);
+void RemoveEvents(XLine* line,
+                  const absl::flat_hash_set<const XEvent*>& events);
 
-void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 
@@ -100,15 +112,22 @@ std::vector<XEvent*> GetSortedEvents(XPlane* plane, Compare comp,
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);
 void NormalizeTimestamps(XSpace* space, uint64 start_time_ns);
 
-// Merge Xplane src_plane into Xplane dst_plane, both plane level stats, lines,
-// events and event level stats are merged; If src_plane and dst_plane both have
-// the same line, which have different start timestamps, we will normalize the
-// events offset timestamp correspondingly.
+// Merges src_plane into dst_plane. Both plane level stats, lines, events and
+// event level stats are merged. If src_plane and dst_plane both have the same
+// line, which have different start timestamps, we will normalize the events
+// offset timestamp correspondingly.
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
+
+// Merges each plane with a src_planes, into the dst_plane.
+void MergePlanes(const std::vector<const XPlane*>& src_planes,
+                 XPlane* dst_plane);
 
 // Plane's start timestamp is defined as the minimum of all lines' start
 // timestamps. If zero line exists, return 0;
 uint64 GetStartTimestampNs(const XPlane& plane);
+
+// Returns true if there are no XEvents.
+bool IsEmpty(const XSpace& space);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_driver.h"
 
 namespace xla {
 namespace gpu {
@@ -96,7 +97,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       "uses routines from libdevice.",
       hlo_module_config);
 
-  // GetCudaRootCandidates always includes ".", but but if everything fails, we
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }
@@ -198,6 +199,43 @@ absl::optional<bool> CanShareBufferHint(const HloInstruction* user,
   return absl::nullopt;
 }
 
+// Try to load ptx from files defined in the FLAGS. If successful, return true.
+bool MaybeLoadPtxFromFile(const HloModuleConfig module_config,
+                          const HloModule* module, std::string* ptx) {
+  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
+  // and warn when a file is not used to ease catching typo in filename.
+  std::string prefix = xla::FilenameFor(*module, "", *ptx);
+  std::string matched_filename;
+  for (const string& full_filename :
+       module_config.debug_options().xla_gpu_ptx_file()) {
+    // To ease comparing many PTX versions, accept different suffixes then
+    // the original filename.
+    auto filename = tensorflow::io::Basename(full_filename);
+    if (absl::StartsWith(filename, prefix)) {
+      matched_filename = full_filename;
+      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
+      break;
+    }
+  }
+  if (!module_config.debug_options().xla_gpu_ptx_file().empty() &&
+      matched_filename.empty()) {
+    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
+            << "', we did not found a PTX file to load.";
+  }
+
+  if (!matched_filename.empty()) {
+    std::ifstream ifs(matched_filename, std::ifstream::in);
+    *ptx = std::string(std::istreambuf_iterator<char>(ifs),
+                       std::istreambuf_iterator<char>());
+    CHECK(!ptx->empty()) << "Empty or non existing PTX file: "
+                         << matched_filename;
+    return true;
+  }
+  return false;
+}
+
+}  // namespace
+
 // Prints a warning if the ptx->sass JIT in the driver has known bugs.
 //
 // Using such a driver only a problem if we fail to use ptxas to compile our ptx
@@ -238,42 +276,6 @@ void WarnIfBadDriverJITVersion() {
   });
 }
 
-// Try to load ptx from files defined in the FLAGS. If successful, return true.
-bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
-  // If the xla_gpu_ptx_file options is set, be explicit when a file is used
-  // and warn when a file is not used to ease catching typo in filename.
-  std::string prefix = xla::FilenameFor(*module, "", *ptx);
-  std::string matched_filename;
-  for (const string& full_filename :
-       module->config().debug_options().xla_gpu_ptx_file()) {
-    // To ease comparing many PTX versions, accept different suffixes then
-    // the original filename.
-    auto filename = tensorflow::io::Basename(full_filename);
-    if (absl::StartsWith(filename, prefix)) {
-      matched_filename = full_filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
-      break;
-    }
-  }
-  if (module->config().debug_options().xla_gpu_ptx_file().size() > 0 &&
-      matched_filename.empty()) {
-    VLOG(0) << "RunBackend() - For module with prefix '" << prefix
-            << "', we did not found a PTX file to load.";
-  }
-
-  if (!matched_filename.empty()) {
-    std::ifstream ifs(matched_filename, std::ifstream::in);
-    *ptx = std::string(std::istreambuf_iterator<char>(ifs),
-                       std::istreambuf_iterator<char>());
-    CHECK(!ptx->empty()) << "Empty or non existing PTX file: "
-                         << matched_filename;
-    return true;
-  }
-  return false;
-}
-
-}  // namespace
-
 NVPTXCompiler::NVPTXCompiler()
     : GpuCompiler(stream_executor::cuda::kCudaPlatformId, nvptx::kTargetTriple,
                   nvptx::kDataLayout) {}
@@ -296,10 +298,12 @@ GpuVersion NVPTXCompiler::GetGpuVersion(se::StreamExecutor* stream_exec) {
 }
 
 StatusOr<std::pair<std::string, std::vector<uint8>>>
-NVPTXCompiler::CompileTargetBinary(const HloModule* module,
+NVPTXCompiler::CompileTargetBinary(const HloModuleConfig& module_config,
                                    llvm::Module* llvm_module,
                                    GpuVersion gpu_version,
-                                   se::StreamExecutor* stream_exec) {
+                                   se::StreamExecutor* stream_exec,
+                                   bool relocatable,
+                                   const HloModule* debug_module) {
   std::pair<int, int> compute_capability =
       absl::get<std::pair<int, int>>(gpu_version);
 
@@ -311,34 +315,24 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
     // time, we have a one-element cache, keyed on the module's config's
     // cuda_data_dir.
     if (cached_libdevice_dir_.empty()) {
-      cached_libdevice_dir_ = GetLibdeviceDir(module->config());
+      cached_libdevice_dir_ = GetLibdeviceDir(module_config);
     }
     libdevice_dir = cached_libdevice_dir_;
   }
   VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
 
   string ptx;
-  if (!MaybeLoadPtxFromFile(module, &ptx)) {
+  if (!(debug_module &&
+        MaybeLoadPtxFromFile(module_config, debug_module, &ptx))) {
     XLA_SCOPED_LOGGING_TIMER(
         "NVPTXCompiler::CompileTargetBinary - CompileToPtx");
-    TF_ASSIGN_OR_RETURN(
-        ptx, nvptx::CompileToPtx(llvm_module, gpu_version, module->config(),
-                                 libdevice_dir));
-  }
-
-  llvm_ir::DumpIrIfEnabled(*module, *llvm_module, /*optimized=*/true);
-
-  if (user_post_optimization_hook_) {
-    user_post_optimization_hook_(*llvm_module);
-  }
-  // Write PTX to IR dump directory, if IR dumping was requested.
-  if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "", "ptx", ptx);
+    TF_ASSIGN_OR_RETURN(ptx, nvptx::CompileToPtx(llvm_module, gpu_version,
+                                                 module_config, libdevice_dir));
   }
 
   std::vector<uint8> cubin = CompileGpuAsmOrGetCachedResult(
       stream_exec, ptx, compute_capability.first, compute_capability.second,
-      module->config());
+      module_config, relocatable);
 
   return std::pair<std::string, std::vector<uint8>>(std::move(ptx),
                                                     std::move(cubin));
@@ -346,7 +340,7 @@ NVPTXCompiler::CompileTargetBinary(const HloModule* module,
 
 std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     se::StreamExecutor* stream_exec, const string& ptx, int cc_major,
-    int cc_minor, const HloModuleConfig& hlo_module_config) {
+    int cc_minor, const HloModuleConfig& hlo_module_config, bool relocatable) {
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::CompileGpuAsmOrGetCachedResult");
   tensorflow::profiler::TraceMe activity(
       "PTX->CUBIN", tensorflow::profiler::TraceMeLevel::kInfo);
@@ -361,7 +355,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     tensorflow::mutex_lock lock(mutex_);
     std::tie(iter, inserted) = compilation_cache_.emplace(
         std::piecewise_construct,
-        std::forward_as_tuple(ptx, cc_major, cc_minor),
+        std::forward_as_tuple(ptx, cc_major, cc_minor, relocatable),
         std::forward_as_tuple());
     cache_ptx = &iter->first.ptx;
     cache_value = &iter->second;
@@ -375,9 +369,13 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
     if (inserted) {
       CHECK(!cache_value->compilation_done);
       if (!ptx.empty()) {
-        StatusOr<std::vector<uint8>> maybe_cubin =
-            se::CompileGpuAsm(stream_exec->device_ordinal(), cache_ptx->c_str(),
-                              PtxOptsFromConfig(hlo_module_config));
+        auto ptxas_config = PtxOptsFromConfig(hlo_module_config);
+        if (relocatable) {
+          ptxas_config.extra_flags.push_back("-c");
+        }
+        StatusOr<std::vector<uint8>> maybe_cubin = se::CompileGpuAsm(
+            stream_exec->device_ordinal(), cache_ptx->c_str(), ptxas_config);
+
         if (maybe_cubin.ok()) {
           cache_value->cubin_data = std::move(maybe_cubin).ValueOrDie();
           VLOG(2) << "Compiled PTX size:" << ptx.size()
@@ -396,7 +394,7 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                      "--xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found "
                      "to use the GPU driver for compiling ptx instead. However "
                      "this option is discouraged and can lead to increased "
-                     "memory concumptions and other subtle runtime issues.";
+                     "memory consumptions and other subtle runtime issues.";
             }
             // Missing ptxas is expected in some environments where CUDA SDK
             // binaries are not available. We don't want to spam logs with
@@ -415,7 +413,9 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                   "using $PATH.",
                   hlo_module_config);
             }
-          } else {
+          } else if (maybe_cubin.status().code() !=
+                     tensorflow::error::Code::UNIMPLEMENTED) {
+            // If unimplemented is returned, we fallback to the driver.
             LOG(FATAL) << "ptxas returned an error during compilation of ptx "
                           "to sass: '"
                        << maybe_cubin.status() << "'  "
@@ -441,6 +441,18 @@ std::vector<uint8> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
   CHECK(cache_value != nullptr);
   CHECK(cache_value->compilation_done);
   return cache_value->cubin_data;
+}
+
+StatusOr<std::vector<uint8>> NVPTXCompiler::LinkModules(
+    se::StreamExecutor* stream_exec, std::vector<std::vector<uint8>> modules) {
+  std::vector<stream_executor::CubinOrPTXImage> images;
+  images.reserve(modules.size());
+  for (auto& module : modules) {
+    images.push_back({"", std::move(module)});
+  }
+  return LinkGpuAsm(static_cast<se::gpu::GpuContext*>(
+                        stream_exec->implementation()->GpuContextHack()),
+                    images);
 }
 
 }  // namespace gpu

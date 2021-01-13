@@ -859,7 +859,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @nested_func
+    // CHECK-SAME: func private @nested_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
@@ -908,7 +908,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func
+    // CHECK-SAME: func private @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: "tf_device.launch"
@@ -1007,7 +1007,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-COUNT-2: call @referenced_func
-    // CHECK-COUNT-1: func @referenced_func
+    // CHECK-COUNT-1: func private @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
     // CHECK: "tf_device.launch"
@@ -1161,13 +1161,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
-    // CHECK-SAME: func @referenced_func3
+    // CHECK-SAME: func private @referenced_func3
     // CHECK-SAME: tf.I
-    // CHECK-SAME: func @referenced_func2
+    // CHECK-SAME: func private @referenced_func2
     // CHECK-SAME: tf.H
-    // CHECK-SAME: func @referenced_func1
+    // CHECK-SAME: func private @referenced_func1
     // CHECK-SAME: tf.G
-    // CHECK-SAME: func @referenced_func0
+    // CHECK-SAME: func private @referenced_func0
     // CHECK-SAME: tf.F
     // CHECK: "tf_device.launch"
     // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
@@ -1206,6 +1206,151 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
   func @referenced_func3(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %1 = "tf.I"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     return %1 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Test `tf_device.cluster_func` on TPU with pre-split replicate sharded
+// input/output using `tf.TPUPartitionedInput` and `tf.TPUPartitionedOutput`.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
+    // CHECK: %[[READ_VAR_0:[0-9]*]] = "tf.ReadVariableOp"(%arg0)
+    %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    // CHECK: %[[READ_VAR_1:[0-9]*]] = "tf.ReadVariableOp"(%arg1)
+    %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    // CHECK-NOT: tf.TPUPartitionedInput
+    %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:3 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"()
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: [[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_0]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_1]], %[[COMPILE_OUTPUT]]#2)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:1"
+    %computation = "tf_device.cluster_func"(%partitioned_input) {_tpu_replicate = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = [""], output_sharding_configuration = [""], use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
+    // CHECK-NOT: tf.TPUPartitionedOutput
+    %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    // CHECK: "tf.AssignVariableOp"(%arg0, %[[PARALLEL_EXECUTE_OUTPUT]]#0)
+    // CHECK: "tf.AssignVariableOp"(%arg1, %[[PARALLEL_EXECUTE_OUTPUT]]#1)
+    "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    return
+  }
+  func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+    return %arg0: tensor<i32>
+  }
+}
+
+// -----
+
+// Test `tf_device.cluster_func` on TPU with pre-split tile sharded input/
+// output using `tf.TPUPartitionedInput` and `tf.TPUPartitionedOutput`.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func @cluster(%arg0: tensor<!tf.resource<tensor<3x2xf32>>>, %arg1: tensor<!tf.resource<tensor<3x2xf32>>>) {
+    // CHECK: %[[READ_VAR_0:[0-9]*]] = "tf.ReadVariableOp"(%arg0)
+    %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<3x2xf32>>>) -> tensor<3x2xf32>
+    // CHECK: %[[READ_VAR_1:[0-9]*]] = "tf.ReadVariableOp"(%arg1)
+    %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<3x2xf32>>>) -> tensor<3x2xf32>
+    // CHECK-NOT: tf.TPUPartitionedInput
+    %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {_XlaSharding = "\08\03\1A\02\01\02\22\02\00\01", partition_dim = 1 : i64} : (tensor<3x2xf32>, tensor<3x2xf32>) -> tensor<3x4xf32>
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:3 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"()
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: [[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:2 = "tf_device.parallel_execute"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_0]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[READ_VAR_1]], %[[COMPILE_OUTPUT]]#2)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:1"
+    %computation = "tf_device.cluster_func"(%partitioned_input) {_tpu_replicate = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01"], output_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01"], use_spmd_for_xla_partitioning = true} : (tensor<3x4xf32>) -> tensor<3x4xf32>
+    // CHECK-NOT: tf.TPUPartitionedOutput
+    %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {_XlaSharding = "\08\03\1A\02\01\02\22\02\00\01", partition_dim = 1 : i64} : (tensor<3x4xf32>) -> (tensor<3x2xf32>, tensor<3x2xf32>)
+    // CHECK: "tf.AssignVariableOp"(%arg0, %[[PARALLEL_EXECUTE_OUTPUT]]#0)
+    // CHECK: "tf.AssignVariableOp"(%arg1, %[[PARALLEL_EXECUTE_OUTPUT]]#1)
+    "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<3x2xf32>>>, tensor<3x2xf32>) -> ()
+    "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<3x2xf32>>>, tensor<3x2xf32>) -> ()
+    return
+  }
+  func @computation(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
+    return %arg0: tensor<3x4xf32>
+  }
+}
+
+// -----
+
+// Test that unsupported input sharding type of TPUPartitionedInputOp inputs of
+// ClusterFuncOp result in error.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
+    %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // expected-error@+1 {{unsupported input sharding type MAXIMAL for 0-th input}}
+    %computation = "tf_device.cluster_func"(%partitioned_input) {_tpu_replicate = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1],
+      input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = [""], use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
+    %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    return
+  }
+  func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+    return %arg0: tensor<i32>
+  }
+}
+
+// -----
+
+// Test that unsupported output sharding type of TPUPartitionedOutputOp outputs
+// of ClusterFuncOp result in error.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
+    %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    // expected-error@+1 {{unsupported output sharding type MAXIMAL for 0-th output}}
+    %computation = "tf_device.cluster_func"(%partitioned_input) {_tpu_replicate = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1],
+      input_sharding_configuration = [""], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
+    %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    return
+  }
+  func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+    return %arg0: tensor<i32>
+  }
+}
+
+// -----
+
+// Test that multiple uses of ClusterFuncOp output alongwith
+// TPUPartitionedOutputOp results in error.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
+  func @cluster(%arg0: tensor<!tf.resource<tensor<i32>>>, %arg1: tensor<!tf.resource<tensor<i32>>>) {
+    %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<!tf.resource<tensor<i32>>>) -> tensor<i32>
+    %partitioned_input = "tf.TPUPartitionedInput"(%read0, %read1) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %computation = "tf_device.cluster_func"(%partitioned_input) {_tpu_replicate = "cluster0", func = @computation, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = [""], output_sharding_configuration = [""], use_spmd_for_xla_partitioning = true} : (tensor<i32>) -> tensor<i32>
+    // expected-error@+1 {{'tf.TPUPartitionedOutput' op must be a unique user of tf_device.cluster_func output}}
+    %partitioned_output:2 = "tf.TPUPartitionedOutput"(%computation) {N = 2 : i64, partition_dim = -1 : i64} : (tensor<i32>) -> (tensor<i32>, tensor<i32>)
+    "tf.AssignVariableOp"(%arg0, %partitioned_output#0) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    "tf.AssignVariableOp"(%arg1, %partitioned_output#1) : (tensor<!tf.resource<tensor<i32>>>, tensor<i32>) -> ()
+    "tf._SomeOp"(%computation) : (tensor<i32>) -> ()
+    return
+  }
+  func @computation(%arg0: tensor<i32>) -> tensor<i32> {
+    return %arg0: tensor<i32>
   }
 }
 

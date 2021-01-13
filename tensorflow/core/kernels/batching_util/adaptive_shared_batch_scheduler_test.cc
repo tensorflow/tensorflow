@@ -34,8 +34,10 @@ class FakeTask : public BatchTask {
 
   size_t size() const override { return size_; }
 
+  void set_size(size_t size) { size_ = size; }
+
  private:
-  const size_t size_;
+  size_t size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FakeTask);
 };
@@ -352,6 +354,62 @@ TEST(AdaptiveSharedBatchSchedulerTest, QueueCapacityInfo) {
   EXPECT_EQ(queue->NumEnqueuedTasks(), 1);
   EXPECT_EQ(queue->SchedulingCapacity(), 9 * 1000 + 300);
   finish_processing.Notify();
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, FullBatches) {
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(AdaptiveSharedBatchScheduler<FakeTask>::Create({}, &scheduler));
+  auto queue_callback = [](std::unique_ptr<Batch<FakeTask>> batch) {
+    ASSERT_TRUE(batch->IsClosed());
+  };
+  AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+  queue_options.max_batch_size = 100;
+  queue_options.batch_timeout_micros = 1000000000000;
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue));
+  TF_ASSERT_OK(ScheduleTask(100, queue.get()));
+  // Full batches should not have to wait batch_timeout_micros.
+}
+
+TEST(AdaptiveSharedBatchSchedulerTest, TruncateBatches) {
+  mutex mu;
+  int processed_batches = 0;
+  auto queue_callback =
+      [&mu, &processed_batches](std::unique_ptr<Batch<FakeTask>> batch) {
+        ASSERT_TRUE(batch->IsClosed());
+        mutex_lock l(mu);
+        ++processed_batches;
+      };
+  std::shared_ptr<AdaptiveSharedBatchScheduler<FakeTask>> scheduler;
+  TF_ASSERT_OK(AdaptiveSharedBatchScheduler<FakeTask>::Create({}, &scheduler));
+  std::unique_ptr<BatchScheduler<FakeTask>> queue;
+
+  AdaptiveSharedBatchScheduler<FakeTask>::QueueOptions queue_options;
+  queue_options.max_batch_size = 100;
+  queue_options.batch_timeout_micros = 1000000;
+  queue_options.split_input_task_func =
+      [](std::unique_ptr<FakeTask>* input_task, int first_size, int max_size,
+         std::vector<std::unique_ptr<FakeTask>>* output_tasks) {
+        EXPECT_EQ(first_size, 70);
+        output_tasks->push_back(std::move(*input_task));
+        int remaining_size = output_tasks->back()->size() - first_size;
+        output_tasks->back()->set_size(first_size);
+        while (remaining_size > 0) {
+          int task_size = std::min(remaining_size, max_size);
+          output_tasks->emplace_back(new FakeTask(task_size));
+          remaining_size -= task_size;
+        }
+        return Status::OK();
+      };
+  TF_ASSERT_OK(scheduler->AddQueue(queue_options, queue_callback, &queue));
+  TF_ASSERT_OK(ScheduleTask(30, queue.get()));
+  TF_ASSERT_OK(ScheduleTask(350, queue.get()));
+  // Second task should be split into a task of size 70, 2 tasks of size 100,
+  // and one task of size 80.
+  while (true) {
+    mutex_lock l(mu);
+    if (processed_batches == 4) break;
+  }
 }
 }  // namespace anonymous
 }  // namespace serving

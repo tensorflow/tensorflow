@@ -10,6 +10,11 @@ package(default_visibility = ["//visibility:public"])
 
 exports_files(["LICENSE"])
 
+config_setting(
+    name = "use_static_tensorrt",
+    define_values = {"TF_TENSORRT_STATIC":"1"},
+)
+
 cc_library(
     name = "tensorrt_headers",
     hdrs = [
@@ -22,12 +27,19 @@ cc_library(
 
 cc_library(
     name = "tensorrt",
-    srcs = [":tensorrt_lib"],
+    srcs = select({
+        ":use_static_tensorrt": [":tensorrt_static_lib"],
+        "//conditions:default": [":tensorrt_lib"],
+    }),
     copts = cuda_default_copts(),
-    data = [":tensorrt_lib"],
+    data = select({
+        ":use_static_tensorrt": [],
+        "//conditions:default": [":tensorrt_lib"],
+    }),
     linkstatic = 1,
     deps = [
         ":tensorrt_headers",
+        # TODO(b/174608722): fix this line.
         "@local_config_cuda//cuda",
     ],
 )
@@ -38,6 +50,11 @@ bzl_library(
     deps = [
         "@bazel_skylib//lib:selects",
     ],
+)
+
+py_library(
+    name = "tensorrt_config_py",
+    srcs = ["tensorrt/tensorrt_config.py"]
 )
 
 %{copy_rules}

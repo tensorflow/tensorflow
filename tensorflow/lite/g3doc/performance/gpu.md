@@ -12,7 +12,9 @@ resulting in lower latency. In the best scenario, inference on the GPU may now
 run fast enough for previously not available real-time applications.
 
 Unlike CPUs, GPUs compute with 16-bit or 32-bit floating point numbers and do
-not require quantization for optimal performance.
+not require quantization for optimal performance. The delegate does accept 8-bit
+quantized models, but the calculation will be performed in floating point
+numbers. Refer to the [advanced documentation](gpu_advanced.md) for details.
 
 Another benefit with GPU inference is its power efficiency. GPUs carry out the
 computations in a very efficient and optimized manner, so that they consume less
@@ -47,16 +49,16 @@ package in the existing `dependencies` block.
 ```
 dependencies {
     ...
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
-    implementation 'org.tensorflow:tensorflow-lite-gpu:0.0.0-nightly'
+    implementation 'org.tensorflow:tensorflow-lite:2.3.0'
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.3.0'
 }
 ```
 
 #### Step 3. Build and run
 
-Run → Run ‘app’.  When you run the application you will see a button for
-enabling the GPU. Change from quantized to a float model and then click GPU to
-run on the GPU.
+Run → Run ‘app’. When you run the application you will see a button for enabling
+the GPU. Change from quantized to a float model and then click GPU to run on the
+GPU.
 
 ![running android gpu demo and switch to gpu](images/android_gpu_demo.gif)
 
@@ -70,38 +72,14 @@ Note: This requires XCode v10.1 or later.
 #### Step 1. Get the demo source code and make sure it compiles.
 
 Follow our iOS Demo App [tutorial](https://www.tensorflow.org/lite/demo_ios).
-This will get you to a point where the unmodified iOS camera demo is working
-on your phone.
-
+This will get you to a point where the unmodified iOS camera demo is working on
+your phone.
 
 #### Step 2. Modify the Podfile to use the TensorFlow Lite GPU CocoaPod
 
-<section class="zippy">
-
-Until TensorFlow Lite 2.0.0
-
-We have built a binary CocoaPod that includes the GPU delegate. To switch the
-project to use it, modify the
-`tensorflow/tensorflow/lite/examples/ios/camera/Podfile` file to use
-the `TensorFlowLiteGpuExperimental` pod instead of `TensorFlowLite`.
-
-```
-target 'YourProjectName'
-  # pod 'TensorFlowLite', '1.12.0'
-  pod 'TensorFlowLiteGpuExperimental'
-```
-
-</section>
-
-From TensorFlow Lite 2.1.0, GPU delegate is included in the `TensorFlowLiteC`
-pod. You can choose between `TensorFlowLiteC` and `TensorFlowLiteSwift`
-depending on the language.
-
-Note: This behavior will be changed in 2.3.0 and latest nightly releases
-
-For nightly version and upcoming 2.3.0 release, by default GPU delegate is
-excluded from the pod to reduce the binary size. You can include them by
-specifying subspec. For `TensorFlowLiteSwift` pod:
+From 2.3.0 release, by default GPU delegate is excluded from the pod to reduce
+the binary size. You can include them by specifying subspec. For
+`TensorFlowLiteSwift` pod:
 
 ```ruby
 pod 'TensorFlowLiteSwift/Metal', '~> 0.0.1-nightly',
@@ -113,7 +91,32 @@ OR
 pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly', :subspecs => ['Metal']
 ```
 
-You can do similiarly for `TensorFlowLiteC` if you want to use the C API.
+You can do similarly for `TensorFlowLiteObjC` or `TensorFlowLitC` if you want to
+use the Objective-C (from 2.4.0 release) or C API.
+
+<div>
+  <devsite-expandable>
+    <h4 class="showalways">Before 2.3.0 release</h4>
+    <h4>Until TensorFlow Lite 2.0.0</h4>
+    <p>
+      We have built a binary CocoaPod that includes the GPU delegate. To switch
+      the project to use it, modify the
+      `tensorflow/tensorflow/lite/examples/ios/camera/Podfile` file to use the
+      `TensorFlowLiteGpuExperimental` pod instead of `TensorFlowLite`.
+    </p>
+    <pre class="prettyprint lang-ruby notranslate" translate="no"><code>
+    target 'YourProjectName'
+      # pod 'TensorFlowLite', '1.12.0'
+      pod 'TensorFlowLiteGpuExperimental'
+    </code></pre>
+    <h4>Until TensorFlow Lite 2.2.0</h4>
+    <p>
+      From TensorFlow Lite 2.1.0 to 2.2.0, GPU delegate is included in the
+      `TensorFlowLiteC` pod. You can choose between `TensorFlowLiteC` and
+      `TensorFlowLiteSwift` depending on the language.
+    </p>
+  </devsite-expandable>
+</div>
 
 #### Step 3. Enable the GPU delegate
 
@@ -153,94 +156,187 @@ Lastly make sure to select Release-only builds on 64-bit architecture. Under
 
 ### Android
 
+Note: The TensorFlow Lite Interpreter must be created on the same thread as
+where it is run. Otherwise, `TfLiteGpuDelegate Invoke: GpuDelegate must run on
+the same thread where it was initialized.` may occur.
+
+There are two ways to invoke model acceleration depending on if you are using
+[Android Studio ML Model Binding](../inference_with_metadata/codegen#acceleration)
+or TensorFlow Lite Interpreter.
+
+#### TensorFlow Lite Interpreter
+
 Look at the demo to see how to add the delegate. In your application, add the
 AAR as above, import `org.tensorflow.lite.gpu.GpuDelegate` module, and use
 the`addDelegate` function to register the GPU delegate to the interpreter:
 
-```java
-import org.tensorflow.lite.Interpreter;
-import org.tensorflow.lite.gpu.GpuDelegate;
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Kotlin</h3>
+      <p><pre class="prettyprint lang-kotlin">
+    import org.tensorflow.lite.Interpreter
+    import org.tensorflow.lite.gpu.CompatibilityList
+    import org.tensorflow.lite.gpu.GpuDelegate
 
-// Initialize interpreter with GPU delegate
-GpuDelegate delegate = new GpuDelegate();
-Interpreter.Options options = (new Interpreter.Options()).addDelegate(delegate);
-Interpreter interpreter = new Interpreter(model, options);
+    val compatList = CompatibilityList()
 
-// Run inference
-while (true) {
-  writeToInput(input);
-  interpreter.run(input, output);
-  readFromOutput(output);
-}
+    val options = Interpreter.Options().apply{
+        if(compatList.isDelegateSupportedOnThisDevice){
+            // if the device has a supported GPU, add the GPU delegate
+            val delegateOptions = compatList.bestOptionsForThisDevice
+            this.addDelegate(GpuDelegate(delegateOptions))
+        } else {
+            // if the GPU is not supported, run on 4 threads
+            this.setNumThreads(4)
+        }
+    }
 
-// Clean up
-delegate.close();
-```
+    val interpreter = Interpreter(model, options)
+
+    // Run inference
+    writeToInput(input)
+    interpreter.run(input, output)
+    readFromOutput(output)
+      </pre></p>
+    </section>
+    <section>
+      <h3>Java</h3>
+      <p><pre class="prettyprint lang-java">
+    import org.tensorflow.lite.Interpreter;
+    import org.tensorflow.lite.gpu.CompatibilityList;
+    import org.tensorflow.lite.gpu.GpuDelegate;
+
+    // Initialize interpreter with GPU delegate
+    Interpreter.Options options = new Interpreter.Options();
+    CompatibilityList compatList = CompatibilityList();
+
+    if(compatList.isDelegateSupportedOnThisDevice()){
+        // if the device has a supported GPU, add the GPU delegate
+        GpuDelegate.Options delegateOptions = compatList.getBestOptionsForThisDevice();
+        GpuDelegate gpuDelegate = new GpuDelegate(delegateOptions);
+        options.addDelegate(gpuDelegate);
+    } else {
+        // if the GPU is not supported, run on 4 threads
+        options.setNumThreads(4);
+    }
+
+    Interpreter interpreter = new Interpreter(model, options);
+
+    // Run inference
+    writeToInput(input);
+    interpreter.run(input, output);
+    readFromOutput(output);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ### iOS
 
-#### Swift
+Note: GPU delegate can also use C API for Objective-C code. Prior to TensorFlow
+Lite 2.4.0 release, this was the only option.
 
-Initialize TensorFlow Lite interpreter with the GPU delegate.
+<div>
+  <devsite-selector>
+    <section>
+      <h3>Swift</h3>
+      <p><pre class="prettyprint lang-swift">
+    import TensorFlowLite
 
-```swift
-import TensorFlowLite
+    // Load model ...
 
-// Load model ...
+    // Initialize TensorFlow Lite interpreter with the GPU delegate.
+    let delegate = MetalDelegate()
+    if let interpreter = try Interpreter(modelPath: modelPath,
+                                         delegates: [delegate]) {
+      // Run inference ...
+    }
+      </pre></p>
+    </section>
+    <section>
+      <h3>Objective-C</h3>
+      <p><pre class="prettyprint lang-objc">
+    // Import module when using CocoaPods with module support
+    @import TFLTensorFlowLite;
 
-let delegate = MetalDelegate()
+    // Or import following headers manually
+    #import "tensorflow/lite/objc/apis/TFLMetalDelegate.h"
+    #import "tensorflow/lite/objc/apis/TFLTensorFlowLite.h"
 
-if let interpreter = try Interpreter(modelPath: modelPath,
-                                     delegates: [delegate]) {
-  // Run inference ...
-}
+    // Initialize GPU delegate
+    TFLMetalDelegate* metalDelegate = [[TFLMetalDelegate alloc] init];
 
-```
+    // Initialize interpreter with model path and GPU delegate
+    TFLInterpreterOptions* options = [[TFLInterpreterOptions alloc] init];
+    NSError* error = nil;
+    TFLInterpreter* interpreter = [[TFLInterpreter alloc]
+                                    initWithModelPath:modelPath
+                                              options:options
+                                            delegates:@[ metalDelegate ]
+                                                error:&amp;error];
+    if (error != nil) { /* Error handling... */ }
 
-#### Objective-C
+    if (![interpreter allocateTensorsWithError:&amp;error]) { /* Error handling... */ }
+    if (error != nil) { /* Error handling... */ }
 
-Note: For Objective-C, GPU delegate is provided via C API.
+    // Run inference ...
+    ```
+      </pre></p>
+    </section>
+    <section>
+      <h3>C (Until 2.3.0)</h3>
+      <p><pre class="prettyprint lang-c">
+    #include "tensorflow/lite/c/c_api.h"
+    #include "tensorflow/lite/delegates/gpu/metal_delegate.h"
 
-In your application code, include the GPU delegate header and call the
-`Interpreter::ModifyGraphWithDelegate` function to register the GPU delegate to
-the interpreter:
+    // Initialize model
+    TfLiteModel* model = TfLiteModelCreateFromFile(model_path);
 
-```cpp
-#import "tensorflow/lite/delegates/gpu/metal_delegate.h"
+    // Initialize interpreter with GPU delegate
+    TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+    TfLiteDelegate* delegate = TFLGPUDelegateCreate(nil);  // default config
+    TfLiteInterpreterOptionsAddDelegate(options, metal_delegate);
+    TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+    TfLiteInterpreterOptionsDelete(options);
 
-// Initialize interpreter with GPU delegate
-std::unique_ptr<Interpreter> interpreter;
-InterpreterBuilder(*model, resolver)(&interpreter);
-auto* delegate = NewGpuDelegate(nullptr);  // default config
-if (interpreter->ModifyGraphWithDelegate(delegate) != kTfLiteOk) return false;
+    TfLiteInterpreterAllocateTensors(interpreter);
 
-// Run inference
-while (true) {
-  WriteToInputTensor(interpreter->typed_input_tensor<float>(0));
-  if (interpreter->Invoke() != kTfLiteOk) return false;
-  ReadFromOutputTensor(interpreter->typed_output_tensor<float>(0));
-}
+    NSMutableData *input_data = [NSMutableData dataWithLength:input_size * sizeof(float)];
+    NSMutableData *output_data = [NSMutableData dataWithLength:output_size * sizeof(float)];
+    TfLiteTensor* input = TfLiteInterpreterGetInputTensor(interpreter, 0);
+    const TfLiteTensor* output = TfLiteInterpreterGetOutputTensor(interpreter, 0);
 
-// Clean up
-interpreter = nullptr;
-DeleteGpuDelegate(delegate);
-```
+    // Run inference
+    TfLiteTensorCopyFromBuffer(input, inputData.bytes, inputData.length);
+    TfLiteInterpreterInvoke(interpreter);
+    TfLiteTensorCopyToBuffer(output, outputData.mutableBytes, outputData.length);
+
+    // Clean up
+    TfLiteInterpreterDelete(interpreter);
+    TFLGpuDelegateDelete(metal_delegate);
+    TfLiteModelDelete(model);
+      </pre></p>
+    </section>
+  </devsite-selector>
+</div>
 
 ## Supported Models and Ops
 
 With the release of the GPU delegate, we included a handful of models that can
 be run on the backend:
 
-* [MobileNet v1 (224x224) image classification](https://ai.googleblog.com/2017/06/mobilenets-open-source-models-for.html) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/mobilenet_v1_1.0_224.tflite)
-<br /><i>(image classification model designed for mobile and embedded based vision applications)</i>
-* [DeepLab segmentation (257x257)](https://ai.googleblog.com/2018/03/semantic-image-segmentation-with.html) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite)
-<br /><i>(image segmentation model that assigns semantic labels (e.g., dog, cat, car) to every pixel in the input image)</i>
-* [MobileNet SSD object detection](https://ai.googleblog.com/2018/07/accelerated-training-and-inference-with.html) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/mobile_ssd_v2_float_coco.tflite)
-<br /><i>(image classification model that detects multiple objects with bounding boxes)</i>
-* [PoseNet for pose estimation](https://github.com/tensorflow/tfjs-models/tree/master/posenet) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/multi_person_mobilenet_v1_075_float.tflite)
-<br /><i>(vision model that estimates the poses of a person(s) in image or video)</i>
+*   [MobileNet v1 (224x224) image classification](https://ai.googleblog.com/2017/06/mobilenets-open-source-models-for.html) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/mobilenet_v1_1.0_224.tflite)
+    <br /><i>(image classification model designed for mobile and embedded based vision applications)</i>
+*   [DeepLab segmentation (257x257)](https://ai.googleblog.com/2018/03/semantic-image-segmentation-with.html) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite)
+    <br /><i>(image segmentation model that assigns semantic labels (e.g., dog, cat, car) to every pixel in the input image)</i>
+*   [MobileNet SSD object detection](https://ai.googleblog.com/2018/07/accelerated-training-and-inference-with.html) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/mobile_ssd_v2_float_coco.tflite)
+    <br /><i>(image classification model that detects multiple objects with bounding boxes)</i>
+*   [PoseNet for pose estimation](https://github.com/tensorflow/tfjs-models/tree/master/posenet) [[download]](https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/multi_person_mobilenet_v1_075_float.tflite)
+    <br /><i>(vision model that estimates the poses of a person(s) in image or video)</i>
 
-To see a full list of supported ops, please see the [advanced documentation](gpu_advanced.md).
+To see a full list of supported ops, please see the
+[advanced documentation](gpu_advanced.md).
 
 ## Non-supported models and ops
 

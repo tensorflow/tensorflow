@@ -124,7 +124,6 @@ from tensorflow.lite.testing.op_tests.resize_nearest_neighbor import make_resize
 from tensorflow.lite.testing.op_tests.resolve_constant_strided_slice import make_resolve_constant_strided_slice_tests
 from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_sequence_tests
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
-from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests
 from tensorflow.lite.testing.op_tests.scatter_nd import make_scatter_nd_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
@@ -239,6 +238,7 @@ class Options(object):
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
     self.use_experimental_converter = False
+    self.mlir_quantizer = False
 
 
 def _prepare_dir(options):
@@ -274,7 +274,10 @@ def generate_examples(options):
   else:
     # Remove suffixes to extract the test name from the output name.
     test_name = re.sub(
-        r"(_(|toco-flex|forward-compat|edgetpu))?\.zip$", "", out, count=1)
+        r"(_(|toco-flex|forward-compat|edgetpu|mlir-quant))?\.zip$",
+        "",
+        out,
+        count=1)
 
   test_function_name = "make_%s_tests" % test_name
   test_function = get_test_function(test_function_name)
@@ -314,7 +317,10 @@ def generate_multi_set_examples(options, test_sets):
 
       # Remove suffix and set test_name to run proper test generation function.
       multi_gen_state.test_name = re.sub(
-          r"(_(|toco-flex|forward-compat))?$", "", test_name, count=1)
+          r"(_(|toco-flex|forward-compat|mlir-quant))?$",
+          "",
+          test_name,
+          count=1)
       # Set label base path to write test data files with proper path.
       multi_gen_state.label_base_path = os.path.join(
           os.path.dirname(zip_path), test_name + ".zip")

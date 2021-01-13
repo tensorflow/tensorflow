@@ -38,9 +38,6 @@ limitations under the License.
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#endif  // TENSORFLOW_USE_SYCL
 
 class OpKernelContext;
 
@@ -194,97 +191,6 @@ TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_INDEX
 #undef REGISTER_SCATTER_ND_FULL
-
-// Implementation of update functor for SYCL.
-#ifdef TENSORFLOW_USE_SYCL
-
-template <typename T, typename Index, scatter_nd_op::UpdateOp OP, int IXDIM>
-struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
-  Index operator()(
-      const SYCLDevice& d, const Index slice_size,
-      const Eigen::array<Eigen::DenseIndex, IXDIM> output_shape_prefix,
-      typename TTypes<T, 2>::Tensor Tparams,
-      typename TTypes<Index, 2>::ConstTensor Tindices,
-      typename TTypes<T, 2>::ConstTensor Tupdates,
-      typename TTypes<T, 2>::Tensor Toutput) {
-    // error_loc is -1 if there's no out-of-bounds index,
-    // otherwise it is the location of an OOB index in Tindices.
-    Index error_loc = -1;
-
-    const Eigen::DenseIndex batch_size = Tindices.dimension(0);
-
-    Index batch_strides[IXDIM];
-    for (int dim = IXDIM - 1; dim >= 0; --dim) {
-      if (dim == IXDIM - 1) {
-        batch_strides[dim] = 1;
-      } else {
-        batch_strides[dim] =
-            batch_strides[dim + 1] * output_shape_prefix[dim + 1];
-      }
-    }
-
-    for (Eigen::DenseIndex loc = 0; loc < batch_size; ++loc) {
-      Index i = 0;
-      bool out_of_bounds = false;
-      for (int dim = 0; dim < IXDIM; ++dim) {
-        const Index ix_d = internal::SubtleMustCopy(Tindices(loc, dim));
-        out_of_bounds |= !FastBoundsCheck(ix_d, output_shape_prefix[dim]);
-        i += ix_d * batch_strides[dim];
-      }
-      if (TF_PREDICT_FALSE(out_of_bounds)) {
-        error_loc = loc;
-        break;
-      } else {
-        auto input_chip = Toutput.template chip<0>(i);
-        auto output_chip = input_chip;
-        auto update_chip = Tupdates.template chip<0>(loc);
-        update_executor::UpdateExecutor<
-            SYCLDevice, decltype(input_chip), decltype(update_chip),
-            decltype(output_chip), OP>::Execute(d, input_chip, update_chip,
-                                                output_chip);
-      }
-    }
-
-    return error_loc;
-  }
-};
-
-#define REGISTER_SCATTER_ND_FULL_SYCL(T, Index, op)                           \
-  template Index                                                              \
-  ScatterNdFunctor<SYCLDevice, T, Index, op, CPU_PROVIDED_IXDIM>::operator()( \
-      const SYCLDevice& d, const Index slice_size,                            \
-      const Eigen::array<Eigen::DenseIndex, CPU_PROVIDED_IXDIM>               \
-          output_shape_prefix,                                                \
-      typename TTypes<T, 2>::Tensor Tparams,                                  \
-      typename TTypes<Index, 2>::ConstTensor Tindices,                        \
-      typename TTypes<T, 2>::ConstTensor Tupdates,                            \
-      typename TTypes<T, 2>::Tensor Toutput)
-
-#define REGISTER_SCATTER_ND_INDEX_SYCL(type, op)  \
-  REGISTER_SCATTER_ND_FULL_SYCL(type, int32, op); \
-  REGISTER_SCATTER_ND_FULL_SYCL(type, int64, op)
-
-#define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::ASSIGN);
-
-#define REGISTER_SCATTER_ND_MATH_SYCL(type)                           \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::ADD); \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::SUB); \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MIN); \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MAX);
-
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL)
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MATH_SYCL)
-REGISTER_SCATTER_ND_UPDATE_SYCL(int32);
-REGISTER_SCATTER_ND_MATH_SYCL(int32);
-
-#undef REGISTER_SCATTER_ND_MATH_SYCL
-#undef REGISTER_SCATTER_ND_UPDATE_SYCL
-#undef REGISTER_SCATTER_ND_INDEX_SYCL
-#undef REGISTER_SCATTER_ND_FULL_SYCL
-
-#endif  // TENSORFLOW_USE_SYCL
-
 }  // namespace functor
 
 }  // namespace tensorflow

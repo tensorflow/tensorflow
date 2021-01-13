@@ -22,7 +22,9 @@ limitations under the License.
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
@@ -36,19 +38,15 @@ limitations under the License.
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
-#endif
-
 namespace tflite {
 
-class InterpreterTest;
-class TestDelegate;
+class InterpreterTest;  // Class for friend declarations.
 namespace delegates {
 class InterpreterUtils;  // Class for friend declarations.
+namespace test_utils {
+class TestDelegate;  // Class for friend declarations.
+}  // namespace test_utils
 }  // namespace delegates
-
-namespace impl {
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -281,6 +279,70 @@ class Interpreter {
     return nullptr;
   }
 
+  /// WARNING: Experimental interface, subject to change
+  /// Returns list of all names of different method signatures defined
+  /// in the model.
+  /// Note, pointers returned have lifetime same as the Interpreter object.
+  std::vector<const std::string*> signature_def_names() const {
+    std::vector<const std::string*> method_names;
+    method_names.reserve(signature_defs_.size());
+    for (const auto& sig_def : signature_defs_) {
+      method_names.emplace_back(&sig_def.method_name);
+    }
+    return method_names;
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  /// Returns the mapping of inputs to tensor index in the signature
+  /// specified through 'method_name'.
+  /// If invalid name passed, an empty list will be returned.
+  const std::map<std::string, uint32_t>& signature_inputs(
+      const char* method_name) const {
+    for (const auto& sig_def : signature_defs_) {
+      if (sig_def.method_name == method_name) return sig_def.inputs;
+    }
+    static const std::map<std::string, uint32_t>* default_empty_list =
+        new std::map<std::string, uint32_t>();
+    return *default_empty_list;
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  /// Returns the mapping of outputs to tensor index in the signature
+  /// specified through 'method_name'.
+  /// If invalid name passed, an empty list will be returned.
+  const std::map<std::string, uint32_t>& signature_outputs(
+      const char* method_name) const {
+    for (const auto& sig_def : signature_defs_) {
+      if (sig_def.method_name == method_name) return sig_def.outputs;
+    }
+    static const std::map<std::string, uint32_t>* default_empty_list =
+        new std::map<std::string, uint32_t>();
+    return *default_empty_list;
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  /// Returns the input tensor identified by 'signature_input_name' in the
+  /// signature identified by 'signature_method_name'.
+  /// Returns nullptr if not found.
+  TfLiteTensor* input_tensor_by_signature_name(
+      const char* signature_input_name, const char* signature_method_name) {
+    const int tensor_index = GetTensorIndexFromSignatureDefName(
+        signature_input_name, signature_method_name, /*is_input=*/true);
+    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+  }
+
+  /// WARNING: Experimental interface, subject to change
+  /// Returns the output tensor identified by 'signature_output_name' in the
+  /// signature identified by 'signature_method_name'.
+  /// Returns nullptr if not found.
+  const TfLiteTensor* output_tensor_by_signature_name(
+      const char* signature_output_name,
+      const char* signature_method_name) const {
+    const int tensor_index = GetTensorIndexFromSignatureDefName(
+        signature_output_name, signature_method_name, /*is_input=*/false);
+    return tensor_index == -1 ? nullptr : tensor(tensor_index);
+  }
+
   /// Return a mutable pointer to the given input tensor. The given index must
   /// be between 0 and inputs().size().
   TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
@@ -369,15 +431,6 @@ class Interpreter {
   /// Returns status of success or failure.
   TfLiteStatus Invoke();
 
-  /// Enable or disable NNAPI (true to enable). Disabled by default.
-  ///
-  /// WARNING: NNAPI cannot be disabled after the graph has been prepared
-  /// (via `AllocateTensors`) with NNAPI enabled.
-  ///
-  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
-  /// This method will be removed in a future release.
-  void UseNNAPI(bool enable);
-
   /// Set the number of threads available to the interpreter.
   ///
   /// NOTE: num_threads should be >= -1.
@@ -386,8 +439,12 @@ class Interpreter {
   TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
-  /// default: not allow.
-  /// WARNING: This is an experimental API and subject to change.
+  /// Default: not allow.
+  ///
+  /// WARNING: This API is deprecated: prefer controlling this via delegate
+  /// options, e.g. `tflite::StatefulNnApiDelegate::Options::allow_fp16' or
+  /// `TfLiteGpuDelegateOptionsV2::is_precision_loss_allowed`.
+  /// This method will be removed in a future release.
   void SetAllowFp16PrecisionForFp32(bool allow);
 
   /// Get the half precision flag.
@@ -409,12 +466,16 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
-  /// Returns one of the following three status codes:
+  /// Returns one of the following four status codes:
   /// 1. kTfLiteOk: Success.
   /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
   /// delegate. The Interpreter has been restored to its pre-delegation state.
   /// NOTE: This undoes all delegates previously applied to the Interpreter.
-  /// 3. kTfLiteError: Unexpected/runtime failure.
+  /// 3. kTfLiteApplicationError : Delegation failed to be applied due to the
+  /// incompatibility with the TfLite runtime, e.g., the model graph is already
+  /// immutable when applying the delegate. However, the interpreter could still
+  /// be invoked.
+  /// 4. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
@@ -582,18 +643,54 @@ class Interpreter {
   const Subgraph& primary_subgraph() const {
     return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
+
+  /// WARNING: Experimental interface, subject to change
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() const { return error_reporter_; }
+
 #endif  // DOXYGEN_SKIP
 
  private:
+  // Structure representing SignatureDef inputs/outputs.
+  struct SignatureDef {
+    // Maps name in signature def as key to index of the tensor in the model.
+    std::map<std::string, uint32_t> inputs;
+    // Maps name in signature def as key to index of the tensor in the model.
+    std::map<std::string, uint32_t> outputs;
+    // The method name for this signature.
+    std::string method_name;
+    // The key of this SignatureDef in the SavedModel signature def map.
+    std::string signature_def_key;
+  };
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
-  friend class tflite::TestDelegate;
   friend class tflite::delegates::InterpreterUtils;
+  friend class tflite::delegates::test_utils::TestDelegate;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
+
+  // Helper method that return the tensot index that corresponds to
+  // a name in a SignatureDef. Defined by 'signature_method_name', and
+  // 'signature_tensor_name'.
+  // If 'is_input' is true then the tensor is checked in input tensors,
+  // otherwise it will be checked in output tensors.
+  // Returns -1 if the tensor is not found.
+  int GetTensorIndexFromSignatureDefName(const char* signature_tensor_name,
+                                         const char* signature_method_name,
+                                         bool is_input) const {
+    // Iterate directly and don't use other methods to avoid extra allocation.
+    for (const auto& signature : signature_defs_) {
+      if (signature.method_name != signature_method_name) continue;
+      auto& signature_list = (is_input ? signature.inputs : signature.outputs);
+      auto tensor_iter = signature_list.find(signature_tensor_name);
+      if (tensor_iter == signature_list.end()) return -1;
+      return tensor_iter->second;
+    }
+    return -1;
+  }
 
   // Sets the profiler to all subgraphs.
   void SetSubgraphProfiler();
@@ -608,8 +705,10 @@ class Interpreter {
   // Returns true if cancellation function returns true.
   bool IsCancelled();
 
-  // Get the error reporter associated with this interpreter.
-  ErrorReporter* error_reporter() { return error_reporter_; }
+  // Sets the list of signature defs in the model.
+  void SetSignatureDef(std::vector<SignatureDef> signature_defs) {
+    signature_defs_ = std::move(signature_defs);
+  }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -657,15 +756,11 @@ class Interpreter {
   // An empty one means there's no delegate to be applied by default or
   // delegates have been applied and doesn't need to be applied again.
   std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
+
+  // List of signature def mapping inputs/output to tensor ids.
+  // We just keep track of tensor index.
+  std::vector<SignatureDef> signature_defs_;
 };
-
-}  // namespace impl
-
-#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
-using Interpreter = tflrt::EagerInterpreter;
-#else
-using Interpreter = impl::Interpreter;
-#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

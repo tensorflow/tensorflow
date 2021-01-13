@@ -52,13 +52,12 @@ uint64 GetCyclesTaken(std::stack<std::unique_ptr<se::Timer>>* timers,
 
 HloExecutionProfiler::HloExecutionProfiler(
     bool do_profile, HloExecutionProfile* profile, se::Stream* stream,
-    const std::vector<StreamPool::Ptr>& sub_streams,
-    const HloComputation* computation)
+    const std::vector<StreamPool::Ptr>& sub_streams, size_t index)
     : do_profile_(do_profile),
       profile_(profile),
       stream_(stream),
       sub_streams_(sub_streams),
-      computation_(computation) {
+      computation_profile_index_(index) {
   if (do_profile_) {
     clock_rate_ghz_ = stream->parent()->GetDeviceDescription().clock_rate_ghz();
     InitAndStartTimer(&timers_, stream);
@@ -69,8 +68,8 @@ void HloExecutionProfiler::FinishExecution() {
   CHECK(!finished_execution_) << "Call FinishExecution only once!";
   finished_execution_ = true;
   if (do_profile_) {
-    profile_->set_total_cycles_executed(
-        *computation_,
+    profile_->SetCyclesTakenBy(
+        computation_profile_index_,
         GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
   }
 }
@@ -86,6 +85,15 @@ void HloExecutionProfiler::FinishHloComputation(
   if (do_profile_) {
     profile_->set_total_cycles_executed(
         *computation,
+        GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
+  }
+}
+
+void HloExecutionProfiler::FinishHloComputation(
+    absl::optional<size_t> profile_index) {
+  if (do_profile_) {
+    profile_->SetCyclesTakenBy(
+        profile_index.value(),
         GetCyclesTaken(&timers_, sub_streams_, stream_, clock_rate_ghz_));
   }
 }

@@ -19,12 +19,14 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_IR_TF_FRAMEWORK_OPS_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_status.h.inc"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace mlir {
 namespace kernel_gen {
@@ -38,12 +40,14 @@ class OpKernelContextType
   using Base::Base;
 };
 
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_dialect.h.inc"
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h.inc"
+::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code);
 
 }  // namespace tf_framework
 }  // namespace kernel_gen
 }  // namespace mlir
+
+#define GET_OP_CLASSES
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_dialect.h.inc"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h.inc"
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_IR_TF_FRAMEWORK_OPS_H_

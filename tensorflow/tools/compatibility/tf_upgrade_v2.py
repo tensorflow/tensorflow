@@ -895,13 +895,13 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "changes in constructor. " + distribute_strategy_api_changes)
 
     contrib_ps_strategy_warning = (
-        ast_edits.ERROR,
-        "(Manual edit required) "
+        ast_edits.ERROR, "(Manual edit required) "
         "tf.contrib.distribute.ParameterServerStrategy has "
         "been migrated to "
-        "tf.distribute.experimental.ParameterServerStrategy (multi machine) "
-        " and tf.distribute.experimental.CentralStorageStrategy (one machine). "
-        "Note the changes in constructors. " + distribute_strategy_api_changes)
+        "tf.compat.v1.distribute.experimental.ParameterServerStrategy (multi "
+        "machine) and tf.distribute.experimental.CentralStorageStrategy (one "
+        "machine). Note the changes in constructors. " +
+        distribute_strategy_api_changes)
 
     keras_experimental_export_comment = (
         ast_edits.WARNING,
@@ -1845,7 +1845,10 @@ def _dropout_transformer(parent, node, full_name, name, logs):
                  "automatic fix was disabled. tf.nn.dropout has changed "
                  "the semantics of the second argument."))
   else:
-    _replace_keep_prob_node(node, node.args[1])
+    rate_arg = ast.keyword(arg="rate", value=node.args[1])
+    _replace_keep_prob_node(rate_arg, rate_arg.value)
+    node.keywords.append(rate_arg)
+    del node.args[1]
     logs.append((ast_edits.INFO, node.lineno, node.col_offset,
                  "Changing keep_prob arg of tf.nn.dropout to rate, and "
                  "recomputing value.\n"))

@@ -22,7 +22,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 
@@ -93,7 +95,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
   If `pred` is a bool or has a constant value, we return either `true_fn()`
   or `false_fn()`, otherwise we use `tf.cond` to dynamically route to both.
 
-  Arguments:
+  Args:
     pred: A scalar determining whether to return the result of `true_fn` or
       `false_fn`.
     true_fn: The callable to be performed if pred is true.
@@ -116,7 +118,7 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
 def constant_value(pred):  # pylint: disable=invalid-name
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
-  Arguments:
+  Args:
     pred: A scalar, either a Python bool or a TensorFlow boolean variable
       or tensor, or the Python integer 1 or 0.
 
@@ -127,13 +129,13 @@ def constant_value(pred):  # pylint: disable=invalid-name
     TypeError: If `pred` is not a Variable, Tensor or bool, or Python
       integer 1 or 0.
   """
-  # Allow integer booleans.
-  if isinstance(pred, int):
-    if pred == 1:
-      pred = True
-    elif pred == 0:
-      pred = False
-
+  if isinstance(pred, ops.Tensor):
+    return tensor_util.constant_value(pred)
+  if pred in {0, 1}:  # Accept 1/0 as valid boolean values
+    return bool(pred)
+  if isinstance(pred, bool):
+    return pred
   if isinstance(pred, variables.Variable):
     return None
-  return smart_module.smart_constant_value(pred)
+  raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
+                  "Found instead: %s" % type(pred))

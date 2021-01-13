@@ -18,7 +18,7 @@ documentation for the Question-Answer model
 The following models are compatible with the `BertNLClassifier` API.
 
 *   Models created by
-    [TensorFlow Lite Model Maker for Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
+    [TensorFlow Lite Model Maker for BERT Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
 
 *   The
     [pretrained BERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/bert-question-answerer/1).
@@ -61,11 +61,39 @@ BertQuestionAnswerer answerer = BertQuestionAnswerer.createFromFile(androidConte
 
 // Run inference
 List<QaAnswer> answers = answerer.answer(contextOfTheQuestion, questionToAsk);
-);
 ```
 
 See the
 [source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/src/java/org/tensorflow/lite/task/text/qa/BertQuestionAnswerer.java)
+for more details.
+
+## Run inference in Swift
+
+### Step 1: Import CocoaPods
+
+Add the TensorFlowLiteTaskText pod in Podfile
+
+```
+target 'MySwiftAppWithTaskAPI' do
+  use_frameworks!
+  pod 'TensorFlowLiteTaskText', '~> 0.0.1-nightly'
+end
+```
+
+### Step 2: Run inference using the API
+
+```swift
+// Initialization
+let mobileBertAnswerer = TFLBertQuestionAnswerer.questionAnswerer(
+      modelPath: mobileBertModelPath)
+
+// Run inference
+let answers = mobileBertAnswerer.answer(
+      context: context, question: question)
+```
+
+See the
+[source code](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/ios/task/text/qa/Sources/TFLBertQuestionAnswerer.h)
 for more details.
 
 ## Run inference in C++
@@ -125,7 +153,7 @@ with your own model and test data.
 The `BertQuestionAnswerer` API expects a TFLite model with mandatory
 [TFLite Model Metadata](../../convert/metadata.md).
 
-The Metadata should meet the following requiresments:
+The Metadata should meet the following requirements:
 
 *   `input_process_units` for Wordpiece/Sentencepiece Tokenizer
 

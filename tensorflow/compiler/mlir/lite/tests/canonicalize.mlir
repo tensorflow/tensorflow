@@ -1,4 +1,15 @@
-// RUN: tf-opt -pass-pipeline='func(canonicalize)' %s | FileCheck %s
+// RUN: tf-opt -pass-pipeline='func(canonicalize)' -split-input-file -verify-diagnostics %s | FileCheck %s
+
+// Checks that tfl.reshape shape operand is converted to a vector if it is possible
+func @reshape_vector_shape(tensor<4x4x4xf32>) -> tensor<16x4xf32> {
+^bb0(%arg0: tensor<4x4x4xf32>) :
+  %shape0 = constant dense<[[16, 4]]> : tensor<1x2xi32>
+  // expected-error @+1 {{'tfl.reshape' op requires 'shape' to be rank 1, but got 2}}
+  %1 = "tfl.reshape"(%arg0, %shape0) : (tensor<4x4x4xf32>, tensor<1x2xi32>) -> tensor<16x4xf32>
+  return %1 : tensor<16x4xf32>
+}
+
+// -----
 
 // Checks that tfl.reshape should be removed if its output's only user is
 // another tfl.reshape
@@ -68,9 +79,9 @@ func @reshape_removeIdentity(tensor<4x4x4xf32>) -> tensor<4x4x4xf32> {
 
 // Checks that tfl.reshape shouldn't be removed if either output type or input
 // type are dynamic.
-func @reshape_not_removeIdentity(%arg0: tensor<?xf32>, %arg1: tensor<3xi32>) -> tensor<?xf32> {
-  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<3xi32>) -> tensor<?xf32>
-  return %0 : tensor<?xf32>
+func @reshape_not_removeIdentity(%arg0: tensor<?xf32>, %arg1: tensor<3xi32>) -> tensor<?x?x?xf32> {
+  %0 = "tfl.reshape"(%arg0, %arg1) : (tensor<?xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
 
 // CHECK-LABEL: func @reshape_not_removeIdentity
 // CHECK-NEXT: "tfl.reshape"
@@ -118,7 +129,7 @@ func @Int64SliceBeginSize(%arg0: tensor<4x128x32xf32>) -> tensor<1x128x32xf32> {
 // Make sure that second output of the tf.while is not incorrectly inferred as
 // pass through just because the corresponding input is not used in either
 // condition or body. The tensor<f32> result of the loop can be either %arg1
-// (if the body never executes, or 22.0 if the body executes atleast once).
+// (if the body never executes, or 22.0 if the body executes at least once).
 func @WhileCanonicalizeBug(%arg0: tensor<i32>, %arg1: tensor<f32>) -> tensor<f32> {
   %0:2 = "tfl.while"(%arg0, %arg1) ( {
   ^bb0(%arg2: tensor<i32>, %arg3: tensor<f32>):

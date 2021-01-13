@@ -34,6 +34,7 @@ namespace grappler {
 namespace {
 
 constexpr char kInsertOpName[] = "LatencyStatsDataset";
+constexpr char kModelDataset[] = "ModelDataset";
 
 // Creates a LatencyStatsDataset node whose input is `node`.
 Status MakeLatencyNode(const NodeDef& node, MutableGraphView* graph,
@@ -92,6 +93,11 @@ Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
       // node corresponds to a `Dataset` op.
       continue;
     }
+    // We don't add LatencyStatsDataset after ModelDataset.
+    if (node.op() == kModelDataset) {
+      continue;
+    }
+
     NodeDef latency_node;
     // Try to make a latency node. This may fail if the input node doesn't have
     // output_types or output_shapes attrs. In those cases, we don't add a node

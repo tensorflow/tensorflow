@@ -27,7 +27,6 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
-#include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
 #include "tensorflow/lite/interpreter.h"
 
 struct TfLiteDelegate;
@@ -48,6 +47,8 @@ class PythonErrorReporter;
 
 class InterpreterWrapper {
  public:
+  using Model = FlatBufferModel;
+
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, const std::vector<std::string>& registerers,
@@ -86,6 +87,12 @@ class InterpreterWrapper {
   PyObject* TensorQuantizationParameters(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
+  PyObject* SetInputTensorFromSignatureDefName(const char* input_name,
+                                               const char* method_name,
+                                               PyObject* value);
+  PyObject* GetOutputTensorFromSignatureDefName(const char* output_name,
+                                                const char* method_name) const;
+  PyObject* GetSignatureDefs() const;
   PyObject* ResetVariableTensors();
 
   int NumNodes() const;
@@ -105,26 +112,24 @@ class InterpreterWrapper {
   // Experimental and subject to change.
   //
   // Returns a pointer to the underlying interpreter.
-  tflite_api_dispatcher::Interpreter* interpreter() {
-    return interpreter_.get();
-  }
+  Interpreter* interpreter() { return interpreter_.get(); }
 
  private:
   // Helper function to construct an `InterpreterWrapper` object.
   // It only returns InterpreterWrapper if it can construct an `Interpreter`.
   // Otherwise it returns `nullptr`.
   static InterpreterWrapper* CreateInterpreterWrapper(
-      std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
+      std::unique_ptr<Model> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
       const std::vector<std::string>& registerers_by_name,
       const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
       std::string* error_msg);
 
   InterpreterWrapper(
-      std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
+      std::unique_ptr<Model> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
       std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver,
-      std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter);
+      std::unique_ptr<Interpreter> interpreter);
 
   // InterpreterWrapper is not copyable or assignable. We avoid the use of
   // InterpreterWrapper() = delete here for SWIG compatibility.
@@ -137,10 +142,10 @@ class InterpreterWrapper {
   // The public functions which creates `InterpreterWrapper` should ensure all
   // these member variables are initialized successfully. Otherwise it should
   // report the error and return `nullptr`.
-  const std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model_;
+  const std::unique_ptr<Model> model_;
   const std::unique_ptr<PythonErrorReporter> error_reporter_;
   const std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver_;
-  const std::unique_ptr<tflite_api_dispatcher::Interpreter> interpreter_;
+  const std::unique_ptr<Interpreter> interpreter_;
 };
 
 }  // namespace interpreter_wrapper

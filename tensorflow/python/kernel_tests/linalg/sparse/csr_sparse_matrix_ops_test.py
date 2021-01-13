@@ -587,7 +587,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
 
             self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
+                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   # TODO(rocm): fix this
   # This test is currently failing on the ROCm platform
@@ -650,7 +650,7 @@ class CSRSparseMatrixOpsTest(test.TestCase):
             self.assertAllEqual(c_t.shape, c_dense_t.shape)
             c_t_value, c_dense_t_value = self.evaluate((c_t, c_dense_t))
             self.assertAllClose(
-                c_t_value, c_dense_t_value, rtol=1e-6, atol=1e-5)
+                c_t_value, c_dense_t_value, rtol=1e-6, atol=2e-5)
 
   @test.disable_with_predicate(pred=test.is_built_with_rocm,
                                skip_message='complex type is not '

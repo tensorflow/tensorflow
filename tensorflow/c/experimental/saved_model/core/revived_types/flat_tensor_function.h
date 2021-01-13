@@ -50,7 +50,9 @@ class FlatTensorFunction {
   //                 destruction. function_def must be non-null, but
   //                 otherwise has no lifetime requirements.
   //  captures - The captured TensorHandles associated with this
-  //             FlatTensorFunction.
+  //             FlatTensorFunction. FlatTensorFunction will participate in
+  //             ownership of the handles (it explicitly increments the refcount
+  //             of each handle, and will decrement them on destruction).
   //  ctx      - A handle to the Tensorflow runtime. This MUST be non-null and
   //             outlive TFConcreteFunction.
   //  out      - The output FlatTensorFunction.
@@ -67,7 +69,7 @@ class FlatTensorFunction {
 
  private:
   FlatTensorFunction(const std::string& name,
-                     std::vector<ImmediateExecutionTensorHandle*> captures,
+                     std::vector<ImmediateTensorHandlePtr> captures,
                      ImmediateExecutionContext* ctx);
 
   FlatTensorFunction(const FlatTensorFunction&) = delete;
@@ -75,7 +77,7 @@ class FlatTensorFunction {
 
   // Name of the FunctionDef corresponding to this TFConcreteFunction
   std::string name_;
-  std::vector<ImmediateExecutionTensorHandle*> captures_;
+  std::vector<ImmediateTensorHandlePtr> captures_;
   ImmediateExecutionContext* ctx_;
 };
 

@@ -32,14 +32,16 @@ TfLiteStatus PrepareHashtableSize(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputResourceIdTensor);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputResourceIdTensor,
+                                          &input_resource_id_tensor));
   TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input_resource_id_tensor), 1);
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input_resource_id_tensor, 0), 1);
 
-  TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
-  TF_LITE_ENSURE(context, output_tensor != nullptr);
+  TfLiteTensor* output_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetOutputSafe(context, node, kOutputTensor, &output_tensor));
   TF_LITE_ENSURE_EQ(context, output_tensor->type, kTfLiteInt64);
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(1);
   outputSize->data[0] = 1;
@@ -47,11 +49,14 @@ TfLiteStatus PrepareHashtableSize(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalHashtableSize(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input_resource_id_tensor =
-      GetInput(context, node, kInputResourceIdTensor);
+  const TfLiteTensor* input_resource_id_tensor;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputResourceIdTensor,
+                                          &input_resource_id_tensor));
   int resource_id = input_resource_id_tensor->data.i32[0];
 
-  TfLiteTensor* output_tensor = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* output_tensor;
+  TF_LITE_ENSURE_OK(
+      context, GetOutputSafe(context, node, kOutputTensor, &output_tensor));
   auto* output_data = GetTensorData<std::int64_t>(output_tensor);
 
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);

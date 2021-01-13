@@ -172,7 +172,7 @@ class _NonAtrousConvolution(object):
   `__call__` are compatible with `input_shape` and filter_shape passed to the
   constructor.
 
-  Arguments:
+  Args:
     input_shape: static input shape, i.e. input.shape.
     filter_shape: static filter shape, i.e. filter.shape.
     padding: see _non_atrous_convolution.
@@ -1067,10 +1067,10 @@ def convolution_internal(
       estimated from `filters.shape`.
   """
   if (not isinstance(filters, variables_lib.Variable) and
-      not tensor_util.is_tensor(filters)):
+      not tensor_util.is_tf_type(filters)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       filters = ops.convert_to_tensor(filters, name='filters')
-  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tensor(input)):
+  if (not isinstance(input, ops.Tensor) and not tensor_util.is_tf_type(input)):
     with ops.name_scope("convolution_internal", None, [filters, input]):
       input = ops.convert_to_tensor(input, name="input")
 
@@ -2321,7 +2321,7 @@ def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-defau
       The stride of the sliding window for each dimension of the input
       of the convolution. Must be in the same order as the dimension specified
       with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -2383,7 +2383,7 @@ def conv2d_backprop_input(  # pylint: disable=redefined-builtin,dangerous-defaul
       The stride of the sliding window for each dimension of the input
       of the convolution. Must be in the same order as the dimension specified
       with format.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -2526,7 +2526,7 @@ def conv2d_transpose_v2(
       value is given it is replicated in the `H` and `W` dimension. By default
       the `N` and `C` dimensions are set to 0. The dimension order is determined
       by the value of `data_format`, see below for details.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -3280,7 +3280,7 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if tensor_util.is_tensor(output_shape):
+    if tensor_util.is_tf_type(output_shape):
       n = output_shape.shape[0] - 2
     elif isinstance(output_shape, collections_abc.Sized):
       n = len(output_shape) - 2
@@ -4490,7 +4490,7 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
       of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -4569,7 +4569,7 @@ def max_pool(value,
       The size of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.
       The stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -4627,7 +4627,7 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
       window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
       the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NWC"`, this should be in the form `[[0, 0], [pad_left,
@@ -4683,7 +4683,7 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
+    padding: Either the `string` `"SAME"` or `"VALID"` indicating the type of
       padding algorithm to use, or a list indicating the explicit paddings at
       the start and end of each dimension. When explicit padding is used and
       data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
@@ -5143,8 +5143,21 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     if not x_dtype.is_floating:
       raise ValueError("x has to be a floating point tensor since it's going "
                        "to be scaled. Got a %s tensor instead." % x_dtype)
+    if is_rate_number and rate == 0:
+      # Fast-path: Return the input immediately if rate is non-tensor & is `0`.
+      # We trigger this after all error checking
+      # and after `x` has been converted to a tensor, to prevent inconsistent
+      # tensor conversions/error raising if rate is changed to/from 0.
+      #
+      # We also explicitly call `random_seed.get_seed` to make sure
+      # we don't change the random number generation behavior of
+      # stateful random ops by entering a fastpath,
+      # despite not generating a random tensor in the fastpath
+      random_seed.get_seed(seed)
+      return x
+
     is_executing_eagerly = context.executing_eagerly()
-    if not tensor_util.is_tensor(rate):
+    if not tensor_util.is_tf_type(rate):
       if is_rate_number:
         keep_prob = 1 - rate
         scale = 1 / keep_prob
@@ -5190,12 +5203,36 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
   and outputs their values and indices as vectors.  Thus `values[j]` is the
   `j`-th largest entry in `input`, and its index is `indices[j]`.
 
+  >>> result = tf.math.top_k([1, 2, 98, 1, 1, 99, 3, 1, 3, 96, 4, 1],
+  ...                         k=3)
+  >>> result.values.numpy()
+  array([99, 98, 96], dtype=int32)
+  >>> result.indices.numpy()
+  array([5, 2, 9], dtype=int32)
+
   For matrices (resp. higher rank input), computes the top `k` entries in each
   row (resp. vector along the last dimension).  Thus,
 
-      values.shape = indices.shape = input.shape[:-1] + [k]
+  >>> input = tf.random.normal(shape=(3,4,5,6))
+  >>> k = 2
+  >>> values, indices  = tf.math.top_k(input, k=k)
+  >>> values.shape.as_list()
+  [3, 4, 5, 2]
+  >>>
+  >>> values.shape == indices.shape == input.shape[:-1] + [k]
+  True
+
+  The indices can be used to `gather` from a tensor who's shape matches `input`.
+
+  >>> gathered_values = tf.gather(input, indices, batch_dims=-1)
+  >>> assert tf.reduce_all(gathered_values == values)
 
   If two elements are equal, the lower-index element appears first.
+
+  >>> result = tf.math.top_k([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+  ...                        k=3)
+  >>> result.indices.numpy()
+  array([0, 1, 3], dtype=int32)
 
   Args:
     input: 1-D or higher `Tensor` with last dimension at least `k`.
@@ -5206,6 +5243,7 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     name: Optional name for the operation.
 
   Returns:
+    A tuple with two named fields:
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
@@ -5402,6 +5440,19 @@ def fractional_max_pool_v2(value,
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
+  if (isinstance(pooling_ratio, (list, tuple))):
+    if (pooling_ratio[0] != 1.0 or pooling_ratio[-1] != 1.0):
+      raise ValueError(
+          "The first and last elements of pooling ratio must be 1.0.")
+    for element in pooling_ratio:
+      if element < 1.0:
+        raise ValueError("pooling_ratio should be >= 1.0.")
+  elif (isinstance(pooling_ratio, (int, float))):
+    if pooling_ratio < 1.0:
+      raise ValueError("pooling_ratio should be >= 1.0.")
+  else:
+    raise ValueError("pooling_ratio should be an int or a list of ints.")
+
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
   if seed == 0:
@@ -5603,7 +5654,6 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
   Returns:
     A `Tensor`. Has the same type as `value`.
     4-D with shape `[batch, out_height, out_width, depth]`.
-
   Raises:
     ValueError: If the `value` depth does not match `kernel`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.

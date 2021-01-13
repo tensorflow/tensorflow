@@ -9,15 +9,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LinearCosineDecay"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "LinearModel"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "NoisyLinearCosineDecay"
     mtype: "<type \'type\'>"
   }
   member {
@@ -39,9 +31,5 @@ tf_module {
   member_method {
     name: "load_from_saved_model"
     argspec: "args=[\'saved_model_path\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "terminate_keras_multiprocessing_pools"
-    argspec: "args=[\'grace_period\', \'use_sigkill\'], varargs=None, keywords=None, defaults=[\'0.1\', \'False\'], "
   }
 }

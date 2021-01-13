@@ -1,6 +1,9 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers Vision Example Utils.
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_binary(
     name = "raw_to_bitmap",
@@ -25,6 +28,7 @@ py_test(
     data = glob(["testdata/**"]),
     python_version = "PY3",
     tags = [
+        "no_oss",  # TODO(b/174680668): Exclude Python tests from OSS.
         "nomicro_static",  # TF dep incompatible w/ TF_LITE_STATIC_MEMORY.
         "noubsan",  # TODO(b/144512025): Fix raw_to_bitmap_test to fix ubsan failure.
     ],

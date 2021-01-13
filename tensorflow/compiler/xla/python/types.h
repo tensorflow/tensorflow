@@ -25,6 +25,7 @@ limitations under the License.
 #include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
+#include "tensorflow/compiler/xla/python/absl_casters.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -34,9 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
-
-// Initializes the NumPy API for the use of the types module.
-bool InitializeNumpyAPIForTypes();
 
 // Helper that converts a failing StatusOr to an exception.
 // For use only inside pybind11 code.
@@ -84,10 +82,11 @@ struct PythonBufferTree {
 StatusOr<PythonBufferTree> GetPythonBufferTree(
     const pybind11::object& argument);
 
-// Converts a sequence of int64s to a Python tuple of ints.
-// Pybind11 by default converts a std::vector<int64> to a Python list; for
-// shapes we frequently want a tuple instead.
+// Converts a sequence of C++ ints to a Python tuple of ints.
+// Pybind11 by default converts a std::vector<int64> to a Python list;
+// we frequently want a tuple instead e.g. for shapes.
 pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
+pybind11::tuple IntSpanToTuple(absl::Span<int const> xs);
 
 // Converts a Python sequence of integers to a std::vector<int64>
 std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
@@ -110,48 +109,6 @@ absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
 // the exceptions are local to the binding code.
 namespace pybind11 {
 namespace detail {
-
-// When absl::optional is an alias for std::optional, the type_caster
-// specializations are provided by pybind11.
-#ifndef ABSL_HAVE_STD_OPTIONAL
-// absl::optional
-template <typename T>
-struct type_caster<absl::optional<T>> : optional_caster<absl::optional<T>> {};
-
-template <>
-struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
-#endif
-
-// absl::Span
-template <typename T>
-struct type_caster<absl::Span<const T>> {
-  using value_conv = make_caster<T>;
-
-  PYBIND11_TYPE_CASTER(absl::Span<const T>,
-                       _("Span[") + value_conv::name + _("]"));
-
-  // absl::Span doesn't hold ownership. We therefore need a temporary array.
-  // Pybind appears to keep type_casters alive until the callee has run.
-  std::vector<T> storage_;
-
-  bool load(handle src, bool convert) {
-    if (!isinstance<sequence>(src)) {
-      return false;
-    }
-    auto seq = reinterpret_borrow<sequence>(src);
-    storage_.clear();
-    storage_.reserve(seq.size());
-    for (const auto& it : seq) {
-      value_conv conv;
-      if (!conv.load(it, convert)) {
-        return false;
-      }
-      storage_.push_back(cast_op<T&&>(std::move(conv)));
-    }
-    value = absl::Span<const T>(storage_);
-    return true;
-  }
-};
 
 // Status, StatusOr. Failing statuses become Python exceptions; Status::OK()
 // becomes None.
@@ -534,7 +491,14 @@ struct type_caster<xla::OpSharding> {
       std::copy(devices.begin(), devices.end(),
                 tensorflow::protobuf::RepeatedFieldBackInserter(
                     sharding->mutable_tile_assignment_devices()));
+
+      sharding->set_replicate_on_last_tile_dim(
+          getattr(tuple_sharding, "replicate_on_last_tile_dim").cast<bool>());
     }
+
+    // Sets `replicate_on_last_tile_dim` field.
+    value.set_replicate_on_last_tile_dim(
+        getattr(handle_obj, "replicate_on_last_tile_dim").cast<bool>());
 
     return true;
   }

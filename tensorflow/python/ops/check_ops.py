@@ -1151,14 +1151,15 @@ def assert_rank(x, rank, data=None, summarize=None, message=None, name=None):
     ValueError:  If static checks determine `x` has wrong rank.
   """
   with ops.name_scope(name, 'assert_rank', (x, rank) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    if not isinstance(x, sparse_tensor.SparseTensor):
+      x = ops.convert_to_tensor(x, name='x')
     rank = ops.convert_to_tensor(rank, name='rank')
     message = message or ''
 
     static_condition = lambda actual_rank, given_rank: actual_rank == given_rank
     dynamic_condition = math_ops.equal
 
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(x, sparse_tensor.SparseTensor):
       name = ''
     else:
       name = x.name
@@ -1418,11 +1419,12 @@ def assert_rank_in(
   """
   with ops.name_scope(
       name, 'assert_rank_in', (x,) + tuple(ranks) + tuple(data or [])):
-    x = ops.convert_to_tensor(x, name='x')
+    if not isinstance(x, sparse_tensor.SparseTensor):
+      x = ops.convert_to_tensor(x, name='x')
     ranks = tuple([ops.convert_to_tensor(rank, name='rank') for rank in ranks])
     message = message or ''
 
-    if context.executing_eagerly():
+    if context.executing_eagerly() or isinstance(x, sparse_tensor.SparseTensor):
       name = ''
     else:
       name = x.name
@@ -1550,6 +1552,7 @@ def assert_type(tensor, tf_type, message=None, name=None):
     A `no_op` that does nothing.  Type can be determined statically.
   """
   message = message or ''
+  tf_type = dtypes.as_dtype(tf_type)
   with ops.name_scope(name, 'assert_type', [tensor]):
     if not isinstance(tensor, sparse_tensor.SparseTensor):
       tensor = ops.convert_to_tensor(tensor, name='tensor')
@@ -1582,7 +1585,7 @@ def _dimension_sizes(x):
   rank = x.get_shape().rank
   rank_is_known = rank is not None
   if rank_is_known and rank == 0:
-    return tuple([1])
+    return (1,)
   if rank_is_known and rank > 0:
     static_shape = x.get_shape().as_list()
     sizes = [
@@ -1787,14 +1790,14 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   message = message or ''
   with ops.name_scope(name, 'assert_shapes', [shapes, data]):
     # Shape specified as None implies no constraint
-    shape_constraints = [
-        (ops.convert_to_tensor(x), s) for x, s in shapes if s is not None
-    ]
+    shape_constraints = [(x if isinstance(x, sparse_tensor.SparseTensor) else
+                          ops.convert_to_tensor(x), s)
+                         for x, s in shapes if s is not None]
 
     executing_eagerly = context.executing_eagerly()
 
     def tensor_name(x):
-      if executing_eagerly:
+      if executing_eagerly or isinstance(x, sparse_tensor.SparseTensor):
         return _shape_and_dtype_str(x)
       return x.name
 

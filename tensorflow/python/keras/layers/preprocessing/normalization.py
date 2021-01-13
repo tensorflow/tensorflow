@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras preprocessing layers."""
+"""Normalization preprocessing layer."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -29,6 +30,7 @@ from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import keras_export
 
@@ -37,7 +39,15 @@ _MEAN_NAME = 'mean'
 _VARIANCE_NAME = 'variance'
 
 
-# TODO(momernick): Find a good example of normalization?
+def convert_to_ndarray(values):
+  if isinstance(values, np.ndarray):
+    return values
+  elif isinstance(values, ops.Tensor):
+    return K.get_value(values)
+  else:
+    return np.array(values)
+
+
 @keras_export('keras.layers.experimental.preprocessing.Normalization', v1=[])
 class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Feature-wise normalization of the data.
@@ -50,15 +60,23 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
     as the layer's weights. `adapt` should be called before `fit`, `evaluate`,
     or `predict`.
 
-  Attributes:
+  Args:
       axis: Integer or tuple of integers, the axis or axes that should be
         "kept". These axes are not be summed over when calculating the
         normalization statistics. By default the last axis, the `features` axis
         is kept and any `space` or `time` axes are summed. Each element in the
         the axes that are kept is normalized independently. If `axis` is set to
-        'None', the layer will perform scalar normalization (diving the input
+        'None', the layer will perform scalar normalization (dividing the input
         by a single scalar value). The `batch` axis, 0, is always summed over
         (`axis=0` is not allowed).
+      mean: The mean value(s) to use during normalization. The passed value(s)
+        will be broadcast to the shape of the kept axes above; if the value(s)
+        cannot be broadcast, an error will be raised when this layer's build()
+        method is called.
+      variance: The variance value(s) to use during normalization. The passed
+        value(s) will be broadcast to the shape of the kept axes above; if the
+        value(s)cannot be broadcast, an error will be raised when this layer's
+        build() method is called.
 
   Examples:
 
@@ -73,13 +91,19 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
   array([[-1.4142135 ],
          [-0.70710677],
          [ 0.        ]], dtype=float32)>
+
+  Pass the mean and variance directly.
+
+  >>> input_data = np.array([[1.], [2.], [3.]], np.float32)
+  >>> layer = Normalization(mean=3., variance=2.)
+  >>> layer(input_data)
+  <tf.Tensor: shape=(3, 1), dtype=float32, numpy=
+  array([[-1.4142135 ],
+         [-0.70710677],
+         [ 0.        ]], dtype=float32)>
   """
 
-  def __init__(self, axis=-1, dtype=None, **kwargs):
-    # This ensures that if the value of K.floatx() changes after file-loading
-    # time, the dtype value will change to reflect it.
-    dtype = dtype or K.floatx()
-
+  def __init__(self, axis=-1, mean=None, variance=None, **kwargs):
     # Standardize `axis` to a tuple.
     if axis is None:
       axis = ()
@@ -89,13 +113,31 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
       axis = tuple(axis)
 
     super(Normalization, self).__init__(
-        combiner=_NormalizingCombiner(axis), dtype=dtype, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Normalization')
+        combiner=_NormalizingCombiner(axis), **kwargs)
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Normalization').set(True)
 
     if 0 in axis:
       raise ValueError('The argument \'axis\' may not be 0.')
 
     self.axis = axis
+
+    if isinstance(mean, variables.Variable):
+      raise ValueError('Normalization does not support passing a Variable '
+                       'for the `mean` init arg.')
+    if isinstance(variance, variables.Variable):
+      raise ValueError('Normalization does not support passing a Variable '
+                       'for the `variance` init arg.')
+
+    if mean is not None and variance is not None:
+      mean = convert_to_ndarray(mean)
+      variance = convert_to_ndarray(variance)
+    elif mean is not None or variance is not None:
+      raise ValueError(
+          'When setting values directly, both `mean` and `variance` '
+          'must be set. Got mean: {} and variance: {}'.format(mean, variance))
+
+    self.mean_val = mean
+    self.variance_val = variance
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -143,6 +185,11 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
         initializer=init_ops.zeros_initializer)
 
     super(Normalization, self).build(input_shape)
+
+    if (self.mean_val is not None and self.variance_val is not None):
+      mean_val = self.mean_val * np.ones(mean_and_var_shape)
+      variance_val = self.variance_val * np.ones(mean_and_var_shape)
+      self.set_weights([mean_val, variance_val])
 
   def call(self, inputs):
     inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
@@ -297,8 +344,9 @@ class _NormalizingCombiner(base_preprocessing_layer.Combiner):
     if (count == 0 and (mean.any() != 0.0 or var.any() != 0.0)):
       raise RuntimeError(
           'The mean and/or variance of a Normalization preprocessing layer '
-          "were set without also setting 'count'. If 'count' is not also set,"
-          " 'adapt' cannot be called unless the 'reset_state' arg is True.")
+          "were set without also setting 'count'. If 'count' is not also set, "
+          " or was set to 0, 'adapt' cannot be called unless the 'reset_state'"
+          'arg is True.')
     return self._create_accumulator(output[_COUNT_NAME], output[_MEAN_NAME],
                                     output[_VARIANCE_NAME])
 

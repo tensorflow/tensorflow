@@ -118,7 +118,9 @@ def _forward_over_back_hessian(f, params, use_pfor, dtype=None):
   """
   return _vectorize_parameters(
       functools.partial(_hvp, f, params),
-      params, use_pfor=use_pfor, dtype=dtype)
+      params,
+      use_pfor=use_pfor,
+      dtype=dtype)
 
 
 def _test_gradients(testcase,
@@ -173,7 +175,10 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
                   2. / tf.size(v, out_type=tf.float32),
                   dtype=tf.float32), v.shape))
     _test_gradients(
-        self, layer, [input_value], atol=atol,
+        self,
+        layer,
+        [input_value],
+        atol=atol,
         # These are linear, so second-order is pretty boring.
         order=2)
 
@@ -189,8 +194,10 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
       input_value = tf.constant(value, dtype=tf.float32)
       layer.build(input_value.shape)
       _test_gradients(
-          self, functools.partial(layer, training=training), [input_value],
-          order=2, atol=1e-3)
+          self,
+          functools.partial(layer, training=training), [input_value],
+          order=2,
+          atol=1e-3)
 
   @parameterized.named_parameters([
       ("NonFused", [[0.1], [0.2], [-0.3]],
@@ -205,8 +212,8 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
         input_value = tf.constant(value, dtype=tf.float32)
         tape.watch(input_value)
         output = layer(input_value, training=training)
-      jac_back = tape.jacobian(
-          output, [input_value] + layer.trainable_variables)
+      jac_back = tape.jacobian(output,
+                               [input_value] + layer.trainable_variables)
       jac_forward = _jacfwd(
           lambda *args: layer(args[0], training=training),  # pylint:disable=cell-var-from-loop
           [input_value] + layer.trainable_variables)
@@ -217,12 +224,6 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters([("Function", tf.function),
                                    ("NoFunction", lambda f: f)])
   def testVariablesHVP(self, decorator):
-
-    if tf.test.is_built_with_rocm():
-      # TODO(rocm)
-      # This test was recently added and has never passed on the
-      # ROCm platform. Remove this skip once the test is passing again
-      self.skipTest("NoFunction decorator test fails on the ROCm platform")
 
     class _Model(tf.Module):
 
@@ -240,6 +241,7 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
         return self._second_dense(x)
 
     model = _Model()
+
     def _loss():
       input_value = tf.constant([[-0.5, 1.], [0.5, -1.]])
       target = tf.constant([[-1.], [2.]])
@@ -251,8 +253,8 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
         loss = _loss()
       vector = tape.gradient(loss, model.trainable_variables)
       variable_input_fn = lambda unused_variables: _loss()
-      forward_over_back_hvp, = _hvp(
-          variable_input_fn, [model.trainable_variables], [vector])
+      forward_over_back_hvp, = _hvp(variable_input_fn,
+                                    [model.trainable_variables], [vector])
       with tf.GradientTape(persistent=True) as tape:
         tape.watch(model.trainable_variables)
         loss = _loss()
@@ -260,14 +262,36 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
       back_over_back_hvp = tape.gradient(
           first_grads, model.trainable_variables, output_gradients=vector)
       return forward_over_back_hvp, back_over_back_hvp
+
     self.assertAllClose(*_compute_hvps(), rtol=1e-5, atol=1e-5)
+
+  def testEmbeddingLayerInFunction(self):
+
+    class M(tf.keras.Model):
+
+      def __init__(self):
+        super(M, self).__init__()
+        self.embed = tf.keras.layers.Embedding(5, 1)
+        self.proj = tf.keras.layers.Dense(1)
+
+      @tf.function
+      def call(self, x):
+        return self.proj(self.embed(x))
+
+    model = M()
+    model(tf.zeros([3, 3], dtype=tf.int32))  # pylint: disable=not-callable
+    parameters = model.embed.variables
+    tangents = [tf.ones_like(v) for v in parameters]
+    with tf.autodiff.ForwardAccumulator(parameters, tangents):
+      # Note that forwardprop runs alongside the original computation. This test
+      # is just checking that it doesn't crash; correctness is tested in core
+      # TF.
+      model(tf.zeros([3, 3], dtype=tf.int32))  # pylint: disable=not-callable
 
 
 class HessianTests(tf.test.TestCase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      [("PFor", True),
-       ("MapFn", False)])
+  @parameterized.named_parameters([("PFor", True), ("MapFn", False)])
   def testHessianOfVariables(self, use_pfor):
     model = tf.keras.layers.Dense(1)
     model.build([None, 2])

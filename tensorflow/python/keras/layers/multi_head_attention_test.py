@@ -225,6 +225,22 @@ class MultiHeadAttentionTest(keras_parameterized.TestCase):
         model.predict([query, value, mask_data]),
         model.predict([query, value, null_mask_data]))
 
+  def test_dropout(self):
+    test_layer = multi_head_attention.MultiHeadAttention(
+        num_heads=2, key_dim=2, dropout=0.5)
+
+    # Generate data for the input (non-mask) tensors.
+    from_data = keras.backend.ones(shape=(32, 4, 8))
+    to_data = keras.backend.ones(shape=(32, 2, 8))
+    train_out = test_layer(from_data, to_data, None, None, None, True)
+    test_out = test_layer(from_data, to_data, None, None, None, False)
+
+    # Output should be close when not in training mode,
+    # and should not be close when enabling dropout in training mode.
+    self.assertNotAllClose(
+        keras.backend.eval(train_out),
+        keras.backend.eval(test_out))
+
 
 class SubclassAttention(multi_head_attention.MultiHeadAttention):
 
@@ -235,7 +251,8 @@ class SubclassAttention(multi_head_attention.MultiHeadAttention):
                          query_tensor,
                          key_tensor,
                          value_tensor,
-                         attention_mask=None):
+                         attention_mask=None,
+                         training=None):
     return value_tensor, None
 
 
@@ -249,6 +266,72 @@ class AttentionSubclassTest(keras_parameterized.TestCase):
     query = keras.Input(shape=(40, 80))
     output = test_layer(query, query)
     self.assertEqual(output.shape.as_list(), [None, 40, 80])
+
+
+class TestModel(keras.Model):
+
+  def __init__(self):
+    super(TestModel, self).__init__()
+    self.attention = multi_head_attention.MultiHeadAttention(
+        num_heads=3,
+        key_dim=4,
+        value_dim=4,
+        use_bias=True,
+        dropout=0.0,
+        output_shape=[12])
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(**config)
+
+  def get_config(self):
+    return {}
+
+  def call(self, x, training=False):
+    return self.attention(x, x, training=training)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class KerasModelSavingTest(keras_parameterized.TestCase):
+
+  def test_keras_saving_subclass(self):
+    model = TestModel()
+    query = keras.Input(shape=(40, 80))
+    _ = model(query)
+    model_path = self.get_temp_dir() + "/tmp_model"
+    keras.models.save_model(model, model_path, save_format="tf")
+    reloaded_model = keras.models.load_model(model_path)
+    self.assertEqual(
+        len(model.trainable_variables), len(reloaded_model.trainable_variables))
+    for src_v, loaded_v in zip(model.trainable_variables,
+                               reloaded_model.trainable_variables):
+      self.assertAllEqual(src_v, loaded_v)
+
+  @parameterized.parameters("h5", "tf")
+  def test_keras_saving_functional(self, save_format):
+    model = TestModel()
+    query = keras.Input(shape=(40, 80))
+    output = multi_head_attention.MultiHeadAttention(
+        num_heads=3,
+        key_dim=4,
+        value_dim=4,
+        use_bias=True,
+        dropout=0.0)(query, query)
+    model = keras.Model(inputs=query, outputs=output)
+    model_path = self.get_temp_dir() + "/tmp_model"
+    keras.models.save_model(model, model_path, save_format=save_format)
+    reloaded_model = keras.models.load_model(model_path)
+    self.assertEqual(
+        len(model.trainable_variables), len(reloaded_model.trainable_variables))
+    for src_v, loaded_v in zip(model.trainable_variables,
+                               reloaded_model.trainable_variables):
+      self.assertAllEqual(src_v, loaded_v)
+
+  def test_create_without_build(self):
+    not_intialized_layer = multi_head_attention.MultiHeadAttention(
+        num_heads=3, key_dim=4, value_dim=4)
+    multi_head_attention.MultiHeadAttention.from_config(
+        not_intialized_layer.get_config())
 
 
 if __name__ == "__main__":

@@ -88,13 +88,7 @@ REGISTER_OP("AvgPoolGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
-      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
-      c->set_output(0, s);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::AvgPoolGradShape);
 
 // --------------------------------------------------------------------------
 
@@ -221,7 +215,7 @@ REGISTER_OP("FusedBatchNormV3")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("exponential_avg_factor: float = 1.0")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormV3Shape);
 
@@ -238,11 +232,7 @@ REGISTER_OP("_FusedBatchNormEx")
     .Output("reserve_space_1: U")
     .Output("reserve_space_2: U")
     .Output("reserve_space_3: U")
-#ifdef ENABLE_MKLDNN_V1
     .Attr("T: {half, float, bfloat16}")
-#else
-    .Attr("T: {half, float}")
-#endif
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("exponential_avg_factor: float = 1.0")
@@ -308,7 +298,7 @@ REGISTER_OP("FusedBatchNormGradV3")
     .Attr("T: {half, bfloat16, float}")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
-    .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetConvnetDataFormat2D3DAttrString())
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormGradShape);
 // --------------------------------------------------------------------------
@@ -638,10 +628,10 @@ REGISTER_OP("_FusedDepthwiseConv2dNative")
     // Attributes for the LeakyRelu ----------------------------------------- //
     .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
-
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 // --------------------------------------------------------------------------
+
 REGISTER_OP("Conv3D")
     .Input("input: T")
     .Input("filter: T")
@@ -742,13 +732,7 @@ REGISTER_OP("AvgPool3DGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: {half, bfloat16, float, double}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
-      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
-      c->set_output(0, s);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::AvgPool3DGradShape);
 
 // --------------------------------------------------------------------------
 
@@ -773,9 +757,7 @@ REGISTER_OP("MaxPool3DGrad")
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: {half, bfloat16, float} = DT_FLOAT")
     .Attr("TInput: {half, bfloat16, float} = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 5);
-    });
+    .SetShapeFn(shape_inference::MaxPool3DGradShape);
 
 REGISTER_OP("MaxPool3DGradGrad")
     .Input("orig_input: T")
@@ -879,9 +861,7 @@ REGISTER_OP("MaxPoolGrad")
     .Input("grad: T")
     .Output("output: T")
     .Attr("T: realnumbertype = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 4);
-    });
+    .SetShapeFn(shape_inference::MaxPoolGradShape);
 
 REGISTER_OP("MaxPoolGradV2")
     .Attr(GetPaddingAttrString())
@@ -893,9 +873,7 @@ REGISTER_OP("MaxPoolGradV2")
     .Input("strides: int32")
     .Output("output: T")
     .Attr("T: realnumbertype = DT_FLOAT")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 4);
-    });
+    .SetShapeFn(shape_inference::MaxPoolGradShape);
 
 // TODO(b/150813181): Implement explicit padding.
 REGISTER_OP("MaxPoolGradGrad")
@@ -1674,11 +1652,11 @@ REGISTER_OP("_MklDepthwiseConv2dNative")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShapeWithExplicitPadding);
 
 REGISTER_OP("_MklConv2D")
     .Input("input: T")
@@ -1693,11 +1671,11 @@ REGISTER_OP("_MklConv2D")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 MKL version of Conv2D operator. Uses MKL DNN APIs to perform 2D convolution.
 
@@ -1734,10 +1712,11 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 Dummy node that enables fusing Conv2D and BiasAdd operator for MKL. This node
 does not perform anything. It is just created as an intermediate output of
@@ -1762,10 +1741,11 @@ REGISTER_OP("_MklConv2DWithBias")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("is_filter_const: bool = false")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape)
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
 MKL version of Conv2D and BiasAdd operator. Uses MKL DNN APIs to perform
 2D convolution and add Bias to the output of convolution.
@@ -1782,7 +1762,6 @@ REGISTER_OP("__MklDummyPadWithConv2D")
     .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -2343,14 +2322,12 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Input("mkl_workspace: uint8")
     .Output("output: T")
     .Output("mkl_output: uint8")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 4);
-    })
+    .SetShapeFn(shape_inference::MaxPoolGradShape)
     .Doc(R"doc(
-MKL version of MaxPoolGrad. Uses MKL DNN APIs to compute gradients of
+oneDNN version of MaxPoolGrad. Uses oneDNN APIs to compute gradients of
 MaxPool operator.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -2385,18 +2362,12 @@ REGISTER_OP("_MklAvgPoolGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("T: {float, half, double, bfloat16}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
-      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
-      c->set_output(0, s);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::AvgPoolGradShape)
     .Doc(R"doc(
-MKL version of AvgPoolGrad operator. Uses MKL DNN APIs to compute gradients
+oneDNN version of AvgPoolGrad operator. Uses oneDNN APIs to compute gradients
 of AvgPool function.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -2431,18 +2402,12 @@ REGISTER_OP("_MklAvgPool3DGrad")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("T: {float, half, double, bfloat16}")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
-      TF_RETURN_IF_ERROR(c->WithRank(s, 5, &s));
-      c->set_output(0, s);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::AvgPool3DGradShape)
     .Doc(R"doc(
-MKL version of AvgPool3DGrad operator. Uses MKL DNN APIs to compute gradients
+oneDNN version of AvgPool3DGrad operator. Uses oneDNN APIs to compute gradients
 of AvgPool function.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -2486,14 +2451,12 @@ REGISTER_OP("_MklMaxPool3DGrad")
     .Attr("T: {half, bfloat16, float} = DT_FLOAT")
     .Attr("TInput: {half, bfloat16, float} = DT_FLOAT")
     .Attr("workspace_enabled: bool = false")
-    .SetShapeFn([](InferenceContext* c) {
-      return UnchangedShapeWithRank(c, 5);
-    })
+    .SetShapeFn(shape_inference::MaxPool3DGradShape)
     .Doc(R"doc(
-MKL version of MklPool3DGrad operator. Uses MKL DNN APIs to compute gradients
-of MklPool function.
+oneDNN version of MaxPool3DGrad operator. Uses oneDNN APIs to compute gradients
+of MaxPool3D function.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -2580,44 +2543,12 @@ REGISTER_OP("_MklFusedBatchNorm")
     .Attr("data_format: string = 'NHWC'")
     .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &x));
-
-      bool is_training;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      int number_inputs = (is_training) ? 3 : 5;
-      string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-      DimensionHandle channel_dim =
-          (data_format == "NHWC") ? c->Dim(x, 3) : c->Dim(x, 1);
-
-      // covers scale, offset, and if is_training is false, mean, variance
-      for (int i = 1; i < number_inputs; ++i) {
-        ShapeHandle vec;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
-      }
-
-      ShapeHandle y;
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 3, channel_dim, &y));
-      } else {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(x, 1, channel_dim, &y));
-      }
-      c->set_output(0, y);
-      ShapeHandle vector_shape = c->Vector(channel_dim);
-      c->set_output(1, vector_shape);
-      c->set_output(2, vector_shape);
-      c->set_output(3, vector_shape);
-      c->set_output(4, vector_shape);
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::FusedBatchNormShape)
     .Doc(R"doc(
-MKL version of FusedBatchNorm operator. Uses MKL DNN APIs to perform fused
+oneDNN version of FusedBatchNorm operator. Uses oneDNN APIs to perform fused
 batch normalization.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
@@ -2646,60 +2577,12 @@ REGISTER_OP("_MklFusedBatchNormGrad")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
     .Attr("is_training: bool = true")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle y_backprop;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_backprop));
-      ShapeHandle x;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 4, &x));
-
-      bool is_training;
-      string data_format;
-      TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format));
-      DimensionHandle channel_dim = (data_format == "NHWC")
-                                        ? c->Dim(y_backprop, 3)
-                                        : c->Dim(y_backprop, 1);
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 3), &channel_dim));
-      } else {
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(x, 1), &channel_dim));
-      }
-
-      // covers scale, mean (reserve_space_1), variance (reserve_space_2)
-      for (int i = 2; i < 5; ++i) {
-        ShapeHandle vec;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
-        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
-      }
-
-      ShapeHandle x_backprop;
-      if (data_format == "NHWC") {
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(y_backprop, 3, channel_dim, &x_backprop));
-      } else {
-        TF_RETURN_IF_ERROR(
-            c->ReplaceDim(y_backprop, 1, channel_dim, &x_backprop));
-      }
-      c->set_output(0, x_backprop);
-      c->set_output(1, c->Vector(channel_dim));
-      c->set_output(2, c->Vector(channel_dim));
-      // Set the correct shapes for reserve_spaces
-      // so that gradients can be performed when
-      // the op is in a symbolic condition.
-      if (is_training) {
-        c->set_output(3, c->Vector(0));
-        c->set_output(4, c->Vector(0));
-      } else {
-        c->set_output(3, c->Vector(channel_dim));
-        c->set_output(4, c->Vector(channel_dim));
-      }
-      return Status::OK();
-    })
+    .SetShapeFn(shape_inference::FusedBatchNormGradShape)
     .Doc(R"doc(
-MKL version of FusedBatchNormGrad operator. Uses MKL DNN APIs to compute
+oneDNN version of FusedBatchNormGrad operator. Uses oneDNN APIs to compute
 gradients for fused batch normalization.
 
-NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 

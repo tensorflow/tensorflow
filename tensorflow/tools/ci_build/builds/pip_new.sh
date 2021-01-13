@@ -469,7 +469,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.3.3" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.4.0" || \
     die "Error: gast install, upgrade FAILED"
 
 }
@@ -667,7 +667,7 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
         "\"${CONTAINER_TYPE}\" instead."
   fi
   if [[ "$PROJECT_NAME" == *_${PROJECT_SUFFIX} ]]; then
-    NEW_PROJECT_NAME=${PROJECT_NAME%"_${PROJECT_SUFFIX}"}
+    NEW_PROJECT_NAME=${PROJECT_NAME}"_${PROJECT_SUFFIX}"
   else
     NEW_PROJECT_NAME="${PROJECT_NAME}_${PROJECT_SUFFIX}"
   fi

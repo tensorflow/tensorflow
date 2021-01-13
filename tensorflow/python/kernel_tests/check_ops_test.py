@@ -1557,6 +1557,14 @@ class AssertTypeTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must be of type.*float32"):
       check_ops.assert_type(sparse_float16, dtypes.float32)
 
+  def test_raise_when_tf_type_is_not_dtype(self):
+    # Test case for GitHub issue:
+    # https://github.com/tensorflow/tensorflow/issues/45975
+    value = constant_op.constant(0.0)
+    with self.assertRaisesRegexp(TypeError,
+                                 "Cannot convert.*to a TensorFlow DType"):
+      check_ops.assert_type(value, (dtypes.float32,))
+
 
 class AssertShapesTest(test.TestCase):
 
@@ -1901,6 +1909,174 @@ class AssertShapesTest(test.TestCase):
         with ops.control_dependencies([assertion]):
           out = array_ops.identity(0)
         sess.run(out, feed_dict=feed_dict)
+
+
+class AssertShapesSparseTensorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_scalar_target_success(self):
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[]], dtypes.int64),
+        constant_op.constant([42], dtypes.float32),
+        constant_op.constant([], dtypes.int64))
+    assertion = check_ops.assert_shapes([(sparse_float, [])])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_float)
+    self.evaluate(out)
+
+  def test_assert_shapes_sparse_tensor_nonscalar_target_fail(self):
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[]], dtypes.int64),
+        constant_op.constant([42], dtypes.float32),
+        constant_op.constant([], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError,
+                                 r"must have rank 2.*Received rank 0"):
+      assertion = check_ops.assert_shapes([(sparse_float, [None, None])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_float)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_fully_specified_target_success(self):
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    assertion = check_ops.assert_shapes([(sparse_float, [500])])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_float)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_fully_specified_target_fail(self):
+    sparse_float = sparse_tensor.SparseTensor(
+        constant_op.constant([[111], [232]], dtypes.int64),
+        constant_op.constant([23.4, -43.2], dtypes.float32),
+        constant_op.constant([500], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError, r"dimension 0 must have size 499"):
+      assertion = check_ops.assert_shapes([(sparse_float, [499])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_float)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_partially_specified_target_success(self):
+    sparse_int = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 40], dtypes.int64))
+    assertion = check_ops.assert_shapes([(sparse_int, [None, 40])])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_int)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_symbolic_match_success(self):
+    sparse_int = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6, 7], [8, 9, 10]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 30, 40], dtypes.int64))
+    assertion = check_ops.assert_shapes([(sparse_int, ["N", "N", "D"])])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_int)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_partially_specified_target_fail(self):
+    sparse_int = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 40], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 41"):
+      assertion = check_ops.assert_shapes([(sparse_int, [None, 41])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_int)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_wrong_rank_fail(self):
+    sparse_int = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 40], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError,
+                                 r"must have rank 3\..* Received rank 2"):
+      assertion = check_ops.assert_shapes([(sparse_int, [None, None, 40])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_int)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_wrong_symbolic_match_fail(self):
+    sparse_int = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 40], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
+      assertion = check_ops.assert_shapes([(sparse_int, ["D", "D"])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_int)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_multiple_assertions_success(self):
+    sparse_scalar = sparse_tensor.SparseTensor(
+        constant_op.constant([[]], dtypes.int64),
+        constant_op.constant([42], dtypes.float32),
+        constant_op.constant([], dtypes.int64))
+    sparse_2d = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 30], dtypes.int64))
+    assertion = check_ops.assert_shapes([(sparse_scalar, []),
+                                         (sparse_2d, ["N", "N"])])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_2d)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_multiple_assertions_fail(self):
+    sparse_scalar = sparse_tensor.SparseTensor(
+        constant_op.constant([[]], dtypes.int64),
+        constant_op.constant([42], dtypes.float32),
+        constant_op.constant([], dtypes.int64))
+    sparse_2d = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 40], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
+      assertion = check_ops.assert_shapes([(sparse_scalar, []),
+                                           (sparse_2d, ["N", "N"])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_2d)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_mixed_dense_and_sparse_success(self):
+    dense_scalar = constant_op.constant([42], dtypes.float32)
+    sparse_2d = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 30], dtypes.int64))
+    assertion = check_ops.assert_shapes([(dense_scalar, []),
+                                         (sparse_2d, ["N", "N"])])
+    with ops.control_dependencies([assertion]):
+      out = array_ops.identity(sparse_2d)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_assert_shapes_sparse_tensor_mixed_dense_and_sparse_fail(self):
+    dense_scalar = constant_op.constant([42], dtypes.float32)
+    sparse_2d = sparse_tensor.SparseTensor(
+        constant_op.constant([[5, 6], [7, 8]], dtypes.int64),
+        constant_op.constant([23, -43], dtypes.int32),
+        constant_op.constant([30, 40], dtypes.int64))
+    with self.assertRaisesRegexp(ValueError, r"dimension 1 must have size 30"):
+      assertion = check_ops.assert_shapes([(dense_scalar, []),
+                                           (sparse_2d, ["N", "N"])])
+      with ops.control_dependencies([assertion]):
+        out = array_ops.identity(sparse_2d)
+      self.evaluate(out)
 
 
 class IsStrictlyIncreasingTest(test.TestCase):

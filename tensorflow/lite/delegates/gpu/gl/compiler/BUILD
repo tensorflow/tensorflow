@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:compiler_options",
         "//tensorflow/lite/delegates/gpu/gl:object",
         "//tensorflow/lite/delegates/gpu/gl:variable",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -178,6 +179,7 @@ cc_test(
     srcs = ["fuse_auto_input_test.cc"],
     tags = [
         "local",
+        "no_mac",  # TODO(b/171881489)
     ],
     deps = [
         ":compiled_node",

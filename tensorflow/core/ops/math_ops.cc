@@ -382,8 +382,8 @@ REGISTER_OP("AddV2")
     .Input("y: T")
     .Output("z: T")
     .Attr(
-        "T: {bfloat16, half, float, double, uint8, int8, int16, int32, int64, "
-        "complex64, complex128}")
+        "T: {bfloat16, half, float, double, uint8, int8, int16, uint32, int32, "
+        "int64, complex64, complex128}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .SetIsAggregate()
     .SetIsCommutative();
@@ -703,27 +703,24 @@ REGISTER_OP("GreaterEqual").COMPARISON();
 
 // --------------------------------------------------------------------------
 
-#define EQUALITY_COMPARISON()                                              \
-  Input("x: T")                                                            \
-      .Input("y: T")                                                       \
-      .Output("z: bool")                                                   \
-      .SetIsCommutative()                                                  \
-      .Attr(                                                               \
-          "T: {bfloat16, half, float, double, uint8, int8, int16, int32, " \
-          "int64, uint16, uint32, uint64, complex64, "                     \
-          "quint8, qint8, qint32, string, bool, complex128}")              \
-      .Attr("incompatible_shape_error: bool = true")                       \
-      .SetShapeFn([](InferenceContext* c) {                                \
-        ShapeHandle x = c->input(0);                                       \
-        ShapeHandle y = c->input(1);                                       \
-        ShapeHandle output;                                                \
-        bool incompatible_shape_error;                                     \
-        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",          \
-                                      &incompatible_shape_error));         \
-        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(           \
-            c, x, y, incompatible_shape_error, &output));                  \
-        c->set_output(0, output);                                          \
-        return Status::OK();                                               \
+#define EQUALITY_COMPARISON()                                      \
+  Input("x: T")                                                    \
+      .Input("y: T")                                               \
+      .Output("z: bool")                                           \
+      .SetIsCommutative()                                          \
+      .Attr("T: type")                                             \
+      .Attr("incompatible_shape_error: bool = true")               \
+      .SetShapeFn([](InferenceContext* c) {                        \
+        ShapeHandle x = c->input(0);                               \
+        ShapeHandle y = c->input(1);                               \
+        ShapeHandle output;                                        \
+        bool incompatible_shape_error;                             \
+        TF_RETURN_IF_ERROR(c->GetAttr("incompatible_shape_error",  \
+                                      &incompatible_shape_error)); \
+        TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(   \
+            c, x, y, incompatible_shape_error, &output));          \
+        c->set_output(0, output);                                  \
+        return Status::OK();                                       \
       })
 
 REGISTER_OP("Equal").EQUALITY_COMPARISON();
@@ -957,6 +954,8 @@ REGISTER_OP("_FusedMatMul")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ---------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras categorical preprocessing layers."""
+"""Keras hashing preprocessing layer."""
 # pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
@@ -113,7 +113,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   Reference: [SipHash with salt](https://www.131002.net/siphash/siphash.pdf)
 
-  Arguments:
+  Args:
     num_bins: Number of hash bins.
     salt: A single unsigned integer or None.
       If passed, the hash function used will be SipHash64, with these values
@@ -138,7 +138,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     if num_bins is None or num_bins <= 0:
       raise ValueError('`num_bins` cannot be `None` or non-positive values.')
     super(Hashing, self).__init__(name=name, **kwargs)
-    base_preprocessing_layer._kpl_gauge.get_cell('V2').set('Hashing')
+    base_preprocessing_layer.keras_kpl_gauge.get_cell('Hashing').set(True)
     self.num_bins = num_bins
     self.strong_hash = True if salt is not None else False
     if salt is not None:
@@ -161,7 +161,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     if isinstance(inputs, (tuple, list)):
       # If any of them is tensor or ndarray, then treat as list
       if any(
-          tensor_util.is_tensor(inp) or isinstance(inp, np.ndarray)
+          tensor_util.is_tf_type(inp) or isinstance(inp, np.ndarray)
           for inp in inputs):
         return [self._preprocess_single_input(inp) for inp in inputs]
     return self._preprocess_single_input(inputs)
@@ -213,7 +213,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
     indices = [sp_inp.indices for sp_inp in sparse_inputs]
     values = [sp_inp.values for sp_inp in sparse_inputs]
     shapes = [sp_inp.dense_shape for sp_inp in sparse_inputs]
-    indices_out, values_out, shapes_out = gen_sparse_ops.sparse_cross_hashed(
+    indices_out, values_out, shapes_out = gen_sparse_ops.SparseCrossHashed(
         indices=indices,
         values=values,
         shapes=shapes,

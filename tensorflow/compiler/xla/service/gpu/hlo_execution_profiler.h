@@ -40,7 +40,7 @@ class HloExecutionProfiler {
   explicit HloExecutionProfiler(bool do_profile, HloExecutionProfile* profile,
                                 se::Stream* stream,
                                 const std::vector<StreamPool::Ptr>& sub_streams,
-                                const HloComputation* computation);
+                                size_t index);
 
   // If profiling is enabled, sets the total cycle count on the profile from the
   // execution timer.
@@ -52,6 +52,11 @@ class HloExecutionProfiler {
   // If profiling is enabled stops the timer for a (sub)computation and records
   // the time that the computation took to execute in the profile.
   void FinishHloComputation(const HloComputation* computation);
+
+  // If profiling is enabled stops the timer for a (sub)computation with the
+  // given profile index and records the time that the computation took to
+  // execute in the profile.
+  void FinishHloComputation(absl::optional<size_t> profile_index);
 
   // If profiling is enabled, starts a per-operation timer.
   void StartHloInstruction();
@@ -75,7 +80,7 @@ class HloExecutionProfiler {
   HloExecutionProfile* profile_;
   se::Stream* stream_;
   const std::vector<StreamPool::Ptr>& sub_streams_;
-  const HloComputation* computation_;
+  size_t computation_profile_index_;
   std::stack<std::unique_ptr<se::Timer>> timers_;
   // Contains the HLO instructions for which we are currently measuring the
   // time.

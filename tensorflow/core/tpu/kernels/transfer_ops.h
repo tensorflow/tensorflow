@@ -25,11 +25,11 @@ namespace tensorflow {
 
 // Base class providing common functionality for async ops that transfer from
 // host to TPU.
-class TpuTransferAsyncOpKernel : public AsyncOpKernel {
+class TpuTransferAsyncOpKernelBase : public AsyncOpKernel {
  public:
-  explicit TpuTransferAsyncOpKernel(OpKernelConstruction* ctx,
-                                    const string& transfer_type,
-                                    int number_of_threads);
+  explicit TpuTransferAsyncOpKernelBase(OpKernelConstruction* ctx,
+                                        const string& transfer_type,
+                                        int number_of_threads);
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 
@@ -38,17 +38,52 @@ class TpuTransferAsyncOpKernel : public AsyncOpKernel {
                         xla::TpuTransferManagerInterface* transfer_manager,
                         stream_executor::StreamExecutor* stream_executor) = 0;
 
+  Status RunTransferWithOrdinal(OpKernelContext* ctx, int device_ordinal);
+  std::string transfer_type_;
+
  private:
-  Status RunTransfer(OpKernelContext* ctx);
+  virtual Status RunTransfer(OpKernelContext* ctx) = 0;
   void Cancel();
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
-  int device_ordinal_;
   mutex mu_;
+
+  // TpuTransferAsyncOpKernelBase is neither copyable nor movable.
+  TpuTransferAsyncOpKernelBase(const TpuTransferAsyncOpKernelBase&) = delete;
+  TpuTransferAsyncOpKernelBase& operator=(const TpuTransferAsyncOpKernelBase&) =
+      delete;
+};
+
+class TpuTransferAsyncOpKernel : public TpuTransferAsyncOpKernelBase {
+ public:
+  explicit TpuTransferAsyncOpKernel(OpKernelConstruction* ctx,
+                                    const string& transfer_type,
+                                    int number_of_threads);
+
+ private:
+  Status RunTransfer(OpKernelContext* ctx) override;
+  int device_ordinal_;
 
   // TpuTransferAsyncOpKernel is neither copyable nor movable.
   TpuTransferAsyncOpKernel(const TpuTransferAsyncOpKernel&) = delete;
   TpuTransferAsyncOpKernel& operator=(const TpuTransferAsyncOpKernel&) = delete;
+};
+
+class TpuTransferAsyncDynamicOrdinalOpKernel
+    : public TpuTransferAsyncOpKernelBase {
+ public:
+  explicit TpuTransferAsyncDynamicOrdinalOpKernel(OpKernelConstruction* ctx,
+                                                  const string& transfer_type,
+                                                  int number_of_threads);
+
+ private:
+  Status RunTransfer(OpKernelContext* ctx) override;
+
+  // TpuTransferAsyncDynamicOpKernel is neither copyable nor movable.
+  TpuTransferAsyncDynamicOrdinalOpKernel(
+      const TpuTransferAsyncDynamicOrdinalOpKernel&) = delete;
+  TpuTransferAsyncDynamicOrdinalOpKernel& operator=(
+      const TpuTransferAsyncDynamicOrdinalOpKernel&) = delete;
 };
 
 }  // namespace tensorflow

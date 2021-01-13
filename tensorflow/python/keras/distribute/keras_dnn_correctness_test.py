@@ -22,20 +22,23 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
-from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
 def all_strategy_combinations_with_eager_and_graph_modes():
   return (combinations.combine(
-      distribution=keras_correctness_test_base.all_strategies,
-      mode=['graph', 'eager']))
+      distribution=strategy_combinations.all_strategies,
+      mode=['graph', 'eager']) + combinations.combine(
+          distribution=strategy_combinations.multi_worker_mirrored_strategies,
+          mode='eager'))
 
 
 def all_strategy_combinations_with_graph_mode():
@@ -102,12 +105,15 @@ class TestDistributionStrategyDnnCorrectness(
     return x_train, y_train, x_eval, y_eval, x_predict
 
   @ds_combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data):
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
   @ds_combinations.generate(
-      keras_correctness_test_base.test_combinations_with_tpu_strategies())
+      keras_correctness_test_base
+      .test_combinations_with_tpu_strategies_graph() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
                                                         use_validation_data):
@@ -116,7 +122,8 @@ class TestDistributionStrategyDnnCorrectness(
 
   @ds_combinations.generate(
       keras_correctness_test_base
-      .strategy_minus_tpu_and_input_config_combinations_eager())
+      .strategy_minus_tpu_and_input_config_combinations_eager() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_dnn_correctness_with_partial_last_batch(self, distribution,
                                                    use_numpy,
                                                    use_validation_data):
@@ -265,7 +272,8 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
       return model
 
   @ds_combinations.generate(
-      keras_correctness_test_base.all_strategy_and_input_config_combinations())
+      keras_correctness_test_base.all_strategy_and_input_config_combinations() +
+      keras_correctness_test_base.multi_worker_mirrored_eager())
   def test_dnn_correctness(self, distribution, use_numpy, use_validation_data):
     if (context.executing_eagerly()) or is_default_strategy(distribution):
       self.run_correctness_test(distribution, use_numpy, use_validation_data)
@@ -303,7 +311,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
         self.run_dynamic_lr_test(distribution)
 
   @ds_combinations.generate(
-      keras_correctness_test_base.test_combinations_with_tpu_strategies())
+      keras_correctness_test_base.test_combinations_with_tpu_strategies_graph())
   def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
                                                         use_validation_data):
@@ -319,4 +327,4 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
 
 
 if __name__ == '__main__':
-  test.main()
+  multi_process_runner.test_main()

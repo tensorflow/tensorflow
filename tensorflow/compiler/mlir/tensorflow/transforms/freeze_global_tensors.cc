@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -70,9 +70,10 @@ void FreezeGlobalTensorsPass::runOnOperation() {
       // previous optimize global tensors pass). If not, this pass has to fail
       // since it cannot perform one of its goals.
       if (global_tensor.is_mutable()) {
-        global_tensor.emitError() << "is not immutable, try running "
-                                     "tf-saved-model-optimize-global-tensors "
-                                     "to prove tensors are immutable";
+        global_tensor.emitError()
+            << "is not immutable, try removing mutable variables in your model "
+               "since mutable variables are currently not supported through "
+               "this converter";
         return signalPassFailure();
       }
 

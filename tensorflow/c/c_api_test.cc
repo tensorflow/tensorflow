@@ -634,6 +634,40 @@ TEST(CAPI, Graph) {
   TF_DeleteStatus(s);
 }
 
+TEST(CAPI, UpdateEdge) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make two scalar constants.
+  TF_Operation* one = ScalarConst(1, graph, s, "one");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  TF_Operation* two = ScalarConst(2, graph, s, "two");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add oper.
+  TF_Operation* add = Add(one, two, graph, s, "add");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add another oper to the graph.
+  TF_Operation* neg = Neg(add, graph, s, "neg");
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  NodeDef node_def_neg;
+  ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
+  EXPECT_EQ(string("add"), node_def_neg.input(0));
+
+  // update edge of neg
+  TF_UpdateEdge(graph, TF_Output{one, 0}, TF_Input{neg, 0}, s);
+
+  ASSERT_TRUE(GetNodeDef(neg, &node_def_neg));
+  EXPECT_EQ(string("one:0"), node_def_neg.input(0));
+
+  // Clean up
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
 /*
 TODO(skyewm): this test currently DCHECKs, change to bad status
 

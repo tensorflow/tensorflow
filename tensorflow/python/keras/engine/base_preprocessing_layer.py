@@ -30,8 +30,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import type_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine import training_generator
+from tensorflow.python.keras.engine import training_generator_v1
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import sparse_ops
@@ -39,9 +40,9 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
-_kpl_gauge = monitoring.StringGauge(
+keras_kpl_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/layers/preprocessing',
-    'keras preprocessing layers usage', 'TFVersion')
+    'keras preprocessing layers usage', 'method')
 
 
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
@@ -54,7 +55,7 @@ class PreprocessingLayer(Layer):
     # TODO(momernick): Add examples.
     """Fits the state of the preprocessing layer to the data being passed.
 
-    Arguments:
+    Args:
         data: The data to train on. It can be passed either as a tf.data
           Dataset, or as a numpy array.
         reset_state: Optional argument specifying whether to clear the state of
@@ -136,7 +137,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
   def adapt(self, data, reset_state=True):
     """Fits the state of the preprocessing layer to the data being passed.
 
-    Arguments:
+    Args:
       data: The data to train on. It can be passed either as a tf.data Dataset,
         or as a numpy array.
       reset_state: Optional argument specifying whether to clear the state of
@@ -161,6 +162,12 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
           'got {}'.format(type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
+      # Validate that the dataset only contains single-tensor elements.
+      if not isinstance(data.element_spec, type_spec.TypeSpec):
+        raise TypeError(
+            'The dataset should yield single-Tensor elements. Use `dataset.map`'
+            'to select the element of interest.\n'
+            'Got dataset.element_spec=' + str(data.element_spec))
       # Validate the datasets to try and ensure we haven't been passed one with
       # infinite size. That would cause an infinite loop here.
       if tf_utils.dataset_is_infinite(data):
@@ -175,7 +182,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       next_data = self._get_dataset_iterator(
           dataset_ops.Dataset.from_tensor_slices(data).batch(512))
     else:
-      generator, _ = training_generator.convert_to_generator_like(
+      generator, _ = training_generator_v1.convert_to_generator_like(
           data, batch_size=512)
       # If the data is not a dataset, we can iterate over it using next(foo);
       # here, we wrap that into a callable.
@@ -258,8 +265,6 @@ def convert_to_list(values, sparse_default_value=None):
       values = K.get_session(values).run(values)
     values = values.to_list()
 
-  # TODO(momernick): Add a sparse_tensor.is_sparse() method to replace this
-  # check.
   if isinstance(values,
                 (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
     if sparse_default_value is None:
@@ -271,7 +276,7 @@ def convert_to_list(values, sparse_default_value=None):
         values, default_value=sparse_default_value)
     values = K.get_value(dense_tensor)
 
-  if isinstance(values, (ops.EagerTensor, ops.Tensor)):
+  if isinstance(values, ops.Tensor):
     values = K.get_value(values)
 
   # We may get passed a ndarray or the code above may give us a ndarray.

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/resource.h"
@@ -382,6 +383,14 @@ int64 GetTotalBytes(const std::vector<Tensor>& element) {
   return total_bytes;
 }
 
+std::string FullName(const std::string& prefix, const std::string& name) {
+  if (str_util::StrContains(name, kColon)) {
+    LOG(ERROR) << name << " should not contain " << kColon;
+  }
+
+  return strings::StrCat(kFullNameRandomHex, kPipe, prefix, kColon, name);
+}
+
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
   if (!(tensor.dtype() == DT_VARIANT &&
@@ -425,6 +434,31 @@ Status DatasetBase::MakeIterator(
     iterator->reset();
   }
   return s;
+}
+
+Status DatasetBase::MakeSplitProvider(
+    std::unique_ptr<SplitProvider>* split_provider) const {
+  std::vector<const DatasetBase*> inputs;
+  Status s = InputDatasets(&inputs);
+  if (errors::IsUnimplemented(s)) {
+    return errors::Unimplemented(
+        "Cannot create a split provider for dataset of type ", type_string(),
+        ", because the dataset implements neither `InputDatasets` nor "
+        "`MakeSplitProvider`.");
+  }
+  if (inputs.size() != 1) {
+    return errors::Unimplemented(
+        "Cannot create a split provider for dataset of type ", type_string(),
+        ", because the dataset is not unary (having arity ", inputs.size(),
+        "), and no custom implementation of `MakeSplitProvider` is defined.");
+  }
+  return inputs[0]->MakeSplitProvider(split_provider);
+}
+
+Status DatasetBase::InputDatasets(
+    std::vector<const DatasetBase*>* inputs) const {
+  return errors::Unimplemented("InputDatasets not implemented for ",
+                               type_string());
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(

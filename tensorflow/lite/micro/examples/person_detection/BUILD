@@ -6,9 +6,11 @@ load(
     "tflite_micro_cc_test",
 )
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "model_settings",
@@ -28,6 +30,9 @@ cc_library(
     hdrs = [
         "person_detect_model_data.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
 )
 
 cc_library(
@@ -40,6 +45,9 @@ cc_library(
         "no_person_image_data.h",
         "person_image_data.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":model_settings",
     ],
@@ -48,6 +56,9 @@ cc_library(
 tflite_micro_cc_test(
     name = "person_detection_test",
     srcs = ["person_detection_test.cc"],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":model_settings",
         ":person_detect_model_data",
@@ -123,6 +134,9 @@ cc_binary(
         "main_functions.cc",
         "main_functions.h",
     ],
+    tags = [
+        "no_oss",  # TODO(b/174680668): Exclude from OSS.
+    ],
     deps = [
         ":detection_responder",
         ":image_provider",
@@ -134,10 +148,4 @@ cc_binary(
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/schema:schema_fbs",
     ],
-)
-
-sh_test(
-    name = "person_detection_binary_test",
-    srcs = ["person_detection_binary_test.sh"],
-    data = [":person_detection"],
 )

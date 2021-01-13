@@ -22,18 +22,20 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
@@ -59,8 +61,14 @@ struct TFInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
+  // Allow all call operations to be inlined.
+  bool isLegalToInline(Operation* call, Operation* callable,
+                       bool wouldBeCloned) const final {
+    return true;
+  }
   // Defines the legality of inlining TF Device operations.
-  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+  bool isLegalToInline(Operation*, Region*, bool,
+                       BlockAndValueMapping&) const final {
     // For now, enable inlining all operations.
     return true;
   }
@@ -269,8 +277,6 @@ ParseResult SetReplicateOpOperands(
         replicated_inputs,
     llvm::ArrayRef<OpAsmParser::OperandType> packed_inputs,
     llvm::ArrayRef<Type> region_arg_types, int32_t* n) {
-  if (replicated_inputs.empty() && packed_inputs.empty()) return success();
-
   for (const auto& attr : state->attributes)
     if (attr.first.strref() == "n")
       if (auto n_attr = attr.second.dyn_cast<IntegerAttr>())
@@ -278,6 +284,8 @@ ParseResult SetReplicateOpOperands(
 
   if (*n < 2)
     return parser->emitError(loc) << "expects 'n' to be at least 2, got " << *n;
+
+  if (replicated_inputs.empty() && packed_inputs.empty()) return success();
 
   for (auto replicated_input_and_idx : llvm::enumerate(replicated_inputs)) {
     const int32_t idx = replicated_input_and_idx.index();
@@ -504,25 +512,15 @@ LogicalResult Verify(ReplicateOp op) {
   return success();
 }
 
-template <typename OperandsTy, typename ResultsTy>
 void BuildReplicateOp(
     Builder* builder, OperationState* state, int n,
-    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
-        devices,
-    llvm::ArrayRef<std::pair<OperandsTy, Type>> replicated_inputs,
-    llvm::ArrayRef<Value> packed_inputs, ResultsTy replica_output_types) {
+    llvm::Optional<DictionaryAttr> devices,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
   DCHECK_GE(n, 2);
   state->addAttribute("n", builder->getI32IntegerAttr(n));
 
-  llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
-  device_list.reserve(devices.size());
-  for (auto alias_and_devices : devices) {
-    NamedAttribute device_name_attr = builder->getNamedAttr(
-        alias_and_devices.getFirst(),
-        builder->getStrArrayAttr(alias_and_devices.getSecond()));
-    device_list.emplace_back(device_name_attr);
-  }
-  state->addAttribute("devices", builder->getDictionaryAttr(device_list));
+  if (devices.hasValue()) state->addAttribute("devices", devices.getValue());
 
   Region* region = state->addRegion();
   region->push_back(new Block);
@@ -538,7 +536,7 @@ void BuildReplicateOp(
     block.addArgument(replicated_input.second);
   }
 
-  for (auto& packed_input : packed_inputs) {
+  for (auto packed_input : packed_inputs) {
     state->addOperands(packed_input);
     block.addArgument(packed_input.getType());
   }
@@ -560,20 +558,30 @@ void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
     const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
         devices,
-    llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs,
-    llvm::ArrayRef<Value> packed_inputs,
-    llvm::ArrayRef<Type> replica_output_types) {
-  BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
+  llvm::Optional<DictionaryAttr> devices_attr;
+  if (!devices.empty()) {
+    llvm::SmallVector<mlir::NamedAttribute, 1> device_list;
+    device_list.reserve(devices.size());
+    for (auto alias_and_devices : devices) {
+      NamedAttribute device_name_attr = builder.getNamedAttr(
+          alias_and_devices.getFirst(),
+          builder.getStrArrayAttr(alias_and_devices.getSecond()));
+      device_list.emplace_back(device_name_attr);
+    }
+    devices_attr.emplace(builder.getDictionaryAttr(device_list));
+  }
+
+  BuildReplicateOp(&builder, &state, n, devices_attr, replicated_inputs,
                    packed_inputs, replica_output_types);
 }
 
 void ReplicateOp::build(
     OpBuilder& builder, OperationState& state, int n,
-    const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>&
-        devices,
-    llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs,
-    llvm::ArrayRef<Value> packed_inputs,
-    Operation::result_type_range replica_output_types) {
+    llvm::Optional<DictionaryAttr> devices,
+    llvm::ArrayRef<std::pair<ValueRange, Type>> replicated_inputs,
+    ValueRange packed_inputs, TypeRange replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    packed_inputs, replica_output_types);
 }
@@ -637,6 +645,10 @@ Value ReplicateOp::GetReplicaOperandForBlockArgument(BlockArgument block_arg,
   return getOperand(operand_index);
 }
 
+// Checks if a tf_device.replicate wraps a single operation and the single
+// operation results are perfectly forwarded to the replicate return.
+bool ReplicateOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
+
 //===----------------------------------------------------------------------===//
 // Canonicalization patterns
 //===----------------------------------------------------------------------===//
@@ -670,12 +682,12 @@ void LaunchOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
   results.insert<DropEmptyLaunch>(context);
 }
 
+}  // namespace tf_device
+}  // namespace mlir
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
-
-}  // namespace tf_device
-}  // namespace mlir

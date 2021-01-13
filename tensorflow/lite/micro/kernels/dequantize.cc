@@ -52,7 +52,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/140515557): Add cached dequant to improve hybrid model performance.
   const TfLiteTensor* input = GetInput(context, node, 0);
+  TF_LITE_ENSURE(context, input != nullptr);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, output != nullptr);
 
   TF_LITE_ENSURE(context, input->type == kTfLiteUInt8 ||
                               input->type == kTfLiteInt8 ||
@@ -114,14 +116,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     int flat_size = MatchingFlatSize(tflite::micro::GetTensorShape(input),
                                      tflite::micro::GetTensorShape(output));
     switch (input->type) {
-      case kTfLiteInt16: {
-        reference_ops::Requantize(
-            tflite::micro::GetTensorData<int16_t>(input), flat_size,
-            data->output_multiplier, data->output_shift,
-            data->quantization_params.zero_point, data->output_zero_point,
-            tflite::micro::GetTensorData<int32_t>(output));
-        break;
-      }
       case kTfLiteInt8: {
         reference_ops::Requantize(
             tflite::micro::GetTensorData<int8_t>(input), flat_size,

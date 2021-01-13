@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 
 #include <vector>
 
@@ -56,8 +56,10 @@ TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
       TensorFloat32 dst_tensor;
       auto operation =
           CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_, 1);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(1, 1, 1, 4), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(1, 1, 1, 4), &dst_tensor));
 
       std::vector<float> expected_output;
       if (diff == 0.0f) {
@@ -104,6 +106,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
   };
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps =
+          precision == CalculationsPrecision::F32 ? 2.53e-05f : 3.57e-4f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -112,8 +116,10 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
       TensorFloat32 dst_tensor;
       auto operation =
           CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_, 1);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(9, 1, 1, 4), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(9, 1, 1, 4), &dst_tensor));
 
       const float ksqrt16 = std::sqrt(1.6f);
       const float ksqrt04 = std::sqrt(0.4f);
@@ -128,8 +134,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, small variance
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
       };
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(3.57e-4f), expected_output));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected_output))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }
@@ -153,6 +159,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps =
+          precision == CalculationsPrecision::F32 ? 0.0f : 8.60e-4f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -161,8 +169,10 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
       TensorFloat32 dst_tensor;
       auto operation = CreateMeanStdDevNormalization(
           op_def, env_.GetDevicePtr()->info_, (kVectorSize + 3) / 4);
-      ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
-                                    BHWC(1, 1, 1, kVectorSize), &dst_tensor));
+      ASSERT_OK(ExecuteGPUOperation(
+          {src_tensor}, creation_context_,
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation)),
+          BHWC(1, 1, 1, kVectorSize), &dst_tensor));
 
       float expected_output[kVectorSize];
       // First output should be 0.
@@ -175,8 +185,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationLargeVector) {
         expected_output[i + 0] = +expected_elem;
         expected_output[i + 1] = -expected_elem;
       }
-      EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(1.17e-4f), expected_output));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), expected_output))
+          << "Failed using precision " << ToString(precision);
     }
   }
 }

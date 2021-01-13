@@ -51,11 +51,14 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python/compat",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/util:convert",
-        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

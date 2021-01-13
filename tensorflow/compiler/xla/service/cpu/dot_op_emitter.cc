@@ -24,10 +24,11 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/Transforms/CodegenStrategy.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/EDSC/Intrinsics.h"  // from @llvm-project
 #include "mlir/EDSC/Builders.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/cpu/mlir_emitter.h"
-#include "tensorflow/compiler/xla/service/cpu/mlir_matmul_codegen_strategy.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/cpu/tiled_dot_emitter.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
@@ -304,14 +304,16 @@ Status DotOpEmitter::EmitLinalgMatmul() {
           }
         }
 
-        llvm::SmallVector<mlir::IteratorType, 4> types(
+        llvm::SmallVector<mlir::IteratorType, 4> iteratorTypes(
             parallel_exprs.size(), mlir::IteratorType::Parallel);
-        types.push_back(mlir::IteratorType::Reduction);
+        iteratorTypes.push_back(mlir::IteratorType::Reduction);
 
         mlir::edsc::StructuredIndexed s_a(a), s_b(b), s_c(c);
-        mlir::edsc::makeGenericLinalgOp(types, {s_b(b_exprs), s_c(c_exprs)},
-                                        {s_a(parallel_exprs)},
-                                        mlir::edsc::ops::macRegionBuilder);
+        mlir::edsc::makeGenericLinalgOp(
+            /*iteratorTypes=*/iteratorTypes,
+            /*inputs=*/{s_b(b_exprs), s_c(c_exprs)},
+            /*outputs=*/{s_a(parallel_exprs)},
+            /*resultTensorTypes=*/{}, mlir::edsc::ops::macRegionBuilder);
         mlir::edsc::intrinsics::std_ret();
 
         mlir::linalg::LinalgTilingOptions tilingOptions;
@@ -319,7 +321,7 @@ Status DotOpEmitter::EmitLinalgMatmul() {
         int64 alignment =
             target_machine_features_.minimum_alignment_for_allocation(
                 ShapeUtil::ByteSizeOf(dot_info_.result_shape));
-        mlir_strategy::MatmulCodegenStrategy strategy;
+        mlir::linalg::CodegenStrategy strategy;
         strategy.tile<mlir::linalg::GenericOp>(tilingOptions)
             .promote<mlir::linalg::GenericOp>(
                 mlir::linalg::LinalgPromotionOptions()
@@ -649,6 +651,9 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   } else if (ShapeUtil::ElementIsIntegral(lhs_shape)) {
     llvm::Value* product = b_->CreateMul(lhs_element, rhs_element);
     updated_accum = b_->CreateAdd(accum, product);
+  } else if (lhs_shape.element_type() == PRED) {
+    llvm::Value* product = b_->CreateAnd(lhs_element, rhs_element);
+    updated_accum = b_->CreateOr(accum, product);
   } else {
     llvm::Value* product = b_->CreateFMul(lhs_element, rhs_element);
     updated_accum = b_->CreateFAdd(accum, product);
@@ -1039,7 +1044,9 @@ Status EmitNonBatchDotOperation(
     mlir::MLIRContext* mlir_context, const HloModuleConfig& hlo_module_config,
     const TargetMachineFeatures& target_machine_features) {
   PrimitiveType type = target_array.GetShape().element_type();
-  TF_RET_CHECK(S32 == type || F16 == type || F32 == type || F64 == type ||
+  TF_RET_CHECK(PRED == type || S8 == type || U8 == type || S16 == type ||
+               U16 == type || S32 == type || U32 == type || S64 == type ||
+               U64 == type || F16 == type || F32 == type || F64 == type ||
                C64 == type || C128 == type);
   DotOpEmitter dot_emitter(std::move(dot_info), std::move(hlo_name),
                            target_array, lhs_array, rhs_array, addend_array,

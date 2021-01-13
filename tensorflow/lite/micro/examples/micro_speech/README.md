@@ -1,3 +1,5 @@
+<!-- mdformat off(b/169948621#comment2) -->
+
 # Micro Speech Example
 
 This example shows how to run a 20 kB model that can recognize 2 keywords,
@@ -23,6 +25,7 @@ kilobytes of Flash.
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
 -   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
+-   [Deploy to CEVA-BX1](#deploy-to-ceva-bx1)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
@@ -68,7 +71,7 @@ generate_micro_speech_mock_make_project
 ```
 
 Note that `TAGS=reduce_codesize` applies example specific changes of code to
-reduce total size of application. It can be ommited.
+reduce total size of application. It can be omitted.
 
 ### Build and Run Example
 
@@ -213,28 +216,36 @@ The next steps assume that the
 
 ### Generate the examples
 
-The example project can be generated with the following command: `make -f
-tensorflow/lite/micro/tools/make/Makefile TARGET=esp
-generate_micro_speech_esp_project`
+The example project can be generated with the following command:
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=esp generate_micro_speech_esp_project
+```
 
 ### Building the example
 
-Go the the example project directory `cd
-tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf`
+Go to the example project directory
+```
+cd tensorflow/lite/micro/tools/make/gen/esp_xtensa-esp32/prj/micro_speech/esp-idf
+```
 
 Then build with `idf.py` `idf.py build`
 
 ### Load and run the example
 
-To flash (replace `/dev/ttyUSB0` with the device serial port): `idf.py --port
-/dev/ttyUSB0 flash`
+To flash (replace `/dev/ttyUSB0` with the device serial port):
+```
+idf.py --port /dev/ttyUSB0 flash
+```
 
-Monitor the serial output: `idf.py --port /dev/ttyUSB0 monitor`
+Monitor the serial output:
+```idf.py --port /dev/ttyUSB0 monitor```
 
 Use `Ctrl+]` to exit.
 
-The previous two commands can be combined: `idf.py --port /dev/ttyUSB0 flash
-monitor`
+The previous two commands can be combined:
+```
+idf.py --port /dev/ttyUSB0 flash monitor
+```
 
 ## Deploy to SparkFun Edge
 
@@ -506,29 +517,21 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     make -f tensorflow/lite/micro/tools/make/Makefile TARGET=mbed TAGS="nxp_k66f" generate_micro_speech_mbed_project
     ```
 
-4.  Go to the location of the generated project. The generated project is
-    usually in
+4.  Change into the following directory that has been generated:
     `tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed`
 
-5.  Create a mbed project using the generated files: `mbed new .`
+5.  Create an Mbed project using the generated files, run ensuring your
+    environment is using Python 2.7: `mbed config root .`
 
-6.  Change the project setting to use C++ 11 rather than C++ 14 using:
+6.  Next, tell Mbed to download the dependencies and prepare to build: `mbed
+    deploy`
 
-    ```
-    python -c 'import fileinput, glob;
-    for filename in glob.glob("mbed-os/tools/profiles/*.json"):
-      for line in fileinput.input(filename, inplace=True):
-        print line.replace("\"-std=gnu++14\"","\"-std=c++11\", \"-fpermissive\"")'
-    ```
+7.  Finally, we can run the following command to compile the code: `mbed compile
+    -m K66F -t GCC_ARM`
 
-7.  To compile project, use the following command:
-
-    ```
-    mbed compile --target K66F --toolchain GCC_ARM --profile release
-    ```
-
-8.  For some mbed compilers, you may get compile error in mbed_rtc_time.cpp. Go
-    to `mbed-os/platform/mbed_rtc_time.h` and comment line 32 and line 37:
+8.  For some Mbed compilers (such as GCC), you may get compile error in
+    mbed_rtc_time.cpp. Go to `mbed-os/platform/mbed_rtc_time.h` and comment line
+    32 and line 37:
 
     ```
     //#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
@@ -539,11 +542,10 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     //#endif
     ```
 
-9.  Look at helpful resources from NXP website such as
-    [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf)
-    and
-    [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
-    to understand information about the board.
+9.  If your system does not recognize the board with the `mbed detect` command.
+    Follow the instructions for setting up
+    [DAPLink](https://armmbed.github.io/DAPLink/?board=FRDM-K66F) for the
+    [K66F](https://os.mbed.com/platforms/FRDM-K66F/).
 
 10. Connect the USB cable to the micro USB port. When the Ethernet port is
     facing towards you, the micro USB port is left of the Ethernet port.
@@ -551,7 +553,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 11. To compile and flash in a single step, add the `--flash` option:
 
     ```
-    mbed compile --target K66F --toolchain GCC_ARM --profile release --flash
+    mbed compile -m K66F -t GCC_ARM --flash
     ```
 
 12. Disconnect USB cable from the device to power down the device and connect
@@ -575,7 +577,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
 The following instructions will help you build and deploy this example to
 [HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
-board. To undstand more about using this board, please check
+board. To understand more about using this board, please check
 [HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
 
 ### Initial Setup
@@ -678,6 +680,34 @@ After these steps, press reset button on the HIMAX WE1 EVB, you will see
 application output in the serial terminal and lighting LED.
 
 ![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
+
+## Deploy to CEVA-BX1
+
+The following instructions will help you build and deploy the sample to the
+[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
+
+1.  Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
+2.  Download and install CEVA-BX Toolbox v18.0.2 and run
+3.  Set the TARGET_TOOLCHAIN_ROOT variable in
+    /tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
+    To your installation location. For example: TARGET_TOOLCHAIN_ROOT :=
+    /home/myuser/work/CEVA-ToolBox/V18/BX
+4.  Generate the Makefile for the project: /tensorflow$ make -f
+    tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=bx1
+    generate_micro_speech_make_project
+5.  Build the project:
+    /tensorflow/lite/micro/tools/make/gen/ceva_bx1/prj/micro_speech/make$ make
+6.  This should build the project and create a file called micro_speech.elf.
+7.  The supplied configuration reads input from a files and expects a file
+    called input.wav (easily changed in audio_provider.cc) to be placed in the
+    same directory of the .elf file
+8.  We used Google's speech command dataset: V0.0.2:
+    http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz V0.0.1:
+    http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz
+9.  Follow CEVA Toolbox instructions for creating a debug target and running the
+    project.
+10. Output should look like: Heard silence (208) @352ms Heard no (201) @1696ms
+    Heard yes (203) @3904ms
 
 ## Run on macOS
 

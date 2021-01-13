@@ -26,6 +26,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.keras.layers import advanced_activations
 
 # b/123041942
 # In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
@@ -60,7 +61,7 @@ def softmax(x, axis=-1):
 
   The input values in are the log-odds of the resulting probability.
 
-  Arguments:
+  Args:
       x : Input tensor.
       axis: Integer, axis along which the softmax normalization is applied.
 
@@ -71,16 +72,20 @@ def softmax(x, axis=-1):
   Raises:
       ValueError: In case `dim(x) == 1`.
   """
-  ndim = K.ndim(x)
-  if ndim == 2:
-    return nn.softmax(x)
-  elif ndim > 2:
+  rank = x.shape.rank
+  if rank == 2:
+    output = nn.softmax(x)
+  elif rank > 2:
     e = math_ops.exp(x - math_ops.reduce_max(x, axis=axis, keepdims=True))
     s = math_ops.reduce_sum(e, axis=axis, keepdims=True)
-    return e / s
+    output = e / s
   else:
     raise ValueError('Cannot apply softmax to a tensor that is 1D. '
                      'Received input: %s' % (x,))
+
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.elu')
@@ -116,7 +121,7 @@ def elu(x, alpha=1.0):
 
   <tensorflow.python.keras.engine.sequential.Sequential object ...>
 
-  Arguments:
+  Args:
       x: Input tensor.
       alpha: A scalar, slope of negative section. `alpha` controls the value to
         which an ELU saturates for negative net inputs.
@@ -169,7 +174,7 @@ def selu(x):
   ...                                 activation='selu'))
   >>> model.add(tf.keras.layers.Dense(num_classes, activation='softmax'))
 
-  Arguments:
+  Args:
       x: A tensor or variable to compute the activation function for.
 
   Returns:
@@ -200,7 +205,7 @@ def softplus(x):
   array([2.0611537e-09, 3.1326166e-01, 6.9314718e-01, 1.3132616e+00,
            2.0000000e+01], dtype=float32)
   
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -221,7 +226,7 @@ def softsign(x):
   >>> b.numpy()
   array([-0.5,  0. ,  0.5], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -249,7 +254,7 @@ def swish(x):
   array([-4.1223075e-08, -2.6894143e-01,  0.0000000e+00,  7.3105860e-01,
             2.0000000e+01], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -285,7 +290,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   >>> tf.keras.activations.relu(foo, threshold=5).numpy()
   array([-0., -0.,  0.,  0., 10.], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input `tensor` or `variable`.
       alpha: A `float` that governs the slope for values lower than the
         threshold.
@@ -324,7 +329,7 @@ def gelu(x, approximate=False):
   array([-0.00363752, -0.15880796,  0.        ,  0.841192  ,  2.9963627 ],
       dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
       approximate: A `bool`, whether to enable approximation.
 
@@ -354,7 +359,7 @@ def tanh(x):
   >>> b.numpy()
   array([-0.9950547, -0.7615942,  0.,  0.7615942,  0.9950547], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -385,13 +390,16 @@ def sigmoid(x):
   array([2.0611537e-09, 2.6894143e-01, 5.0000000e-01, 7.3105860e-01,
            1.0000000e+00], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
       Tensor with the sigmoid activation: `1 / (1 + exp(-x))`.
   """
-  return nn.sigmoid(x)
+  output = nn.sigmoid(x)
+  # Cache the logits to use for crossentropy loss.
+  output._keras_logits = x  # pylint: disable=protected-access
+  return output
 
 
 @keras_export('keras.activations.exponential')
@@ -406,7 +414,7 @@ def exponential(x):
   >>> b.numpy()
   array([0.04978707,  0.36787945,  1.,  2.7182817 , 20.085537], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -429,7 +437,7 @@ def hard_sigmoid(x):
   >>> b.numpy()
   array([0. , 0.3, 0.5, 0.7, 1. ], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -454,7 +462,7 @@ def linear(x):
   >>> b.numpy()
   array([-3., -1.,  0.,  1.,  3.], dtype=float32)
 
-  Arguments:
+  Args:
       x: Input tensor.
 
   Returns:
@@ -468,7 +476,7 @@ def linear(x):
 def serialize(activation):
   """Returns the string identifier of an activation function.
 
-  Arguments:
+  Args:
       activation : Function object.
 
   Returns:
@@ -522,9 +530,17 @@ def deserialize(name, custom_objects=None):
       ValueError: `Unknown activation function` if the input string does not
       denote any defined Tensorflow activation function.
   """
+  globs = globals()
+
+  # only replace missing activations
+  advanced_activations_globs = advanced_activations.get_globals()
+  for key, val in advanced_activations_globs.items():
+    if key not in globs:
+      globs[key] = val
+
   return deserialize_keras_object(
       name,
-      module_objects=globals(),
+      module_objects=globs,
       custom_objects=custom_objects,
       printable_module_name='activation function')
 
@@ -534,7 +550,7 @@ def deserialize(name, custom_objects=None):
 def get(identifier):
   """Returns function.
 
-  Arguments:
+  Args:
       identifier: Function or string
 
   Returns:

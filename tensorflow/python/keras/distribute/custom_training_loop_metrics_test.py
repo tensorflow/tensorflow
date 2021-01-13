@@ -23,11 +23,12 @@ import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations as ds_combinations
-from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_combinations as combinations
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras.distribute import strategy_combinations
 from tensorflow.python.platform import test
 
 
@@ -99,6 +100,31 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
     # of 10 resulting in mean of 4.5.
     self.assertEqual(metric.result().numpy(), 4.5)
 
+  @ds_combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def test_update_keras_metrics_dynamic_shape(self, distribution):
+    with distribution.scope():
+      metric = metrics.Mean("test_metric", dtype=np.float32)
+
+    dataset = dataset_ops.Dataset.range(10).batch(2, drop_remainder=False)
+
+    @def_function.function
+    def train_fn(dataset):
+      weights = constant_op.constant([0.1, 0.1])
+
+      def step_fn(i):
+        metric.update_state(i, weights)
+
+      for i in dataset:
+        distribution.run(step_fn, args=(i,))
+
+    train_fn(dataset)
+
+    # This should be the mean of integers 0-9 which has a sum of 45 and a count
+    # of 10 resulting in mean of 4.5.
+    self.assertEqual(metric.result().numpy(), 4.5)
+
 
 if __name__ == "__main__":
-  ds_combinations.main()
+  multi_process_runner.test_main()

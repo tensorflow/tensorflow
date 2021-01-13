@@ -21,10 +21,7 @@ REGISTER6(BinaryOp, CPU, "Pow", functor::pow, float, Eigen::half, bfloat16,
 REGISTER2(BinaryOp, CPU, "Pow", functor::safe_pow, int32, int64);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-REGISTER4(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double,
-          int64);
+REGISTER3(BinaryOp, GPU, "Pow", functor::pow, float, Eigen::half, double);
+REGISTER(BinaryOp, GPU, "Pow", functor::safe_pow_ignore_error, int64);
 #endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(BinaryOp, SYCL, "Pow", functor::pow, float, double);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

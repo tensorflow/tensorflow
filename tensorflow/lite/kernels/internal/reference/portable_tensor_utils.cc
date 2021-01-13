@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "fixedpoint/fixedpoint.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
@@ -173,7 +172,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     return;
   }
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     PortableReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;
@@ -428,7 +426,7 @@ void PortableApplyLayerNorm(const int16_t* input,
     }
     int32_t mean =
         static_cast<int32_t>(static_cast<int64_t>(sum) * 1024 / n_input);
-    // TODO(jianlijianli): Avoids overflow but only works for POT n_input.
+    // TODO(b/173994730): Avoids overflow but only works for POT n_input.
     int32_t temp = kTwoToPower20 / n_input;
     int64_t variance =
         sum_sq * temp - static_cast<int64_t>(mean) * static_cast<int64_t>(mean);
@@ -697,16 +695,6 @@ void PortableVectorBatchVectorCwiseProductAccumulate(
   }
 }
 
-void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
-                                  float* batch_vector) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int i = 0; i < v_size; ++i) {
-      batch_vector[i] += vector[i];
-    }
-    batch_vector += v_size;
-  }
-}
-
 void PortableSub1Vector(const float* vector, int v_size, float* result) {
   for (int v = 0; v < v_size; v++) {
     *result++ = 1.0f - *vector++;
@@ -724,38 +712,6 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
                                   const float scale, float* result) {
   for (int v = 0; v < v_size; ++v) {
     *result++ = scale * *vector++;
-  }
-}
-
-void PortableReductionSumVector(const float* input_vector, float* output_vector,
-                                int output_size, int reduction_size) {
-  const float* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
-void PortableReductionSumVector(const int32_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size) {
-  const int32_t* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
-  }
-}
-
-void PortableReductionSumVector(const int8_t* input_vector,
-                                int32_t* output_vector, int output_size,
-                                int reduction_size) {
-  const int8_t* input_vector_ptr = input_vector;
-  for (int o = 0; o < output_size; o++) {
-    for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
-    }
   }
 }
 

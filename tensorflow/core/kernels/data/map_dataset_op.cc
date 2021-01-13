@@ -80,6 +80,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
     }
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    inputs->push_back(input_);
+    return Status::OK();
+  }
+
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
     return input_->CheckExternalState();
@@ -153,8 +158,8 @@ class MapDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      Status s =
-          instantiated_captured_func_->Run(ctx, std::move(args), out_tensors);
+      Status s = instantiated_captured_func_->Run(ctx, std::move(args),
+                                                  out_tensors, model_node());
       if (errors::IsOutOfRange(s)) {
         if (dataset()->preserve_cardinality_) {
           // To guarantee that the transformation preserves the cardinality of

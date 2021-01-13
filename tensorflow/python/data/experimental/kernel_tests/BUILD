@@ -139,6 +139,56 @@ tf_py_test(
     ],
 )
 
+py_library(
+    name = "data_service_test_base",
+    srcs = ["data_service_test_base.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
+    name = "data_service_ops_test",
+    size = "medium",
+    srcs = ["data_service_ops_test.py"],
+    shard_count = 10,
+    srcs_version = "PY3",
+    deps = [
+        ":data_service_test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
+tf_py_test(
+    name = "data_service_ops_ft_test",
+    srcs = ["data_service_ops_ft_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":data_service_test_base",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/data",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/experimental/service:server_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+    ],
+)
+
 tf_py_test(
     name = "dense_to_sparse_batch_test",
     srcs = ["dense_to_sparse_batch_test.py"],
@@ -632,7 +682,10 @@ tf_py_test(
     name = "replicate_test",
     srcs = ["replicate_test.py"],
     grpc_enabled = True,
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "notsan",  # b/173146507
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_combinations",
@@ -755,6 +808,7 @@ tf_py_test(
     size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
+        "no_oss",  # TODO(b/155795733): Note that this functionality is deprecated.
         "no_pip",
         "notap",
     ],

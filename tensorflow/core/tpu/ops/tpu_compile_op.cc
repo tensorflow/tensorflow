@@ -40,7 +40,7 @@ REGISTER_OP("_TPUCompileMlir")
       c->set_output(0, c->Scalar());
       // Programs.
       for (int i = 0; i < num_computations; ++i) {
-        c->set_output(i + 1, c->Vector(2));
+        c->set_output(i + 1, c->Vector(3));
       }
       return Status::OK();
     })
@@ -64,7 +64,7 @@ REGISTER_OP("_TPUCompileMlirPlaceholderProgramKey")
     .SetIsStateful()
     .Output("program: string")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Vector(2));
+      c->set_output(0, c->Vector(3));
       return Status::OK();
     })
     .SetIsStateful()
@@ -100,7 +100,7 @@ REGISTER_OP("TPUCompile")
       c->set_output(0, c->Scalar());
       // Programs.
       for (int i = 0; i < num_computations; ++i) {
-        c->set_output(i + 1, c->Vector(2));
+        c->set_output(i + 1, c->Vector(3));
       }
       // May modify variables.
       for (int i = 0; i < num_computations; ++i) {

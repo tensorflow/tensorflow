@@ -47,6 +47,7 @@ class TwoTensors(object):
     self.color = color
 
 
+@type_spec.register("tf.TwoTensorsSpec")
 class TwoTensorsSpec(type_spec.TypeSpec):
   """A TypeSpec for the TwoTensors value type."""
 
@@ -97,6 +98,7 @@ class TwoComposites(object):
     self.color = color
 
 
+@type_spec.register("tf.TwoCompositesSpec")
 class TwoCompositesSpec(type_spec.TypeSpec):
   """A TypeSpec for the TwoTensors value type."""
 
@@ -149,9 +151,11 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool, "blue")),
       ("NumpyMetadata",
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      np.array([[1, 2], [3, 4]])),
+                      (np.int32(1), np.float32(1.),
+                       np.array([[1, 2], [3, 4]]))),
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
-                      np.array([[1, 2], [3, 4]]))),
+                      (np.int32(1), np.float32(1.),
+                       np.array([[1, 2], [3, 4]])))),
       )
   def testEquality(self, v1, v2):
     # pylint: disable=g-generic-assert
@@ -348,6 +352,65 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         tensor_spec.TensorSpec(None, dtypes.int32))
     self.assertTrue(spec1.is_compatible_with(spec2))
     self.assertFalse(spec1.is_compatible_with(spec3))
+
+  def testRegistry(self):
+    self.assertEqual("tf.TwoCompositesSpec",
+                     type_spec.get_name(TwoCompositesSpec))
+    self.assertEqual("tf.TwoTensorsSpec", type_spec.get_name(TwoTensorsSpec))
+    self.assertEqual(TwoCompositesSpec,
+                     type_spec.lookup("tf.TwoCompositesSpec"))
+    self.assertEqual(TwoTensorsSpec, type_spec.lookup("tf.TwoTensorsSpec"))
+
+  def testRegistryTypeErrors(self):
+    with self.assertRaisesRegex(TypeError, "Expected `name` to be a string"):
+      type_spec.register(None)
+
+    with self.assertRaisesRegex(TypeError, "Expected `name` to be a string"):
+      type_spec.register(TwoTensorsSpec)
+
+    with self.assertRaisesRegex(TypeError, "Expected `cls` to be a TypeSpec"):
+      type_spec.register("tf.foo")(None)
+
+    with self.assertRaisesRegex(TypeError, "Expected `cls` to be a TypeSpec"):
+      type_spec.register("tf.foo")(ragged_tensor.RaggedTensor)
+
+  def testRegistryDuplicateErrors(self):
+    with self.assertRaisesRegex(
+        ValueError, "Name tf.TwoCompositesSpec has already been registered "
+        "for class __main__.TwoCompositesSpec."):
+
+      @type_spec.register("tf.TwoCompositesSpec")  # pylint: disable=unused-variable
+      class NewTypeSpec(TwoCompositesSpec):
+        pass
+
+    with self.assertRaisesRegex(
+        ValueError, "Class __main__.TwoCompositesSpec has already been "
+        "registered with name tf.TwoCompositesSpec"):
+      type_spec.register("tf.NewName")(TwoCompositesSpec)
+
+  def testRegistryNameErrors(self):
+    for bad_name in ["foo", "", "hello world"]:
+      with self.assertRaises(ValueError):
+        type_spec.register(bad_name)
+
+  def testRegistryLookupErrors(self):
+    with self.assertRaises(TypeError):
+      type_spec.lookup(None)
+    with self.assertRaisesRegex(
+        ValueError, "No TypeSpec has been registered with name 'foo.bar'"):
+      type_spec.lookup("foo.bar")
+
+  def testRegistryGetNameErrors(self):
+    with self.assertRaises(TypeError):
+      type_spec.get_name(None)
+
+    class Foo(TwoCompositesSpec):
+      pass
+
+    with self.assertRaisesRegex(
+        ValueError, "TypeSpec __main__.Foo has not been registered."):
+      type_spec.get_name(Foo)
+
 
 if __name__ == "__main__":
   googletest.main()

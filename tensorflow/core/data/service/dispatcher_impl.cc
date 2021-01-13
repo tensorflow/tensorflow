@@ -35,12 +35,14 @@ limitations under the License.
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
+#include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/hash_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
+#include "tensorflow/core/protobuf/service_config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -48,9 +50,21 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
+// This name is load-bearing; do not change.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 // The name of the datasets directory inside the dispatcher's working directory.
 constexpr char kDatasetsDir[] = "datasets";
+
+constexpr std::array<const char*, 8> kNodeNameSharingOps = {
+    "HashTable",
+    "HashTableV2",
+    "MutableHashTable",
+    "MutableHashTableV2",
+    "MutableDenseHashTable",
+    "MutableDenseHashTableV2",
+    "MutableHashTableOfTensors",
+    "MutableHashTableOfTensorsV2",
+};
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -80,6 +94,23 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
   auto channel = ::grpc::CreateCustomChannel(address, credentials, args);
   stub = WorkerService::NewStub(channel);
   return Status::OK();
+}
+
+void PrepareGraph(GraphDef* graph) {
+  for (NodeDef& node : *graph->mutable_node()) {
+    for (const auto& op : kNodeNameSharingOps) {
+      // Set `use_node_name_sharing` to `true` so that resources aren't deleted
+      // prematurely. Otherwise, resources may be deleted when their ops are
+      // deleted at the end of the GraphRunner::Run used by standalone::Dataset.
+      if (node.op() == op) {
+        (*node.mutable_attr())["use_node_name_sharing"].set_b(true);
+      }
+      if (!node.device().empty()) {
+        *node.mutable_device() = "";
+      }
+    }
+  }
+  StripDevicePlacement(graph->mutable_library());
 }
 }  // namespace
 
@@ -140,10 +171,34 @@ Status DataServiceDispatcherImpl::Start() {
       TF_RETURN_IF_ERROR(reader.Read(update, end_of_journal));
     }
   }
+  for (const auto& job : state_.ListJobs()) {
+    if (job->processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+      TF_RETURN_IF_ERROR(
+          RestoreSplitProvider(*job, split_providers_[job->job_id]));
+    }
+  }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
   TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   started_ = true;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::RestoreSplitProvider(
+    const Job& job, std::unique_ptr<SplitProvider>& restored)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64 index = job.distributed_epoch_state.value().split_provider_index;
+  VLOG(1) << "Restoring split provider for job " << job.job_id << " to index "
+          << index;
+  std::unique_ptr<SplitProvider> split_provider;
+  TF_RETURN_IF_ERROR(MakeSplitProvider(job.dataset_id, split_provider));
+  Tensor unused_tensor;
+  bool unused_end_of_splits;
+  for (int i = 0; i < index; ++i) {
+    TF_RETURN_IF_ERROR(
+        split_provider->GetNext(&unused_tensor, &unused_end_of_splits));
+  }
+  restored = std::move(split_provider);
   return Status::OK();
 }
 
@@ -179,7 +234,7 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
     }
     TaskDef* task_def = response->add_new_tasks();
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -191,9 +246,14 @@ Status DataServiceDispatcherImpl::WorkerHeartbeat(
           io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
       task_def->set_path(path);
     }
-    task_def->set_dataset_id(task->dataset_id);
-    task_def->set_job_id(task->job_id);
+    task_def->set_dataset_id(task->job->dataset_id);
+    task_def->set_job_id(task->job->job_id);
     task_def->set_task_id(task->task_id);
+    task_def->set_processing_mode(
+        ProcessingModeDef(task->job->processing_mode));
+    if (task->job->num_consumers.has_value()) {
+      task_def->set_num_consumers(task->job->num_consumers.value());
+    }
   }
   for (int64 current_task : current_tasks) {
     if (!correct_tasks_set.contains(current_task)) {
@@ -223,7 +283,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
       Update update;
       update.mutable_finish_task()->set_task_id(task_id);
       TF_RETURN_IF_ERROR(Apply(update));
-      VLOG(3) << "Task " << task_id << " from job " << task->job_id
+      VLOG(3) << "Task " << task_id << " from job " << task->job->job_id
               << " completed";
     }
   }
@@ -236,10 +296,65 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
   TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
-  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
   std::shared_ptr<const DatasetDef> dataset_def;
-  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
   *response->mutable_dataset_def() = *dataset_def;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
+                                           GetSplitResponse* response) {
+  TF_RETURN_IF_ERROR(CheckStarted());
+  mutex_lock l(mu_);
+  int64 job_id = request->job_id();
+  int64 repetition = request->repetition();
+  VLOG(3) << "Received GetSplit request for job " << job_id << ", repetition "
+          << repetition;
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  if (!job->distributed_epoch_state.has_value()) {
+    return errors::FailedPrecondition(
+        "Cannot get split for job ", job_id,
+        ", since it is not a distributed_epoch job.");
+  }
+  int64 current_repetition = job->distributed_epoch_state.value().repetition;
+  if (repetition < current_repetition) {
+    response->set_end_of_splits(true);
+    VLOG(3) << "Returning end_of_splits since current reptition "
+            << current_repetition << " is greater than the requested reptition "
+            << repetition;
+    return Status::OK();
+  }
+  SplitProvider* split_provider = split_providers_[job_id].get();
+  DCHECK(split_provider != nullptr);
+  Tensor split;
+  bool end_of_splits = false;
+  TF_RETURN_IF_ERROR(split_provider->GetNext(&split, &end_of_splits));
+  TF_RETURN_IF_ERROR(RecordSplitProduced(job_id, repetition, end_of_splits));
+  response->set_end_of_splits(end_of_splits);
+  if (end_of_splits) {
+    // Create a new split provider for the next repetition.
+    TF_RETURN_IF_ERROR(
+        MakeSplitProvider(job->dataset_id, split_providers_[job_id]));
+  } else {
+    split.AsProtoTensorContent(response->mutable_split());
+  }
+  VLOG(3) << "Returning from GetSplit, end_of_splits=" << end_of_splits;
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::MakeSplitProvider(
+    int64 dataset_id, std::unique_ptr<SplitProvider>& split_provider)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  std::shared_ptr<const DatasetDef> dataset_def;
+  TF_RETURN_IF_ERROR(GetDatasetDef(*dataset, dataset_def));
+  standalone::Dataset::Params params;
+  std::unique_ptr<standalone::Dataset> standalone_dataset;
+  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+      params, dataset_def->graph(), &standalone_dataset));
+  TF_RETURN_IF_ERROR(standalone_dataset->MakeSplitProvider(&split_provider));
   return Status::OK();
 }
 
@@ -248,14 +363,17 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     GetOrRegisterDatasetResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   uint64 fingerprint;
-  const GraphDef& graph = request->dataset().graph();
-  TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
+  DatasetDef dataset_def = request->dataset();
+  GraphDef* graph = dataset_def.mutable_graph();
+  PrepareGraph(graph);
+  TF_RETURN_IF_ERROR(HashGraph(*graph, &fingerprint));
+
   mutex_lock l(mu_);
 #if defined(PLATFORM_GOOGLE)
   VLOG_LINES(4,
-             absl::StrCat("Registering dataset graph: ", graph.DebugString()));
+             absl::StrCat("Registering dataset graph: ", graph->DebugString()));
 #else
-  VLOG(4) << "Registering dataset graph: " << graph.DebugString();
+  VLOG(4) << "Registering dataset graph: " << graph->DebugString();
 #endif
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
@@ -270,7 +388,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   }
 
   int64 id;
-  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, request->dataset(), id));
+  TF_RETURN_IF_ERROR(RegisterDataset(fingerprint, dataset_def, id));
   response->set_dataset_id(id);
   VLOG(3) << "Registered new dataset with id " << id;
   return Status::OK();
@@ -279,7 +397,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
 Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
                                                   const DatasetDef& dataset,
                                                   int64& dataset_id)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   dataset_id = state_.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
@@ -290,66 +408,53 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   return Apply(update);
 }
 
-Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
-                                            CreateJobResponse* response) {
-  TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "Received create job request for dataset id "
-          << request->dataset_id();
-  ProcessingMode processing_mode = ProcessingMode(request->processing_mode());
-  std::shared_ptr<const Job> job;
-  std::vector<std::shared_ptr<const Task>> tasks;
-  {
-    mutex_lock l(mu_);
-    TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), processing_mode,
-                                 absl::optional<NamedJobKey>(), job));
-    int64 job_client_id;
-    TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-    response->set_job_client_id(job_client_id);
-    TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
-  }
-  TF_RETURN_IF_ERROR(AssignTasks(tasks));
-
-  VLOG(3) << "Creating job " << job->job_id << " for dataset "
-          << request->dataset_id();
-  return Status::OK();
-}
-
 Status DataServiceDispatcherImpl::GetOrCreateJob(
     const GetOrCreateJobRequest* request, GetOrCreateJobResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
-  VLOG(3) << "Received get or create job request for dataset id "
-          << request->dataset_id() << " with name " << request->job_name()
-          << " and index " << request->job_name_index();
-  NamedJobKey key(request->job_name(), request->job_name_index());
+  VLOG(3) << "GetOrCreateJob(" << request->DebugString() << ")";
+  absl::optional<NamedJobKey> key;
+  if (request->has_job_key()) {
+    key.emplace(request->job_key().job_name(),
+                request->job_key().job_name_index());
+  }
   ProcessingMode requested_processing_mode =
       ProcessingMode(request->processing_mode());
   std::shared_ptr<const Job> job;
   std::vector<std::shared_ptr<const Task>> tasks;
   {
     mutex_lock l(mu_);
-    Status s = state_.NamedJobByKey(key, job);
-    if (s.ok()) {
-      TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
-                                             request->dataset_id()));
-      int64 job_client_id;
-      TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
-      response->set_job_client_id(job_client_id);
-      VLOG(3) << "Found existing job for name=" << key.name
-              << ", index=" << key.index << ". job_id: " << job->job_id;
-      return Status::OK();
-    } else if (!errors::IsNotFound(s)) {
-      return s;
+    if (key.has_value()) {
+      Status s = state_.NamedJobByKey(key.value(), job);
+      if (s.ok()) {
+        TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
+                                               request->dataset_id()));
+        int64 job_client_id;
+        TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+        response->set_job_client_id(job_client_id);
+        VLOG(3) << "Found existing job for name=" << key.value().name
+                << ", index=" << key.value().index
+                << ". job_id: " << job->job_id;
+        return Status::OK();
+      } else if (!errors::IsNotFound(s)) {
+        return s;
+      }
     }
-    TF_RETURN_IF_ERROR(
-        CreateJob(request->dataset_id(), requested_processing_mode, key, job));
+    absl::optional<int64> num_consumers;
+    if (request->optional_num_consumers_case() ==
+        GetOrCreateJobRequest::kNumConsumers) {
+      num_consumers = request->num_consumers();
+    }
+    TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(),
+                                 requested_processing_mode, key, num_consumers,
+                                 job));
     int64 job_client_id;
     TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
     response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  VLOG(3) << "Created job " << job->job_id << " for dataset "
-          << request->dataset_id() << " and name " << request->job_name();
+  VLOG(3) << "Created job " << job->job_id << " for CreateJob("
+          << request->DebugString() << ")";
   return Status::OK();
 }
 
@@ -373,7 +478,7 @@ Status DataServiceDispatcherImpl::ReleaseJobClient(
 // Validates that the job matches the given processing_mode and dataset_id.
 Status DataServiceDispatcherImpl::ValidateMatchingJob(
     std::shared_ptr<const Job> job, ProcessingMode processing_mode,
-    int64 dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64 dataset_id) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   DCHECK(job->named_job_key.has_value());
   std::string job_name = job->named_job_key->name;
   if (job->processing_mode != processing_mode) {
@@ -386,36 +491,26 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
         "processing mode <",
         actual, ">");
   }
-  if (job->dataset_id != dataset_id) {
-    return errors::FailedPrecondition(
-        "Tried to create a job with name ", job_name, " for dataset ",
-        dataset_id,
-        ", but there is already an existing job with that name for dataset ",
-        job->dataset_id,
-        ". This either means that you are distributing two different datasets "
-        "under the same job_name, or that your dataset is being constructed "
-        "non-deterministically.");
-  }
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::CreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
-    absl::optional<NamedJobKey> named_job_key, std::shared_ptr<const Job>& job)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    absl::optional<NamedJobKey> named_job_key,
+    absl::optional<int64> num_consumers, std::shared_ptr<const Job>& job)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   switch (processing_mode) {
     case ProcessingMode::PARALLEL_EPOCHS:
+    case ProcessingMode::DISTRIBUTED_EPOCH:
       break;
-    case ProcessingMode::ONE_EPOCH:
-      return errors::Unimplemented(
-          "CreateJob only supports the PARALLEL_EPOCHS job mode. "
-          "ONE_EPOCH is not currently supported.");
     default:
-      return errors::Unimplemented("ProcessingMode ",
-                                   ProcessingModeToString(processing_mode),
-                                   " not recognized");
+      return errors::Internal(
+          absl::StrCat("ProcessingMode ", processing_mode, " not recognized"));
   }
   int64 job_id = state_.NextAvailableJobId();
+  if (processing_mode == ProcessingMode::DISTRIBUTED_EPOCH) {
+    TF_RETURN_IF_ERROR(MakeSplitProvider(dataset_id, split_providers_[job_id]));
+  }
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
@@ -426,13 +521,16 @@ Status DataServiceDispatcherImpl::CreateJob(
     key->set_name(named_job_key->name);
     key->set_index(named_job_key->index);
   }
+  if (num_consumers.has_value()) {
+    create_job->set_num_consumers(num_consumers.value());
+  }
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::CreateTasksForWorker(
-    const std::string& worker_address) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   for (const auto& job : jobs) {
     if (job->finished) {
@@ -446,7 +544,7 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
 
 Status DataServiceDispatcherImpl::AcquireJobClientId(
     const std::shared_ptr<const Job>& job, int64& job_client_id)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   job_client_id = state_.NextAvailableJobClientId();
   Update update;
   AcquireJobClientUpdate* acquire_job_client =
@@ -460,7 +558,7 @@ Status DataServiceDispatcherImpl::AcquireJobClientId(
 Status DataServiceDispatcherImpl::CreateTasksForJob(
     std::shared_ptr<const Job> job,
     std::vector<std::shared_ptr<const Task>>& tasks)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Worker>> workers = state_.ListWorkers();
   tasks.clear();
   tasks.reserve(workers.size());
@@ -475,13 +573,12 @@ Status DataServiceDispatcherImpl::CreateTasksForJob(
 Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
                                              const std::string& worker_address,
                                              std::shared_ptr<const Task>& task)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   int64 task_id = state_.NextAvailableTaskId();
   Update update;
   CreateTaskUpdate* create_task = update.mutable_create_task();
   create_task->set_task_id(task_id);
   create_task->set_job_id(job->job_id);
-  create_task->set_dataset_id(job->dataset_id);
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
@@ -489,7 +586,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
 }
 
 Status DataServiceDispatcherImpl::AssignTasks(
-    std::vector<std::shared_ptr<const Task>> tasks) LOCKS_EXCLUDED(mu_) {
+    std::vector<std::shared_ptr<const Task>> tasks) TF_LOCKS_EXCLUDED(mu_) {
   for (const auto& task : tasks) {
     TF_RETURN_IF_ERROR(AssignTask(task));
   }
@@ -498,7 +595,7 @@ Status DataServiceDispatcherImpl::AssignTasks(
 
 Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
     const std::string& worker_address, WorkerService::Stub*& out_stub)
-    LOCKS_EXCLUDED(mu_) {
+    TF_LOCKS_EXCLUDED(mu_) {
   {
     mutex_lock l(mu_);
     auto it = worker_stubs_.find(worker_address);
@@ -523,17 +620,18 @@ Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
 }
 
 Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
-    LOCKS_EXCLUDED(mu_) {
+    TF_LOCKS_EXCLUDED(mu_) {
   VLOG(2) << "Started assigning task " << task->task_id << " to worker "
           << task->worker_address;
   grpc::ClientContext client_ctx;
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
-  task_def->set_dataset_id(task->dataset_id);
+  task_def->set_dataset_id(task->job->dataset_id);
+  task_def->set_job_id(task->job->job_id);
   {
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->job->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -547,6 +645,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     }
   }
   task_def->set_task_id(task->task_id);
+  task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
   ProcessTaskResponse resp;
   WorkerService::Stub* stub;
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));
@@ -567,7 +666,14 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   mutex_lock l(mu_);
   VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
   std::shared_ptr<const Job> job;
-  TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
+  Status s = state_.JobForJobClientId(request->job_client_id(), job);
+  if (errors::IsNotFound(s) && !config_.fault_tolerant_mode()) {
+    return errors::NotFound(
+        "Unknown job client id ", request->job_client_id(),
+        ". The dispatcher is not configured to be fault tolerant, so this "
+        "could be caused by a dispatcher restart.");
+  }
+  TF_RETURN_IF_ERROR(s);
   std::vector<std::shared_ptr<const Task>> tasks;
   TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {
@@ -597,7 +703,7 @@ Status DataServiceDispatcherImpl::GetWorkers(const GetWorkersRequest* request,
   return Status::OK();
 }
 
-Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
+Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
   if (!started_) {
     return errors::Unavailable("Dispatcher has not started yet.");
@@ -605,13 +711,25 @@ Status DataServiceDispatcherImpl::CheckStarted() LOCKS_EXCLUDED(mu_) {
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::RecordSplitProduced(int64 job_id,
+                                                      int64 repetition,
+                                                      bool finished)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Update update;
+  ProduceSplitUpdate* produce_split = update.mutable_produce_split();
+  produce_split->set_job_id(job_id);
+  produce_split->set_repetition(repetition);
+  produce_split->set_finished(finished);
+  return Apply(update);
+}
+
 Status DataServiceDispatcherImpl::ApplyWithoutJournaling(const Update& update)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   return state_.Apply(update);
 }
 
 Status DataServiceDispatcherImpl::Apply(const Update& update)
-    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   if (journal_writer_.has_value()) {
     TF_RETURN_IF_ERROR(journal_writer_.value()->Write(update));
   }
@@ -639,7 +757,7 @@ void DataServiceDispatcherImpl::JobGcThread() {
   }
 }
 
-Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+Status DataServiceDispatcherImpl::GcOldJobs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   int64 now = env_->NowMicros();
   for (const auto& job : jobs) {
@@ -662,6 +780,21 @@ Status DataServiceDispatcherImpl::GcOldJobs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     DCHECK(job->finished);
   }
   return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    int64 dataset_id, std::shared_ptr<const DatasetDef>& dataset_def)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(dataset_id, dataset));
+  return GetDatasetDef(*dataset, dataset_def);
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    const Dataset& dataset, std::shared_ptr<const DatasetDef>& dataset_def)
+    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  std::string key = DatasetKey(dataset.dataset_id, dataset.fingerprint);
+  return dataset_store_->Get(key, dataset_def);
 }
 
 }  // namespace data
