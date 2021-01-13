@@ -117,47 +117,34 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
 Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   // A CustomCall on the GPU backend can either be a custom-call to a
   // user-supplied kernel, or a call into a library like cudnn.
-
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
-  if (void* call_target = CustomCallTargetRegistry::Global()->Lookup(
-          custom_call->custom_call_target(), std::string(platform_name()))) {
-    auto get_slices_for_instr = [&](const HloInstruction* instr) {
-      ShapeTree<BufferAllocation::Slice> slices(instr->shape());
-      slices.ForEachMutableElement(
-          [&](const ShapeIndex& index, BufferAllocation::Slice* slice) {
-            StatusOr<BufferAllocation::Slice> s =
-                MaybeGetAllocationSlice(*instr, index);
-            if (s.ok()) {
-              *slice = s.ValueOrDie();
-            }
-          });
-      return slices;
-    };
-    std::vector<ShapeTree<BufferAllocation::Slice>> operand_slices;
-    for (int64 i = 0; i < custom_call->operand_count(); i++) {
-      const auto* operand = custom_call->operand(i);
-      operand_slices.push_back(get_slices_for_instr(operand));
-      const auto& s1 = operand_slices.back().shape();
-      const auto& s2 = operand->shape();
-      CHECK(ShapeUtil::Equal(s1, s2)) << absl::StreamFormat(
-          "Shape mismatch between operand shape and "
-          "slice shape for operand %d: %s vs %s",
-          i, s1.ToString(), s2.ToString());
-    }
-    ShapeTree<BufferAllocation::Slice> result_slices =
-        get_slices_for_instr(custom_call);
-    CHECK(ShapeUtil::Equal(custom_call->shape(), result_slices.shape()))
-        << absl::StreamFormat(
-               "Shape mismatch between instr->shape() and "
-               "result_slices.shape(): "
-               "%s vs %s.",
-               custom_call->shape().ToString(),
-               result_slices.shape().ToString());
+  void* call_target = CustomCallTargetRegistry::Global()->Lookup(
+      custom_call->custom_call_target(), std::string(platform_name()));
+  if (call_target) {
+    auto get_slices_for_instr =
+        [&](const HloInstruction* instr,
+            std::vector<BufferAllocation::Slice>& slices) {
+          std::vector<ShapeUtil::IndexedShape> leaf_shapes =
+              ShapeUtil::GetLeafShapes(instr->shape());
+          for (ShapeUtil::IndexedShape& indexed_shape : leaf_shapes) {
+            TF_ASSIGN_OR_RETURN(
+                BufferAllocation::Slice slice,
+                MaybeGetAllocationSlice(*instr, indexed_shape.index));
+            slices.push_back(slice);
+          }
+          return Status::OK();
+        };
 
+    std::vector<BufferAllocation::Slice> operands;
+    for (const HloInstruction* operand : custom_call->operands()) {
+      TF_RETURN_IF_ERROR(get_slices_for_instr(operand, operands));
+    }
+    std::vector<BufferAllocation::Slice> results;
+    TF_RETURN_IF_ERROR(get_slices_for_instr(custom_call, results));
     AddThunkToThunkSequence(absl::make_unique<CustomCallThunk>(
-        context_->GetThunkInfo(custom_call), call_target,
-        std::move(operand_slices), std::move(result_slices),
+        context_->GetThunkInfo(custom_call), call_target, std::move(operands),
+        std::move(results),
         Cast<HloCustomCallInstruction>(custom_call)->opaque()));
     return Status::OK();
   }
