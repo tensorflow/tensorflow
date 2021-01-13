@@ -215,6 +215,7 @@ Status PluggableDeviceFactory::CreateDevices(
                                              bytes, device_localities[di],
                                              devices));
   }
+  return Status::OK();
 }
 
 static string GetShortDeviceDescription(PlatformDeviceId platform_device_id,
