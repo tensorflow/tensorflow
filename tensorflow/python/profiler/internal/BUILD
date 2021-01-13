@@ -118,19 +118,12 @@ tf_python_pybind_extension(
         "//tensorflow/python/profiler:__pkg__",
     ],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
+        ":profiler_pywrap_impl",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
-        "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
-        "//tensorflow/core/profiler/rpc/client:capture_profile",
-        "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/python:pybind11_status",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
 )
@@ -155,4 +148,29 @@ cc_library(
         "@pybind11",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "profiler_pywrap_impl",
+    srcs = ["profiler_pywrap_impl.cc"],
+    hdrs = ["profiler_pywrap_impl.h"],
+    visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/convert:xplane_to_tools_data",
+        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
+        "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
+        "//tensorflow/core/profiler/rpc/client:capture_profile",
+        "//tensorflow/core/profiler/rpc/client:save_profile",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:variant",
+    ],
 )
