@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/grad_test_helper.h"
 
 #include "tensorflow/c/eager/gradient_checker.h"
+#include "tensorflow/c/experimental/gradients/tape/tape_context.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -103,6 +104,34 @@ void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
 
   TF_DeleteTensor(analytical_tensor);
   delete[] danalytical;
+}
+
+Model BuildGradModel(Model forward, size_t num_inputs, const string& op,
+                     GradientFunctionFactory gradient_function_factory) {
+  return [&, forward, gradient_function_factory](
+             AbstractContext* ctx,
+             absl::Span<AbstractTensorHandle* const> inputs,
+             absl::Span<AbstractTensorHandle*> outputs) -> Status {
+    GradientRegistry registry;
+    TF_RETURN_IF_ERROR(registry.Register(op, gradient_function_factory));
+
+    Tape tape(/*persistent=*/false);
+    for (size_t i{}; i < num_inputs; ++i) {
+      tape.Watch(inputs[i]);
+    }
+    std::vector<AbstractTensorHandle*> temp_outputs(1);
+    AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
+    TF_RETURN_IF_ERROR(
+        forward(tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs)));
+
+    TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                            /*sources=*/inputs,
+                                            /*output_gradients=*/{}, outputs));
+    for (auto temp_output : temp_outputs) {
+      temp_output->Unref();
+    }
+    return Status::OK();
+  };
 }
 
 }  // namespace internal

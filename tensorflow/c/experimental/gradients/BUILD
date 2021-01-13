@@ -166,7 +166,9 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c/eager:gradient_checker",
+        "//tensorflow/c/eager:gradients_internal",
         "//tensorflow/c/eager:unified_api_testutil",
+        "//tensorflow/c/experimental/gradients/tape:tape_context",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
