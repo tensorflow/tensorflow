@@ -595,6 +595,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    tpu_tags = [
+        "no_oss",
+    ],
     deps = [
         "//tensorflow/python:stateful_random_ops",
         "//tensorflow/python/compat:v2_compat",
