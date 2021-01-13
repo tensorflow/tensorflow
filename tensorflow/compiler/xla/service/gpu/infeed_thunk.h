@@ -34,7 +34,7 @@ class InfeedThunk : public Thunk {
  public:
   // Constructs a InfeedThunk that copies data from the on-device
   // infeed queue into the buffers in the given shape tree.
-  InfeedThunk(ThunkInfo thunk_info, std::vector<ShapedSlice>&& dest_slices);
+  InfeedThunk(ThunkInfo thunk_info, std::vector<ShapedSlice> dest_slices);
 
   InfeedThunk(const InfeedThunk&) = delete;
   InfeedThunk& operator=(const InfeedThunk&) = delete;

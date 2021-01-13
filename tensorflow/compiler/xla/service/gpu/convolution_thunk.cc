@@ -31,7 +31,7 @@ namespace xla {
 namespace gpu {
 
 ConvolutionThunk::ConvolutionThunk(
-    ThunkInfo thunk_info, GpuConvConfig&& config,
+    ThunkInfo thunk_info, GpuConvConfig config,
     std::vector<BufferAllocation::Slice> operand_slices,
     BufferAllocation::Slice result_slice, BufferAllocation::Slice scratch_slice)
     : Thunk(Kind::kConvolution, thunk_info),

@@ -26,8 +26,8 @@ namespace gpu {
 
 ConditionalThunkConfig GetConditionalThunkConfig(
     const HloInstruction* instr,
-    std::vector<ThunkSequence>&& branch_thunk_sequences,
-    std::vector<absl::optional<size_t>>&& branch_profile_indices) {
+    std::vector<ThunkSequence> branch_thunk_sequences,
+    std::vector<absl::optional<size_t>> branch_profile_indices) {
   ConditionalThunkConfig config;
   config.branch_index_is_bool =
       instr->operand(0)->shape().element_type() == PRED;
@@ -45,7 +45,7 @@ ConditionalThunkConfig GetConditionalThunkConfig(
 }
 
 ConditionalThunk::ConditionalThunk(
-    ThunkInfo thunk_info, ConditionalThunkConfig&& config,
+    ThunkInfo thunk_info, ConditionalThunkConfig config,
     const BufferAllocation::Slice& branch_index_buffer_index,
     absl::Span<const BufferAllocation::Slice> branch_operand_buffer_indexes)
     : Thunk(Kind::kConditional, thunk_info),

@@ -227,7 +227,7 @@ CollectivePermuteConfig GetCollectivePermuteConfig(
 }
 
 CollectivePermuteThunk::CollectivePermuteThunk(
-    ThunkInfo thunk_info, CollectivePermuteConfig&& config,
+    ThunkInfo thunk_info, CollectivePermuteConfig config,
     const BufferAllocation::Slice& src, const BufferAllocation::Slice& dest)
     : Thunk(kCollectivePermute, thunk_info),
       config_(std::move(config)),
