@@ -197,6 +197,10 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return ParseConv2D(op, error_reporter, allocator, builtin_data);
     }
 
+    case BuiltinOperator_DEPTH_TO_SPACE: {
+      return ParseDepthToSpace(op, error_reporter, allocator, builtin_data);
+    }
+
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       return ParseDepthwiseConv2D(op, error_reporter, allocator, builtin_data);
     }
@@ -609,16 +613,6 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       return kTfLiteOk;
     }
 
-    case BuiltinOperator_DEPTH_TO_SPACE: {
-      auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
-      TF_LITE_ENSURE(error_reporter, params != nullptr);
-      if (const auto* schema_params =
-              op->builtin_options_as_DepthToSpaceOptions()) {
-        params->block_size = schema_params->block_size();
-      }
-      *builtin_data = params.release();
-      return kTfLiteOk;
-    }
     case BuiltinOperator_GATHER: {
       auto params = safe_allocator.Allocate<TfLiteGatherParams>();
       TF_LITE_ENSURE(error_reporter, params != nullptr);
@@ -1053,6 +1047,31 @@ TfLiteStatus ParseConv2D(const Operator* op, ErrorReporter* error_reporter,
 // selective registration for the OpResolver implementation in micro.
 TfLiteStatus ParseCos(const Operator*, ErrorReporter*, BuiltinDataAllocator*,
                       void**) {
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseDepthToSpace(const Operator* op,
+                               ErrorReporter* error_reporter,
+                               BuiltinDataAllocator* allocator,
+                               void** builtin_data) {
+  CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
+
+  SafeBuiltinDataAllocator safe_allocator(allocator);
+  std::unique_ptr<TfLiteDepthToSpaceParams,
+                  SafeBuiltinDataAllocator::BuiltinDataDeleter>
+      params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
+  TF_LITE_ENSURE(error_reporter, params != nullptr);
+
+  const auto* schema_params = op->builtin_options_as_DepthToSpaceOptions();
+  if (schema_params != nullptr) {
+    params->block_size = schema_params->block_size();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
+  }
+
+  *builtin_data = params.release();
   return kTfLiteOk;
 }
 
