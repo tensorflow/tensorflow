@@ -139,7 +139,7 @@ Status MlirFunctionOptimizationPass::Run(
   // In this case, no changes should be done to the original `graph`
   // and no failures propagated to the user.
   bool enabled_by_analysis =
-      mlir_rollout_policy_(**graph, config_proto) ==
+      mlir_rollout_policy_(**graph, config_proto, /*record_stats=*/true) ==
       MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis;
   if (enabled_by_analysis) {
     LOG_FIRST_N(INFO, 1) << "Shadow run of MLIR enabled after graph analysis";

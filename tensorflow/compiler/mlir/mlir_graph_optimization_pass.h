@@ -84,8 +84,8 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
   explicit MlirFunctionOptimizationPass(
       const MlirOptimizationPassRegistry* registry =
           &MlirOptimizationPassRegistry::Global(),
-      std::function<MlirBridgeRolloutPolicy(const Graph& graph,
-                                            absl::optional<ConfigProto>)>
+      std::function<MlirBridgeRolloutPolicy(
+          const Graph&, absl::optional<ConfigProto>, bool record_stats)>
           mlir_rollout_policy = GetMlirBridgeRolloutPolicy)
       : registry_(registry), mlir_rollout_policy_(mlir_rollout_policy) {}
 
@@ -97,7 +97,7 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
  private:
   const MlirOptimizationPassRegistry* registry_;
   std::function<MlirBridgeRolloutPolicy(
-      const tensorflow::Graph& graph, absl::optional<tensorflow::ConfigProto>)>
+      const tensorflow::Graph&, absl::optional<tensorflow::ConfigProto>, bool)>
       mlir_rollout_policy_;
 };
 
