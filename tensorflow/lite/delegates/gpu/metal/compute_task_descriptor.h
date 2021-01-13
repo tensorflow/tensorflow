@@ -101,10 +101,8 @@ struct ComputeTaskDescriptor {
   std::string elementwise_code;  // temporary, used during op construction
 };
 
-using ComputeTaskDescriptorPtr = std::shared_ptr<ComputeTaskDescriptor>;
-
 struct NodeDescriptor {
-  ComputeTaskDescriptorPtr task;
+  std::unique_ptr<ComputeTaskDescriptor> task;
   int id;
   std::string description;
   std::vector<ValueId> src_tensors_ids;

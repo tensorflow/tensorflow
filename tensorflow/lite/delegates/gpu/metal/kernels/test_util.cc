@@ -221,26 +221,21 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
 
   std::vector<BHWC> src_shapes;
   std::vector<BHWC> dst_shapes;
-  NodeDescriptor metal_node;
-  metal_node.task = std::move(operation);
-  metal_node.src_tensors_ids.resize(src_cpu.size());
+  std::vector<ValueId> src_ids;
+  std::vector<ValueId> dst_ids;
   for (int i = 0; i < src_cpu.size(); ++i) {
-    metal_node.src_tensors_ids[i] = i;
+    src_ids.push_back(i);
     src_shapes.push_back(src_cpu[i].shape);
   }
-  metal_node.dst_tensors_ids.resize(dst_cpu.size());
   for (int i = 0; i < dst_cpu.size(); ++i) {
-    metal_node.dst_tensors_ids[i] = src_cpu.size() + i;
+    dst_ids.push_back(src_cpu.size() + i);
     dst_shapes.push_back(dst_sizes[i]);
   }
-  metal_node.description = "test_op";
-  metal_node.id = 0;
 
   ComputeTask gpu_task;
-  RETURN_IF_ERROR(
-      gpu_task.CompileWithDevice(device_, metal_node, op_def.precision));
-  RETURN_IF_ERROR(
-      gpu_task.UpdateParamsWithDevice(device_, src_shapes, dst_shapes));
+  gpu_task.Init(std::move(operation), src_ids, dst_ids);
+  RETURN_IF_ERROR(gpu_task.Compile(device_, op_def.precision));
+  RETURN_IF_ERROR(gpu_task.UpdateParams(device_, src_shapes, dst_shapes));
   for (int i = 0; i < src_cpu.size(); ++i) {
     gpu_task.SetSrcTensor(src[i], i);
   }

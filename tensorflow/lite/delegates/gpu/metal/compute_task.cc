@@ -34,14 +34,22 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
-                                            const NodeDescriptor& desc,
-                                            CalculationsPrecision precision) {
-  desc.task->AssembleCode();
+void ComputeTask::Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc,
+                       const std::vector<ValueId>& input_ids,
+                       const std::vector<ValueId>& output_ids) {
+  task_desc_ = std::move(task_desc);
+  input_buffers_ = input_ids;
+  output_buffers_ = output_ids;
+}
+
+absl::Status ComputeTask::Compile(id<MTLDevice> device,
+                                  CalculationsPrecision precision) {
+  task_desc_->AssembleCode();
   const std::map<std::string, std::string> linkables = {
-      {desc.task->dst_tensors_names[0], desc.task->elementwise_code}};
-  RETURN_IF_ERROR(metal_args_.Init(device, linkables, &desc.task->args,
-                                   &desc.task->shader_source));
+      {task_desc_->dst_tensors_names[0], task_desc_->elementwise_code}};
+  RETURN_IF_ERROR(metal_args_.Init(device, linkables, &task_desc_->args,
+                                   &task_desc_->shader_source));
+  task_desc_->args.ReleaseCPURepresentation();
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language
   // version 2.0
@@ -89,7 +97,7 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
   };
 
   NSString* code =
-      [NSString stringWithCString:desc.task->shader_source.c_str()
+      [NSString stringWithCString:task_desc_->shader_source.c_str()
                          encoding:[NSString defaultCStringEncoding]];
   id<MTLComputePipelineState> program;
   RETURN_IF_ERROR(
@@ -97,23 +105,18 @@ absl::Status ComputeTask::CompileWithDevice(id<MTLDevice> device,
   if (!program) {
     return absl::InternalError("Unknown shader compilation error");
   }
-  input_buffers_ = desc.src_tensors_ids;
-  output_buffers_ = desc.dst_tensors_ids;
-  update_function_ = desc.task->update_function;
-  resize_function_ = desc.task->resize_function;
   program_ = program;
-  src_tensors_names_ = desc.task->src_tensors_names;
-  dst_tensors_names_ = desc.task->dst_tensors_names;
   return absl::OkStatus();
 }
 
-absl::Status ComputeTask::UpdateParamsWithDevice(
-    id<MTLDevice> device, const std::vector<BHWC>& src_shapes,
-    const std::vector<BHWC>& dst_shapes) {
-  RETURN_IF_ERROR(update_function_(src_shapes, dst_shapes, &metal_args_));
+absl::Status ComputeTask::UpdateParams(id<MTLDevice> device,
+                                       const std::vector<BHWC>& src_shapes,
+                                       const std::vector<BHWC>& dst_shapes) {
+  RETURN_IF_ERROR(
+      task_desc_->update_function(src_shapes, dst_shapes, &metal_args_));
 
   // Dispatch parameters re-calculation
-  auto workGroups = resize_function_(src_shapes, dst_shapes);
+  auto workGroups = task_desc_->resize_function(src_shapes, dst_shapes);
   groups_size_ = workGroups.first;
   MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
   if (groups_size_.x > threadsPerGroup.width ||
@@ -172,15 +175,13 @@ std::vector<ValueId> ComputeTask::GetOutputIds() const {
 std::vector<ValueId> ComputeTask::GetInputIds() const { return input_buffers_; }
 
 void ComputeTask::SetSrcTensor(const MetalSpatialTensor& tensor, int index) {
-  auto status = metal_args_.SetObjectRef(src_tensors_names_[index], tensor);
+  auto status =
+      metal_args_.SetObjectRef(task_desc_->src_tensors_names[index], tensor);
 }
 
 void ComputeTask::SetDstTensor(const MetalSpatialTensor& tensor, int index) {
-  auto status = metal_args_.SetObjectRef(dst_tensors_names_[index], tensor);
-}
-
-void ComputeTask::SetDescription(const std::string& description) {
-  description_ = description;
+  auto status =
+      metal_args_.SetObjectRef(task_desc_->dst_tensors_names[index], tensor);
 }
 
 }  // namespace metal

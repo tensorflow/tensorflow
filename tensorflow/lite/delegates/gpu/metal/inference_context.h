@@ -99,13 +99,8 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
 
-  absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
-                                     const std::vector<ValueId>& output_buffers,
-                                     const CompiledModel& input_model,
-                                     CompiledModel* output_model);
-
   absl::Status CompileModelWithDevice(id<MTLDevice> device,
-                                      const CompiledModel& compiled_model);
+                                      CompiledModel* model);
 
   absl::Status Merge(CompiledModel* model);
   absl::Status AllocateTensors(id<MTLDevice> device);

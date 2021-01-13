@@ -126,7 +126,7 @@ absl::Status InferenceContext::InitFromGraph(
   RETURN_IF_ERROR(
       Compile(graph, gpu_info, create_info.precision, &compiled_model));
   RETURN_IF_ERROR(Merge(&compiled_model));
-  RETURN_IF_ERROR(CompileModelWithDevice(device, compiled_model));
+  RETURN_IF_ERROR(CompileModelWithDevice(device, &compiled_model));
   return absl::OkStatus();
 }
 
@@ -292,13 +292,13 @@ absl::Status InferenceContext::Merge(CompiledModel* model) {
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::CompileModelWithDevice(
-    id<MTLDevice> device, const CompiledModel& compiled_model) {
+absl::Status InferenceContext::CompileModelWithDevice(id<MTLDevice> device,
+                                                      CompiledModel* model) {
   // Metal resources are created here.
-  for (const auto& node : compiled_model.nodes) {
+  for (auto& node : model->nodes) {
     ComputeTask task;
-    RETURN_IF_ERROR(task.CompileWithDevice(device, node, precision_));
-    task.SetDescription(node.description);
+    task.Init(std::move(node.task), node.src_tensors_ids, node.dst_tensors_ids);
+    RETURN_IF_ERROR(task.Compile(device, precision_));
     compute_tasks_.emplace_back(std::move(task));
   }
   for (auto& task : compute_tasks_) {
@@ -311,8 +311,7 @@ absl::Status InferenceContext::CompileModelWithDevice(
     for (const auto& out_id : task.GetOutputIds()) {
       dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
     }
-    RETURN_IF_ERROR(
-        task.UpdateParamsWithDevice(device, src_shapes, dst_shapes));
+    RETURN_IF_ERROR(task.UpdateParams(device, src_shapes, dst_shapes));
   }
   RETURN_IF_ERROR(AllocateTensors(device));
   return absl::OkStatus();
