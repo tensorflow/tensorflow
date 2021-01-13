@@ -752,10 +752,12 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
   // If m_cols is not at least kInt8ValuesPerNeonVector, we cannot use the main
   // vectorized loop, and we need to process sequentially. postamble_half_start
   // shows the start index where this should happen. Between postamble_start and
-  // postamble_half_start we can still process kInt8ValuesPerNeonVector >> 1 in
-  // a vectorized form.
-  const int postamble_half_start = n_input & ~(kInt8ValuesPerNeonVector - 1);
-  const int postamble_start = n_input & ~((kInt8ValuesPerNeonVector >> 1) - 1);
+  // postamble_half_start we can still process kInt8ValuesPerNeonVector/2 in a
+  // vectorized form.
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(n_input);
+  const int postamble_start =
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(n_input);
 
   for (int batch = 0; batch < n_batch; ++batch) {
     // Copy the vector data to an aligned vector.
@@ -1072,10 +1074,12 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
   // If m_cols is not at least kInt8ValuesPerNeonVector, we cannot use the main
   // vectorized loop, and we need to process sequentially. postamble_half_start
   // shows the start index where this should happen. Between postamble_start and
-  // postamble_half_start we can still process kInt8ValuesPerNeonVector >> 1 in
-  // a vectorized form.
-  const int postamble_half_start = m_cols & ~(kInt8ValuesPerNeonVector - 1);
-  const int postamble_start = m_cols & ~((kInt8ValuesPerNeonVector >> 1) - 1);
+  // postamble_half_start we can still process kInt8ValuesPerNeonVector/2 in a
+  // vectorized form.
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(m_cols);
+  const int postamble_start =
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(m_cols);
 
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
@@ -1260,8 +1264,10 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
       (int8_t*)aligned_alloc(kNeonVectorAlignment, m_cols,  // NOLINT
                              &aligned_vec_free);
 
-  const int postamble_half_start = m_cols & ~(kInt8ValuesPerNeonVector - 1);
-  const int postamble_start = m_cols & ~((kInt8ValuesPerNeonVector >> 1) - 1);
+  const int postamble_half_start =
+      RoundDownVectors<kInt8ValuesPerNeonVector>(m_cols);
+  const int postamble_start =
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(m_cols);
 
   int32_t* row_sums_ptr = row_sums;
   if (row_sums == nullptr) {
@@ -2148,7 +2154,7 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
   // main vectorized loop, and we need to process sequentially. postamble_start
   // shows the start index where this should happen.
   const int postamble_start =
-      v_size - (v_size & (kInt8ValuesPerNeonVector - 1));
+      RoundDownVectors<kInt8ValuesPerNeonVector>(v_size);
 
   // Create a vector of 4 floats with the scale value.
   const float32x4_t scale_f32x4 = vdupq_n_f32(scale);
@@ -2286,7 +2292,8 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
   *scaling_factor = range / kScale;
   const float scaling_factor_inv = kScale / range;
 
-  const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const int postamble_start =
+      RoundDownVectors<(2 * kFloatValuesPerNeonVector)>(size);
 
   // Vectorized constants.
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
@@ -2369,7 +2376,8 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
     *offset = nudged_zero_point;
   }
 
-  const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const int postamble_start =
+      RoundDownVectors<(2 * kFloatValuesPerNeonVector)>(size);
   const float scaling_factor_inv =
       *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
@@ -2464,9 +2472,9 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
 void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                             const int output_size, const int reduction_size) {
   const int postamble_half_start =
-      reduction_size & ~(kInt8ValuesPerNeonVector - 1);
+      RoundDownVectors<kInt8ValuesPerNeonVector>(reduction_size);
   const int postamble_start =
-      reduction_size & ~((kInt8ValuesPerNeonVector >> 1) - 1);
+      RoundDownVectors<(kInt8ValuesPerNeonVector / 2)>(reduction_size);
   for (int o = 0; o < output_size; ++o) {
     int32x4_t sum_32x4 = vmovq_n_s32(0);
     int r = 0;
