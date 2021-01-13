@@ -74,7 +74,7 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(model.PopulateTensor(0, {0.0, 3.1415926, -3.1415926, 1}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
-  status = CompareVectors({1.0, -1.0, -1.0, 0.540302}, model.GetOutput(0), 1e-6f);
+  status = CompareVectors({1.0, -1.0, -1.0, 0.540302}, model.GetOutput(0), 1e-5f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
