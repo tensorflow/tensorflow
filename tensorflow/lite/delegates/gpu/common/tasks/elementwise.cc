@@ -25,7 +25,8 @@ namespace tflite {
 namespace gpu {
 
 namespace {
-std::string GetOneInputCode(const OperationType& op_type,
+std::string GetOneInputCode(const GpuInfo& gpu_info,
+                            const OperationType& op_type,
                             CalculationsPrecision precision,
                             const std::string& input0) {
   std::string result;
@@ -41,18 +42,28 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "\n";
       break;
     case OperationType::ELU:
-      result = "$0.x = $0.x < (FLT)(0.0f) ? expm1($0.x) : $0.x;\n";
-      result += "$0.y = $0.y < (FLT)(0.0f) ? expm1($0.y) : $0.y;\n";
-      result += "$0.z = $0.z < (FLT)(0.0f) ? expm1($0.z) : $0.z;\n";
-      result += "$0.w = $0.w < (FLT)(0.0f) ? expm1($0.w) : $0.w;\n";
+      if (gpu_info.IsApiOpenCl()) {
+        result = R"(
+$0.x = $0.x < INIT_FLT(0.0f) ? expm1($0.x) : $0.x;
+$0.y = $0.y < INIT_FLT(0.0f) ? expm1($0.y) : $0.y;
+$0.z = $0.z < INIT_FLT(0.0f) ? expm1($0.z) : $0.z;
+$0.w = $0.w < INIT_FLT(0.0f) ? expm1($0.w) : $0.w;)";
+      } else {
+        result = R"(
+$0.x = $0.x < INIT_FLT(0.0f) ? exp($0.x) - INIT_FLT(1.0f) : $0.x;
+$0.y = $0.y < INIT_FLT(0.0f) ? exp($0.y) - INIT_FLT(1.0f) : $0.y;
+$0.z = $0.z < INIT_FLT(0.0f) ? exp($0.z) - INIT_FLT(1.0f) : $0.z;
+$0.w = $0.w < INIT_FLT(0.0f) ? exp($0.w) - INIT_FLT(1.0f) : $0.w;)";
+      }
       break;
     case OperationType::EXP:
       result = "$0 = exp($0);\n";
       break;
     case OperationType::HARD_SWISH:
       result =
-          "$0 *= clamp($0 * (FLT)(0.16666667f) + (FLT)(0.5f), (FLT4)(0.0f), "
-          "(FLT4)(1.0f));\n";
+          "$0 *= clamp($0 * INIT_FLT(0.16666667f) + INIT_FLT(0.5f), "
+          "INIT_FLT4(0.0f), "
+          "INIT_FLT4(1.0f));\n";
       break;
     case OperationType::LOG:
       result = "$0 = log($0);\n";
@@ -64,12 +75,12 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "$0 = rsqrt($0);\n";
       break;
     case OperationType::SIGMOID:
-      if (precision != CalculationsPrecision::F32) {
+      if (gpu_info.IsApiOpenCl() && precision != CalculationsPrecision::F32) {
         result =
             "$0 = convert_half4(native_recip(1.0f + "
             "native_exp(convert_float4(-$0))));\n";
       } else {
-        result = "$0 = (FLT4)(1.0f) / ((FLT4)(1.0f) + exp(-($0)));\n";
+        result = "$0 = INIT_FLT4(1.0f) / (INIT_FLT4(1.0f) + exp(-($0)));\n";
       }
       break;
     case OperationType::SIN:
@@ -123,40 +134,40 @@ std::string GetTwoInputCode(const OperationType& op_type,
       break;
     // Comparison operators
     case OperationType::LESS:
-      result = "$0.x = $1.x < $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.y = $1.y < $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.z = $1.z < $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.w = $1.w < $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result = "$0.x = $1.x < $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.y = $1.y < $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.z = $1.z < $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.w = $1.w < $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
       break;
     case OperationType::LESS_EQUAL:
-      result = "$0.x = $1.x <= $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.y = $1.y <= $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.z = $1.z <= $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.w = $1.w <= $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result = "$0.x = $1.x <= $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.y = $1.y <= $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.z = $1.z <= $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.w = $1.w <= $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
       break;
     case OperationType::GREATER:
-      result = "$0.x = $1.x > $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.y = $1.y > $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.z = $1.z > $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.w = $1.w > $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result = "$0.x = $1.x > $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.y = $1.y > $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.z = $1.z > $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.w = $1.w > $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
       break;
     case OperationType::GREATER_EQUAL:
-      result = "$0.x = $1.x >= $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.y = $1.y >= $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.z = $1.z >= $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.w = $1.w >= $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result = "$0.x = $1.x >= $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.y = $1.y >= $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.z = $1.z >= $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.w = $1.w >= $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
       break;
     case OperationType::EQUAL:
-      result = "$0.x = $1.x == $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.y = $1.y == $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.z = $1.z == $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.w = $1.w == $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result = "$0.x = $1.x == $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.y = $1.y == $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.z = $1.z == $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.w = $1.w == $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
       break;
     case OperationType::NOT_EQUAL:
-      result = "$0.x = $1.x != $2.x ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.y = $1.y != $2.y ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.z = $1.z != $2.z ? (FLT)(1.0f) : (FLT)(0.0f);\n";
-      result += "$0.w = $1.w != $2.w ? (FLT)(1.0f) : (FLT)(0.0f);\n";
+      result = "$0.x = $1.x != $2.x ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.y = $1.y != $2.y ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.z = $1.z != $2.z ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
+      result += "$0.w = $1.w != $2.w ? INIT_FLT(1.0f) : INIT_FLT(0.0f);\n";
       break;
     default:
       return "Unknown operation type;\n";
@@ -180,9 +191,7 @@ GPUOperation CreateElementwiseOneRuntimeOneScalar(
   } else {
     op.args_.AddHalf("scalar", half(scalar_parameter));
   }
-  op.code_ =
-      "FLT4 second_val = (FLT4)(args.scalar, args.scalar, args.scalar, "
-      "args.scalar);\n";
+  op.code_ = "FLT4 second_val = INIT_FLT4(args.scalar);\n";
   op.code_ += GetTwoInputCode(op_type, "in_out_value", "in_out_value",
                               "second_val", swap_inputs);
   return op;
@@ -256,11 +265,13 @@ GPUOperation CreateElementwiseTwoInput(
 
 }  // namespace
 
-GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
+GPUOperation CreateElementwiseOneInput(const GpuInfo& gpu_info,
+                                       const OperationDef& definition,
                                        const OperationType& op_type) {
   GPUOperation op(definition);
   op.elementwise_ = true;
-  op.code_ = GetOneInputCode(op_type, definition.precision, "in_out_value");
+  op.code_ =
+      GetOneInputCode(gpu_info, op_type, definition.precision, "in_out_value");
   return op;
 }
 
