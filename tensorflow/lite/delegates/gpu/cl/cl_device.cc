@@ -126,7 +126,6 @@ OpenClVersion ParseCLVersion(const std::string& version) {
 bool IsGPUVersionInRange(int gpu_version, int min_version, int max_version) {
   return gpu_version >= min_version && gpu_version < max_version;
 }
-}  // namespace
 
 GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   GpuInfo info;
@@ -240,8 +239,19 @@ GpuInfo GpuInfoFromDeviceID(cl_device_id id) {
   return info;
 }
 
+}  // namespace
+
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
+    : info_(GpuInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {
+  if (info_.IsAdreno() && info_.adreno_info.IsAdreno6xx()) {
+    const std::string bad_platform =
+        "OpenCL 2.0 QUALCOMM build: commit #fa5d0e7 changeid #I788affba20 "
+        "Date: 06/12/18 Tue Local Branch:  Remote Branch: "
+        "refs/tags/AU_LINUX_ANDROID_LA.UM.6.3.C1.08.00.00.432.044";
+    info_.adreno_info.compiler_bugs_in_a6xx =
+        bad_platform == GetPlatformVersion();
+  }
+}
 
 CLDevice::CLDevice(const CLDevice& device)
     : info_(device.info_), id_(device.id_), platform_id_(device.platform_id_) {}

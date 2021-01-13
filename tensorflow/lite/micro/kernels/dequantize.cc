@@ -116,14 +116,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     int flat_size = MatchingFlatSize(tflite::micro::GetTensorShape(input),
                                      tflite::micro::GetTensorShape(output));
     switch (input->type) {
-      case kTfLiteInt16: {
-        reference_ops::Requantize(
-            tflite::micro::GetTensorData<int16_t>(input), flat_size,
-            data->output_multiplier, data->output_shift,
-            data->quantization_params.zero_point, data->output_zero_point,
-            tflite::micro::GetTensorData<int32_t>(output));
-        break;
-      }
       case kTfLiteInt8: {
         reference_ops::Requantize(
             tflite::micro::GetTensorData<int8_t>(input), flat_size,

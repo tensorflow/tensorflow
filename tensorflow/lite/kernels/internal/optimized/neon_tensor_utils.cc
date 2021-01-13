@@ -1276,7 +1276,6 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
   int32_t* row_sums_ptr = row_sums;
   if (row_sums == nullptr) {
     row_sums_ptr = static_cast<int32_t*>(malloc(sizeof(int32_t) * m_rows));
-    memset(row_sums_ptr, 0, sizeof(int32_t) * m_rows);
     NeonReductionSumVector(matrix, row_sums_ptr, m_rows, m_cols);
   }
 
@@ -1385,7 +1384,6 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   }
 
   if (compute_row_sums == nullptr || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     NeonReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;
@@ -2454,7 +2452,6 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
 
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
                             int output_size, int reduction_size) {
-  const float* input_vector_ptr = input_vector;
   for (int o = 0; o < output_size; o++) {
     // If v_size is not divisible by the vector size, then we need to process
     // the final few elements sequentially. postamble_start shows the start
@@ -2464,16 +2461,16 @@ void NeonReductionSumVector(const float* input_vector, float* output_vector,
     float32x4_t sum_f32x4 = vmovq_n_f32(0.0);
     int r = 0;
     for (; r < postamble_start; r += kFloatValuesPerNeonVector) {
-      float32x4_t v1_f32x4 = vld1q_f32(input_vector_ptr + r);
+      float32x4_t v1_f32x4 = vld1q_f32(input_vector + r);
       sum_f32x4 = vaddq_f32(sum_f32x4, v1_f32x4);
     }
-    output_vector[o] += AccumulateNeonLane(sum_f32x4);
-    input_vector_ptr += postamble_start;
-
+    float sum = AccumulateNeonLane(sum_f32x4);
     // Postamble loop.
     for (; r < reduction_size; r++) {
-      output_vector[o] += *input_vector_ptr++;
+      sum += input_vector[r];
     }
+    output_vector[o] = sum;
+    input_vector += reduction_size;
   }
 }
 
@@ -2484,24 +2481,23 @@ void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
   const int postamble_start =
       reduction_size & ~((kWeightsPerNeonLane >> 1) - 1);
   for (int o = 0; o < output_size; ++o) {
-    // Get the address of the first element of the row.
-    int8_t* row_ptr = (int8_t*)input_vector + o * reduction_size;  // NOLINT
     int32x4_t sum_32x4 = vmovq_n_s32(0);
     int r = 0;
     for (; r < postamble_half_start; r += kWeightsPerNeonLane) {
-      const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + r));
+      const int8x16_t s2_8x16 = vld1q_s8(input_vector + r);
       sum_32x4 = vpadalq_s16(sum_32x4, vpaddlq_s8(s2_8x16));
     }
     if (r < postamble_start) {
-      const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + r));
+      const int8x8_t s2_8x8 = vld1_s8(input_vector + r);
       sum_32x4 = vpadalq_s16(sum_32x4, vmovl_s8(s2_8x8));
       r += (kWeightsPerNeonLane >> 1);
     }
     int32_t sum = AccumulateNeonLane(sum_32x4);
     for (; r < reduction_size; ++r) {
-      sum += row_ptr[r];
+      sum += input_vector[r];
     }
-    output_vector[o] += sum;
+    output_vector[o] = sum;
+    input_vector += reduction_size;
   }
 }
 

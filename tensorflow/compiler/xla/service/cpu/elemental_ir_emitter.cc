@@ -105,15 +105,5 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   return result;
 }
 
-StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitConvolution(
-    const HloInstruction* hlo,
-    const HloToElementGeneratorMap& operand_to_generator,
-    const llvm_ir::IrArray::Index& index) {
-  return ir_emitter_->EmitElementalConvolution(
-      Cast<HloConvolutionInstruction>(hlo),
-      operand_to_generator.at(hlo->operand(0)),
-      operand_to_generator.at(hlo->operand(1)), index);
-}
-
 }  // namespace cpu
 }  // namespace xla

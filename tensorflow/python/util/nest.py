@@ -1067,6 +1067,11 @@ def assert_shallow_structure(shallow_tree,
               input_type=type(input_tree),
               shallow_type=type(shallow_tree)))
 
+      elif isinstance(shallow_tree, list) and isinstance(input_tree, list):
+        # List subclasses are considered the same,
+        # e.g. python list vs. _ListWrapper.
+        pass
+
       elif ((_is_composite_tensor(shallow_tree) or
              _is_composite_tensor(input_tree)) and
             (_is_type_spec(shallow_tree) or _is_type_spec(input_tree))):

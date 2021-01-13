@@ -50,12 +50,8 @@ std::string GetConcatChannelsCode(const OperationDef& op_def,
   }
 
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    $0
     kernel void ComputeFunction(
-                                $1
+                                $0
                                 uint3 ugid[[thread_position_in_grid]]) {
   int X = static_cast<int>(ugid.x);
   int Y = static_cast<int>(ugid.y);
@@ -210,12 +206,8 @@ std::string GetConcatKernelCode(const OperationDef& op_def,
   }
 
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    $0
     kernel void ComputeFunction(
-                                $1
+                                $0
                                 uint3 ugid[[thread_position_in_grid]]) {
 )";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {

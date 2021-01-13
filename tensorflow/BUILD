@@ -736,6 +736,7 @@ tf_cc_shared_object(
     deps = [
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/stream_executor:stream_executor",
+        "//tensorflow/c:env",
         "//tensorflow/c:kernels",
         "//tensorflow/c:logging",
         "//tensorflow/c:ops_hdrs",

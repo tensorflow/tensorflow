@@ -375,10 +375,13 @@ cc_test(
 
 cc_library(
     name = "operation_parser",
+    srcs = ["operation_parser.cc"],
     hdrs = ["operation_parser.h"],
     deps = [
         ":model",
         ":object_reader",
+        ":operations",
+        ":shape",
         ":status",
         "//tensorflow/lite/c:common",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"
@@ -67,6 +68,12 @@ template <>
 struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
 #endif
 
+#ifndef ABSL_HAVE_STD_VARIANT
+template <typename... Ts>
+struct type_caster<absl::variant<Ts...>>
+    : variant_caster<absl::variant<Ts...>> {};
+
+#endif
 }  // namespace detail
 }  // namespace pybind11
 

@@ -887,8 +887,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
         expected=np.array([14., 22.], dtype=np.float32))
 
-  @test_util.disable_mlir_bridge("TODO(b/153812660): Handle tf.Cast compilation"
-                                )
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
@@ -936,8 +934,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             src,
             expected=dst)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.Bitcast compilation")
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),

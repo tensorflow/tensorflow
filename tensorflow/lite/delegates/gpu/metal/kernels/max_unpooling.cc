@@ -36,11 +36,7 @@ namespace {
 
 std::string GetMaxUnpoolingCode() {
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   int X = static_cast<int>(gid.x);
   int Y = static_cast<int>(gid.y);

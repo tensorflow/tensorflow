@@ -30,6 +30,7 @@ from tensorflow.python.data.experimental.ops import snapshot
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
+from tensorflow.python.eager import context
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import gen_array_ops
@@ -371,6 +372,8 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   @combinations.generate(test_base.default_test_combinations())
   def testReadOptimizableUsingFlatMap(self):
+    if context.context().use_tfrt:
+      self.skipTest("b/177260096: Flaky test.")
     dataset = dataset_ops.Dataset.range(100)
     # Will be optimized into ShuffleAndRepeat.
     dataset = dataset.shuffle(10)

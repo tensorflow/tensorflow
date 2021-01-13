@@ -64,13 +64,15 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(SimpleTestFloat) {
   float output_data[tflite::testing::kOutputElements];
 
-  tflite::testing::TestConvFloat(
-      tflite::testing::kInputShape, tflite::testing::kInputData,
-      tflite::testing::kFilterShape, tflite::testing::kFilterData,
-      tflite::testing::kBiasShape, tflite::testing::kBiasData,
-      tflite::testing::kOutputShape, tflite::testing::kGoldenData,
-      &tflite::testing::common_conv_params,
-      tflite::Register_TRANSPOSE_CONV_2D(), output_data);
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      tflite::testing::TestConvFloat(
+          tflite::testing::kInputShape, tflite::testing::kInputData,
+          tflite::testing::kFilterShape, tflite::testing::kFilterData,
+          tflite::testing::kBiasShape, tflite::testing::kBiasData,
+          tflite::testing::kOutputShape, tflite::testing::kGoldenData,
+          &tflite::testing::common_conv_params,
+          tflite::Register_TRANSPOSE_CONV_2D(), output_data));
 }
 
 TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
@@ -88,15 +90,18 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedPerChannel) {
   int zero_points[tflite::testing::kBiasElements + 1];
   float scales[tflite::testing::kBiasElements + 1];
 
-  tflite::testing::TestConvQuantizedPerChannel(
-      tflite::testing::kInputShape, tflite::testing::kInputData,
-      input_quantized, input_scale, input_zero_point,
-      tflite::testing::kFilterShape, tflite::testing::kFilterData,
-      filter_quantized, tflite::testing::kBiasShape, tflite::testing::kBiasData,
-      bias_quantized, scales, zero_points, tflite::testing::kOutputShape,
-      tflite::testing::kGoldenData, golden_quantized, output_scale,
-      output_zero_point, &tflite::testing::common_conv_params,
-      tflite::Register_TRANSPOSE_CONV_2D(), output_data);
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      tflite::testing::TestConvQuantizedPerChannel(
+          tflite::testing::kInputShape, tflite::testing::kInputData,
+          input_quantized, input_scale, input_zero_point,
+          tflite::testing::kFilterShape, tflite::testing::kFilterData,
+          filter_quantized, tflite::testing::kBiasShape,
+          tflite::testing::kBiasData, bias_quantized, scales, zero_points,
+          tflite::testing::kOutputShape, tflite::testing::kGoldenData,
+          golden_quantized, output_scale, output_zero_point,
+          &tflite::testing::common_conv_params,
+          tflite::Register_TRANSPOSE_CONV_2D(), output_data));
 }
 
 TF_LITE_MICRO_TEST(InputOutputDifferentTypeIsError) {

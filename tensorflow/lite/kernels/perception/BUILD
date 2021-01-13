@@ -14,6 +14,7 @@ package(
 cc_library(
     name = "perception_ops",
     srcs = [
+        "dense_image_warp.cc",
         "max_pool_with_argmax.cc",
         "max_unpooling_2d.cc",
         "perception_ops.cc",
@@ -40,6 +41,7 @@ cc_test(
     name = "perception_ops_test",
     size = "small",
     srcs = [
+        "dense_image_warp_test.cc",
         "max_pool_with_argmax_test.cc",
         "max_unpooling_2d_test.cc",
     ],

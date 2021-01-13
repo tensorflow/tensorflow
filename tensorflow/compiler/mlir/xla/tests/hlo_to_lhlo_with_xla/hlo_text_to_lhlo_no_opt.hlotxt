@@ -412,3 +412,33 @@ ENTRY main {
   %tok = token[] parameter(0)
   ROOT %infeed = (f32[3]{0}, token[]) infeed(token[] %tok)
 }
+
+// -----
+
+HloModule Outfeed
+
+// CHECK: func @main
+// CHECK: "lmhlo.outfeed"
+// CHECK-SAME: config = ""
+// CHECK-SAME: (memref<3xf32>) -> ()
+ENTRY main {
+  %source = f32[3] parameter(0)
+  %tok = token[] parameter(1)
+  ROOT %o = token[] outfeed(f32[3] %source, token[] %tok)
+}
+
+// -----
+
+HloModule Outfeed
+
+// CHECK: func @main
+// CHECK: "lmhlo.custom_call"
+// CHECK-SAME: call_target_name = "foo"
+// CHECK: "lmhlo.outfeed"
+// CHECK-SAME: config = ""
+// CHECK-SAME: (memref<3xf32>, memref<5xf16>) -> ()
+ENTRY main {
+  %tok = token[] parameter(0)
+  %tuple = (f32[3], f16[5]) custom-call(),custom_call_target="foo"
+  ROOT %o = token[] outfeed((f32[3], f16[5]) %tuple, token[] %tok)
+}

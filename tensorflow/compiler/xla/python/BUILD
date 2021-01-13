@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
 )
@@ -266,6 +267,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core/platform:status",
+        "//third_party/python_runtime:headers",  # build_cleaner: keep
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -319,6 +321,27 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+cc_library(
+    name = "pmap_lib",
+    srcs = ["pmap_lib.cc"],
+    hdrs = ["pmap_lib.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":absl_casters",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
+        "@pybind11",
     ],
 )
 
@@ -480,6 +503,7 @@ pybind_extension(
     deps = [
         ":dlpack",
         ":jax_jit",
+        ":pmap_lib",
         ":ops",
         ":profiler",
         ":py_client",

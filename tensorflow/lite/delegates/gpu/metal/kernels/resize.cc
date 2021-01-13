@@ -33,11 +33,7 @@ namespace metal {
 
 std::string GetResizeBilinearCode(const Resize2DAttributes& attr) {
   std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
     return;
@@ -73,11 +69,7 @@ kernel void ComputeFunction(
 
 std::string GetResizeNearestCode(const Resize2DAttributes& attr) {
   std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
     return;

@@ -233,16 +233,8 @@ std::string GenerateConvolution(const ConvParams& params) {
   std::string c;
   c.reserve(16 * 1024);  // Reserve large enough buffer.
   c += R"(
-#include <metal_stdlib>
-using namespace metal;
-
-struct uniforms {
-    int4 task_sizes;
-};
-$0
-
 kernel void ComputeFunction(
-    $1
+    $0
     uint tid[[thread_index_in_threadgroup]],
     uint3 group_id[[threadgroup_position_in_grid]],
     uint3 tid3d[[thread_position_in_threadgroup]],

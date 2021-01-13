@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/python/mlir.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
@@ -32,18 +33,19 @@ PYBIND11_MODULE(_pywrap_mlir, m) {
           return output;
         });
 
-  m.def("ImportFunction", [](const std::string &functiondef,
-                             const std::string &functiondef_library,
-                             const std::string &pass_pipeline,
-                             bool show_debug_info) {
-    tensorflow::Safe_TF_StatusPtr status =
-        tensorflow::make_safe(TF_NewStatus());
-    std::string output = tensorflow::ImportFunction(
-        functiondef, functiondef_library, pass_pipeline, show_debug_info,
-        status.get());
-    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-    return output;
-  });
+  m.def("ImportFunction",
+        [](const py::handle &context, const std::string &functiondef,
+           const std::string &pass_pipeline, bool show_debug_info) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          auto *ctxt = static_cast<TFE_Context *>(
+              PyCapsule_GetPointer(context.ptr(), nullptr));
+          if (!ctxt) throw py::error_already_set();
+          std::string output = tensorflow::ImportFunction(
+              functiondef, pass_pipeline, show_debug_info, ctxt, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+          return output;
+        });
 
   m.def("ExperimentalConvertSavedModelToMlir",
         [](const std::string &saved_model_path,

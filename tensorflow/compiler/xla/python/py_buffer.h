@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "pybind11/numpy.h"
 #include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
@@ -94,6 +95,9 @@ class PyBuffer : public DeviceArrayBase {
 
   // Returns the number of dimensions of the (host) numpy array.
   int ndim() const { return buffer()->on_host_shape().dimensions_size(); }
+
+  pybind11::tuple python_shape() const;
+  pybind11::dtype python_dtype() const;
 
   void SetStickyDevice(pybind11::object sticky_device);
   pybind11::object GetStickyDevice() const { return sticky_device_.value(); }

@@ -60,6 +60,9 @@ typedef std::function<void(const Status&, std::vector<Device*>*)>
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
                       const string& worker_name, NewRemoteDevicesDone done);
 
+// Create Remote Device based on the given attributes.
+std::unique_ptr<Device> NewRemoteDevice(Env* env,
+                                        DeviceAttributes device_attribute);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_REMOTE_DEVICE_H_

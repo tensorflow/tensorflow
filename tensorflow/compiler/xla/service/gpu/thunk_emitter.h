@@ -46,7 +46,6 @@ class ThunkEmitter {
   Status HandleCustomCall(HloInstruction* custom_call);
   Status HandleFft(HloInstruction* fft);
   Status HandleTriangularSolve(HloInstruction* hlo);
-  Status HandleOutfeed(HloInstruction* outfeed);
 
  private:
   EmissionContext* context_;
@@ -81,14 +80,6 @@ class ThunkEmitter {
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
-
-  // Returns an InfeedThunk that performs a host-to-device memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
-
-  // Returns an OutfeedThunk that performs a device-to-host memcpy to implement
-  // `inst`.
-  std::unique_ptr<Thunk> BuildOutfeedThunk(const HloInstruction* inst);
 };
 
 }  // namespace gpu

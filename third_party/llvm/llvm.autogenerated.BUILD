@@ -2205,6 +2205,57 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "acc_td_files",
+    srcs = glob([
+        "include/llvm/Frontend/OpenACC/*.td",
+        "include/llvm/Frontend/Directive/*.td",
+    ]),
+)
+
+gentbl(
+    name = "acc_gen",
+    library = False,
+    tbl_outs = [
+        ("--gen-directive-decl", "include/llvm/Frontend/OpenACC/ACC.h.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenACC/ACC.td",
+    td_srcs = [":acc_td_files"],
+)
+
+gentbl(
+    name = "acc_gen_impl",
+    library = False,
+    tbl_outs = [
+        ("--gen-directive-gen", "include/llvm/Frontend/OpenACC/ACC.cpp.inc"),
+        ("--gen-directive-impl", "lib/Frontend/OpenACC/ACC.cpp"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenACC/ACC.td",
+    td_srcs = [":acc_td_files"],
+)
+
+cc_library(
+    name = "FrontendOpenACC",
+    srcs = glob([
+        "lib/Frontend/OpenACC/*.cpp",
+    ]) + [
+        "include/llvm/Frontend/OpenACC/ACC.cpp.inc",
+        "lib/Frontend/OpenACC/ACC.cpp",
+    ],
+    hdrs = glob([
+        "include/llvm/Frontend/OpenACC/*.h",
+    ]) + ["include/llvm/Frontend/OpenACC/ACC.h.inc"],
+    copts = llvm_copts,
+    deps = [
+        ":Analysis",
+        ":Core",
+        ":Support",
+        ":TransformUtils",
+    ],
+)
+
 cc_library(
     name = "FuzzMutate",
     srcs = glob([

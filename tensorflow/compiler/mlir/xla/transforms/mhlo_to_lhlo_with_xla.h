@@ -82,6 +82,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   ::xla::StatusOr<lmhlo::CompareOp> EmitCompareOp(::xla::HloInstruction* instr);
 
   ::xla::StatusOr<lmhlo::InfeedOp> EmitInfeedOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::OutfeedOp> EmitOutfeedOp(::xla::HloInstruction* instr);
   ::xla::StatusOr<lmhlo::MapOp> EmitMapOp(::xla::HloInstruction* instr);
 
   ::xla::StatusOr<lmhlo::ReducePrecisionOp> EmitReducePrecisionOp(

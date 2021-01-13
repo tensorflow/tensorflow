@@ -36,13 +36,7 @@ namespace {
 
 std::string GetKernelDepthWiseConv3x3Stride1x1() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-
-$0
-
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int gid_x = ugid.x * 2;
@@ -221,13 +215,7 @@ std::vector<float> ReorderWeightsDepthWiseConv3x3Stride1x1(
 
 std::string GetKernelDepthWiseConv3x3Stride2() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-
-$0
-
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int gid_x = ugid.x;
@@ -380,11 +368,7 @@ ComputeTaskDescriptor DepthWiseConvolution(
     const DepthwiseConvolution2DAttributes& attr) {
   int channels_multiplier = attr.weights.shape.o;
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 gid[[thread_position_in_grid]]) {
   int dst_x = static_cast<int>(gid.x);

@@ -7,7 +7,10 @@ load(
     "micro_copts",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 config_setting(
     name = "xtensa_hifimini",
@@ -47,7 +50,9 @@ cc_library(
 
 cc_library(
     name = "fully_connected",
-    srcs = select({
+    srcs = [
+        "fully_connected_common.cc",
+    ] + select({
         "//conditions:default": [
             "fully_connected.cc",
         ],
@@ -670,6 +675,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/micro:debug_log",
     ],
 )
 

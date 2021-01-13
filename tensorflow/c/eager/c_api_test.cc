@@ -424,7 +424,7 @@ void TensorHandleSilentCopy(bool async,
         tensorflow::TensorHandleFromInterface(tensorflow::unwrap(hcpu));
     auto gpu_arg =
         tensorflow::TensorHandleFromInterface(tensorflow::unwrap(hgpu));
-    auto gpu_device = absl::get<tensorflow::Device*>(gpu_arg->device());
+    auto gpu_device = gpu_arg->device();
     ASSERT_FALSE(cpu_arg->HasLocalMirror(gpu_device));
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
