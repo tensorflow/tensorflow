@@ -24,9 +24,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -44,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
@@ -2743,6 +2746,127 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
   for (int64 i = 0; i < gather->shape().rank(); ++i) {
     if (!absl::c_linear_search(dnums.offset_dims(), i)) {
       batch_dims.push_back(i);
+    }
+  }
+  // Check if we identify some of the dimensions of the gather as parallel and
+  // if we have sharded the operand and indices across those dimensions.
+  // If that's the case then we can partition the gather across such dimensions
+  // by adjusting the offsets.
+  if (absl::optional<hlo_sharding_util::GatherParallelDims> parallel_dims =
+          hlo_sharding_util::GetGatherBatchParallelDims(
+              operand.sharding(), indices.sharding(), *hlo)) {
+    auto indices_parallel_dims = parallel_dims->indices_parallel_dims;
+    auto operand_parallel_dims = parallel_dims->operand_parallel_dims;
+    if (auto gather_sharding = GatherOperandsShardedAcrossParallelDims(
+            *operand.hlo(), *indices.hlo(),
+            absl::MakeConstSpan(indices_parallel_dims),
+            absl::MakeConstSpan(operand_parallel_dims))) {
+      absl::InlinedVector<int64, 4> output_parallel_dims;
+      Shape gather_shape = gather->shape();
+      absl::c_sort(indices_parallel_dims);
+      for (int i = 0, idx_dim = 0; i < gather_shape.dimensions_size(); ++i) {
+        if (absl::c_linear_search(dnums.offset_dims(), i)) {
+          continue;
+        }
+        int index_dim =
+            idx_dim < dnums.index_vector_dim() ? idx_dim : idx_dim + 1;
+        if (absl::c_linear_search(indices_parallel_dims, index_dim)) {
+          output_parallel_dims.push_back(i);
+        }
+        ++idx_dim;
+      }
+      HloSharding indices_sharding = gather_sharding->indices_sharding;
+      HloSharding operand_sharding = gather_sharding->operand_sharding;
+      if (operand_sharding.NumTiles() ==
+              operand_sharding.NumTiles(operand_parallel_dims) &&
+          indices_sharding.NumTiles() ==
+              indices_sharding.NumTiles(indices_parallel_dims)) {
+        int index_dim = dnums.index_vector_dim();
+        // Construct the required sharding for the new gather we are gonna form.
+        absl::InlinedVector<int64, 4> output_tiling(
+            hlo->shape().dimensions_size(), 1);
+        for (int i = 0, num_output_parallel_dims = output_parallel_dims.size();
+             i < num_output_parallel_dims; ++i) {
+          int output_idx = output_parallel_dims[i];
+          int indices_idx = indices_parallel_dims[i];
+          output_tiling[output_idx] =
+              indices_sharding.tile_assignment().dim(indices_idx);
+        }
+        operand = operand.Reshard(operand_sharding);
+        indices = indices.Reshard(indices_sharding);
+        if (indices_sharding.ReplicateOnLastTileDim()) {
+          output_tiling.push_back(
+              indices_sharding.tile_assignment().dimensions().back());
+        }
+        Array<int64> output_tile_assignment =
+            indices_sharding.tile_assignment();
+        output_tile_assignment.Reshape(output_tiling);
+        // New gather tiling.
+        HloSharding output_sharding =
+            indices_sharding.ReplicateOnLastTileDim()
+                ? HloSharding::PartialTile(output_tile_assignment)
+                : HloSharding::Tile(output_tile_assignment);
+        // Shape of the partitioned gather
+        Shape pshape = MakePartitionedShape(gather->shape(), output_sharding);
+        // Construct the offsets for the operand sharding to be used to adjust
+        // the indices. Because we know the only dimensions partitioned are the
+        // parallel ones and because the partitioning is the same across indices
+        // and operands we can apply the offsets on the operands on the indices.
+        std::vector<HloInstruction*> operand_offsets = MakePartitionOffsets(
+            operand.base_shape(), operand_sharding, partition_id_, &b_);
+        absl::InlinedVector<HloInstruction*, 4> index_offsets;
+        for (int start_idx = 0; start_idx < dnums.start_index_map_size();
+             ++start_idx) {
+          HloInstruction* index_offset =
+              indices.base_shape().dimensions_size() > index_dim
+                  ? b_.AddInstruction(HloInstruction::CreateReshape(
+                        ShapeUtil::MakeShape(S32, {1}),
+                        operand_offsets[dnums.start_index_map(start_idx)]))
+                  : operand_offsets[dnums.start_index_map(start_idx)];
+          index_offsets.push_back(index_offset);
+        }
+        HloInstruction* adjusted_indices = nullptr;
+        if (indices.base_shape().dimensions_size() > index_dim) {
+          // Concatenate the offsets for the parallel dimensions to subtract.
+          adjusted_indices =
+              b_.AddInstruction(HloInstruction::CreateConcatenate(
+                  ShapeUtil::MakeShape(
+                      S32, {indices.base_shape().dimensions(index_dim)}),
+                  index_offsets, 0));
+        } else {
+          CHECK_EQ(index_offsets.size(), 1);
+          adjusted_indices = index_offsets[0];
+        }
+        if (indices.hlo()->shape().element_type() != PrimitiveType::S32) {
+          adjusted_indices = b_.AddInstruction(HloInstruction::CreateConvert(
+              ShapeUtil::ChangeElementType(
+                  adjusted_indices->shape(),
+                  indices.hlo()->shape().element_type()),
+              adjusted_indices));
+        }
+        if (adjusted_indices->shape().rank() == 0) {
+          adjusted_indices = b_.AddInstruction(HloInstruction::CreateBroadcast(
+              indices.hlo()->shape(), adjusted_indices, {}));
+        } else {
+          adjusted_indices = b_.AddInstruction(HloInstruction::CreateBroadcast(
+              indices.hlo()->shape(), adjusted_indices, {index_dim}));
+        }
+        // Adjust indices by subtracting the offsets based on the partition id.
+        adjusted_indices = b_.AddInstruction(HloInstruction::CreateBinary(
+            indices.hlo()->shape(), HloOpcode::kSubtract, indices.hlo(),
+            adjusted_indices));
+        HloInstruction* pgather =
+            b_.AddInstruction(HloInstruction::CreateGather(
+                pshape, operand.hlo(), adjusted_indices, dnums,
+                gather->gather_slice_sizes(), gather->indices_are_sorted()));
+        pgather->set_sharding(output_sharding);
+        SetPartitionedHlo(hlo, [&]() {
+          return PartitionedHlo(pgather, hlo->shape(), MakePartitioningState())
+              .Reshard(hlo->sharding())
+              .hlo();
+        });
+        return Status::OK();
+      }
     }
   }
   if (operand.sharding().IsTileMaximal()) {
