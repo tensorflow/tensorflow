@@ -479,8 +479,8 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   PointsToSet& points_to_set = CreateEmptyPointsToSet(custom_call);
   absl::flat_hash_map<ShapeIndex, std::pair<int64, ShapeIndex>> aliased_outputs;
-  for (const auto& [output, input] : ccall->output_to_operand_aliasing()) {
-    aliased_outputs.emplace(output, input);
+  for (const auto& pair : ccall->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
   }
   points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
                                           PointsToSet::BufferList* buffers) {

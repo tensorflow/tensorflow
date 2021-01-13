@@ -192,8 +192,8 @@ Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
 Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   auto ccall = Cast<HloCustomCallInstruction>(custom_call);
   absl::flat_hash_set<ShapeIndex> aliased_outputs;
-  for (const auto& [output, input] : ccall->output_to_operand_aliasing()) {
-    aliased_outputs.insert(output);
+  for (const auto& pair : ccall->output_to_operand_aliasing()) {
+    aliased_outputs.insert(pair.first);
   }
   ShapeUtil::ForEachSubshape(ccall->shape(),
                              [&](const Shape& shape, const ShapeIndex& index) {
