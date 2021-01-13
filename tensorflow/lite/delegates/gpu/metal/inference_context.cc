@@ -106,7 +106,7 @@ absl::Status MergeNodes(const NodeDescriptor* src, NodeDescriptor* dst) {
 
 absl::Status InferenceContext::InitFromGraph(
     const CreateInferenceInfo& create_info, const GraphFloat32& graph,
-    id<MTLDevice> device) {
+    id<MTLDevice> device_id) {
   const auto inputs = graph.inputs();
   for (const auto& input : inputs) {
     input_ids_.push_back(input->id);
@@ -118,15 +118,13 @@ absl::Status InferenceContext::InitFromGraph(
   }
   precision_ = create_info.precision;
 
-  std::string device_name = std::string([[device name] UTF8String]);
-  GpuInfo gpu_info;
-  GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
-  ReserveGraphTensors(create_info, gpu_info, graph);
+  MetalDevice metal_device(device_id);
+  ReserveGraphTensors(create_info, metal_device.GetInfo(), graph);
   CompiledModel compiled_model;
-  RETURN_IF_ERROR(
-      Compile(graph, gpu_info, create_info.precision, &compiled_model));
+  RETURN_IF_ERROR(Compile(graph, metal_device.GetInfo(), create_info.precision,
+                          &compiled_model));
   RETURN_IF_ERROR(Merge(&compiled_model));
-  RETURN_IF_ERROR(CompileModelWithDevice(device, &compiled_model));
+  RETURN_IF_ERROR(CompileModelWithDevice(&compiled_model, &metal_device));
   return absl::OkStatus();
 }
 
@@ -292,13 +290,13 @@ absl::Status InferenceContext::Merge(CompiledModel* model) {
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::CompileModelWithDevice(id<MTLDevice> device,
-                                                      CompiledModel* model) {
+absl::Status InferenceContext::CompileModelWithDevice(CompiledModel* model,
+                                                      MetalDevice* device) {
   // Metal resources are created here.
   for (auto& node : model->nodes) {
     ComputeTask task;
     task.Init(std::move(node.task), node.src_tensors_ids, node.dst_tensors_ids);
-    RETURN_IF_ERROR(task.Compile(device, precision_));
+    RETURN_IF_ERROR(task.Compile(precision_, device));
     compute_tasks_.emplace_back(std::move(task));
   }
   for (auto& task : compute_tasks_) {
@@ -311,13 +309,14 @@ absl::Status InferenceContext::CompileModelWithDevice(id<MTLDevice> device,
     for (const auto& out_id : task.GetOutputIds()) {
       dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
     }
-    RETURN_IF_ERROR(task.UpdateParams(device, src_shapes, dst_shapes));
+    RETURN_IF_ERROR(
+        task.UpdateParams(device->GetInfo(), src_shapes, dst_shapes));
   }
   RETURN_IF_ERROR(AllocateTensors(device));
   return absl::OkStatus();
 }
 
-absl::Status InferenceContext::AllocateTensors(id<MTLDevice> device) {
+absl::Status InferenceContext::AllocateTensors(MetalDevice* device) {
   std::set<ValueId> preallocated_ids;
   for (auto tensor_id : input_ids_) {
     preallocated_ids.insert(tensor_id);
@@ -397,7 +396,7 @@ void InferenceContext::GetUsages(std::map<ValueId, int2>* usages) {
   }
 }
 
-absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
+absl::Status InferenceContext::AllocateMemoryForBuffers(MetalDevice* device) {
   std::map<ValueId, int2> buffer_usages;
   GetUsages(&buffer_usages);
 
@@ -424,33 +423,18 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
     // Initialize metal buffer
     NSUInteger bufferSize = dataTypeSize * buffer_assignment.object_sizes[i];
 
-#if (defined(__MAC_10_14) &&                               \
-     __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_14) ||    \
-    (defined(__IPHONE_12_0) &&                             \
-     __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_12_0) || \
-    (defined(__TVOS_12_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_12_0)
-    if (bufferSize > [device maxBufferLength]) {
+    if (bufferSize > device->GetInfo().GetMaxBufferSize()) {
       std::string error("Tensor id: ");
       error += std::to_string(buffer_assignment.object_ids[i]) +
                " with size: " + std::to_string(bufferSize) +
                " exceeds MTLDevice maxBufferLength: " +
-               std::to_string([device maxBufferLength]);
+               std::to_string(device->GetInfo().GetMaxBufferSize());
       return absl::ResourceExhaustedError(error);
     }
-#endif
-#if defined(__MAC_10_12) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_12
-    if ([device currentAllocatedSize] + bufferSize >
-        [device recommendedMaxWorkingSetSize]) {
-      std::string error(
-          "Out of memory in MTLBuffer allocation. Currently allocated: ");
-      error += std::to_string([device currentAllocatedSize]);
-      return absl::ResourceExhaustedError(error);
-    }
-#endif
 
     shared_buffers_[i] =
-        [device newBufferWithLength:bufferSize
-                            options:MTLResourceStorageModeShared];
+        [device->device() newBufferWithLength:bufferSize
+                                      options:MTLResourceStorageModeShared];
   }
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);

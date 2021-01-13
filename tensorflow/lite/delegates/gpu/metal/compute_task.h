@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
@@ -54,10 +55,10 @@ class ComputeTask {
   const ComputeTaskDescriptor& GetTaskDesc() const { return *task_desc_; }
 
   /// Returns empty string or error if shader can't be compiled.
-  absl::Status Compile(id<MTLDevice> device, CalculationsPrecision precision);
+  absl::Status Compile(CalculationsPrecision precision, MetalDevice* device);
 
   /// Updates parameters for inputs/outputs/intermediate tensors
-  absl::Status UpdateParams(id<MTLDevice> device,
+  absl::Status UpdateParams(const GpuInfo& gpu_info,
                             const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes);
 

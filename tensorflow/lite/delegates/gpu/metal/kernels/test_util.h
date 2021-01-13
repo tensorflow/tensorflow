@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 
 namespace tflite {
 namespace gpu {
@@ -62,7 +63,7 @@ absl::Status CompareVectors(const std::vector<float>& reference,
 
 class MetalExecutionEnvironment {
  public:
-  MetalExecutionEnvironment();
+  MetalExecutionEnvironment() = default;
   ~MetalExecutionEnvironment() = default;
 
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
@@ -72,7 +73,7 @@ class MetalExecutionEnvironment {
   std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
       const;
 
-  const GpuInfo& GetGpuInfo() const { return gpu_info_; }
+  const GpuInfo& GetGpuInfo() const { return device_.GetInfo(); }
 
   absl::Status ExecuteGPUOperation(
       const std::vector<TensorFloat32>& src_cpu,
@@ -98,8 +99,7 @@ class MetalExecutionEnvironment {
   }
 
  private:
-  id<MTLDevice> device_;
-  GpuInfo gpu_info_;
+  MetalDevice device_;
 };
 
 }  // namespace metal

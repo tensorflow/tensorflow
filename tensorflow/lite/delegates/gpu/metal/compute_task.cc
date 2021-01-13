@@ -42,18 +42,18 @@ void ComputeTask::Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc,
   output_buffers_ = output_ids;
 }
 
-absl::Status ComputeTask::Compile(id<MTLDevice> device,
-                                  CalculationsPrecision precision) {
+absl::Status ComputeTask::Compile(CalculationsPrecision precision,
+                                  MetalDevice* device) {
   task_desc_->AssembleCode();
   const std::map<std::string, std::string> linkables = {
       {task_desc_->dst_tensors_names[0], task_desc_->elementwise_code}};
-  RETURN_IF_ERROR(metal_args_.Init(device, linkables, &task_desc_->args,
+  RETURN_IF_ERROR(metal_args_.Init(device->device(), linkables,
+                                   &task_desc_->args,
                                    &task_desc_->shader_source));
   task_desc_->args.ReleaseCPURepresentation();
   NSString* barrier;
-  // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language
-  // version 2.0
-  if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
+  // simdgroup_barrier is supported since Metal shading language version 2.0
+  if (device->IsLanguageVersion2orHigher()) {
     barrier = @"simdgroup_barrier";
   } else {
     barrier = @"threadgroup_barrier";
@@ -100,8 +100,8 @@ absl::Status ComputeTask::Compile(id<MTLDevice> device,
       [NSString stringWithCString:task_desc_->shader_source.c_str()
                          encoding:[NSString defaultCStringEncoding]];
   id<MTLComputePipelineState> program;
-  RETURN_IF_ERROR(
-      CreateComputeProgram(device, code, @"ComputeFunction", macros, &program));
+  RETURN_IF_ERROR(CreateComputeProgram(device->device(), code,
+                                       @"ComputeFunction", macros, &program));
   if (!program) {
     return absl::InternalError("Unknown shader compilation error");
   }
@@ -109,7 +109,7 @@ absl::Status ComputeTask::Compile(id<MTLDevice> device,
   return absl::OkStatus();
 }
 
-absl::Status ComputeTask::UpdateParams(id<MTLDevice> device,
+absl::Status ComputeTask::UpdateParams(const GpuInfo& gpu_info,
                                        const std::vector<BHWC>& src_shapes,
                                        const std::vector<BHWC>& dst_shapes) {
   RETURN_IF_ERROR(
@@ -118,18 +118,17 @@ absl::Status ComputeTask::UpdateParams(id<MTLDevice> device,
   // Dispatch parameters re-calculation
   auto workGroups = task_desc_->resize_function(src_shapes, dst_shapes);
   groups_size_ = workGroups.first;
-  MTLSize threadsPerGroup = [device maxThreadsPerThreadgroup];
-  if (groups_size_.x > threadsPerGroup.width ||
-      groups_size_.y > threadsPerGroup.height ||
-      groups_size_.z > threadsPerGroup.depth) {
+  if (groups_size_.x > gpu_info.GetMaxWorkGroupSizeForX() ||
+      groups_size_.y > gpu_info.GetMaxWorkGroupSizeForY() ||
+      groups_size_.z > gpu_info.GetMaxWorkGroupSizeForZ()) {
     std::string error("Threads per working group: ");
     error += std::to_string(groups_size_.x) + ", " +
              std::to_string(groups_size_.y) + ", " +
              std::to_string(groups_size_.z);
     error += "is larger than the MTLDevice can support: ";
-    error += std::to_string(threadsPerGroup.width) + ", " +
-             std::to_string(threadsPerGroup.height) + ", " +
-             std::to_string(threadsPerGroup.depth);
+    error += std::to_string(gpu_info.GetMaxWorkGroupSizeForX()) + ", " +
+             std::to_string(gpu_info.GetMaxWorkGroupSizeForY()) + ", " +
+             std::to_string(gpu_info.GetMaxWorkGroupSizeForZ());
     return absl::InvalidArgumentError(error);
   }
   groups_count_ = workGroups.second;

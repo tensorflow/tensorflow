@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_spatial_tensor.h"
 
 namespace tflite {
@@ -47,7 +48,8 @@ class InferenceContext {
   InferenceContext() = default;
 
   absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
-                             const GraphFloat32& graph, id<MTLDevice> device);
+                             const GraphFloat32& graph,
+                             id<MTLDevice> device_id);
 
   /// Inserts all GPU compute tasks into the command encoder.
   /// @param inputOutputBuffers Must be created and passed into the method
@@ -99,12 +101,12 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const GpuInfo& gpu_info, const GraphFloat32& graph);
 
-  absl::Status CompileModelWithDevice(id<MTLDevice> device,
-                                      CompiledModel* model);
+  absl::Status CompileModelWithDevice(CompiledModel* model,
+                                      MetalDevice* device);
 
   absl::Status Merge(CompiledModel* model);
-  absl::Status AllocateTensors(id<MTLDevice> device);
-  absl::Status AllocateMemoryForBuffers(id<MTLDevice> device);
+  absl::Status AllocateTensors(MetalDevice* device);
+  absl::Status AllocateMemoryForBuffers(MetalDevice* device);
   void BindTensorsToOperations();
   MetalSpatialTensor* GetTensor(ValueId tensor_id);
   void GetUsages(std::map<ValueId, int2>* usages);

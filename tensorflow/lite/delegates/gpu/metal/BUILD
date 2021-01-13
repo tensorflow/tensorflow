@@ -113,6 +113,7 @@ objc_library(
         ":common",
         ":compute_task_descriptor",
         ":metal_arguments",
+        ":metal_device",
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:precision",
@@ -166,6 +167,7 @@ objc_library(
     deps = [
         ":compute_task",
         ":compute_task_descriptor",
+        ":metal_device",
         ":metal_spatial_tensor",
         "//tensorflow/lite/delegates/gpu/common:memory_management",
         "//tensorflow/lite/delegates/gpu/common:model",
@@ -200,6 +202,19 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_object_desc",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+objc_library(
+    name = "metal_device",
+    srcs = ["metal_device.cc"],
+    hdrs = ["metal_device.h"],
+    copts = DEFAULT_COPTS + [
+        "-ObjC++",
+    ],
+    sdk_frameworks = ["Metal"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ],
 )
 
