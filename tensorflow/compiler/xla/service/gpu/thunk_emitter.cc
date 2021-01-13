@@ -114,31 +114,6 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildGemmThunk(
       /*implements_whole_instruction=*/true);
 }
 
-std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
-    const HloInstruction* inst) {
-  CHECK_EQ(HloOpcode::kOutfeed, inst->opcode());
-
-  const HloInstruction* source = inst->operand(0);
-  std::vector<ShapeUtil::IndexedShape> leaf_shapes =
-      ShapeUtil::GetLeafShapes(source->shape());
-
-  std::vector<ShapedSlice> source_slices;
-  source_slices.reserve(leaf_shapes.size());
-
-  for (ShapeUtil::IndexedShape& indexed_shape : leaf_shapes) {
-    BufferAllocation::Slice slice =
-        GetAllocationSlice(*source, indexed_shape.index);
-    const Shape& shape =
-        ShapeUtil::GetSubshape(source->shape(), indexed_shape.index);
-    source_slices.push_back(ShapedSlice{slice, shape});
-  }
-
-  OutfeedConfig config = GetOutfeedConfig(inst);
-  return absl::make_unique<OutfeedThunk>(context_->GetThunkInfo(inst),
-                                         std::move(config),
-                                         std::move(source_slices));
-}
-
 Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   // A CustomCall on the GPU backend can either be a custom-call to a
   // user-supplied kernel, or a call into a library like cudnn.
@@ -233,11 +208,6 @@ Status ThunkEmitter::HandleTriangularSolve(HloInstruction* hlo) {
     AddThunkToThunkSequence(absl::make_unique<SequentialThunk>(
         context_->GetThunkInfo(hlo), std::move(thunks)));
   }
-  return Status::OK();
-}
-
-Status ThunkEmitter::HandleOutfeed(HloInstruction* outfeed) {
-  AddThunkToThunkSequence(BuildOutfeedThunk(outfeed));
   return Status::OK();
 }
 
