@@ -971,6 +971,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "notsan",  # b/177098062
     ],
     deps = [
         ":collective_all_reduce_strategy",
