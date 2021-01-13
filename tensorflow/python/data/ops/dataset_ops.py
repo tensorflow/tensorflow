@@ -1792,7 +1792,7 @@ name=None))
 
     Args:
       map_func: A function mapping a dataset element to another dataset element.
-      num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`,
         representing the number elements to process asynchronously in parallel.
         If not specified, elements will be processed sequentially. If the value
         `tf.data.AUTOTUNE` is used, then the number of parallel
