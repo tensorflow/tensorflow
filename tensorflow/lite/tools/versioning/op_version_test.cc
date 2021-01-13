@@ -894,4 +894,27 @@ TEST(OpVersionTest, VersioningRsqrtTest) {
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
+TEST(OpVersionTest, VersioningBroadcastToTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .input_types = std::vector<TensorType>{TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  // Quantized broadcast_to op is version 3.
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_BROADCAST_TO,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+}
 }  // namespace tflite
