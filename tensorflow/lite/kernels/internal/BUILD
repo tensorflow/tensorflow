@@ -210,14 +210,6 @@ config_setting(
     },
 )
 
-config_setting(
-    name = "tf_lite_static_memory",
-    values = {
-        "copt": "-DTF_LITE_STATIC_MEMORY",
-        "cpu": "k8",
-    },
-)
-
 cc_library(
     name = "common",
     srcs = [],
@@ -508,7 +500,7 @@ cc_library(
         "reference/tanh.h",
         "reference/transpose_conv.h",
     ] + select({
-        ":tf_lite_static_memory": [],
+        "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
             "reference/integer_ops/dequantize.h",
             "reference/integer_ops/log_softmax.h",
@@ -656,7 +648,7 @@ cc_library(
         "portable_tensor.h",
         "tensor_ctypes.h",
     ] + select({
-        ":tf_lite_static_memory": [],
+        "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
             "tensor.h",
         ],
@@ -677,7 +669,7 @@ cc_library(
         "portable_tensor.h",
         "tensor_ctypes.h",
     ] + select({
-        ":tf_lite_static_memory": [],
+        "//tensorflow/lite:tf_lite_static_memory": [],
         "//conditions:default": [
             "tensor.h",
         ],
@@ -832,7 +824,7 @@ cc_library(
             ":sse_tensor_utils",
         ],
         (
-            ":tf_lite_static_memory",
+            "//tensorflow/lite:tf_lite_static_memory",
             "//conditions:default",
         ): [":portable_tensor_utils"],
     }),
