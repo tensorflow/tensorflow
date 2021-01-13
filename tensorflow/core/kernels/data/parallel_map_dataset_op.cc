@@ -212,7 +212,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           autotune_(params.dataset->num_parallel_calls_ == model::kAutotune) {}
 
     ~Iterator() override {
+      cancellation_manager_->StartCancel();
       CancelThreads(/*wait=*/true);
+      input_impl_.reset();
       if (deregister_fn_) deregister_fn_();
     }
 
@@ -221,11 +223,15 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = ctx->runner_threadpool_size();
       }
+      cancellation_manager_ =
+          absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+      IteratorContext::Params params(ctx);
+      params.cancellation_manager = cancellation_manager_.get();
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(),
           [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
-      TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
+      TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
+          IteratorContext(params), this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -640,12 +646,17 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     const bool autotune_;
     // Counts the number of outstanding calls.
     int64 num_calls_ TF_GUARDED_BY(*mu_) = 0;
+    // Controls cancellation of `input_impl_`.
+    // Must be ordered before `input_impl_` so that `input_impl_` is destroyed
+    // first.
+    std::unique_ptr<CancellationManager> cancellation_manager_;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
+    // Must be ordered after `cancellation_manager_` so that `input_impl_` is
+    // destroyed first.
     std::unique_ptr<IteratorBase> input_impl_;
     // Buffer for storing the invocation results.
     std::deque<std::shared_ptr<InvocationResult>> invocation_results_
         TF_GUARDED_BY(*mu_);
-
     std::unique_ptr<Thread> runner_thread_ TF_GUARDED_BY(*mu_);
     std::unique_ptr<Thread> stats_thread_ TF_GUARDED_BY(*mu_);
     bool cancelled_ TF_GUARDED_BY(*mu_) = false;

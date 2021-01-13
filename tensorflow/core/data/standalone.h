@@ -104,6 +104,8 @@ class Dataset {
 
   // Creates a split provider for this dataset.
   Status MakeSplitProvider(std::unique_ptr<SplitProvider>* result);
+  // Returns a pointer to the underlying dataset.
+  const DatasetBase* Get() const;
 
  private:
   Dataset(DatasetBase* dataset, DeviceMgr* device_mgr,

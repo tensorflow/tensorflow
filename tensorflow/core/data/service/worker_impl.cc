@@ -180,6 +180,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   VLOG(3) << "Received GetElement request for task " << request->task_id();
   bool end_of_sequence = false;
   std::vector<tensorflow::Tensor> outputs;
+  Task* task;
   {
     mutex_lock l(mu_);
     if (!registered_) {
@@ -201,24 +202,24 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
         return errors::Unavailable("Task ", request->task_id(), " not found");
       }
     }
-    auto& task = it->second;
+    task = it->second.get();
     TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
-    TaskRunner::Request get_next_request;
-    if (request->optional_consumer_index_case() ==
-        GetElementRequest::kConsumerIndex) {
-      get_next_request.consumer_index = request->consumer_index();
-    }
-    if (request->optional_round_index_case() ==
-        GetElementRequest::kRoundIndex) {
-      get_next_request.round_index = request->round_index();
-    }
-    TF_RETURN_IF_ERROR(
-        task->task_runner->GetNext(get_next_request, outputs, end_of_sequence));
-    if (end_of_sequence) {
-      VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
-      pending_completed_tasks_.insert(request->task_id());
-      task_completion_cv_.notify_one();
-    }
+  }
+  TaskRunner::Request get_next_request;
+  if (request->optional_consumer_index_case() ==
+      GetElementRequest::kConsumerIndex) {
+    get_next_request.consumer_index = request->consumer_index();
+  }
+  if (request->optional_round_index_case() == GetElementRequest::kRoundIndex) {
+    get_next_request.round_index = request->round_index();
+  }
+  TF_RETURN_IF_ERROR(
+      task->task_runner->GetNext(get_next_request, outputs, end_of_sequence));
+  if (end_of_sequence) {
+    mutex_lock l(mu_);
+    VLOG(3) << "Reached end_of_sequence for task " << request->task_id();
+    pending_completed_tasks_.insert(request->task_id());
+    task_completion_cv_.notify_one();
   }
 
   if (!end_of_sequence) {
@@ -249,7 +250,7 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
           "it produced ",
           variant.TypeName());
     }
-    compressed->Swap(response->mutable_compressed_element());
+    *response->mutable_compressed_element() = *compressed;
   }
   response->set_end_of_sequence(end_of_sequence);
 

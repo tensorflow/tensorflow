@@ -533,7 +533,11 @@ Status DataServiceDispatcherImpl::CreateTasksForWorker(
     const std::string& worker_address) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
   for (const auto& job : jobs) {
-    if (job->finished) {
+    if (job->finished || job->num_consumers.has_value()) {
+      // Don't add new tasks for late-joining workers when doing round-robin
+      // reads. It would create synchronization issues where some clients might
+      // learn about the new tasks earlier than others, potentially causing
+      // deadlock.
       continue;
     }
     std::shared_ptr<const Task> task;
@@ -646,6 +650,9 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   }
   task_def->set_task_id(task->task_id);
   task_def->set_processing_mode(ProcessingModeDef(task->job->processing_mode));
+  if (task->job->num_consumers.has_value()) {
+    task_def->set_num_consumers(task->job->num_consumers.value());
+  }
   ProcessTaskResponse resp;
   WorkerService::Stub* stub;
   TF_RETURN_IF_ERROR(GetOrCreateWorkerStub(task->worker_address, stub));

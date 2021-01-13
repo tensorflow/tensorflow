@@ -25,6 +25,11 @@
     gathered at runtime to be used in embedding layer partitioning decisions.
 * `tf.keras.metrics.AUC` now support logit predictions.
 * Creating `tf.random.Generator` under `tf.distribute.Strategy` scopes is now allowed (except for `tf.distribute.experimental.CentralStorageStrategy` and `tf.distribute.experimental.ParameterServerStrategy`). Different replicas will get different random-number streams.
+* `tf.data`:
+    *   tf.data service now supports strict round-robin reads, which is useful
+        for synchronous training workloads where example sizes vary. With strict
+        round robin reads, users can guarantee that consumers get similar-sized
+        examples in the same step.
 
 ## Bug Fixes and Other Changes
 

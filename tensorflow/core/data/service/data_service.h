@@ -100,11 +100,12 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   // dataset id in `dataset_id`.
   Status RegisterDataset(GraphDef dataset, int64& dataset_id);
 
-  // Gets the job id for the job represented by the tuple
-  // (job_name, job_name_index), and stores the id in `job_client_id`. If the
-  // job doesn't exist yet, it will be created.
+  // If `job_key` is set, looks up a job matching `job_key`. If `job_key` is
+  // absent or no matching job is found, creates a new job. The resulting job
+  // id is stored in `job_client_id`.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
                         const absl::optional<JobKey>& job_key,
+                        absl::optional<int64> num_consumers,
                         int64& job_client_id);
 
   // Releases a job client id, indicating that the id will no longer be used to
@@ -138,11 +139,14 @@ class DataServiceWorkerClient : public DataServiceClientBase {
                           const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
-  // Fetches the next element for the specified task_id. The element's
-  // compressed tensors will be stored in `element`. If no element is available,
-  // `end_of_sequence` will be `true`, and `element` will be left unchanged.
-  Status GetElement(int64 task_id, CompressedElement& element,
-                    bool& end_of_sequence);
+  // Fetches the next element for the specified task_id. The optional
+  // `consumer_index` and `round_index` must be specified for tasks which use
+  // round-robin ordering. The element's compressed tensors will be stored in
+  // `element`. If no element is available, `end_of_sequence` will be `true`,
+  // and `element` will be left unchanged.
+  Status GetElement(int64 task_id, absl::optional<int64> consumer_index,
+                    absl::optional<int64> round_index,
+                    CompressedElement& element, bool& end_of_sequence);
 
  protected:
   Status EnsureInitialized() override;
