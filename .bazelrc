@@ -139,7 +139,7 @@ build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 
 # Enables all the macos config options for macos_arm64
 build:macos_arm64 --config=macos
-build:macos_arm64 --apple_platform_type=macos 
+build:macos_arm64 --apple_platform_type=macos
 build:macos_arm64 --cpu=darwin_arm64
 
 # Config to use a mostly-static build and disable modular op registration
