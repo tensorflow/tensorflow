@@ -42,6 +42,11 @@ def tflite_copts():
         "//conditions:default": [
             "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
+    }) + select({
+        clean_dep("//tensorflow:linux_x86_64"): [
+            "-fno-sanitize=shift-base",  # Possible invalid left shift in neon2sse.
+        ],
+        "//conditions:default": [],
     })
 
     return copts
