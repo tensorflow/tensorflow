@@ -801,10 +801,6 @@ port::Status InitStreamExecutorPlugin(SEInitPluginFn init_fn) {
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
 
-  platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
-  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
-  TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
-
   // Register new platform
   std::string platform_name = std::string(platform.name);
   std::unique_ptr<stream_executor::CPlatform> cplatform(
