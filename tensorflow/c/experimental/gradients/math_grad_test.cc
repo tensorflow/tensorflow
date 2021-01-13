@@ -229,6 +229,35 @@ Status Log1pGradModel(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status DivNoNanModel(AbstractContext* ctx,
+                     absl::Span<AbstractTensorHandle* const> inputs,
+                     absl::Span<AbstractTensorHandle*> outputs) {
+  return ops::DivNoNan(ctx, inputs, outputs, "DivNoNan");
+}
+
+Status DivNoNanGradModel(AbstractContext* ctx,
+                         absl::Span<AbstractTensorHandle* const> inputs,
+                         absl::Span<AbstractTensorHandle*> outputs) {
+  GradientRegistry registry;
+  TF_RETURN_IF_ERROR(registry.Register("DivNoNan", DivNoNanRegisterer));
+
+  Tape tape(/*persistent=*/false);
+  tape.Watch(inputs[0]);
+  tape.Watch(inputs[1]);
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  AbstractContextPtr tape_ctx(new TapeContext(ctx, &tape, registry));
+  TF_RETURN_IF_ERROR(ops::DivNoNan(
+      tape_ctx.get(), inputs, absl::MakeSpan(temp_outputs), "DivNoNanGrad"));
+
+  TF_RETURN_IF_ERROR(tape.ComputeGradient(ctx, /*targets=*/temp_outputs,
+                                          /*sources=*/inputs,
+                                          /*output_gradients=*/{}, outputs));
+  for (auto temp_output : temp_outputs) {
+    temp_output->Unref();
+  }
+  return Status::OK();
+}
+
 class CppGradients
     : public ::testing::TestWithParam<std::tuple<const char*, bool, bool>> {
  protected:
@@ -367,6 +396,47 @@ TEST_P(CppGradients, TestLog1pGrad) {
 
   ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
       Log1pModel, Log1pGradModel, ctx_.get(), {x.get()}, UseFunction()));
+}
+
+TEST_P(CppGradients, TestDivNoNanGrad) {
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx_.get(), 2.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x.reset(x_raw);
+  }
+
+  AbstractTensorHandlePtr y;
+  {
+    AbstractTensorHandle* y_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx_.get(), 2.0f, &y_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    y.reset(y_raw);
+  }
+
+  ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
+      DivNoNanModel, DivNoNanGradModel, ctx_.get(), {x.get(), y.get()},
+      UseFunction()));
+
+  // `DivNoNanGradModel` should return {`0`, `0`} when the denominator is `0`.
+  AbstractTensorHandlePtr z;
+  {
+    AbstractTensorHandle* z_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx_.get(), 0.0f, &z_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    z.reset(z_raw);
+  }
+  std::vector<AbstractTensorHandle*> outputs(2);
+  auto s = RunModel(DivNoNanGradModel, ctx_.get(), {x.get(), z.get()},
+                    absl::MakeSpan(outputs), UseFunction());
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[0], {0.0f}, /*dims*/ {},
+                                           /*abs_error*/ 0));
+  ASSERT_NO_FATAL_FAILURE(CheckTensorValue(outputs[1], {0.0f}, /*dims*/ {},
+                                           /*abs_error*/ 0));
+  outputs[0]->Unref();
+  outputs[1]->Unref();
 }
 
 #ifdef PLATFORM_GOOGLE
