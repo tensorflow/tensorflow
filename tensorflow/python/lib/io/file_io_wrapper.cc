@@ -45,6 +45,13 @@ inline TransactionToken* TokenFromPyToken(PyTransactionToken* t) {
 namespace {
 namespace py = pybind11;
 
+const int kUTF8TwoBytesMask = 0xe0;
+const int kUTF8TwoBytesValue = 0xc0;
+const int kUTF8ThreeBytesMask = 0xf0;
+const int kUTF8ThreeBytesValue = 0xe0;
+const int kUTF8FourBytesMask = 0xf8;
+const int kUTF8FourBytesValue = 0xf0;
+
 PYBIND11_MODULE(_pywrap_file_io, m) {
   using tensorflow::PyTransactionToken;
   using tensorflow::TransactionToken;
@@ -336,15 +343,13 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
                    remain--;
                    continue;
                  }
-                 if ((result_read[i] & 0xe0) == 0xc0) {
+                 if ((result_read[i] & kUTF8TwoBytesMask) == kUTF8TwoBytesValue) {
                    // n = 2
                    remain = 1;
-                 }
-                 else if ((result_read[i] & 0xf0) == 0xe0) {
+                 } else if ((result_read[i] & kUTF8ThreeBytesMask) == kUTF8ThreeBytesValue) {
                    // n = 3
                    remain = 2;
-                 }
-                 else if ((result_read[i] & 0xf8) == 0xf0) {
+                 } else if ((result_read[i] & kUTF8FourBytesMask) == kUTF8FourBytesValue) {
                    // n = 4
                    remain = 3;
                  }
