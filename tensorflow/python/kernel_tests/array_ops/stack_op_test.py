@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -273,6 +274,21 @@ class StackOpTest(test.TestCase):
             xs = list(map(constant_op.constant, data))
             c = array_ops.stack(xs)
             self.assertAllEqual(self.evaluate(c), data)
+
+  def testQTypes(self):
+    np.random.seed(7)
+    with self.session(use_gpu=True):
+      shape = [2]
+      for dtype in [
+          dtypes.quint8,
+          dtypes.quint16,
+          dtypes.qint8,
+          dtypes.qint16]:
+        with self.subTest(shape=shape, dtype=dtype):
+          data = self.randn(shape, dtype.as_numpy_dtype)
+          xs = list(map(constant_op.constant, data))
+          c = math_ops.equal(array_ops.stack(xs), data)
+          self.assertAllEqual(self.evaluate(c), [True, True])
 
 
 class AutomaticStackingTest(test.TestCase):
