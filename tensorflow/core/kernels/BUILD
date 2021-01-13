@@ -6195,6 +6195,7 @@ filegroup(
         "segment_reduction_ops_impl_4.cc",
         "segment_reduction_ops_impl_5.cc",
         "session_ops.cc",
+        "set_kernels.cc",
         "softplus_op.cc",
         "softsign_op.cc",
         "spacetobatch_functor.cc",
