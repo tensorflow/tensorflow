@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
 )

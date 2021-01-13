@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "pybind11/cast.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/stl.h"

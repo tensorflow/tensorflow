@@ -469,15 +469,20 @@ StatusOr<ArgSignature> ArgSignatureOfValue(pybind11::handle arg,
         } else {
           TF_ASSIGN_OR_RETURN(dtype, DtypeToPrimitiveType(raw_dtype));
         }
-        return ArgSignature(
-            dtype, absl::MakeConstSpan(numpy_array.shape(), numpy_array.ndim()),
-            /*weak_type=*/false);
+        // We need the reinterpret_cast for the OSS version to build.
+        return ArgSignature(dtype,
+                            absl::MakeConstSpan(reinterpret_cast<const int64*>(
+                                                    numpy_array.shape()),
+                                                numpy_array.ndim()),
+                            /*weak_type=*/false);
       }
       TF_ASSIGN_OR_RETURN(auto dtype,
                           DtypeToPrimitiveType(numpy_array.dtype()));
-      return ArgSignature(
-          dtype, absl::MakeConstSpan(numpy_array.shape(), numpy_array.ndim()),
-          /*weak_type=*/false);
+      return ArgSignature(dtype,
+                          absl::MakeConstSpan(reinterpret_cast<const int64*>(
+                                                  numpy_array.shape()),
+                                              numpy_array.ndim()),
+                          /*weak_type=*/false);
     };
     const auto numpy = py::module::import("numpy");
     const auto& ndarray = numpy.attr("ndarray");
