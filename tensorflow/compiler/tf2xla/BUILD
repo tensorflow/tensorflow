@@ -876,6 +876,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:device_set",
         "@llvm-project//llvm:Support",
     ],
     alwayslink = 1,

@@ -20,24 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
-
-namespace {
-
-// Checks if the module has any TPU devices in its device list.
-bool HasTPUDevice(mlir::ModuleOp op) {
-  mlir::TF::RuntimeDevices devices;
-  if (failed(tensorflow::GetDevicesFromOp(op.getOperation(), &devices)))
-    return false;
-
-  for (const auto& device : devices.device_names()) {
-    if (device.has_type && device.type == "TPU") return true;
-  }
-  return false;
-}
-}  // namespace
 
 namespace tensorflow {
 
@@ -47,6 +33,29 @@ auto* mlir_bridge_gauge_v1 = monitoring::Gauge<bool, 0>::New(
 auto* mlir_bridge_gauge_v2 = monitoring::Gauge<bool, 0>::New(
     "/tensorflow/config/experimental/enable_mlir_bridge_gauge_v2",
     "Tracks usage of the MLIR-based TF2XLA bridge among TF2 models");
+
+namespace {
+
+// Checks if the module has any TPU devices in its device list.
+bool HasTPUDevice(mlir::ModuleOp op) {
+  mlir::TF::RuntimeDevices devices;
+  if (failed(GetDevicesFromOp(op.getOperation(), &devices))) return false;
+
+  for (const auto& device : devices.device_names()) {
+    if (device.has_type && device.type == "TPU") return true;
+  }
+  return false;
+}
+
+bool HasTPUDevice(const DeviceSet& device_set) {
+  for (const Device* device : device_set.devices()) {
+    if (!device) continue;
+    const DeviceNameUtils::ParsedName& name = device->parsed_name();
+    if (name.has_type && name.type == "TPU") return true;
+  }
+  return false;
+}
+}  // namespace
 
 // Analyzes the user requested policy as well as the contents of the graph and
 // determines whether the MLIR Bridge should be run.
@@ -65,6 +74,15 @@ bool IsMlirBridgePassEnabled(const Graph& graph,
           policy == MlirBridgeRolloutPolicy::kEnabledAfterGraphAnalysis);
 }
 
+bool MlirBridgePass::IsEnabled(const DeviceSet* device_set,
+                               const ConfigProto& config_proto,
+                               const Graph& graph) const {
+  // Skip MLIR TPU Bridge if no TPU devices found.
+  if (device_set && !HasTPUDevice(*device_set)) return false;
+
+  return IsMlirBridgePassEnabled(graph, config_proto);
+}
+
 // This runs the first phase of the "bridge", transforming the graph in a form
 // that can be executed with delegation of some computations to an accelerator.
 // This builds on the model of XLA where a subset of the graph is encapsulated
@@ -73,7 +91,9 @@ bool IsMlirBridgePassEnabled(const Graph& graph,
 // encapsulated graph to a particular device.
 Status MlirBridgePass::Run(const ConfigProto& config_proto,
                            mlir::ModuleOp module, const Graph& graph) {
-  if (!IsEnabled(config_proto, graph)) {
+  // Set device_set to nullptr here as the device specific checks are performed
+  // based on the devices in the module.
+  if (!IsEnabled(/*device_set=*/nullptr, config_proto, graph)) {
     VLOG(0) << "Skipping MLIR TPU Bridge, session flag not enabled";
     mlir_bridge_gauge_v2->GetCell()->Set(false);
     return Status::OK();
@@ -92,12 +112,29 @@ Status MlirBridgePass::Run(const ConfigProto& config_proto,
 
   return Status::OK();
 }
+
+bool MlirBridgeV1CompatPass::IsEnabled(const DeviceSet* device_set,
+                                       const ConfigProto& config_proto,
+                                       const Graph& graph) const {
+  // Skip MLIR TPU Bridge if no TPU devices found.
+  if (device_set && !HasTPUDevice(*device_set)) return false;
+
+  // Do not run the bridge if it's enabled by the graph analysis,
+  // only run if it's enabled by the user explicitly.
+  MlirBridgeRolloutPolicy policy =
+      GetMlirBridgeRolloutPolicy(graph, config_proto);
+  return policy == MlirBridgeRolloutPolicy::kEnabledByUser;
+}
+
 Status MlirBridgeV1CompatPass::Run(const GraphOptimizationPassOptions& options,
                                    mlir::ModuleOp module) {
   // Skip function graphs as MlirBridgePass will be used instead.
   if (options.is_function_graph) return Status::OK();
 
-  if (!IsEnabled(options.session_options->config, **options.graph)) {
+  // Set device_set to nullptr here as the device specific checks are performed
+  // based on the devices in the module.
+  if (!IsEnabled(/*device_set=*/nullptr, options.session_options->config,
+                 **options.graph)) {
     VLOG(0) << "Skipping MLIR TPU Bridge V1 Compat, session flag not enabled";
     mlir_bridge_gauge_v1->GetCell()->Set(false);
     return Status::OK();

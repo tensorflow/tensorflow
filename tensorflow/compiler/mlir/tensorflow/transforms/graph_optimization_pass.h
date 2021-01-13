@@ -27,7 +27,8 @@ class MlirGraphOptimizationPass : public ::tensorflow::MlirOptimizationPass {
  public:
   llvm::StringRef name() const override { return "graph_optimization"; }
 
-  bool IsEnabled(const ::tensorflow::ConfigProto& config_proto,
+  bool IsEnabled(const ::tensorflow::DeviceSet* device_set,
+                 const ::tensorflow::ConfigProto& config_proto,
                  const tensorflow::Graph& graph) const override {
     return config_proto.experimental().enable_mlir_graph_optimization();
   }
