@@ -66,6 +66,7 @@ tf_profiler_pybind_cc_library_wrapper(
 cc_library(
     name = "profiler_client",
     hdrs = ["profiler_client.h"],
+    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
     deps = [
         ":profiler_client_impl",
         "//tensorflow/core:lib",
