@@ -135,8 +135,9 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));
     return module_or.ConsumeValueOrDie();
   } else if (import_saved_model_v1) {
+    tensorflow::MLIRImportOptions import_options;
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, context);
+        input_filename, tags, exported_names, context, import_options);
 
     if (!module_or.status().ok()) return module_or.status();
     TF_RETURN_IF_ERROR(RegisterCustomOps(extra_tf_opdefs));

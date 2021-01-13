@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_import_options.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -66,7 +67,7 @@ stream_executor::port::StatusOr<mlir::OwningModuleRef>
 ConvertSavedModelV1ToMlir(const SavedModelBundle& saved_model,
                           absl::Span<std::string> exported_names,
                           mlir::MLIRContext* context,
-                          bool upgrade_legacy = false);
+                          MLIRImportOptions options);
 
 // Given a V1 SavedModel, returns a MLIR module containing the functions,
 // expressed with tf_executor dialect. It does not require a session to be
@@ -76,7 +77,7 @@ ConvertSavedModelV1ToMlirLite(const MetaGraphDef& meta_graph_def,
                               const GraphDebugInfo& debug_info,
                               absl::Span<std::string> exported_names,
                               mlir::MLIRContext* context,
-                              bool upgrade_legacy = false);
+                              MLIRImportOptions options);
 
 // Serialize a MLIR module to a string.
 std::string MlirModuleToString(mlir::ModuleOp module,

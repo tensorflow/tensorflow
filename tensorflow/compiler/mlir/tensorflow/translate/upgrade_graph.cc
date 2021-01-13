@@ -16,6 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/upgrade_graph.h"
 
 #include "llvm/ADT/StringSet.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 
@@ -84,6 +92,43 @@ Status GenerateResourceSharedNameIfEmpty(Graph& graph,
   }
 
   return tensorflow::Status::OK();
+}
+
+Status RunGrappler(MetaGraphDef* meta_graph_def) {
+  std::vector<std::unique_ptr<Device>> devices;
+  // Only CPU device is used so instead of calling DeviceFactory::AddDevices()
+  // with dummy session config, which will conflict with user defined options
+  // and create unwanted devices, call cpu_factory->CreateDevices() to get CPU
+  // only devices.
+  DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
+  SessionOptions options;
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  Device* cpu_device = devices[0].get();
+  auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
+
+  DeviceSet dev_set;
+  for (auto d : device_mgr->ListDevices()) dev_set.AddDevice(d);
+
+  ConfigProto config_proto;
+  // Avoid grappler logic that lowers to v1 control flow.
+  config_proto.mutable_experimental()->set_use_tfrt(true);
+  config_proto.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+  // Do not skip grappler optimization even for small graphs.
+  config_proto.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_min_graph_nodes(-1);
+
+  std::unique_ptr<grappler::GrapplerItem> item =
+      grappler::GrapplerItemFromMetaGraphDef("graph", *meta_graph_def,
+                                             grappler::ItemConfig());
+
+  grappler::VirtualCluster cluster(&dev_set);
+  return grappler::RunMetaOptimizer(std::move(*item), config_proto, cpu_device,
+                                    &cluster,
+                                    meta_graph_def->mutable_graph_def());
 }
 
 }  // namespace tensorflow
