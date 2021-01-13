@@ -38,10 +38,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.ops.losses import loss_reduction
 from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
@@ -167,7 +167,7 @@ class KPLTest(test.TestCase, parameterized.TestCase):
           pred = model(batch_data, training=True)
           loss = nn.compute_average_loss(
               keras.losses.BinaryCrossentropy(
-                  reduction=loss_reduction.ReductionV2.NONE)(labels, pred))
+                  reduction=losses_utils.ReductionV2.NONE)(labels, pred))
           gradients = tape.gradient(loss, model.trainable_variables)
 
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))

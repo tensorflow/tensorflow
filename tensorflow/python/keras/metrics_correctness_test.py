@@ -26,7 +26,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
@@ -557,9 +557,9 @@ class TestMetricsCorrectnessSingleIO(keras_parameterized.TestCase):
 @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 @parameterized.parameters([
-    loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE,
-    loss_reduction.ReductionV2.AUTO,
-    loss_reduction.ReductionV2.SUM
+    losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
+    losses_utils.ReductionV2.AUTO,
+    losses_utils.ReductionV2.SUM
 ])
 class TestOutputLossMetrics(keras_parameterized.TestCase):
 
@@ -615,25 +615,25 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
     }
 
     self.expected_fit_result = {
-        loss_reduction.ReductionV2.NONE:
+        losses_utils.ReductionV2.NONE:
             sum_over_batch_size_fit_result,
-        loss_reduction.ReductionV2.SUM: {
+        losses_utils.ReductionV2.SUM: {
             'loss': [198, 198],
             'output_1_loss': [82, 82],
             'output_2_loss': [116, 116],
         },
-        loss_reduction.ReductionV2.AUTO:
+        losses_utils.ReductionV2.AUTO:
             sum_over_batch_size_fit_result,
-        loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE:
+        losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
             sum_over_batch_size_fit_result,
     }
 
     # In the order: 'loss', 'output_1_loss', 'output_2_loss',
     self.expected_batch_result = {
-        loss_reduction.ReductionV2.NONE: [144, 56, 88],
-        loss_reduction.ReductionV2.SUM: [198, 82, 116],
-        loss_reduction.ReductionV2.AUTO: [144, 56, 88],
-        loss_reduction.ReductionV2.SUM_OVER_BATCH_SIZE: [144, 56, 88],
+        losses_utils.ReductionV2.NONE: [144, 56, 88],
+        losses_utils.ReductionV2.SUM: [198, 82, 116],
+        losses_utils.ReductionV2.AUTO: [144, 56, 88],
+        losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE: [144, 56, 88],
     }
 
     # 2 + 12 + 36 + 80 + 150 = 280
@@ -675,7 +675,7 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
                                   })
 
     expected_values = self.expected_batch_result[reduction]
-    if reduction == loss_reduction.ReductionV2.SUM:
+    if reduction == losses_utils.ReductionV2.SUM:
       expected_values = self.expected_single_batch_result
     self.assertAllClose(result, expected_values)
 
@@ -688,7 +688,7 @@ class TestOutputLossMetrics(keras_parameterized.TestCase):
                                      'output_2': self.sample_weight_2,
                                  })
     expected_values = self.expected_batch_result[reduction]
-    if reduction == loss_reduction.ReductionV2.SUM:
+    if reduction == losses_utils.ReductionV2.SUM:
       expected_values = self.expected_single_batch_result
     self.assertAllClose(result, expected_values)
 
