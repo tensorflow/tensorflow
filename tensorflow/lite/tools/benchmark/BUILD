@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
 
 package(
     default_visibility = [
@@ -9,7 +9,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-common_copts = ["-Wall"] + tflite_copts()
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 # We create a library for benchmark_main.cc to faciliate the creation of a
 # customized benchmark model binary that only needs linking with extra
@@ -237,7 +237,6 @@ cc_test(
     srcs = [
         "benchmark_utils_test.cc",
     ],
-    copts = common_copts,
     deps = [
         ":benchmark_utils",
         "//tensorflow/lite/profiling:time",

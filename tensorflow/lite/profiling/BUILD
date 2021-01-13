@@ -1,6 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
@@ -8,7 +7,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-common_copts = tflite_copts() + if_not_windows(["-Wall"])
+common_copts = tflite_copts() + tflite_copts_warnings()
 
 cc_library(
     name = "profiler",

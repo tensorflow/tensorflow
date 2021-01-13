@@ -1,5 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
@@ -12,8 +12,6 @@ package(
 exports_files([
     "logging.h",
 ])
-
-common_copts = ["-Wall"]
 
 py_binary(
     name = "visualize",
@@ -236,7 +234,7 @@ cc_test(
 cc_library(
     name = "logging",
     hdrs = ["logging.h"],
-    copts = common_copts,
+    copts = tflite_copts_warnings(),
 )
 
 cc_library(
