@@ -155,13 +155,20 @@ absl::Status MetalArguments::Init(
   std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   ResolveArgsPass(code);
-  *code = R"(
+  std::string header = R"(
 #include <metal_stdlib>
 using namespace metal;
 
-)" + struct_desc +
-          "\n" + *code;
-  *code = absl::Substitute(*code, GetListOfArgs(/*buffer_offset*/ 0));
+)";
+  header += struct_desc + "\n";
+  *code = header + *code;
+  std::string arguments = GetListOfArgs(/*buffer_offset*/ 0);
+  if (code->find("GLOBAL_ID_") != std::string::npos) {
+    AppendArgument("uint3 reserved_gid[[thread_position_in_grid]]", &arguments);
+  } else if (!arguments.empty()) {
+    arguments += ",\n";
+  }
+  *code = absl::Substitute(*code, arguments);
   return absl::OkStatus();
 }
 
@@ -379,9 +386,6 @@ std::string MetalArguments::GetListOfArgs(int buffer_offset) {
                                 buffer_offset, ")]]"),
                    &result);
     buffer_offset++;
-  }
-  if (!result.empty()) {
-    result += ",\n";
   }
   return result;
 }

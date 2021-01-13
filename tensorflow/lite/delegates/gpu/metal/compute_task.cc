@@ -94,6 +94,13 @@ absl::Status ComputeTask::Compile(CalculationsPrecision precision,
     @"TO_ACCUM3_TYPE" : toAccumulatorType3,
     @"TO_ACCUM4_TYPE" : toAccumulatorType4,
     @"SIMDGROUP_BARRIER" : barrier,
+    @"MAIN_FUNCTION" : @"\"kernel void ComputeFunction\"",
+    @"GLOBAL_ID_0" : @"static_cast<int>(reserved_gid.x)",
+    @"GLOBAL_ID_1" : @"static_cast<int>(reserved_gid.y)",
+    @"GLOBAL_ID_2" : @"static_cast<int>(reserved_gid.z)",
+    @"INIT_FLT(value)" : [NSString stringWithFormat:@"%@(value)", storageType],
+    @"INIT_FLT4(value)" :
+        [NSString stringWithFormat:@"%@4(value)", storageType],
   };
 
   NSString* code =
