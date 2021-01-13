@@ -219,8 +219,8 @@ void AllocateAndParseFlags() {
             &ops_flags->tf_xla_always_defer_compilation, ""),
        Flag("tf_xla_async_compilation",
             &ops_flags->tf_xla_async_compilation,
-            "When lazy compilation is enabled, asynchronous compilation starts"
-            "the cluster compilation in the background, and the fallback path"
+            "When lazy compilation is enabled, asynchronous compilation starts "
+            "the cluster compilation in the background, and the fallback path "
             "is executed until the compilation has finished."),
 
        Flag("tf_introduce_floating_point_jitter_to_tensors",

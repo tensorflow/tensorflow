@@ -68,6 +68,8 @@ XlaCompilationCache::~XlaCompilationCache() {
                     "programs to complete";
     }
   }
+  // Wait for all outstanding compilations to finish.
+  async_compilation_.compiler_threads.reset();
   // TODO(b/110813685): Think about the program ownership model. Programs are
   // currently owned by the compilation cache which means we must wait for
   // program completion in the destructor. There are multiple compilation caches
@@ -422,7 +424,8 @@ Status XlaCompilationCache::CompileAsynchronous(
   // When the ThreadPool for the compilation cache is destroyed, it waits for
   // compilations to have finished. This means that 'async_compile_data.entry'
   // and 'this' will be alive for the duration of the compilation.
-  async_compilation_.compiler_threads.Schedule([this, async_compile_data] {
+  async_compilation_.compiler_threads.get()->Schedule(
+    [this, async_compile_data] {
       Entry local_entry;
       VLOG(2) << "Starting asynchronous compilation of cluster "
               << async_compile_data.function_name << '.';

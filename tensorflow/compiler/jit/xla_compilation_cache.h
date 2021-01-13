@@ -156,7 +156,7 @@ class XlaCompilationCache : public ResourceBase {
   struct Entry {
     mutex mu;
 
-    // Have we tried compiling this entry?
+    // The current compilation state for this entry.
     CompileState compile_state = CompileState::kUncompiled;
 
     // The number of times a compilation with this signature has been requested.
@@ -214,9 +214,6 @@ class XlaCompilationCache : public ResourceBase {
   absl::flat_hash_map<string, ClusterCompileStats> cluster_compile_stats_
       TF_GUARDED_BY(cluster_compile_stats_mu_);
 
-  // KEEP THIS STRUCT LAST!!! It guarantees that the ~ThreadPool destructor is
-  // called first when the cache is destroyed. This guarentees the cache to be
-  // alive when asynchronous compilations are still happening.
   struct AsyncCompilation {
     mutex async_compilation_mu_;
 
@@ -230,11 +227,14 @@ class XlaCompilationCache : public ResourceBase {
     int64 num_ongoing_compilations GUARDED_BY(async_compilation_mu_) = 0;
 
     // Pool of threads for asynchronous compilations.
-    thread::ThreadPool compiler_threads;
+    std::unique_ptr<thread::ThreadPool> compiler_threads;
 
     AsyncCompilation()
-      : compiler_threads(tensorflow::Env::Default(), "aync_compiler_threads",
-                         kNumCompilerThreads) {}
+    {
+       compiler_threads = absl::make_unique<tensorflow::thread::ThreadPool>(
+         tensorflow::Env::Default(), "aync_compiler_threads",
+         kNumCompilerThreads);
+    }
 
   } async_compilation_;
 

@@ -99,7 +99,7 @@ struct XlaOpsCommonFlags {
   // XLA clusters always run in the TF executor.  Defaults to false.
   bool tf_xla_always_defer_compilation;
   // If true, _XlaCompile compiles the cluster asynchronously with respect to
-  // the main execution. The fall back path is taken while compilation happens.
+  // the main execution. The fallback path is taken while compilation happens.
   bool tf_xla_async_compilation;
 };
 

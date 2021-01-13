@@ -194,7 +194,7 @@ class XlaCompiler {
     // compiler to access, unless it can use TensorFlow's allocator.
     // This must be a shared_ptr, as this is passed all the way down to the
     // cluster compilation. This allows asynchronous compilation to hold a
-    // referecence until the compilation is finished. 
+    // reference until the compilation is finished. 
     std::shared_ptr<se::DeviceMemoryAllocator> device_allocator;
 
     // Alias input and output buffers for parameters that are passed-through XLA
