@@ -929,6 +929,7 @@ OperatorProperty GetOperatorProperty(OpVariant op_variant) {
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.quantize_input_as_activations = true;
       break;
     case BuiltinOperator_SUM:
       property.inputs = {{0, {}}};

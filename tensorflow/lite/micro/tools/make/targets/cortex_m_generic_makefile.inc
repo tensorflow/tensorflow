@@ -25,11 +25,12 @@ else ifeq ($(TARGET_ARCH), cortex-m33+nodsp)
 else ifeq ($(TARGET_ARCH), cortex-m4)
   CORE=M4
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M4.no_fp
+  GCC_TARGET_ARCH := cortex-m4+nofp
 
 else ifeq ($(TARGET_ARCH), cortex-m4+fp)
   CORE=M4
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M4
-  TARGET_SPECIFIC_FLAGS += -D__FPU_PRESENT=1 -mfpu=fpv4-sp-d16
+  TARGET_SPECIFIC_FLAGS += -D__FPU_PRESENT=1
   FLOAT=hard
   GCC_TARGET_ARCH := cortex-m4
 
@@ -51,6 +52,7 @@ else ifeq ($(TARGET_ARCH), cortex-m55+nofp)
 else ifeq ($(TARGET_ARCH), cortex-m7)
   CORE=M7
   ARM_LDFLAGS := -Wl,--cpu=Cortex-M7.no_fp
+  GCC_TARGET_ARCH := cortex-m7+nofp
 
 else ifeq ($(TARGET_ARCH), cortex-m7+fp)
   CORE=M7
@@ -63,10 +65,6 @@ else
 endif
 
 ifneq ($(filter cortex-m55%,$(TARGET_ARCH)),)
-  ifeq ($(TOOLCHAIN), gcc)
-    $(error "Micro architecure support is not available for arm-gcc for TARGET_ARCH=$(TARGET_ARCH)")
-  endif
-
   # soft-abi=soft disables MVE - use softfp instead for M55.
   ifeq ($(FLOAT),soft)
     FLOAT=softfp
@@ -98,11 +96,14 @@ ifeq ($(TOOLCHAIN), armclang)
 
 else ifeq ($(TOOLCHAIN), gcc)
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
-  $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
+  DOWNLOAD_RESULT := $(shell $(MAKEFILE_DIR)/arm_gcc_download.sh ${MAKEFILE_DIR}/downloads)
+  ifneq ($(DOWNLOAD_RESULT), SUCCESS)
+    $(error Something went wrong with the GCC download: $(DOWNLOAD_RESULT))
+  endif
 
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
-  FLAGS_GCC = -mcpu=$(GCC_TARGET_ARCH)
+  FLAGS_GCC = -mcpu=$(GCC_TARGET_ARCH) -mfpu=auto
   CXXFLAGS += $(FLAGS_GCC)
   CCFLAGS += $(FLAGS_GCC)
 

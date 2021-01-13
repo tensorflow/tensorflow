@@ -1041,9 +1041,10 @@ void FunctionDefAndExecute(bool async) {
 TEST(CAPI, FunctionDefAndExecute) { FunctionDefAndExecute(false); }
 TEST(CAPI, FunctionDefAndExecuteAsync) { FunctionDefAndExecute(true); }
 
-void RunAddFunction(bool enable_grappler) {
+void RunAddFunction(bool use_tfrt, bool enable_grappler) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetTfrt(opts, use_tfrt);
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1075,6 +1076,12 @@ void RunAddFunction(bool enable_grappler) {
         serialized_config.length());
   }
 
+  if (use_tfrt) {
+    // Set some test-only graph compiler options.
+    TFE_OpSetAttrBool(op, "TFRT_TEST_enable_native_ops", false);
+    TFE_OpSetAttrBool(op, "TFRT_TEST_enable_grappler", enable_grappler);
+  }
+
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_OpAddInput(op, m, status);
@@ -1096,6 +1103,23 @@ void RunAddFunction(bool enable_grappler) {
   EXPECT_EQ(6, product[2]);
   EXPECT_EQ(8, product[3]);
 
+  // When we turn on grappler, confirm that the tf.Add has been rewritten into a
+  // tf.Mul.
+  // This capability of checking the executed op names is currently only enabled
+  // for TFRT debug build, for performance and simplicity reasons.
+  if (use_tfrt) {
+    TF_Buffer* buf = TF_NewBuffer();
+    TFE_GetExecutedOpNames(ctx, buf, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+#ifndef NDEBUG
+    if (enable_grappler)
+      EXPECT_NE(strstr(static_cast<const char*>(buf->data), "tf.Mul"), nullptr);
+    else
+      EXPECT_NE(strstr(static_cast<const char*>(buf->data), "tf.Add"), nullptr);
+#endif
+    TF_DeleteBuffer(buf);
+  }
+
   TFE_ContextRemoveFunction(ctx, "AddFunction", status);
   ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
   TFE_DeleteContext(ctx);
@@ -1104,8 +1128,18 @@ void RunAddFunction(bool enable_grappler) {
 }
 
 TEST(CAPI, RunAddFunctionWithGrappler) {
-  RunAddFunction(/*enable_grappler=*/true);
+  RunAddFunction(/*use_tfrt=*/false, /*enable_grappler=*/true);
 }
+
+#ifdef PLATFORM_GOOGLE
+TEST(CAPI, RunAddFunction_TFRT) {
+  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/false);
+}
+
+TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
+  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/true);
+}
+#endif
 
 void BM_ExecuteFunction(int iters, int async) {
   tensorflow::testing::StopTiming();

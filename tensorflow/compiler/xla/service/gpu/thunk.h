@@ -148,6 +148,13 @@ using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 absl::string_view ThunkKindToString(Thunk::Kind);
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
+// A struct that defines a shaped slice, i.e., a BufferAllocation::Slice and its
+// shape.
+struct ShapedSlice {
+  BufferAllocation::Slice slice;
+  Shape shape;
+};
+
 }  // namespace gpu
 }  // namespace xla
 

@@ -8973,6 +8973,59 @@ stores the parameters for each batch.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_PolygammaOp : TF_Op<"Polygamma", [NoSideEffect, ResultsBroadcastableShape]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = [{
+Compute the polygamma function \\(\psi^{(n)}(x)\\).
+  }];
+
+  let description = [{
+The polygamma function is defined as:
+
+
+\\(\psi^{(a)}(x) = \frac{d^a}{dx^a} \psi(x)\\)
+
+where \\(\psi(x)\\) is the digamma function.
+The polygamma function is defined only for non-negative integer orders \\a\\.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$a,
+    TF_F32OrF64Tensor:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_PopulationCountOp : TF_Op<"PopulationCount", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = [{
+Computes element-wise population count (a.k.a. popcount, bitsum, bitcount).
+  }];
+
+  let description = [{
+For each entry in `x`, calculates the number of `1` (on) bits in the binary
+representation of that entry.
+
+**NOTE**: It is more efficient to first `tf.bitcast` your tensors into
+`int32` or `int64` and perform the bitcount on the result, than to feed in
+8- or 16-bit inputs and then aggregate the resulting counts.
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x
+  );
+
+  let results = (outs
+    TF_Uint8Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_PowOp : TF_Op<"Pow", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Computes the power of one value to another.";
@@ -16694,6 +16747,32 @@ s[..., 0] is the largest value, s[..., 1] is the second largest, etc.}]>:$s,
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_XlaVariadicSortOp : TF_Op<"XlaVariadicSort", [NoSideEffect]> {
+  let summary = "Wraps the XLA Sort operator, documented at";
+
+  let description = [{
+https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts one or more tensors, with support for custom comparator, dimension, and
+is_stable attributes.
+  }];
+
+  let arguments = (ins
+    Arg<Variadic<TF_Tensor>, [{A list of `Tensor` of identical shape but possibly different types.}]>:$inputs,
+    Arg<TF_Int32Tensor, [{The dimension along which to sort. Must be a compile-time constant.}]>:$dimension,
+
+    SymbolRefAttr:$comparator,
+    BoolAttr:$is_stable
+  );
+
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{A list of `Tensor` of same shape and types as the `input`.}]>:$outputs
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_Xlog1pyOp : TF_Op<"Xlog1py", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
   let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
 
@@ -16734,6 +16813,31 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [Idempotent, NoSideEffect, SameOperandsA
 
   let results = (outs
     TF_Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ZetaOp : TF_Op<"Zeta", [NoSideEffect, ResultsBroadcastableShape]>,
+                WithBroadcastableBinOpBuilder {
+  let summary = [{
+Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
+  }];
+
+  let description = [{
+The Hurwitz zeta function is defined as:
+
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$x,
+    TF_F32OrF64Tensor:$q
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

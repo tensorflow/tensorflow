@@ -64,9 +64,8 @@ class IntegerLookup(index_lookup.IndexLookup):
     invert: If true, this layer will map indices to vocabulary items instead
       of mapping vocabulary items to indices.
     output_mode: Specification for the output of the layer. Only applicable
-      when `invert` is False.
-      Defaults to "int". Values can
-      be "int", "binary", or "count", configuring the layer as follows:
+      when `invert` is False. Defaults to "int". Values can be "int", "binary",
+      or "count", configuring the layer as follows:
         "int": Return the raw integer indices of the input values.
         "binary": Outputs a single int array per batch, of either vocab_size or
           max_tokens size, containing 1s in all elements where the token mapped
@@ -217,8 +216,9 @@ class IntegerLookup(index_lookup.IndexLookup):
                        "You passed %s" % (max_values,))
 
     if num_oov_indices < 0:
-      raise ValueError("num_oov_indices must be greater than 0. You passed %s" %
-                       (num_oov_indices,))
+      raise ValueError(
+          "num_oov_indices must be greater than or equal to 0. You passed %s" %
+          (num_oov_indices,))
 
     if vocabulary is not None:
       if isinstance(vocabulary, str):

@@ -136,6 +136,14 @@ TEST(FillOpTest, FillString) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
 }
 
+TEST_P(FillOpTest, FillInt8) {
+  FillOpModel<int64_t, int8_t> m(TensorType_INT64, {3}, {2, 2, 2}, 5,
+                                 GetParam());
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 2}));
+}
+
 INSTANTIATE_TEST_SUITE_P(FillOpTest, FillOpTest,
                          ::testing::Values(TestType::kConst,
                                            TestType::kDynamic));

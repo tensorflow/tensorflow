@@ -326,7 +326,7 @@ absl::Status InferenceContext::ConvertOperations(const GpuInfo& gpu_info,
       continue;
     }
     auto op_type = OperationTypeFromString(node.operation.type);
-    if (op_type == OperationType::CONST) {
+    if (op_type == OperationType::CONSTANT) {
       auto attr =
           absl::any_cast<ConstTensorAttributes>(node.operation.attributes);
       auto outputs = graph.FindOutputs(node.id);

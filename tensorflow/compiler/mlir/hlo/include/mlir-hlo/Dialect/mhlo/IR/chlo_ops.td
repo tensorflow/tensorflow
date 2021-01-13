@@ -359,6 +359,19 @@ def HLOClient_AcosOp : HLOClient_UnaryElementwiseOp<"acos", [],
   }];
 }
 
+def HLOClient_AsinOp : HLOClient_UnaryElementwiseOp<"asin", [],
+    HLO_FpOrComplexTensor> {
+  let summary = "Asin operator";
+
+  let description = [{
+    Returns `Asin(operand)` element-wise.
+
+    $$
+    \asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+    $$
+  }];
+}
+
 def HLOClient_AtanOp : HLOClient_UnaryElementwiseOp<"atan", [],
     HLO_FpOrComplexTensor> {
   let summary = "Atan operator";

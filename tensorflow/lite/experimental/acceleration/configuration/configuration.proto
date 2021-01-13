@@ -213,12 +213,11 @@ enum EdgeTpuPowerState {
   // active compared to off.
   READY = 2;
 
-  // Device is inactive but ready and all previous data is retained (e.g.
-  // cached parameters).
-  READY_WITH_RETENTION = 3;
-
   // Minimum power active state.
-  ACTIVE_MIN_POWER = 4;
+  ACTIVE_MIN_POWER = 3;
+
+  // Very low performance, very low power.
+  ACTIVE_VERY_LOW_POWER = 4;
 
   // Low performance, low power.
   ACTIVE_LOW_POWER = 5;

@@ -2622,11 +2622,21 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
 
-  def testExperimentalSparsifyModel(self):
+  def testSparsifyModel(self):
     self._getSequentialModel()
 
-    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
-    converter._experimental_sparsify_model = True
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+    converter.optimizations = {lite.Optimize.EXPERIMENTAL_SPARSITY}
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
+  def testSparsifyQuantizedModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
+    converter.optimizations = {
+        lite.Optimize.DEFAULT, lite.Optimize.EXPERIMENTAL_SPARSITY
+    }
     tflite_model = converter.convert()
     self.assertIsNotNone(tflite_model)
 

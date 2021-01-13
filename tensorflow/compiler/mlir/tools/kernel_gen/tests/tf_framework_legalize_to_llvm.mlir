@@ -18,12 +18,12 @@ func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : i64
 
 // Compute the size of an individual element.
-// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr<float>
+// CHECK: [[NULL:%.*]] = llvm.mlir.null : !llvm.ptr<f32>
 // CHECK: [[C1:%.*]] = llvm.mlir.constant(1 : index) : i64
 // CHECK: [[GEP:%.*]] = llvm.getelementptr [[NULL]]{{\[}}[[C1]]]
-// CHECK-SAME:            (!llvm.ptr<float>, i64) -> !llvm.ptr<float>
+// CHECK-SAME:            (!llvm.ptr<f32>, i64) -> !llvm.ptr<f32>
 // CHECK: [[SIZE_OF_FLOAT:%.*]] = llvm.ptrtoint [[GEP]]
-// CHECK-SAME:            !llvm.ptr<float> to i64
+// CHECK-SAME:            !llvm.ptr<f32> to i64
 
 // Compute output index (-1) and candidate indices (0, NULL).
 // CHECK: [[OUTPUT_INDEX:%.*]] = llvm.mlir.constant(-1 : i32) : i32
@@ -40,7 +40,7 @@ func @alloc(%ctx: !tf_framework.op_kernel_context,
 
 // Set pointers and offset.
 // CHECK: [[FLOAT_PTR:%.*]] = llvm.bitcast [[BYTES_PTR]]
-// CHECK-SAME:                  !llvm.ptr<i8> to !llvm.ptr<float>
+// CHECK-SAME:                  !llvm.ptr<i8> to !llvm.ptr<f32>
 // CHECK: [[DESC_1:%.*]] = llvm.insertvalue [[FLOAT_PTR]], [[DESC_0]][0]
 // CHECK: [[DESC_2:%.*]] = llvm.insertvalue [[FLOAT_PTR]], [[DESC_1]][1]
 // CHECK: [[C0:%.*]] = llvm.mlir.constant(0 : index) : i64
@@ -73,7 +73,7 @@ func @dealloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: %{{.*}} = llvm.mlir.undef : [[DESC_TY:!.*]]
 // CHECK: [[FLOAT_PTR:%.*]] = llvm.extractvalue %{{.*}}[0] : [[DESC_TY]]
 // CHECK-NEXT: [[VOID_PTR:%.*]] = llvm.bitcast [[FLOAT_PTR]]
-// CHECK-SAME:                   !llvm.ptr<float> to !llvm.ptr<i8>
+// CHECK-SAME:                   !llvm.ptr<f32> to !llvm.ptr<i8>
 
 // Deallocate.
 // CHECK: llvm.call @_mlir_ciface_tf_dealloc(

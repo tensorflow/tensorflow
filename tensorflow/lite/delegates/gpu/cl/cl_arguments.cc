@@ -348,7 +348,7 @@ absl::Status CLArguments::ResolveSelector(
   }
   auto names = desc_ptr->GetGPUResources().GetNames();
   const auto* tensor_desc = dynamic_cast<const TensorDescriptor*>(desc_ptr);
-  if (tensor_desc && selector == "Write") {
+  if (tensor_desc && (selector == "Write" || selector == "Linking")) {
     auto it = linkables.find(object_name);
     if (it != linkables.end()) {
       if (desc_ptr->GetAccess() != AccessType::WRITE &&
@@ -367,6 +367,9 @@ absl::Status CLArguments::ResolveSelector(
       ReplaceAllWords("Y_COORD", y_coord, result);
       ReplaceAllWords("S_COORD", s_coord, result);
       RETURN_IF_ERROR(ResolveSelectorsPass(args, {}, result));
+      if (selector == "Linking") {
+        return absl::OkStatus();
+      }
     }
   }
   std::string patch;

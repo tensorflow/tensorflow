@@ -820,7 +820,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
     return status;
   }
 
-  string gcn_arch_name;
+  std::string gcn_arch_name;
   status = GpuDriver::GetGpuGCNArchName(device, &gcn_arch_name);
   if (!status.ok()) {
     return status;

@@ -160,26 +160,18 @@ kernel void ComputeFunction(
 
   if (y0_in && x0_in) {
     FLT4 value = FLT4(r0);
-    uint3 gid = uint3(gid_x, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in && x0_in) {
     FLT4 value = FLT4(l0);
-    uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
   if (y0_in && x1_in) {
     FLT4 value = FLT4(t0);
-    uint3 gid = uint3(gid_x + 1, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y, gid_z);
   }
   if (y1_in && x1_in) {
     FLT4 value = FLT4(b0);
-    uint3 gid = uint3(gid_x + 1, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x + 1, gid_y + 1, gid_z);
   }
 }
@@ -330,14 +322,10 @@ kernel void ComputeFunction(
 
   if (y0_in) {
     FLT4 value = FLT4(r0);
-    uint3 gid = uint3(gid_x, gid_y, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y, gid_z);
   }
   if (y1_in) {
     FLT4 value = FLT4(l0);
-    uint3 gid = uint3(gid_x, gid_y + 1, gid_z);
-    $2
     args.dst_tensor.Write(value, gid_x, gid_y + 1, gid_z);
   }
 }
@@ -454,9 +442,7 @@ kernel void ComputeFunction(
     }
   }
   FLT4 res = FLT4(sum0) + args.biases.Read(dst_z);
-  FLT4 value = res;
-  $2
-  args.dst_tensor.Write(value, dst_x, dst_y, dst_z);
+  args.dst_tensor.Write(res, dst_x, dst_y, dst_z);
 }
 )";
   ComputeTaskDescriptor desc(definition);

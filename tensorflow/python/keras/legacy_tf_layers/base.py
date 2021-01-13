@@ -198,7 +198,6 @@ class Layer(base_layer.Layer):
     self._use_resource_variables = False
     scope = kwargs.pop('_scope', None)
     self._reuse = kwargs.pop('_reuse', None)
-
     # Avoid an incorrect lint error
     self._trainable_weights = []
     self.built = False
@@ -525,14 +524,23 @@ class Layer(base_layer.Layer):
       try:
         # Some classes which inherit from Layer do not use its constructor, so
         # rather than initializing to None we check for an AttributeError.
+        # pylint: disable=access-member-before-definition
         scope_context_manager = self._always_reuse_variable_scope
       except AttributeError:
+        scope_context_manager = None
+
+      if scope_context_manager is None:
         # From this point we will always set reuse=True, so create a "final"
         # variable scope with this setting. We avoid re-creating variable scopes
         # after this point as an optimization.
-        self._always_reuse_variable_scope = vs.variable_scope(
+        scope_context_manager = vs.variable_scope(
             self._scope, reuse=True, auxiliary_name_scope=False)
-        scope_context_manager = self._always_reuse_variable_scope
+
+        # Do not cache variable scopes if Eager mode is enabled. If Eager mode
+        # is enabled then we don't want to reuse scopes because the cached scope
+        # might be from a FuncGraph or Eager scope we are no longer in.
+        if not ops.executing_eagerly_outside_functions():
+          self._always_reuse_variable_scope = scope_context_manager
     else:
       scope_context_manager = vs.variable_scope(
           self._scope, reuse=self._reuse, auxiliary_name_scope=False)

@@ -118,8 +118,9 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
                        "You passed %s" % (max_tokens,))
 
     if num_oov_indices < 0:
-      raise ValueError("`num_oov_indices` must be greater than 0. You passed "
-                       "%s" % (num_oov_indices,))
+      raise ValueError(
+          "num_oov_indices must be greater than or equal to 0. You passed %s" %
+          (num_oov_indices,))
 
     if invert and num_oov_indices != 1:
       raise ValueError("`num_oov_tokens` must be 1 when `invert` is True.")

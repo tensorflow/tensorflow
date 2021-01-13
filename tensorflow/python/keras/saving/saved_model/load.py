@@ -204,13 +204,9 @@ def _generate_object_paths(object_graph_def):
   """Traverses through an ObjectGraphDef and builds a map of all node paths."""
   paths = {0: 'root'}
   nodes_to_visit = [0]
-  visited_nodes = set([])
 
   while nodes_to_visit:
     current_node = nodes_to_visit.pop()
-    # if current_node in visited_nodes:
-    #   continue
-    visited_nodes.add(current_node)
     current_path = paths[current_node]
     for reference in object_graph_def.nodes[current_node].children:
       if reference.node_id in paths:

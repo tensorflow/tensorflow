@@ -37,6 +37,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function as framework_function
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
@@ -2006,6 +2007,25 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
     load.load(path, tags=set([tag_constants.SERVING]))
+
+  def test_single_restore_op_used(self):
+    root = module.Module()
+    root.v1 = variables.Variable(1.)
+    root.v2 = variables.Variable(2.)
+    root.v3 = variables.Variable(3.)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    restore_count = 0
+
+    def _count_restores(op_type, *unused_args, **unused_kwargs):
+      nonlocal restore_count
+      if op_type == b"RestoreV2":
+        restore_count += 1
+
+    op_callbacks.add_op_callback(_count_restores)
+    load.load(path)
+    op_callbacks.remove_op_callback(_count_restores)
+    self.assertEqual(1, restore_count)
 
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())

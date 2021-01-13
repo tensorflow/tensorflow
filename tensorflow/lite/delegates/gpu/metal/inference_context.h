@@ -106,6 +106,7 @@ class InferenceContext {
                                       const std::vector<ValueId>& output_ids,
                                       CalculationsPrecision precision);
 
+  absl::Status Merge(CompiledModel* model);
   absl::Status AllocateTensors(id<MTLDevice> device);
   absl::Status AllocateMemoryForBuffers(id<MTLDevice> device);
   void BindTensorsToOperations();

@@ -43,7 +43,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-
 std::unique_ptr<Thunk> ThunkEmitter::BuildFftThunk(const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
   return absl::make_unique<FftThunk>(
@@ -119,23 +118,30 @@ std::unique_ptr<Thunk> ThunkEmitter::BuildOutfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kOutfeed, inst->opcode());
 
-  ShapeTree<BufferAllocation::Slice> slices(inst->operand(0)->shape());
-  slices.ForEachMutableElement([&](const ShapeIndex& index,
-                                   BufferAllocation::Slice* slice) {
-    auto status_or_slice = MaybeGetAllocationSlice(*inst->operand(0), index);
-    if (status_or_slice.ok()) {
-      *slice = status_or_slice.ValueOrDie();
-    }
-  });
+  const HloInstruction* source = inst->operand(0);
+  std::vector<ShapeUtil::IndexedShape> leaf_shapes =
+      ShapeUtil::GetLeafShapes(source->shape());
+
+  std::vector<ShapedSlice> source_slices;
+  source_slices.reserve(leaf_shapes.size());
+
+  for (ShapeUtil::IndexedShape& indexed_shape : leaf_shapes) {
+    BufferAllocation::Slice slice =
+        GetAllocationSlice(*source, indexed_shape.index);
+    const Shape& shape =
+        ShapeUtil::GetSubshape(source->shape(), indexed_shape.index);
+    source_slices.push_back(ShapedSlice{slice, shape});
+  }
+
   OutfeedConfig config = GetOutfeedConfig(inst);
   return absl::make_unique<OutfeedThunk>(context_->GetThunkInfo(inst),
-                                         std::move(config), std::move(slices));
+                                         std::move(config),
+                                         std::move(source_slices));
 }
 
 Status ThunkEmitter::HandleCustomCall(HloInstruction* custom_call) {
   // A CustomCall on the GPU backend can either be a custom-call to a
   // user-supplied kernel, or a call into a library like cudnn.
-
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)

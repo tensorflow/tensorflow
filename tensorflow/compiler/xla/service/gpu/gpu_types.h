@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_TYPES_H_
 
+#include <string>
+#include <utility>
+
 #include "absl/types/variant.h"
 
 namespace xla {
