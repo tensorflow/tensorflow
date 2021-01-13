@@ -133,7 +133,4 @@ tf_py_fuzz_target(
     name = "constant_fuzz",
     srcs = ["constant_fuzz.py"],
     tags = ["notap"],  # Run in OSS only.
-    deps = [
-        "//tensorflow/python:constant_op",
-    ],
 )

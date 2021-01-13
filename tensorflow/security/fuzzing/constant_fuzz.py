@@ -15,11 +15,11 @@
 """This is a Python API fuzzer for tf.constant."""
 import sys
 import atheris_no_libfuzzer as atheris
-from tensorflow.python.framework import constant_op
+import tensorflow as tf
 
 
 def TestOneInput(data):
-  constant_op.constant(data)
+  tf.constant(data)
 
 
 def main():
