@@ -183,6 +183,11 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                   llvm::Value* imag);
 
+  // Emit `accumulator + lhs * rhs` for the given primitive type.
+  llvm::Value* EmitMulAdd(llvm::Value* lhs, llvm::Value* rhs,
+                          llvm::Value* accumulator,
+                          xla::PrimitiveType primitive_type);
+
   // Identifier of the thread unique among all threads on the device
   virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
 
