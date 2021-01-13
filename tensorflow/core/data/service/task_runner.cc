@@ -112,6 +112,7 @@ Status RoundRobinTaskRunner::GetNext(const Request& request,
     VLOG(1) << "Starting normal round with round index " << request.round_index;
     // This was the last request to arrive, time to start a new round.
     TF_RETURN_IF_ERROR(FillBuffer());
+    VLOG(1) << "Finished preparing data for round " << request.round_index;
     current_round_ = request.round_index;
     new_round_cv_.notify_all();
   }

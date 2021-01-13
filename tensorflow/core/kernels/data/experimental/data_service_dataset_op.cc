@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -580,6 +581,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Getting an element for task id " << task->task_id;
       tensorflow::profiler::TraceMe activity(
           "GetDataServiceElement", tensorflow::profiler::TraceMeLevel::kInfo);
+      activity.AppendMetadata([&]() {
+        return profiler::TraceMeEncode({{"address", task->address}});
+      });
       CompressedElement compressed;
       bool end_of_sequence;
       for (int num_retries = 0;; ++num_retries) {
@@ -590,6 +594,11 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
           VLOG(3) << "Requesting element from consumer index "
                   << consumer_index.value() << ", round "
                   << round_index.value();
+          activity.AppendMetadata([&]() {
+            return profiler::TraceMeEncode(
+                {{"consumer_index", consumer_index.value()},
+                 {"round_index", round_index.value()}});
+          });
         }
         Status s =
             task->worker->GetElement(task->task_id, consumer_index, round_index,
