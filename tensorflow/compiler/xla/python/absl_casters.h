@@ -67,6 +67,12 @@ template <>
 struct type_caster<absl::nullopt_t> : public void_caster<absl::nullopt_t> {};
 #endif
 
+#ifndef ABSL_HAVE_STD_VARIANT
+template <typename... Ts>
+struct type_caster<absl::variant<Ts...>>
+    : variant_caster<absl::variant<Ts...>> {};
+
+#endif
 }  // namespace detail
 }  // namespace pybind11
 

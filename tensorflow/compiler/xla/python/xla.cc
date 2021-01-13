@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
+#include "tensorflow/compiler/xla/python/pmap_lib.h"
 #include "tensorflow/compiler/xla/python/profiler.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -414,6 +415,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildOutfeedReceiverSubmodule(&m);
   BuildPytreeSubmodule(m);
   BuildJaxjitSubmodule(m);
+  jax::BuildPmapSubmodule(m);
   BuildTracebackSubmodule(m);
 
   py::class_<DistributedRuntimeService,

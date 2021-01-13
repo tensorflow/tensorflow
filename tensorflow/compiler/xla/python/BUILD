@@ -323,6 +323,27 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "pmap_lib",
+    srcs = ["pmap_lib.cc"],
+    hdrs = ["pmap_lib.h"],
+    compatible_with = [],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":absl_casters",
+        "//tensorflow/core/platform:logging",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
+        "@pybind11",
+    ],
+)
+
 tf_cc_test(
     name = "outfeed_receiver_test_cpu",
     size = "small",
@@ -481,6 +502,7 @@ pybind_extension(
     deps = [
         ":dlpack",
         ":jax_jit",
+        ":pmap_lib",
         ":ops",
         ":profiler",
         ":py_client",
