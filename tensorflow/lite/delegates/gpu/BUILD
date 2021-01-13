@@ -116,7 +116,7 @@ objc_library(
     alwayslink = 1,
 )
 
-# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -s --strip always :libtensorflowlite_gpu_gl.so
+# build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
 cc_binary(
     name = "libtensorflowlite_gpu_gl.so",
     linkopts = [
