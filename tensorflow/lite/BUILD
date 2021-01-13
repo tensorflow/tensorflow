@@ -40,6 +40,16 @@ config_setting(
     },
 )
 
+# Without "cpu":"k8", when building with --copt=-DTF_LITE_STATIC_MEMORY, we get
+# the following error:
+# Multiple matches are not allowed unless one is unambiguously more specialized.
+#
+# The reason for this is that some of the tflite BUILD files (e.g.
+# kernels/internal/BUILD) have config_settings based on "cpu":"k8" and the
+# tf_lite_static_memory config_setting needs to be more specialized. It may be
+# possible to change the existing config_settings to allow for
+# tf_lite_static_memory to not require "cpu":"k8". We are not attempting that
+# since we currently only using the BUILD files for x86.
 config_setting(
     name = "tf_lite_static_memory",
     values = {
