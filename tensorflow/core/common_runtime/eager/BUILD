@@ -137,6 +137,8 @@ tf_cc_test(
         ":context",
         ":core",
         ":custom_device",
+        ":eager_operation",
+        ":placement_utils",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",

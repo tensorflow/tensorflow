@@ -17,11 +17,15 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/eager/placement_utils.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+namespace eager {
 namespace {
 
 class TestCustomDevice : public CustomDevice {
@@ -104,5 +108,75 @@ TEST(CustomDevice, TestTensorHandle) {
   EXPECT_EQ("TensorHandle(shape=[3], dtype=DT_FLOAT)", tensor->DebugString());
 }
 
+TEST(CustomDevice, TestResourcePlacement) {
+  StaticDeviceMgr device_mgr(DeviceFactory::NewDevice(
+      "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+  core::RefCountPtr<EagerContext> ctx(new EagerContext(
+      SessionOptions(),
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      &device_mgr, false, nullptr, nullptr));
+  std::string custom_device_name =
+      "/job:localhost/replica:0/task:0/device:CUSTOM:15";
+  TestCustomDevice custom_device(custom_device_name);
+  core::RefCountPtr<TestCustomDeviceTensorHandle> custom_float_tensor(
+      new TestCustomDeviceTensorHandle(ctx.get(), &custom_device, DT_FLOAT));
+  core::RefCountPtr<TestCustomDeviceTensorHandle> custom_resource_tensor(
+      new TestCustomDeviceTensorHandle(ctx.get(), &custom_device, DT_RESOURCE));
+
+  Tensor resource_tensor(DT_RESOURCE, {});
+  Device* physical_device = device_mgr.ListDevices().at(0);
+  core::RefCountPtr<TensorHandle> physical_resource_tensor(
+      TensorHandle::CreateLocalHandle(std::move(resource_tensor),
+                                      physical_device, physical_device,
+                                      physical_device, ctx.get()));
+  Tensor float_tensor(DT_FLOAT, {});
+  core::RefCountPtr<TensorHandle> physical_float_tensor(
+      TensorHandle::CreateLocalHandle(std::move(float_tensor), physical_device,
+                                      physical_device, physical_device,
+                                      ctx.get()));
+  EagerOperation op(ctx.get());
+  TF_ASSERT_OK(op.Reset("AssignVariableOp", ""));
+  TF_ASSERT_OK(op.AddInput(physical_resource_tensor.get()));
+  TF_ASSERT_OK(op.AddInput(custom_float_tensor.get()));
+  VariantDevice placed_device(kVariantDeviceNull);
+  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  // MaybePinToCustomDevice has no opinion about ops which have physical
+  // resource-dtype inputs. They'll get placed on physical devices.
+  EXPECT_EQ(kVariantDeviceNull, placed_device);
+
+  op.Clear();
+  TF_ASSERT_OK(op.Reset("AssignVariableOp", custom_device_name.c_str()));
+  TF_ASSERT_OK(op.AddInput(physical_resource_tensor.get()));
+  TF_ASSERT_OK(op.AddInput(custom_float_tensor.get()));
+  placed_device = kVariantDeviceNull;
+  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  // Explicit placement onto a custom device also doesn't trigger custom device
+  // placement if there's a physical device resource input.
+  EXPECT_EQ(kVariantDeviceNull, placed_device);
+
+  op.Clear();
+  TF_ASSERT_OK(
+      op.Reset("Identity", "/job:localhost/replica:0/task:0/device:CPU:0"));
+  TF_ASSERT_OK(op.AddInput(physical_float_tensor.get()));
+  placed_device = kVariantDeviceNull;
+  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  // Explicit placements typically override input-based placement onto a custom
+  // device.
+  EXPECT_EQ(kVariantDeviceNull, placed_device);
+
+  op.Clear();
+  TF_ASSERT_OK(op.Reset("AssignVariableOp",
+                        "/job:localhost/replica:0/task:0/device:CPU:0"));
+  TF_ASSERT_OK(op.AddInput(custom_resource_tensor.get()));
+  TF_ASSERT_OK(op.AddInput(physical_float_tensor.get()));
+  placed_device = kVariantDeviceNull;
+  TF_ASSERT_OK(MaybePinToCustomDevice(&placed_device, op));
+  // Even with an explicit physical device placement, custom device resource
+  // inputs place the op on the custom device.
+  ASSERT_TRUE(absl::holds_alternative<CustomDevice*>(placed_device));
+  EXPECT_EQ(&custom_device, absl::get<CustomDevice*>(placed_device));
+}
+
 }  // namespace
+}  // namespace eager
 }  // namespace tensorflow
