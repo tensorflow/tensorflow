@@ -107,7 +107,9 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PyClient::PjRtBufferFromPyval(
 
   absl::optional<CastToArrayResult> c = CastToArray(argument);
   if (!c) {
-    return InvalidArgument("from_python argument must be an array.");
+    return InvalidArgument(
+        "from_python argument must be an array, got value %s",
+        py::cast<std::string>(py::repr(argument)));
   }
 
   std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
