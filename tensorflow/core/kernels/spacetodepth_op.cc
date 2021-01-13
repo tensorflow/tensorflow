@@ -164,28 +164,60 @@ class SpaceToDepthOp : public OpKernel {
 namespace functor {
 template <typename T>
 struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NHWC> {
+  struct SpatialIndex {
+    Eigen::Index index, offset;
+  };
+
+  void compute_spatial_indices(const Eigen::Index size, const int block_size,
+                               const Eigen::Index depth,
+                               SpatialIndex* indices) {
+    for (Eigen::Index i = 0; i < size; ++i) {
+      indices[i].index = i / block_size;
+      // Multiply depth first to avoid repetitive computation in loop.
+      indices[i].offset = (i % block_size) * depth;
+    }
+  }
+
   void operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output) {
-    const int batch_size = output.dimension(0);
-    const int input_height = input.dimension(1);
-    const int input_width = input.dimension(2);
-    const int input_depth = input.dimension(3);
+    const Eigen::Index batch_size = output.dimension(0);
+    const Eigen::Index input_height = input.dimension(1);
+    const Eigen::Index input_width = input.dimension(2);
+    const Eigen::Index input_depth = input.dimension(3);
 
-    for (int b = 0; b < batch_size; ++b) {
-      for (int h = 0; h < input_height; ++h) {
-        const int out_h = h / block_size;
-        const int offset_h = (h % block_size);
-        for (int w = 0; w < input_width; ++w) {
-          const int out_w = w / block_size;
-          const int offset_w = (w % block_size);
-          const int offset_d = (offset_h * block_size + offset_w) * input_depth;
-          for (int d = 0; d < input_depth; ++d) {
-            const int out_d = d + offset_d;
-            output(b, out_h, out_w, out_d) = input(b, h, w, d);
+    // Pre-compute output indices.
+    const Eigen::Index max_size = std::max(input_height, input_width);
+    std::vector<SpatialIndex> indices(max_size);
+    compute_spatial_indices(max_size, block_size, input_depth, indices.data());
+
+    const auto work = [&](Eigen::Index start, Eigen::Index end) {
+      for (Eigen::Index b = start; b < end; ++b) {
+        for (Eigen::Index h = 0; h < input_height; ++h) {
+          const Eigen::Index out_h = indices[h].index;
+          const Eigen::Index offset_h = indices[h].offset;
+          for (Eigen::Index w = 0; w < input_width; ++w) {
+            const Eigen::Index out_w = indices[w].index;
+            const Eigen::Index offset_w = indices[w].offset;
+            // Already multiply input_depth when computing offset_h and
+            // offset_w.
+            const Eigen::Index offset_d = offset_h * block_size + offset_w;
+            std::memcpy(&output(b, out_h, out_w, offset_d), &input(b, h, w, 0),
+                        input_depth * sizeof(T));
           }
         }
       }
-    }
+    };
+
+    const double bytes_loaded =
+        input_height * input_width * input_depth * sizeof(T);
+    const double bytes_stored =
+        input_height * input_width * input_depth * sizeof(T);
+    const double compute_cycles =
+        input_height * input_width *
+        (Eigen::TensorOpCost::MulCost<Eigen::Index>() +
+         Eigen::TensorOpCost::AddCost<Eigen::Index>());
+    const Eigen::TensorOpCost cost(bytes_loaded, bytes_stored, compute_cycles);
+    d.parallelFor(batch_size, cost, std::move(work));
   }
 };
 
