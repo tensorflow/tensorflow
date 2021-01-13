@@ -25,7 +25,7 @@ the network is used only for inference. These include:
 
  - Removing debug operations like CheckNumerics.
 
- - Fusing group of primitive ops for batch normalization to FusedBatchNorm op
+ - Fusing a group of primitive ops for batch normalization to FusedBatchNorm op.
 
  - Folding batch normalization ops into the pre-calculated weights.
 
