@@ -35,7 +35,8 @@ namespace tensorflow {
 // - a sharding set as per xla::sharding_builder::AssignDevice.
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const string& device_name, int num_cores_per_replica,
-    absl::optional<xla::OpSharding> explicit_sharding = absl::nullopt);
+    absl::optional<xla::OpSharding> explicit_sharding = absl::nullopt,
+    absl::optional<xla::OpMetadata> metadata = absl::nullopt);
 
 xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
     const Node& node, int num_cores_per_replica);

@@ -1794,8 +1794,13 @@ TEST_F(XlaCompilerTest, SetShardingForReturnedTuple) {
   ASSERT_TRUE(root_instruction_proto);
   xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(
       {xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  xla::OpMetadata metadata;
+  metadata.set_op_type("_Retval");
+  metadata.set_op_name("B");
+  xla::HloSharding sharding_with_metadata =
+      xla::HloSharding::Tile(tile_assignment, {metadata});
   xla::HloSharding tuple_sharding = xla::HloSharding::Tuple(
-      tuple_shape, std::vector<xla::HloSharding>{sharding});
+      tuple_shape, std::vector<xla::HloSharding>{sharding_with_metadata});
   EXPECT_EQ(root_instruction_proto->sharding().SerializeAsString(),
             tuple_sharding.ToProto().SerializeAsString());
 }
@@ -1953,6 +1958,63 @@ TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
   TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
   Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);
   EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+}
+
+TEST_F(XlaCompilerTest, ShardingMetadata) {
+  // Builds a graph that returns its only argument.
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto arg0 = ops::_Arg(scope.WithOpName("arg0"), DT_INT32, 0);
+  auto arg1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+  auto add = ops::AddV2(scope.WithOpName("add"), arg0, arg1);
+  auto ret0 = ops::_Retval(scope.WithOpName("ret0"), add, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Sets _XlaSharding attribute for the _Retval node.
+  auto node_name_index = graph->BuildNodeNameIndex();
+  auto add_node_it = node_name_index.find("add");
+  ASSERT_NE(add_node_it, node_name_index.end());
+  Node* add_node = add_node_it->second;
+  ASSERT_NE(add_node, nullptr);
+
+  xla::HloSharding sharding = xla::HloSharding::AssignDevice(0);
+  add_node->AddAttr("_XlaSharding", sharding.ToProto().SerializeAsString());
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "test",
+                                     std::move(graph), args, &result));
+
+  // Tests that we set sharding on the root TUPLE instruction.
+  const auto& hlo_module_proto = result.computation->proto();
+  ASSERT_EQ(hlo_module_proto.computations_size(), 1);
+  const auto& hlo_computation_proto = hlo_module_proto.computations(0);
+  absl::optional<xla::HloInstructionProto> add_instruction_proto;
+  for (const auto& inst : hlo_computation_proto.instructions()) {
+    if (inst.opcode() == "add") {
+      add_instruction_proto = inst;
+      break;
+    }
+  }
+  ASSERT_TRUE(add_instruction_proto.has_value());
+  xla::OpMetadata metadata;
+  metadata.set_op_type("AddV2");
+  metadata.set_op_name("add");
+  xla::HloSharding sharding_with_metadata =
+      xla::HloSharding::AssignDevice(0, {metadata});
+  EXPECT_EQ(add_instruction_proto->sharding().SerializeAsString(),
+            sharding_with_metadata.ToProto().SerializeAsString());
 }
 
 }  // namespace
