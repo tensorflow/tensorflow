@@ -770,6 +770,23 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       *builtin_data = params.release();
       return kTfLiteOk;
     }
+    case BuiltinOperator_CONV_3D: {
+      auto params = safe_allocator.Allocate<TfLiteConv3DParams>();
+      TF_LITE_ENSURE(error_reporter, params != nullptr);
+      if (const auto* conv3d_params = op->builtin_options_as_Conv3DOptions()) {
+        params->padding = ConvertPadding(conv3d_params->padding());
+        params->activation =
+            ConvertActivation(conv3d_params->fused_activation_function());
+        params->stride_depth = conv3d_params->stride_d();
+        params->stride_height = conv3d_params->stride_h();
+        params->stride_width = conv3d_params->stride_w();
+        params->dilation_depth_factor = conv3d_params->dilation_d_factor();
+        params->dilation_height_factor = conv3d_params->dilation_h_factor();
+        params->dilation_width_factor = conv3d_params->dilation_w_factor();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
+    }
     // Below are the ops with no builtin_data structure.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are

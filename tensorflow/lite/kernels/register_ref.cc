@@ -157,6 +157,7 @@ TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SEGMENT_SUM();
 TfLiteRegistration* Register_BROADCAST_TO();
+TfLiteRegistration* Register_CONV_3D();
 
 namespace {
 
@@ -461,6 +462,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL_REF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
+  AddBuiltin(BuiltinOperator_CONV_3D, Register_CONV_3D());
   AddCustom("NumericVerify",
             tflite::ops::custom::Register_NUMERIC_VERIFY_REF());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
