@@ -145,6 +145,50 @@ TEST_P(CppGradients, TestExpGrad) {
       {x.get()}, UseFunction()));
 }
 
+TEST_P(CppGradients, TestMatMulGrad) {
+  float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  int64_t A_dims[] = {3, 3};
+  AbstractTensorHandlePtr A;
+  {
+    AbstractTensorHandle* A_raw;
+    Status s =
+        TestTensorHandleWithDimsFloat(ctx_.get(), A_vals, A_dims, 2, &A_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    A.reset(A_raw);
+  }
+
+  float B_vals[] = {9.0f, 8.0f, 7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+  int64_t B_dims[] = {3, 3};
+  AbstractTensorHandlePtr B;
+  {
+    AbstractTensorHandle* B_raw;
+    Status s =
+        TestTensorHandleWithDimsFloat(ctx_.get(), B_vals, B_dims, 2, &B_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    B.reset(B_raw);
+  }
+
+  for (bool transpose_a : {false, true}) {
+    for (bool transpose_b : {false, true}) {
+      Model MatMulModel =
+          [transpose_a, transpose_b](
+              AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs) -> Status {
+        return ops::MatMul(ctx, inputs, outputs, "MatMul", transpose_a,
+                           transpose_b);
+      };
+      // TODO(vnvo2409): Figure out why `gradient_checker` does not work very
+      // well with `MatMul` and remove `TestMatMul*` in
+      // `mnist_gradients_test` when done.
+      ASSERT_NO_FATAL_FAILURE(CompareNumericalAndAutodiffGradients(
+          MatMulModel,
+          BuildGradModel(MatMulModel, 2, "MatMul", MatMulRegisterer),
+          ctx_.get(), {A.get(), B.get()}, UseFunction(), /*abs_error*/ 0.4));
+    }
+  }
+}
+
 TEST_P(CppGradients, TestSqrtGrad) {
   AbstractTensorHandlePtr x;
   {
