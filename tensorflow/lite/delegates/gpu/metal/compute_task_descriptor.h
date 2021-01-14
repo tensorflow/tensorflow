@@ -101,14 +101,6 @@ struct ComputeTaskDescriptor {
   std::string elementwise_code;  // temporary, used during op construction
 };
 
-struct NodeDescriptor {
-  std::unique_ptr<ComputeTaskDescriptor> task;
-  int id;
-  std::string description;
-  std::vector<ValueId> src_tensors_ids;
-  std::vector<ValueId> dst_tensors_ids;
-};
-
 /// Helper function to convert buffer's content into stream of bytes
 template <typename T>
 std::vector<uint8_t> GetByteBuffer(const std::vector<T>& input_vector) {

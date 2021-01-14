@@ -213,24 +213,16 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
                                  op_def.dst_tensors[i], &dst[i]));
   }
 
-  std::vector<BHWC> src_shapes;
-  std::vector<BHWC> dst_shapes;
-  std::vector<ValueId> src_ids;
-  std::vector<ValueId> dst_ids;
+  std::vector<BHWC> src_shapes(src_cpu.size());
   for (int i = 0; i < src_cpu.size(); ++i) {
-    src_ids.push_back(i);
-    src_shapes.push_back(src_cpu[i].shape);
-  }
-  for (int i = 0; i < dst_cpu.size(); ++i) {
-    dst_ids.push_back(src_cpu.size() + i);
-    dst_shapes.push_back(dst_sizes[i]);
+    src_shapes[i] = src_cpu[i].shape;
   }
 
   ComputeTask gpu_task;
-  gpu_task.Init(std::move(operation), src_ids, dst_ids);
+  gpu_task.Init(std::move(operation));
   RETURN_IF_ERROR(gpu_task.Compile(op_def.precision, &device_));
   RETURN_IF_ERROR(
-      gpu_task.UpdateParams(device_.GetInfo(), src_shapes, dst_shapes));
+      gpu_task.UpdateParams(device_.GetInfo(), src_shapes, dst_sizes));
   for (int i = 0; i < src_cpu.size(); ++i) {
     gpu_task.SetSrcTensor(src[i], i);
   }

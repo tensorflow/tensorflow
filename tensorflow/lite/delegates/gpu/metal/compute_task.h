@@ -47,9 +47,7 @@ class ComputeTask {
   ComputeTask(const ComputeTask&) = delete;
   ComputeTask& operator=(const ComputeTask&) = delete;
 
-  void Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc,
-            const std::vector<ValueId>& input_ids,
-            const std::vector<ValueId>& output_ids);
+  void Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc);
 
   ComputeTaskDescriptor& GetTaskDesc() { return *task_desc_; }
   const ComputeTaskDescriptor& GetTaskDesc() const { return *task_desc_; }
@@ -62,12 +60,7 @@ class ComputeTask {
                             const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes);
 
-  bool HasInOutIds(const std::set<ValueId>& ids) const;
-
   void EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder);
-
-  std::vector<ValueId> GetOutputIds() const;
-  std::vector<ValueId> GetInputIds() const;
 
   void SetSrcTensor(const MetalSpatialTensor& tensor, int index);
 
@@ -77,8 +70,6 @@ class ComputeTask {
   std::unique_ptr<ComputeTaskDescriptor> task_desc_;
   id<MTLComputePipelineState> program_;
   MetalArguments metal_args_;
-  std::vector<ValueId> input_buffers_;
-  std::vector<ValueId> output_buffers_;
   uint3 groups_size_;
   uint3 groups_count_;
 };
