@@ -49,6 +49,7 @@ from tensorflow.python.training import server_lib
 _RPC_ERROR_FROM_WORKER = "GRPC error information from remote target /job:worker"
 _RPC_ERROR_FROM_PS = "GRPC error information from remote target /job:ps"
 _WORKER_PREEMPTION_THREAD_NAME = "WorkerPreemptionHandler"
+_WORKER_THREAD_PREFIX = "WorkerClosureProcessingLoop"
 
 
 class Model(object):
@@ -129,6 +130,7 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def tearDown(self):
     super(BaseFaultToleranceTest, self).tearDown()
     self._cluster.stop()
+    self._cluster = None
 
   def _restart(self, downtime_secs, job):
     """Kills `job` (index: 0) and restarts it after `downtime_secs`.
@@ -155,20 +157,38 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     return restart_thread
 
   def _ensure_threads_closed(self):
-    """Ensure worker and preemption threads are closed."""
+    """Ensures worker and preemption threads are closed."""
+
+    def _get_running_threads():
+      """Returns a set of all running thread names."""
+      running_threads = set()
+      for thread in threading.enumerate():
+        if thread.name is not None:
+          running_threads.add(thread.name)
+      return running_threads
+
+    def _has_thread(prefix, running_threads):
+      """Returns whether any 'running_threads' is prefixed with 'prefix'."""
+      for thread in running_threads:
+        if thread.startswith(prefix):
+          return True
+      return False
+
+    # Worker and preemption threads should exist before releasing
+    # ClusterCoordinator.
+    running_threads = _get_running_threads()
+    self.assertTrue(_has_thread(_WORKER_THREAD_PREFIX, running_threads))
+    self.assertIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+
     # Wait for threads to close.
     self.cluster_coord = None
     gc.collect()
     time.sleep(1)
 
     # Verify thread names.
-    running_threads = set()
-    for thread in threading.enumerate():
-      logging.info("Running thread name:%s", thread.name)
-      if thread.name is not None:
-        running_threads.add(thread.name)
-    # TODO(xingliu): Verify worker threads are closed.
+    running_threads = _get_running_threads()
     self.assertNotIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
+    self.assertFalse(_has_thread(_WORKER_THREAD_PREFIX, running_threads))
 
   def _create_model_and_run_indefinitely(self):
     model = Model(self.cluster_coord)
