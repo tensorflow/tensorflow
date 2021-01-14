@@ -17,6 +17,19 @@ cc_library(
 )
 
 cc_library(
+    name = "add_test_util",
+    testonly = 1,
+    srcs = ["add_test_util.cc"],
+    hdrs = ["add_test_util.h"],
+    deps = [
+        ":add",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/task:testing_util",
+    ],
+)
+
+cc_library(
     name = "concat_xy",
     srcs = ["concat_xy.cc"],
     hdrs = ["concat_xy.h"],
