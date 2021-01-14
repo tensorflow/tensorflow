@@ -182,8 +182,6 @@ class NameUniquifier : public OpOrArgNameMapper {
 
 Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
                           bool restrict_functionalization_to_tpu_nodes) {
-  TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(*graph, *flib_def));
-
   // If `restrict_functionalization_to_tpu_nodes` is true let filter function
   // return true for `_tpu_replicate` nodes, otherwise don't set filter.
   NodeFilter node_filter =
@@ -3386,11 +3384,17 @@ Status SavedModelSignatureDefImporterLite::InitializeGraph(
     TF_RETURN_IF_ERROR(
         RunGrappler(const_cast<MetaGraphDef*>(&meta_graph_def_)));
 
+  GraphDef graph_def = meta_graph_def_.graph_def();
+  if (import_options.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
+        graph_def, graph_->flib_def().default_registry()));
+  }
+
   GraphConstructorOptions graph_ctor_options;
   graph_ctor_options.allow_internal_ops = true;
   graph_ctor_options.add_default_attributes = true;
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
-      graph_ctor_options, meta_graph_def_.graph_def(), graph_.get()));
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(graph_ctor_options, graph_def, graph_.get()));
 
   // TODO(jpienaar): Remove need to const_cast.
   if (import_options.upgrade_legacy) {
@@ -3731,6 +3735,10 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphdefToMlir(
   GraphDef preprocessed_graphdef(graphdef);
   if (add_default_attributes) {
     TF_RETURN_IF_ERROR(PreprocessGraphDef(&specs, &preprocessed_graphdef));
+  }
+  if (specs.upgrade_legacy) {
+    TF_RETURN_IF_ERROR(GenerateResourceSharedNameIfEmpty(
+        preprocessed_graphdef, graph.flib_def().default_registry()));
   }
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
       options, std::move(preprocessed_graphdef), &graph));
