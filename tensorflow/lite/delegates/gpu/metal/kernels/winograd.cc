@@ -35,10 +35,6 @@ namespace metal {
 namespace {
 std::string GetKernelWinograd4x4To36() {
   std::string c;
-  c += R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
   c += "constant FLT Bt[36] = {\n";
   for (int y = 0; y < 6; ++y) {
@@ -50,10 +46,7 @@ using namespace metal;
   }
   c += "};\n";
   c += R"(
-
-$0
-
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint3 ugid[[thread_position_in_grid]])
 {
   int3 gid = int3(ugid.x * 4, ugid.y * 4, ugid.z);
@@ -132,10 +125,7 @@ kernel void ComputeFunction($1
 }
 
 std::string GetKernelWinograd4x4To36TileX6() {
-  std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
+  std::string c;
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
   c += "constant FLT Bt[36] = {\n";
   for (int y = 0; y < 6; ++y) {
@@ -148,9 +138,7 @@ using namespace metal;
   c += "};\n";
   c += R"(
 
-$0
-
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint3 global_ids[[thread_position_in_grid]])
 {
   int DST_X = global_ids.x;
@@ -256,10 +244,6 @@ kernel void ComputeFunction($1
 
 std::string GetKernelWinograd36To4x4() {
   std::string c;
-  c += R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
   auto at_mat = AtMatrixForWinograd4x4To6x6();
   c += "constant FLT At[24] = {\n";
   for (int y = 0; y < 4; ++y) {
@@ -272,9 +256,7 @@ using namespace metal;
   c += "};\n";
   c += R"(
 
-$0
-
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint3 global_ids[[thread_position_in_grid]])
 {
   int tile_id = global_ids.x;
@@ -331,10 +313,6 @@ kernel void ComputeFunction($1
 
 std::string GetKernelWinograd36To4x4Tile4x1() {
   std::string c;
-  c += R"(
-#include <metal_stdlib>
-using namespace metal;
-)";
   auto at_mat = AtMatrixForWinograd4x4To6x6();
   c += "constant FLT At[24] = {\n";
   for (int y = 0; y < 4; ++y) {
@@ -347,9 +325,7 @@ using namespace metal;
   c += "};\n";
   c += R"(
 
-$0
-
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint3 global_ids[[thread_position_in_grid]])
 {
   int tile_id = global_ids.x;

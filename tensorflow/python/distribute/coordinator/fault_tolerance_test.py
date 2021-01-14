@@ -170,6 +170,18 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # TODO(xingliu): Verify worker threads are closed.
     self.assertNotIn(_WORKER_PREEMPTION_THREAD_NAME, running_threads)
 
+  def _create_model_and_run_indefinitely(self):
+    model = Model(self.cluster_coord)
+    model.do_infinite_step.assign(True)
+    model.schedule_training_functions(10)
+    # Model does infinite training step, so at this moment, we expect to have
+    # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
+    # closures in the queue.
+    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count <
+           self.num_workers):
+      time.sleep(0.1)
+    return model
+
   def testClusterCoordinatorDestroyed(self):
     self._ensure_threads_closed()
 
@@ -372,15 +384,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def testTwoWorkersPreempted(self):
     if self.num_workers < 2:
       self.skipTest("Worker number is less than 2.")
-    model = Model(self.cluster_coord)
-    model.do_infinite_step.assign(True)
-    model.schedule_training_functions(10)
+    model = self._create_model_and_run_indefinitely()
 
-    # Model does infinite training step, so at this moment, we expect to have 2
-    # infinite closures inflight, and 8 closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < 2):
-      time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
     self._cluster.kill_task("worker", 1)
@@ -397,16 +402,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     self.assertGreaterEqual(model.iterations.numpy(), 10)
 
   def testWorkerContinuousFailure(self):
-    model = Model(self.cluster_coord)
-    model.do_infinite_step.assign(True)
-    model.schedule_training_functions(10)
+    model = self._create_model_and_run_indefinitely()
 
-    # Model does infinite training step, so at this moment, we expect to have
-    # `self.num_workers` infinite closures inflight, and `10-self.num_workers`
-    # closures in the queue.
-    while (self.cluster_coord._cluster._closure_queue._inflight_closure_count
-           < self.num_workers):
-      time.sleep(0.1)
     self.assertFalse(self.cluster_coord.done())
     self._cluster.kill_task("worker", 0)
     time.sleep(2)
@@ -460,6 +457,24 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # TODO(b/153888707): enable the following two tests.
     # self.testTwoWorkersPreempted()
     # self.testWorkerContinuousFailure()
+
+  def testJoinRaisesUnavailableErrorAtPsFailure(self):
+    self._create_model_and_run_indefinitely()
+    self._cluster.kill_task("ps", 0)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+    with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
+                            errors.FailedPreconditionError)):
+      self.cluster_coord.join()
+
+  def testScheduleRaisesUnavailableErrorAtPsFailure(self):
+    self._create_model_and_run_indefinitely()
+    self._cluster.kill_task("ps", 0)
+    while self.cluster_coord._cluster._closure_queue._error is None:
+      time.sleep(1)
+    with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
+                            errors.FailedPreconditionError)):
+      self.cluster_coord.schedule(def_function.function(lambda: None))
 
 
 class MultiWorkerFaultToleranceTest(BaseFaultToleranceTest, test.TestCase):

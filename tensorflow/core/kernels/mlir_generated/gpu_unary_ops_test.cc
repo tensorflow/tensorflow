@@ -296,6 +296,21 @@ GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
     test::DefaultInputGreaterThanZero<Eigen::half>(), std::log,
     test::GpuOpsTestConfig())
 
+/// Test `tf.Log1p`.
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log1p, DT_FLOAT, DT_FLOAT, test::DefaultInputGreaterThanZero<float>(),
+    std::log1p, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES(
+    Log1p, DT_DOUBLE, DT_DOUBLE, test::DefaultInputGreaterThanZero<double>(),
+    std::log1p, test::GpuOpsTestConfig())
+
+GENERATE_DEFAULT_TEST_WITH_SPECIFIC_INPUT_VALUES_2(
+    Log1p, DT_HALF, DT_FLOAT, DT_HALF, DT_FLOAT,
+    test::DefaultInputGreaterThanZero<Eigen::half>(), std::log1p,
+    test::GpuOpsTestConfig())
+
 /// Test `tf.LogicalNot`
 
 bool baseline_logical_not(bool x) { return !x; }

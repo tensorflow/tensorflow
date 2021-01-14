@@ -155,8 +155,13 @@ absl::Status MetalArguments::Init(
   std::string struct_desc = ScalarArgumentsToStructWithVec4Fields(args, code);
   RETURN_IF_ERROR(SetObjectsResources(*args));
   ResolveArgsPass(code);
-  *code =
-      absl::Substitute(*code, struct_desc, GetListOfArgs(/*buffer_offset*/ 0));
+  *code = R"(
+#include <metal_stdlib>
+using namespace metal;
+
+)" + struct_desc +
+          "\n" + *code;
+  *code = absl::Substitute(*code, GetListOfArgs(/*buffer_offset*/ 0));
   return absl::OkStatus();
 }
 

@@ -6,7 +6,10 @@ load(
     "tflite_micro_cc_test",
 )
 
-licenses(["notice"])  # Apache 2.0
+package(
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "image_model_data",

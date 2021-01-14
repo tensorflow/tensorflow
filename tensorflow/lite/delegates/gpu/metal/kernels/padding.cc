@@ -36,8 +36,6 @@ namespace {
 std::string GetPaddingCode(const PadAttributes& attr) {
   const std::string channels[] = {".x", ".y", ".z", ".w"};
   std::string code = R"(
-    #include <metal_stdlib>
-    using namespace metal;
 )";
   if (attr.type == PaddingContentType::REFLECT) {
     code += R"(
@@ -46,9 +44,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
     })";
   }
   code += R"(
-    $0
-    kernel void ComputeFunction(
-                                $1
+    kernel void ComputeFunction($0
                                 uint3 gid[[thread_position_in_grid]]) {
       if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
           static_cast<int>(gid.y) >= args.dst_tensor.Height()) {
@@ -91,7 +87,6 @@ std::string GetPaddingCode(const PadAttributes& attr) {
       bool inside_x = s_x >= 0 && s_x < args.src_tensor.Width();
       bool inside_y = s_y >= 0 && s_y < args.src_tensor.Height();
       if (inside_x && inside_y) {
-        int start_channel = static_cast<int>(gid.z) * 4;
     )";
     if (attr.prepended.c == 0 && attr.appended.c == 0) {
       // optimized case
@@ -103,6 +98,7 @@ std::string GetPaddingCode(const PadAttributes& attr) {
           value = args.src_tensor.Read(s_x, s_y, s_z);
         })";
     } else {
+      code += "    int start_channel = static_cast<int>(gid.z) * 4;\n";
       for (int i = 0; i < 4; ++i) {
         const auto& s = channels[i];
         code += "    {\n";

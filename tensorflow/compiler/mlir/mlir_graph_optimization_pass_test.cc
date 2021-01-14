@@ -44,7 +44,7 @@ class MlirGraphOptimizationPassTest : public Test {
 
     function_optimization_pass_ = MlirFunctionOptimizationPass(
         &MlirOptimizationPassRegistry::Global(),
-        [rollout_policy](const Graph& graph, absl::optional<ConfigProto>) {
+        [rollout_policy](const Graph&, absl::optional<ConfigProto>, bool) {
           return rollout_policy;
         });
 

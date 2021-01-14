@@ -204,9 +204,12 @@ template <typename IN, typename OUT>
 void PortableReductionSumVector(const IN* input_vector, OUT* output_vector,
                                 int output_size, int reduction_size) {
   for (int o = 0; o < output_size; o++) {
+    OUT result = 0;
     for (int r = 0; r < reduction_size; r++) {
-      output_vector[o] += *input_vector++;
+      result += input_vector[r];
     }
+    output_vector[o] = result;
+    input_vector += reduction_size;
   }
 }
 

@@ -227,6 +227,9 @@ def _convert_tf1_model(flags):
   if flags.experimental_new_converter is not None:
     converter.experimental_new_converter = flags.experimental_new_converter
 
+  if flags.experimental_new_quantizer is not None:
+    converter.experimental_new_quantizer = flags.experimental_new_quantizer
+
   # Convert model.
   output_data = converter.convert()
   with open(flags.output_file, "wb") as f:
@@ -251,6 +254,9 @@ def _convert_tf2_model(flags):
 
   if flags.experimental_new_converter is not None:
     converter.experimental_new_converter = flags.experimental_new_converter
+
+  if flags.experimental_new_quantizer is not None:
+    converter.experimental_new_quantizer = flags.experimental_new_quantizer
 
   # Convert the model.
   tflite_model = converter.convert()
@@ -617,6 +623,12 @@ def _get_parser(use_v2_converter):
       nargs="?",
       help=("Experimental flag, subject to change. Enables MLIR-based "
             "conversion instead of TOCO conversion. (default True)"))
+
+  parser.add_argument(
+      "--experimental_new_quantizer",
+      action="store_true",
+      help=("Experimental flag, subject to change. Enables MLIR-based "
+            "quantizer instead of flatbuffer conversion. (default False)"))
   return parser
 
 

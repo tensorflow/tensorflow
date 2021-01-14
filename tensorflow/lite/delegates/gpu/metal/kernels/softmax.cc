@@ -37,10 +37,7 @@ std::string GetSoftmax1x1Code(const GpuInfo& gpu_info) {
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 ugid[[thread_position_in_grid]])
 {
@@ -127,11 +124,7 @@ kernel void ComputeFunction($1
 ComputeTaskDescriptor Softmax(const OperationDef& definition) {
   ComputeTaskDescriptor desc(definition);
   desc.shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (int(gid.x) >= args.dst_tensor.Width() || int(gid.y) >= args.dst_tensor.Height()) {
     return;

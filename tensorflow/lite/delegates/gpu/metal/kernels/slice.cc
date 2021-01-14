@@ -91,10 +91,7 @@ std::string GetSliceCode(const OperationDef& op_def, bool alignedx4) {
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction($1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
 )";
   if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
@@ -128,7 +125,6 @@ kernel void ComputeFunction($1
       const std::string ch = "(Z * 4 + " + std::to_string(i) + ")";
       c += "    int s_ch = " + ch + " * args.stride_z + args.offset_z;\n";
       c += "    int s_z = min(s_ch >> 2, args.src_tensor.Slices() - 1);\n";
-      c += "    int s_z_rem = s_ch & 3;\n";
       c += "    FLT4 t = args.src_tensor.Read(s_x, s_y, s_z);\n";
       c += "    result." + postfixes[i] + " = t[s_ch & 3];\n";
       c += "  }\n";

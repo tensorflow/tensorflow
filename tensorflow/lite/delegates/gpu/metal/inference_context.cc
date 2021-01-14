@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/storage_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -115,17 +116,49 @@ absl::Status InferenceContext::InitFromGraph(
   for (const auto& output : outputs) {
     output_ids_.push_back(output->id);
   }
+  precision_ = create_info.precision;
 
   std::string device_name = std::string([[device name] UTF8String]);
   GpuInfo gpu_info;
   GetGpuInfoFromDeviceDescription(device_name, GpuApi::kMetal, &gpu_info);
+  ReserveGraphTensors(create_info, gpu_info, graph);
   CompiledModel compiled_model;
   RETURN_IF_ERROR(
       Compile(graph, gpu_info, create_info.precision, &compiled_model));
   RETURN_IF_ERROR(Merge(&compiled_model));
-  RETURN_IF_ERROR(CompileModelWithDevice(device, compiled_model, input_ids_,
-                                         output_ids_, create_info.precision));
+  RETURN_IF_ERROR(CompileModelWithDevice(device, compiled_model));
   return absl::OkStatus();
+}
+
+void InferenceContext::ReserveGraphTensors(
+    const CreateInferenceInfo& create_info, const GpuInfo& gpu_info,
+    const GraphFloat32& graph) {
+  ValueId max_id = 0;
+  auto tensors = graph.values();
+  auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
+  for (auto& t : tensors) {
+    TensorStorageType storage_type = create_info.storage_type;
+    const auto shape = graph.GetValue(t->id)->tensor.shape;
+    Layout layout = shape.b == 1 ? Layout::HWC : Layout::BHWC;
+    // Temporary disabled because no support of SINGLE_TEXTURE_2D in Metal
+    // Metal supports only BUFFER storage type currently
+    // if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
+    //   if (false && shape.c < 4 &&
+    //       CanCreateTensorWithShape(
+    //           gpu_info, shape,
+    //           TensorDescriptor{data_type,
+    //           TensorStorageType::SINGLE_TEXTURE_2D,
+    //                            layout})) {
+    //     storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
+    //   }
+    // }
+    storage_type =
+        SelectBestStorageType(gpu_info, shape, storage_type, data_type, layout);
+    tensor_reserver_.Add(
+        t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
+    max_id = std::max(max_id, t->id);
+  }
+  tensor_reserver_.SetNext(max_id + 1);
 }
 
 absl::Status InferenceContext::Compile(const GraphFloat32& graph,
@@ -135,11 +168,6 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
   if (!IsBatchMatchesForAllValues(graph)) {
     return absl::InvalidArgumentError(
         "Only identical batch dimension is supported");
-  }
-  int last_value_id = 0;
-  for (const auto& value : graph.values()) {
-    compiled_model->tensor_shapes[value->id] = value->tensor.shape;
-    last_value_id = std::max(last_value_id, static_cast<int>(value->id));
   }
   std::map<ValueId, int>
       tensor_usages;  // keeps latest index of operation that updated tensor
@@ -171,16 +199,15 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
       }
       std::swap(inputs[0], inputs[latest_written_tensor_index]);
     }
-    DataType data_type = DeduceDataTypeFromPrecision(precision);
-    TensorDescriptor tensor_descriptor =
-        TensorDescriptor{data_type, TensorStorageType::BUFFER, Layout::HWC};
     OperationDef op_def;
     op_def.precision = precision;
     for (int j = 0; j < inputs.size(); ++j) {
-      op_def.src_tensors.push_back(tensor_descriptor);
+      op_def.src_tensors.push_back(
+          tensor_reserver_.Get(inputs[j]->id).descriptor);
     }
     for (int j = 0; j < outputs.size(); ++j) {
-      op_def.dst_tensors.push_back(tensor_descriptor);
+      op_def.dst_tensors.push_back(
+          tensor_reserver_.Get(outputs[j]->id).descriptor);
     }
     GPUOperationsSubgraph gpu_subgraph;
     RETURN_IF_ERROR(GPUOperationFromNode(gpu_info, op_def, inputs, outputs,
@@ -188,9 +215,8 @@ absl::Status InferenceContext::Compile(const GraphFloat32& graph,
     std::map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
-      last_value_id++;
-      compiled_model->tensor_shapes[last_value_id] = t.first;
-      mapping_to_global_ids[j] = last_value_id;
+      auto global_id = tensor_reserver_.Add({t.first, t.second});
+      mapping_to_global_ids[j] = global_id;
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       NodeDescriptor metal_node;
@@ -267,12 +293,7 @@ absl::Status InferenceContext::Merge(CompiledModel* model) {
 }
 
 absl::Status InferenceContext::CompileModelWithDevice(
-    id<MTLDevice> device, const CompiledModel& compiled_model,
-    const std::vector<ValueId>& input_ids,
-    const std::vector<ValueId>& output_ids, CalculationsPrecision precision) {
-  input_ids_ = input_ids;
-  output_ids_ = output_ids;
-  precision_ = precision;
+    id<MTLDevice> device, const CompiledModel& compiled_model) {
   // Metal resources are created here.
   for (const auto& node : compiled_model.nodes) {
     ComputeTask task;
@@ -280,10 +301,18 @@ absl::Status InferenceContext::CompileModelWithDevice(
     task.SetDescription(node.description);
     compute_tasks_.emplace_back(std::move(task));
   }
-  tensor_shapes_ = compiled_model.tensor_shapes;
   for (auto& task : compute_tasks_) {
-    // The same device must be used here as well as on shader compilation stage.
-    RETURN_IF_ERROR(task.UpdateParamsWithDevice(device, tensor_shapes_));
+    const auto& input_ids = task.GetInputIds();
+    std::vector<BHWC> src_shapes;
+    std::vector<BHWC> dst_shapes;
+    for (const auto& in_id : task.GetInputIds()) {
+      src_shapes.push_back(tensor_reserver_.Get(in_id).shape);
+    }
+    for (const auto& out_id : task.GetOutputIds()) {
+      dst_shapes.push_back(tensor_reserver_.Get(out_id).shape);
+    }
+    RETURN_IF_ERROR(
+        task.UpdateParamsWithDevice(device, src_shapes, dst_shapes));
   }
   RETURN_IF_ERROR(AllocateTensors(device));
   return absl::OkStatus();
@@ -306,13 +335,9 @@ absl::Status InferenceContext::AllocateTensors(id<MTLDevice> device) {
 
   const bool f32_storage = precision_ == CalculationsPrecision::F32;
   for (auto& tensor_id : preallocated_ids) {
-    BHWC shape = tensor_shapes_[tensor_id];
-    TensorDescriptor descriptor;
-    descriptor.storage_type = TensorStorageType::BUFFER;
-    descriptor.data_type = f32_storage ? DataType::FLOAT32 : DataType::FLOAT16;
-    descriptor.layout = Layout::HWC;
+    const auto& t = tensor_reserver_.Get(tensor_id);
     preallocated_tensors_[tensor_id] =
-        CreateSharedBufferTensor(nil, shape, descriptor);
+        CreateSharedBufferTensor(nil, t.shape, t.descriptor);
   }
 
   RETURN_IF_ERROR(AllocateMemoryForBuffers(device));
@@ -379,7 +404,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
 
   std::vector<TensorUsageRecord<size_t>> buffer_usage_records;
   for (auto& usage : buffer_usages) {
-    const auto& shape = tensor_shapes_[usage.first];
+    const auto& shape = tensor_reserver_.Get(usage.first).shape;
     const size_t buffer_size =
         shape.b * shape.w * shape.h * AlignByN(shape.c, 4);
     graph_ids_to_shared_buffer_tensors_[usage.first] =
@@ -445,7 +470,7 @@ absl::Status InferenceContext::AllocateMemoryForBuffers(id<MTLDevice> device) {
         continue;
       const int tensor_index = graph_ids_to_shared_buffer_tensors_[tensor_id];
       if (created_tensors[tensor_index]) continue;
-      const auto& shape = tensor_shapes_[tensor_id];
+      const auto& shape = tensor_reserver_.Get(tensor_id).shape;
       const int buffer_index = buffer_assignment.object_ids[tensor_index];
       shared_buffer_tensors_[tensor_index] = CreateSharedBufferTensor(
           shared_buffers_[buffer_index], shape, descriptor);

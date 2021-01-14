@@ -172,7 +172,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     return;
   }
   if (!compute_row_sums || *compute_row_sums) {
-    memset(row_sums, 0, sizeof(int32_t) * m_rows);
     PortableReductionSumVector(matrix, row_sums, m_rows, m_cols);
     if (compute_row_sums) {
       *compute_row_sums = false;

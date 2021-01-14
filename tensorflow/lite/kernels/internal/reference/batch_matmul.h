@@ -165,7 +165,6 @@ inline void BatchMatMul(const RuntimeShape& lhs_shape, const int8_t* lhs_data,
     for (int i = 1; i < extended_lhs_shape.DimensionsCount() - 2; ++i) {
       num_weights_matrices *= extended_lhs_shape.Dims(i);
     }
-    memset(row_sums, 0, sizeof(int32_t) * lhs_rows * num_weights_matrices);
     tensor_utils::ReductionSumVector(
         lhs_data, row_sums, num_weights_matrices * lhs_rows, accum_depth);
     if (compute_row_sums) {

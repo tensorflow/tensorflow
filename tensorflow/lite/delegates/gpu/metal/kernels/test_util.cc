@@ -219,18 +219,19 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
         CreateTensor(device_, dst_shape, op_def.dst_tensors[i], &dst[i]));
   }
 
-  std::map<ValueId, BHWC> tensor_shapes;
+  std::vector<BHWC> src_shapes;
+  std::vector<BHWC> dst_shapes;
   NodeDescriptor metal_node;
   metal_node.task = std::move(operation);
   metal_node.src_tensors_ids.resize(src_cpu.size());
   for (int i = 0; i < src_cpu.size(); ++i) {
     metal_node.src_tensors_ids[i] = i;
-    tensor_shapes[i] = src_cpu[i].shape;
+    src_shapes.push_back(src_cpu[i].shape);
   }
   metal_node.dst_tensors_ids.resize(dst_cpu.size());
   for (int i = 0; i < dst_cpu.size(); ++i) {
     metal_node.dst_tensors_ids[i] = src_cpu.size() + i;
-    tensor_shapes[src_cpu.size() + i] = dst_sizes[i];
+    dst_shapes.push_back(dst_sizes[i]);
   }
   metal_node.description = "test_op";
   metal_node.id = 0;
@@ -238,7 +239,8 @@ absl::Status MetalExecutionEnvironment::ExecuteGPUOperation(
   ComputeTask gpu_task;
   RETURN_IF_ERROR(
       gpu_task.CompileWithDevice(device_, metal_node, op_def.precision));
-  RETURN_IF_ERROR(gpu_task.UpdateParamsWithDevice(device_, tensor_shapes));
+  RETURN_IF_ERROR(
+      gpu_task.UpdateParamsWithDevice(device_, src_shapes, dst_shapes));
   for (int i = 0; i < src_cpu.size(); ++i) {
     gpu_task.SetSrcTensor(src[i], i);
   }

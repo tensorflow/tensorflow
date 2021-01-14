@@ -1086,8 +1086,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
       context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
-  Device* device = absl::get<Device*>(tensor_handle->device());
-  EXPECT_EQ(device, nullptr);
+  EXPECT_EQ(tensor_handle->device(), nullptr);
 
   auto actual = t->flat<float>();
   EXPECT_EQ(4, actual.size());
@@ -1168,8 +1167,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
 
   EXPECT_EQ(packed_handle->Type(), TensorHandle::PACKED);
   EXPECT_EQ(packed_handle->NumPackedHandles(), 3);
-  EXPECT_EQ(absl::get<Device*>(packed_handle->device())->name(),
-            composite_device);
+  EXPECT_EQ(packed_handle->device()->name(), composite_device);
 
   TensorHandle* handle0 = nullptr;
   TF_ASSERT_OK(packed_handle->ExtractPackedHandle(0, &handle0));
@@ -1198,7 +1196,7 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
   EXPECT_EQ(handle2->op_device()->name(), device2);
   int64 op_id;
   int32 output_num;
-  TF_ASSERT_OK(handle2->RemoteAddress(absl::get<Device*>(handle2->device()),
+  TF_ASSERT_OK(handle2->RemoteAddress(handle2->device(),
                                       /*wait_until_ready=*/true, &op_id,
                                       &output_num));
   EXPECT_EQ(op_id, 2);

@@ -2751,59 +2751,6 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
   }
 };
 
-// Converts Size to HLO ops, computing the size of a ranked input tensor.
-// TODO(b/145253252): Update this to not require ranked input tensor shapes.
-//
-// The main logic of this pattern is to calculate the size by multiplying every
-// dimension of the input tensor's shape together.
-//
-// For example, the following source IR:
-//
-//   %size = "tf.Size"(%input) : (tensor<2x?x8xf32>) -> tensor<i32>
-//
-// will be converted into:
-//
-//   %const = mhlo.constant dense<1> : tensor<i32>
-//   %dim_0 = "mhlo.get_dimension_size"(%input) {dimension = 0 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_0 = mhlo.multiply %const, %dim_0 : tensor<i32>
-//   %dim_1 = "mhlo.get_dimension_size"(%input) {dimension = 1 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_1 = mhlo.multiply %prod_0, %dim_1 : tensor<i32>
-//   %dim_2 = "mhlo.get_dimension_size"(%input) {dimension = 2 : i64} :
-//                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %size = mhlo.multiply %prod_1, %dim_2 : tensor<i32>
-class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  LogicalResult matchAndRewrite(TF::SizeOp op,
-                                PatternRewriter &rewriter) const override {
-    Value input = op.input();
-    auto input_ty = input.getType().dyn_cast<RankedTensorType>();
-    if (!input_ty) return failure();
-
-    const int64_t rank = input_ty.getRank();
-    auto result_ty = op.getResult().getType();
-    auto element_ty = result_ty.cast<TensorType>().getElementType();
-    Value size = GetScalarConstOfType(element_ty, op.getLoc(), 1, &rewriter);
-    for (int64_t i = 0; i < rank; ++i) {
-      auto i32_ty = rewriter.getIntegerType(32);
-      auto size_ty = RankedTensorType::get({}, i32_ty);
-      auto dim_index = rewriter.getI64IntegerAttr(i);
-      Value dim = rewriter.create<GetDimensionSizeOp>(op.getLoc(), size_ty,
-                                                      input, dim_index);
-      dim = rewriter.create<mhlo::ConvertOp>(op.getLoc(), result_ty, dim);
-      size = rewriter.create<chlo::BroadcastMulOp>(
-          op.getLoc(), size, dim,
-          /*DenseIntElementsAttr=*/DenseIntElementsAttr());
-    }
-    rewriter.replaceOp(op, size);
-
-    return success();
-  }
-};
-
 static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                            Value *out_lhs, Value *out_rhs,
                                            PatternRewriter *rewriter) {
@@ -6228,7 +6175,7 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
       ConvertProdOp, ConvertQrOp, ConvertDynamicRangeOp,
       ConvertMatrixDiagPartV3Op, ConvertRangeOp, ConvertSelectV2Op,
-      ConvertSigmoidOp, ConvertShapeOp, ConvertSizeOp,
+      ConvertSigmoidOp, ConvertShapeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,

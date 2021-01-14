@@ -1644,6 +1644,18 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.001}));
 }
 
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU(ConvolveC64Forward)) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %arg0 = c64[3,56,56,16] parameter(0)
+  %arg1 = c64[3,3,3,64] parameter(1)
+  ROOT %conv = c64[54,54,16,64] convolution(%arg0, %arg1), window={size=3x3}, dim_labels=f01b_i01o->01bf
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
 XLA_TEST_F(ConvolutionHloTest,
            DISABLED_ON_GPU_ROCM(ConvolveF32ForwardReversed)) {
   constexpr char kHlo[] = R"(

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -42,6 +43,8 @@ id<MTLDevice> GetBestSupportedMetalDevice();
 absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
                                   NSDictionary<NSString*, NSString*>* macros,
                                   id<MTLComputePipelineState>* program);
+
+GpuInfo CreateGpuInfoFromMetalDevice(id<MTLDevice> device);
 
 }  // namespace metal
 }  // namespace gpu

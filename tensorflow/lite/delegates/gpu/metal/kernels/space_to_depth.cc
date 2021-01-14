@@ -34,10 +34,7 @@ ComputeTaskDescriptor SpaceToDepth(const OperationDef& definition,
                                    const SpaceToDepthAttributes& attr) {
   ComputeTaskDescriptor desc(definition);
   desc.shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction($1 uint3 gid[[thread_position_in_grid]]) {
+kernel void ComputeFunction($0 uint3 gid[[thread_position_in_grid]]) {
   if (gid.x >= args.dst_tensor.Width() || gid.y >= args.dst_tensor.Height() || gid.z >= args.dst_tensor.Slices()) {
     return;
   }

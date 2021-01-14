@@ -871,3 +871,24 @@ func @dot_dot(%arg0: tensor<?xf32>,
 // CHECK: linalg.dot
 // CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?xf32>, tensor<?xf32>)
 // CHECK-SAME: outs(%[[INIT]] : tensor<f32>)
+
+// -----
+
+func @dot_general(%arg0: tensor<?x?x3xf32>,
+                  %arg1: tensor<?x3x?xf32>) -> tensor<?x?x?xf32> {
+  %0 ="mhlo.dot_general"(%arg0, %arg1) {
+      dot_dimension_numbers = {
+          lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+          lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+          rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+          rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+      },
+      precision_config = ["DEFAULT", "DEFAULT"]
+  } : (tensor<?x?x3xf32>, tensor<?x3x?xf32>) -> tensor<?x?x?xf32>
+  return %0 : tensor<?x?x?xf32>
+}
+// CHECK: func @dot_general(%[[ARG0:.*]]: tensor<?x?x3xf32>, %[[ARG1:.*]]: tensor<?x3x?xf32>)
+// CHECK: %[[INIT:.*]] = dynamic_tensor_from_elements
+// CHECK: linalg.batch_matmul
+// CHECK-SAME: ins(%[[ARG0]], %[[ARG1]] : tensor<?x?x3xf32>, tensor<?x3x?xf32>)
+// CHECK-SAME: outs(%[[INIT]] : tensor<?x?x?xf32>)

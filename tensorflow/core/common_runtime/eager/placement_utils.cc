@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
+#include "tensorflow/core/common_runtime/eager/custom_device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -138,17 +139,18 @@ Status MaybePinSmallOpsToCpu(
   return Status::OK();
 }
 
-Status MaybePinToResourceDevice(VariantDevice* device,
-                                const EagerOperation& op) {
+Status MaybePinToResourceDevice(Device** device, const EagerOperation& op) {
   if (op.colocation_exempt()) {
     return Status::OK();
   }
   EagerContext& ctx = op.EagerContext();
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  TF_RETURN_IF_ERROR(op.TensorHandleInputs(&inputs));
   Device* op_device = op.Device() == kVariantDeviceNull
                           ? ctx.HostCPU()
                           : absl::get<Device*>(op.Device());
-  for (int i = 0; i < op.Inputs().size(); ++i) {
-    TensorHandle* tensor_handle = op.Inputs()[i];
+  for (int i = 0; i < inputs->size(); ++i) {
+    TensorHandle* tensor_handle = (*inputs)[i];
     if (tensor_handle->dtype == DT_RESOURCE) {
       if (tensor_handle->resource_remote_device_incarnation() != 0) {
         TF_RETURN_IF_ERROR(ValidateTensorHandleRemoteDevice(
@@ -182,7 +184,7 @@ Status MaybePinToResourceDevice(VariantDevice* device,
 
 Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
   // If operation was already placed on a custom device, use it.
-  if (VariantDeviceIsCustom(op.Device())) {
+  if (absl::holds_alternative<CustomDevice*>(op.Device())) {
     *device = op.Device();
     return Status::OK();
   } else if (!op.DeviceName().empty()) {
@@ -194,9 +196,13 @@ Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
   // placement and there is only one custom device in the op inputs.
   if (!op.Inputs().empty()) {
     CustomDevice* first = nullptr;
-    for (const TensorHandle* input : op.Inputs()) {
-      if (VariantDeviceIsCustom(input->device())) {
-        CustomDevice* current = absl::get<CustomDevice*>(input->device());
+    for (const ImmediateExecutionTensorHandle* generic_input : op.Inputs()) {
+      // TODO(b/175427838): It would be nice to be able to use tensorflow::isa
+      // here.
+      if (CustomDeviceTensorHandle::classof(generic_input)) {
+        const CustomDeviceTensorHandle* input =
+            down_cast<const CustomDeviceTensorHandle*>(generic_input);
+        CustomDevice* current = input->device();
         if (first == nullptr) {
           first = current;
         } else if (first != current) {
@@ -207,9 +213,9 @@ Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
               op.Name(),
               " has one input in custom "
               "device ",
-              VariantDeviceName(first),
+              first->name(),
               " and at least one input in a different custom device ",
-              VariantDeviceName(current)));
+              current->name()));
         }
       }
     }

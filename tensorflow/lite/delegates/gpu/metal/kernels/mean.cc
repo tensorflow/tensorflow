@@ -40,11 +40,7 @@ std::string GetMeanCode(const int3& work_group_size) {
   const std::string wg_x = std::to_string(work_group_size.x);
   const std::string wg_y = std::to_string(work_group_size.y);
   std::string c = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-    $0
-    kernel void ComputeFunction(
-                                $1
+    kernel void ComputeFunction($0
                                 uint tid[[thread_index_in_threadgroup]],
                                 uint3 tid3d[[thread_position_in_threadgroup]],
                                 uint3 gid[[thread_position_in_grid]]) {

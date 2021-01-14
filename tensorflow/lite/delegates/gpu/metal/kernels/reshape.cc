@@ -35,11 +35,7 @@ namespace metal {
 namespace {
 std::string GetReshapeCode() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   const int3 igid = int3(gid);
 
@@ -69,11 +65,7 @@ kernel void ComputeFunction(
 
 std::string GetReshapex4Code() {
   std::string code = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   int X = gid.x;
   int Y = gid.y;

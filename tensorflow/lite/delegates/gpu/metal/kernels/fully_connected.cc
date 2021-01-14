@@ -47,12 +47,8 @@ std::string GetFullyConnectedCode(const GpuInfo& gpu_info, int src_channels,
   const int src_depth = DivideRoundUp(src_channels, 4);
   std::stringstream code;
   code << R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    $$0
     kernel void ComputeFunction(
-                                $$1
+                                $$0
                                 uint3 tid[[thread_position_in_threadgroup]],
                                 uint tid_index[[thread_index_in_threadgroup]],
                                 uint3 ugid[[thread_position_in_grid]]) {

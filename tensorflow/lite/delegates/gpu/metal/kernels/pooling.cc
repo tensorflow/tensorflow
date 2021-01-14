@@ -36,11 +36,7 @@ namespace {
 
 std::string GetMaxPoolingCode() {
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
       static_cast<int>(gid.y) >= args.dst_tensor.Height() ||
@@ -67,11 +63,7 @@ kernel void ComputeFunction(
 
 std::string GetMaxPoolingIndicesCode() {
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint3 gid[[thread_position_in_grid]]) {
   if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||
       static_cast<int>(gid.y) >= args.dst_tensor.Height() ||
@@ -117,11 +109,7 @@ kernel void ComputeFunction(
 
 std::string GetAveragePoolingCode() {
   std::string shader_source = R"(
-#include <metal_stdlib>
-using namespace metal;
-$0
-kernel void ComputeFunction(
-                            $1
+kernel void ComputeFunction($0
                             uint tid[[thread_index_in_threadgroup]],
                             uint3 gid[[thread_position_in_grid]]) {
   if (static_cast<int>(gid.x) >= args.dst_tensor.Width() ||

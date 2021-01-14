@@ -435,16 +435,16 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
 // to have a non-string representation of devices (TF_Device) extracted from
 // tensors/ops/etc. and usable in APIs like OpSetDevice/ResetOp/etc.
 
-#define TFE_CUSTOM_DEVICE_VERSION 3
+#define TFE_CUSTOM_DEVICE_VERSION 4
 
-// Struct to be filled in
+// Struct to be filled in. Functions are required except where indicated.
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
   TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
                                              TFE_TensorHandle* tensor,
                                              TF_Status* status,
-                                             void* device_info) = nullptr;
+                                             void* device_info);
 
   // Method to copy a tensor from the custom device to a target device.
   TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
@@ -468,6 +468,16 @@ typedef struct TFE_CustomDevice {
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
+
+  // Implements TFE_CreatePackedTensorHandle when one of `handles` is on this
+  // custom device.
+  //
+  // Many devices will want to simply return an "unimplemented" status
+  // here. This is the default behavior if `pack` is null when passed to
+  // TFE_RegisterCustomDevice.
+  TFE_TensorHandle* (*pack)(TFE_Context* context, TFE_TensorHandle** handles,
+                            int num_handles, TF_Status* s,
+                            void* device_info) = nullptr;
 } TFE_CustomDevice;
 
 // Registers a custom device for use with eager execution.

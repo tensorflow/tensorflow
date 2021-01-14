@@ -25,16 +25,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-OutfeedConfig GetOutfeedConfig(const HloInstruction* instr) {
-  OutfeedConfig config;
-  config.input_shape = instr->operand(0)->shape();
-  return config;
-}
-
-OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info, OutfeedConfig config,
+OutfeedThunk::OutfeedThunk(ThunkInfo thunk_info,
                            std::vector<ShapedSlice> source_slices)
     : Thunk(Kind::kOutfeed, thunk_info),
-      config_(std::move(config)),
       source_slices_(std::move(source_slices)) {}
 
 Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
@@ -49,10 +42,10 @@ Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* output_buffers =
       outfeed_manager->BlockingGetNextDestination();
 
-  // Nothing to be done for empty tuples.
+  // Nothing to be done for an outfeed with no inputs.
   // Note: Cannot do this before `BlockingGetNextDestination` above to dequeue
   // an entry from the outfeed manager.
-  if (ShapeUtil::IsEmptyTuple(config_.input_shape)) {
+  if (source_slices_.empty()) {
     return Status::OK();
   }
 
