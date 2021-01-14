@@ -6367,7 +6367,6 @@ filegroup(
             "remote_fused_graph_execute_op.*",
             "remote_fused_graph_rewriter_transform.*",
             "fixed_length_record_reader_op.*",
-            "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
             "ctc_loss_op.*",
             "summary_interface.*",
