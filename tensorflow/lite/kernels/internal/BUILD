@@ -187,6 +187,13 @@ config_setting(
 )
 
 config_setting(
+    name = "darwin_arm64",
+    values = {
+        "cpu": "darwin_arm64",
+    },
+)
+
+config_setting(
     name = "freebsd",
     values = {
         "cpu": "freebsd",
@@ -810,6 +817,7 @@ cc_library(
             ":ios_armv7",
             ":ios_arm64",
             ":ios_arm64e",
+            ":darwin_arm64",
             ":raspberry_pi_with_neon",
         ): [":neon_tensor_utils"],
         (
