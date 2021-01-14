@@ -2073,7 +2073,7 @@ void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
 
 namespace {
 
-#if __aarch64__
+#ifdef __aarch64__
 inline bool IsAllZero(const int8x16_t v_s8x16) {
   const uint32_t u32 = vmaxvq_u32(vreinterpretq_u32_s8(v_s8x16));
   return !u32;
@@ -2233,10 +2233,12 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
 #endif
 }
 
+// Note: this function caps minimum and maximum at zero, unlike the true
+// minmax_element. This is intentional.
 inline void NeonMinMax(const float* values, const int size, float* min,
                        float* max) {
   const int postamble_start = RoundDownVectors<kFloatValuesPerNeonVector>(size);
-  double rmin = 0.0, rmax = 0.0;
+  float rmin = 0.0f, rmax = 0.0f;
   int i = 0;
   if (postamble_start) {
     float32x4_t min_f32x4 = vld1q_f32(values);
@@ -2247,25 +2249,28 @@ inline void NeonMinMax(const float* values, const int size, float* min,
       min_f32x4 = vminq_f32(min_f32x4, value0_f32x4);
       max_f32x4 = vmaxq_f32(max_f32x4, value0_f32x4);
     }
+#ifdef __aarch64__
+    rmin = std::min(rmin, vminvq_f32(min_f32x4));
+    rmax = std::max(rmax, vmaxvq_f32(max_f32x4));
+#else
     float32x2_t min_f32x2 =
         vmin_f32(vget_low_f32(min_f32x4), vget_high_f32(min_f32x4));
     float32x2_t max_f32x2 =
         vmax_f32(vget_low_f32(max_f32x4), vget_high_f32(max_f32x4));
     min_f32x2 = vpmin_f32(min_f32x2, min_f32x2);
-    const float fmin = vget_lane_f32(min_f32x2, 0);
-    rmin = rmin < fmin ? rmin : fmin;
     max_f32x2 = vpmax_f32(max_f32x2, max_f32x2);
-    const float fmax = vget_lane_f32(max_f32x2, 0);
-    rmax = rmax > fmax ? rmax : fmax;
-    *min = rmin;
-    *max = rmax;
+    rmin = std::min(rmin, vget_lane_f32(min_f32x2, 0));
+    rmax = std::max(rmax, vget_lane_f32(max_f32x2, 0));
+#endif  // __aarch64__
   }
   if (i < size) {
     const auto minmax =
         std::minmax_element(values + postamble_start, values + size);
-    *min = rmin < *minmax.first ? rmin : *minmax.first;
-    *max = rmax > *minmax.second ? rmax : *minmax.second;
+    rmin = std::min(rmin, *minmax.first);
+    rmax = std::max(rmax, *minmax.second);
   }
+  *min = rmin;
+  *max = rmax;
 }
 
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
@@ -2340,7 +2345,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
                                   float* scaling_factor, int32_t* offset) {
-  float rmin = 0.0, rmax = 0.0;
+  float rmin, rmax;
   NeonMinMax(values, size, &rmin, &rmax);
 
   const int32_t kMinScale = -128;
