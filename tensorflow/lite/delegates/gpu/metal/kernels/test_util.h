@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
@@ -61,19 +63,23 @@ class SingleOpModel {
 absl::Status CompareVectors(const std::vector<float>& reference,
                             const std::vector<float>& output, float max_error);
 
-class MetalExecutionEnvironment {
+class MetalExecutionEnvironment : public TestExecutionEnvironment {
  public:
   MetalExecutionEnvironment() = default;
   ~MetalExecutionEnvironment() = default;
 
-  std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
-  std::vector<TensorStorageType> GetSupportedStorages() const;
-  // returns storage types that support zero clamping when reading OOB in HW
-  // (Height/Width) dimensions.
+  std::vector<CalculationsPrecision> GetSupportedPrecisions() const override;
+  std::vector<TensorStorageType> GetSupportedStorages() const override;
   std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
-      const;
+      const override;
 
   const GpuInfo& GetGpuInfo() const { return device_.GetInfo(); }
+
+  absl::Status ExecuteGPUOperation(
+      const std::vector<TensorFloat32>& src_cpu,
+      std::unique_ptr<GPUOperation>&& operation,
+      const std::vector<BHWC>& dst_sizes,
+      const std::vector<TensorFloat32*>& dst_cpu) override;
 
   absl::Status ExecuteGPUOperation(
       const std::vector<TensorFloat32>& src_cpu,

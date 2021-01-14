@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/metal_arguments.h"
@@ -49,18 +50,27 @@ class ComputeTask {
 
   void Init(std::unique_ptr<ComputeTaskDescriptor>&& task_desc);
 
+  void Init(std::unique_ptr<GPUOperation>&& operation);
+
   ComputeTaskDescriptor& GetTaskDesc() { return *task_desc_; }
   const ComputeTaskDescriptor& GetTaskDesc() const { return *task_desc_; }
 
   /// Returns empty string or error if shader can't be compiled.
   absl::Status Compile(CalculationsPrecision precision, MetalDevice* device);
 
+  absl::Status CompileOp(MetalDevice* device);
+
   /// Updates parameters for inputs/outputs/intermediate tensors
   absl::Status UpdateParams(const GpuInfo& gpu_info,
                             const std::vector<BHWC>& src_shapes,
                             const std::vector<BHWC>& dst_shapes);
 
+  // should be called after changes of inputs/outputs.
+  absl::Status UpdateOpParams();
+
   void EncodeWithEncoder(id<MTLComputeCommandEncoder> encoder);
+
+  void EncodeOpWithEncoder(id<MTLComputeCommandEncoder> encoder);
 
   void SetSrcTensor(const MetalSpatialTensor& tensor, int index);
 
@@ -68,6 +78,7 @@ class ComputeTask {
 
  private:
   std::unique_ptr<ComputeTaskDescriptor> task_desc_;
+  std::unique_ptr<GPUOperation> operation_ = nullptr;
   id<MTLComputePipelineState> program_;
   MetalArguments metal_args_;
   uint3 groups_size_;
