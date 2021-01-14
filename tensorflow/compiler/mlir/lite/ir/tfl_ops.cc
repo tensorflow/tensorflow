@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -2482,6 +2483,19 @@ struct WhileResultOperandsMatchAndImplicitCapture
     auto &yield = *body_block.getTerminator();
     for (auto ba : body_block.getArguments()) {
       int arg_no = ba.getArgNumber();
+      // Skip removing resources that are not read-only variables.
+      if (getElementTypeOrSelf(ba.getType()).isa<TF::ResourceType>()) {
+        bool has_read_only_variables = true;
+        for (auto user : ba.getUsers()) {
+          // Ternimator ops, for example, tfl::yield op, should be ignored.
+          if (user->hasTrait<OpTrait::IsTerminator>()) continue;
+          if (!llvm::isa<mlir::TF::ReadVariableOp>(user)) {
+            has_read_only_variables = false;
+            break;
+          }
+        }
+        if (!has_read_only_variables) continue;
+      }
       if (ba == yield.getOperand(arg_no)) {
         unchanged = false;
         auto value = while_op.getOperand(arg_no);
