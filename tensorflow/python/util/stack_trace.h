@@ -42,13 +42,6 @@ inline void DCheckPyGilStateForStackTrace() {
 #endif
 }
 
-// Maps filename/line_no combination into a stack frame.
-using StackTraceMap =
-    std::function<absl::optional<StackFrame>(std::pair<const char*, int>)>;
-
-// Returns "true" on filenames which should be skipped.
-using StackTraceFilter = std::function<bool(const char*)>;
-
 // A class for capturing Python stack trace.
 class StackTrace final {
  public:
@@ -152,19 +145,26 @@ class StackTraceManager {
 // Singleton StackTraceManager.
 extern StackTraceManager* const stack_trace_manager;
 
+// Converts the ManagedStackTrace (identified by ID) to a vector of stack
+// frames.
+inline std::vector<StackFrame> ManagedStackTraceToStackFrames(
+    int id, const StackTraceMap& mapper, const StackTraceFilter& filtered,
+    bool reverse_traversal, int limit) {
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  std::vector<StackFrame> result = stack_trace_manager->Get(id)->ToStackFrames(
+      mapper, filtered, reverse_traversal, limit);
+  PyGILState_Release(gstate);
+  return result;
+}
+
 // Returns Python stack trace object that can be converted to string.
 // Note that the actual stack trace is kept in a circular buffer for string
 // conversion could fail if it's evicted before.
 // Python GIL must be acquired beforehand.
 inline ManagedStackTrace GetStackTrace(int limit) {
   DCheckPyGilStateForStackTrace();
-  return ManagedStackTrace(stack_trace_manager->Capture(limit), [](int id) {
-    PyGILState_STATE gstate = PyGILState_Ensure();
-    std::vector<StackFrame> result =
-        stack_trace_manager->Get(id)->ToStackFrames();
-    PyGILState_Release(gstate);
-    return result;
-  });
+  return ManagedStackTrace(stack_trace_manager->Capture(limit),
+                           &ManagedStackTraceToStackFrames);
 }
 
 }  // namespace tensorflow
