@@ -11,7 +11,7 @@ RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
 RUN apt-get update
 
 RUN apt-get install -y zip xxd
-RUN apt-get install -y clang-format
+RUN apt-get install -y clang clang-format
 
 RUN pip install six
 # Install Renode test dependencies
