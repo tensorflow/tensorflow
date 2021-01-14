@@ -30,8 +30,7 @@ void CompareNumericalAndAutodiffGradients(
 void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
                       absl::Span<const int64_t> dims, double abs_error = 1e-2);
 
-Model BuildGradModel(Model ops, size_t num_inputs, string ops_name,
-                     GradientFunctionFactory gradient_function_factory);
+Model BuildGradModel(Model forward, GradientRegistry registry);
 
 }  // namespace internal
 }  // namespace gradients
