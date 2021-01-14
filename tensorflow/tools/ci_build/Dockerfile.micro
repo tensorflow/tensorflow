@@ -10,9 +10,15 @@ RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -
 
 RUN apt-get update
 
-RUN apt-get install -y zip xxd
+RUN apt-get install -y zip xxd sudo
 RUN apt-get install -y clang clang-format
 
 RUN pip install six
 # Install Renode test dependencies
 RUN pip install pyyaml requests psutil robotframework==3.1
+
+# Install bazel and buildifier so that the bazel presubmit checks can be run
+# from the micro docker container and are consistent with the rest of the CI.
+COPY install/*.sh /install/
+RUN /install/install_bazel.sh
+RUN /install/install_buildifier.sh
