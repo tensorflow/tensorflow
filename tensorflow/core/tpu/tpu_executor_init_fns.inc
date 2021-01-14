@@ -14,6 +14,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy);
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetTopologyPtr);
   TFTPU_SET_FN(executor_fn, TpuPlatform_GetHostLocation);
+  TFTPU_SET_FN(executor_fn, TpuPlatform_GetRuntimeVersion);
 
   TFTPU_SET_FN(executor_fn, TpuExecutor_Init);
   TFTPU_SET_FN(executor_fn, TpuExecutor_Free);
