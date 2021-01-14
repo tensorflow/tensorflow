@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
 #include "tensorflow/lite/delegates/gpu/common/task/gpu_object_desc.h"
 #include "tensorflow/lite/delegates/gpu/metal/gpu_object.h"
+#include "tensorflow/lite/delegates/gpu/metal/metal_device.h"
 
 namespace tflite {
 namespace gpu {
@@ -34,9 +35,8 @@ class MetalArguments : public ArgumentsBinder {
  public:
   MetalArguments() = default;
 
-  absl::Status Init(id<MTLDevice> device,
-                    const std::map<std::string, std::string>& linkables,
-                    Arguments* args, std::string* code);
+  absl::Status Init(const std::map<std::string, std::string>& linkables,
+                    MetalDevice* device, Arguments* args, std::string* code);
 
   // Move only
   MetalArguments(MetalArguments&& args) = default;
@@ -88,11 +88,11 @@ class MetalArguments : public ArgumentsBinder {
   absl::Status SetObjectsResources(const Arguments& args);
 
   absl::Status ResolveSelectorsPass(
-      const Arguments& args,
+      const GpuInfo& gpu_info, const Arguments& args,
       const std::map<std::string, std::string>& linkables, std::string* code);
 
   absl::Status ResolveSelector(
-      const Arguments& args,
+      const GpuInfo& gpu_info, const Arguments& args,
       const std::map<std::string, std::string>& linkables,
       const std::string& object_name, const std::string& selector,
       const std::vector<std::string>& function_args,

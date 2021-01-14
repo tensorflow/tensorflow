@@ -43,8 +43,7 @@ absl::Status ComputeTask::Compile(CalculationsPrecision precision,
   task_desc_->AssembleCode();
   const std::map<std::string, std::string> linkables = {
       {task_desc_->dst_tensors_names[0], task_desc_->elementwise_code}};
-  RETURN_IF_ERROR(metal_args_.Init(device->device(), linkables,
-                                   &task_desc_->args,
+  RETURN_IF_ERROR(metal_args_.Init(linkables, device, &task_desc_->args,
                                    &task_desc_->shader_source));
   task_desc_->args.ReleaseCPURepresentation();
   NSString* barrier;

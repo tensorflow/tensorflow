@@ -195,6 +195,7 @@ objc_library(
     deps = [
         ":buffer",
         ":gpu_object",
+        ":metal_device",
         ":metal_spatial_tensor",
         ":texture2d",
         "//tensorflow/lite/delegates/gpu/common:status",
