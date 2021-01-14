@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_int8_calibrator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -119,15 +120,13 @@ class LRUCache {
 
 struct EngineContext {
   EngineContext() {}  // Creates an empty context.
-  EngineContext(
-      TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-      TrtUniquePtrType<nvinfer1::IExecutionContext>&& input_execution_context)
+  EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
+                ExecutionContext&& input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)) {
     execution_context.push_back(std::move(input_execution_context));
   }
   EngineContext(TrtUniquePtrType<nvinfer1::ICudaEngine>&& input_cuda_engine,
-                std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>>&&
-                    input_execution_context)
+                std::vector<ExecutionContext>&& input_execution_context)
       : cuda_engine(std::move(input_cuda_engine)),
         execution_context(std::move(input_execution_context)) {}
 
@@ -141,7 +140,7 @@ struct EngineContext {
                               ", but only ", execution_context.size(),
                               "contexts are present.");
     }
-    *exec_ctx = execution_context[idx].get();
+    *exec_ctx = execution_context[idx];
     return Status::OK();
   }
 
@@ -160,8 +159,7 @@ struct EngineContext {
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
   // Additional discussion about execution context management and thread safety
   // at https://github.com/tensorflow/tensorflow/issues/36959
-  std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
-      TF_GUARDED_BY(mu);
+  std::vector<ExecutionContext> execution_context TF_GUARDED_BY(mu);
 };
 
 // Contains the context required to build the calibration data.

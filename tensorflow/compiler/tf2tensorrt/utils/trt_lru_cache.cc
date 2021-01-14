@@ -89,7 +89,7 @@ string TRTEngineCacheResource::DebugString() const {
         << "ICudaEngine: " << item.second->cuda_engine.get() << ", "
         << "IExecutionContext: ";
     for (auto& ctx : item.second->execution_context) {
-      oss << ctx.get() << ", ";
+      oss << ctx.GetIExecutionContext() << ", ";
     }
     oss << dec << endl;
   }
