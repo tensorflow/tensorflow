@@ -244,6 +244,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("local_device_count", &PyClient::addressable_device_count)
       .def("devices", &PyClient::Devices)
       .def("local_devices", &PyClient::LocalDevices)
+      .def("live_buffers", &PyClient::LiveBuffers)
       .def("host_id", &PyClient::host_id)
       .def("get_default_device_assignment",
            &PyClient::GetDefaultDeviceAssignment)
