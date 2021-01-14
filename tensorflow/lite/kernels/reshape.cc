@@ -107,8 +107,19 @@ inline TfLiteIntArray* GetOutputShapeFromParam(TfLiteContext* context,
 // Check if the shape tensor is valid. Shapes should be int32 vectors.
 inline bool ShapeIsVector(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* shape = GetInput(context, node, kShapeTensor);
-  return (shape != nullptr && shape->dims->size == 1 &&
-          shape->type == kTfLiteInt32);
+  bool is_vector;
+  int num_not_one = 0;
+  if (shape != nullptr && shape->type == kTfLiteInt32) {
+    for (int i = 0; i < shape->dims->size; ++i) {
+      if (shape->dims->data[i] != 1) {
+        num_not_one++;
+      }
+    }
+    is_vector = num_not_one > 1 ? false : true;
+  } else {
+    is_vector = false;
+  }
+  return is_vector;
 }
 
 TfLiteIntArray* GetOutputShape(TfLiteContext* context, TfLiteNode* node) {
