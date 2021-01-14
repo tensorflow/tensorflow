@@ -7,6 +7,7 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
 )
+load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
@@ -42,14 +43,9 @@ def tflite_copts():
         "//conditions:default": [
             "-fno-exceptions",  # Exceptions are unused in TFLite.
         ],
-    }) + select({
-        clean_dep("//tensorflow:linux_x86_64"): [
-            "-fno-sanitize=shift-base",  # Possible invalid left shift in neon2sse.
-        ],
-        "//conditions:default": [],
     })
 
-    return copts
+    return copts + tflite_copts_extra()
 
 def tflite_copts_warnings():
     """Defines common warning flags used primarily by internal TFLite libraries."""
