@@ -734,54 +734,5 @@ GENERATE_DEFAULT_TESTS(Sub,
 GENERATE_DEFAULT_TESTS(Sub,
                        /*test_name=*/Int64, int64, int64, baseline_sub)
 
-/// Test `tf.Pow`.
-
-template <typename T>
-T baseline_pow(T lhs, T rhs) {
-  return std::pow(lhs, rhs);
-}
-
-template <typename T, std::enable_if_t<
-                          llvm::is_one_of<T, Eigen::half, float, double>::value,
-                          bool> = true>
-absl::InlinedVector<T, 10> PowInput() {
-  return test::InputAsVector<T, double>({0.0, 0.1, 0.2, 0.3, 1.0, 2.0, 3.0});
-}
-
-template <typename T,
-          std::enable_if_t<llvm::is_one_of<T, int8, int16, int32, int64>::value,
-                           bool> = true>
-absl::InlinedVector<T, 10> PowInput() {
-  return test::InputAsVector<T, double>({0, 1, 3});
-}
-
-template <>
-Eigen::half baseline_pow(Eigen::half lhs, Eigen::half rhs) {
-  return static_cast<Eigen::half>(
-      std::pow(static_cast<float>(lhs), static_cast<float>(rhs)));
-}
-
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
-                                                  /*test_name=*/Half,
-                                                  Eigen::half, Eigen::half,
-                                                  PowInput<Eigen::half>(),
-                                                  PowInput<Eigen::half>(),
-                                                  baseline_pow)
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
-                                                  /*test_name=*/Float, float,
-                                                  float, PowInput<float>(),
-                                                  PowInput<float>(),
-                                                  baseline_pow)
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
-                                                  /*test_name=*/Double, double,
-                                                  double, PowInput<double>(),
-                                                  PowInput<double>(),
-                                                  baseline_pow)
-GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(Pow,
-                                                  /*test_name=*/Int64, int64,
-                                                  int64, PowInput<int64>(),
-                                                  PowInput<int64>(),
-                                                  baseline_pow)
-
 }  // namespace
 }  // end namespace tensorflow
