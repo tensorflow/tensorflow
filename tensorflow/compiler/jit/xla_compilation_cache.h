@@ -214,8 +214,8 @@ class XlaCompilationCache : public ResourceBase {
   absl::flat_hash_map<string, ClusterCompileStats> cluster_compile_stats_
       TF_GUARDED_BY(cluster_compile_stats_mu_);
 
-  struct AsyncCompilation {
-    mutex async_compilation_mu_;
+  struct AsyncCompilationState {
+    mutex async_compilation_state_mu_;
 
     // Number of threads for asynchronous compilations.
     static constexpr int64 kNumCompilerThreads = 10;
@@ -224,19 +224,19 @@ class XlaCompilationCache : public ResourceBase {
     static constexpr int64 kMaxNumOngoingCompilations = kNumCompilerThreads;
 
     // Number of ongoing compilations.
-    int64 num_ongoing_compilations GUARDED_BY(async_compilation_mu_) = 0;
+    int64 num_ongoing_compilations GUARDED_BY(async_compilation_state_mu_) = 0;
 
     // Pool of threads for asynchronous compilations.
     std::unique_ptr<thread::ThreadPool> compiler_threads;
 
-    AsyncCompilation()
+    AsyncCompilationState()
     {
        compiler_threads = absl::make_unique<tensorflow::thread::ThreadPool>(
          tensorflow::Env::Default(), "aync_compiler_threads",
          kNumCompilerThreads);
     }
 
-  } async_compilation_;
+  } async_compilation_state_;
 
   // The number of times a lazy compilation must be requested for a specific
   // signature before  we attempt to compile it.

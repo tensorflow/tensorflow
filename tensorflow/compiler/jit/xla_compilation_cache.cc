@@ -69,7 +69,7 @@ XlaCompilationCache::~XlaCompilationCache() {
     }
   }
   // Wait for all outstanding compilations to finish.
-  async_compilation_.compiler_threads.reset();
+  async_compilation_state_.compiler_threads.reset();
   // TODO(b/110813685): Think about the program ownership model. Programs are
   // currently owned by the compilation cache which means we must wait for
   // program completion in the destructor. There are multiple compilation caches
@@ -191,23 +191,13 @@ Status XlaCompilationCache::Compile(
     CompileMode compile_mode,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
-  // Explicitly capture all required data by value for async compilation
-  struct AsyncCompileData {
-    const XlaCompiler::CompileOptions& compile_options;
-    const NameAttrList& function;
-  } async_compile_data = {
-    compile_options, function
-  };
 
-  // Do not add additional variables to the capture list,
-  // but add any additional ones to the AsyncCompileData struct above
-  auto compile_fn = [async_compile_data](
+    // !!Pay attention when additional variables must be captured by this lambda!! 
+    auto compile_fn = [&, compile_options, function](
                         XlaCompiler* compiler,
                         const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result) {
-    return compiler->CompileFunction(async_compile_data.compile_options,
-                                     async_compile_data.function,
-                                     args, result);
+    return compiler->CompileFunction(compile_options, function, args, result);
   };
   return CompileImpl(options, function, args, compile_fn, compile_mode,
                      out_compilation_result, out_executable);
@@ -400,47 +390,30 @@ Status XlaCompilationCache::CompileAsynchronous(
                                const std::vector<XlaCompiler::Argument>& args,
                                XlaCompiler::CompilationResult*)>& compile_fn) {
   // Explicitly capture all required data by value for async compilation.
-  struct AsyncCompileData {
-    Entry* entry;
-    const XlaCompiler::Options& options;
-    const std::vector<XlaCompiler::Argument>& args;
-    const string &function_name;
-    const std::function<Status(XlaCompiler* compiler,
-                               const std::vector<XlaCompiler::Argument>& args,
-                               XlaCompiler::CompilationResult*)>& compile_fn;
-  } async_compile_data = {
-    entry, options, args, function_name, compile_fn
-  };
-
   entry->compile_state = CompileState::kCompiling;
   {
-    mutex_lock lock(async_compilation_.async_compilation_mu_);
-    async_compilation_.num_ongoing_compilations++;
+    mutex_lock lock(async_compilation_state_.async_compilation_state_mu_);
+    async_compilation_state_.num_ongoing_compilations++;
   }
-  // Don't move the above code into the thread function!!!
+  // Don't move the above code into the thread function as it synchronously
+  // updates the async compilation state!
 
-  // Do not add additional variables to the capture list,
-  // but add any additional ones to the AsyncCompileData struct above
   // When the ThreadPool for the compilation cache is destroyed, it waits for
-  // compilations to have finished. This means that 'async_compile_data.entry'
-  // and 'this' will be alive for the duration of the compilation.
-  async_compilation_.compiler_threads.get()->Schedule(
-    [this, async_compile_data] {
+  // compilations to have finished. This means that bith 'entry' and 'this' will
+  // be alive for the duration of the compilation.
+    // !!Pay attention when additional variables must be captured by this lambda!! 
+  async_compilation_state_.compiler_threads.get()->Schedule([=] {
       Entry local_entry;
       VLOG(2) << "Starting asynchronous compilation of cluster "
-              << async_compile_data.function_name << '.';
-      (void)CompileStrict(&local_entry, async_compile_data.options,
-                          async_compile_data.args,
-                          async_compile_data.function_name,
-                          async_compile_data.compile_fn);
+              << function_name << '.';
+      (void)CompileStrict(&local_entry, options, args, function_name, compile_fn);
       VLOG(2) << "Finished asynchronous compililation of cluster "
-              << async_compile_data.function_name << '.';
+              << function_name << '.';
       {
-        mutex_lock lock(async_compilation_.async_compilation_mu_);
-        async_compilation_.num_ongoing_compilations--;
+        mutex_lock lock(async_compilation_state_.async_compilation_state_mu_);
+        async_compilation_state_.num_ongoing_compilations--;
       }
       { // Populate original entry with compilation result.
-        Entry* entry = async_compile_data.entry;
         mutex_lock entry_lock(entry->mu);
         entry->compilation_result = local_entry.compilation_result;
         entry->compile_state = local_entry.compile_state;
@@ -568,10 +541,10 @@ Status XlaCompilationCache::CompileImpl(
       }
 
       if (compile_mode == CompileMode::kAsync) {
-        // asynchronous compilation is enabled.
-        mutex_lock lock(async_compilation_.async_compilation_mu_);
-        if (async_compilation_.num_ongoing_compilations >=
-              async_compilation_.kMaxNumOngoingCompilations) {
+        // Asynchronous compilation is enabled.
+        mutex_lock lock(async_compilation_state_.async_compilation_state_mu_);
+        if (async_compilation_state_.num_ongoing_compilations >=
+              async_compilation_state_.kMaxNumOngoingCompilations) {
           VLOG(2) << "Not asynchronously compiling cluster " << function.name()
                   << " because of too many ongoing compilations.";
           return false;
